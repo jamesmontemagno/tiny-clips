@@ -11,6 +11,12 @@ InstallModes:
   - silent
   - silentWithProgress
 PackageFamilyName: Refractored.TinyClips_vmshqmcyy894t
+# TinyClips is framework-dependent on the Windows App SDK runtime. Declaring it as a
+# winget dependency ensures the runtime is installed first, including on the clean,
+# network-isolated VMs used by winget Installation Validation.
+Dependencies:
+  PackageDependencies:
+    - PackageIdentifier: Microsoft.WindowsAppRuntime.1.8
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/jamesmontemagno/tiny-clips/releases/download/v1.0.0-windows/TinyClips-1.0.0-x64.msix

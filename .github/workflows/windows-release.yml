@@ -76,7 +76,10 @@ jobs:
           # required for the installed package to launch on clean machines (matches the
           # working v1.0.0 release). Self-contained packaging omits those registrations
           # and crashes on startup with REGDB_E_CLASSNOTREG. The WindowsAppSDK runtime
-          # is declared as a framework PackageDependency and acquired by winget/Store.
+          # is declared as a framework PackageDependency in the AppxManifest; the winget
+          # installer manifest declares the matching Microsoft.WindowsAppRuntime.1.8
+          # package dependency so winget installs the runtime first (required on the
+          # clean, network-isolated VMs used by winget Installation Validation).
           $platforms = @(
             @{ Platform = "x64";   Rid = "win-x64";   Asset = "x64" }
             @{ Platform = "ARM64"; Rid = "win-arm64"; Asset = "arm64" }
@@ -246,6 +249,9 @@ jobs:
             - silent
             - silentWithProgress
           PackageFamilyName: $env:PACKAGE_FAMILY_NAME
+          Dependencies:
+            PackageDependencies:
+              - PackageIdentifier: Microsoft.WindowsAppRuntime.1.8
           Installers:
             - Architecture: x64
               InstallerUrl: https://github.com/jamesmontemagno/tiny-clips/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-x64.msix

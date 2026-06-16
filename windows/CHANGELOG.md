@@ -6,6 +6,12 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **winget Installation Validation now passes** — the framework-dependent MSIX declares the
+  Windows App SDK runtime (`Microsoft.WindowsAppRuntime.1.8`) as a package dependency in its
+  AppxManifest. That runtime is missing on winget's clean, network-isolated validation VMs, so
+  installation failed there (it succeeded locally only because the runtime was already present).
+  The winget installer manifest now declares `Microsoft.WindowsAppRuntime.1.8` under
+  `Dependencies.PackageDependencies`, so winget installs the runtime first on any clean machine.
 - **Installed MSIX no longer crashes on startup** — the winget/MSIX build was switched to
   self-contained packaging to clear winget validation, but the resulting package shipped an
   AppxManifest with **no** WinRT activation registrations. On a clean machine (without the
