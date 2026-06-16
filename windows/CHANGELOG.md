@@ -5,9 +5,53 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
-### Fixed
+## [v1.0.6-windows] - 2026-06-16
+
+### Changed
+- **Switched to a framework-dependent MSIX** to keep the package small. The app no longer
+  bundles the .NET Desktop Runtime or the Windows App SDK runtime. Instead the winget installer
+  manifest declares both as package dependencies (`Microsoft.DotNet.DesktopRuntime.10` and
+  `Microsoft.WindowsAppRuntime.1.8`), so winget installs the runtimes before the app, and the
+  Windows App SDK runtime is also auto-acquired by the OS on machines with the Store/App
+  Installer. This reverses the self-contained approach from v1.0.5 (which produced a ~56 MB
+  package). The earlier `0x80073cf3` failure we saw was a Windows Sandbox artifact — Sandbox has
+  no Store, so MSIX framework auto-acquisition cannot happen there; real machines and winget's
+  validation pipeline can deliver the dependencies.
+- The release workflow now builds with `SelfContained=false` + `WindowsAppSDKSelfContained=false`
+  and asserts the package is genuinely framework-dependent (WindowsAppRuntime dependency present,
+  no bundled `coreclr.dll`) before signing.
+
+### Improved
 - **Onboarding wizard now defaults to a wider layout** — increased the first-run welcome window
   width and relaxed step content max-widths so introductory copy is less likely to wrap on first launch.
+
+## [v1.0.5-windows] - 2026-06-16
+
+### Fixed
+- **Clean-machine and winget installs now succeed** — the MSIX is now built **fully
+  self-contained**, bundling both the .NET Desktop Runtime (`SelfContained=true`) and the
+  Windows App SDK runtime (`WindowsAppSDKSelfContained=true`). Previously the package was
+  framework-dependent and declared `Microsoft.WindowsAppRuntime.1.8` as a winget dependency,
+  but winget does not auto-install MSIX framework dependencies, so installation failed at ~95%
+  with `0x80073cf3` on clean machines and on winget's network-isolated Installation Validation
+  VMs. The self-contained package has no external framework dependency and installs anywhere.
+- **No more "install .NET Desktop Runtime" prompt** — the .NET runtime is bundled, so the app
+  launches on a machine with no .NET installed.
+- The build keeps the self-contained build and MSIX packaging in a single `dotnet build` so the
+  reg-free WinRT `activatableClass` registrations are embedded in the app executable (their
+  absence previously caused a `REGDB_E_CLASSNOTREG` startup crash). The release workflow now
+  asserts those registrations and the absence of a framework dependency before signing.
+
+## [v1.0.4-windows] - 2026-06-16
+
+### Fixed
+- **winget Installation Validation now passes** — the framework-dependent MSIX declares the
+  Windows App SDK runtime (`Microsoft.WindowsAppRuntime.1.8`) as a package dependency in its
+  AppxManifest. That runtime is missing on winget's clean, network-isolated validation VMs, so
+  installation failed there (it succeeded locally only because the runtime was already present).
+  The winget installer manifest now declares `Microsoft.WindowsAppRuntime.1.8` under
+  `Dependencies.PackageDependencies`, so winget installs the runtime first on any clean machine.
+>>>>>>> origin/main
 - **Installed MSIX no longer crashes on startup** — the winget/MSIX build was switched to
   self-contained packaging to clear winget validation, but the resulting package shipped an
   AppxManifest with **no** WinRT activation registrations. On a clean machine (without the
