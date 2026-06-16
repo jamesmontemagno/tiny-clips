@@ -98,10 +98,11 @@ For coordinate/DPI behaviour across mixed-DPI monitors, see
 `.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core tests on
 `windows-latest`. It is path-filtered to `windows/**`, so it only runs when Windows code changes.
 
-## Distribution (planned)
+## Distribution
 
-- **Direct:** signed MSIX distributed via **winget**; updates ship through `winget upgrade`
+- **Direct (available now):** signed MSIX distributed via **winget** — install with
+  `winget install Refractored.TinyClips` and update with `winget upgrade Refractored.TinyClips`
   (no separate in-app updater). Fully free.
-- **Microsoft Store:** Store auto-update. Feature set matches Direct; no Windows Pro tier.
+- **Microsoft Store (planned):** Store auto-update. Feature set matches Direct; no Windows Pro tier.
 
 See the plan for the full phased roadmap, packaging, and signing details.

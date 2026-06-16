@@ -89,13 +89,19 @@ A native **WinUI 3 / Windows App SDK** port lives under [`/windows`](windows/REA
 
 ### Installation
 
-**winget**
+**winget** — Tiny Clips is published in the [winget community repository](https://github.com/microsoft/winget-pkgs), so you can install it from any Windows 11 terminal:
 
 ```powershell
 winget install Refractored.TinyClips
 ```
 
-Updates ship through `winget upgrade`. A Microsoft Store listing (with optional Pro add-ons) is planned.
+Keep it up to date with:
+
+```powershell
+winget upgrade Refractored.TinyClips
+```
+
+A Microsoft Store listing (with optional Pro add-ons) is planned.
 
 **Build from Source**
 
