@@ -53,13 +53,27 @@ public sealed partial class SettingsWindow : Window
         UpdateAboutInfo();
         ViewModel.ThemeChanged += ApplyTheme;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        RootGrid.Loaded += OnRootGridLoaded;
         Closed += OnClosed;
+    }
+
+    // Runs after the first layout pass, once the controls' initial TwoWay binding
+    // write-backs have settled. Re-syncs the view model from persisted storage so the
+    // fields show real values, then re-applies anything that depends on them.
+    private void OnRootGridLoaded(object sender, RoutedEventArgs e)
+    {
+        RootGrid.Loaded -= OnRootGridLoaded;
+        ViewModel.CompleteInitialization();
+        ApplyTheme();
+        UpdateMouseClickPreview();
+        UpdateGifMouseClickPreview();
     }
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
         ViewModel.ThemeChanged -= ApplyTheme;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        RootGrid.Loaded -= OnRootGridLoaded;
         Closed -= OnClosed;
     }
 

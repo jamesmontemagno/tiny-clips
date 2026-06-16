@@ -5,6 +5,14 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- **Settings now load and persist correctly in the installed (packaged) app** — fixed a
+  first-load race where WinUI TwoWay bindings (theme, save location, file name template,
+  screenshot/video options, microphone) wrote their controls' empty initial values back over
+  the loaded settings, which showed blank fields and silently reset choices on every reopen.
+  Persistence is now suppressed until the window's first layout completes, then the view model
+  re-syncs from storage. An already-empty file name template also heals back to the default.
+
 ## [v1.0.7-windows] - 2026-06-16
 
 ### Fixed

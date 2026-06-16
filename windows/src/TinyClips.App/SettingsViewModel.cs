@@ -27,6 +27,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IClipStorageService _storage;
     private bool _loading;
 
+    // Persistence stays suppressed until the Settings window has finished its first
+    // layout/binding pass. WinUI TwoWay x:Bind targets (ComboBox.SelectedIndex,
+    // TextBox.Text, ToggleSwitch.IsOn) push their transient initial values back into the
+    // source while the controls are realized — which happens *after* the constructor's
+    // Load() resets _loading. Without this gate those write-backs overwrite the loaded
+    // values (blanking ComboBoxes to -1, emptying text boxes) and persist the garbage.
+    private bool _ready;
+
     /// <summary>Raised when the selected theme changes so the window can re-apply it live.</summary>
     public event Action? ThemeChanged;
 
@@ -238,6 +246,23 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(GifHotKeyDisplay));
     }
 
+    /// <summary>
+    /// Called by the window once its visual tree has loaded and the controls' initial
+    /// TwoWay binding write-backs have settled. Re-reads the (still-intact) persisted
+    /// values into the bound properties so the UI shows real data, then unlocks
+    /// persistence so genuine user edits are saved.
+    /// </summary>
+    public void CompleteInitialization()
+    {
+        if (_ready)
+        {
+            return;
+        }
+
+        Load();
+        _ready = true;
+    }
+
     private void Load()
     {
         _loading = true;
@@ -250,7 +275,9 @@ public sealed partial class SettingsViewModel : ObservableObject
                 _ => 0,
             };
             SaveDirectory = _settings.SaveDirectory;
-            FileNameTemplate = _settings.FileNameTemplate;
+            FileNameTemplate = string.IsNullOrWhiteSpace(_settings.FileNameTemplate)
+                ? "TinyClips {date} at {time}"
+                : _settings.FileNameTemplate;
             ShowInExplorer = _settings.ShowInExplorer;
             ShowSaveNotifications = _settings.ShowSaveNotifications;
             LaunchAtLogin = _settings.LaunchAtLogin;
@@ -315,7 +342,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnThemeIndexChanged(int value)
     {
-        if (_loading)
+        if (_loading || !_ready)
         {
             return;
         }
@@ -343,7 +370,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnLaunchAtLoginChanged(bool value)
     {
-        if (_loading || _suppressLaunchAtLogin)
+        if (_loading || !_ready || _suppressLaunchAtLogin)
         {
             return;
         }
@@ -482,7 +509,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private void Persist(Action apply)
     {
-        if (_loading)
+        if (_loading || !_ready)
         {
             return;
         }
