@@ -5,6 +5,11 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- **Onboarding "Skip" button is now reliably clickable** — moved it out of the custom title bar
+  (where it overlapped the window's minimize/maximize/close caption buttons) into the wizard footer
+  next to **Back**, and hid it on the final step where **Get started** already completes onboarding.
+
 ## [v1.0.6-windows] - 2026-06-16
 
 ### Changed

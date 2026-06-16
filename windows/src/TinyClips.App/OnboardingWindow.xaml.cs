@@ -81,6 +81,7 @@ public sealed partial class OnboardingWindow : Window
         Step2.Visibility = _step == 2 ? Visibility.Visible : Visibility.Collapsed;
 
         BackButton.Visibility = _step > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SkipButton.Visibility = _step >= LastStep ? Visibility.Collapsed : Visibility.Visible;
         NextButton.Content = _step >= LastStep ? "Get started" : "Next";
 
         var active = (SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"];
