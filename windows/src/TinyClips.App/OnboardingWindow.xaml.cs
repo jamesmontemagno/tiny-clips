@@ -28,7 +28,7 @@ public sealed partial class OnboardingWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppWindow.Resize(new SizeInt32(640, 640));
+        AppWindow.Resize(new SizeInt32(720, 640));
 
         RootGrid.RequestedTheme = _settings.Theme switch
         {

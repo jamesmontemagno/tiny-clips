@@ -67,7 +67,7 @@
                     Style="{StaticResource TitleLargeTextBlockStyle}"
                     Text="Welcome to Tiny Clips" />
                 <TextBlock
-                    MaxWidth="440"
+                    MaxWidth="540"
                     HorizontalAlignment="Center"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource BodyTextBlockStyle}"
@@ -79,7 +79,7 @@
             <!--  Step 1: How it works  -->
             <StackPanel
                 x:Name="Step1"
-                MaxWidth="480"
+                MaxWidth="560"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Spacing="16"
@@ -105,7 +105,7 @@
             <!--  Step 2: All set  -->
             <StackPanel
                 x:Name="Step2"
-                MaxWidth="480"
+                MaxWidth="560"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Spacing="16"

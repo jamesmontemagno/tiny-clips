@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Onboarding wizard now defaults to a wider layout** — increased the first-run welcome window
+  width and relaxed step content max-widths so introductory copy is less likely to wrap on first launch.
 - **Installed MSIX no longer crashes on startup** — the winget/MSIX build was switched to
   self-contained packaging to clear winget validation, but the resulting package shipped an
   AppxManifest with **no** WinRT activation registrations. On a clean machine (without the
