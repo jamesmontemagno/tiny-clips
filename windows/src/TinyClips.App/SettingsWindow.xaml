@@ -216,12 +216,20 @@
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="Start Tiny Clips when I sign in to Windows." />
+                           <TextBlock
+                               Margin="0,4,0,0"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind ViewModel.LaunchAtLoginNoteVisibility, Mode=OneWay}"
+                               Text="{x:Bind ViewModel.LaunchAtLoginNote, Mode=OneWay}" />
                        </StackPanel>
                        <ToggleSwitch
                            Grid.Column="1"
                            VerticalAlignment="Center"
                            AutomationProperties.AutomationId="LaunchAtLoginToggle"
                            AutomationProperties.Name="Launch at login"
+                           IsEnabled="{x:Bind ViewModel.LaunchAtLoginToggleEnabled, Mode=OneWay}"
                            IsOn="{x:Bind ViewModel.LaunchAtLogin, Mode=TwoWay}" />
                    </Grid>
                 </Border>

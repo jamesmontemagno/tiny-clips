@@ -25,6 +25,14 @@ own `CHANGELOG.md` at the repository root.
 - **Onboarding wizard now defaults to a wider layout** — increased the first-run welcome window
   width and relaxed step content max-widths so introductory copy is less likely to wrap on first launch.
 
+### Fixed
+- **Launch at login now survives app updates** — migrated from writing an `HKCU\...\Run` registry
+  value (which pointed at the versioned `WindowsApps\<PackageFullName>` install path and silently
+  stopped working after every MSIX update) to the supported `windows.startupTask` MSIX extension and
+  `Windows.ApplicationModel.StartupTask` API. The Settings toggle now reflects the real OS-owned state
+  and explains when Windows has disabled launch at login (e.g. turned off in Windows Settings → Apps →
+  Startup, or blocked by policy). Unpackaged developer runs keep the registry behavior as a fallback.
+
 ## [v1.0.5-windows] - 2026-06-16
 
 ### Fixed

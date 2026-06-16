@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
@@ -37,6 +38,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         _audioDevices = audioDevices;
         _storage = storage;
         Load();
+
+        // Reconcile the toggle with the OS-owned launch-at-login (StartupTask) state.
+        _ = RefreshLaunchAtLoginAsync();
     }
 
     /// <summary>
@@ -66,6 +70,23 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _launchAtLogin;
+
+    /// <summary>False when Windows owns the toggle (policy-locked), so the UI disables it.</summary>
+    [ObservableProperty]
+    private bool _launchAtLoginToggleEnabled = true;
+
+    /// <summary>Explains OS-imposed launch-at-login states (e.g. disabled by the user in Windows Settings).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LaunchAtLoginNoteVisibility))]
+    private string _launchAtLoginNote = string.Empty;
+
+    public Microsoft.UI.Xaml.Visibility LaunchAtLoginNoteVisibility =>
+        string.IsNullOrEmpty(LaunchAtLoginNote)
+            ? Microsoft.UI.Xaml.Visibility.Collapsed
+            : Microsoft.UI.Xaml.Visibility.Visible;
+
+    // Guards the toggle's change handler while we set LaunchAtLogin to reflect OS truth.
+    private bool _suppressLaunchAtLogin;
 
     [ObservableProperty]
     private bool _copyScreenshotToClipboard;
@@ -322,11 +343,50 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnLaunchAtLoginChanged(bool value)
     {
-        Persist(() =>
+        if (_loading || _suppressLaunchAtLogin)
         {
-            _settings.LaunchAtLogin = value;
-            _launchAtLoginService.Apply(value);
-        });
+            return;
+        }
+
+        _ = ApplyLaunchAtLoginAsync(value);
+    }
+
+    private async Task ApplyLaunchAtLoginAsync(bool value)
+    {
+        var state = await _launchAtLoginService.SetEnabledAsync(value);
+        ApplyLaunchAtLoginState(state);
+    }
+
+    private async Task RefreshLaunchAtLoginAsync()
+    {
+        var state = await _launchAtLoginService.GetStateAsync();
+        ApplyLaunchAtLoginState(state);
+    }
+
+    private void ApplyLaunchAtLoginState(LaunchAtLoginState state)
+    {
+        var enabled = state is LaunchAtLoginState.Enabled or LaunchAtLoginState.EnabledByPolicy;
+
+        // Reflect OS truth without re-triggering the change handler.
+        _suppressLaunchAtLogin = true;
+        LaunchAtLogin = enabled;
+        _suppressLaunchAtLogin = false;
+
+        // The app can only flip the toggle when Windows hasn't locked it.
+        LaunchAtLoginToggleEnabled = state is LaunchAtLoginState.Enabled or LaunchAtLoginState.Disabled;
+
+        LaunchAtLoginNote = state switch
+        {
+            LaunchAtLoginState.DisabledByUser =>
+                "Turned off in Windows Settings \u2192 Apps \u2192 Startup. Re-enable Tiny Clips there to allow launch at login.",
+            LaunchAtLoginState.DisabledByPolicy => "Launch at login is disabled by your organization's policy.",
+            LaunchAtLoginState.EnabledByPolicy => "Launch at login is enabled by your organization's policy.",
+            LaunchAtLoginState.Unavailable => "Launch at login isn't available for this installation.",
+            _ => string.Empty,
+        };
+
+        // Keep the persisted mirror aligned with the real state.
+        _settings.LaunchAtLogin = enabled;
     }
 
     partial void OnCopyScreenshotToClipboardChanged(bool value) => Persist(() => _settings.CopyScreenshotToClipboard = value);
