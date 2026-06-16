@@ -22,8 +22,32 @@ public sealed class LaunchAtLoginService : ILaunchAtLoginService
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "TinyClips";
 
+    private static bool? _isPackaged;
+
+    // Only an unpackaged (developer F5) run may use the legacy registry path. A packaged
+    // app must never write an HKCU\...\Run value — that is the stale-after-update bug this
+    // service exists to remove — so we key off real package identity, not on a GetAsync failure.
+    private static bool IsPackaged => _isPackaged ??= DetectPackaged();
+
+    private static bool DetectPackaged()
+    {
+        try
+        {
+            return Package.Current is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task<LaunchAtLoginState> GetStateAsync()
     {
+        if (!IsPackaged)
+        {
+            return GetRegistryState();
+        }
+
         try
         {
             var task = await StartupTask.GetAsync(TaskId);
@@ -31,19 +55,13 @@ public sealed class LaunchAtLoginService : ILaunchAtLoginService
         }
         catch (Exception)
         {
-            // Unpackaged dev runs (and unexpected failures) fall back to the registry.
-            return GetRegistryState();
+            return LaunchAtLoginState.Unavailable;
         }
     }
 
     public async Task<LaunchAtLoginState> SetEnabledAsync(bool enabled)
     {
-        StartupTask task;
-        try
-        {
-            task = await StartupTask.GetAsync(TaskId);
-        }
-        catch (Exception)
+        if (!IsPackaged)
         {
             ApplyRegistry(enabled);
             return GetRegistryState();
@@ -51,6 +69,8 @@ public sealed class LaunchAtLoginService : ILaunchAtLoginService
 
         try
         {
+            var task = await StartupTask.GetAsync(TaskId);
+
             if (enabled)
             {
                 if (task.State == StartupTaskState.Disabled)
