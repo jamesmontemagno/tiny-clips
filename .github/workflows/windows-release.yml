@@ -299,7 +299,16 @@ jobs:
           "@ | ForEach-Object { $_ -replace '^          ', '' } |
             Set-Content -Path (Join-Path $wingetDir "Refractored.TinyClips.installer.yaml") -Encoding UTF8
 
-          winget validate --manifest $wingetDir
+          # winget validate returns a non-zero exit code for non-fatal warnings as well as
+          # for errors. The GitHub runner can ship an older winget that doesn't recognize the
+          # 1.12.0 schema header and warns about it, even though the manifest is valid (and the
+          # always-current winget-pkgs validation accepts it). Distinguish success-with-warnings
+          # from a real failure by inspecting the output text rather than the exit code.
+          $validateOutput = winget validate --manifest $wingetDir 2>&1 | Out-String
+          Write-Host $validateOutput
+          if ($validateOutput -notmatch 'Manifest validation succeeded') {
+            throw "winget validate failed:`n$validateOutput"
+          }
 
       - name: Generate release notes
         shell: pwsh
