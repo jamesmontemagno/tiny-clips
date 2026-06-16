@@ -5,6 +5,23 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.0.5-windows] - 2026-06-16
+
+### Fixed
+- **Clean-machine and winget installs now succeed** — the MSIX is now built **fully
+  self-contained**, bundling both the .NET Desktop Runtime (`SelfContained=true`) and the
+  Windows App SDK runtime (`WindowsAppSDKSelfContained=true`). Previously the package was
+  framework-dependent and declared `Microsoft.WindowsAppRuntime.1.8` as a winget dependency,
+  but winget does not auto-install MSIX framework dependencies, so installation failed at ~95%
+  with `0x80073cf3` on clean machines and on winget's network-isolated Installation Validation
+  VMs. The self-contained package has no external framework dependency and installs anywhere.
+- **No more "install .NET Desktop Runtime" prompt** — the .NET runtime is bundled, so the app
+  launches on a machine with no .NET installed.
+- The build keeps the self-contained build and MSIX packaging in a single `dotnet build` so the
+  reg-free WinRT `activatableClass` registrations are embedded in the app executable (their
+  absence previously caused a `REGDB_E_CLASSNOTREG` startup crash). The release workflow now
+  asserts those registrations and the absence of a framework dependency before signing.
+
 ## [v1.0.4-windows] - 2026-06-16
 
 ### Fixed

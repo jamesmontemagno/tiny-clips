@@ -20,9 +20,10 @@ cd windows
 winapp cert generate --publisher "CN=Refractored LLC, O=Refractored LLC, L=Seattle, S=Washington, C=US"
 winapp cert install
 
-# Produce self-contained MSIX packages (x64 and arm64)
-dotnet publish src/TinyClips.App/TinyClips.App.csproj -c Release -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false
-dotnet publish src/TinyClips.App/TinyClips.App.csproj -c Release -p:Platform=arm64 -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false
+# Produce fully self-contained MSIX packages (x64 and arm64): bundle both the
+# .NET runtime (SelfContained) and the Windows App SDK runtime (WindowsAppSDKSelfContained)
+dotnet publish src/TinyClips.App/TinyClips.App.csproj -c Release -p:Platform=x64 -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false
+dotnet publish src/TinyClips.App/TinyClips.App.csproj -c Release -p:Platform=arm64 -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false
 winapp package src\TinyClips.App\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 --output TinyClips-x64.msix
 winapp package src\TinyClips.App\bin\arm64\Release\net10.0-windows10.0.26100.0\win-arm64 --output TinyClips-arm64.msix
 
@@ -35,10 +36,60 @@ Attach the signed `.msix` files to a GitHub Release (e.g. `v1.0.0`).
 ### Automated Windows release workflow
 
 `.github/workflows/windows-release.yml` runs for tags like `v1.0.1-windows` and maps them to
-MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 with
-`WindowsAppSDKSelfContained=true`, packages self-contained MSIX files, signs them with Azure
-Artifact Signing, runs WACK, computes winget hashes, generates a versioned winget manifest
-artifact, and creates the GitHub Release.
+MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 as **fully self-contained** MSIX
+packages, signs them with Azure Artifact Signing, runs WACK, computes winget hashes, generates
+a versioned winget manifest artifact, and creates the GitHub Release.
+
+#### Why fully self-contained (and how)
+
+winget does **not** auto-install MSIX framework dependencies. A framework-dependent package
+(one that declares `Microsoft.WindowsAppRuntime.*` as a dependency) therefore fails to install
+on a clean machine — winget lists the dependency, installs the app anyway, and the install
+fails at ~95% with `0x80073cf3` (`This package has a dependency missing from your system`). The
+same failure happens on winget's clean, network-isolated Installation Validation VMs.
+
+To avoid that, the package bundles **both** runtimes and declares **no** dependency. This needs
+two MSBuild properties, and the build + MSIX packaging must happen in a **single** `dotnet build`
+invocation:
+
+| Property | Bundles |
+|---|---|
+| `-p:WindowsAppSDKSelfContained=true` | The Windows App SDK runtime (WinUI 3, etc.) |
+| `-p:SelfContained=true` | The .NET Desktop Runtime |
+
+> ⚠️ **Both are required.** With only `WindowsAppSDKSelfContained=true`, the app still
+> framework-depends on the .NET Desktop Runtime and shows a "You must install .NET Desktop
+> Runtime to run this application" dialog on a clean machine.
+
+> ⚠️ **Do not split publish and packaging into separate steps.** The WinAppSDK
+> `CreateWinRTRegistration` target merges the reg-free WinRT `activatableClass` registrations
+> into the app EXE's embedded manifest *during the packaging build*. Those registrations are
+> what let a self-contained package activate WinRT types without the framework package present.
+> A build that runs `dotnet publish` and then packages the output separately ships an EXE
+> without them, and the installed app crashes immediately at `Application.Start` with
+> `REGDB_E_CLASSNOTREG` (`0xc000027b`). The workflow keeps build + package in one `dotnet build`
+> and then asserts (by unpacking the MSIX) that the EXE contains `activatableClass` and that the
+> AppxManifest has no `WindowsAppRuntime` dependency, failing the build if either check trips.
+
+#### Verifying on a clean machine (Windows Sandbox)
+
+The authoritative test is a clean machine with no runtimes pre-installed. Build a self-contained
+MSIX locally, self-sign it, and install it inside Windows Sandbox:
+
+```pwsh
+# Build a fully self-contained, packaged MSIX (x64)
+dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Release `
+  -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
+  -p:SelfContained=true -p:WindowsAppSDKSelfContained=true `
+  -p:EnableMsixTooling=true -p:GenerateAppxPackageOnBuild=true `
+  -p:AppxBundle=Never -p:UapAppxPackageBuildMode=SideloadOnly `
+  -p:AppxPackageDir=<out>\ -p:AppxPackageSigningEnabled=false
+```
+
+In the sandbox, confirm `Get-AppxPackage Microsoft.WindowsAppRuntime*` returns nothing (true
+clean machine), then `Add-AppxPackage` the signed MSIX and launch it. A pass is the app process
+running with the tray icon present and **no** `.NET Desktop Runtime` prompt and **no**
+`REGDB_E_CLASSNOTREG` crash.
 
 Required repository secrets:
 

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 # Installer manifest for the signed MSIX produced by `winapp pack`.
 # Fill in InstallerUrl + InstallerSha256 after publishing a signed release asset.
 # SignatureSha256 is required for msix installers (the package signature hash):
@@ -11,12 +12,6 @@ InstallModes:
   - silent
   - silentWithProgress
 PackageFamilyName: Refractored.TinyClips_vmshqmcyy894t
-# TinyClips is framework-dependent on the Windows App SDK runtime. Declaring it as a
-# winget dependency ensures the runtime is installed first, including on the clean,
-# network-isolated VMs used by winget Installation Validation.
-Dependencies:
-  PackageDependencies:
-    - PackageIdentifier: Microsoft.WindowsAppRuntime.1.8
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/jamesmontemagno/tiny-clips/releases/download/v1.0.0-windows/TinyClips-1.0.0-x64.msix
@@ -27,4 +22,4 @@ Installers:
     InstallerSha256: 6bf6095538425f490015d251348d3e8dc90834115fc9c3f48c160cbfd4ab1a14
     SignatureSha256: ac98863338bc6058c7dfac3f19e6159f53d3d045e666df7e2075a64bf7d4e1c8
 ManifestType: installer
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0

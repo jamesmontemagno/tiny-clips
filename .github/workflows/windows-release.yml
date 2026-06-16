@@ -71,15 +71,22 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/windows | Out-Null
 
-          # Framework-dependent MSIX built with the supported MSBuild MSIX tooling.
-          # This produces an AppxManifest with the WinRT ActivatableClass registrations
-          # required for the installed package to launch on clean machines (matches the
-          # working v1.0.0 release). Self-contained packaging omits those registrations
-          # and crashes on startup with REGDB_E_CLASSNOTREG. The WindowsAppSDK runtime
-          # is declared as a framework PackageDependency in the AppxManifest; the winget
-          # installer manifest declares the matching Microsoft.WindowsAppRuntime.1.8
-          # package dependency so winget installs the runtime first (required on the
-          # clean, network-isolated VMs used by winget Installation Validation).
+          # Fully self-contained MSIX: bundles BOTH the Windows App SDK runtime
+          # (WindowsAppSDKSelfContained=true) and the .NET runtime (SelfContained=true)
+          # into the package, so it has NO external framework dependencies and installs
+          # on a clean machine with nothing pre-installed. This is required because winget
+          # does NOT auto-install MSIX framework dependencies, so a framework-dependent
+          # package fails at install time (0x80073cf3) on the clean, network-isolated VMs
+          # used by winget Installation Validation (and on real end-user machines).
+          #
+          # The single dotnet build below does the self-contained build AND the MSIX
+          # packaging in one invocation. That ordering matters: the WinAppSDK
+          # CreateWinRTRegistration target merges the reg-free WinRT activatableClass
+          # registrations into the app EXE's embedded manifest during this build. Those
+          # registrations are what let the self-contained package launch without the
+          # framework package present; a prior attempt that split publish + packaging into
+          # separate steps shipped an EXE without them and crashed at startup with
+          # REGDB_E_CLASSNOTREG (0xc000027b). Keep build + package together.
           $platforms = @(
             @{ Platform = "x64";   Rid = "win-x64";   Asset = "x64" }
             @{ Platform = "ARM64"; Rid = "win-arm64"; Asset = "arm64" }
@@ -94,7 +101,8 @@ jobs:
               -c Release `
               -p:Platform=$($p.Platform) `
               -p:RuntimeIdentifier=$($p.Rid) `
-              -p:WindowsAppSDKSelfContained=false `
+              -p:SelfContained=true `
+              -p:WindowsAppSDKSelfContained=true `
               -p:EnableMsixTooling=true `
               -p:GenerateAppxPackageOnBuild=true `
               -p:AppxPackageDir=$packageDirFull `
@@ -108,6 +116,30 @@ jobs:
               Where-Object { $_.Name -notmatch 'symbols' } |
               Select-Object -First 1
             if (-not $produced) { throw "No MSIX produced for $($p.Platform)." }
+
+            # Guard against silently shipping a broken self-contained package. Unpack the
+            # MSIX and assert: (1) no external WindowsAppRuntime framework dependency in the
+            # AppxManifest, and (2) the app EXE carries the reg-free WinRT activatableClass
+            # registrations (absence of these is the REGDB_E_CLASSNOTREG startup crash).
+            $verifyDir = Join-Path $packageDir "verify"
+            Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
+            $zipCopy = "$($produced.FullName).zip"
+            Copy-Item $produced.FullName $zipCopy -Force
+            Expand-Archive $zipCopy -DestinationPath $verifyDir -Force
+
+            $appxManifest = Get-Content (Join-Path $verifyDir "AppxManifest.xml") -Raw
+            if ($appxManifest -match '<PackageDependency[^>]*Name="Microsoft\.WindowsAppRuntime') {
+              throw "Self-contained MSIX for $($p.Platform) still declares a WindowsAppRuntime framework dependency."
+            }
+
+            $appExe = Get-ChildItem $verifyDir -Recurse -Filter "TinyClips.App.exe" | Select-Object -First 1
+            if (-not $appExe) { throw "TinyClips.App.exe not found in the $($p.Platform) package payload." }
+            $exeBytes = [IO.File]::ReadAllText($appExe.FullName, [Text.Encoding]::GetEncoding('iso-8859-1'))
+            if ($exeBytes -notmatch 'activatableClass') {
+              throw "TinyClips.App.exe for $($p.Platform) is missing reg-free WinRT activatableClass registrations (would crash with REGDB_E_CLASSNOTREG)."
+            }
+            Remove-Item $zipCopy -Force -ErrorAction SilentlyContinue
+            Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
 
             Copy-Item $produced.FullName "artifacts/windows/TinyClips-$env:ASSET_VERSION-$($p.Asset).msix" -Force
           }
@@ -239,7 +271,11 @@ jobs:
           }
 
           @"
-          # Installer manifest for the signed MSIX produced by the Windows Release workflow.
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+          # Installer manifest for the signed, fully self-contained MSIX produced by the
+          # Windows Release workflow. No Dependencies block: the package bundles the .NET
+          # and Windows App SDK runtimes, so it installs on a clean machine with no external
+          # framework dependency.
           PackageIdentifier: Refractored.TinyClips
           PackageVersion: $env:PACKAGE_VERSION
           MinimumOSVersion: 10.0.22000.0
@@ -249,9 +285,6 @@ jobs:
             - silent
             - silentWithProgress
           PackageFamilyName: $env:PACKAGE_FAMILY_NAME
-          Dependencies:
-            PackageDependencies:
-              - PackageIdentifier: Microsoft.WindowsAppRuntime.1.8
           Installers:
             - Architecture: x64
               InstallerUrl: https://github.com/jamesmontemagno/tiny-clips/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-x64.msix
@@ -262,7 +295,7 @@ jobs:
               InstallerSha256: $env:ARM64_INSTALLER_SHA256
               SignatureSha256: $env:ARM64_SIGNATURE_SHA256
           ManifestType: installer
-          ManifestVersion: 1.6.0
+          ManifestVersion: 1.12.0
           "@ | ForEach-Object { $_ -replace '^          ', '' } |
             Set-Content -Path (Join-Path $wingetDir "Refractored.TinyClips.installer.yaml") -Encoding UTF8
 
