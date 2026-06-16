@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.0.4-windows] - 2026-06-16
+
 ### Fixed
 - **winget Installation Validation now passes** — the framework-dependent MSIX declares the
   Windows App SDK runtime (`Microsoft.WindowsAppRuntime.1.8`) as a package dependency in its
