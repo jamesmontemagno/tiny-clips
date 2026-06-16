@@ -309,6 +309,9 @@ jobs:
           if ($validateOutput -notmatch 'Manifest validation succeeded') {
             throw "winget validate failed:`n$validateOutput"
           }
+          # winget leaves a non-zero $LASTEXITCODE for warnings; the GitHub pwsh shell appends
+          # `exit $LASTEXITCODE`, so reset it after confirming validation succeeded.
+          $global:LASTEXITCODE = 0
 
       - name: Generate release notes
         shell: pwsh
