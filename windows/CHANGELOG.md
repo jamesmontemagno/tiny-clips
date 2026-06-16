@@ -5,6 +5,22 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.0.6-windows] - 2026-06-16
+
+### Changed
+- **Switched to a framework-dependent MSIX** to keep the package small. The app no longer
+  bundles the .NET Desktop Runtime or the Windows App SDK runtime. Instead the winget installer
+  manifest declares both as package dependencies (`Microsoft.DotNet.DesktopRuntime.10` and
+  `Microsoft.WindowsAppRuntime.1.8`), so winget installs the runtimes before the app, and the
+  Windows App SDK runtime is also auto-acquired by the OS on machines with the Store/App
+  Installer. This reverses the self-contained approach from v1.0.5 (which produced a ~56 MB
+  package). The earlier `0x80073cf3` failure we saw was a Windows Sandbox artifact — Sandbox has
+  no Store, so MSIX framework auto-acquisition cannot happen there; real machines and winget's
+  validation pipeline can deliver the dependencies.
+- The release workflow now builds with `SelfContained=false` + `WindowsAppSDKSelfContained=false`
+  and asserts the package is genuinely framework-dependent (WindowsAppRuntime dependency present,
+  no bundled `coreclr.dll`) before signing.
+
 ## [v1.0.5-windows] - 2026-06-16
 
 ### Fixed
