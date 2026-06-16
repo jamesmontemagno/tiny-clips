@@ -1,0 +1,142 @@
+name: WinGet Submission
+
+# Manually-gated submission of a published Windows release to the winget community
+# repository (microsoft/winget-pkgs). Run this AFTER you've eyeballed the GitHub release.
+#
+# Unlike the PowerToys "wingetcreate update" approach, this regenerates our full multi-file
+# manifest from source (windows/packaging/winget) so the framework Dependencies block is
+# always present, instead of inheriting whatever the previously published version declared.
+#
+# Requires a repository secret named WINGET_CREATE_GITHUB_TOKEN: a classic PAT from an
+# account that can fork microsoft/winget-pkgs, with the `public_repo` scope. wingetcreate
+# forks winget-pkgs under that account and opens the PR from the fork (no org SSO needed).
+# See https://aka.ms/winget-create-token.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Windows release tag to submit (for example, v1.0.7-windows)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_FAMILY_NAME: Refractored.TinyClips_vmshqmcyy894t
+
+jobs:
+  submit:
+    name: Submit to winget-pkgs
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Resolve release version
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.tag }}"
+          if ($tag -notmatch '^v(?<base>\d+\.\d+\.\d+)(?:\.(?<revision>\d+))?-windows$') {
+            throw "Windows release tags must look like v1.2.3-windows or v1.2.3.4-windows. Got '$tag'."
+          }
+
+          $revision = if ($Matches.revision) { $Matches.revision } else { "0" }
+          $packageVersion = "$($Matches.base).$revision"
+          $assetVersion = if ($Matches.revision) { "$($Matches.base).$revision" } else { $Matches.base }
+
+          "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+          "PACKAGE_VERSION=$packageVersion" >> $env:GITHUB_ENV
+          "ASSET_VERSION=$assetVersion" >> $env:GITHUB_ENV
+
+      - name: Download release MSIX packages
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          New-Item -ItemType Directory -Force -Path packages | Out-Null
+          gh release download $env:RELEASE_TAG `
+            --repo ${{ github.repository }} `
+            --pattern "TinyClips-$env:ASSET_VERSION-x64.msix" `
+            --pattern "TinyClips-$env:ASSET_VERSION-arm64.msix" `
+            --dir packages
+          Get-ChildItem packages | Format-Table Name, Length
+
+      - name: Generate winget manifest
+        shell: pwsh
+        run: |
+          $manifestDir = "manifests"
+          New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null
+          Copy-Item windows/packaging/winget/Refractored.TinyClips.yaml $manifestDir
+          Copy-Item windows/packaging/winget/Refractored.TinyClips.locale.en-US.yaml $manifestDir
+
+          foreach ($manifest in Get-ChildItem $manifestDir/*.yaml) {
+            $content = Get-Content $manifest.FullName -Raw
+            $content = $content -replace 'PackageVersion: .*', "PackageVersion: $env:PACKAGE_VERSION"
+            Set-Content -Path $manifest.FullName -Value $content -Encoding UTF8
+          }
+
+          $x64Package = "packages/TinyClips-$env:ASSET_VERSION-x64.msix"
+          $arm64Package = "packages/TinyClips-$env:ASSET_VERSION-arm64.msix"
+
+          $x64InstallerHash = (winget hash $x64Package | Select-String 'InstallerSha256:' | Select-Object -Last 1).ToString().Split(':')[1].Trim()
+          $x64SignatureHash = (winget hash --msix $x64Package | Select-String 'SignatureSha256:' | Select-Object -Last 1).ToString().Split(':')[1].Trim()
+          $arm64InstallerHash = (winget hash $arm64Package | Select-String 'InstallerSha256:' | Select-Object -Last 1).ToString().Split(':')[1].Trim()
+          $arm64SignatureHash = (winget hash --msix $arm64Package | Select-String 'SignatureSha256:' | Select-Object -Last 1).ToString().Split(':')[1].Trim()
+
+          @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+          # Installer manifest for the signed, framework-dependent MSIX produced by the Windows
+          # Release workflow. The package does NOT bundle the .NET or Windows App SDK runtimes;
+          # they are declared below as winget package dependencies so winget installs them before
+          # the app (and the Windows App SDK runtime is also auto-acquired by the OS Store).
+          PackageIdentifier: Refractored.TinyClips
+          PackageVersion: $env:PACKAGE_VERSION
+          MinimumOSVersion: 10.0.22000.0
+          InstallerType: msix
+          Scope: user
+          InstallModes:
+            - silent
+            - silentWithProgress
+          PackageFamilyName: $env:PACKAGE_FAMILY_NAME
+          Dependencies:
+            PackageDependencies:
+              - PackageIdentifier: Microsoft.DotNet.DesktopRuntime.10
+              - PackageIdentifier: Microsoft.WindowsAppRuntime.1.8
+          Installers:
+            - Architecture: x64
+              InstallerUrl: https://github.com/${{ github.repository }}/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-x64.msix
+              InstallerSha256: $x64InstallerHash
+              SignatureSha256: $x64SignatureHash
+            - Architecture: arm64
+              InstallerUrl: https://github.com/${{ github.repository }}/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-arm64.msix
+              InstallerSha256: $arm64InstallerHash
+              SignatureSha256: $arm64SignatureHash
+          ManifestType: installer
+          ManifestVersion: 1.12.0
+          "@ | ForEach-Object { $_ -replace '^          ', '' } |
+            Set-Content -Path (Join-Path $manifestDir "Refractored.TinyClips.installer.yaml") -Encoding UTF8
+
+          # winget validate leaves a non-zero exit code for non-fatal warnings (and an older
+          # runner winget may not recognize the 1.12.0 schema header). Treat the run as a
+          # success only when the output text confirms validation succeeded.
+          $validateOutput = winget validate --manifest $manifestDir 2>&1 | Out-String
+          Write-Host $validateOutput
+          if ($validateOutput -notmatch 'Manifest validation succeeded') {
+            throw "winget validate failed:`n$validateOutput"
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Submit to winget-pkgs
+        shell: pwsh
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_CREATE_GITHUB_TOKEN)) {
+            throw "The WINGET_CREATE_GITHUB_TOKEN repository secret is not set. Add a classic PAT (public_repo scope) that can fork microsoft/winget-pkgs. See https://aka.ms/winget-create-token."
+          }
+
+          curl.exe -JLO https://aka.ms/wingetcreate/latest
+          .\wingetcreate.exe submit --token $env:WINGET_CREATE_GITHUB_TOKEN manifests
