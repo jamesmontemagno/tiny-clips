@@ -5,6 +5,12 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- **Recording overlays now appear immediately after countdown for video/GIF** — the red capture border and stop controls are shown before the recorder start call, so recording UI no longer appears late after capture has already begun.
+- **"Show in Explorer after save" is now respected in all finalize paths** — post-trim and direct video/GIF finalization only reveal files in Explorer when the setting is enabled.
+- **Stop panel is now visible during countdown but safely disabled** — for video/GIF captures with countdown enabled, the recording panel appears immediately with Stop disabled, then enables once recording actually starts.
+- **Recording panel now prefers positioning above the selected region** — when there is space, the stop panel appears above the red region box; it falls back below or clamped in-view placement when needed.
+
 ## [v1.0.7-windows] - 2026-06-16
 
 ### Fixed

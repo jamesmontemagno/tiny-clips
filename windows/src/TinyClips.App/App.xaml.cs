@@ -347,6 +347,14 @@ public partial class App : Application
                 return;
             }
 
+            var showDisabledStopDuringCountdown = type is CaptureType.Video or CaptureType.Gif
+                && pick.CountdownEnabled
+                && pick.CountdownDuration > 0;
+            if (showDisabledStopDuringCountdown)
+            {
+                ShowRecordingIndicator(type, selection, stopEnabled: false, startTimer: false);
+            }
+
             RegionIndicatorWindow? regionIndicator = null;
             if (pick.CountdownEnabled && pick.CountdownDuration > 0)
             {
@@ -385,19 +393,27 @@ public partial class App : Application
                     break;
 
                 case CaptureType.Video:
-                    await Services.GetRequiredService<IVideoRecordingService>().StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes);
                     _activeRecordingSelection = selection;
                     ShowRecordingRegionIndicator(selection);
+                    if (!showDisabledStopDuringCountdown)
+                    {
+                        ShowRecordingIndicator(CaptureType.Video, selection);
+                    }
+                    await Services.GetRequiredService<IVideoRecordingService>().StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes);
+                    ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
-                    ShowRecordingIndicator(CaptureType.Video, selection);
                     break;
 
                 case CaptureType.Gif:
-                    await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
                     _activeRecordingSelection = selection;
                     ShowRecordingRegionIndicator(selection);
+                    if (!showDisabledStopDuringCountdown)
+                    {
+                        ShowRecordingIndicator(CaptureType.Gif, selection);
+                    }
+                    await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
+                    ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
-                    ShowRecordingIndicator(CaptureType.Gif, selection);
                     break;
             }
         }
@@ -714,11 +730,9 @@ public partial class App : Application
         window?.ClosePanel();
     }
 
-    private void ShowRecordingIndicator(CaptureType type, TargetSelection selection)
+    private void ShowRecordingIndicator(CaptureType type, TargetSelection selection, bool stopEnabled = true, bool startTimer = true)
     {
         HideRecordingIndicator();
-
-        _recordingStartedUtc = DateTime.UtcNow;
 
         var hotKeys = Services.GetRequiredService<IHotKeyService>();
         var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -742,6 +756,7 @@ public partial class App : Application
 
         _recordingIndicator = window;
         window.UpdateElapsed(TimeSpan.Zero);
+        window.SetStopEnabled(stopEnabled);
 
         var monitor = selection.Monitor ?? ResolveMonitorForTarget(selection.Target);
         PixelRect? region = null;
@@ -751,6 +766,23 @@ public partial class App : Application
         }
         window.ShowNear(monitor, region);
 
+        if (startTimer)
+        {
+            _recordingStartedUtc = DateTime.UtcNow;
+            StartRecordingTimer();
+        }
+    }
+
+    private void ActivateRecordingIndicatorForStartedCapture()
+    {
+        _recordingStartedUtc = DateTime.UtcNow;
+        _recordingIndicator?.SetStopEnabled(true);
+        StartRecordingTimer();
+    }
+
+    private void StartRecordingTimer()
+    {
+        StopRecordingTimer();
         _recordingTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _recordingTimer.Tick += OnRecordingTimerTick;
         _recordingTimer.Start();
@@ -826,7 +858,11 @@ public partial class App : Application
     private async Task FinalizeClipAsync(string path, CaptureType type)
     {
         await CopyToClipboardAsync(path, type);
-        RevealInExplorer(path);
+        var settings = Services.GetRequiredService<ICaptureSettings>();
+        if (settings.ShowInExplorer)
+        {
+            RevealInExplorer(path);
+        }
         ShowSaveToast(path);
     }
 

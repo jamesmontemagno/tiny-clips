@@ -17,6 +17,7 @@ public sealed partial class RecordingIndicatorWindow : Window
     private const int WidthDip = 320;
     private const int HeightDip = 64;
     private const int TopOffsetDip = 24;
+    private const int RegionOutsideOffsetDip = 12;
 
     private const uint WdaExcludeFromCapture = 0x11;
 
@@ -92,6 +93,11 @@ public sealed partial class RecordingIndicatorWindow : Window
 
         var totalMinutes = (int)Math.Min(99, elapsed.TotalMinutes);
         ElapsedText.Text = $"{totalMinutes:00}:{elapsed.Seconds:00}";
+    }
+
+    public void SetStopEnabled(bool enabled)
+    {
+        StopButton.IsEnabled = enabled && !_stopRequested;
     }
 
     public void ClosePanel()
@@ -228,6 +234,7 @@ public sealed partial class RecordingIndicatorWindow : Window
         var width = (int)Math.Round(WidthDip * scale);
         var height = (int)Math.Round(HeightDip * scale);
         var topOffset = (int)Math.Round(TopOffsetDip * scale);
+        var regionOutsideOffset = (int)Math.Round(RegionOutsideOffsetDip * scale);
 
         AppWindow.Resize(new SizeInt32(width, height));
 
@@ -239,7 +246,20 @@ public sealed partial class RecordingIndicatorWindow : Window
             if (regionInVirtualDesktop is { Width: > 0, Height: > 0 } region)
             {
                 x = region.X + Math.Max(0, (region.Width - width) / 2);
-                y = region.Y + topOffset;
+                var preferredAbove = region.Y - height - regionOutsideOffset;
+                var preferredBelow = region.Y + region.Height + regionOutsideOffset;
+                if (preferredAbove >= work.Y)
+                {
+                    y = preferredAbove;
+                }
+                else if (preferredBelow <= work.Y + Math.Max(0, work.Height - height))
+                {
+                    y = preferredBelow;
+                }
+                else
+                {
+                    y = region.Y + topOffset;
+                }
             }
 
             x = Math.Clamp(x, work.X, work.X + Math.Max(0, work.Width - width));
