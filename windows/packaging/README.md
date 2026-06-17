@@ -75,10 +75,6 @@ On a normal Windows machine (with the Store/App Installer) that does not yet hav
 `Microsoft.WindowsAppRuntime.1.8` first, then the app. A pass is the app process running with the
 tray icon present and no `.NET Desktop Runtime` prompt.
 
-Do not add `Scope: user` to the installer manifest. The TinyClips MSIX installs per-user by
-default, but the runtime dependency installers are machine-scope/unknown-scope packages; forcing
-user scope causes winget validation to reject those dependencies with "No suitable installer found."
-
 ```pwsh
 # Build a framework-dependent, packaged MSIX (x64)
 dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Release `

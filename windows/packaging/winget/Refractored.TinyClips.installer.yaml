@@ -1,9 +1,7 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 # Installer manifest for the signed, framework-dependent MSIX produced by `winapp pack`.
 # The package does not bundle the .NET or Windows App SDK runtimes; they are declared below
-# as winget package dependencies so winget installs them before the app. Do not set Scope:
-# the dependency installers are machine-scope/unknown scope, and forcing user scope makes
-# winget reject them during validation.
+# as winget package dependencies so winget installs them before the app.
 # Fill in InstallerUrl + InstallerSha256 after publishing a signed release asset.
 # SignatureSha256 is required for msix installers (the package signature hash):
 #   winget hash --msix <path-to-msix>
@@ -11,6 +9,7 @@ PackageIdentifier: Refractored.TinyClips
 PackageVersion: 1.0.0.0
 MinimumOSVersion: 10.0.22000.0
 InstallerType: msix
+Scope: user
 InstallModes:
   - silent
   - silentWithProgress

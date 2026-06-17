@@ -6,10 +6,6 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
-- **winget dependency installation no longer forces user scope** — removed `Scope: user` from the
-  installer manifest generated for winget submissions. The app MSIX still installs per-user, but
-  the .NET Desktop Runtime and Windows App Runtime dependency packages use machine/unknown-scope
-  installers; forcing user scope made winget validation reject them with "No suitable installer found."
 - **Recording overlays now appear immediately after countdown for video/GIF** — the red capture border and stop controls are shown before the recorder start call, so recording UI no longer appears late after capture has already begun.
 - **"Show in Explorer after save" is now respected in all finalize paths** — post-trim and direct video/GIF finalization only reveal files in Explorer when the setting is enabled.
 - **Stop panel is now visible during countdown but safely disabled** — for video/GIF captures with countdown enabled, the recording panel appears immediately with Stop disabled, then enables once recording actually starts.
