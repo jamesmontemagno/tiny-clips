@@ -1,5 +1,6 @@
 import SwiftUI
 import ScreenCaptureKit
+import AVFoundation
 import Combine
 
 struct VideoRecordingArtifacts {
@@ -44,6 +45,7 @@ class CaptureManager: ObservableObject {
     private var recordingPickerPosition: NSPoint?
     private var startPanel: StartRecordingPanel?
     private var stopPanel: StopRecordingPanel?
+    private var webcamPreviewPanel: WebcamPreviewPanel?
     private var regionIndicatorPanel: RegionIndicatorPanel?
     private var pendingRecordingTarget: CaptureTarget?
     private var pendingRecordingType: CaptureType?
@@ -453,6 +455,11 @@ class CaptureManager: ObservableObject {
                                 selectedWebcamID: webcamSelection.deviceID
                             )
                             self.webcamRecorder = webcamRecorder
+                            self.showWebcamPreview(
+                                session: webcamRecorder.previewSession,
+                                selection: webcamSelection,
+                                region: target.region
+                            )
                             self.debugRecordingLifecycle("Webcam session started at \(webcamOutputURL.path)")
                         } catch {
                             self.webcamRecorder = nil
@@ -573,6 +580,7 @@ class CaptureManager: ObservableObject {
         cancelVideoAutoStopTask()
 
         dismissStopPanel()
+        dismissWebcamPreview()
         dismissRegionIndicator()
         resetRecordingAudioStatus()
         activeRecordingRegion = nil
@@ -608,6 +616,7 @@ class CaptureManager: ObservableObject {
 
     func restartRecording() {
         guard let request = activeRecordingRequest else { return }
+        let draggedWebcamSelection = activeWebcamOverlaySelection
         Task {
             await discardRecording(clearActiveRequest: false)
             switch request {
@@ -617,7 +626,7 @@ class CaptureManager: ObservableObject {
                     systemAudio: systemAudio,
                     microphone: microphone,
                     selectedMicrophoneID: selectedMicrophoneID,
-                    webcamSelection: webcamSelection,
+                    webcamSelection: draggedWebcamSelection ?? webcamSelection,
                     mouseClicksEnabled: mouseClicksEnabled,
                     timeLimitMinutes: timeLimitMinutes,
                     countdownEnabled: false,
@@ -644,6 +653,7 @@ class CaptureManager: ObservableObject {
         guard isRecording || videoRecorder != nil || webcamRecorder != nil || gifWriter != nil else { return }
         cancelVideoAutoStopTask()
         dismissStopPanel()
+        dismissWebcamPreview()
         dismissRegionIndicator()
         _ = stopMouseClickMonitoring()
         activeMouseClickCaptureEnabledOverride = nil
@@ -1040,6 +1050,7 @@ class CaptureManager: ObservableObject {
         dismissStartPanel()
         countdownWindow?.cancel()
         countdownWindow = nil
+        dismissWebcamPreview()
         dismissRegionIndicator()
 
         pendingRecordingTarget = nil
@@ -1214,6 +1225,33 @@ class CaptureManager: ObservableObject {
         stopPanel?.close()
         stopPanel = nil
         recordPanelPosition = nil
+    }
+
+    private func showWebcamPreview(
+        session: AVCaptureSession?,
+        selection: StartRecordingPanel.WebcamSelection,
+        region: CaptureRegion
+    ) {
+        dismissWebcamPreview()
+        guard let session else { return }
+
+        let panel = WebcamPreviewPanel(
+            session: session,
+            selection: selection,
+            region: region
+        ) { [weak self] corner in
+            guard let self, var selection = self.activeWebcamOverlaySelection else { return }
+            selection.corner = corner
+            self.activeWebcamOverlaySelection = selection
+            CaptureSettings.shared.webcamCorner = corner
+        }
+        panel.show()
+        webcamPreviewPanel = panel
+    }
+
+    private func dismissWebcamPreview() {
+        webcamPreviewPanel?.close()
+        webcamPreviewPanel = nil
     }
 
     private func showProcessingIndicator() {

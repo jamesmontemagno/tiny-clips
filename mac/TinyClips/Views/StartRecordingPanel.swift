@@ -12,7 +12,7 @@ class StartRecordingPanel: NSPanel {
         let enabled: Bool
         let deviceID: String
         let shape: String
-        let corner: String
+        var corner: String
         let size: String
     }
 
