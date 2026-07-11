@@ -74,6 +74,7 @@ class CaptureManager: ObservableObject {
     private var activeMouseClickCaptureType: CaptureType?
     private var activeMouseClickCaptureEnabledOverride: Bool?
     private var activeWebcamOverlaySelection: StartRecordingPanel.WebcamSelection?
+    private var webcamPositionEvents: [BrandingOverlayProcessor.WebcamPositionEvent] = []
     private let hotKeyManager = HotKeyManager()
     private var hotKeySettingsCancellable: AnyCancellable?
 
@@ -375,6 +376,9 @@ class CaptureManager: ObservableObject {
                 let webcamEnabled = webcamSelection.enabled
                 let webcamOutputURL = webcamEnabled ? self.webcamCompanionURL(for: url) : nil
                 self.activeWebcamOverlaySelection = webcamEnabled ? webcamSelection : nil
+                self.webcamPositionEvents = webcamEnabled
+                    ? [.init(time: .zero, corner: webcamSelection.corner)]
+                    : []
 
                 do {
                     let recorder = VideoRecorder()
@@ -465,6 +469,7 @@ class CaptureManager: ObservableObject {
                             self.webcamRecorder = nil
                             self.activeWebcamName = nil
                             self.activeWebcamOverlaySelection = nil
+                            self.webcamPositionEvents = []
                             SaveService.shared.showError("Webcam recording was not started: \(error.localizedDescription). Screen recording will continue without webcam.")
                         }
                     }
@@ -485,6 +490,7 @@ class CaptureManager: ObservableObject {
                     self.activeRecordingSessionID = nil
                     self.webcamRecorder = nil
                     self.activeWebcamOverlaySelection = nil
+                    self.webcamPositionEvents = []
                     self.debugRecordingLifecycle("Video session failed to start: \(error.localizedDescription)")
                     SaveService.shared.showError("Video recording failed: \(error.localizedDescription)")
                 }
@@ -658,6 +664,7 @@ class CaptureManager: ObservableObject {
         _ = stopMouseClickMonitoring()
         activeMouseClickCaptureEnabledOverride = nil
         activeWebcamOverlaySelection = nil
+        self.webcamPositionEvents = []
         resetRecordingAudioStatus()
         activeRecordingRegion = nil
         isRecording = false
@@ -738,6 +745,7 @@ class CaptureManager: ObservableObject {
         let webcamSizeSetting = CaptureSettings.shared.webcamSize
         let webcamCornerRadiusSetting = CaptureSettings.shared.webcamCornerRadius
         let webcamOverlaySelection = activeWebcamOverlaySelection
+        let webcamPositionEvents = self.webcamPositionEvents
 
         var savedVideoURL: URL?
         var savedWebcamURL: URL?
@@ -828,7 +836,8 @@ class CaptureManager: ObservableObject {
                         corner: corner,
                         size: size,
                         cornerRadiusOverride: cornerRadiusOverride,
-                        startOffset: webcamStartOffset
+                        startOffset: webcamStartOffset,
+                        positionEvents: webcamPositionEvents
                     )
                 }()
 
@@ -880,6 +889,7 @@ class CaptureManager: ObservableObject {
         }
 
         activeWebcamOverlaySelection = nil
+        self.webcamPositionEvents = []
 
         if let writer = gifWriterAtStop {
             let url = SaveService.shared.generateURL(for: .gif)
@@ -1057,6 +1067,7 @@ class CaptureManager: ObservableObject {
         pendingRecordingType = nil
         lastVideoRecordingArtifacts = nil
         activeWebcamOverlaySelection = nil
+        webcamPositionEvents = []
         activeRecordingRequest = nil
         isRecordingPaused = false
 
@@ -1243,6 +1254,12 @@ class CaptureManager: ObservableObject {
             guard let self, var selection = self.activeWebcamOverlaySelection else { return }
             selection.corner = corner
             self.activeWebcamOverlaySelection = selection
+            if self.webcamPositionEvents.last?.corner.lowercased() != corner.lowercased() {
+                self.webcamPositionEvents.append(.init(
+                    time: self.videoRecorder?.currentTimelineTime() ?? .zero,
+                    corner: corner
+                ))
+            }
             CaptureSettings.shared.webcamCorner = corner
         }
         panel.show()

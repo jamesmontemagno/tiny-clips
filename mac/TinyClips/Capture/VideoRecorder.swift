@@ -336,6 +336,18 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         return max(0, ProcessInfo.processInfo.systemUptime - recordingStartedAtUptime)
     }
 
+    func currentTimelineTime() -> CMTime {
+        writingQueue.sync {
+            guard let firstScreenSampleTime else { return .zero }
+            let now = CMClockGetTime(CMClockGetHostTimeClock())
+            let activePauseDuration = pauseStartedAt.map { CMTimeSubtract(now, $0) } ?? .zero
+            return CMTimeMaximum(
+                .zero,
+                CMTimeSubtract(CMTimeSubtract(now, totalPausedDuration), CMTimeAdd(firstScreenSampleTime, activePauseDuration))
+            )
+        }
+    }
+
     func start(
         target: CaptureTarget,
         outputURL: URL,
