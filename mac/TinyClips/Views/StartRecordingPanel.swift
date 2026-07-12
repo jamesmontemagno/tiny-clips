@@ -515,6 +515,7 @@ private final class WebcamSetupPreviewView: NSView {
     private let session = AVCaptureSession()
     private let captureQueue = DispatchQueue(label: "com.tinyclips.webcam-setup-preview")
     private var requestedDeviceID: String?
+    private var isStopped = false
 
     init(deviceID: String) {
         super.init(frame: .zero)
@@ -536,31 +537,34 @@ private final class WebcamSetupPreviewView: NSView {
     }
 
     func useCamera(deviceID: String) {
-        guard requestedDeviceID != deviceID else { return }
-        requestedDeviceID = deviceID
         Task { @MainActor [weak self] in
             guard let self, await PermissionManager.shared.requestCameraPermission() else { return }
             captureQueue.async { [weak self] in
                 guard let self else { return }
+                guard !self.isStopped, self.requestedDeviceID != deviceID else { return }
+                self.requestedDeviceID = deviceID
                 let device = WebcamDeviceCatalog.device(for: deviceID) ?? AVCaptureDevice.default(for: .video)
                 guard let device, let input = try? AVCaptureDeviceInput(device: device) else { return }
-                session.beginConfiguration()
-                session.inputs.forEach(session.removeInput)
-                if session.canAddInput(input) {
-                    session.addInput(input)
+                self.session.beginConfiguration()
+                self.session.inputs.forEach(self.session.removeInput)
+                if self.session.canAddInput(input) {
+                    self.session.addInput(input)
                 }
-                session.commitConfiguration()
-                if !session.isRunning {
-                    session.startRunning()
+                self.session.commitConfiguration()
+                if !self.session.isRunning {
+                    self.session.startRunning()
                 }
             }
         }
     }
 
     func stop() {
-        captureQueue.async { [session] in
-            if session.isRunning {
-                session.stopRunning()
+        captureQueue.async { [weak self] in
+            guard let self else { return }
+            self.isStopped = true
+            self.requestedDeviceID = nil
+            if self.session.isRunning {
+                self.session.stopRunning()
             }
         }
     }
