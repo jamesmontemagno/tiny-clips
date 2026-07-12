@@ -538,10 +538,11 @@ private final class WebcamSetupPreviewView: NSView {
 
     func useCamera(deviceID: String) {
         Task { @MainActor [weak self] in
-            guard let self, await PermissionManager.shared.requestCameraPermission() else { return }
+            guard let self, !self.isStopped else { return }
+            guard await PermissionManager.shared.requestCameraPermission(), !self.isStopped else { return }
             captureQueue.async { [weak self] in
                 guard let self else { return }
-                guard !self.isStopped, self.requestedDeviceID != deviceID else { return }
+                guard self.requestedDeviceID != deviceID else { return }
                 self.requestedDeviceID = deviceID
                 let device = WebcamDeviceCatalog.device(for: deviceID) ?? AVCaptureDevice.default(for: .video)
                 guard let device, let input = try? AVCaptureDeviceInput(device: device) else { return }
@@ -559,9 +560,9 @@ private final class WebcamSetupPreviewView: NSView {
     }
 
     func stop() {
+        isStopped = true
         captureQueue.async { [weak self] in
             guard let self else { return }
-            self.isStopped = true
             self.requestedDeviceID = nil
             if self.session.isRunning {
                 self.session.stopRunning()
