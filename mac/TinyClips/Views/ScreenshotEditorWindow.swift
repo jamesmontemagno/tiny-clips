@@ -9,10 +9,13 @@ private struct ScreenshotEditorCommandActions {
     let saveAs: () -> Void
     let revealInFinder: () -> Void
     let undo: () -> Void
+    let redo: () -> Void
     let copy: () -> Void
     let clearAnnotations: () -> Void
     let canUndo: Bool
+    let canRedo: Bool
     let hasAnnotations: Bool
+    let isEditingText: Bool
 }
 
 private struct ScreenshotEditorCommandActionsKey: FocusedValueKey {
@@ -52,18 +55,50 @@ private struct ScreenshotEditorMenuCommands: Commands {
             .keyboardShortcut("r", modifiers: [.command, .shift])
         }
 
-        CommandMenu("Markup") {
+        CommandGroup(replacing: .undoRedo) {
             Button("Undo") {
-                editor?.undo()
+                if editor?.isEditingText == true {
+                    performTextAction("undo:")
+                } else {
+                    editor?.undo()
+                }
             }
-            .disabled(editor?.canUndo != true)
+            .disabled(editor == nil || (editor?.isEditingText != true && editor?.canUndo != true))
             .keyboardShortcut("z", modifiers: .command)
 
+            Button("Redo") {
+                if editor?.isEditingText == true {
+                    performTextAction("redo:")
+                } else {
+                    editor?.redo()
+                }
+            }
+            .disabled(editor == nil || (editor?.isEditingText != true && editor?.canRedo != true))
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+        }
+
+        CommandGroup(replacing: .pasteboard) {
+            Button("Cut") {
+                performTextAction("cut:")
+            }
+            .disabled(editor?.isEditingText != true)
+            .keyboardShortcut("x", modifiers: .command)
+
             Button("Copy") {
-                editor?.copy()
+                if editor?.isEditingText == true {
+                    performTextAction("copy:")
+                } else {
+                    editor?.copy()
+                }
             }
             .disabled(editor == nil)
             .keyboardShortcut("c", modifiers: .command)
+
+            Button("Paste") {
+                performTextAction("paste:")
+            }
+            .disabled(editor?.isEditingText != true)
+            .keyboardShortcut("v", modifiers: .command)
 
             Divider()
 
@@ -72,6 +107,10 @@ private struct ScreenshotEditorMenuCommands: Commands {
             }
             .disabled(editor?.hasAnnotations != true)
         }
+    }
+
+    private func performTextAction(_ selectorName: String) {
+        NSApp.sendAction(NSSelectorFromString(selectorName), to: nil, from: nil)
     }
 }
 
@@ -84,6 +123,7 @@ struct ScreenshotEditorScene: Scene {
         }
         .defaultSize(width: 1040, height: 720)
         .commands {
+            AppWindowCommands()
             ScreenshotEditorMenuCommands()
         }
     }
@@ -672,10 +712,13 @@ private struct ScreenshotEditorView: View {
                 saveAs: beginSaveAs,
                 revealInFinder: openSaveFolder,
                 undo: viewModel.undo,
+                redo: viewModel.redo,
                 copy: viewModel.copyToClipboard,
                 clearAnnotations: { showClearAnnotationsConfirmation = true },
                 canUndo: viewModel.canUndo,
-                hasAnnotations: viewModel.hasAnnotations
+                canRedo: viewModel.canRedo,
+                hasAnnotations: viewModel.hasAnnotations,
+                isEditingText: viewModel.isEditingText
             )
         )
         .onExitCommand {
@@ -707,6 +750,15 @@ private struct ScreenshotEditorView: View {
                 .disabled(!viewModel.canUndo)
                 .keyboardShortcut("z", modifiers: .command)
                 .help("Undo the last edit.")
+
+                Button {
+                    viewModel.redo()
+                } label: {
+                    Label("Redo", systemImage: "arrow.uturn.forward")
+                }
+                .disabled(!viewModel.canRedo)
+                .keyboardShortcut("Z", modifiers: [.command, .shift])
+                .help("Redo the last undone edit.")
 
                 Button {
                     showClearAnnotationsConfirmation = true
@@ -1816,6 +1868,12 @@ private let numberCircleSizeRatio: CGFloat = 0.05
 private let numberCircleFontRatio: CGFloat = 0.55
 private let numberCircleMinimumDisplayPixels: CGFloat = 16
 
+private struct EditorCanvasState {
+    let annotations: [Annotation]
+    let cropRect: CGRect?
+    let nextNumberLabel: Int
+}
+
 @MainActor
 private class EditorViewModel: ObservableObject {
     let sourceURL: URL
@@ -1827,6 +1885,8 @@ private class EditorViewModel: ObservableObject {
     @Published var annotations: [Annotation] = []
     @Published var currentAnnotation: Annotation?
     @Published var cropRect: CGRect?
+    @Published private(set) var canUndo = false
+    @Published private(set) var canRedo = false
     @Published var isEditingText = false
     @Published var textEditPosition: CGPoint? // normalized click position
     @Published var textEditValue: String = ""
@@ -1862,6 +1922,10 @@ private class EditorViewModel: ObservableObject {
     private var isDraggingAnnotation = false
     private var isDraggingEndpoint = false // true = dragging arrowhead/line end
     private var isDraggingStartpoint = false // true = dragging arrow tail/line start
+    private var undoStack: [EditorCanvasState] = []
+    private var redoStack: [EditorCanvasState] = []
+    private var pendingDragHistoryState: EditorCanvasState?
+    private var didChangePendingDrag = false
 
     private var initialBackgroundStyle: ExportBackgroundStyle
     private var initialBackgroundColor: Color
@@ -2102,10 +2166,6 @@ private class EditorViewModel: ObservableObject {
         markDirty()
     }
 
-    var canUndo: Bool {
-        !annotations.isEmpty || cropRect != nil
-    }
-
     var hasAnnotations: Bool {
         !annotations.isEmpty
     }
@@ -2184,6 +2244,7 @@ private class EditorViewModel: ObservableObject {
     @discardableResult
     func updateSelectedTextFontFamily(_ family: String) -> Bool {
         guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return false }
+        recordHistory()
         annotations[index].fontFamily = family
         markDirty()
         return true
@@ -2192,6 +2253,7 @@ private class EditorViewModel: ObservableObject {
     @discardableResult
     func updateSelectedTextBold(_ isBold: Bool) -> Bool {
         guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return false }
+        recordHistory()
         annotations[index].isBold = isBold
         markDirty()
         return true
@@ -2200,6 +2262,7 @@ private class EditorViewModel: ObservableObject {
     @discardableResult
     func updateSelectedTextItalic(_ isItalic: Bool) -> Bool {
         guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return false }
+        recordHistory()
         annotations[index].isItalic = isItalic
         markDirty()
         return true
@@ -2208,6 +2271,7 @@ private class EditorViewModel: ObservableObject {
     @discardableResult
     func updateSelectedTextUnderline(_ isUnderlined: Bool) -> Bool {
         guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return false }
+        recordHistory()
         annotations[index].isUnderlined = isUnderlined
         markDirty()
         return true
@@ -2225,6 +2289,7 @@ private class EditorViewModel: ObservableObject {
         guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .arrow else {
             return false
         }
+        recordHistory()
         annotations[index].arrowStyle = style
         markDirty()
         return true
@@ -2236,6 +2301,7 @@ private class EditorViewModel: ObservableObject {
             if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint {
                 // First drag event — find what we hit
                 if let idx = annotationIndex(at: start) {
+                    beginDragHistory()
                     selectedAnnotationIndex = idx
                     dragOriginalRect = annotations[idx].rect
                     dragOriginalPoints = annotations[idx].points
@@ -2271,6 +2337,9 @@ private class EditorViewModel: ObservableObject {
             if let idx = selectedAnnotationIndex {
                 let dx = current.x - start.x
                 let dy = current.y - start.y
+                if dx != 0 || dy != 0 {
+                    didChangePendingDrag = true
+                }
                 if isDraggingEndpoint {
                     // Move just the endpoint (rotate the arrow/line)
                     var ann = annotations[idx]
@@ -2301,6 +2370,10 @@ private class EditorViewModel: ObservableObject {
 
         case .crop:
             let rect = makeRect(from: start, to: current)
+            beginDragHistory()
+            if cropRect != rect {
+                didChangePendingDrag = true
+            }
             cropRect = rect
             markDirty()
 
@@ -2341,12 +2414,14 @@ private class EditorViewModel: ObservableObject {
             isDraggingAnnotation = false
             isDraggingEndpoint = false
             isDraggingStartpoint = false
+            commitDragHistory()
 
         case .crop:
-            break
+            commitDragHistory()
 
         case .pencil:
             if pencilPoints.count > 1 {
+                recordHistory()
                 annotations.append(Annotation(
                     tool: .pencil,
                     rect: .zero,
@@ -2367,6 +2442,7 @@ private class EditorViewModel: ObservableObject {
             let w = abs(rect.width)
             let h = abs(rect.height)
             if w > 0.005 || h > 0.005 {
+                recordHistory()
                 annotations.append(Annotation(
                     tool: selectedTool,
                     rect: rect,
@@ -2410,23 +2486,25 @@ private class EditorViewModel: ObservableObject {
     }
 
     func undo() {
-        if !annotations.isEmpty {
-            let last = annotations.last
-            annotations.removeLast()
-            if last?.tool == .number {
-                nextNumberLabel = max(1, nextNumberLabel - 1)
-            }
-            markDirty()
-        }
-        if cropRect != nil {
-            cropRect = nil
-            markDirty()
-        }
+        guard let previousState = undoStack.popLast() else { return }
+        redoStack.append(canvasState())
+        restoreCanvasState(previousState)
+        updateHistoryAvailability()
+        markDirty()
+    }
+
+    func redo() {
+        guard let nextState = redoStack.popLast() else { return }
+        undoStack.append(canvasState())
+        restoreCanvasState(nextState)
+        updateHistoryAvailability()
+        markDirty()
     }
 
     func clearAnnotations() {
         guard !annotations.isEmpty else { return }
 
+        recordHistory()
         annotations.removeAll()
         selectedAnnotationIndex = nil
         currentAnnotation = nil
@@ -2471,6 +2549,51 @@ private class EditorViewModel: ObservableObject {
         initialCanvasPadding = canvasPadding
         initialCanvasCornerRadius = canvasCornerRadius
         initialCanvasShadowRadius = canvasShadowRadius
+    }
+
+    private func canvasState() -> EditorCanvasState {
+        EditorCanvasState(
+            annotations: annotations,
+            cropRect: cropRect,
+            nextNumberLabel: nextNumberLabel
+        )
+    }
+
+    private func restoreCanvasState(_ state: EditorCanvasState) {
+        annotations = state.annotations
+        cropRect = state.cropRect
+        nextNumberLabel = state.nextNumberLabel
+        selectedAnnotationIndex = nil
+        currentAnnotation = nil
+        pencilPoints = []
+    }
+
+    private func recordHistory() {
+        undoStack.append(canvasState())
+        redoStack.removeAll()
+        updateHistoryAvailability()
+    }
+
+    private func beginDragHistory() {
+        guard pendingDragHistoryState == nil else { return }
+        pendingDragHistoryState = canvasState()
+        didChangePendingDrag = false
+    }
+
+    private func commitDragHistory() {
+        defer {
+            pendingDragHistoryState = nil
+            didChangePendingDrag = false
+        }
+        guard didChangePendingDrag, let state = pendingDragHistoryState else { return }
+        undoStack.append(state)
+        redoStack.removeAll()
+        updateHistoryAvailability()
+    }
+
+    private func updateHistoryAvailability() {
+        canUndo = !undoStack.isEmpty
+        canRedo = !redoStack.isEmpty
     }
 
     var outputResolutionText: String? {
@@ -2621,6 +2744,7 @@ private class EditorViewModel: ObservableObject {
         let normFontHeight = textFontSize / 500.0 // approximate normalized height
         let textWidth = max(0.05, CGFloat(textEditValue.count) * normFontHeight * 0.6)
         let rect = CGRect(x: pos.x, y: pos.y - normFontHeight / 2, width: textWidth, height: normFontHeight)
+        recordHistory()
         annotations.append(Annotation(
             tool: .text,
             rect: rect,
@@ -2660,6 +2784,7 @@ private class EditorViewModel: ObservableObject {
             width: normW,
             height: normH
         )
+        recordHistory()
         annotations.append(Annotation(
             tool: .number,
             rect: rect,
@@ -2707,6 +2832,7 @@ private class EditorViewModel: ObservableObject {
             return false
         }
 
+        recordHistory()
         var annotation = annotations[index]
         let sidePixels = max(numberCircleMinimumDisplayPixels, baseNumberSidePixels() * multiplier)
         let normW = sidePixels / imagePixelSize.width
@@ -2719,6 +2845,7 @@ private class EditorViewModel: ObservableObject {
             height: normH
         )
         annotations[index] = annotation
+        markDirty()
         return true
     }
 
@@ -2728,6 +2855,7 @@ private class EditorViewModel: ObservableObject {
             return false
         }
 
+        recordHistory()
         annotations[index].color = color
         markDirty()
         return true
@@ -2739,6 +2867,7 @@ private class EditorViewModel: ObservableObject {
             return false
         }
 
+        recordHistory()
         annotations[index].textColor = color
         markDirty()
         return true
@@ -2750,6 +2879,7 @@ private class EditorViewModel: ObservableObject {
             return false
         }
 
+        recordHistory()
         annotations[index].redactionBlurPreset = preset
         markDirty()
         return true

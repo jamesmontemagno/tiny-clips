@@ -64,7 +64,14 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
     @objc func trimmerPreviousFrame(_ sender: Any?) { menuActions.previousFrame?() }
     @objc func trimmerNextFrame(_ sender: Any?) { menuActions.nextFrame?() }
 
+    @objc func copy(_ sender: Any?) {
+        menuActions.copyFrame?()
+    }
+
     override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == NSSelectorFromString("copy:") {
+            return menuActions.copyFrame != nil
+        }
         guard menuActions.handles(menuItem.action) else {
             return super.validateMenuItem(menuItem)
         }
