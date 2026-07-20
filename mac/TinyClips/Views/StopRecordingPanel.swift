@@ -6,7 +6,7 @@ final class WebcamPreviewPanel: NSPanel {
     private let captureFrame: CGRect
     private let onCornerChange: (String) -> Void
     private var corner: String
-    private let margin: CGFloat = 16
+    private let margin: CGFloat
 
     init(
         session: AVCaptureSession,
@@ -15,10 +15,12 @@ final class WebcamPreviewPanel: NSPanel {
         onCornerChange: @escaping (String) -> Void
     ) {
         let captureFrame = Self.captureFrame(for: region)
-        let previewSize = Self.previewSize(for: selection, in: captureFrame)
+        let margin = min(16, min(captureFrame.width, captureFrame.height) * 0.1)
+        let previewSize = Self.previewSize(for: selection, in: captureFrame, session: session, margin: margin)
         self.captureFrame = captureFrame
         self.corner = selection.corner
         self.onCornerChange = onCornerChange
+        self.margin = margin
 
         super.init(
             contentRect: NSRect(origin: .zero, size: previewSize),
@@ -48,6 +50,12 @@ final class WebcamPreviewPanel: NSPanel {
         preview.layer?.borderWidth = 2
         preview.setAccessibilityElement(true)
         preview.setAccessibilityLabel("Webcam preview. Drag to change its corner in the recording.")
+        preview.setAccessibilityCustomActions([
+            accessibilityAction(named: "Move webcam to top left", corner: "topLeft"),
+            accessibilityAction(named: "Move webcam to top right", corner: "topRight"),
+            accessibilityAction(named: "Move webcam to bottom left", corner: "bottomLeft"),
+            accessibilityAction(named: "Move webcam to bottom right", corner: "bottomRight")
+        ])
         contentView = preview
 
 #if DEBUG
@@ -61,12 +69,24 @@ final class WebcamPreviewPanel: NSPanel {
     }
 
     private func finishDrag() {
-        corner = Self.nearestCorner(
+        changeCorner(to: Self.nearestCorner(
             for: CGPoint(x: frame.midX, y: frame.midY),
             in: captureFrame
-        )
+        ))
+    }
+
+    private func changeCorner(to corner: String) {
+        self.corner = corner
         snap(to: corner)
         onCornerChange(corner)
+    }
+
+    private func accessibilityAction(named name: String, corner: String) -> NSAccessibilityCustomAction {
+        NSAccessibilityCustomAction(name: name) { [weak self] _ in
+            guard let self else { return false }
+            self.changeCorner(to: corner)
+            return true
+        }
     }
 
     private func snap(to corner: String) {
@@ -101,7 +121,9 @@ final class WebcamPreviewPanel: NSPanel {
 
     private static func previewSize(
         for selection: StartRecordingPanel.WebcamSelection,
-        in captureFrame: CGRect
+        in captureFrame: CGRect,
+        session: AVCaptureSession,
+        margin: CGFloat
     ) -> CGSize {
         let scale: CGFloat
         switch selection.size.lowercased() {
@@ -110,11 +132,23 @@ final class WebcamPreviewPanel: NSPanel {
         default: scale = 0.24
         }
         let minDimension = min(captureFrame.width, captureFrame.height)
-        let width = min(max(120, minDimension * scale), max(80, minDimension - 32))
+        let aspectRatio = selection.shape.lowercased() == "circle" ? 1 : cameraAspectRatio(for: session)
+        let availableWidth = max(0, captureFrame.width - margin * 2)
+        let availableHeight = max(0, captureFrame.height - margin * 2)
+        let width = min(minDimension * scale, availableWidth, availableHeight * aspectRatio)
         return CGSize(
             width: width,
-            height: selection.shape.lowercased() == "circle" ? width : width * 9 / 16
+            height: width / aspectRatio
         )
+    }
+
+    private static func cameraAspectRatio(for session: AVCaptureSession) -> CGFloat {
+        guard let input = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first else {
+            return 16 / 9
+        }
+        let dimensions = CMVideoFormatDescriptionGetDimensions(input.device.activeFormat.formatDescription)
+        guard dimensions.width > 0, dimensions.height > 0 else { return 16 / 9 }
+        return CGFloat(dimensions.width) / CGFloat(dimensions.height)
     }
 }
 
