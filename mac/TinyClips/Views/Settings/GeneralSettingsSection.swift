@@ -7,6 +7,7 @@ struct GeneralSettingsSection: View {
     let resetSaveDirectory: () -> Void
     let resetAllSettings: () -> Void
     let showInDockBinding: Binding<Bool>
+    @State private var showPurgeConfirmation = false
 
     var body: some View {
         Section("Output") {
@@ -93,9 +94,33 @@ struct GeneralSettingsSection: View {
                 .help("For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection.")
             Toggle("Show 'Captured on Tiny Clips' overlay", isOn: $settings.showBrandingOverlay)
                 .help("Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs.")
+            Link("Open TinyClips Temp Folder", destination: TinyClipsTemporaryFiles.directoryURL)
+                .help("Open the temporary folder where TinyClips processes captures.")
+                .accessibilityHint("Opens the temporary folder containing TinyClips processing files in Finder.")
+            Button("Purge Temp Files Now…", role: .destructive) {
+                showPurgeConfirmation = true
+            }
+            .help("Delete all temporary files currently created by TinyClips.")
+            .accessibilityHint("Deletes temporary TinyClips files after confirmation.")
             Button("Reset All Settings to Defaults…") {
                 resetAllSettings()
             }
+        }
+        .confirmationDialog(
+            "Purge TinyClips temporary files?",
+            isPresented: $showPurgeConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Purge", role: .destructive) {
+                do {
+                    try TinyClipsTemporaryFiles.purge()
+                } catch {
+                    SaveService.shared.showError("Could not purge temporary files: \(error.localizedDescription)")
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes temporary files created by TinyClips, including recent files. Close any active recording or unsaved screenshot editor before continuing.")
         }
     }
 }

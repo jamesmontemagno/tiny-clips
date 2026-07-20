@@ -2,6 +2,67 @@ import SwiftUI
 import ScreenCaptureKit
 import Combine
 
+enum TinyClipsTemporaryFiles {
+    private static let filenamePrefix = "TinyClips-"
+
+    static var directoryURL: URL {
+        FileManager.default.temporaryDirectory
+    }
+
+    static func makeURL(fileExtension: String) -> URL {
+        directoryURL
+            .appendingPathComponent("\(filenamePrefix)\(UUID().uuidString)")
+            .appendingPathExtension(fileExtension)
+    }
+
+    @discardableResult
+    static func removeStaleFiles(olderThan date: Date) throws -> Int {
+        try removeMatchingFiles { fileURL in
+            guard let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]),
+                  let modificationDate = values.contentModificationDate else {
+                return false
+            }
+            return modificationDate < date
+        }
+    }
+
+    @discardableResult
+    static func purge() throws -> Int {
+        try removeMatchingFiles { _ in true }
+    }
+
+    private static func removeMatchingFiles(shouldRemove: (URL) -> Bool) throws -> Int {
+        let fileManager = FileManager.default
+        let files = try fileManager.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+
+        var removedCount = 0
+        for fileURL in files {
+            guard isTinyClipsTemporaryFile(fileURL),
+                  let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
+                  values.isRegularFile == true,
+                  shouldRemove(fileURL) else {
+                continue
+            }
+            try fileManager.removeItem(at: fileURL)
+            removedCount += 1
+        }
+        return removedCount
+    }
+
+    private static func isTinyClipsTemporaryFile(_ fileURL: URL) -> Bool {
+        guard !fileURL.pathExtension.isEmpty else { return false }
+
+        let stem = fileURL.deletingPathExtension().lastPathComponent
+        guard stem.hasPrefix(filenamePrefix) else { return false }
+
+        return UUID(uuidString: String(stem.dropFirst(filenamePrefix.count))) != nil
+    }
+}
+
 struct VideoRecordingArtifacts {
     let screenRecordingURL: URL
     let webcamRecordingURL: URL?
@@ -278,7 +339,7 @@ class CaptureManager: ObservableObject {
                     let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
                     let outputURL: URL = shouldSaveImmediately
                         ? SaveService.shared.generateURL(for: .screenshot)
-                        : self.temporaryURL(fileExtension: settings.imageFormat.rawValue)
+                        : TinyClipsTemporaryFiles.makeURL(fileExtension: settings.imageFormat.rawValue)
 
                     let url: URL
                     if let window {
@@ -295,7 +356,17 @@ class CaptureManager: ObservableObject {
                         if shouldSaveImmediately {
                             SaveService.shared.handleSavedFile(url: url, type: .screenshot)
                         }
-                        self.showScreenshotEditor(for: url, deleteSourceOnCancel: !shouldSaveImmediately)
+                        let initialSaveURL = shouldSaveImmediately
+                            ? url
+                            : SaveService.shared.generateURL(
+                                for: .screenshot,
+                                fileExtension: settings.imageFormat.rawValue
+                            )
+                        self.showScreenshotEditor(
+                            for: url,
+                            initialSaveURL: initialSaveURL,
+                            deleteSourceOnCancel: !shouldSaveImmediately
+                        )
                     } else {
                         SaveService.shared.handleSavedFile(url: url, type: .screenshot)
                     }
@@ -369,7 +440,7 @@ class CaptureManager: ObservableObject {
                 let shouldSaveImmediately = !settings.showTrimmer || settings.saveImmediatelyVideo
                 let url = shouldSaveImmediately
                     ? SaveService.shared.generateURL(for: .video)
-                    : self.temporaryURL(fileExtension: CaptureType.video.fileExtension)
+                    : TinyClipsTemporaryFiles.makeURL(fileExtension: CaptureType.video.fileExtension)
                 let webcamEnabled = webcamSelection.enabled
                 let webcamOutputURL = webcamEnabled ? self.webcamCompanionURL(for: url) : nil
                 self.activeWebcamOverlaySelection = webcamEnabled ? webcamSelection : nil
@@ -765,7 +836,7 @@ class CaptureManager: ObservableObject {
                     // a temp location that the OS can delete.
                     let overlayOutputURL = videoShouldSaveImmediately
                         ? SaveService.shared.generateURL(for: .video)
-                        : temporaryURL(fileExtension: "mp4")
+                        : TinyClipsTemporaryFiles.makeURL(fileExtension: "mp4")
 
                     savedVideoURL = try await Self.overlayVideoOffMain(
                         sourceURL: currentURL,
@@ -826,7 +897,7 @@ class CaptureManager: ObservableObject {
                     do {
                         let brandingOutputURL = videoShouldSaveImmediately
                             ? SaveService.shared.generateURL(for: .video)
-                            : temporaryURL(fileExtension: "mp4")
+                            : TinyClipsTemporaryFiles.makeURL(fileExtension: "mp4")
                         savedVideoURL = try await Self.overlayBrandingVideoOffMain(
                             sourceURL: currentURL,
                             outputURL: brandingOutputURL,
@@ -936,7 +1007,7 @@ class CaptureManager: ObservableObject {
                             let overlayStyle = settings.mouseClickOverlayStyle(for: .gif)
                             let region = capturedMouseClickData.region
                             let events = capturedMouseClickData.events
-                            let tempURL = temporaryURL(fileExtension: "gif")
+                            let tempURL = TinyClipsTemporaryFiles.makeURL(fileExtension: "gif")
                             defer { try? FileManager.default.removeItem(at: tempURL) }
 
                             try await Self.runOffMainThrowing {
@@ -965,7 +1036,7 @@ class CaptureManager: ObservableObject {
 
                     if settings.showBrandingOverlay {
                         do {
-                            let tempURL = temporaryURL(fileExtension: "gif")
+                            let tempURL = TinyClipsTemporaryFiles.makeURL(fileExtension: "gif")
                             defer { try? FileManager.default.removeItem(at: tempURL) }
 
                             try await Self.runOffMainThrowing {
@@ -1068,8 +1139,12 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func showScreenshotEditor(for url: URL, deleteSourceOnCancel: Bool) {
-        ScreenshotEditorRegistry.shared.present(imageURL: url) { resultURL in
+    private func showScreenshotEditor(for url: URL, initialSaveURL: URL, deleteSourceOnCancel: Bool) {
+        ScreenshotEditorRegistry.shared.present(
+            imageURL: url,
+            initialSaveURL: initialSaveURL,
+            deleteSourceAfterSave: deleteSourceOnCancel
+        ) { resultURL in
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .screenshot)
             } else if deleteSourceOnCancel {
@@ -1583,12 +1658,6 @@ class CaptureManager: ObservableObject {
             return activeMouseClickCaptureEnabledOverride
         }
         return CaptureSettings.shared.shouldShowMouseClickVisuals(for: type)
-    }
-
-    private func temporaryURL(fileExtension: String) -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent("TinyClips-\(UUID().uuidString)")
-            .appendingPathExtension(fileExtension)
     }
 
     private func webcamCompanionURL(for primaryVideoURL: URL) -> URL {

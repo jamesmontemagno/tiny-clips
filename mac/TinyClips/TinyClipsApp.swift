@@ -20,6 +20,9 @@ struct TinyClipsApp: App {
     @ObservedObject private var sparkleController = SparkleController.shared
 
     init() {
+        _ = try? TinyClipsTemporaryFiles.removeStaleFiles(
+            olderThan: Date().addingTimeInterval(-24 * 60 * 60)
+        )
         _ = SparkleController.shared
         NSApplication.shared.setActivationPolicy(CaptureSettings.shared.showInDock ? .regular : .accessory)
     }

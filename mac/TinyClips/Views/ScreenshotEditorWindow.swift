@@ -97,7 +97,11 @@ private struct ScreenshotEditorSceneRoot: View {
     var body: some View {
         Group {
             if let session = resolvedSession, let sessionID {
-                ScreenshotEditorView(imageURL: session.imageURL) { resultURL in
+                ScreenshotEditorView(
+                    imageURL: session.imageURL,
+                    initialSaveURL: session.initialSaveURL,
+                    deleteSourceAfterSave: session.deleteSourceAfterSave
+                ) { resultURL in
                     ScreenshotEditorRegistry.shared.finish(sessionID, result: resultURL)
                     dismissWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
                 }
@@ -126,6 +130,8 @@ final class ScreenshotEditorRegistry {
 
     struct Session {
         let imageURL: URL
+        let initialSaveURL: URL
+        let deleteSourceAfterSave: Bool
         let onComplete: (URL?) -> Void
     }
 
@@ -142,9 +148,19 @@ final class ScreenshotEditorRegistry {
         }
     }
 
-    func present(imageURL: URL, onComplete: @escaping (URL?) -> Void) {
+    func present(
+        imageURL: URL,
+        initialSaveURL: URL? = nil,
+        deleteSourceAfterSave: Bool = false,
+        onComplete: @escaping (URL?) -> Void
+    ) {
         let id = UUID()
-        sessions[id] = Session(imageURL: imageURL, onComplete: onComplete)
+        sessions[id] = Session(
+            imageURL: imageURL,
+            initialSaveURL: initialSaveURL ?? imageURL,
+            deleteSourceAfterSave: deleteSourceAfterSave,
+            onComplete: onComplete
+        )
         if let opener {
             opener(id)
         } else {
@@ -458,6 +474,8 @@ private func arrowControlPoint(start: CGPoint, end: CGPoint, style: ArrowStyle) 
 
 private struct ScreenshotEditorView: View {
     let imageURL: URL
+    let initialSaveURL: URL
+    let deleteSourceAfterSave: Bool
     let onDone: (URL?) -> Void
 
     @StateObject private var viewModel: EditorViewModel
@@ -470,11 +488,18 @@ private struct ScreenshotEditorView: View {
     @State private var currentSaveURL: URL
     @State private var lastSavedURL: URL?
 
-    init(imageURL: URL, onDone: @escaping (URL?) -> Void) {
+    init(
+        imageURL: URL,
+        initialSaveURL: URL,
+        deleteSourceAfterSave: Bool,
+        onDone: @escaping (URL?) -> Void
+    ) {
         self.imageURL = imageURL
+        self.initialSaveURL = initialSaveURL
+        self.deleteSourceAfterSave = deleteSourceAfterSave
         self.onDone = onDone
         _viewModel = StateObject(wrappedValue: EditorViewModel(url: imageURL))
-        _currentSaveURL = State(initialValue: imageURL)
+        _currentSaveURL = State(initialValue: initialSaveURL)
         _lastSavedURL = State(initialValue: nil)
     }
 
@@ -658,7 +683,7 @@ private struct ScreenshotEditorView: View {
         }
         .confirmationDialog("Discard changes?", isPresented: $showExitConfirmation, titleVisibility: .visible) {
             Button("Discard Changes", role: .destructive) {
-                onDone(nil)
+                onDone(lastSavedURL)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -1040,7 +1065,7 @@ private struct ScreenshotEditorView: View {
                 currentSaveURL = url
                 lastSavedURL = url
                 viewModel.markSaved()
-                SaveService.shared.handleSavedFile(url: url, type: .screenshot)
+                removeTemporarySourceAfterSave(to: url)
             } else {
                 SaveService.shared.showError("Could not save the edited image.")
             }
@@ -1064,7 +1089,7 @@ private struct ScreenshotEditorView: View {
                 currentSaveURL = url
                 lastSavedURL = url
                 viewModel.markSaved()
-                SaveService.shared.handleSavedFile(url: url, type: .screenshot)
+                removeTemporarySourceAfterSave(to: url)
                 activePopover = nil
             } else {
                 SaveService.shared.showError("Could not save the edited image.")
@@ -1103,6 +1128,14 @@ private struct ScreenshotEditorView: View {
     private func openSaveFolder() {
         let directoryURL = SaveService.shared.outputDirectoryURL(for: .screenshot)
         NSWorkspace.shared.open(directoryURL)
+    }
+
+    private func removeTemporarySourceAfterSave(to savedURL: URL) {
+        guard deleteSourceAfterSave,
+              imageURL.standardizedFileURL != savedURL.standardizedFileURL else {
+            return
+        }
+        try? FileManager.default.removeItem(at: imageURL)
     }
 
     private func requestClose() {
