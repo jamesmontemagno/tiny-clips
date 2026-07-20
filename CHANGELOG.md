@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 
 ### Improved
 - Added a "Download the Latest Version" link to the macOS Settings → About section (Direct Download builds) so that when the in-app Sparkle update check fails with "An error occurred in retrieving update information", users always have a reliable path to update by downloading the newest release directly from GitHub.
+- Moved the macOS branding overlay toggle into a new Settings → Branding section to match the Windows settings organization.
 - Screenshot editor saves now use a document-style flow on macOS: Save overwrites the current file, Save As creates a new file, Open Folder reveals the active save destination, and Close dismisses the editor without forcing an export.
 - macOS Settings → About now detects when a direct-download build is running outside the Applications folder and gently points users there first, reducing the extra permission prompts Sparkle may need during updates.
 - The macOS menu-bar **Check for Updates…** command now opens Settings directly to **About** first, so direct-download builds outside Applications see the smoother-update guidance before Sparkle prompts for extra permission.
