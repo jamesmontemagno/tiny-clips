@@ -12,6 +12,11 @@ import QuartzCore
 enum BrandingOverlayProcessor {
     private static let overlayText = "Captured on Tiny Clips"
 
+    struct WebcamPositionEvent: Sendable {
+        let time: CMTime
+        let corner: String
+    }
+
     struct WebcamOverlayOptions: Sendable {
         let videoURL: URL
         let shape: String
@@ -23,6 +28,7 @@ enum BrandingOverlayProcessor {
         /// webcam started recording later (e.g. camera warm-up) and must be shifted
         /// forward so it stays in sync with the audio. Defaults to `.zero`.
         var startOffset: CMTime = .zero
+        var positionEvents: [WebcamPositionEvent] = []
     }
 
     enum CompositionError: LocalizedError {
@@ -250,34 +256,53 @@ enum BrandingOverlayProcessor {
             }
 
             let webcamShape = WebcamOverlayShape(rawValue: webcamOverlay.shape)
-            let overlayFrame = webcamOverlayFrame(
-                renderSize: renderSize,
-                webcamSize: webcamOrientedSize,
-                shape: webcamShape,
-                preset: WebcamOverlaySizePreset(rawValue: webcamOverlay.size),
-                corner: WebcamOverlayCorner(rawValue: webcamOverlay.corner)
-            )
+            let positionEvents = webcamOverlay.positionEvents.isEmpty
+                ? [WebcamPositionEvent(time: .zero, corner: webcamOverlay.corner)]
+                : webcamOverlay.positionEvents
+            let webcamPlacements = positionEvents.map { event in
+                let overlayFrame = webcamOverlayFrame(
+                    renderSize: renderSize,
+                    webcamSize: webcamOrientedSize,
+                    shape: webcamShape,
+                    preset: WebcamOverlaySizePreset(rawValue: webcamOverlay.size),
+                    corner: WebcamOverlayCorner(rawValue: event.corner)
+                )
+                let scale = max(
+                    overlayFrame.width / max(webcamOrientedSize.width, 1),
+                    overlayFrame.height / max(webcamOrientedSize.height, 1)
+                )
+                let scaledSize = CGSize(
+                    width: webcamOrientedSize.width * scale,
+                    height: webcamOrientedSize.height * scale
+                )
+                let ciOverlayFrame = ciFrame(forTopLeftFrame: overlayFrame, renderSize: renderSize)
+                let webcamOffset = CGPoint(
+                    x: ciOverlayFrame.midX - (scaledSize.width / 2),
+                    y: ciOverlayFrame.midY - (scaledSize.height / 2)
+                )
+                let webcamTransform = normalizedTransform(
+                    for: webcamPreferredTransform,
+                    naturalSize: webcamNaturalSize
+                )
+                    .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+                    .concatenating(CGAffineTransform(translationX: webcamOffset.x, y: webcamOffset.y))
 
-            let scale = max(
-                overlayFrame.width / max(webcamOrientedSize.width, 1),
-                overlayFrame.height / max(webcamOrientedSize.height, 1)
-            )
-            let scaledSize = CGSize(
-                width: webcamOrientedSize.width * scale,
-                height: webcamOrientedSize.height * scale
-            )
-            let ciOverlayFrame = ciFrame(forTopLeftFrame: overlayFrame, renderSize: renderSize)
-            let webcamOffset = CGPoint(
-                x: ciOverlayFrame.midX - (scaledSize.width / 2),
-                y: ciOverlayFrame.midY - (scaledSize.height / 2)
-            )
-
-            let webcamTransform = normalizedTransform(
-                for: webcamPreferredTransform,
-                naturalSize: webcamNaturalSize
-            )
-                .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-                .concatenating(CGAffineTransform(translationX: webcamOffset.x, y: webcamOffset.y))
+                return WebcamPlacement(
+                    time: CMTimeMaximum(.zero, CMTimeSubtract(event.time, leadingTrim)),
+                    transform: webcamTransform,
+                    frame: ciOverlayFrame,
+                    mask: webcamMaskImage(
+                        renderSize: renderSize,
+                        frame: ciOverlayFrame,
+                        shape: webcamShape,
+                        cornerRadius: webcamCornerRadius(
+                            shape: webcamShape,
+                            bounds: CGRect(origin: .zero, size: overlayFrame.size),
+                            cornerRadiusOverride: webcamOverlay.cornerRadiusOverride
+                        )
+                    )
+                )
+            }
 
             videoComposition.customVideoCompositorClass = WebcamOverlayCompositor.self
             videoComposition.instructions = [
@@ -286,14 +311,7 @@ enum BrandingOverlayProcessor {
                     screenTrackID: compositionVideoTrack.trackID,
                     webcamTrackID: compositionWebcamTrack.trackID,
                     renderSize: renderSize,
-                    webcamTransform: webcamTransform,
-                    webcamFrame: ciOverlayFrame,
-                    webcamShape: webcamShape,
-                    webcamCornerRadius: webcamCornerRadius(
-                        shape: webcamShape,
-                        bounds: CGRect(origin: .zero, size: overlayFrame.size),
-                        cornerRadiusOverride: webcamOverlay.cornerRadiusOverride
-                    ),
+                    webcamPlacements: webcamPlacements,
                     includeBranding: includeBranding
                 )
             ]
@@ -566,6 +584,13 @@ enum BrandingOverlayProcessor {
         return CIImage(cgImage: image)
     }
 
+    private struct WebcamPlacement {
+        let time: CMTime
+        let transform: CGAffineTransform
+        let frame: CGRect
+        let mask: CIImage?
+    }
+
     private final class WebcamOverlayInstruction: NSObject, AVVideoCompositionInstructionProtocol {
         let timeRange: CMTimeRange
         let enablePostProcessing = false
@@ -575,10 +600,7 @@ enum BrandingOverlayProcessor {
         let screenTrackID: CMPersistentTrackID
         let webcamTrackID: CMPersistentTrackID
         let renderSize: CGSize
-        let webcamTransform: CGAffineTransform
-        let webcamFrame: CGRect
-        let webcamShape: WebcamOverlayShape
-        let webcamMask: CIImage?
+        let webcamPlacements: [WebcamPlacement]
         let includeBranding: Bool
 
         init(
@@ -586,25 +608,14 @@ enum BrandingOverlayProcessor {
             screenTrackID: CMPersistentTrackID,
             webcamTrackID: CMPersistentTrackID,
             renderSize: CGSize,
-            webcamTransform: CGAffineTransform,
-            webcamFrame: CGRect,
-            webcamShape: WebcamOverlayShape,
-            webcamCornerRadius: CGFloat?,
+            webcamPlacements: [WebcamPlacement],
             includeBranding: Bool
         ) {
             self.timeRange = timeRange
             self.screenTrackID = screenTrackID
             self.webcamTrackID = webcamTrackID
             self.renderSize = renderSize
-            self.webcamTransform = webcamTransform
-            self.webcamFrame = webcamFrame
-            self.webcamShape = webcamShape
-            self.webcamMask = BrandingOverlayProcessor.webcamMaskImage(
-                renderSize: renderSize,
-                frame: webcamFrame,
-                shape: webcamShape,
-                cornerRadius: webcamCornerRadius
-            )
+            self.webcamPlacements = webcamPlacements
             self.includeBranding = includeBranding
             self.requiredSourceTrackIDs = [
                 NSNumber(value: screenTrackID),
@@ -661,12 +672,15 @@ enum BrandingOverlayProcessor {
                 renderSize: instruction.renderSize
             )
 
-            if let webcamBuffer = request.sourceFrame(byTrackID: instruction.webcamTrackID) {
+            if let webcamBuffer = request.sourceFrame(byTrackID: instruction.webcamTrackID),
+               let placement = instruction.webcamPlacements.last(where: {
+                   CMTimeCompare($0.time, request.compositionTime) <= 0
+               }) ?? instruction.webcamPlacements.first {
                 let webcamImage = CIImage(cvPixelBuffer: webcamBuffer)
-                    .transformed(by: instruction.webcamTransform)
-                    .cropped(to: instruction.webcamFrame)
+                    .transformed(by: placement.transform)
+                    .cropped(to: placement.frame)
 
-                if let mask = instruction.webcamMask {
+                if let mask = placement.mask {
                     outputImage = webcamImage.applyingFilter(
                         "CIBlendWithMask",
                         parameters: [

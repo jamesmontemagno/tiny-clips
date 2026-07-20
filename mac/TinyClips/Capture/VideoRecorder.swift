@@ -71,6 +71,7 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
 
     var onWebcamDeviceName: ((String) -> Void)?
     var onWebcamError: ((String) -> Void)?
+    var previewSession: AVCaptureSession? { session }
 
     func start(outputURL: URL, selectedWebcamID: String) async throws {
         guard await PermissionManager.shared.requestCameraPermission() else {
@@ -333,6 +334,18 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     var currentRecordingDuration: TimeInterval {
         guard let recordingStartedAtUptime else { return 0 }
         return max(0, ProcessInfo.processInfo.systemUptime - recordingStartedAtUptime)
+    }
+
+    func currentTimelineTime() -> CMTime {
+        writingQueue.sync {
+            guard let firstScreenSampleTime else { return .zero }
+            let now = CMClockGetTime(CMClockGetHostTimeClock())
+            let activePauseDuration = pauseStartedAt.map { CMTimeSubtract(now, $0) } ?? .zero
+            return CMTimeMaximum(
+                .zero,
+                CMTimeSubtract(CMTimeSubtract(now, totalPausedDuration), CMTimeAdd(firstScreenSampleTime, activePauseDuration))
+            )
+        }
     }
 
     func start(
