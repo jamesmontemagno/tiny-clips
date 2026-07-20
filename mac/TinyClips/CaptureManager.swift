@@ -5,6 +5,11 @@ import Combine
 enum TinyClipsTemporaryFiles {
     private static let filenamePrefix = "TinyClips-"
 
+    struct Summary: Sendable {
+        let fileCount: Int
+        let totalSize: Int64
+    }
+
     static var directoryURL: URL {
         FileManager.default.temporaryDirectory
     }
@@ -29,6 +34,28 @@ enum TinyClipsTemporaryFiles {
     @discardableResult
     static func purge() throws -> Int {
         try removeMatchingFiles { _ in true }
+    }
+
+    static func summary() throws -> Summary {
+        let fileManager = FileManager.default
+        let files = try fileManager.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        )
+
+        var fileCount = 0
+        var totalSize: Int64 = 0
+        for fileURL in files {
+            guard isTinyClipsTemporaryFile(fileURL),
+                  let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                  values.isRegularFile == true else {
+                continue
+            }
+            fileCount += 1
+            totalSize += Int64(values.fileSize ?? 0)
+        }
+        return Summary(fileCount: fileCount, totalSize: totalSize)
     }
 
     private static func removeMatchingFiles(shouldRemove: (URL) -> Bool) throws -> Int {

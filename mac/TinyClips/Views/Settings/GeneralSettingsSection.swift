@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct GeneralSettingsSection: View {
@@ -8,6 +9,8 @@ struct GeneralSettingsSection: View {
     let resetAllSettings: () -> Void
     let showInDockBinding: Binding<Bool>
     @State private var showPurgeConfirmation = false
+    @State private var temporaryFilesSummary: TinyClipsTemporaryFiles.Summary?
+    @State private var isLoadingTemporaryFiles = true
 
     var body: some View {
         Section("Output") {
@@ -94,9 +97,14 @@ struct GeneralSettingsSection: View {
                 .help("For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection.")
             Toggle("Show 'Captured on Tiny Clips' overlay", isOn: $settings.showBrandingOverlay)
                 .help("Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs.")
-            Link("Open TinyClips Temp Folder", destination: TinyClipsTemporaryFiles.directoryURL)
+            Button {
+                NSWorkspace.shared.open(TinyClipsTemporaryFiles.directoryURL)
+            } label: {
+                Label("Open TinyClips Temp Folder", systemImage: "folder")
+            }
                 .help("Open the temporary folder where TinyClips processes captures.")
                 .accessibilityHint("Opens the temporary folder containing TinyClips processing files in Finder.")
+            temporaryFilesSummaryView
             Button("Purge Temp Files Now…", role: .destructive) {
                 showPurgeConfirmation = true
             }
@@ -114,6 +122,9 @@ struct GeneralSettingsSection: View {
             Button("Purge", role: .destructive) {
                 do {
                     try TinyClipsTemporaryFiles.purge()
+                    Task {
+                        await loadTemporaryFilesSummary()
+                    }
                 } catch {
                     SaveService.shared.showError("Could not purge temporary files: \(error.localizedDescription)")
                 }
@@ -122,5 +133,39 @@ struct GeneralSettingsSection: View {
         } message: {
             Text("This permanently deletes temporary files created by TinyClips, including recent files. Close any active recording or unsaved screenshot editor before continuing.")
         }
+        .task {
+            await loadTemporaryFilesSummary()
+        }
+    }
+
+    @ViewBuilder
+    private var temporaryFilesSummaryView: some View {
+        if isLoadingTemporaryFiles {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Calculating TinyClips temporary files…")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else if let temporaryFilesSummary {
+            let fileLabel = temporaryFilesSummary.fileCount == 1 ? "file" : "files"
+            Text("\(temporaryFilesSummary.fileCount) temporary \(fileLabel) using \(ByteCountFormatter.string(fromByteCount: temporaryFilesSummary.totalSize, countStyle: .file))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("\(temporaryFilesSummary.fileCount) TinyClips temporary \(fileLabel), using \(ByteCountFormatter.string(fromByteCount: temporaryFilesSummary.totalSize, countStyle: .file))")
+        } else {
+            Text("Could not calculate TinyClips temporary files.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func loadTemporaryFilesSummary() async {
+        isLoadingTemporaryFiles = true
+        temporaryFilesSummary = await Task.detached(priority: .utility) {
+            try? TinyClipsTemporaryFiles.summary()
+        }.value
+        isLoadingTemporaryFiles = false
     }
 }
