@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Removed the macOS New Window command for Tiny Clips windows and wired the video/GIF trimmers' existing frame-copy action into Edit → Copy and Command-C.
 - Fixed macOS screenshot editor Edit menu commands so Undo, Redo, Copy, and Clear Annotations are available from the standard menu and invoke the canvas actions.
-- Fixed macOS screenshot editor saves from leaving temporary capture files behind; stale TinyClips temporary files are now cleared after 24 hours, and Settings → General → Advanced provides controls to open or purge the TinyClips temp folder.
+- Fixed macOS capture workflows from leaving unmanaged temporary files behind; stale TinyClips files, including webcam companions, are now cleared after 24 hours, failed video overlay outputs are removed, and Settings → General → Advanced provides controls to open or purge the TinyClips temp folder.
 - Fixed the macOS Settings → Analytics view freezing with "Publishing changes from within view updates is not allowed" faults, caused by the analytics history being pruned (and its published state reassigned) while the view was rendering. Pruning now runs only at launch and when a capture is recorded.
 - Fixed the macOS pre-capture countdown number transition so each tick now animates smoothly instead of rebuilding the SwiftUI hosting view every second (which prevented the numeric text transition from running).
 - Fixed macOS screenshot editor exports so curved arrows keep their preview-aligned curve direction and position when background padding is applied.

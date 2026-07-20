@@ -86,7 +86,14 @@ enum TinyClipsTemporaryFiles {
         let stem = fileURL.deletingPathExtension().lastPathComponent
         guard stem.hasPrefix(filenamePrefix) else { return false }
 
-        return UUID(uuidString: String(stem.dropFirst(filenamePrefix.count))) != nil
+        let identifier = String(stem.dropFirst(filenamePrefix.count))
+        if UUID(uuidString: identifier) != nil {
+            return true
+        }
+
+        let webcamSuffix = "-webcam"
+        guard identifier.hasSuffix(webcamSuffix) else { return false }
+        return UUID(uuidString: String(identifier.dropLast(webcamSuffix.count))) != nil
     }
 }
 
@@ -857,14 +864,13 @@ class CaptureManager: ObservableObject {
                let capturedMouseClickData,
                capturedMouseClickData.type == .video,
                !capturedMouseClickData.events.isEmpty {
+                let overlayOutputURL = videoShouldSaveImmediately
+                    ? SaveService.shared.generateURL(for: .video)
+                    : TinyClipsTemporaryFiles.makeURL(fileExtension: "mp4")
                 do {
                     // Use the final save URL as the overlay output when saving immediately,
                     // so the processed file lands in the user's save directory rather than
                     // a temp location that the OS can delete.
-                    let overlayOutputURL = videoShouldSaveImmediately
-                        ? SaveService.shared.generateURL(for: .video)
-                        : TinyClipsTemporaryFiles.makeURL(fileExtension: "mp4")
-
                     savedVideoURL = try await Self.overlayVideoOffMain(
                         sourceURL: currentURL,
                         region: capturedMouseClickData.region,
@@ -883,6 +889,7 @@ class CaptureManager: ObservableObject {
                     )
                     updateProcessingProgress(0.85, status: "Finalizing...")
                 } catch {
+                    try? FileManager.default.removeItem(at: overlayOutputURL)
                     SaveService.shared.showError("Mouse click overlay failed for video: \(error.localizedDescription)")
                 }
             }
@@ -921,10 +928,10 @@ class CaptureManager: ObservableObject {
                 }()
 
                 if showBrandingOverlay || webcamOverlayOptions != nil {
+                    let brandingOutputURL = videoShouldSaveImmediately
+                        ? SaveService.shared.generateURL(for: .video)
+                        : TinyClipsTemporaryFiles.makeURL(fileExtension: "mp4")
                     do {
-                        let brandingOutputURL = videoShouldSaveImmediately
-                            ? SaveService.shared.generateURL(for: .video)
-                            : TinyClipsTemporaryFiles.makeURL(fileExtension: "mp4")
                         savedVideoURL = try await Self.overlayBrandingVideoOffMain(
                             sourceURL: currentURL,
                             outputURL: brandingOutputURL,
@@ -944,6 +951,7 @@ class CaptureManager: ObservableObject {
                         )
                         updateProcessingProgress(0.95, status: "Finalizing...")
                     } catch {
+                        try? FileManager.default.removeItem(at: brandingOutputURL)
                         SaveService.shared.showError("Video compositing failed: \(error.localizedDescription)")
                     }
                 }

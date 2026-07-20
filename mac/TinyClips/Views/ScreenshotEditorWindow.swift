@@ -1651,9 +1651,6 @@ private struct CanvasView: View {
                         color: viewModel.selectedColor,
                         onCommit: {
                             viewModel.commitTextAnnotation()
-                        },
-                        onCancel: {
-                            viewModel.cancelTextAnnotation()
                         }
                     )
                     .position(x: screenPos.x, y: screenPos.y)
@@ -3306,7 +3303,6 @@ private struct InlineTextEditor: View {
     let isUnderlined: Bool
     let color: Color
     let onCommit: () -> Void
-    let onCancel: () -> Void
 
     @FocusState private var isFocused: Bool
 
@@ -3324,7 +3320,6 @@ private struct InlineTextEditor: View {
                 .focused($isFocused)
                 .onAppear { isFocused = true }
                 .onSubmit { onCommit() }
-                .onExitCommand { onCancel() }
 
             // Font size control
             HStack(spacing: 6) {
@@ -3370,7 +3365,5 @@ private struct InlineTextEditor: View {
                         .strokeBorder(color.opacity(0.5), lineWidth: 1.5)
                 }
         }
-            .onSubmit { onCommit() }
-            .onExitCommand { onCancel() }
     }
 }
