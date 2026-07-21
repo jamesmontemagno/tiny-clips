@@ -457,6 +457,13 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string GifHotKeyDisplay => _hotKeys.GetBinding(CaptureType.Gif).DisplayString;
 
+    public HotKeyDefinition GetHotKey(CaptureType type) => _hotKeys.GetBinding(type);
+
+    public HotKeyDefinition GetDefaultHotKey(CaptureType type) => _hotKeys.DefaultFor(type);
+
+    public HotKeyValidationResult ValidateHotKey(CaptureType type, HotKeyDefinition binding)
+        => _hotKeys.ValidateBinding(type, binding);
+
     /// <summary>Persists a new global shortcut for the given capture type and refreshes the display.</summary>
     public void SetHotKey(CaptureType type, HotKeyModifiers modifiers, uint virtualKey)
     {

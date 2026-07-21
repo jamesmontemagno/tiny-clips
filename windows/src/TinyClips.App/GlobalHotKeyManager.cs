@@ -13,21 +13,30 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 {
     private const int WM_HOTKEY = 0x0312;
     private const int WM_CLOSE = 0x0010;
+    private const int WM_QUIT = 0x0012;
     private const uint MOD_NOREPEAT = 0x4000;
     private static readonly nint HWND_MESSAGE = new(-3);
 
     private readonly DispatcherQueue _dispatcher;
     private readonly Dictionary<int, Action> _callbacks = new();
-    private readonly List<(int Modifiers, uint VirtualKey)> _pending = new();
+    private readonly List<PendingHotKey> _pending = new();
+    private readonly List<int> _registeredIds = new();
     private readonly ManualResetEventSlim _ready = new(false);
 
     private Thread? _thread;
+    private uint _threadId;
     private nint _hwnd;
     private WndProcDelegate? _wndProc; // held to keep the native callback alive
+    private GlobalHotKeyRegistrationResult _startResult = GlobalHotKeyRegistrationResult.Success;
     private int _nextId = 1;
     private bool _disposed;
 
     private delegate nint WndProcDelegate(nint hWnd, uint msg, nint wParam, nint lParam);
+    private sealed record PendingHotKey(
+        int Id,
+        string Name,
+        int Modifiers,
+        uint VirtualKey);
 
     public GlobalHotKeyManager(DispatcherQueue dispatcher)
     {
@@ -35,7 +44,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
     }
 
     /// <summary>Queues a hotkey to register when <see cref="Start"/> is called.</summary>
-    public void Add(int modifiers, uint virtualKey, Action callback)
+    public void Add(string name, int modifiers, uint virtualKey, Action callback)
     {
         if (virtualKey == 0)
         {
@@ -44,14 +53,19 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 
         var id = _nextId++;
         _callbacks[id] = callback;
-        _pending.Add((modifiers, virtualKey));
+        _pending.Add(new PendingHotKey(id, name, modifiers, virtualKey));
     }
 
-    public void Start()
+    public GlobalHotKeyRegistrationResult Start()
     {
-        if (_thread is not null || _pending.Count == 0)
+        if (_thread is not null)
         {
-            return;
+            return _startResult;
+        }
+
+        if (_pending.Count == 0)
+        {
+            return GlobalHotKeyRegistrationResult.Success;
         }
 
         _thread = new Thread(MessageLoop)
@@ -61,11 +75,21 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
         };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
-        _ready.Wait(TimeSpan.FromSeconds(5));
+        if (!_ready.Wait(TimeSpan.FromSeconds(5)))
+        {
+            return GlobalHotKeyRegistrationResult.Failed(
+                new GlobalHotKeyRegistrationFailure(
+                    "TinyClips hotkey service",
+                    0,
+                    "Timed out while starting the Windows hotkey service."));
+        }
+
+        return _startResult;
     }
 
     private void MessageLoop()
     {
+        _threadId = GetCurrentThreadId();
         var className = "TinyClipsHotKeyWindow_" + Guid.NewGuid().ToString("N");
         var hInstance = GetModuleHandleW(null);
         _wndProc = WndProc;
@@ -79,6 +103,8 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 
         if (RegisterClassW(ref wndClass) == 0)
         {
+            _startResult = GlobalHotKeyRegistrationResult.Failed(
+                CreateNativeFailure("TinyClips hotkey service", "Could not create the hotkey window class."));
             _ready.Set();
             return;
         }
@@ -86,18 +112,34 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
         _hwnd = CreateWindowExW(0, className, string.Empty, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, hInstance, 0);
         if (_hwnd == 0)
         {
+            _startResult = GlobalHotKeyRegistrationResult.Failed(
+                CreateNativeFailure("TinyClips hotkey service", "Could not create the hotkey window."));
             _ready.Set();
             return;
         }
 
-        var index = 0;
-        foreach (var (modifiers, virtualKey) in _pending)
+        var failures = new List<GlobalHotKeyRegistrationFailure>();
+        foreach (var hotKey in _pending)
         {
-            var id = index + 1;
-            RegisterHotKey(_hwnd, id, (uint)modifiers | MOD_NOREPEAT, virtualKey);
-            index++;
+            if (RegisterHotKey(
+                _hwnd,
+                hotKey.Id,
+                (uint)hotKey.Modifiers | MOD_NOREPEAT,
+                hotKey.VirtualKey))
+            {
+                _registeredIds.Add(hotKey.Id);
+            }
+            else
+            {
+                failures.Add(CreateNativeFailure(
+                    hotKey.Name,
+                    "Windows rejected this shortcut, usually because another app already uses it."));
+            }
         }
 
+        _startResult = failures.Count == 0
+            ? GlobalHotKeyRegistrationResult.Success
+            : new GlobalHotKeyRegistrationResult(failures);
         _ready.Set();
 
         while (GetMessageW(out var msg, 0, 0, 0) > 0)
@@ -115,17 +157,51 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
             DispatchMessageW(ref msg);
         }
 
-        for (var i = 0; i < _pending.Count; i++)
+        UnregisterAll();
+        DestroyHotKeyWindow();
+    }
+
+    private nint WndProc(nint hWnd, uint msg, nint wParam, nint lParam)
+    {
+        if (msg == WM_CLOSE)
         {
-            UnregisterHotKey(_hwnd, i + 1);
+            UnregisterAll();
+            DestroyHotKeyWindow();
+            PostQuitMessage(0);
+            return 0;
+        }
+
+        return DefWindowProcW(hWnd, msg, wParam, lParam);
+    }
+
+    private static GlobalHotKeyRegistrationFailure CreateNativeFailure(string name, string message)
+        => new(name, Marshal.GetLastWin32Error(), message);
+
+    private void UnregisterAll()
+    {
+        if (_hwnd == 0)
+        {
+            return;
+        }
+
+        foreach (var id in _registeredIds)
+        {
+            UnregisterHotKey(_hwnd, id);
+        }
+
+        _registeredIds.Clear();
+    }
+
+    private void DestroyHotKeyWindow()
+    {
+        if (_hwnd == 0)
+        {
+            return;
         }
 
         DestroyWindow(_hwnd);
         _hwnd = 0;
     }
-
-    private nint WndProc(nint hWnd, uint msg, nint wParam, nint lParam)
-        => DefWindowProcW(hWnd, msg, wParam, lParam);
 
     public void Dispose()
     {
@@ -136,12 +212,16 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 
         _disposed = true;
 
-        if (_hwnd != 0)
+        if (_thread is { IsAlive: true })
         {
-            PostMessageW(_hwnd, WM_CLOSE, 0, 0);
+            if (_hwnd == 0 || !PostMessageW(_hwnd, WM_CLOSE, 0, 0))
+            {
+                PostThreadMessageW(_threadId, WM_QUIT, 0, 0);
+            }
+
+            _thread.Join();
         }
 
-        _thread?.Join(TimeSpan.FromSeconds(2));
         _ready.Dispose();
     }
 
@@ -205,6 +285,31 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool PostMessageW(nint hWnd, uint msg, nint wParam, nint lParam);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool PostThreadMessageW(uint idThread, uint msg, nint wParam, nint lParam);
+
+    [DllImport("user32.dll")]
+    private static extern void PostQuitMessage(int nExitCode);
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern nint GetModuleHandleW(string? lpModuleName);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+}
+
+internal sealed record GlobalHotKeyRegistrationFailure(
+    string Name,
+    int NativeErrorCode,
+    string Message);
+
+internal sealed record GlobalHotKeyRegistrationResult(
+    IReadOnlyList<GlobalHotKeyRegistrationFailure> Failures)
+{
+    public bool IsSuccess => Failures.Count == 0;
+
+    public static GlobalHotKeyRegistrationResult Success { get; } = new([]);
+
+    public static GlobalHotKeyRegistrationResult Failed(GlobalHotKeyRegistrationFailure failure)
+        => new([failure]);
 }

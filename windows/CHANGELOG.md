@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- **Windows keyboard shortcut changes now provide clear feedback and reliably take effect** — Settings now uses a focused shortcut recorder with a live chord preview and explicit Save/Cancel actions, rejects incomplete or duplicate bindings (including the fixed Stop recording shortcut), reports shortcuts owned by Windows or another app, and restores the previous binding if registration fails. Native hotkeys are fully unregistered before replacement so stale registrations no longer prevent changes from sticking.
+
 ### Added
 - **In-app update checks with guided upgrade actions (Windows Direct build)** — Tiny Clips can now check GitHub Releases for newer stable versions once per launch and via a new tray **Check for updates** action. Settings → About now shows update status and, when a newer version exists, provides guided actions to copy `winget upgrade Refractored.TinyClips` and open the latest GitHub Release page.
 - Added in-app **File a Bug** entry points in both the tray popup and Settings → About. Both now open a lightweight two-field bug form (title + what happened) and then launch a pre-filled GitHub issue using the new quick bug template.

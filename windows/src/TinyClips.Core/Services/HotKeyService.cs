@@ -60,6 +60,24 @@ public sealed class HotKeyService : IHotKeyService
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, null),
     };
 
+    public HotKeyValidationResult ValidateBinding(CaptureType type, HotKeyDefinition binding)
+    {
+        var captureBindings = new[]
+        {
+            new KeyValuePair<CaptureType, HotKeyDefinition>(
+                CaptureType.Screenshot,
+                GetBinding(CaptureType.Screenshot)),
+            new KeyValuePair<CaptureType, HotKeyDefinition>(
+                CaptureType.Video,
+                GetBinding(CaptureType.Video)),
+            new KeyValuePair<CaptureType, HotKeyDefinition>(
+                CaptureType.Gif,
+                GetBinding(CaptureType.Gif)),
+        };
+
+        return HotKeyValidator.Validate(type, binding, captureBindings, GetStopBinding());
+    }
+
     private int GetStoredModifiers(CaptureType type) => type switch
     {
         CaptureType.Screenshot => _settings.ScreenshotHotKeyModifiers,
