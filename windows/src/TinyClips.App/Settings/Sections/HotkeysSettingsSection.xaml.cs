@@ -135,6 +135,12 @@ public sealed partial class HotkeysSettingsSection : UserControl
 
         void OnKey(object sender, KeyRoutedEventArgs args)
         {
+            var modifiers = CurrentModifiers();
+            if (modifiers == 0 && IsDialogNavigationKey(args.Key))
+            {
+                return;
+            }
+
             args.Handled = true;
 
             if (IsModifierKey(args.Key))
@@ -148,7 +154,6 @@ public sealed partial class HotkeysSettingsSection : UserControl
                 return;
             }
 
-            var modifiers = CurrentModifiers();
             var proposed = new HotKeyDefinition(modifiers, (uint)args.Key);
             recorder.Text = proposed.DisplayString;
             var validation = ViewModel.ValidateHotKey(type, proposed);
@@ -210,6 +215,9 @@ public sealed partial class HotkeysSettingsSection : UserControl
         VirtualKey.Shift or VirtualKey.LeftShift or VirtualKey.RightShift or
         VirtualKey.Menu or VirtualKey.LeftMenu or VirtualKey.RightMenu or
         VirtualKey.LeftWindows or VirtualKey.RightWindows;
+
+    private static bool IsDialogNavigationKey(VirtualKey key) =>
+        key is VirtualKey.Tab or VirtualKey.Enter or VirtualKey.Escape;
 
     private static HotKeyModifiers CurrentModifiers()
     {

@@ -15,6 +15,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
     private const int WM_CLOSE = 0x0010;
     private const int WM_QUIT = 0x0012;
     private const uint MOD_NOREPEAT = 0x4000;
+    private const uint PM_NOREMOVE = 0x0000;
     private static readonly nint HWND_MESSAGE = new(-3);
 
     private readonly DispatcherQueue _dispatcher;
@@ -22,6 +23,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
     private readonly List<PendingHotKey> _pending = new();
     private readonly List<int> _registeredIds = new();
     private readonly ManualResetEventSlim _ready = new(false);
+    private readonly ManualResetEventSlim _messageQueueReady = new(false);
 
     private Thread? _thread;
     private uint _threadId;
@@ -29,6 +31,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
     private WndProcDelegate? _wndProc; // held to keep the native callback alive
     private GlobalHotKeyRegistrationResult _startResult = GlobalHotKeyRegistrationResult.Success;
     private int _nextId = 1;
+    private int _shutdownRequested;
     private bool _disposed;
 
     private delegate nint WndProcDelegate(nint hWnd, uint msg, nint wParam, nint lParam);
@@ -77,11 +80,14 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
         _thread.Start();
         if (!_ready.Wait(TimeSpan.FromSeconds(5)))
         {
-            return GlobalHotKeyRegistrationResult.Failed(
+            var timeoutResult = GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
                     "TinyClips hotkey service",
                     0,
                     "Timed out while starting the Windows hotkey service."));
+            RequestShutdownAndWait();
+            _startResult = timeoutResult;
+            return timeoutResult;
         }
 
         return _startResult;
@@ -90,6 +96,13 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
     private void MessageLoop()
     {
         _threadId = GetCurrentThreadId();
+        PeekMessageW(out _, 0, 0, 0, PM_NOREMOVE);
+        _messageQueueReady.Set();
+        if (Volatile.Read(ref _shutdownRequested) != 0)
+        {
+            return;
+        }
+
         var className = "TinyClipsHotKeyWindow_" + Guid.NewGuid().ToString("N");
         var hInstance = GetModuleHandleW(null);
         _wndProc = WndProc;
@@ -212,17 +225,38 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 
         _disposed = true;
 
-        if (_thread is { IsAlive: true })
+        var stopped = RequestShutdownAndWait();
+        if (stopped)
         {
-            if (_hwnd == 0 || !PostMessageW(_hwnd, WM_CLOSE, 0, 0))
+            _messageQueueReady.Dispose();
+            _ready.Dispose();
+        }
+    }
+
+    private bool RequestShutdownAndWait()
+    {
+        Volatile.Write(ref _shutdownRequested, 1);
+
+        var thread = _thread;
+        if (thread is null || !thread.IsAlive)
+        {
+            return true;
+        }
+
+        if (thread == Thread.CurrentThread)
+        {
+            return false;
+        }
+
+        if (_hwnd == 0 || !PostMessageW(_hwnd, WM_CLOSE, 0, 0))
+        {
+            if (_messageQueueReady.Wait(TimeSpan.FromSeconds(1)) && _threadId != 0)
             {
                 PostThreadMessageW(_threadId, WM_QUIT, 0, 0);
             }
-
-            _thread.Join();
         }
 
-        _ready.Dispose();
+        return thread.Join(TimeSpan.FromSeconds(5));
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -275,6 +309,14 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetMessageW(out MSG lpMsg, nint hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool PeekMessageW(
+        out MSG lpMsg,
+        nint hWnd,
+        uint wMsgFilterMin,
+        uint wMsgFilterMax,
+        uint wRemoveMsg);
 
     [DllImport("user32.dll")]
     private static extern bool TranslateMessage(ref MSG lpMsg);
