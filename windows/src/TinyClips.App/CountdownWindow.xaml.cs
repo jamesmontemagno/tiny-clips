@@ -42,8 +42,11 @@ public sealed partial class CountdownWindow : Window
         _timer.Tick += OnTick;
     }
 
-    /// <summary>Shows a countdown overlay and returns when it finishes.</summary>
-    public static Task RunAsync(int seconds, MonitorInfo? monitor = null)
+    /// <summary>
+    /// Shows a countdown overlay and returns when it finishes. A cancelled token immediately
+    /// dismisses the countdown and cancels the returned task.
+    /// </summary>
+    public static Task RunAsync(int seconds, MonitorInfo? monitor = null, CancellationToken cancellationToken = default)
     {
         var window = new CountdownWindow(seconds);
         window.Activate();
@@ -55,6 +58,19 @@ public sealed partial class CountdownWindow : Window
         window.AnimateFade(window.RootBorder, 1, 180).Begin();
         window.AnimateCountText(finalSecond: window._remaining == 1);
         window._timer.Start();
+
+        if (cancellationToken.CanBeCanceled)
+        {
+            cancellationToken.Register(() =>
+            {
+                window._timer.Stop();
+                if (window._completed.TrySetCanceled(cancellationToken))
+                {
+                    window.Close();
+                }
+            });
+        }
+
         return window._completed.Task;
     }
 

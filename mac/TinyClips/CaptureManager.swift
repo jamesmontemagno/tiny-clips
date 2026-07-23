@@ -671,6 +671,7 @@ class CaptureManager: ObservableObject {
         // indicator disappear, stop hotkey unregisters) regardless of
         // whatever the async export flow does next. If the export later
         // hangs, the user can still interact with the app.
+        dismissRegionIndicator()
         guard !isStoppingRecording else { return }
         guard isRecording || videoRecorder != nil || webcamRecorder != nil || gifWriter != nil else { return }
 
@@ -678,7 +679,6 @@ class CaptureManager: ObservableObject {
         cancelVideoAutoStopTask()
 
         dismissStopPanel()
-        dismissRegionIndicator()
         resetRecordingAudioStatus()
         activeRecordingRegion = nil
         isRecording = false
@@ -746,10 +746,10 @@ class CaptureManager: ObservableObject {
     }
 
     private func discardRecording(clearActiveRequest: Bool) async {
+        dismissRegionIndicator()
         guard isRecording || videoRecorder != nil || webcamRecorder != nil || gifWriter != nil else { return }
         cancelVideoAutoStopTask()
         dismissStopPanel()
-        dismissRegionIndicator()
         _ = stopMouseClickMonitoring()
         activeMouseClickCaptureEnabledOverride = nil
         activeWebcamOverlaySelection = nil
