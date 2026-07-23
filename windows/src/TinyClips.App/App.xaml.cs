@@ -42,6 +42,7 @@ public partial class App : Application
     private RecordingIndicatorWindow? _recordingIndicator;
     private ProcessingIndicatorWindow? _processingIndicator;
     private RegionIndicatorWindow? _recordingRegionIndicator;
+    private CancellationTokenSource? _captureFlowCts;
     private DispatcherTimer? _recordingTimer;
     private DateTime _recordingStartedUtc;
     private TimeSpan _recordingElapsedBeforePause;
@@ -330,6 +331,11 @@ public partial class App : Application
     /// </summary>
     private async Task BeginCaptureAsync(CaptureType type, bool abortIfRecording = false)
     {
+        // Create a CancellationTokenSource for this capture flow so that
+        // StopActiveRecordingAsync / DiscardActiveRecordingAsync can abort a pending
+        // countdown before recording starts.
+        var captureFlowCts = new CancellationTokenSource();
+        _captureFlowCts = captureFlowCts;
         try
         {
             // Give the tray menu a moment to dismiss so it isn't part of the capture.
@@ -390,7 +396,7 @@ public partial class App : Application
                         regionIndicator.Show(ToVirtualDesktopRegion(selection.Target, region));
                     }
 
-                    await CountdownWindow.RunAsync(pick.CountdownDuration, selection.Monitor);
+                    await CountdownWindow.RunAsync(pick.CountdownDuration, selection.Monitor, captureFlowCts.Token);
                 }
                 finally
                 {
@@ -444,7 +450,16 @@ public partial class App : Application
                     break;
             }
         }
-
+        catch (OperationCanceledException)
+        {
+            // The capture flow was intentionally cancelled (e.g. stop hotkey pressed
+            // during countdown). Clean up pre-recording UI and return to idle.
+            CloseRecordingRegionIndicator();
+            HideRecordingIndicatorIfNotRecording();
+            _activeRecordingSelection = null;
+            _activeRecordingType = null;
+            UpdateRecordingState();
+        }
         catch (Exception ex)
         {
             Debug.WriteLine($"Capture failed: {ex}");
@@ -453,6 +468,15 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             HideRecordingIndicatorIfNotRecording();
+        }
+        finally
+        {
+            if (ReferenceEquals(_captureFlowCts, captureFlowCts))
+            {
+                _captureFlowCts = null;
+            }
+
+            captureFlowCts.Dispose();
         }
     }
 
@@ -842,6 +866,13 @@ public partial class App : Application
                 ShowProcessingIndicator(CaptureType.Gif, _activeRecordingSelection);
                 await gif.StopAsync();
             }
+            else
+            {
+                // Nothing is actively recording — abort any pending pre-recording flow
+                // (e.g. a countdown in progress) so the capture outline is dismissed
+                // immediately instead of waiting for the countdown to finish.
+                CancelCaptureFlow();
+            }
         }
         catch (Exception ex)
         {
@@ -970,6 +1001,13 @@ public partial class App : Application
             {
                 await gif.CancelAsync();
             }
+            else
+            {
+                // Nothing is actively recording — abort any pending pre-recording flow
+                // (e.g. a countdown in progress) so the capture outline is dismissed
+                // immediately instead of waiting for the countdown to finish.
+                CancelCaptureFlow();
+            }
         }
         catch (Exception ex)
         {
@@ -1036,6 +1074,19 @@ public partial class App : Application
         var window = _recordingRegionIndicator;
         _recordingRegionIndicator = null;
         window?.ClosePanel();
+    }
+
+    /// <summary>
+    /// Cancels any in-progress pre-recording capture flow (e.g. a countdown), causing
+    /// <see cref="BeginCaptureAsync"/> to abort cleanly and dismiss any capture UI.
+    /// Safe to call when no capture flow is active (no-op).
+    /// </summary>
+    private void CancelCaptureFlow()
+    {
+        var cts = _captureFlowCts;
+        _captureFlowCts = null;
+        cts?.Cancel();
+        cts?.Dispose();
     }
 
     private void ShowRecordingIndicator(CaptureType type, TargetSelection selection, bool stopEnabled = true, bool startTimer = true)

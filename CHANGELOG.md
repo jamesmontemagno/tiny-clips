@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - Fixed the macOS Settings → Analytics view freezing with "Publishing changes from within view updates is not allowed" faults, caused by the analytics history being pruned (and its published state reassigned) while the view was rendering. Pruning now runs only at launch and when a capture is recorded.
 - Fixed the macOS pre-capture countdown number transition so each tick now animates smoothly instead of rebuilding the SwiftUI hosting view every second (which prevented the numeric text transition from running).
 - Fixed macOS screenshot editor exports so curved arrows keep their preview-aligned curve direction and position when background padding is applied.
+- Fixed a bug where pressing the cancel/stop hotkey during the pre-recording countdown left the capture outline (region indicator) stuck on screen. On Windows the countdown is now aborted immediately, tearing down the overlay and the disabled stop-indicator; on macOS `stopRecording()` and `discardRecording()` now dismiss the region indicator before checking whether a recording is active, so any visible outline is always cleared.
 
 ### Improved
 - Added a "Download the Latest Version" link to the macOS Settings → About section (Direct Download builds) so that when the in-app Sparkle update check fails with "An error occurred in retrieving update information", users always have a reliable path to update by downloading the newest release directly from GitHub.

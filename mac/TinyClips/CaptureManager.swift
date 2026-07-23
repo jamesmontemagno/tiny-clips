@@ -671,6 +671,12 @@ class CaptureManager: ObservableObject {
         // indicator disappear, stop hotkey unregisters) regardless of
         // whatever the async export flow does next. If the export later
         // hangs, the user can still interact with the app.
+
+        // Dismiss the region indicator first — before any guard — so that a
+        // pre-recording cancel (e.g. called while a countdown is running and
+        // isRecording is still false) still tears down the capture outline.
+        dismissRegionIndicator()
+
         guard !isStoppingRecording else { return }
         guard isRecording || videoRecorder != nil || webcamRecorder != nil || gifWriter != nil else { return }
 
@@ -678,7 +684,6 @@ class CaptureManager: ObservableObject {
         cancelVideoAutoStopTask()
 
         dismissStopPanel()
-        dismissRegionIndicator()
         resetRecordingAudioStatus()
         activeRecordingRegion = nil
         isRecording = false
@@ -746,10 +751,12 @@ class CaptureManager: ObservableObject {
     }
 
     private func discardRecording(clearActiveRequest: Bool) async {
+        // Dismiss the region indicator before the guard so a pre-recording cancel
+        // (while isRecording is still false) also tears down any visible capture outline.
+        dismissRegionIndicator()
         guard isRecording || videoRecorder != nil || webcamRecorder != nil || gifWriter != nil else { return }
         cancelVideoAutoStopTask()
         dismissStopPanel()
-        dismissRegionIndicator()
         _ = stopMouseClickMonitoring()
         activeMouseClickCaptureEnabledOverride = nil
         activeWebcamOverlaySelection = nil
