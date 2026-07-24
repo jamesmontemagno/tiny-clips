@@ -42,6 +42,7 @@ public partial class App : Application
     private RecordingIndicatorWindow? _recordingIndicator;
     private ProcessingIndicatorWindow? _processingIndicator;
     private RegionIndicatorWindow? _recordingRegionIndicator;
+    private CancellationTokenSource? _captureFlowCts;
     private DispatcherTimer? _recordingTimer;
     private DateTime _recordingStartedUtc;
     private TimeSpan _recordingElapsedBeforePause;
@@ -330,6 +331,13 @@ public partial class App : Application
     /// </summary>
     private async Task BeginCaptureAsync(CaptureType type, bool abortIfRecording = false)
     {
+        if (_captureFlowCts is not null)
+        {
+            return;
+        }
+
+        var captureFlowCts = new CancellationTokenSource();
+        _captureFlowCts = captureFlowCts;
         try
         {
             // Give the tray menu a moment to dismiss so it isn't part of the capture.
@@ -390,7 +398,7 @@ public partial class App : Application
                         regionIndicator.Show(ToVirtualDesktopRegion(selection.Target, region));
                     }
 
-                    await CountdownWindow.RunAsync(pick.CountdownDuration, selection.Monitor);
+                    await CountdownWindow.RunAsync(pick.CountdownDuration, selection.Monitor, captureFlowCts.Token);
                 }
                 finally
                 {
@@ -401,6 +409,7 @@ public partial class App : Application
             switch (type)
             {
                 case CaptureType.Screenshot:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     var screenshots = Services.GetRequiredService<IScreenshotService>();
                     var path = await screenshots.CaptureTargetAsync(selection.Target, selection.Region);
                     await CopyToClipboardAsync(path, CaptureType.Screenshot);
@@ -417,6 +426,7 @@ public partial class App : Application
                     break;
 
                 case CaptureType.Video:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Video;
@@ -425,12 +435,14 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Video, selection);
                     }
-                    await Services.GetRequiredService<IVideoRecordingService>().StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes);
+                    await Services.GetRequiredService<IVideoRecordingService>()
+                        .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
                     break;
 
                 case CaptureType.Gif:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Gif;
                     ShowRecordingRegionIndicator(selection);
@@ -438,13 +450,21 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Gif, selection);
                     }
-                    await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
+                    await Services.GetRequiredService<IGifRecordingService>()
+                        .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
                     break;
             }
         }
-
+        catch (OperationCanceledException)
+        {
+            CloseRecordingRegionIndicator();
+            HideRecordingIndicatorIfNotRecording();
+            _activeRecordingSelection = null;
+            _activeRecordingType = null;
+            UpdateRecordingState();
+        }
         catch (Exception ex)
         {
             Debug.WriteLine($"Capture failed: {ex}");
@@ -453,6 +473,15 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             HideRecordingIndicatorIfNotRecording();
+        }
+        finally
+        {
+            if (ReferenceEquals(_captureFlowCts, captureFlowCts))
+            {
+                _captureFlowCts = null;
+            }
+
+            captureFlowCts.Dispose();
         }
     }
 
@@ -842,6 +871,10 @@ public partial class App : Application
                 ShowProcessingIndicator(CaptureType.Gif, _activeRecordingSelection);
                 await gif.StopAsync();
             }
+            else
+            {
+                CancelCaptureFlow();
+            }
         }
         catch (Exception ex)
         {
@@ -970,6 +1003,10 @@ public partial class App : Application
             {
                 await gif.CancelAsync();
             }
+            else
+            {
+                CancelCaptureFlow();
+            }
         }
         catch (Exception ex)
         {
@@ -1036,6 +1073,11 @@ public partial class App : Application
         var window = _recordingRegionIndicator;
         _recordingRegionIndicator = null;
         window?.ClosePanel();
+    }
+
+    private void CancelCaptureFlow()
+    {
+        _captureFlowCts?.Cancel();
     }
 
     private void ShowRecordingIndicator(CaptureType type, TargetSelection selection, bool stopEnabled = true, bool startTimer = true)
