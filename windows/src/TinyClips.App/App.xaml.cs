@@ -331,6 +331,11 @@ public partial class App : Application
     /// </summary>
     private async Task BeginCaptureAsync(CaptureType type, bool abortIfRecording = false)
     {
+        if (_captureFlowCts is not null)
+        {
+            return;
+        }
+
         var captureFlowCts = new CancellationTokenSource();
         _captureFlowCts = captureFlowCts;
         try
@@ -404,6 +409,7 @@ public partial class App : Application
             switch (type)
             {
                 case CaptureType.Screenshot:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     var screenshots = Services.GetRequiredService<IScreenshotService>();
                     var path = await screenshots.CaptureTargetAsync(selection.Target, selection.Region);
                     await CopyToClipboardAsync(path, CaptureType.Screenshot);
@@ -420,6 +426,7 @@ public partial class App : Application
                     break;
 
                 case CaptureType.Video:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Video;
@@ -428,12 +435,14 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Video, selection);
                     }
-                    await Services.GetRequiredService<IVideoRecordingService>().StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes);
+                    await Services.GetRequiredService<IVideoRecordingService>()
+                        .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
                     break;
 
                 case CaptureType.Gif:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Gif;
                     ShowRecordingRegionIndicator(selection);
@@ -441,7 +450,8 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Gif, selection);
                     }
-                    await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
+                    await Services.GetRequiredService<IGifRecordingService>()
+                        .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
                     break;
