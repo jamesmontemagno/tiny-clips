@@ -11,24 +11,24 @@
         <item>
             
             
-            <title>1.5.2</title>
+            <title>1.5.3</title>
             
             
-            <pubDate>Mon, 06 Jul 2026 05:58:40 +0000</pubDate>
+            <pubDate>Sat, 25 Jul 2026 21:26:53 +0000</pubDate>
             
             
-            <sparkle:version>51</sparkle:version>
+            <sparkle:version>53</sparkle:version>
             
             
-            <sparkle:shortVersionString>1.5.2</sparkle:shortVersionString>
+            <sparkle:shortVersionString>1.5.3</sparkle:shortVersionString>
             
             
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             
             
-            <description><![CDATA[<h3>What's Changed</h3><ul><li>Merge pull request #137 from jamesmontemagno/motz-issue-129-editor-add-preset-color-swatches-with-c-577653</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v1.5.1-mac...v1.5.2-mac">Full Changelog</a></p>]]></description>
-            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v1.5.2-mac</sparkle:releaseNotesLink>
-            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v1.5.2-mac/TinyClips-v1.5.2-mac.zip" length="3568725" type="application/octet-stream" sparkle:edSignature="rUBDyj2mAJhhPVMUqjaIfL+O7GVQsb4f4hvT49PPus4xfG9IELtCUzEreNHX3OGSvyaD5g4BSMd2f7Vy5qHfAw=="/>
+            <description><![CDATA[<h3>What's Changed</h3><ul><li>Mark v1.5.3-mac release</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v1.5.2-mac...v1.5.3-mac">Full Changelog</a></p>]]></description>
+            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v1.5.3-mac</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v1.5.3-mac/TinyClips-v1.5.3-mac.zip" length="3720041" type="application/octet-stream" sparkle:edSignature="gAZUCHS1C/PGMt7hY8kpoNtM611BtcHLckT8DvDdIvg9V0X4FM3LPyTVMroS2pUD3KE/6hSv3538momI0ir5BQ=="/>
             
         
         </item>
