@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v1.5.3-mac - 2026-07-25
+
 ### Added
 - Added a live webcam preview before and during macOS video recording; drag it between corners and the exported video preserves each position change.
 - Added a new macOS Settings → Analytics view that tracks daily screenshot, video, and GIF capture counts locally, shows rolling 7-day or 30-day bar charts, and lets you reset the stored history.
