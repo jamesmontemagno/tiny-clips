@@ -95,8 +95,6 @@ struct GeneralSettingsSection: View {
                 .help("Skip the display picker when multiple monitors are connected")
             Toggle("Include TinyClips in captures", isOn: $settings.includeTinyClipsInCapture)
                 .help("For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection.")
-            Toggle("Show 'Captured on Tiny Clips' overlay", isOn: $settings.showBrandingOverlay)
-                .help("Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs.")
             Button {
                 NSWorkspace.shared.open(TinyClipsTemporaryFiles.directoryURL)
             } label: {
@@ -167,5 +165,16 @@ struct GeneralSettingsSection: View {
             try? TinyClipsTemporaryFiles.summary()
         }.value
         isLoadingTemporaryFiles = false
+    }
+}
+
+struct BrandingSettingsSection: View {
+    @ObservedObject var settings: CaptureSettings
+
+    var body: some View {
+        Section("Branding") {
+            Toggle("Show 'Captured on Tiny Clips' overlay", isOn: $settings.showBrandingOverlay)
+                .help("Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs.")
+        }
     }
 }
