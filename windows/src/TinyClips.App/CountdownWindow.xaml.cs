@@ -26,6 +26,7 @@ public sealed partial class CountdownWindow : Window
     private readonly DispatcherQueueTimer _timer;
     private readonly TaskCompletionSource<bool> _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _remaining;
+    private bool _isCancelled;
 
     private CountdownWindow(int seconds)
     {
@@ -43,10 +44,8 @@ public sealed partial class CountdownWindow : Window
     }
 
     /// <summary>
-    /// Shows a countdown overlay and returns when it finishes. If
-    /// <paramref name="cancellationToken"/> is cancelled the countdown is immediately
-    /// dismissed and the returned task transitions to the Cancelled state, allowing the
-    /// caller to abort the pre-recording flow cleanly.
+    /// Shows a countdown overlay and returns when it finishes. A cancelled token immediately
+    /// dismisses the countdown and cancels the returned task.
     /// </summary>
     public static Task RunAsync(int seconds, MonitorInfo? monitor = null, CancellationToken cancellationToken = default)
     {
@@ -63,14 +62,7 @@ public sealed partial class CountdownWindow : Window
 
         if (cancellationToken.CanBeCanceled)
         {
-            cancellationToken.Register(() =>
-            {
-                window._timer.Stop();
-                if (window._completed.TrySetCanceled(cancellationToken))
-                {
-                    try { window.Close(); } catch { }
-                }
-            });
+            cancellationToken.Register(() => window.DispatcherQueue.TryEnqueue(() => window.Cancel(cancellationToken)));
         }
 
         return window._completed.Task;
@@ -87,14 +79,41 @@ public sealed partial class CountdownWindow : Window
             // Hide immediately so the window is gone from the very first recorded frame,
             // then give the compositor a beat before signalling completion.
             await AnimateFadeAsync(RootBorder, 0, 140);
+            if (_isCancelled)
+            {
+                return;
+            }
+
             AppWindow.Hide();
             await Task.Delay(80);
+            if (_isCancelled)
+            {
+                return;
+            }
+
             _completed.TrySetResult(true);
             Close();
             return;
         }
 
-        await AnimateCountTransitionAsync(finalSecond: _remaining == 1);
+        await AnimateCountOutAsync();
+        if (!_isCancelled)
+        {
+            AnimateCountText(finalSecond: _remaining == 1);
+        }
+    }
+
+    private void Cancel(CancellationToken cancellationToken)
+    {
+        if (!_completed.TrySetCanceled(cancellationToken))
+        {
+            return;
+        }
+
+        _isCancelled = true;
+        _timer.Stop();
+        _timer.Tick -= OnTick;
+        Close();
     }
 
     private void AnimateCountText(bool finalSecond)
@@ -106,12 +125,6 @@ public sealed partial class CountdownWindow : Window
         storyboard.Children.Add(CreateAnimation(CountScale, "ScaleX", 1, finalSecond ? 320 : 220));
         storyboard.Children.Add(CreateAnimation(CountScale, "ScaleY", 1, finalSecond ? 320 : 220));
         storyboard.Begin();
-    }
-
-    private async Task AnimateCountTransitionAsync(bool finalSecond)
-    {
-        await AnimateCountOutAsync();
-        AnimateCountText(finalSecond);
     }
 
     private Task AnimateCountOutAsync()

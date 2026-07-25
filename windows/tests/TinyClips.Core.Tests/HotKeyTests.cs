@@ -48,6 +48,59 @@ public sealed class HotKeyTests
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Alt | HotKeyModifiers.Control, 0x42), service.GetBinding(CaptureType.Screenshot));
     }
 
+    [Theory]
+    [InlineData(HotKeyModifiers.None, 0x41, HotKeyValidationError.ModifierRequired)]
+    [InlineData(HotKeyModifiers.Control, 0, HotKeyValidationError.KeyRequired)]
+    [InlineData(HotKeyModifiers.Control, 0x11, HotKeyValidationError.ModifierKeyNotAllowed)]
+    public void ValidateBinding_RejectsIncompleteChords(
+        HotKeyModifiers modifiers,
+        uint virtualKey,
+        HotKeyValidationError expectedError)
+    {
+        var service = CreateService();
+
+        var result = service.ValidateBinding(
+            CaptureType.Screenshot,
+            new HotKeyDefinition(modifiers, virtualKey));
+
+        Assert.Equal(expectedError, result.Error);
+    }
+
+    [Fact]
+    public void ValidateBinding_RejectsAnotherCaptureBinding()
+    {
+        var service = CreateService();
+        var videoBinding = service.GetBinding(CaptureType.Video);
+
+        var result = service.ValidateBinding(CaptureType.Screenshot, videoBinding);
+
+        Assert.Equal(HotKeyValidationError.DuplicateBinding, result.Error);
+        Assert.Equal(CaptureType.Video, result.ConflictingCaptureType);
+    }
+
+    [Fact]
+    public void ValidateBinding_RejectsFixedStopRecordingBinding()
+    {
+        var service = CreateService();
+
+        var result = service.ValidateBinding(CaptureType.Gif, service.GetStopBinding());
+
+        Assert.Equal(HotKeyValidationError.StopRecordingConflict, result.Error);
+    }
+
+    [Fact]
+    public void ValidateBinding_AllowsCurrentBindingAndUnusedChord()
+    {
+        var service = CreateService();
+
+        Assert.True(service.ValidateBinding(
+            CaptureType.Screenshot,
+            service.GetBinding(CaptureType.Screenshot)).IsValid);
+        Assert.True(service.ValidateBinding(
+            CaptureType.Screenshot,
+            new HotKeyDefinition(HotKeyModifiers.Alt, 0x41)).IsValid);
+    }
+
     private static IHotKeyService CreateService()
     {
         var settings = new CaptureSettings(new TestSettingsService());

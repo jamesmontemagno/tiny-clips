@@ -331,9 +331,11 @@ public partial class App : Application
     /// </summary>
     private async Task BeginCaptureAsync(CaptureType type, bool abortIfRecording = false)
     {
-        // Create a CancellationTokenSource for this capture flow so that
-        // StopActiveRecordingAsync / DiscardActiveRecordingAsync can abort a pending
-        // countdown before recording starts.
+        if (_captureFlowCts is not null)
+        {
+            return;
+        }
+
         var captureFlowCts = new CancellationTokenSource();
         _captureFlowCts = captureFlowCts;
         try
@@ -407,6 +409,7 @@ public partial class App : Application
             switch (type)
             {
                 case CaptureType.Screenshot:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     var screenshots = Services.GetRequiredService<IScreenshotService>();
                     var path = await screenshots.CaptureTargetAsync(selection.Target, selection.Region);
                     await CopyToClipboardAsync(path, CaptureType.Screenshot);
@@ -423,6 +426,7 @@ public partial class App : Application
                     break;
 
                 case CaptureType.Video:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Video;
@@ -431,12 +435,14 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Video, selection);
                     }
-                    await Services.GetRequiredService<IVideoRecordingService>().StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes);
+                    await Services.GetRequiredService<IVideoRecordingService>()
+                        .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
                     break;
 
                 case CaptureType.Gif:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Gif;
                     ShowRecordingRegionIndicator(selection);
@@ -444,7 +450,8 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Gif, selection);
                     }
-                    await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
+                    await Services.GetRequiredService<IGifRecordingService>()
+                        .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
                     break;
@@ -452,8 +459,6 @@ public partial class App : Application
         }
         catch (OperationCanceledException)
         {
-            // The capture flow was intentionally cancelled (e.g. stop hotkey pressed
-            // during countdown). Clean up pre-recording UI and return to idle.
             CloseRecordingRegionIndicator();
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
@@ -868,9 +873,6 @@ public partial class App : Application
             }
             else
             {
-                // Nothing is actively recording — abort any pending pre-recording flow
-                // (e.g. a countdown in progress) so the capture outline is dismissed
-                // immediately instead of waiting for the countdown to finish.
                 CancelCaptureFlow();
             }
         }
@@ -1003,9 +1005,6 @@ public partial class App : Application
             }
             else
             {
-                // Nothing is actively recording — abort any pending pre-recording flow
-                // (e.g. a countdown in progress) so the capture outline is dismissed
-                // immediately instead of waiting for the countdown to finish.
                 CancelCaptureFlow();
             }
         }
@@ -1076,17 +1075,9 @@ public partial class App : Application
         window?.ClosePanel();
     }
 
-    /// <summary>
-    /// Cancels any in-progress pre-recording capture flow (e.g. a countdown), causing
-    /// <see cref="BeginCaptureAsync"/> to abort cleanly and dismiss any capture UI.
-    /// Safe to call when no capture flow is active (no-op).
-    /// </summary>
     private void CancelCaptureFlow()
     {
-        var cts = _captureFlowCts;
-        _captureFlowCts = null;
-        cts?.Cancel();
-        cts?.Dispose();
+        _captureFlowCts?.Cancel();
     }
 
     private void ShowRecordingIndicator(CaptureType type, TargetSelection selection, bool stopEnabled = true, bool startTimer = true)
@@ -1417,11 +1408,15 @@ public partial class App : Application
         }
     }
 
-    private void RegisterGlobalHotKeys()
+    private GlobalHotKeyRegistrationResult RegisterGlobalHotKeys()
     {
         if (_dispatcher is null)
         {
-            return;
+            return GlobalHotKeyRegistrationResult.Failed(
+                new GlobalHotKeyRegistrationFailure(
+                    "TinyClips hotkey service",
+                    0,
+                    "The UI dispatcher is not available."));
         }
 
         // Allow re-registration after the user edits a shortcut: tear down the old manager first.
@@ -1430,37 +1425,79 @@ public partial class App : Application
         try
         {
             var hotKeys = Services.GetRequiredService<IHotKeyService>();
-            _hotKeyManager = new GlobalHotKeyManager(_dispatcher);
+            var manager = new GlobalHotKeyManager(_dispatcher);
 
             var screenshot = hotKeys.GetBinding(CaptureType.Screenshot);
-            _hotKeyManager.Add(screenshot.ModifiersValue, screenshot.VirtualKey, () => _ = CaptureScreenshotAsync());
+            manager.Add(
+                $"Screenshot ({screenshot.DisplayString})",
+                screenshot.ModifiersValue,
+                screenshot.VirtualKey,
+                () => _ = CaptureScreenshotAsync());
 
             var videoBinding = hotKeys.GetBinding(CaptureType.Video);
-            _hotKeyManager.Add(videoBinding.ModifiersValue, videoBinding.VirtualKey, () => _ = ToggleVideoAsync());
+            manager.Add(
+                $"Record video ({videoBinding.DisplayString})",
+                videoBinding.ModifiersValue,
+                videoBinding.VirtualKey,
+                () => _ = ToggleVideoAsync());
 
             var gifBinding = hotKeys.GetBinding(CaptureType.Gif);
-            _hotKeyManager.Add(gifBinding.ModifiersValue, gifBinding.VirtualKey, () => _ = ToggleGifAsync());
+            manager.Add(
+                $"Record GIF ({gifBinding.DisplayString})",
+                gifBinding.ModifiersValue,
+                gifBinding.VirtualKey,
+                () => _ = ToggleGifAsync());
 
             var stopBinding = hotKeys.GetStopBinding();
-            _hotKeyManager.Add(stopBinding.ModifiersValue, stopBinding.VirtualKey, () => _ = StopActiveRecordingAsync());
+            manager.Add(
+                $"Stop recording ({stopBinding.DisplayString})",
+                stopBinding.ModifiersValue,
+                stopBinding.VirtualKey,
+                () => _ = StopActiveRecordingAsync());
 
-            _hotKeyManager.Start();
+            var result = manager.Start();
+            if (!result.IsSuccess)
+            {
+                foreach (var failure in result.Failures)
+                {
+                    Debug.WriteLine(
+                        $"Global hotkey registration failed for {failure.Name}: " +
+                        $"{failure.Message} Win32 error {failure.NativeErrorCode}.");
+                }
+
+                // Keep any other shortcuts that Windows accepted active. A Settings rollback
+                // will dispose this manager before restoring the previous complete set.
+                _hotKeyManager = manager;
+                return result;
+            }
+
+            _hotKeyManager = manager;
+            return result;
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Global hotkey registration failed: {ex}");
+            return GlobalHotKeyRegistrationResult.Failed(
+                new GlobalHotKeyRegistrationFailure(
+                    "TinyClips hotkey service",
+                    ex.HResult,
+                    ex.Message));
         }
     }
 
     /// <summary>Re-registers the global hotkeys after the user edits a shortcut in Settings.</summary>
-    public void ReapplyGlobalHotKeys()
+    internal GlobalHotKeyRegistrationResult ReapplyGlobalHotKeys()
     {
-        if (_dispatcher is null)
+        if (_dispatcher is null || !_dispatcher.HasThreadAccess)
         {
-            return;
+            return GlobalHotKeyRegistrationResult.Failed(
+                new GlobalHotKeyRegistrationFailure(
+                    "TinyClips hotkey service",
+                    0,
+                    "Hotkeys can only be updated from the TinyClips UI thread."));
         }
 
-        _dispatcher.TryEnqueue(RegisterGlobalHotKeys);
+        return RegisterGlobalHotKeys();
     }
 
     private static void RevealInExplorer(string path)
