@@ -5,8 +5,16 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- **Windows keyboard shortcut changes now provide clear feedback and reliably take effect** — Settings now uses a focused shortcut recorder with a live chord preview and explicit Save/Cancel actions, rejects incomplete or duplicate bindings (including the fixed Stop recording shortcut), reports shortcuts owned by Windows or another app, and restores the previous binding if registration fails. Native hotkeys are fully unregistered before replacement so stale registrations no longer prevent changes from sticking.
+
 ### Added
+- **In-app update checks with guided upgrade actions (Windows Direct build)** — Tiny Clips can now check GitHub Releases for newer stable versions once per launch and via a new tray **Check for updates** action. Settings → About now shows update status and, when a newer version exists, provides guided actions to copy `winget upgrade Refractored.TinyClips` and open the latest GitHub Release page.
 - Added in-app **File a Bug** entry points in both the tray popup and Settings → About. Both now open a lightweight two-field bug form (title + what happened) and then launch a pre-filled GitHub issue using the new quick bug template.
+- Screenshot editor saves now follow a document-style workflow on Windows: **Save** overwrites the current file, **Save As** writes a new file, **Open Folder** reveals the active destination, and **Close** dismisses the editor without forcing an export.
+
+### Fixed
+- Fixed canceling a pre-recording countdown with the stop hotkey leaving the region indicator on screen.
 
 ### Internal
 - **Settings window is now modular and lazy-loaded** — the ~2,000-line `SettingsWindow.xaml` monolith is split into nine focused `UserControl` sections (General, Analytics, Screenshot, Video, GIF, Mouse Clicks, Branding, Hotkeys, About) under `Settings/Sections`, each constructed only on its first navigation and cached afterwards. `SettingsWindow` keeps the title bar, `NavigationView`, and shared `SettingsViewModel`, but now only realizes the General section at startup instead of all nine. Capture-analytics refresh and microphone/webcam enumeration are deferred until the Analytics/Video sections are first opened instead of running eagerly for every Settings window. Replaced the single one-shot "ready" flag with a re-entrant, reference-counted persistence-suppression scope so compiled `x:Bind` TwoWay controls in a lazily realized section can't write back transient initial values over previously persisted settings. The suppression scope now completes via the section's `Loaded` event with a dispatcher-queue fallback, so persistence can never get stuck suppressed even if a section is swapped out of view before its first layout pass (rapid Settings navigation) or the window closes mid-realization. No behavior, bindings, or visuals changed for users.

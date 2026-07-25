@@ -32,12 +32,33 @@
             x:Name="DirectBuildUpdatesCard"
             Visibility="Collapsed"
             Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="4">
+            <StackPanel Spacing="8">
                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Updates (Direct build)" />
                 <TextBlock
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="This build updates through winget (`winget upgrade Refractored.TinyClips`). Tiny Clips does not include an in-app updater." />
+                    Text="This build updates through winget (`winget upgrade Refractored.TinyClips`) or by downloading the latest GitHub release." />
+                <TextBlock
+                    x:Name="UpdateStatusText"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Check for updates to see whether a newer version is available." />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        x:Name="CheckForUpdatesButton"
+                        Content="Check for updates"
+                        Click="OnCheckForUpdatesClicked" />
+                    <Button
+                        x:Name="CopyWingetCommandButton"
+                        Visibility="Collapsed"
+                        Content="Copy winget command"
+                        Click="OnCopyWingetCommandClicked" />
+                    <Button
+                        x:Name="OpenLatestReleaseButton"
+                        Visibility="Collapsed"
+                        Content="Open latest release"
+                        Click="OnOpenLatestReleaseClicked" />
+                </StackPanel>
             </StackPanel>
         </Border>
 

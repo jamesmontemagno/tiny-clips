@@ -27,8 +27,10 @@ function Get-PlistValue {
         [string]$KeyName
     )
 
-    [xml]$plist = Get-Content -Raw -Path $Path
-    $dict = $plist.plist.dict
+    $plist = New-Object System.Xml.XmlDocument
+    $plist.XmlResolver = $null
+    $plist.LoadXml([System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8))
+    $dict = $plist.SelectSingleNode("/plist/dict")
     if (-not $dict) {
         throw "Could not parse plist dict in $Path"
     }
@@ -161,7 +163,7 @@ if (-not (Test-Path $changelogPath)) {
     throw "Changelog not found: $changelogPath"
 }
 
-$originalLines = Get-Content -Path $changelogPath
+$originalLines = [System.IO.File]::ReadAllLines($changelogPath, [System.Text.Encoding]::UTF8)
 $unreleasedIndex = [Array]::IndexOf($originalLines, $unreleasedLine)
 if ($unreleasedIndex -lt 0) {
     throw "Could not find expected Unreleased heading in $changelogPath"
@@ -190,7 +192,8 @@ if ($DryRun) {
     exit 0
 }
 
-Set-Content -Path $changelogPath -Value ($updatedLines -join "`n") -NoNewline
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($changelogPath, ($updatedLines -join "`n"), $utf8NoBom)
 
 git add $changelogPath
 git commit -m @"
@@ -201,7 +204,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 
 $tagMessageFile = New-TemporaryFile
 try {
-    Set-Content -Path $tagMessageFile -Value $tagMessage -NoNewline
+    [System.IO.File]::WriteAllText($tagMessageFile, $tagMessage, $utf8NoBom)
     git tag -a $Version -F $tagMessageFile
 } finally {
     Remove-Item -Force $tagMessageFile -ErrorAction SilentlyContinue

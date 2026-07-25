@@ -23,10 +23,12 @@ public sealed partial class ScreenshotEditorWindow : Window
 {
     private readonly string _filePath;
     private readonly EditorController _controller;
+    private string _activeSavePath;
 
     public ScreenshotEditorWindow(string filePath)
     {
         _filePath = filePath;
+        _activeSavePath = filePath;
 
         InitializeComponent();
 
@@ -165,32 +167,15 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private async void OnSave(object sender, RoutedEventArgs e)
     {
-        if (_controller.Bitmap is null)
-        {
-            return;
-        }
-
-        // Only close once the overwrite is confirmed to have succeeded — a failed encode/write
-        // must never look like a successful save, and the window must stay open so the user can
-        // retry (e.g. after freeing disk space or closing the file elsewhere).
-        var saved = await EncodeToFileAsync(_filePath);
-        if (saved)
-        {
-            Close();
-        }
+        await SaveToPathAsync(_activeSavePath, updateActiveSavePath: true);
     }
 
     private async void OnSaveCopy(object sender, RoutedEventArgs e)
     {
-        if (_controller.Bitmap is null)
-        {
-            return;
-        }
-
         var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary };
         picker.FileTypeChoices.Add("PNG image", new[] { ".png" });
         picker.FileTypeChoices.Add("JPEG image", new[] { ".jpg" });
-        picker.SuggestedFileName = System.IO.Path.GetFileNameWithoutExtension(_filePath) + " (edited)";
+        picker.SuggestedFileName = System.IO.Path.GetFileNameWithoutExtension(_activeSavePath) + " (edited)";
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
@@ -198,9 +183,54 @@ public sealed partial class ScreenshotEditorWindow : Window
         var file = await picker.PickSaveFileAsync();
         if (file is not null)
         {
-            await EncodeToFileAsync(file.Path);
+            await SaveToPathAsync(file.Path, updateActiveSavePath: true);
         }
     }
+
+    private async Task<bool> SaveToPathAsync(string path, bool updateActiveSavePath)
+    {
+        if (_controller.Bitmap is null)
+        {
+            return false;
+        }
+
+        var saved = await EncodeToFileAsync(path);
+        if (saved)
+        {
+            if (updateActiveSavePath)
+            {
+                _activeSavePath = path;
+            }
+
+            App.ShowSaveNotification(path);
+        }
+
+        return saved;
+    }
+
+    private void OnOpenSaveFolder(object sender, RoutedEventArgs e)
+    {
+        var folder = System.IO.Path.GetDirectoryName(_activeSavePath);
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = folder,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to open save folder: {ex}");
+        }
+    }
+
+    private void OnClose(object sender, RoutedEventArgs e) => Close();
 
     private async void OnCopy(object sender, RoutedEventArgs e)
     {

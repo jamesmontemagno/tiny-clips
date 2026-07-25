@@ -73,6 +73,13 @@ self.contentView = hostingView
 
 Keep SwiftUI views as `private struct` inside the window file.
 
+## macOS Menu Bar Integration
+
+- When an editor or trimmer action maps to a familiar macOS command, expose it in the menu bar as well as the visible toolbar or footer control.
+- Use focused SwiftUI `Commands` for `WindowGroup` scenes. For AppKit `NSWindow` hosts, use targetless `NSMenuItem` actions resolved through the key window's responder chain and validate items against the active window's available actions.
+- Keep export commands explicit when a flow has multiple outputs: use titles such as `Save Frame`, `Save Trimmed`, or `Save All Frames` instead of an ambiguous generic `Save`.
+- Keep menu commands scoped to the active editor or trimmer and disabled when that action is unavailable.
+
 ## Keyboard Interactivity (Picker Panels)
 
 Panels that need keyboard input must:

@@ -97,13 +97,25 @@
                     Click="OnSave"
                     Icon="Save"
                     Label="Save"
-                    ToolTipService.ToolTip="Save" />
+                    ToolTipService.ToolTip="Save the edited image to the current file" />
                 <AppBarButton
-                    AutomationProperties.AutomationId="EditorSaveCopyButton"
+                    AutomationProperties.AutomationId="EditorSaveAsButton"
                     Click="OnSaveCopy"
                     Icon="SaveLocal"
-                    Label="Save a copy"
-                    ToolTipService.ToolTip="Save a copy" />
+                    Label="Save As"
+                    ToolTipService.ToolTip="Save the edited image to a new file" />
+                <AppBarButton
+                    AutomationProperties.AutomationId="EditorOpenFolderButton"
+                    Click="OnOpenSaveFolder"
+                    Icon="Folder"
+                    Label="Open Folder"
+                    ToolTipService.ToolTip="Open the current save folder" />
+                <AppBarButton
+                    AutomationProperties.AutomationId="EditorCloseButton"
+                    Click="OnClose"
+                    Icon="Cancel"
+                    Label="Close"
+                    ToolTipService.ToolTip="Close the editor" />
             </CommandBar>
         </Border>
 

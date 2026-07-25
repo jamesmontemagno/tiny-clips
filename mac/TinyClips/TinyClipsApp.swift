@@ -13,6 +13,12 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+struct AppWindowCommands: Commands {
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {}
+    }
+}
+
 @main
 struct TinyClipsApp: App {
     @NSApplicationDelegateAdaptor(TinyClipsAppDelegate.self) private var appDelegate
@@ -20,6 +26,9 @@ struct TinyClipsApp: App {
     @ObservedObject private var sparkleController = SparkleController.shared
 
     init() {
+        _ = try? TinyClipsTemporaryFiles.removeStaleFiles(
+            olderThan: Date().addingTimeInterval(-24 * 60 * 60)
+        )
         _ = SparkleController.shared
         NSApplication.shared.setActivationPolicy(CaptureSettings.shared.showInDock ? .regular : .accessory)
     }
@@ -35,11 +44,17 @@ struct TinyClipsApp: App {
             clipsManagerRootView()
         }
         .defaultSize(width: 980, height: 540)
+        .commands {
+            AppWindowCommands()
+        }
 
         Window("Tiny Clips Settings", id: "settings-window") {
             SettingsView()
         }
         .defaultSize(width: 720, height: 460)
+        .commands {
+            AppWindowCommands()
+        }
 
         ScreenshotEditorScene()
     }

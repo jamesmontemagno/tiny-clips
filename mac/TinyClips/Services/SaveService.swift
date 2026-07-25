@@ -120,6 +120,16 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 #endif
     }
 
+    func outputDirectoryURL(for type: CaptureType) -> URL {
+#if APPSTORE
+        return appStoreOutputDirectoryURL(for: type)
+#else
+        let directory = UserDefaults.standard.string(forKey: "saveDirectory")
+            ?? (NSHomeDirectory() + "/Desktop")
+        return URL(fileURLWithPath: directory, isDirectory: true)
+#endif
+    }
+
     func generatedFileName(for type: CaptureType, fileExtension: String, date: Date = Date()) -> String {
         let settings = CaptureSettings.shared
         let rawTemplate = settings.fileNameTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -186,7 +196,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     }
 
 #if APPSTORE
-    private func outputDirectoryURL(for type: CaptureType) -> URL {
+    private func appStoreOutputDirectoryURL(for type: CaptureType) -> URL {
         if let customDirectory = customDirectoryURLFromBookmark() {
             return customDirectory
         }

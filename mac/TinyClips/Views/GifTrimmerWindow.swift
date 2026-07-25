@@ -15,6 +15,7 @@ struct GifCaptureData {
 class GifTrimmerWindow: NSWindow, NSWindowDelegate {
     private var onComplete: ((URL?) -> Void)?
     private var didComplete = false
+    private let menuActions = TrimmerMenuActions()
 
     convenience init(gifData: GifCaptureData, outputURL: URL, onComplete: @escaping (URL?) -> Void) {
         self.init(
@@ -29,10 +30,16 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
         self.delegate = self
         self.minSize = NSSize(width: 560, height: 420)
         self.center()
+        TrimmerMenuCommands.installIfNeeded()
 
-        let trimmerView = GifTrimmerView(gifData: gifData, outputURL: outputURL) { [weak self] resultURL in
-            self?.completeWith(resultURL)
-        }
+        let trimmerView = GifTrimmerView(
+            gifData: gifData,
+            outputURL: outputURL,
+            menuActions: menuActions,
+            onDone: { [weak self] resultURL in
+                self?.completeWith(resultURL)
+            }
+        )
         self.contentView = NSHostingView(rootView: trimmerView)
     }
 
@@ -48,6 +55,28 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
         completeWith(nil)
         return true
     }
+
+    @objc func trimmerSaveFrame(_ sender: Any?) { menuActions.saveFrame?() }
+    @objc func trimmerCopyFrame(_ sender: Any?) { menuActions.copyFrame?() }
+    @objc func trimmerSaveTrimmed(_ sender: Any?) { menuActions.saveTrimmed?() }
+    @objc func trimmerSaveAllFrames(_ sender: Any?) { menuActions.saveAllFrames?() }
+    @objc func trimmerTogglePlayback(_ sender: Any?) { menuActions.togglePlayback?() }
+    @objc func trimmerPreviousFrame(_ sender: Any?) { menuActions.previousFrame?() }
+    @objc func trimmerNextFrame(_ sender: Any?) { menuActions.nextFrame?() }
+
+    @objc func copy(_ sender: Any?) {
+        menuActions.copyFrame?()
+    }
+
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == NSSelectorFromString("copy:") {
+            return menuActions.copyFrame != nil
+        }
+        guard menuActions.handles(menuItem.action) else {
+            return super.validateMenuItem(menuItem)
+        }
+        return menuActions.canPerform(menuItem.action)
+    }
 }
 
 // MARK: - Trimmer View
@@ -55,14 +84,16 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
 private struct GifTrimmerView: View {
     let gifData: GifCaptureData
     let outputURL: URL
+    let menuActions: TrimmerMenuActions
     let onDone: (URL?) -> Void
 
     @StateObject private var viewModel: GifTrimmerViewModel
     @State private var isSaving = false
 
-    init(gifData: GifCaptureData, outputURL: URL, onDone: @escaping (URL?) -> Void) {
+    init(gifData: GifCaptureData, outputURL: URL, menuActions: TrimmerMenuActions, onDone: @escaping (URL?) -> Void) {
         self.gifData = gifData
         self.outputURL = outputURL
+        self.menuActions = menuActions
         self.onDone = onDone
         _viewModel = StateObject(wrappedValue: GifTrimmerViewModel(gifData: gifData))
     }
@@ -255,6 +286,8 @@ private struct GifTrimmerView: View {
             .padding()
         }
         .frame(minWidth: 560, minHeight: 420)
+        .onAppear(perform: configureMenuActions)
+        .onDisappear(perform: menuActions.clear)
         .onChange(of: viewModel.speed) { _, _ in
             viewModel.restartPlaybackTimerIfNeeded()
         }
@@ -264,6 +297,16 @@ private struct GifTrimmerView: View {
                 ProgressOverlayView(title: "Saving…")
             }
         }
+    }
+
+    private func configureMenuActions() {
+        menuActions.saveFrame = saveCurrentFrame
+        menuActions.copyFrame = copyCurrentFrame
+        menuActions.saveTrimmed = saveTrimmedGif
+        menuActions.saveAllFrames = saveAllFrames
+        menuActions.togglePlayback = viewModel.togglePlayback
+        menuActions.previousFrame = { viewModel.stepFrame(by: -1) }
+        menuActions.nextFrame = { viewModel.stepFrame(by: 1) }
     }
 
     private func saveTrimmedGif() {

@@ -29,6 +29,7 @@ public partial class App : Application
     private const string GlyphVideo = "\uE714";
     private const string GlyphGif = "\uE8B9";
     private const string GlyphStop = "\uE71A";
+    private const string GlyphCheckForUpdates = "\uE895";
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
@@ -41,6 +42,7 @@ public partial class App : Application
     private RecordingIndicatorWindow? _recordingIndicator;
     private ProcessingIndicatorWindow? _processingIndicator;
     private RegionIndicatorWindow? _recordingRegionIndicator;
+    private CancellationTokenSource? _captureFlowCts;
     private DispatcherTimer? _recordingTimer;
     private DateTime _recordingStartedUtc;
     private TimeSpan _recordingElapsedBeforePause;
@@ -78,6 +80,9 @@ public partial class App : Application
         RegisterGlobalHotKeys();
         ShowOnboardingIfNeeded();
         HandleFileActivation();
+#if !TINYCLIPS_STORE_BUILD
+        _ = RunStartupUpdateCheckAsync();
+#endif
     }
 
     /// <summary>
@@ -233,6 +238,9 @@ public partial class App : Application
         };
         footer.Children.Add(CreateFooterButton("\uE713", "Settings", new RelayCommand(OpenSettingsWindow), Dismiss));
         footer.Children.Add(CreateFooterButton("\uE897", "Guide", new RelayCommand(OpenGuideWindow), Dismiss));
+#if !TINYCLIPS_STORE_BUILD
+        footer.Children.Add(CreateFooterButton(GlyphCheckForUpdates, "Check for updates", new AsyncRelayCommand(CheckForUpdatesFromTrayAsync), Dismiss));
+#endif
         footer.Children.Add(CreateFooterButton("\uEA39", "File a Bug", new AsyncRelayCommand(() => OpenQuickBugReportFromTrayAsync(root.XamlRoot)), Dismiss));
         footer.Children.Add(CreateFooterButton("\uE7E8", "Exit", new RelayCommand(() => _ = ExitApplicationAsync()), Dismiss));
         root.Children.Add(footer);
@@ -323,6 +331,13 @@ public partial class App : Application
     /// </summary>
     private async Task BeginCaptureAsync(CaptureType type, bool abortIfRecording = false)
     {
+        if (_captureFlowCts is not null)
+        {
+            return;
+        }
+
+        var captureFlowCts = new CancellationTokenSource();
+        _captureFlowCts = captureFlowCts;
         try
         {
             // Give the tray menu a moment to dismiss so it isn't part of the capture.
@@ -383,7 +398,7 @@ public partial class App : Application
                         regionIndicator.Show(ToVirtualDesktopRegion(selection.Target, region));
                     }
 
-                    await CountdownWindow.RunAsync(pick.CountdownDuration, selection.Monitor);
+                    await CountdownWindow.RunAsync(pick.CountdownDuration, selection.Monitor, captureFlowCts.Token);
                 }
                 finally
                 {
@@ -394,6 +409,7 @@ public partial class App : Application
             switch (type)
             {
                 case CaptureType.Screenshot:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     var screenshots = Services.GetRequiredService<IScreenshotService>();
                     var path = await screenshots.CaptureTargetAsync(selection.Target, selection.Region);
                     await CopyToClipboardAsync(path, CaptureType.Screenshot);
@@ -410,6 +426,7 @@ public partial class App : Application
                     break;
 
                 case CaptureType.Video:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Video;
@@ -418,12 +435,14 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Video, selection);
                     }
-                    await Services.GetRequiredService<IVideoRecordingService>().StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes);
+                    await Services.GetRequiredService<IVideoRecordingService>()
+                        .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
                     break;
 
                 case CaptureType.Gif:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Gif;
                     ShowRecordingRegionIndicator(selection);
@@ -431,13 +450,21 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Gif, selection);
                     }
-                    await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
+                    await Services.GetRequiredService<IGifRecordingService>()
+                        .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture();
                     UpdateRecordingState();
                     break;
             }
         }
-
+        catch (OperationCanceledException)
+        {
+            CloseRecordingRegionIndicator();
+            HideRecordingIndicatorIfNotRecording();
+            _activeRecordingSelection = null;
+            _activeRecordingType = null;
+            UpdateRecordingState();
+        }
         catch (Exception ex)
         {
             Debug.WriteLine($"Capture failed: {ex}");
@@ -446,6 +473,15 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             HideRecordingIndicatorIfNotRecording();
+        }
+        finally
+        {
+            if (ReferenceEquals(_captureFlowCts, captureFlowCts))
+            {
+                _captureFlowCts = null;
+            }
+
+            captureFlowCts.Dispose();
         }
     }
 
@@ -733,6 +769,51 @@ public partial class App : Application
         }
     }
 
+    private async Task RunStartupUpdateCheckAsync()
+    {
+        var result = await CheckForUpdatesAsync(isManualCheck: false);
+        if (result.Status == AppUpdateStatus.UpdateAvailable)
+        {
+            ShowUpdateCheckNotification(
+                "Update available",
+                $"Tiny Clips {result.LatestVersion} is available. Open Settings > About to update.");
+        }
+    }
+
+    private async Task CheckForUpdatesFromTrayAsync()
+    {
+        var result = await CheckForUpdatesAsync(isManualCheck: true);
+        switch (result.Status)
+        {
+            case AppUpdateStatus.UpToDate:
+                ShowUpdateCheckNotification("You're up to date", $"Tiny Clips {result.CurrentVersion} is current.");
+                break;
+            case AppUpdateStatus.UpdateAvailable:
+                ShowUpdateCheckNotification("Update available", $"Tiny Clips {result.LatestVersion} is available. Open Settings > About to update.");
+                break;
+            default:
+                ShowUpdateCheckNotification("Couldn't check for updates", result.Message ?? "Please try again later.");
+                break;
+        }
+    }
+
+    private async Task<AppUpdateCheckResult> CheckForUpdatesAsync(bool isManualCheck)
+    {
+        var currentVersion = AppVersionInfo.GetCurrentVersion();
+        try
+        {
+            var updateService = Services.GetRequiredService<IAppUpdateService>();
+            var result = await updateService.CheckForUpdatesAsync(currentVersion);
+            Debug.WriteLine($"Update check ({(isManualCheck ? "manual" : "startup")}): {result.Status}, current={result.CurrentVersion}, latest={result.LatestVersion}");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Update check ({(isManualCheck ? "manual" : "startup")}) failed unexpectedly: {ex}");
+            return AppUpdateCheckResult.Failed(currentVersion, "Unexpected error while checking for updates.");
+        }
+    }
+
     private void OnRecordingCompleted(object? sender, string? path)
     {
         _dispatcher?.TryEnqueue(async () =>
@@ -789,6 +870,10 @@ public partial class App : Application
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Gif, _activeRecordingSelection);
                 await gif.StopAsync();
+            }
+            else
+            {
+                CancelCaptureFlow();
             }
         }
         catch (Exception ex)
@@ -918,6 +1003,10 @@ public partial class App : Application
             {
                 await gif.CancelAsync();
             }
+            else
+            {
+                CancelCaptureFlow();
+            }
         }
         catch (Exception ex)
         {
@@ -984,6 +1073,11 @@ public partial class App : Application
         var window = _recordingRegionIndicator;
         _recordingRegionIndicator = null;
         window?.ClosePanel();
+    }
+
+    private void CancelCaptureFlow()
+    {
+        _captureFlowCts?.Cancel();
     }
 
     private void ShowRecordingIndicator(CaptureType type, TargetSelection selection, bool stopEnabled = true, bool startTimer = true)
@@ -1275,6 +1369,23 @@ public partial class App : Application
         }
     }
 
+    private static void ShowUpdateCheckNotification(string title, string details)
+    {
+        try
+        {
+            var notification = new AppNotificationBuilder()
+                .AddText(title)
+                .AddText(details)
+                .BuildNotification();
+
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show update notification: {ex}");
+        }
+    }
+
     /// <summary>
     /// Shows a "Couldn't save" toast when a file write (e.g. the screenshot editor's Save /
     /// Save a copy) fails. Mirrors <see cref="ShowClipboardFailureNotification"/> so save
@@ -1297,11 +1408,15 @@ public partial class App : Application
         }
     }
 
-    private void RegisterGlobalHotKeys()
+    private GlobalHotKeyRegistrationResult RegisterGlobalHotKeys()
     {
         if (_dispatcher is null)
         {
-            return;
+            return GlobalHotKeyRegistrationResult.Failed(
+                new GlobalHotKeyRegistrationFailure(
+                    "TinyClips hotkey service",
+                    0,
+                    "The UI dispatcher is not available."));
         }
 
         // Allow re-registration after the user edits a shortcut: tear down the old manager first.
@@ -1310,37 +1425,79 @@ public partial class App : Application
         try
         {
             var hotKeys = Services.GetRequiredService<IHotKeyService>();
-            _hotKeyManager = new GlobalHotKeyManager(_dispatcher);
+            var manager = new GlobalHotKeyManager(_dispatcher);
 
             var screenshot = hotKeys.GetBinding(CaptureType.Screenshot);
-            _hotKeyManager.Add(screenshot.ModifiersValue, screenshot.VirtualKey, () => _ = CaptureScreenshotAsync());
+            manager.Add(
+                $"Screenshot ({screenshot.DisplayString})",
+                screenshot.ModifiersValue,
+                screenshot.VirtualKey,
+                () => _ = CaptureScreenshotAsync());
 
             var videoBinding = hotKeys.GetBinding(CaptureType.Video);
-            _hotKeyManager.Add(videoBinding.ModifiersValue, videoBinding.VirtualKey, () => _ = ToggleVideoAsync());
+            manager.Add(
+                $"Record video ({videoBinding.DisplayString})",
+                videoBinding.ModifiersValue,
+                videoBinding.VirtualKey,
+                () => _ = ToggleVideoAsync());
 
             var gifBinding = hotKeys.GetBinding(CaptureType.Gif);
-            _hotKeyManager.Add(gifBinding.ModifiersValue, gifBinding.VirtualKey, () => _ = ToggleGifAsync());
+            manager.Add(
+                $"Record GIF ({gifBinding.DisplayString})",
+                gifBinding.ModifiersValue,
+                gifBinding.VirtualKey,
+                () => _ = ToggleGifAsync());
 
             var stopBinding = hotKeys.GetStopBinding();
-            _hotKeyManager.Add(stopBinding.ModifiersValue, stopBinding.VirtualKey, () => _ = StopActiveRecordingAsync());
+            manager.Add(
+                $"Stop recording ({stopBinding.DisplayString})",
+                stopBinding.ModifiersValue,
+                stopBinding.VirtualKey,
+                () => _ = StopActiveRecordingAsync());
 
-            _hotKeyManager.Start();
+            var result = manager.Start();
+            if (!result.IsSuccess)
+            {
+                foreach (var failure in result.Failures)
+                {
+                    Debug.WriteLine(
+                        $"Global hotkey registration failed for {failure.Name}: " +
+                        $"{failure.Message} Win32 error {failure.NativeErrorCode}.");
+                }
+
+                // Keep any other shortcuts that Windows accepted active. A Settings rollback
+                // will dispose this manager before restoring the previous complete set.
+                _hotKeyManager = manager;
+                return result;
+            }
+
+            _hotKeyManager = manager;
+            return result;
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Global hotkey registration failed: {ex}");
+            return GlobalHotKeyRegistrationResult.Failed(
+                new GlobalHotKeyRegistrationFailure(
+                    "TinyClips hotkey service",
+                    ex.HResult,
+                    ex.Message));
         }
     }
 
     /// <summary>Re-registers the global hotkeys after the user edits a shortcut in Settings.</summary>
-    public void ReapplyGlobalHotKeys()
+    internal GlobalHotKeyRegistrationResult ReapplyGlobalHotKeys()
     {
-        if (_dispatcher is null)
+        if (_dispatcher is null || !_dispatcher.HasThreadAccess)
         {
-            return;
+            return GlobalHotKeyRegistrationResult.Failed(
+                new GlobalHotKeyRegistrationFailure(
+                    "TinyClips hotkey service",
+                    0,
+                    "Hotkeys can only be updated from the TinyClips UI thread."));
         }
 
-        _dispatcher.TryEnqueue(RegisterGlobalHotKeys);
+        return RegisterGlobalHotKeys();
     }
 
     private static void RevealInExplorer(string path)

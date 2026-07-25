@@ -5,9 +5,109 @@ import AVKit
 import ImageIO
 import Carbon.HIToolbox
 
+final class TrimmerMenuActions {
+    var saveFrame: (() -> Void)?
+    var copyFrame: (() -> Void)?
+    var saveTrimmed: (() -> Void)?
+    var saveWithoutTrimming: (() -> Void)?
+    var saveAllFrames: (() -> Void)?
+    var togglePlayback: (() -> Void)?
+    var previousFrame: (() -> Void)?
+    var nextFrame: (() -> Void)?
+
+    func handles(_ action: Selector?) -> Bool {
+        switch action {
+        case NSSelectorFromString("trimmerSaveFrame:"),
+            NSSelectorFromString("trimmerCopyFrame:"),
+            NSSelectorFromString("trimmerSaveTrimmed:"),
+            NSSelectorFromString("trimmerSaveWithoutTrimming:"),
+            NSSelectorFromString("trimmerSaveAllFrames:"),
+            NSSelectorFromString("trimmerTogglePlayback:"),
+            NSSelectorFromString("trimmerPreviousFrame:"),
+            NSSelectorFromString("trimmerNextFrame:"):
+            return true
+        default:
+            return false
+        }
+    }
+
+    func canPerform(_ action: Selector?) -> Bool {
+        switch action {
+        case NSSelectorFromString("trimmerSaveFrame:"):
+            return saveFrame != nil
+        case NSSelectorFromString("trimmerCopyFrame:"):
+            return copyFrame != nil
+        case NSSelectorFromString("trimmerSaveTrimmed:"):
+            return saveTrimmed != nil
+        case NSSelectorFromString("trimmerSaveWithoutTrimming:"):
+            return saveWithoutTrimming != nil
+        case NSSelectorFromString("trimmerSaveAllFrames:"):
+            return saveAllFrames != nil
+        case NSSelectorFromString("trimmerTogglePlayback:"):
+            return togglePlayback != nil
+        case NSSelectorFromString("trimmerPreviousFrame:"):
+            return previousFrame != nil
+        case NSSelectorFromString("trimmerNextFrame:"):
+            return nextFrame != nil
+        default:
+            return false
+        }
+    }
+
+    func clear() {
+        saveFrame = nil
+        copyFrame = nil
+        saveTrimmed = nil
+        saveWithoutTrimming = nil
+        saveAllFrames = nil
+        togglePlayback = nil
+        previousFrame = nil
+        nextFrame = nil
+    }
+}
+
+enum TrimmerMenuCommands {
+    private static var isInstalled = false
+
+    static func installIfNeeded() {
+        guard !isInstalled,
+              let mainMenu = NSApp.mainMenu else {
+            return
+        }
+
+        let trimMenu = NSMenu(title: "Trim")
+        trimMenu.addItem(menuItem("Save Frame", action: "trimmerSaveFrame:"))
+        trimMenu.addItem(menuItem("Copy Frame", action: "trimmerCopyFrame:"))
+        trimMenu.addItem(.separator())
+        trimMenu.addItem(menuItem("Save Trimmed", action: "trimmerSaveTrimmed:"))
+        trimMenu.addItem(menuItem("Save Without Trimming", action: "trimmerSaveWithoutTrimming:"))
+        trimMenu.addItem(menuItem("Save All Frames", action: "trimmerSaveAllFrames:"))
+
+        let playbackMenu = NSMenu(title: "Playback")
+        playbackMenu.addItem(menuItem("Play/Pause Preview", action: "trimmerTogglePlayback:"))
+        playbackMenu.addItem(menuItem("Previous Frame", action: "trimmerPreviousFrame:"))
+        playbackMenu.addItem(menuItem("Next Frame", action: "trimmerNextFrame:"))
+
+        let playbackItem = NSMenuItem(title: "Playback", action: nil, keyEquivalent: "")
+        playbackItem.submenu = playbackMenu
+        trimMenu.addItem(.separator())
+        trimMenu.addItem(playbackItem)
+
+        let trimItem = NSMenuItem(title: "Trim", action: nil, keyEquivalent: "")
+        trimItem.submenu = trimMenu
+        mainMenu.addItem(trimItem)
+        isInstalled = true
+    }
+
+    private static func menuItem(_ title: String, action: String) -> NSMenuItem {
+        NSMenuItem(title: title, action: NSSelectorFromString(action), keyEquivalent: "")
+    }
+}
+
 class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     private var onComplete: ((URL?) -> Void)?
     private var didComplete = false
+    private let menuActions = TrimmerMenuActions()
 
     convenience init(videoURL: URL, onComplete: @escaping (URL?) -> Void) {
         self.init(
@@ -22,10 +122,15 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         self.delegate = self
         self.minSize = NSSize(width: 680, height: 540)
         self.center()
+        TrimmerMenuCommands.installIfNeeded()
 
-        let trimmerView = VideoTrimmerView(videoURL: videoURL) { [weak self] resultURL in
-            self?.completeWith(resultURL)
-        }
+        let trimmerView = VideoTrimmerView(
+            videoURL: videoURL,
+            menuActions: menuActions,
+            onDone: { [weak self] resultURL in
+                self?.completeWith(resultURL)
+            }
+        )
         self.contentView = NSHostingView(rootView: trimmerView)
     }
 
@@ -41,20 +146,44 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         completeWith(nil)
         return true
     }
+
+    @objc func trimmerSaveFrame(_ sender: Any?) { menuActions.saveFrame?() }
+    @objc func trimmerCopyFrame(_ sender: Any?) { menuActions.copyFrame?() }
+    @objc func trimmerSaveTrimmed(_ sender: Any?) { menuActions.saveTrimmed?() }
+    @objc func trimmerSaveWithoutTrimming(_ sender: Any?) { menuActions.saveWithoutTrimming?() }
+    @objc func trimmerTogglePlayback(_ sender: Any?) { menuActions.togglePlayback?() }
+    @objc func trimmerPreviousFrame(_ sender: Any?) { menuActions.previousFrame?() }
+    @objc func trimmerNextFrame(_ sender: Any?) { menuActions.nextFrame?() }
+
+    @objc func copy(_ sender: Any?) {
+        menuActions.copyFrame?()
+    }
+
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == NSSelectorFromString("copy:") {
+            return menuActions.copyFrame != nil
+        }
+        guard menuActions.handles(menuItem.action) else {
+            return super.validateMenuItem(menuItem)
+        }
+        return menuActions.canPerform(menuItem.action)
+    }
 }
 
 // MARK: - Trimmer View
 
 private struct VideoTrimmerView: View {
     let videoURL: URL
+    let menuActions: TrimmerMenuActions
     let onDone: (URL?) -> Void
 
     @StateObject private var viewModel: TrimmerViewModel
     @State private var keyMonitor: Any?
     @State private var trimmerWindow: NSWindow?
 
-    init(videoURL: URL, onDone: @escaping (URL?) -> Void) {
+    init(videoURL: URL, menuActions: TrimmerMenuActions, onDone: @escaping (URL?) -> Void) {
         self.videoURL = videoURL
+        self.menuActions = menuActions
         self.onDone = onDone
         _viewModel = StateObject(wrappedValue: TrimmerViewModel(url: videoURL))
     }
@@ -263,8 +392,14 @@ private struct VideoTrimmerView: View {
             .padding()
         }
         .frame(minWidth: 660, minHeight: 540)
-        .onAppear(perform: installKeyMonitor)
-        .onDisappear(perform: removeKeyMonitor)
+        .onAppear {
+            configureMenuActions()
+            installKeyMonitor()
+        }
+        .onDisappear {
+            menuActions.clear()
+            removeKeyMonitor()
+        }
         .onChange(of: viewModel.speed) { _, _ in
             viewModel.applySpeedChange()
         }
@@ -274,6 +409,38 @@ private struct VideoTrimmerView: View {
                 ProgressOverlayView(title: "Saving…")
             }
         }
+    }
+
+    private func configureMenuActions() {
+        menuActions.saveFrame = { [viewModel] in
+            guard !viewModel.isExporting else { return }
+            viewModel.exportCurrentFrame()
+        }
+        menuActions.copyFrame = { [viewModel] in
+            guard !viewModel.isExporting else { return }
+            viewModel.copyCurrentFrame()
+        }
+        menuActions.saveTrimmed = { [viewModel] in
+            guard !viewModel.isExporting else { return }
+            viewModel.exportVideo(trimmed: true) { resultURL in
+                guard let resultURL else { return }
+                DispatchQueue.main.async { onDone(resultURL) }
+            }
+        }
+        menuActions.saveWithoutTrimming = { [viewModel] in
+            guard !viewModel.isExporting else { return }
+            if viewModel.removeAudio {
+                viewModel.exportVideo(trimmed: false) { resultURL in
+                    guard let resultURL else { return }
+                    DispatchQueue.main.async { onDone(resultURL) }
+                }
+            } else {
+                onDone(videoURL)
+            }
+        }
+        menuActions.togglePlayback = { [viewModel] in viewModel.previewTrimmed() }
+        menuActions.previousFrame = { [viewModel] in viewModel.stepFrame(by: -1) }
+        menuActions.nextFrame = { [viewModel] in viewModel.stepFrame(by: 1) }
     }
 
     private func formatTime(_ seconds: Double) -> String {
