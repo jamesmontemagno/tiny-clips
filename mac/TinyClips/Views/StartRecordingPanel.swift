@@ -12,7 +12,7 @@ class StartRecordingPanel: NSPanel {
         let enabled: Bool
         let deviceID: String
         let shape: String
-        let corner: String
+        var corner: String
         let size: String
     }
 
@@ -231,6 +231,13 @@ private struct StartRecordingView: View {
             }
 
             if captureType == .video {
+                if webcamEnabled {
+                    WebcamSetupPreview(deviceID: selectedWebcamID)
+                        .frame(width: 80, height: 45)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .accessibilityLabel("Webcam preview")
+                }
+
                 Button {
                     if webcamEnabled {
                         webcamEnabled = false
@@ -486,4 +493,80 @@ private struct StartRecordingView: View {
         }
     }
 
+}
+
+private struct WebcamSetupPreview: NSViewRepresentable {
+    let deviceID: String
+
+    func makeNSView(context: Context) -> WebcamSetupPreviewView {
+        WebcamSetupPreviewView(deviceID: deviceID)
+    }
+
+    func updateNSView(_ view: WebcamSetupPreviewView, context: Context) {
+        view.useCamera(deviceID: deviceID)
+    }
+
+    static func dismantleNSView(_ view: WebcamSetupPreviewView, coordinator: ()) {
+        view.stop()
+    }
+}
+
+private final class WebcamSetupPreviewView: NSView {
+    private let session = AVCaptureSession()
+    private let captureQueue = DispatchQueue(label: "com.tinyclips.webcam-setup-preview")
+    private var requestedDeviceID: String?
+    private var isStopped = false
+
+    init(deviceID: String) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.videoGravity = .resizeAspectFill
+        layer = previewLayer
+        useCamera(deviceID: deviceID)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.frame = bounds
+    }
+
+    func useCamera(deviceID: String) {
+        Task { @MainActor [weak self] in
+            guard let self, !self.isStopped else { return }
+            guard await PermissionManager.shared.requestCameraPermission(), !self.isStopped else { return }
+            captureQueue.async { [weak self] in
+                guard let self else { return }
+                guard self.requestedDeviceID != deviceID else { return }
+                self.requestedDeviceID = deviceID
+                let device = WebcamDeviceCatalog.device(for: deviceID) ?? AVCaptureDevice.default(for: .video)
+                guard let device, let input = try? AVCaptureDeviceInput(device: device) else { return }
+                self.session.beginConfiguration()
+                self.session.inputs.forEach(self.session.removeInput)
+                if self.session.canAddInput(input) {
+                    self.session.addInput(input)
+                }
+                self.session.commitConfiguration()
+                if !self.session.isRunning {
+                    self.session.startRunning()
+                }
+            }
+        }
+    }
+
+    func stop() {
+        isStopped = true
+        captureQueue.async { [weak self] in
+            guard let self else { return }
+            self.requestedDeviceID = nil
+            if self.session.isRunning {
+                self.session.stopRunning()
+            }
+        }
+    }
 }

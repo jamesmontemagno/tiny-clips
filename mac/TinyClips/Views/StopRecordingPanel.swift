@@ -1,5 +1,196 @@
 import AppKit
+import AVFoundation
 import SwiftUI
+
+final class WebcamPreviewPanel: NSPanel {
+    private let captureFrame: CGRect
+    private let onCornerChange: (String) -> Void
+    private var corner: String
+    private let margin: CGFloat
+
+    init(
+        session: AVCaptureSession,
+        selection: StartRecordingPanel.WebcamSelection,
+        region: CaptureRegion,
+        onCornerChange: @escaping (String) -> Void
+    ) {
+        let captureFrame = Self.captureFrame(for: region)
+        let margin = min(16, min(captureFrame.width, captureFrame.height) * 0.1)
+        let previewSize = Self.previewSize(for: selection, in: captureFrame, session: session, margin: margin)
+        self.captureFrame = captureFrame
+        self.corner = selection.corner
+        self.onCornerChange = onCornerChange
+        self.margin = margin
+
+        super.init(
+            contentRect: NSRect(origin: .zero, size: previewSize),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        isReleasedWhenClosed = false
+        level = .floating
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        let preview = WebcamPreviewView(session: session, size: previewSize)
+        preview.onDragEnd = { [weak self] in self?.finishDrag() }
+        let radius: CGFloat
+        switch selection.shape.lowercased() {
+        case "circle": radius = previewSize.width / 2
+        case "rounded", "roundedrectangle": radius = min(previewSize.width, previewSize.height) * 0.12
+        default: radius = 0
+        }
+        preview.layer?.cornerRadius = radius
+        preview.layer?.masksToBounds = true
+        preview.layer?.borderColor = NSColor.white.withAlphaComponent(0.8).cgColor
+        preview.layer?.borderWidth = 2
+        preview.setAccessibilityElement(true)
+        preview.setAccessibilityLabel("Webcam preview. Drag to change its corner in the recording.")
+        preview.setAccessibilityCustomActions([
+            accessibilityAction(named: "Move webcam to top left", corner: "topLeft"),
+            accessibilityAction(named: "Move webcam to top right", corner: "topRight"),
+            accessibilityAction(named: "Move webcam to bottom left", corner: "bottomLeft"),
+            accessibilityAction(named: "Move webcam to bottom right", corner: "bottomRight")
+        ])
+        contentView = preview
+
+#if DEBUG
+        assert(Self.nearestCorner(for: CGPoint(x: 9, y: 9), in: CGRect(x: 0, y: 0, width: 10, height: 10)) == "topRight")
+#endif
+    }
+
+    func show() {
+        snap(to: corner)
+        orderFront(nil)
+    }
+
+    private func finishDrag() {
+        changeCorner(to: Self.nearestCorner(
+            for: CGPoint(x: frame.midX, y: frame.midY),
+            in: captureFrame
+        ))
+    }
+
+    private func changeCorner(to corner: String) {
+        self.corner = corner
+        snap(to: corner)
+        onCornerChange(corner)
+    }
+
+    private func accessibilityAction(named name: String, corner: String) -> NSAccessibilityCustomAction {
+        NSAccessibilityCustomAction(name: name) { [weak self] in
+            guard let self else { return false }
+            self.changeCorner(to: corner)
+            return true
+        }
+    }
+
+    private func snap(to corner: String) {
+        let isLeft = corner.lowercased().hasSuffix("left")
+        let isTop = corner.lowercased().hasPrefix("top")
+        setFrameOrigin(NSPoint(
+            x: isLeft ? captureFrame.minX + margin : captureFrame.maxX - frame.width - margin,
+            y: isTop ? captureFrame.maxY - frame.height - margin : captureFrame.minY + margin
+        ))
+    }
+
+    private static func nearestCorner(for point: CGPoint, in frame: CGRect) -> String {
+        let vertical = point.y >= frame.midY ? "top" : "bottom"
+        let horizontal = point.x >= frame.midX ? "Right" : "Left"
+        return vertical + horizontal
+    }
+
+    private static func captureFrame(for region: CaptureRegion) -> CGRect {
+        guard let screen = NSScreen.screens.first(where: {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == region.displayID
+        }) else {
+            return NSScreen.main?.frame ?? .zero
+        }
+
+        return CGRect(
+            x: screen.frame.minX + region.sourceRect.minX,
+            y: screen.frame.maxY - region.sourceRect.maxY,
+            width: region.sourceRect.width,
+            height: region.sourceRect.height
+        )
+    }
+
+    private static func previewSize(
+        for selection: StartRecordingPanel.WebcamSelection,
+        in captureFrame: CGRect,
+        session: AVCaptureSession,
+        margin: CGFloat
+    ) -> CGSize {
+        let scale: CGFloat
+        switch selection.size.lowercased() {
+        case "small": scale = 0.18
+        case "large": scale = 0.30
+        default: scale = 0.24
+        }
+        let minDimension = min(captureFrame.width, captureFrame.height)
+        let aspectRatio = selection.shape.lowercased() == "circle" ? 1 : cameraAspectRatio(for: session)
+        let availableWidth = max(0, captureFrame.width - margin * 2)
+        let availableHeight = max(0, captureFrame.height - margin * 2)
+        let width = min(minDimension * scale, availableWidth, availableHeight * aspectRatio)
+        return CGSize(
+            width: width,
+            height: width / aspectRatio
+        )
+    }
+
+    private static func cameraAspectRatio(for session: AVCaptureSession) -> CGFloat {
+        guard let input = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first else {
+            return 16 / 9
+        }
+        let dimensions = CMVideoFormatDescriptionGetDimensions(input.device.activeFormat.formatDescription)
+        guard dimensions.width > 0, dimensions.height > 0 else { return 16 / 9 }
+        return CGFloat(dimensions.width) / CGFloat(dimensions.height)
+    }
+}
+
+private final class WebcamPreviewView: NSView {
+    private var dragStartMouse: NSPoint?
+    private var dragStartOrigin: NSPoint?
+    var onDragEnd: (() -> Void)?
+
+    init(session: AVCaptureSession, size: CGSize) {
+        super.init(frame: NSRect(origin: .zero, size: size))
+        wantsLayer = true
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.frame = bounds
+        previewLayer.videoGravity = .resizeAspectFill
+        layer?.addSublayer(previewLayer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStartMouse = NSEvent.mouseLocation
+        dragStartOrigin = window?.frame.origin
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let dragStartMouse, let dragStartOrigin else { return }
+        let mouse = NSEvent.mouseLocation
+        window?.setFrameOrigin(NSPoint(
+            x: dragStartOrigin.x + mouse.x - dragStartMouse.x,
+            y: dragStartOrigin.y + mouse.y - dragStartMouse.y
+        ))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        dragStartMouse = nil
+        dragStartOrigin = nil
+        onDragEnd?()
+    }
+}
 
 class StopRecordingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
