@@ -70,6 +70,8 @@ public sealed partial class WebcamOptionsControl : UserControl
     /// reconciliation. The host uses this to keep its Start button's enabled state current.</summary>
     public event EventHandler? ReadinessChanged;
 
+    public event EventHandler? PreviewSourceChanged;
+
     public bool WebcamEnabled => _webcamEnabled;
 
     public string SelectedWebcamId => _selectedWebcamId;
@@ -163,6 +165,7 @@ public sealed partial class WebcamOptionsControl : UserControl
         UpdateWebcamSettingsEnabled();
         UpdateWebcamSettingsSummary();
         ReadinessChanged?.Invoke(this, EventArgs.Empty);
+        PreviewSourceChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetWebcamsLoading(bool loading)
@@ -171,6 +174,10 @@ public sealed partial class WebcamOptionsControl : UserControl
         RenderCameraMenu();
         UpdateWebcamSettingsSummary();
         ReadinessChanged?.Invoke(this, EventArgs.Empty);
+        if (_webcamEnabled)
+        {
+            PreviewSourceChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>Applies the enumerated webcam list. Device menu items are only rebuilt when the
@@ -216,6 +223,7 @@ public sealed partial class WebcamOptionsControl : UserControl
         UpdateWebcamVisual();
         UpdateWebcamSettingsEnabled();
         ReadinessChanged?.Invoke(this, EventArgs.Empty);
+        PreviewSourceChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void BuildFlyout()
@@ -283,6 +291,7 @@ public sealed partial class WebcamOptionsControl : UserControl
         if (sender is ToggleMenuFlyoutItem { Tag: WebcamShape shape })
         {
             _webcamShape = shape;
+            SetupPreview.ConfigureShape(_webcamShape, WebcamCornerRadiusOrNull);
             UpdateShapeSelectionVisuals();
             UpdateRadiusMenuEnabled();
             UpdateWebcamSettingsSummary();
@@ -316,6 +325,7 @@ public sealed partial class WebcamOptionsControl : UserControl
             _webcamSizePreset = size;
             UpdateSizeSelectionVisuals();
             UpdateWebcamSettingsSummary();
+            PreviewSourceChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -329,6 +339,7 @@ public sealed partial class WebcamOptionsControl : UserControl
         if (sender is ToggleMenuFlyoutItem { Tag: double radius })
         {
             _webcamCornerRadius = radius;
+            SetupPreview.ConfigureShape(_webcamShape, WebcamCornerRadiusOrNull);
             UpdateRadiusSelectionVisuals();
             UpdateWebcamSettingsSummary();
         }
@@ -346,7 +357,21 @@ public sealed partial class WebcamOptionsControl : UserControl
             _selectedWebcamId = webcam.Id;
             UpdateCameraSelectionVisuals();
             UpdateWebcamSettingsSummary();
+            PreviewSourceChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    public void ShowPreview(IWebcamCaptureService capture)
+    {
+        SetupPreview.Visibility = Visibility.Visible;
+        SetupPreview.ConfigureShape(_webcamShape, WebcamCornerRadiusOrNull);
+        SetupPreview.Attach(capture);
+    }
+
+    public void HidePreview()
+    {
+        SetupPreview.Detach();
+        SetupPreview.Visibility = Visibility.Collapsed;
     }
 
     private void RebuildCameraItems()

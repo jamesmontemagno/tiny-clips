@@ -9,6 +9,7 @@ using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Graphics;
+using Windows.Graphics.Imaging;
 using Windows.System;
 using WinRT.Interop;
 
@@ -50,6 +51,9 @@ public sealed partial class RecordingSetupWindow : Window
     private readonly IAudioDeviceService _audioDevices;
     private readonly IWebcamDeviceEnumerator _webcamDevices;
     private readonly IMediaDevicePermissionService _mediaPermissions;
+    private readonly IWebcamCaptureService _previewCapture = new WebcamCaptureService();
+    private readonly SemaphoreSlim _previewGate = new(1, 1);
+    private CancellationTokenSource _previewCts = new();
 
     private bool _completed;
     private bool _closed;
@@ -79,6 +83,7 @@ public sealed partial class RecordingSetupWindow : Window
 
         AudioDevices.MicrophoneToggleRequested += OnMicrophoneToggleRequested;
         WebcamOptions.WebcamToggleRequested += OnWebcamToggleRequested;
+        WebcamOptions.PreviewSourceChanged += OnPreviewSourceChanged;
         AudioDevices.ReadinessChanged += OnSelectionReadinessChanged;
         WebcamOptions.ReadinessChanged += OnSelectionReadinessChanged;
 
@@ -360,6 +365,87 @@ public sealed partial class RecordingSetupWindow : Window
 
     private void OnSelectionReadinessChanged(object? sender, EventArgs e) => UpdateStartButtonEnabled();
 
+    private void OnPreviewSourceChanged(object? sender, EventArgs e) => _ = RefreshSetupPreviewAsync();
+
+    private async Task RefreshSetupPreviewAsync()
+    {
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _previewCts, cancellation);
+        previous.Cancel();
+        previous.Dispose();
+
+        await _previewGate.WaitAsync();
+        try
+        {
+            if (_previewCapture.IsRunning)
+            {
+                await _previewCapture.StopAsync();
+            }
+
+            if (_closed || cancellation.IsCancellationRequested ||
+                !WebcamOptions.WebcamEnabled ||
+                !WebcamOptions.IsWebcamSelectionReady)
+            {
+                if (!_closed)
+                {
+                    WebcamOptions.HidePreview();
+                    ResizeToContent();
+                }
+                return;
+            }
+
+            // Avoid starting MediaCapture after a setup panel that was immediately dismissed.
+            await Task.Delay(150, cancellation.Token);
+            await _previewCapture.StartAsync(
+                WebcamOptions.SelectedWebcamId,
+                ResolvePreviewSize(WebcamOptions.WebcamSizePreset),
+                cancellation.Token);
+
+            if (_closed || cancellation.IsCancellationRequested)
+            {
+                await _previewCapture.StopAsync();
+                return;
+            }
+
+            WebcamOptions.ShowPreview(_previewCapture);
+            ResizeToContent();
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer selection or window dismissal superseded this start.
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Webcam setup preview failed: {ex}");
+            if (!_closed)
+            {
+                WebcamOptions.HidePreview();
+                ResizeToContent();
+            }
+        }
+        finally
+        {
+            _previewGate.Release();
+        }
+    }
+
+    private static BitmapSize ResolvePreviewSize(WebcamSizePreset preset) => preset switch
+    {
+        WebcamSizePreset.Small => new BitmapSize { Width = 640, Height = 360 },
+        WebcamSizePreset.Large => new BitmapSize { Width = 1280, Height = 720 },
+        _ => new BitmapSize { Width = 960, Height = 540 },
+    };
+
+    private void ResizeToContent()
+    {
+        RootGrid.UpdateLayout();
+        RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var scale = GetScale();
+        AppWindow.Resize(new SizeInt32(
+            (int)Math.Ceiling(RootGrid.DesiredSize.Width * scale) + 2,
+            (int)Math.Ceiling(RootGrid.DesiredSize.Height * scale) + 2));
+    }
+
     /// <summary>
     /// GIF setup never gates on device readiness (its device controls are hidden and forced off in
     /// <see cref="OnStart"/>). For video, Start stays disabled only while an *enabled* audio or
@@ -458,13 +544,30 @@ public sealed partial class RecordingSetupWindow : Window
         _closed = true;
         AudioDevices.MicrophoneToggleRequested -= OnMicrophoneToggleRequested;
         WebcamOptions.WebcamToggleRequested -= OnWebcamToggleRequested;
+        WebcamOptions.PreviewSourceChanged -= OnPreviewSourceChanged;
         AudioDevices.ReadinessChanged -= OnSelectionReadinessChanged;
         WebcamOptions.ReadinessChanged -= OnSelectionReadinessChanged;
+        _previewCts.Cancel();
+        WebcamOptions.HidePreview();
+        _ = DisposeSetupPreviewAsync();
 
         if (!_completed)
         {
             _completed = true;
             _result.TrySetResult(null);
+        }
+    }
+
+    private async Task DisposeSetupPreviewAsync()
+    {
+        await _previewGate.WaitAsync();
+        try
+        {
+            await _previewCapture.DisposeAsync();
+        }
+        finally
+        {
+            _previewGate.Release();
         }
     }
 

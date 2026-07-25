@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="TinyClips.App.WebcamPreviewWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TinyClips.App">
+
+    <Grid x:Name="RootGrid">
+        <ContentControl
+            x:Name="PreviewControl"
+            IsTabStop="True"
+            AutomationProperties.Name="Webcam preview. Drag or use arrow keys to move it between recording corners."
+            KeyDown="OnKeyDown"
+            PointerMoved="OnPointerMoved"
+            PointerPressed="OnPointerPressed"
+            PointerReleased="OnPointerReleased"
+            TabFocusNavigation="Local">
+            <local:WebcamPreviewSurface x:Name="PreviewSurface" />
+        </ContentControl>
+    </Grid>
+</Window>

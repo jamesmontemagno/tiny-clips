@@ -11,7 +11,7 @@ namespace TinyClips.Core.Capture;
 [SupportedOSPlatform("windows")]
 public sealed class WebcamOverlayCompositor
 {
-    private readonly WebcamCornerPosition _corner;
+    private WebcamCornerPosition _corner;
     private readonly WebcamSizePreset _sizePreset;
     private readonly WebcamShape _shape;
     private readonly double? _configuredCornerRadius;
@@ -122,6 +122,22 @@ public sealed class WebcamOverlayCompositor
                 bgra[destIndex + 2] = Blend(bgra[destIndex + 2], source[sourceIndex + 2], alpha);
             }
         }
+    }
+
+    public void Draw(
+        byte[] bgra,
+        int frameWidth,
+        int frameHeight,
+        WebcamFrame webcamFrame,
+        WebcamCornerPosition corner)
+    {
+        if (_corner != corner)
+        {
+            _corner = corner;
+            _builtForFrameWidth = -1;
+        }
+
+        Draw(bgra, frameWidth, frameHeight, webcamFrame);
     }
 
     private void EnsureLayout(int frameWidth, int frameHeight, int webcamWidth, int webcamHeight)

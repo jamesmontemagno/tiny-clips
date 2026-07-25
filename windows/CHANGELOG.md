@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- Added a live webcam preview to video setup and recording on Windows. The in-recording preview can be dragged or moved with the keyboard between capture corners, and every move is synchronized to the exported recording timeline.
+
 ## [v1.5.3-windows] - 2026-07-25
 
 ### Fixed

@@ -40,6 +40,7 @@ public partial class App : Application
     private Window? _trimmerWindow;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
+    private WebcamPreviewWindow? _webcamPreview;
     private ProcessingIndicatorWindow? _processingIndicator;
     private RegionIndicatorWindow? _recordingRegionIndicator;
     private CancellationTokenSource? _captureFlowCts;
@@ -749,7 +750,11 @@ public partial class App : Application
 
     private void OnWebcamCaptureFailed(object? sender, string reason)
     {
-        _dispatcher?.TryEnqueue(() => ShowWebcamFailureNotification(reason));
+        _dispatcher?.TryEnqueue(() =>
+        {
+            HideWebcamPreview();
+            ShowWebcamFailureNotification(reason);
+        });
     }
 
     private static void ShowWebcamFailureNotification(string reason)
@@ -1126,7 +1131,50 @@ public partial class App : Application
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingElapsedBeforePause = TimeSpan.Zero;
         _recordingIndicator?.SetStopEnabled(true);
+        ShowWebcamPreviewForActiveRecording();
         StartRecordingTimer();
+    }
+
+    private void ShowWebcamPreviewForActiveRecording()
+    {
+        HideWebcamPreview();
+        if (_activeRecordingType != CaptureType.Video ||
+            _activeRecordingSelection is not { } selection)
+        {
+            return;
+        }
+
+        var settings = Services.GetRequiredService<ICaptureSettings>();
+        var capture = Services.GetRequiredService<IWebcamCaptureService>();
+        if (!settings.WebcamEnabled || !capture.IsRunning)
+        {
+            return;
+        }
+
+        var video = Services.GetRequiredService<IVideoRecordingService>();
+        var monitor = selection.Monitor ?? ResolveMonitorForTarget(selection.Target);
+        PixelRect? region = selection.Region is { } selectedRegion
+            ? ToVirtualDesktopRegion(selection.Target, selectedRegion)
+            : null;
+        var window = new WebcamPreviewWindow(
+            capture,
+            selection.Target,
+            monitor,
+            region,
+            settings.WebcamCornerPosition,
+            settings.WebcamSizePreset,
+            settings.WebcamShape,
+            settings.WebcamCornerRadius,
+            corner => video.SetWebcamCorner(corner));
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_webcamPreview, window))
+            {
+                _webcamPreview = null;
+            }
+        };
+        _webcamPreview = window;
+        window.Show();
     }
 
     private void StartRecordingTimer()
@@ -1156,9 +1204,17 @@ public partial class App : Application
     private void HideRecordingIndicator()
     {
         StopRecordingTimer();
+        HideWebcamPreview();
 
         var window = _recordingIndicator;
         _recordingIndicator = null;
+        window?.ClosePanel();
+    }
+
+    private void HideWebcamPreview()
+    {
+        var window = _webcamPreview;
+        _webcamPreview = null;
         window?.ClosePanel();
     }
 
