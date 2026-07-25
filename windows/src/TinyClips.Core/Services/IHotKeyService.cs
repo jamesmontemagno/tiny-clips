@@ -9,4 +9,5 @@ public interface IHotKeyService
     string StopRecordingDisplayString { get; }
     void SetBinding(CaptureType type, HotKeyDefinition binding);
     HotKeyDefinition DefaultFor(CaptureType type);
+    HotKeyValidationResult ValidateBinding(CaptureType type, HotKeyDefinition binding);
 }

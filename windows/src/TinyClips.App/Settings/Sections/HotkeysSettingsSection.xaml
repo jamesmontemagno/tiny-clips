@@ -14,10 +14,17 @@
             Text="Keyboard shortcuts" />
 
         <InfoBar
+            AutomationProperties.AutomationId="HotKeyInstructionsInfoBar"
             IsClosable="False"
             IsOpen="True"
-            Message="Click Edit, then press the key combination you want (include Ctrl, Alt, Shift, or Win)."
+            Message="Choose Edit, press a shortcut with Ctrl, Alt, Shift, or Win, then choose Save."
             Severity="Informational" />
+
+        <InfoBar
+            x:Name="HotKeyStatusInfoBar"
+            AutomationProperties.AutomationId="HotKeyStatusInfoBar"
+            AutomationProperties.LiveSetting="Polite"
+            IsOpen="False" />
 
         <Border Style="{StaticResource SettingCardStyle}">
             <StackPanel Spacing="12">
