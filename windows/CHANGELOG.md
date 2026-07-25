@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.5.3-windows] - 2026-07-25
+
 ### Fixed
 - **Windows keyboard shortcut changes now provide clear feedback and reliably take effect** — Settings now uses a focused shortcut recorder with a live chord preview and explicit Save/Cancel actions, rejects incomplete or duplicate bindings (including the fixed Stop recording shortcut), reports shortcuts owned by Windows or another app, and restores the previous binding if registration fails. Native hotkeys are fully unregistered before replacement so stale registrations no longer prevent changes from sticking.
 
