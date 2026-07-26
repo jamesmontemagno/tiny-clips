@@ -26,6 +26,14 @@ internal enum EditTool
     Redact,
 }
 
+internal enum AnnotationResizeHandle
+{
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
 internal enum RedactionLevel
 {
     Light,

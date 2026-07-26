@@ -7,6 +7,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Added
 - **Share capture analytics summaries** — Settings → Analytics now offers a Share button alongside Copy Summary, opening the native Windows share dialog with the selected-range activity summary.
+- **Resizable screenshot annotations** — Selected annotations now show four corner handles for direct resizing, while arrows and lines retain dedicated endpoint handles and inside dragging still moves annotations.
 
 ## [v1.5.3-windows] - 2026-07-25
 
