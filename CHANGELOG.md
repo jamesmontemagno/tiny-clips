@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- Added four-corner resize handles to selected screenshot annotations while preserving move dragging and arrow/line endpoint editing.
+
 ## v1.5.3-mac - 2026-07-25
 
 ### Added

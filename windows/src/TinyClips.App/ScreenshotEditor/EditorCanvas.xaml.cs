@@ -53,6 +53,14 @@ public sealed partial class EditorCanvas : UserControl
     private Point _dragStart;
     private Annotation? _movingAnnotation;
     private Point _moveOffset;
+    private Annotation? _resizingAnnotation;
+    private AnnotationResizeHandle? _resizeHandle;
+    private Rect _resizeOriginalBounds;
+    private List<Vector2> _resizeOriginalPoints = new();
+    private double _resizeOriginalFontSize;
+    private double _resizeOriginalSizeScale;
+    private Annotation? _endpointAnnotation;
+    private bool _movingStartEndpoint;
 
     // Tracks whichever pointer currently has capture (crop drag, annotation move, or annotation
     // draw) so an interrupted interaction — e.g. a tool-change keyboard shortcut firing mid-drag —
@@ -160,6 +168,9 @@ public sealed partial class EditorCanvas : UserControl
         }
 
         _dragging = false;
+        _resizingAnnotation = null;
+        _resizeHandle = null;
+        _endpointAnnotation = null;
 
         var moved = _movingAnnotation;
         _movingAnnotation = null;
@@ -206,7 +217,7 @@ public sealed partial class EditorCanvas : UserControl
         HintText.Text = tool switch
         {
             EditTool.Crop => "Drag to select an area, then choose Apply crop.",
-            EditTool.Select => "Click an annotation to select it; drag to move, Del to remove.",
+            EditTool.Select => "Click an annotation to select it; drag inside to move or drag a handle to resize. Del removes it.",
             EditTool.Text => "Click where you want text to open the editor; double-click text to edit it.",
             EditTool.Counter => "Click to drop a numbered badge.",
             EditTool.Pen => "Drag to draw freehand.",
@@ -745,6 +756,7 @@ public sealed partial class EditorCanvas : UserControl
 
     private void PositionMarquee(Annotation? ann)
     {
+        HideSelectionHandles();
         if (ann is null)
         {
             SelectionMarquee.Visibility = Visibility.Collapsed;
@@ -752,6 +764,17 @@ public sealed partial class EditorCanvas : UserControl
         }
 
         var (scale, offX, offY) = HostLayout();
+        if (ann.Tool is EditTool.Line or EditTool.Arrow)
+        {
+            SelectionMarquee.Visibility = Visibility.Collapsed;
+            var (start, end) = EditorController.Segment(ann);
+            PositionHandle(StartEndpointHandle, ToCanvas(new Point(start.X, start.Y), scale, offX, offY));
+            PositionHandle(EndEndpointHandle, ToCanvas(new Point(end.X, end.Y), scale, offX, offY));
+            StartEndpointHandle.Visibility = Visibility.Visible;
+            EndEndpointHandle.Visibility = Visibility.Visible;
+            return;
+        }
+
         var b = EditorController.NormalizedBounds(ann);
         var tl = ToCanvas(new Point(b.X, b.Y), scale, offX, offY);
         SelectionMarquee.Width = Math.Max(b.Width * scale, 8) + 12;
@@ -759,6 +782,78 @@ public sealed partial class EditorCanvas : UserControl
         Canvas.SetLeft(SelectionMarquee, tl.X - 6);
         Canvas.SetTop(SelectionMarquee, tl.Y - 6);
         SelectionMarquee.Visibility = Visibility.Visible;
+        PositionHandle(TopLeftResizeHandle, tl);
+        PositionHandle(TopRightResizeHandle, new Point(tl.X + b.Width * scale, tl.Y));
+        PositionHandle(BottomLeftResizeHandle, new Point(tl.X, tl.Y + b.Height * scale));
+        PositionHandle(BottomRightResizeHandle, new Point(tl.X + b.Width * scale, tl.Y + b.Height * scale));
+        TopLeftResizeHandle.Visibility = Visibility.Visible;
+        TopRightResizeHandle.Visibility = Visibility.Visible;
+        BottomLeftResizeHandle.Visibility = Visibility.Visible;
+        BottomRightResizeHandle.Visibility = Visibility.Visible;
+    }
+
+    private void HideSelectionHandles()
+    {
+        TopLeftResizeHandle.Visibility = Visibility.Collapsed;
+        TopRightResizeHandle.Visibility = Visibility.Collapsed;
+        BottomLeftResizeHandle.Visibility = Visibility.Collapsed;
+        BottomRightResizeHandle.Visibility = Visibility.Collapsed;
+        StartEndpointHandle.Visibility = Visibility.Collapsed;
+        EndEndpointHandle.Visibility = Visibility.Collapsed;
+    }
+
+    private static void PositionHandle(FrameworkElement handle, Point center)
+    {
+        Canvas.SetLeft(handle, center.X - handle.Width / 2);
+        Canvas.SetTop(handle, center.Y - handle.Height / 2);
+    }
+
+    private AnnotationResizeHandle? ResizeHandleAt(Point point, Annotation ann)
+    {
+        if (ann.Tool is EditTool.Line or EditTool.Arrow)
+        {
+            return null;
+        }
+        var (scale, offX, offY) = HostLayout();
+        var b = EditorController.NormalizedBounds(ann);
+        var tl = ToCanvas(new Point(b.Left, b.Top), scale, offX, offY);
+        var br = ToCanvas(new Point(b.Right, b.Bottom), scale, offX, offY);
+        var handles = new[]
+        {
+            (AnnotationResizeHandle.TopLeft, tl),
+            (AnnotationResizeHandle.TopRight, new Point(br.X, tl.Y)),
+            (AnnotationResizeHandle.BottomLeft, new Point(tl.X, br.Y)),
+            (AnnotationResizeHandle.BottomRight, br),
+        };
+        foreach (var (handle, center) in handles)
+        {
+            if (Math.Abs(point.X - center.X) <= 8 && Math.Abs(point.Y - center.Y) <= 8)
+            {
+                return handle;
+            }
+        }
+        return null;
+    }
+
+    private bool TryBeginEndpointDrag(Point point, Annotation ann)
+    {
+        if (ann.Tool is not (EditTool.Line or EditTool.Arrow))
+        {
+            return false;
+        }
+        var (scale, offX, offY) = HostLayout();
+        var (start, end) = EditorController.Segment(ann);
+        var startCanvas = ToCanvas(new Point(start.X, start.Y), scale, offX, offY);
+        var endCanvas = ToCanvas(new Point(end.X, end.Y), scale, offX, offY);
+        var startDistance = Math.Sqrt(Math.Pow(point.X - startCanvas.X, 2) + Math.Pow(point.Y - startCanvas.Y, 2));
+        var endDistance = Math.Sqrt(Math.Pow(point.X - endCanvas.X, 2) + Math.Pow(point.Y - endCanvas.Y, 2));
+        if (Math.Min(startDistance, endDistance) > 10)
+        {
+            return false;
+        }
+        _endpointAnnotation = ann;
+        _movingStartEndpoint = startDistance < endDistance;
+        return true;
     }
 
     private static Point ToCanvas(Point pixel, double scale, double offX, double offY) =>
@@ -813,10 +908,38 @@ public sealed partial class EditorCanvas : UserControl
 
         if (tool == EditTool.Select)
         {
+            if (_controller.SelectedAnnotation is { } selected)
+            {
+                if (ResizeHandleAt(p, selected) is { } handle)
+                {
+                    _resizingAnnotation = selected;
+                    _movingAnnotation = selected;
+                    _resizeHandle = handle;
+                    _resizeOriginalBounds = EditorController.NormalizedBounds(selected);
+                    _resizeOriginalPoints = new List<Vector2>(selected.Points);
+                    _resizeOriginalFontSize = selected.FontSize;
+                    _resizeOriginalSizeScale = selected.SizeScale;
+                    OverlayCanvas.CapturePointer(e.Pointer);
+                    _capturedPointer = e.Pointer;
+                    return;
+                }
+                if (TryBeginEndpointDrag(p, selected))
+                {
+                    OverlayCanvas.CapturePointer(e.Pointer);
+                    _capturedPointer = e.Pointer;
+                    return;
+                }
+            }
             var hit = _controller.HitTest(_controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight));
             _controller.Select(hit);
             if (hit is not null)
             {
+                if (TryBeginEndpointDrag(p, hit))
+                {
+                    OverlayCanvas.CapturePointer(e.Pointer);
+                    _capturedPointer = e.Pointer;
+                    return;
+                }
                 _movingAnnotation = hit;
                 var origin = _controller.PixelToCanvas(new Point(hit.Bounds.X, hit.Bounds.Y), ImageHost.ActualWidth, ImageHost.ActualHeight);
                 _moveOffset = new Point(p.X - origin.X, p.Y - origin.Y);
@@ -871,10 +994,30 @@ public sealed partial class EditorCanvas : UserControl
 
         if (tool == EditTool.Select && _movingAnnotation is not null)
         {
+            if (_resizingAnnotation is not null && _resizeHandle is { } handle)
+            {
+                var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
+                _controller.ResizeAnnotation(
+                    _resizingAnnotation,
+                    _resizeOriginalBounds,
+                    _resizeOriginalPoints,
+                    _resizeOriginalFontSize,
+                    _resizeOriginalSizeScale,
+                    handle,
+                    pixel);
+                return;
+            }
             var targetCanvas = new Point(p.X - _moveOffset.X, p.Y - _moveOffset.Y);
             var targetPixel = _controller.CanvasToPixel(targetCanvas, ImageHost.ActualWidth, ImageHost.ActualHeight);
             var b = _movingAnnotation.Bounds;
             _controller.MoveAnnotationBy(_movingAnnotation, targetPixel.X - b.X, targetPixel.Y - b.Y);
+            return;
+        }
+
+        if (tool == EditTool.Select && _endpointAnnotation is not null)
+        {
+            var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
+            _controller.MoveAnnotationEndpoint(_endpointAnnotation, _movingStartEndpoint, pixel);
             return;
         }
 
@@ -908,6 +1051,9 @@ public sealed partial class EditorCanvas : UserControl
         {
             var moved = _movingAnnotation;
             _movingAnnotation = null;
+            _resizingAnnotation = null;
+            _resizeHandle = null;
+            _endpointAnnotation = null;
             // A moved redact block only shows the lightweight placeholder while dragging (see
             // UpdateVisual); re-blur it now that the drag has settled. Guarded on list
             // membership in case the annotation was deleted/undone mid-drag — Undo/Delete cancel

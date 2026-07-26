@@ -160,6 +160,15 @@ struct ScreenshotEditorCanvasView: View {
                             .frame(width: selRect.width + 8, height: selRect.height + 8)
                             .position(x: selRect.midX, y: selRect.midY)
                             .allowsHitTesting(false)
+
+                        ForEach(Array(corners(of: selRect).enumerated()), id: \.offset) { _, corner in
+                            Rectangle()
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                                .stroke(Color.accentColor, lineWidth: 2)
+                                .frame(width: 10, height: 10)
+                                .position(corner)
+                                .allowsHitTesting(false)
+                        }
                     }
                 }
 
@@ -204,6 +213,11 @@ struct ScreenshotEditorCanvasView: View {
                                 }
                             }
                     )
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Screenshot annotation canvas")
+                    .accessibilityHint(viewModel.selectedTool == .move
+                        ? "Select an annotation, drag inside it to move, or drag a corner handle to resize."
+                        : "Use the selected tool to edit the screenshot.")
                     .position(x: containerSize.width / 2, y: containerSize.height / 2)
             }
         }
