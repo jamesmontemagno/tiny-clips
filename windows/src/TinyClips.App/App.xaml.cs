@@ -1382,7 +1382,10 @@ public partial class App : Application
                 ? CaptureType.Gif
                 : CaptureType.Video;
             await FinalizeClipAsync(path, type);
-            Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
+            if (!string.IsNullOrEmpty(trimmedPath))
+            {
+                Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
+            }
             if (!isRecentCapture)
             {
                 ReopenPickerAfterCaptureIfNeeded(type);

@@ -20,18 +20,29 @@ struct GifCaptureData {
             throw CocoaError(.fileReadCorruptFile)
         }
 
-        frames = (0..<CGImageSourceGetCount(source)).compactMap {
-            CGImageSourceCreateImageAtIndex(source, $0, nil)
+        let frameCount = CGImageSourceGetCount(source)
+        var decodedFrames: [CGImage] = []
+        decodedFrames.reserveCapacity(frameCount)
+        var totalDelay = 0.0
+
+        for index in 0..<frameCount {
+            guard let frame = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
+            decodedFrames.append(frame)
+
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+            let gifProperties = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+            let frameDelay = (gifProperties?[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
+                ?? (gifProperties?[kCGImagePropertyGIFDelayTime] as? Double)
+                ?? 0.1
+            totalDelay += max(0.01, frameDelay)
         }
+
+        frames = decodedFrames
         guard !frames.isEmpty else {
             throw CocoaError(.fileReadCorruptFile)
         }
 
-        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        let gifProperties = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
-        frameDelay = gifProperties?[kCGImagePropertyGIFUnclampedDelayTime] as? Double
-            ?? gifProperties?[kCGImagePropertyGIFDelayTime] as? Double
-            ?? 0.1
+        frameDelay = totalDelay / Double(frames.count)
         maxWidth = CGFloat(frames.map(\.width).max() ?? 1)
     }
 }
