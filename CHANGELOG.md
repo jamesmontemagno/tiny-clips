@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Added four-corner resize handles to selected screenshot annotations while preserving move dragging and arrow/line endpoint editing.
 
+### Fixed
+- Fixed the macOS screenshot picker reopening before the screenshot editor is closed.
+
 ## v1.5.3-mac - 2026-07-25
 
 ### Added

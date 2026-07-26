@@ -371,6 +371,7 @@ class CaptureManager: ObservableObject {
                 countdownCompleted: countdownEnabled
             )
             Task {
+                var didPresentEditor = false
                 do {
                     let settings = CaptureSettings.shared
                     let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
@@ -402,15 +403,18 @@ class CaptureManager: ObservableObject {
                         self.showScreenshotEditor(
                             for: url,
                             initialSaveURL: initialSaveURL,
-                            deleteSourceOnCancel: !shouldSaveImmediately
+                            deleteSourceOnCancel: !shouldSaveImmediately,
+                            reopenPickerAfterClose: shouldReturnToPickerAfterCapture
                         )
+                        didPresentEditor = true
                     } else {
                         SaveService.shared.handleSavedFile(url: url, type: .screenshot)
                     }
                 } catch {
                     SaveService.shared.showError("Screenshot failed: \(error.localizedDescription)")
                 }
-                if shouldReturnToPickerAfterCapture,
+                if !didPresentEditor,
+                   shouldReturnToPickerAfterCapture,
                    CaptureSettings.shared.shouldShowScreenshotCapturePickerAfterCapture {
                     self.showScreenshotPicker()
                 }
@@ -1196,16 +1200,25 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func showScreenshotEditor(for url: URL, initialSaveURL: URL, deleteSourceOnCancel: Bool) {
+    private func showScreenshotEditor(
+        for url: URL,
+        initialSaveURL: URL,
+        deleteSourceOnCancel: Bool,
+        reopenPickerAfterClose: Bool
+    ) {
         ScreenshotEditorRegistry.shared.present(
             imageURL: url,
             initialSaveURL: initialSaveURL,
             deleteSourceAfterSave: deleteSourceOnCancel
-        ) { resultURL in
+        ) { [weak self] resultURL in
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .screenshot)
             } else if deleteSourceOnCancel {
                 try? FileManager.default.removeItem(at: url)
+            }
+            if reopenPickerAfterClose,
+               CaptureSettings.shared.shouldShowScreenshotCapturePickerAfterCapture {
+                self?.showScreenshotPicker()
             }
         }
     }
