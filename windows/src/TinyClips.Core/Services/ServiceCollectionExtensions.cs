@@ -14,6 +14,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileNameService, FileNameService>();
         services.AddSingleton<IClipStorageService, ClipStorageService>();
         services.AddSingleton<IClipAnalyticsService, ClipAnalyticsService>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IRecentCaptureService, RecentCaptureService>();
         services.AddSingleton<IAppUpdateService, GitHubReleaseUpdateService>();
         services.AddSingleton<IHotKeyService, HotKeyService>();
         services.AddSingleton<ILaunchAtLoginService, LaunchAtLoginService>();

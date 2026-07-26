@@ -9,6 +9,7 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
@@ -30,6 +31,8 @@ public partial class App : Application
     private const string GlyphGif = "\uE8B9";
     private const string GlyphStop = "\uE71A";
     private const string GlyphCheckForUpdates = "\uE895";
+    private const string GlyphFolder = "\uE8B7";
+    private const string GlyphHistory = "\uE81C";
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
@@ -52,7 +55,7 @@ public partial class App : Application
     private CaptureTile? _gifTile;
     private TrayPopupWindow? _trayPopup;
     private const double TrayPopupWidth = 288;
-    private const double TrayPopupHeight = 196;
+    private const double TrayPopupHeight = 242;
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -164,6 +167,7 @@ public partial class App : Application
             return;
         }
 
+        _trayPopup.Content = BuildTrayPopupContent(Services.GetRequiredService<IHotKeyService>());
         UpdateRecordingState();
         _trayPopup.ShowNearCursor(TrayPopupWidth, TrayPopupHeight);
     }
@@ -223,6 +227,19 @@ public partial class App : Application
 
         root.Children.Add(tiles);
 
+        var quickAccess = new Grid { ColumnSpacing = 6 };
+        quickAccess.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        quickAccess.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var folders = CreateFolderButton(Dismiss);
+        Grid.SetColumn(folders, 0);
+        quickAccess.Children.Add(folders);
+
+        var recent = CreateRecentCapturesButton(Dismiss);
+        Grid.SetColumn(recent, 1);
+        quickAccess.Children.Add(recent);
+        root.Children.Add(quickAccess);
+
         root.Children.Add(new Border
         {
             Height = 1,
@@ -253,6 +270,108 @@ public partial class App : Application
             BorderBrush = ThemeBrush("SurfaceStrokeColorDefaultBrush"),
         };
     }
+
+    private ButtonBase CreateFolderButton(Action dismiss)
+    {
+        var settings = Services.GetRequiredService<ICaptureSettings>();
+        var storage = Services.GetRequiredService<IClipStorageService>();
+
+        if (!string.IsNullOrWhiteSpace(settings.SaveDirectory))
+        {
+            return CreateQuickAccessButton(
+                "Open Save Folder",
+                GlyphFolder,
+                new RelayCommand(() => OpenFolder(storage.OutputDirectory(CaptureType.Screenshot))),
+                dismiss);
+        }
+
+        var flyout = new MenuFlyout();
+        var button = new DropDownButton
+        {
+            Content = QuickAccessContent(GlyphFolder, "Open folders"),
+            Flyout = flyout,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(8, 6, 8, 6),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Open capture folders");
+        foreach (var type in Enum.GetValues<CaptureType>())
+        {
+            var capturedType = type;
+            var item = new MenuFlyoutItem { Text = $"Open {CaptureTypeLabel(type)} Folder" };
+            item.Click += (_, _) =>
+            {
+                dismiss();
+                OpenFolder(storage.OutputDirectory(capturedType));
+            };
+            flyout.Items.Add(item);
+        }
+        return button;
+    }
+
+    private ButtonBase CreateRecentCapturesButton(Action dismiss)
+    {
+        var history = Services.GetRequiredService<IRecentCaptureService>();
+        var captures = history.GetRecentCaptures();
+        var flyout = new MenuFlyout();
+        var button = new DropDownButton
+        {
+            Content = QuickAccessContent(GlyphHistory, captures.Count == 0 ? "No recent captures" : $"Recent ({captures.Count})"),
+            Flyout = flyout,
+            IsEnabled = captures.Count > 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(8, 6, 8, 6),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Recent captures");
+
+        foreach (var capture in captures)
+        {
+            var capturedItem = capture;
+            var item = new MenuFlyoutItem
+            {
+                Text = $"{Path.GetFileName(capture.Path)} — {CaptureTypeLabel(capture.Type)}, {capture.CapturedAt:g}",
+            };
+            item.Click += (_, _) =>
+            {
+                dismiss();
+                OpenRecentCapture(capturedItem);
+            };
+            flyout.Items.Add(item);
+        }
+        return button;
+    }
+
+    private Button CreateQuickAccessButton(string text, string glyph, ICommand command, Action dismiss)
+    {
+        var button = new Button
+        {
+            Content = QuickAccessContent(glyph, text),
+            Command = command,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(8, 6, 8, 6),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, text);
+        button.Click += (_, _) => dismiss();
+        return button;
+    }
+
+    private static StackPanel QuickAccessContent(string glyph, string text)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        panel.Children.Add(new FontIcon { Glyph = glyph, FontFamily = FluentIconFont, FontSize = 14 });
+        panel.Children.Add(new TextBlock { Text = text, TextTrimming = TextTrimming.CharacterEllipsis });
+        return panel;
+    }
+
+    private static string CaptureTypeLabel(CaptureType type) => type switch
+    {
+        CaptureType.Screenshot => "Screenshot",
+        CaptureType.Video => "Video",
+        CaptureType.Gif => "GIF",
+        _ => type.ToString(),
+    };
 
     private sealed class CaptureTile
     {
@@ -412,6 +531,7 @@ public partial class App : Application
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     var screenshots = Services.GetRequiredService<IScreenshotService>();
                     var path = await screenshots.CaptureTargetAsync(selection.Target, selection.Region);
+                    Services.GetRequiredService<IRecentCaptureService>().Record(path, CaptureType.Screenshot);
                     await CopyToClipboardAsync(path, CaptureType.Screenshot);
                     if (settings.ShowScreenshotEditor)
                     {
@@ -837,6 +957,7 @@ public partial class App : Application
             var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
                 ? CaptureType.Gif
                 : CaptureType.Video;
+            Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.ShowTrimmer;
@@ -1215,7 +1336,7 @@ public partial class App : Application
         ShowSaveToast(path);
     }
 
-    private void OpenTrimmer(string path, CaptureType type)
+    private void OpenTrimmer(string path, CaptureType type, bool isRecentCapture = false)
     {
         _trimmerWindow?.Close();
         _lastTrimmerSourcePath = path;
@@ -1223,13 +1344,13 @@ public partial class App : Application
         if (type == CaptureType.Gif)
         {
             var gifTrimmer = new GifTrimmerWindow(path);
-            gifTrimmer.Completed += OnTrimmerCompleted;
+            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture);
             _trimmerWindow = gifTrimmer;
         }
         else
         {
             var videoTrimmer = new VideoTrimmerWindow(path);
-            videoTrimmer.Completed += OnTrimmerCompleted;
+            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture);
             _trimmerWindow = videoTrimmer;
         }
 
@@ -1237,11 +1358,16 @@ public partial class App : Application
         ActivateWindowToForeground(_trimmerWindow);
     }
 
-    private void OnTrimmerCompleted(object? sender, string? trimmedPath)
+    private void OnTrimmerCompleted(object? sender, string? trimmedPath, bool isRecentCapture)
     {
         _dispatcher?.TryEnqueue(async () =>
         {
             if (_isExiting)
+            {
+                return;
+            }
+
+            if (isRecentCapture && string.IsNullOrEmpty(trimmedPath))
             {
                 return;
             }
@@ -1256,7 +1382,11 @@ public partial class App : Application
                 ? CaptureType.Gif
                 : CaptureType.Video;
             await FinalizeClipAsync(path, type);
-            ReopenPickerAfterCaptureIfNeeded(type);
+            Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
+            if (!isRecentCapture)
+            {
+                ReopenPickerAfterCaptureIfNeeded(type);
+            }
         });
     }
 
@@ -1515,6 +1645,41 @@ public partial class App : Application
         }
     }
 
+    private static void OpenFolder(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"OpenFolder failed: {ex}");
+        }
+    }
+
+    private void OpenRecentCapture(RecentCapture capture)
+    {
+        if (!File.Exists(capture.Path))
+        {
+            Services.GetRequiredService<IRecentCaptureService>().Remove(capture.Path);
+            return;
+        }
+
+        if (capture.Type == CaptureType.Screenshot)
+        {
+            OpenScreenshotEditor(capture.Path, reopenPickerAfterClose: false);
+        }
+        else
+        {
+            OpenTrimmer(capture.Path, capture.Type, isRecentCapture: true);
+        }
+    }
+
     private void OpenSettingsWindow()
     {
         if (_settingsWindow is null)
@@ -1544,7 +1709,7 @@ public partial class App : Application
             QuickBugReport.GetDistributionChannel()
         );
 
-    private void OpenScreenshotEditor(string path)
+    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = true)
     {
         try
         {
@@ -1559,7 +1724,10 @@ public partial class App : Application
                 if (ReferenceEquals(_editorWindow, window))
                 {
                     _editorWindow = null;
-                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                    if (reopenPickerAfterClose)
+                    {
+                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                    }
                 }
             };
             ActivateWindowToForeground(window);
@@ -1569,7 +1737,10 @@ public partial class App : Application
             Debug.WriteLine($"OpenScreenshotEditor failed: {ex}");
             RevealInExplorer(path);
             ShowSaveToast(path);
-            ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+            if (reopenPickerAfterClose)
+            {
+                ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+            }
         }
     }
 

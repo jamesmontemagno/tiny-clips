@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Added menu-bar shortcuts for opening capture folders and reopening the 10 most recent screenshots, videos, and GIFs in their editor or trimmer.
 - Added four-corner resize handles to selected screenshot annotations while preserving move dragging and arrow/line endpoint editing.
 
 ### Fixed
