@@ -21,6 +21,7 @@ struct MenuBarContentView: View {
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var sparkleController: SparkleController
     @ObservedObject private var settings = CaptureSettings.shared
+    @ObservedObject private var recentCaptures = RecentCaptureStore.shared
     @Environment(\.openWindow) private var openWindow
 #if APPSTORE
     @Environment(\.requestReview) private var requestReview
@@ -66,6 +67,25 @@ struct MenuBarContentView: View {
 
             Divider()
         }
+
+        folderActions
+
+        if !recentCaptures.items.isEmpty {
+            Menu {
+                ForEach(recentCaptures.items) { item in
+                    Button {
+                        captureManager.openRecentCapture(item)
+                    } label: {
+                        Label(recentCaptureTitle(item), systemImage: recentCaptureIcon(item.type))
+                    }
+                    .accessibilityHint("Opens this \(item.type.label.lowercased()) in its editor.")
+                }
+            } label: {
+                Label("Recent Captures", systemImage: "clock.arrow.circlepath")
+            }
+        }
+
+        Divider()
 #if !APPSTORE
         Button {
             SettingsWindowManager.shared.selectedTab = .about
@@ -141,6 +161,51 @@ struct MenuBarContentView: View {
             Label("Quit", systemImage: "power")
         }
         .keyboardShortcut("q", modifiers: .command)
+        .onAppear {
+            recentCaptures.pruneMissing()
+        }
+    }
+
+    @ViewBuilder
+    private var folderActions: some View {
+        let types: [CaptureType] = [.screenshot, .video, .gif]
+        let directories = types.map { SaveService.shared.outputDirectoryURL(for: $0) }
+        if Set(directories.map { $0.standardizedFileURL.path }).count == 1,
+           let directory = directories.first {
+            Button {
+                openDirectory(directory)
+            } label: {
+                Label("Open Save Folder", systemImage: "folder")
+            }
+            .accessibilityHint("Opens the folder where captures are saved.")
+        } else {
+            Menu {
+                ForEach(types, id: \.rawValue) { type in
+                    Button("Open \(type.label) Folder") {
+                        openDirectory(SaveService.shared.outputDirectoryURL(for: type))
+                    }
+                }
+            } label: {
+                Label("Open Capture Folder", systemImage: "folder")
+            }
+        }
+    }
+
+    private func openDirectory(_ directory: URL) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(directory)
+    }
+
+    private func recentCaptureTitle(_ item: RecentCaptureItem) -> String {
+        "\(item.url.lastPathComponent) — \(item.type.label), \(item.capturedAt.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    private func recentCaptureIcon(_ type: CaptureType) -> String {
+        switch type {
+        case .screenshot: "photo"
+        case .video: "video"
+        case .gif: "photo.stack"
+        }
     }
 
     private func checkForUpdatesAfterSettingsWindowAppears() {

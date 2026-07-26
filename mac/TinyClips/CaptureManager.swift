@@ -1223,6 +1223,31 @@ class CaptureManager: ObservableObject {
         }
     }
 
+    func openRecentCapture(_ item: RecentCaptureItem) {
+        guard FileManager.default.fileExists(atPath: item.path) else {
+            RecentCaptureStore.shared.remove(item)
+            return
+        }
+
+        switch item.type {
+        case .screenshot:
+            showScreenshotEditor(
+                for: item.url,
+                initialSaveURL: item.url,
+                deleteSourceOnCancel: false,
+                reopenPickerAfterClose: false
+            )
+        case .video:
+            showTrimmer(for: item.url, saveImmediately: true)
+        case .gif:
+            guard let gifData = try? GifCaptureData(contentsOf: item.url) else {
+                SaveService.shared.showError("GIF could not be opened.")
+                return
+            }
+            showGifTrimmer(gifData: gifData, outputURL: item.url)
+        }
+    }
+
     private func showTrimmer(for url: URL, saveImmediately: Bool) {
         let window = VideoTrimmerWindow(videoURL: url) { [weak self] resultURL in
             guard let self else { return }
