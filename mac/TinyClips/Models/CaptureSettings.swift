@@ -266,8 +266,19 @@ class CaptureSettings: ObservableObject {
     @AppStorage("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
     @AppStorage("saveImmediatelyVideo") var saveImmediatelyVideo: Bool = true
     @AppStorage("saveImmediatelyGif") var saveImmediatelyGif: Bool = true
-    @AppStorage("reopenCapturePickerAfterCapture") var reopenCapturePickerAfterCapture: Bool = false
     @AppStorage("showScreenshotCapturePicker") var showScreenshotCapturePicker: Bool = true {
+        didSet {
+            if !showScreenshotCapturePicker {
+                showScreenshotCapturePickerAfterCapture = false
+            }
+        }
+    }
+    @AppStorage("showScreenshotCapturePickerAfterCapture") var showScreenshotCapturePickerAfterCapture: Bool = true {
+        didSet {
+            if showScreenshotCapturePickerAfterCapture && !showScreenshotCapturePicker {
+                showScreenshotCapturePickerAfterCapture = false
+            }
+        }
     }
     @AppStorage("showVideoCapturePicker") var showVideoCapturePicker: Bool = true
     @AppStorage("showGifCapturePicker") var showGifCapturePicker: Bool = true
@@ -327,6 +338,10 @@ class CaptureSettings: ObservableObject {
         case .gif:
             return showGifCapturePicker
         }
+    }
+
+    var shouldShowScreenshotCapturePickerAfterCapture: Bool {
+        showScreenshotCapturePicker && showScreenshotCapturePickerAfterCapture
     }
 
     func mouseClickOverlayStyle(for type: CaptureType) -> MouseClickOverlayStyle {
@@ -421,7 +436,7 @@ class CaptureSettings: ObservableObject {
             "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
             "showScreenshotEditor", "showGifTrimmer",
             "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
-            "reopenCapturePickerAfterCapture", "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture", "showVideoCapturePicker", "showGifCapturePicker",
+            "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture", "showVideoCapturePicker", "showGifCapturePicker",
             "screenshotFormat", "screenshotScale", "jpegQuality",
             "videoCountdownEnabled", "videoCountdownDuration",
             "videoRecordingTimeLimitMinutes",

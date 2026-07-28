@@ -7,7 +7,6 @@ All notable changes to this project will be documented in this file.
 ## v1.5.4-mac - 2026-07-26
 
 ### Added
-- Added a macOS General setting to reopen the originating Region / Screen / Window picker after a screenshot, video, or GIF is successfully saved.
 - Added menu-bar shortcuts for opening capture folders and reopening the 10 most recent screenshots, videos, and GIFs in their editor or trimmer.
 - Added four-corner resize handles to selected screenshot annotations while preserving move dragging and arrow/line endpoint editing.
 

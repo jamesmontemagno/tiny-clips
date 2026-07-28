@@ -147,8 +147,6 @@ class CaptureManager: ObservableObject {
     private var pendingRecordingCountdownEnabled: Bool = true
     private var pendingRecordingCountdownDuration: Int = 3
     private var pendingVideoTimeLimitMinutes: Int = 0
-    private var pendingRecordingWasPickerInitiated = false
-    private var activeRecordingWasPickerInitiated = false
     private var activeRecordingRegion: CaptureRegion?
     private var recordPanelPosition: NSPoint?
     private var trimmerWindow: VideoTrimmerWindow?
@@ -373,6 +371,7 @@ class CaptureManager: ObservableObject {
                 countdownCompleted: countdownEnabled
             )
             Task {
+                var didPresentEditor = false
                 do {
                     let settings = CaptureSettings.shared
                     let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
@@ -394,10 +393,6 @@ class CaptureManager: ObservableObject {
                     if settings.showScreenshotEditor {
                         if shouldSaveImmediately {
                             SaveService.shared.handleSavedFile(url: url, type: .screenshot)
-                            self.reopenCapturePickerAfterSavedCapture(
-                                type: .screenshot,
-                                wasPickerInitiated: shouldReturnToPickerAfterCapture
-                            )
                         }
                         let initialSaveURL = shouldSaveImmediately
                             ? url
@@ -409,17 +404,19 @@ class CaptureManager: ObservableObject {
                             for: url,
                             initialSaveURL: initialSaveURL,
                             deleteSourceOnCancel: !shouldSaveImmediately,
-                            shouldReopenPickerAfterSave: !shouldSaveImmediately && shouldReturnToPickerAfterCapture
+                            reopenPickerAfterClose: shouldReturnToPickerAfterCapture
                         )
+                        didPresentEditor = true
                     } else {
                         SaveService.shared.handleSavedFile(url: url, type: .screenshot)
-                        self.reopenCapturePickerAfterSavedCapture(
-                            type: .screenshot,
-                            wasPickerInitiated: shouldReturnToPickerAfterCapture
-                        )
                     }
                 } catch {
                     SaveService.shared.showError("Screenshot failed: \(error.localizedDescription)")
+                }
+                if !didPresentEditor,
+                   shouldReturnToPickerAfterCapture,
+                   CaptureSettings.shared.shouldShowScreenshotCapturePickerAfterCapture {
+                    self.showScreenshotPicker()
                 }
             }
         }
@@ -597,7 +594,6 @@ class CaptureManager: ObservableObject {
                     self.isRecording = false
                     self.isRecordingPaused = false
                     self.activeRecordingRequest = nil
-                    self.activeRecordingWasPickerInitiated = false
                     self.activeRecordingRegion = nil
                     self.dismissRegionIndicator()
                     self.activeRecordingSessionID = nil
@@ -669,7 +665,6 @@ class CaptureManager: ObservableObject {
                     self.isRecording = false
                     self.isRecordingPaused = false
                     self.activeRecordingRequest = nil
-                    self.activeRecordingWasPickerInitiated = false
                     self.activeRecordingRegion = nil
                     self.dismissRegionIndicator()
                     self.activeRecordingSessionID = nil
@@ -706,10 +701,7 @@ class CaptureManager: ObservableObject {
         activeRecordingRegion = nil
         isRecording = false
         isRecordingPaused = false
-        if clearActiveRequest {
-            activeRecordingRequest = nil
-            activeRecordingWasPickerInitiated = false
-        }
+        activeRecordingRequest = nil
         let stoppingSessionID = activeRecordingSessionID
         activeRecordingSessionID = nil
         finalizingSessionID = stoppingSessionID
@@ -796,6 +788,10 @@ class CaptureManager: ObservableObject {
         gifWriter = nil
         lastVideoRecordingArtifacts = nil
 
+        if clearActiveRequest {
+            activeRecordingRequest = nil
+        }
+
         await recorder?.cancel()
         await webcam?.cancel()
         await writer?.cancel()
@@ -815,8 +811,6 @@ class CaptureManager: ObservableObject {
         let videoRecorderAtStop = videoRecorder
         let webcamRecorderAtStop = webcamRecorder
         let gifWriterAtStop = gifWriter
-        let shouldReopenPickerAfterSave = activeRecordingWasPickerInitiated
-        activeRecordingWasPickerInitiated = false
 
         let capturedMouseClickData = stopMouseClickMonitoring()
         let shortVideoIndicatorBypassThreshold: TimeInterval = 120
@@ -1056,19 +1050,11 @@ class CaptureManager: ObservableObject {
                             )
                         }
                         SaveService.shared.handleSavedFile(url: url, type: .gif)
-                        self.reopenCapturePickerAfterSavedCapture(
-                            type: .gif,
-                            wasPickerInitiated: shouldReopenPickerAfterSave
-                        )
                     }
 
                     updateProcessingProgress(1.0, status: "Done")
                     CaptureAnalyticsStore.shared.recordCapture(.gif)
-                    showGifTrimmer(
-                        gifData: gifData,
-                        outputURL: url,
-                        shouldReopenPickerAfterSave: !shouldSaveImmediately && shouldReopenPickerAfterSave
-                    )
+                    showGifTrimmer(gifData: gifData, outputURL: url)
                 } else {
                     try await writer.stop(outputURL: url)
                     updateProcessingProgress(0.5, status: "Applying overlays…")
@@ -1134,10 +1120,6 @@ class CaptureManager: ObservableObject {
                     updateProcessingProgress(0.9, status: "Finalizing…")
                     CaptureAnalyticsStore.shared.recordCapture(.gif)
                     SaveService.shared.handleSavedFile(url: url, type: .gif)
-                    reopenCapturePickerAfterSavedCapture(
-                        type: .gif,
-                        wasPickerInitiated: shouldReopenPickerAfterSave
-                    )
                     updateProcessingProgress(1.0, status: "Done")
                 }
             } catch {
@@ -1163,23 +1145,14 @@ class CaptureManager: ObservableObject {
             if videoShowTrimmer {
                 if videoShouldSaveImmediately {
                     SaveService.shared.handleSavedFile(url: savedVideoURL, type: .video)
-                    reopenCapturePickerAfterSavedCapture(
-                        type: .video,
-                        wasPickerInitiated: shouldReopenPickerAfterSave
-                    )
                 }
 
                 showTrimmer(
                     for: savedVideoURL,
-                    saveImmediately: videoShouldSaveImmediately,
-                    shouldReopenPickerAfterSave: !videoShouldSaveImmediately && shouldReopenPickerAfterSave
+                    saveImmediately: videoShouldSaveImmediately
                 )
             } else {
                 SaveService.shared.handleSavedFile(url: savedVideoURL, type: .video)
-                reopenCapturePickerAfterSavedCapture(
-                    type: .video,
-                    wasPickerInitiated: shouldReopenPickerAfterSave
-                )
             }
         }
 
@@ -1202,7 +1175,6 @@ class CaptureManager: ObservableObject {
 
         pendingRecordingTarget = nil
         pendingRecordingType = nil
-        pendingRecordingWasPickerInitiated = false
         lastVideoRecordingArtifacts = nil
         activeWebcamOverlaySelection = nil
         webcamPositionEvents = []
@@ -1228,49 +1200,25 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func reopenCapturePickerAfterSavedCapture(
-        type: CaptureType,
-        wasPickerInitiated: Bool
-    ) {
-        let settings = CaptureSettings.shared
-        guard wasPickerInitiated,
-              settings.reopenCapturePickerAfterCapture,
-              settings.shouldShowCapturePicker(for: type)
-        else {
-            return
-        }
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            switch type {
-            case .screenshot:
-                self.showScreenshotPicker()
-            case .video, .gif:
-                self.showRecordingPicker(for: type)
-            }
-        }
-    }
-
     private func showScreenshotEditor(
         for url: URL,
         initialSaveURL: URL,
         deleteSourceOnCancel: Bool,
-        shouldReopenPickerAfterSave: Bool
+        reopenPickerAfterClose: Bool
     ) {
         ScreenshotEditorRegistry.shared.present(
             imageURL: url,
             initialSaveURL: initialSaveURL,
             deleteSourceAfterSave: deleteSourceOnCancel
         ) { [weak self] resultURL in
-            guard let self else { return }
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .screenshot)
-                self.reopenCapturePickerAfterSavedCapture(
-                    type: .screenshot,
-                    wasPickerInitiated: shouldReopenPickerAfterSave
-                )
             } else if deleteSourceOnCancel {
                 try? FileManager.default.removeItem(at: url)
+            }
+            if reopenPickerAfterClose,
+               CaptureSettings.shared.shouldShowScreenshotCapturePickerAfterCapture {
+                self?.showScreenshotPicker()
             }
         }
     }
@@ -1287,32 +1235,20 @@ class CaptureManager: ObservableObject {
                 for: item.url,
                 initialSaveURL: item.url,
                 deleteSourceOnCancel: false,
-                shouldReopenPickerAfterSave: false
+                reopenPickerAfterClose: false
             )
         case .video:
-            showTrimmer(
-                for: item.url,
-                saveImmediately: true,
-                shouldReopenPickerAfterSave: false
-            )
+            showTrimmer(for: item.url, saveImmediately: true)
         case .gif:
             guard let gifData = try? GifCaptureData(contentsOf: item.url) else {
                 SaveService.shared.showError("GIF could not be opened.")
                 return
             }
-            showGifTrimmer(
-                gifData: gifData,
-                outputURL: item.url,
-                shouldReopenPickerAfterSave: false
-            )
+            showGifTrimmer(gifData: gifData, outputURL: item.url)
         }
     }
 
-    private func showTrimmer(
-        for url: URL,
-        saveImmediately: Bool,
-        shouldReopenPickerAfterSave: Bool
-    ) {
+    private func showTrimmer(for url: URL, saveImmediately: Bool) {
         let window = VideoTrimmerWindow(videoURL: url) { [weak self] resultURL in
             guard let self else { return }
             if let resultURL {
@@ -1324,10 +1260,6 @@ class CaptureManager: ObservableObject {
                     do {
                         try FileManager.default.moveItem(at: resultURL, to: finalURL)
                         SaveService.shared.handleSavedFile(url: finalURL, type: .video)
-                        self.reopenCapturePickerAfterSavedCapture(
-                            type: .video,
-                            wasPickerInitiated: shouldReopenPickerAfterSave
-                        )
                     } catch {
                         SaveService.shared.showError("Video save failed: \(error.localizedDescription)")
                     }
@@ -1349,19 +1281,11 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func showGifTrimmer(
-        gifData: GifCaptureData,
-        outputURL: URL,
-        shouldReopenPickerAfterSave: Bool
-    ) {
+    private func showGifTrimmer(gifData: GifCaptureData, outputURL: URL) {
         let window = GifTrimmerWindow(gifData: gifData, outputURL: outputURL) { [weak self] resultURL in
             guard let self else { return }
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .gif)
-                self.reopenCapturePickerAfterSavedCapture(
-                    type: .gif,
-                    wasPickerInitiated: shouldReopenPickerAfterSave
-                )
             }
             DispatchQueue.main.async {
                 self.gifTrimmerWindow = nil
@@ -1386,12 +1310,9 @@ class CaptureManager: ObservableObject {
                 let countdownEnabled = self.pendingRecordingCountdownEnabled
                 let countdownDuration = self.pendingRecordingCountdownDuration
                 let videoTimeLimitMinutes = self.pendingVideoTimeLimitMinutes
-                let wasPickerInitiated = self.pendingRecordingWasPickerInitiated
 
                 self.pendingRecordingTarget = nil
                 self.pendingRecordingType = nil
-                self.pendingRecordingWasPickerInitiated = false
-                self.activeRecordingWasPickerInitiated = wasPickerInitiated
                 self.dismissStartPanel()
 
                 switch type {
@@ -1421,7 +1342,6 @@ class CaptureManager: ObservableObject {
             onCancel: { [weak self] in
                 self?.pendingRecordingTarget = nil
                 self?.pendingRecordingType = nil
-                self?.pendingRecordingWasPickerInitiated = false
                 self?.pendingVideoTimeLimitMinutes = CaptureSettings.shared.videoRecordingTimeLimitMinutes
                 self?.dismissStartPanel()
                 self?.dismissRegionIndicator()
@@ -1736,7 +1656,6 @@ class CaptureManager: ObservableObject {
         pendingRecordingCountdownEnabled = countdownEnabled
         pendingRecordingCountdownDuration = countdownDuration
         pendingVideoTimeLimitMinutes = videoTimeLimitMinutes
-        pendingRecordingWasPickerInitiated = shouldReturnToPicker
 
         dismissRegionIndicator()
 
