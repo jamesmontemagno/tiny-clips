@@ -377,16 +377,22 @@
 
         <Border Style="{StaticResource SettingCardStyle}">
             <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     x:Name="CopyAnalyticsSummaryButton"
-                    HorizontalAlignment="Left"
                     AutomationProperties.AutomationId="CopyAnalyticsSummaryButton"
                     Click="OnCopyAnalyticsSummary"
                     Content="Copy Summary" />
+                <Button
+                    AutomationProperties.AutomationId="ShareAnalyticsSummaryButton"
+                    AutomationProperties.Name="Share analytics summary"
+                    Click="OnShareAnalyticsSummary"
+                    Content="Share" />
+                </StackPanel>
                 <TextBlock
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Copies a quick text summary of your capture activity for the selected range to the clipboard." />
+                    Text="Copy or share a quick text summary of your capture activity for the selected range." />
             </StackPanel>
         </Border>
 

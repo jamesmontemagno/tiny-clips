@@ -93,6 +93,8 @@ struct GeneralSettingsSection: View {
                 .help("When enabled, TinyClips appears in Command-Tab and can participate in normal app/window switching.")
             Toggle("Always capture main display", isOn: $settings.alwaysCaptureMainDisplay)
                 .help("Skip the display picker when multiple monitors are connected")
+            Toggle("Reopen capture picker after each capture", isOn: $settings.reopenCapturePickerAfterCapture)
+                .help("Show the Region / Screen / Window picker again after a capture is saved.")
             Toggle("Include TinyClips in captures", isOn: $settings.includeTinyClipsInCapture)
                 .help("For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection.")
             Toggle("Show 'Captured on Tiny Clips' overlay", isOn: $settings.showBrandingOverlay)

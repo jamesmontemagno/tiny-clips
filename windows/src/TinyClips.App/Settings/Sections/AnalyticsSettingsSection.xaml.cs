@@ -2,6 +2,8 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 
 namespace TinyClips.App.Settings.Sections;
 
@@ -9,6 +11,7 @@ namespace TinyClips.App.Settings.Sections;
 public sealed partial class AnalyticsSettingsSection : UserControl
 {
     private readonly IDisposable _realizationScope;
+    private readonly nint _settingsWindowHandle;
 
     // Retained so the (internally try/catch-wrapped, never-faulting) analytics load task is
     // observed rather than fire-and-forget. Exposed for tests and diagnostics.
@@ -18,9 +21,10 @@ public sealed partial class AnalyticsSettingsSection : UserControl
 
     public Task AnalyticsInitialization => _analyticsInitialization;
 
-    public AnalyticsSettingsSection(SettingsViewModel viewModel)
+    public AnalyticsSettingsSection(SettingsViewModel viewModel, nint settingsWindowHandle)
     {
         ViewModel = viewModel;
+        _settingsWindowHandle = settingsWindowHandle;
         _realizationScope = viewModel.BeginSectionRealization();
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
@@ -57,5 +61,28 @@ public sealed partial class AnalyticsSettingsSection : UserControl
         CopyAnalyticsSummaryButton.Content = "Copied!";
         await Task.Delay(TimeSpan.FromSeconds(1.5));
         CopyAnalyticsSummaryButton.Content = originalContent;
+    }
+
+    private void OnShareAnalyticsSummary(object sender, RoutedEventArgs e)
+    {
+        var summary = ViewModel.BuildAnalyticsSummaryText();
+        var dataTransferManager = DataTransferManagerInterop.GetForWindow(_settingsWindowHandle);
+
+        TypedEventHandler<DataTransferManager, DataRequestedEventArgs>? handler = null;
+        handler = (_, args) =>
+        {
+            args.Request.Data.Properties.Title = "My TinyClips capture activity";
+            args.Request.Data.SetText(summary);
+        };
+
+        dataTransferManager.DataRequested += handler;
+        try
+        {
+            DataTransferManager.ShowShareUI();
+        }
+        finally
+        {
+            dataTransferManager.DataRequested -= handler;
+        }
     }
 }

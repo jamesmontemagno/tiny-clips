@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Added a macOS General setting to reopen the originating Region / Screen / Window picker after a screenshot, video, or GIF is successfully saved.
 - Added a new macOS Settings → Analytics view that tracks daily screenshot, video, and GIF capture counts locally, shows rolling 7-day or 30-day bar charts, and lets you reset the stored history.
 - Extended macOS capture analytics with lifetime (all-time) totals per capture type, a per-type series toggle to show/hide screenshots/videos/GIFs on the chart, hover tooltips with exact daily counts, a "busiest day of week" and "most active hour" insights breakdown, and Copy Summary / Share buttons for a quick text summary of your capture activity.
 - Added a **Remove audio** option to the macOS video trimmer so exports can deliberately omit the audio track while preserving audio by default.
