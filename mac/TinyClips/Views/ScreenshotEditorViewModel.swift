@@ -9,6 +9,13 @@ private struct EditorCanvasState {
     let nextNumberLabel: Int
 }
 
+private enum AnnotationResizeHandle {
+    case topLeft
+    case topRight
+    case bottomLeft
+    case bottomRight
+}
+
 @MainActor
 class ScreenshotEditorViewModel: ObservableObject {
     let sourceURL: URL
@@ -54,9 +61,11 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var dragOffset: CGPoint = .zero
     private var dragOriginalRect: CGRect = .zero
     private var dragOriginalPoints: [CGPoint] = []
+    private var dragOriginalFontSize: CGFloat = 0
     private var isDraggingAnnotation = false
     private var isDraggingEndpoint = false // true = dragging arrowhead/line end
     private var isDraggingStartpoint = false // true = dragging arrow tail/line start
+    private var activeResizeHandle: AnnotationResizeHandle?
     private var undoStack: [EditorCanvasState] = []
     private var redoStack: [EditorCanvasState] = []
     private var pendingDragHistoryState: EditorCanvasState?
@@ -433,13 +442,19 @@ class ScreenshotEditorViewModel: ObservableObject {
     func handleDrag(start: CGPoint, current: CGPoint, isAspectLocked: Bool = false) {
         switch selectedTool {
         case .move:
-            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint {
+            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && activeResizeHandle == nil {
                 // First drag event — find what we hit
-                if let idx = annotationIndex(at: start) {
+                let selectedIndex = selectedAnnotationIndex.flatMap { index in
+                    annotations.indices.contains(index) && resizeHandle(at: start, for: annotations[index]) != nil ? index : nil
+                }
+                if let idx = selectedIndex ?? annotationIndex(at: start) {
                     beginDragHistory()
                     selectedAnnotationIndex = idx
-                    dragOriginalRect = annotations[idx].rect
+                    dragOriginalRect = annotations[idx].tool == .pencil
+                        ? pencilBounds(for: annotations[idx]) ?? annotations[idx].rect
+                        : annotations[idx].rect
                     dragOriginalPoints = annotations[idx].points
+                    dragOriginalFontSize = annotations[idx].fontSize
 
                     let ann = annotations[idx]
                     if ann.tool == .arrow || ann.tool == .line {
@@ -462,6 +477,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                         } else {
                             isDraggingAnnotation = true
                         }
+                    } else if let handle = resizeHandle(at: start, for: ann) {
+                        activeResizeHandle = handle
                     } else {
                         isDraggingAnnotation = true
                     }
@@ -475,7 +492,9 @@ class ScreenshotEditorViewModel: ObservableObject {
                 if dx != 0 || dy != 0 {
                     didChangePendingDrag = true
                 }
-                if isDraggingEndpoint {
+                if let resizeHandle = activeResizeHandle {
+                    resizeAnnotation(at: idx, from: resizeHandle, to: current)
+                } else if isDraggingEndpoint {
                     // Move just the endpoint (rotate the arrow/line)
                     var ann = annotations[idx]
                     let orig = originalLinePoints()
@@ -549,6 +568,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             isDraggingAnnotation = false
             isDraggingEndpoint = false
             isDraggingStartpoint = false
+            activeResizeHandle = nil
             commitDragHistory()
 
         case .crop:
@@ -617,6 +637,95 @@ class ScreenshotEditorViewModel: ObservableObject {
             )
         }
         annotations[index] = ann
+        markDirty()
+    }
+
+    private func resizeHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> AnnotationResizeHandle? {
+        guard annotation.tool != .arrow, annotation.tool != .line else { return nil }
+        let bounds = annotation.tool == .pencil ? pencilBounds(for: annotation) : annotation.rect
+        guard let bounds else { return nil }
+        let threshold: CGFloat = 0.025
+        let handles: [(AnnotationResizeHandle, CGPoint)] = [
+            (.topLeft, CGPoint(x: bounds.minX, y: bounds.minY)),
+            (.topRight, CGPoint(x: bounds.maxX, y: bounds.minY)),
+            (.bottomLeft, CGPoint(x: bounds.minX, y: bounds.maxY)),
+            (.bottomRight, CGPoint(x: bounds.maxX, y: bounds.maxY)),
+        ]
+        return handles.min { hypot(point.x - $0.1.x, point.y - $0.1.y) < hypot(point.x - $1.1.x, point.y - $1.1.y) }
+            .flatMap { hypot(point.x - $0.1.x, point.y - $0.1.y) <= threshold ? $0.0 : nil }
+    }
+
+    private func resizeAnnotation(at index: Int, from handle: AnnotationResizeHandle, to point: CGPoint) {
+        var annotation = annotations[index]
+        let originalBounds = dragOriginalRect
+        let opposite = CGPoint(
+            x: handle == .topLeft || handle == .bottomLeft ? originalBounds.maxX : originalBounds.minX,
+            y: handle == .topLeft || handle == .topRight ? originalBounds.maxY : originalBounds.minY
+        )
+        var resizedBounds = CGRect(
+            x: min(point.x, opposite.x),
+            y: min(point.y, opposite.y),
+            width: max(abs(point.x - opposite.x), 0.001),
+            height: max(abs(point.y - opposite.y), 0.001)
+        )
+        if annotation.tool == .text || annotation.tool == .number {
+            let pixelWidth = max(imagePixelSize.width, 1)
+            let pixelHeight = max(imagePixelSize.height, 1)
+            let minimumWidth = 1 / pixelWidth
+            let minimumHeight = 1 / pixelHeight
+            let clampedPoint = CGPoint(
+                x: handle == .topLeft || handle == .bottomLeft
+                    ? min(point.x, opposite.x - minimumWidth)
+                    : max(point.x, opposite.x + minimumWidth),
+                y: handle == .topLeft || handle == .topRight
+                    ? min(point.y, opposite.y - minimumHeight)
+                    : max(point.y, opposite.y + minimumHeight)
+            )
+            let originalDiagonal = hypot(originalBounds.width * pixelWidth, originalBounds.height * pixelHeight)
+            let draggedDiagonal = hypot(
+                (clampedPoint.x - opposite.x) * pixelWidth,
+                (clampedPoint.y - opposite.y) * pixelHeight
+            )
+            let minimumScale: CGFloat
+            let maximumScale: CGFloat
+            if annotation.tool == .text {
+                minimumScale = max(0.1, 8 / max(dragOriginalFontSize, 1))
+                maximumScale = .greatestFiniteMagnitude
+            } else {
+                let originalMultiplier = originalBounds.width * pixelWidth / max(baseNumberSidePixels(), 1)
+                minimumScale = 0.2 / max(originalMultiplier, 0.001)
+                maximumScale = 2 / max(originalMultiplier, 0.001)
+            }
+            let scale = min(
+                max(draggedDiagonal / max(originalDiagonal, 1), minimumScale),
+                maximumScale
+            )
+            let width = originalBounds.width * scale
+            let height = originalBounds.height * scale
+            resizedBounds = CGRect(
+                x: handle == .topLeft || handle == .bottomLeft ? opposite.x - width : opposite.x,
+                y: handle == .topLeft || handle == .topRight ? opposite.y - height : opposite.y,
+                width: width,
+                height: height
+            )
+        }
+
+        if annotation.tool == .pencil {
+            let width = max(originalBounds.width, 0.001)
+            let height = max(originalBounds.height, 0.001)
+            annotation.points = dragOriginalPoints.map { original in
+                CGPoint(
+                    x: resizedBounds.minX + ((original.x - originalBounds.minX) / width) * resizedBounds.width,
+                    y: resizedBounds.minY + ((original.y - originalBounds.minY) / height) * resizedBounds.height
+                )
+            }
+        } else {
+            annotation.rect = resizedBounds
+            if annotation.tool == .text {
+                annotation.fontSize = max(8, dragOriginalFontSize * resizedBounds.width / max(originalBounds.width, 0.001))
+            }
+        }
+        annotations[index] = annotation
         markDirty()
     }
 
@@ -1429,4 +1538,3 @@ class ScreenshotEditorViewModel: ObservableObject {
             abs(la - ra) < 0.0001
     }
 }
-

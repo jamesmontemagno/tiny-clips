@@ -128,6 +128,7 @@ private struct ScreenshotEditorSceneRoot: View {
     let sessionID: UUID?
     @Environment(\.dismissWindow) private var dismissWindow
     @State private var resolvedSession: ScreenshotEditorRegistry.Session?
+    @State private var completionResult: URL?
 
     var body: some View {
         Group {
@@ -137,7 +138,7 @@ private struct ScreenshotEditorSceneRoot: View {
                     initialSaveURL: session.initialSaveURL,
                     deleteSourceAfterSave: session.deleteSourceAfterSave
                 ) { resultURL in
-                    ScreenshotEditorRegistry.shared.finish(sessionID, result: resultURL)
+                    completionResult = resultURL
                     dismissWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
                 }
             } else {
@@ -152,6 +153,10 @@ private struct ScreenshotEditorSceneRoot: View {
             } else {
                 dismissWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
             }
+        }
+        .onDisappear {
+            guard let sessionID else { return }
+            ScreenshotEditorRegistry.shared.finish(sessionID, result: completionResult)
         }
     }
 }

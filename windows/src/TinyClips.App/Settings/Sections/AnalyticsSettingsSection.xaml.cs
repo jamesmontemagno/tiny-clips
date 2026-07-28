@@ -3,29 +3,31 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Foundation;
 
 namespace TinyClips.App.Settings.Sections;
 
 /// <summary>Capture-history chart, totals, insights, and analytics reset/copy actions.</summary>
-public sealed partial class AnalyticsSettingsSection : UserControl
+public sealed partial class AnalyticsSettingsSection : UserControl, ISettingsSectionLifecycle
 {
     private readonly IDisposable _realizationScope;
-    private readonly nint _settingsWindowHandle;
+    private readonly DataTransferManager _dataTransferManager;
+    private readonly IntPtr _settingsWindowHandle;
 
     // Retained so the (internally try/catch-wrapped, never-faulting) analytics load task is
     // observed rather than fire-and-forget. Exposed for tests and diagnostics.
     private readonly Task _analyticsInitialization;
+    private string? _analyticsSummaryToShare;
 
     public SettingsViewModel ViewModel { get; }
 
     public Task AnalyticsInitialization => _analyticsInitialization;
 
-    public AnalyticsSettingsSection(SettingsViewModel viewModel, nint settingsWindowHandle)
+    public AnalyticsSettingsSection(SettingsViewModel viewModel, IntPtr settingsWindowHandle)
     {
         ViewModel = viewModel;
-        _settingsWindowHandle = settingsWindowHandle;
         _realizationScope = viewModel.BeginSectionRealization();
+        _settingsWindowHandle = settingsWindowHandle;
+        _dataTransferManager = DataTransferManagerInterop.GetForWindow(settingsWindowHandle);
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
 
@@ -65,24 +67,21 @@ public sealed partial class AnalyticsSettingsSection : UserControl
 
     private void OnShareAnalyticsSummary(object sender, RoutedEventArgs e)
     {
-        var summary = ViewModel.BuildAnalyticsSummaryText();
-        var dataTransferManager = DataTransferManagerInterop.GetForWindow(_settingsWindowHandle);
+        _analyticsSummaryToShare = ViewModel.BuildAnalyticsSummaryText();
+        _dataTransferManager.DataRequested -= OnDataRequested;
+        _dataTransferManager.DataRequested += OnDataRequested;
+        DataTransferManagerInterop.ShowShareUIForWindow(_settingsWindowHandle);
+    }
 
-        TypedEventHandler<DataTransferManager, DataRequestedEventArgs>? handler = null;
-        handler = (_, args) =>
-        {
-            args.Request.Data.Properties.Title = "My TinyClips capture activity";
-            args.Request.Data.SetText(summary);
-        };
+    public void NotifyWindowClosed()
+    {
+        _dataTransferManager.DataRequested -= OnDataRequested;
+    }
 
-        dataTransferManager.DataRequested += handler;
-        try
-        {
-            DataTransferManager.ShowShareUI();
-        }
-        finally
-        {
-            dataTransferManager.DataRequested -= handler;
-        }
+    private void OnDataRequested(DataTransferManager sender, DataRequestedEventArgs args)
+    {
+        args.Request.Data.Properties.Title = "My TinyClips capture activity";
+        args.Request.Data.SetText(_analyticsSummaryToShare ?? ViewModel.BuildAnalyticsSummaryText());
+        sender.DataRequested -= OnDataRequested;
     }
 }

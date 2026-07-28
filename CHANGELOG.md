@@ -4,8 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v1.5.4-mac - 2026-07-26
+
 ### Added
 - Added a macOS General setting to reopen the originating Region / Screen / Window picker after a screenshot, video, or GIF is successfully saved.
+- Added menu-bar shortcuts for opening capture folders and reopening the 10 most recent screenshots, videos, and GIFs in their editor or trimmer.
+- Added four-corner resize handles to selected screenshot annotations while preserving move dragging and arrow/line endpoint editing.
+
+### Fixed
+- Fixed the macOS screenshot picker reopening before the screenshot editor is closed.
+
+## v1.5.3-mac - 2026-07-25
+
+### Added
+- Added a live webcam preview before and during macOS video recording; drag it between corners and the exported video preserves each position change.
 - Added a new macOS Settings → Analytics view that tracks daily screenshot, video, and GIF capture counts locally, shows rolling 7-day or 30-day bar charts, and lets you reset the stored history.
 - Extended macOS capture analytics with lifetime (all-time) totals per capture type, a per-type series toggle to show/hide screenshots/videos/GIFs on the chart, hover tooltips with exact daily counts, a "busiest day of week" and "most active hour" insights breakdown, and Copy Summary / Share buttons for a quick text summary of your capture activity.
 - Added a **Remove audio** option to the macOS video trimmer so exports can deliberately omit the audio track while preserving audio by default.
@@ -19,9 +31,11 @@ All notable changes to this project will be documented in this file.
 - Fixed the macOS Settings → Analytics view freezing with "Publishing changes from within view updates is not allowed" faults, caused by the analytics history being pruned (and its published state reassigned) while the view was rendering. Pruning now runs only at launch and when a capture is recorded.
 - Fixed the macOS pre-capture countdown number transition so each tick now animates smoothly instead of rebuilding the SwiftUI hosting view every second (which prevented the numeric text transition from running).
 - Fixed macOS screenshot editor exports so curved arrows keep their preview-aligned curve direction and position when background padding is applied.
+- Fixed canceling a pre-recording countdown with the stop hotkey leaving the region indicator on screen.
 
 ### Improved
 - Added a "Download the Latest Version" link to the macOS Settings → About section (Direct Download builds) so that when the in-app Sparkle update check fails with "An error occurred in retrieving update information", users always have a reliable path to update by downloading the newest release directly from GitHub.
+- Moved the macOS branding overlay toggle into a new Settings → Branding section to match the Windows settings organization.
 - Screenshot editor saves now use a document-style flow on macOS: Save overwrites the current file, Save As creates a new file, Open Folder reveals the active save destination, and Close dismisses the editor without forcing an export.
 - macOS Settings → About now detects when a direct-download build is running outside the Applications folder and gently points users there first, reducing the extra permission prompts Sparkle may need during updates.
 - The macOS menu-bar **Check for Updates…** command now opens Settings directly to **About** first, so direct-download builds outside Applications see the smoother-update guidance before Sparkle prompts for extra permission.

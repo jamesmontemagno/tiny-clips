@@ -10,6 +10,7 @@ enum SettingsTab: String, CaseIterable {
     case video = "Video"
     case gif = "GIF"
     case mouseClicks = "Mouse Clicks"
+    case branding = "Branding"
     case shortcuts = "Shortcuts"
     case pro = "Support Tiny Clips"
     case about = "About"
@@ -22,6 +23,7 @@ enum SettingsTab: String, CaseIterable {
         case .video: return "video"
         case .gif: return "photo.on.rectangle"
         case .mouseClicks: return "cursorarrow.rays"
+        case .branding: return "flag"
         case .shortcuts: return "command"
         case .pro: return "star"
         case .about: return "info.circle"
@@ -93,6 +95,8 @@ struct SettingsView: View {
                     )
                 case .mouseClicks:
                     MouseClicksSettingsSection(settings: settings)
+                case .branding:
+                    BrandingSettingsSection(settings: settings)
                 case .shortcuts:
                     ShortcutsSettingsSection(settings: settings)
                 case .pro:

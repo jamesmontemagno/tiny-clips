@@ -1,6 +1,92 @@
 import AppKit
+import Combine
 import UserNotifications
 import CryptoKit
+
+struct RecentCaptureItem: Identifiable, Codable {
+    let path: String
+    let type: CaptureType
+    let capturedAt: Date
+
+    var id: String { path }
+    var url: URL { URL(fileURLWithPath: path) }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case type
+        case capturedAt
+    }
+
+    init(path: String, type: CaptureType, capturedAt: Date = Date()) {
+        self.path = path
+        self.type = type
+        self.capturedAt = capturedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        path = try values.decode(String.self, forKey: .path)
+        capturedAt = try values.decode(Date.self, forKey: .capturedAt)
+        let rawType = try values.decode(String.self, forKey: .type)
+        guard let decodedType = CaptureType(rawValue: rawType) else {
+            throw DecodingError.dataCorruptedError(forKey: .type, in: values, debugDescription: "Unknown capture type")
+        }
+        type = decodedType
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(path, forKey: .path)
+        try values.encode(type.rawValue, forKey: .type)
+        try values.encode(capturedAt, forKey: .capturedAt)
+    }
+}
+
+@MainActor
+final class RecentCaptureStore: ObservableObject {
+    static let shared = RecentCaptureStore()
+
+    @Published private(set) var items: [RecentCaptureItem] = []
+
+    private let defaultsKey = "recentCapturesV1"
+
+    private init() {
+        if let data = UserDefaults.standard.data(forKey: defaultsKey),
+           let decoded = try? JSONDecoder().decode([RecentCaptureItem].self, from: data) {
+            items = Array(decoded.prefix(10))
+        }
+        pruneMissing()
+    }
+
+    func record(url: URL, type: CaptureType) {
+        guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+            return
+        }
+        let path = url.standardizedFileURL.path
+        items.removeAll { $0.path == path }
+        items.insert(RecentCaptureItem(path: path, type: type), at: 0)
+        items = Array(items.filter { FileManager.default.fileExists(atPath: $0.path) }.prefix(10))
+        persist()
+    }
+
+    func remove(_ item: RecentCaptureItem) {
+        items.removeAll { $0.path == item.path }
+        persist()
+    }
+
+    func pruneMissing() {
+        let existing = items.filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard existing.count != items.count else { return }
+        items = existing
+        persist()
+    }
+
+    private func persist() {
+        if let data = try? JSONEncoder().encode(items) {
+            UserDefaults.standard.set(data, forKey: defaultsKey)
+        }
+    }
+}
 
 @MainActor
 final class AccessibilityAnnouncementService {
@@ -258,6 +344,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     @MainActor
     func handleSavedFile(url: URL, type: CaptureType) {
         let settings = CaptureSettings.shared
+        RecentCaptureStore.shared.record(url: url, type: type)
 
 #if APPSTORE
         UserDefaults.standard.set(
