@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Updated macOS in-app Terms of Use links to open Apple's Standard EULA directly.
+
 ## v1.5.4-mac - 2026-07-26
 
 ### Added

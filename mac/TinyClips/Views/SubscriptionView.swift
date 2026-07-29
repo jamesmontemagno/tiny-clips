@@ -182,7 +182,7 @@ struct ProSubscriptionView: View {
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
 
-            if let termsURL = URL(string: "https://tinyclips.app/terms.html") {
+            if let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                 Link("Terms of Use", destination: termsURL)
                     .font(.caption)
                     .foregroundStyle(.secondary)
