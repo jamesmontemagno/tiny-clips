@@ -1013,6 +1013,17 @@ public sealed partial class SettingsViewModel : ObservableObject
         apply();
     }
 
+    /// <summary>
+    /// Resets every setting to its default value and reloads all bound properties so the
+    /// Settings window immediately reflects the restored state.
+    /// </summary>
+    public void ResetAllSettings()
+    {
+        _settings.ResetToDefaults();
+        Load();
+        ThemeChanged?.Invoke();
+    }
+
     public void ResetAnalytics()
     {
         _analytics.Clear();

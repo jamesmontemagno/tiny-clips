@@ -9,6 +9,7 @@ own `CHANGELOG.md` at the repository root.
 - **Faster tray access to saved work** — The tray popup now opens configured capture folders and keeps the 10 most recent screenshots, videos, and GIFs available for reopening in their editor or trimmer.
 - **Share capture analytics summaries** — Settings → Analytics now offers a Share button alongside Copy Summary, opening the native Windows share dialog with the selected-range activity summary.
 - **Resizable screenshot annotations** — Selected annotations now show four corner handles for direct resizing, while arrows and lines retain dedicated endpoint handles and inside dragging still moves annotations.
+- **Reset All Settings to Defaults** — Settings → General now has a "Reset All Settings to Defaults…" button under the new Advanced section. Clicking it shows a confirmation dialog; confirming resets every TinyClips setting to its default value and immediately refreshes the Settings window to reflect the restored state.
 
 ## [v1.5.3-windows] - 2026-07-25
 
