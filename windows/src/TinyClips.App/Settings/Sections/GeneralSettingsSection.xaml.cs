@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -31,4 +32,22 @@ public sealed partial class GeneralSettingsSection : UserControl
 
     private void OnBrowseSaveDirectory(object sender, RoutedEventArgs e) =>
         BrowseSaveDirectoryRequested?.Invoke(this, EventArgs.Empty);
+
+    private async void OnResetAllSettings(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Reset all settings to defaults?",
+            Content = "This resets every TinyClips setting to its default value. This cannot be undone.",
+            PrimaryButtonText = "Reset",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            ViewModel.ResetAllSettings();
+        }
+    }
 }

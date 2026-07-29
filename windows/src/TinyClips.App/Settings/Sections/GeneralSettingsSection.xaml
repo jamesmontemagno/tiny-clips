@@ -247,5 +247,17 @@
                 </ComboBox>
             </Grid>
         </Border>
+
+        <TextBlock
+            Margin="4,16,0,0"
+            Style="{StaticResource BodyStrongTextBlockStyle}"
+            Text="Advanced" />
+
+        <Button
+            HorizontalAlignment="Left"
+            AutomationProperties.AutomationId="ResetAllSettingsButton"
+            AutomationProperties.Name="Reset all settings to defaults"
+            Click="OnResetAllSettings"
+            Content="Reset All Settings to Defaults&#x2026;" />
     </StackPanel>
 </UserControl>
