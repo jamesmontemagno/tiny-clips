@@ -33,11 +33,13 @@ public partial class App : Application
     private const string GlyphCheckForUpdates = "\uE895";
     private const string GlyphFolder = "\uE8B7";
     private const string GlyphHistory = "\uE81C";
+    private const string GlyphLibrary = "\uEB9E";
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
     private SettingsWindow? _settingsWindow;
     private GuideWindow? _guideWindow;
+    private ClipsManagerWindow? _clipsManagerWindow;
     private OnboardingWindow? _onboardingWindow;
     private ScreenshotEditorWindow? _editorWindow;
     private Window? _trimmerWindow;
@@ -253,6 +255,7 @@ public partial class App : Application
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 2,
         };
+        footer.Children.Add(CreateFooterButton(GlyphLibrary, "Clips Library", new RelayCommand(OpenClipsManagerWindow), Dismiss));
         footer.Children.Add(CreateFooterButton("\uE713", "Settings", new RelayCommand(OpenSettingsWindow), Dismiss));
         footer.Children.Add(CreateFooterButton("\uE897", "Guide", new RelayCommand(OpenGuideWindow), Dismiss));
 #if !TINYCLIPS_STORE_BUILD
@@ -1705,6 +1708,38 @@ public partial class App : Application
         ActivateWindowToForeground(_guideWindow);
     }
 
+    private void OpenClipsManagerWindow()
+    {
+        if (_clipsManagerWindow is null)
+        {
+            _clipsManagerWindow = new ClipsManagerWindow();
+            _clipsManagerWindow.Closed += (_, _) => _clipsManagerWindow = null;
+        }
+
+        ActivateWindowToForeground(_clipsManagerWindow);
+    }
+
+    /// <summary>
+    /// Opens a clip from the Clips Library in its appropriate editor or trimmer.
+    /// Called by <see cref="ClipsManagerWindow"/> when the user clicks "Open" on a clip.
+    /// </summary>
+    internal void OpenRecentCaptureFromLibrary(RecentCapture capture)
+    {
+        if (!File.Exists(capture.Path))
+        {
+            return;
+        }
+
+        if (capture.Type == CaptureType.Screenshot)
+        {
+            OpenScreenshotEditor(capture.Path, reopenPickerAfterClose: false);
+        }
+        else
+        {
+            OpenTrimmer(capture.Path, capture.Type, isRecentCapture: true);
+        }
+    }
+
     private Task OpenQuickBugReportFromTrayAsync(Microsoft.UI.Xaml.XamlRoot? xamlRoot)
         => QuickBugReport.ShowQuickBugDialogAndOpenAsync(
             xamlRoot,
@@ -1795,6 +1830,7 @@ public partial class App : Application
         _taskbarIcon = null;
         _settingsWindow?.Close();
         _guideWindow?.Close();
+        _clipsManagerWindow?.Close();
         _onboardingWindow?.Close();
         _editorWindow?.Close();
         _trimmerWindow?.Close();

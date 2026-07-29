@@ -82,8 +82,13 @@ public sealed class RecentCaptureServiceTests
         public HashSet<string> ExistingPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public bool FileExists(string path) => ExistingPaths.Contains(path);
+        public bool DirectoryExists(string path) => false;
         public void CreateDirectory(string path) { }
         public string GetFolderPath(Environment.SpecialFolder folder) => string.Empty;
+        public IEnumerable<string> EnumerateFiles(string directory) => [];
+        public DateTimeOffset GetFileLastWriteTime(string path) => DateTimeOffset.MinValue;
+        public long GetFileSizeBytes(string path) => 0;
+        public void DeleteFile(string path) { }
     }
 
     private sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider

@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Clips Library** — A dedicated media library window (accessible from the tray popup) that lets users browse all saved screenshots, videos, and GIFs without opening File Explorer. Each clip shows a thumbnail (image/GIF) or type icon (video), filename, timestamp, and file size. Per-clip actions: Reveal in Explorer, Open in editor/trimmer, Copy to clipboard, and Delete with confirmation. Supports filter by capture type (All / Screenshots / Videos / GIFs), sort by newest or oldest first, and a grid/list view toggle. Window state (view mode, filter, sort) persists across sessions. A Refresh button rescans the save directories to pick up new captures.
 - **Faster tray access to saved work** — The tray popup now opens configured capture folders and keeps the 10 most recent screenshots, videos, and GIFs available for reopening in their editor or trimmer.
 - **Share capture analytics summaries** — Settings → Analytics now offers a Share button alongside Copy Summary, opening the native Windows share dialog with the selected-range activity summary.
 - **Resizable screenshot annotations** — Selected annotations now show four corner handles for direct resizing, while arrows and lines retain dedicated endpoint handles and inside dragging still moves annotations.
