@@ -24,6 +24,7 @@ namespace TinyClips.App;
 public partial class App : Application
 {
     private static readonly FontFamily FluentIconFont = new("Segoe Fluent Icons");
+    private static readonly object NotificationRegistrationGate = new();
 
     // Segoe Fluent Icons glyphs.
     private const string GlyphScreenshot = "\uE722";
@@ -59,6 +60,7 @@ public partial class App : Application
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
+    private static bool _notificationsRegistered;
 
     public static IServiceProvider Services { get; private set; } = null!;
 
@@ -77,7 +79,6 @@ public partial class App : Application
     {
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
-        RegisterNotifications();
         WireRecordingEvents();
         CreateTrayIcon();
         RegisterGlobalHotKeys();
@@ -876,6 +877,7 @@ public partial class App : Application
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Webcam unavailable")
                 .AddText(reason)
@@ -1422,15 +1424,31 @@ public partial class App : Application
         }
     }
 
-    private static void RegisterNotifications()
+    // Register app notifications only when a toast is actually needed. That keeps packaged
+    // process launch lighter and avoids eagerly activating extra Windows App Runtime plumbing.
+    private static void EnsureNotificationsRegistered()
     {
-        try
+        if (_notificationsRegistered)
         {
-            AppNotificationManager.Default.Register();
+            return;
         }
-        catch (Exception ex)
+
+        lock (NotificationRegistrationGate)
         {
-            Debug.WriteLine($"Notification registration failed: {ex}");
+            if (_notificationsRegistered)
+            {
+                return;
+            }
+
+            try
+            {
+                AppNotificationManager.Default.Register();
+                _notificationsRegistered = true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Notification registration failed: {ex}");
+            }
         }
     }
 
@@ -1472,6 +1490,7 @@ public partial class App : Application
                 return;
             }
 
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Saved to Tiny Clips")
                 .AddText(Path.GetFileName(path))
@@ -1489,6 +1508,7 @@ public partial class App : Application
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Couldn't copy to clipboard")
                 .AddText(fileName)
@@ -1506,6 +1526,7 @@ public partial class App : Application
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText(title)
                 .AddText(details)
@@ -1528,6 +1549,7 @@ public partial class App : Application
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Couldn't save file")
                 .AddText(fileName)

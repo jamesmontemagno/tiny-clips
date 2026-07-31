@@ -11,6 +11,9 @@ own `CHANGELOG.md` at the repository root.
 - **Resizable screenshot annotations** — Selected annotations now show four corner handles for direct resizing, while arrows and lines retain dedicated endpoint handles and inside dragging still moves annotations.
 - **Reset All Settings to Defaults** — Settings → General now has a "Reset All Settings to Defaults…" button under the new Advanced section. Clicking it shows a confirmation dialog; confirming resets every TinyClips setting to its default value and immediately refreshes the Settings window to reflect the restored state.
 
+### Fixed
+- **Winget-installed app launch is less likely to trip startup validation** — Tiny Clips now defers Windows app-notification registration until it actually needs to show a toast instead of registering during process launch, avoiding extra Windows App Runtime startup-task activation during install validation while preserving save/update/error notifications during normal use.
+
 ## [v1.5.3-windows] - 2026-07-25
 
 ### Fixed
