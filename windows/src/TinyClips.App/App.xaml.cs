@@ -129,7 +129,8 @@ public partial class App : Application
         var ext = Path.GetExtension(path);
         return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase);
+            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
     }
 
     private void CreateTrayIcon()
@@ -1519,6 +1520,24 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to show clipboard failure notification: {ex}");
+        }
+    }
+
+    internal static void ShowImageLoadFailureNotification(string fileName)
+    {
+        try
+        {
+            EnsureNotificationsRegistered();
+            var notification = new AppNotificationBuilder()
+                .AddText("Couldn't open image")
+                .AddText($"{fileName}. The image may be unsupported or its decoder is unavailable.")
+                .BuildNotification();
+
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show image load failure notification: {ex}");
         }
     }
 

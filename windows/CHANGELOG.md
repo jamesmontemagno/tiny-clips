@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **WebP files can now open in the screenshot editor** — File Explorer lists Tiny Clips as an Open with handler for `.webp` images, and the editor reports a clear message if Windows cannot decode an image.
 - **Faster tray access to saved work** — The tray popup now opens configured capture folders and keeps the 10 most recent screenshots, videos, and GIFs available for reopening in their editor or trimmer.
 - **Share capture analytics summaries** — Settings → Analytics now offers a Share button alongside Copy Summary, opening the native Windows share dialog with the selected-range activity summary.
 - **Resizable screenshot annotations** — Selected annotations now show four corner handles for direct resizing, while arrows and lines retain dedicated endpoint handles and inside dragging still moves annotations.

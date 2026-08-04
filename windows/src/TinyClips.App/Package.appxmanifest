@@ -60,6 +60,7 @@
               <uap:FileType>.png</uap:FileType>
               <uap:FileType>.jpg</uap:FileType>
               <uap:FileType>.jpeg</uap:FileType>
+              <uap:FileType>.webp</uap:FileType>
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>
