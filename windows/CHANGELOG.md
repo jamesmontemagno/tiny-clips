@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.6.0-windows] - 2026-08-04
+
 ### Added
 - **WebP files can now open in the screenshot editor** — File Explorer lists Tiny Clips as an Open with handler for `.webp` images, and the editor reports a clear message if Windows cannot decode an image.
 - **Faster tray access to saved work** — The tray popup now opens configured capture folders and keeps the 10 most recent screenshots, videos, and GIFs available for reopening in their editor or trimmer.
