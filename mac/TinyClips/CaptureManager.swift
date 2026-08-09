@@ -705,7 +705,9 @@ class CaptureManager: ObservableObject {
                         recordMicrophone: microphone,
                         selectedMicrophoneID: selectedMicrophoneID
                     )
-                    try self.idleSleepAssertion.begin()
+                    if CaptureSettings.shared.preventDisplaySleepWhileRecording {
+                        try self.idleSleepAssertion.begin()
+                    }
                     self.debugRecordingLifecycle("Video session \(sessionID) started")
                     self.recordingSystemAudioEnabled = recorder.isSystemAudioCaptureActive
                     self.recordingMicrophoneEnabled = recorder.isMicrophoneCaptureActive
@@ -817,7 +819,9 @@ class CaptureManager: ObservableObject {
                     self.startMouseClickMonitoringIfNeeded(for: .gif, region: target.region)
 
                     try await writer.start(target: target)
-                    try self.idleSleepAssertion.begin()
+                    if CaptureSettings.shared.preventDisplaySleepWhileRecording {
+                        try self.idleSleepAssertion.begin()
+                    }
                     self.debugRecordingLifecycle("GIF session \(sessionID) started")
                     self.showStopPanel()
                 } catch {
