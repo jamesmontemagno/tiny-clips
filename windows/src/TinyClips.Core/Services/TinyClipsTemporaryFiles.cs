@@ -30,14 +30,19 @@ public static class TinyClipsTemporaryFiles
     }
 
     /// <summary>Returns the number and total size of files managed by Tiny Clips.</summary>
-    public static TemporaryFilesSummary GetSummary()
+    public static TemporaryFilesSummary GetSummary() => GetSummary(DirectoryPath);
+
+    /// <summary>Returns the number and total size of files in a temporary directory.</summary>
+    public static TemporaryFilesSummary GetSummary(string directoryPath)
     {
-        if (!Directory.Exists(DirectoryPath))
+        ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
+
+        if (!Directory.Exists(directoryPath))
         {
             return new TemporaryFilesSummary(0, 0);
         }
 
-        var files = new DirectoryInfo(DirectoryPath).EnumerateFiles();
+        var files = new DirectoryInfo(directoryPath).EnumerateFiles();
         var fileCount = 0;
         long totalSize = 0;
         foreach (var file in files)
@@ -49,24 +54,51 @@ public static class TinyClipsTemporaryFiles
         return new TemporaryFilesSummary(fileCount, totalSize);
     }
 
-    /// <summary>Deletes all files owned by Tiny Clips in its temporary directory.</summary>
-    public static int Purge()
+    /// <summary>Deletes temporary files that are not actively being used by Tiny Clips.</summary>
+    public static TemporaryFilesPurgeResult Purge(IEnumerable<string>? activeFilePaths = null) =>
+        Purge(DirectoryPath, activeFilePaths);
+
+    /// <summary>Deletes temporary files in a directory, excluding active files.</summary>
+    public static TemporaryFilesPurgeResult Purge(string directoryPath, IEnumerable<string>? activeFilePaths = null)
     {
-        if (!Directory.Exists(DirectoryPath))
+        ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
+
+        if (!Directory.Exists(directoryPath))
         {
-            return 0;
+            return new TemporaryFilesPurgeResult(0, 0);
         }
 
-        var removedCount = 0;
-        foreach (var file in new DirectoryInfo(DirectoryPath).EnumerateFiles())
+        var activePaths = activeFilePaths is null
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(activeFilePaths.Select(Path.GetFullPath), StringComparer.OrdinalIgnoreCase);
+        var removedFileCount = 0;
+        var skippedFileCount = 0;
+
+        foreach (var file in new DirectoryInfo(directoryPath).EnumerateFiles())
         {
-            file.Delete();
-            removedCount++;
+            if (activePaths.Contains(file.FullName))
+            {
+                skippedFileCount++;
+                continue;
+            }
+
+            try
+            {
+                file.Delete();
+                removedFileCount++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                skippedFileCount++;
+            }
         }
 
-        return removedCount;
+        return new TemporaryFilesPurgeResult(removedFileCount, skippedFileCount);
     }
 }
 
 /// <summary>A point-in-time summary of files in the Tiny Clips temporary directory.</summary>
 public readonly record struct TemporaryFilesSummary(int FileCount, long TotalSize);
+
+/// <summary>The outcome of deleting files from the Tiny Clips temporary directory.</summary>
+public readonly record struct TemporaryFilesPurgeResult(int RemovedFileCount, int SkippedFileCount);

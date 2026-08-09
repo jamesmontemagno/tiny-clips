@@ -14,6 +14,7 @@ public static class WebcamDiagnostics
 {
     private static readonly object Gate = new();
     private static string? _logPath;
+    private static bool _recordingActive;
 
     private static string ResolveLogPath()
     {
@@ -26,11 +27,12 @@ public static class WebcamDiagnostics
         return _logPath;
     }
 
-    /// <summary>Truncates the log and writes a header. Call once per recording start.</summary>
-    public static void Reset()
+    /// <summary>Starts diagnostics for a recording and protects its log from cleanup.</summary>
+    public static void BeginRecording()
     {
         lock (Gate)
         {
+            _recordingActive = true;
             try
             {
                 var path = ResolveLogPath();
@@ -45,6 +47,27 @@ public static class WebcamDiagnostics
             catch
             {
                 // Best-effort only.
+            }
+        }
+    }
+
+    /// <summary>Allows the latest diagnostic log to be cleaned after recording stops.</summary>
+    public static void EndRecording()
+    {
+        lock (Gate)
+        {
+            _recordingActive = false;
+        }
+    }
+
+    /// <summary>Gets the diagnostic file that must not be purged during an active recording.</summary>
+    public static IReadOnlyList<string> ActiveFilePaths
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return _recordingActive ? [ResolveLogPath()] : [];
             }
         }
     }

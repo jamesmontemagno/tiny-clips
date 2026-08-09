@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
+using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 
@@ -175,10 +176,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         });
     }
 
-    public void PurgeTempFiles()
+    public TemporaryFilesPurgeResult PurgeTempFiles()
     {
-        TinyClipsTemporaryFiles.Purge();
+        var result = TinyClipsTemporaryFiles.Purge(WebcamDiagnostics.ActiveFilePaths);
         OnPropertyChanged(nameof(TempFolderSummary));
+        return result;
     }
 
     private static string FormatTemporaryFilesSummary(TemporaryFilesSummary summary)

@@ -49,7 +49,18 @@ public sealed partial class GeneralSettingsSection : UserControl
 
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
-            ViewModel.PurgeTempFiles();
+            var result = ViewModel.PurgeTempFiles();
+            if (result.SkippedFileCount > 0)
+            {
+                var skippedDialog = new ContentDialog
+                {
+                    Title = "Some temporary files are still in use",
+                    Content = $"{result.RemovedFileCount} temporary file(s) were removed. {result.SkippedFileCount} active or unavailable file(s) were kept.",
+                    CloseButtonText = "OK",
+                    XamlRoot = XamlRoot,
+                };
+                await skippedDialog.ShowAsync();
+            }
         }
     }
 
