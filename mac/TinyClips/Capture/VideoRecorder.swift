@@ -314,6 +314,8 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var totalPausedDuration = CMTime.zero
     private var recordSystemAudio = false
     private var recordMicrophone = false
+    private var systemAudioMuted = false
+    private var microphoneMuted = false
     private var selectedMicrophoneID = ""
     private var outputURL: URL?
     private var recordingStartedAtUptime: TimeInterval?
@@ -329,6 +331,10 @@ class VideoRecorder: NSObject, @unchecked Sendable {
 
     var isMicrophoneCaptureActive: Bool {
         microphoneSession != nil && recordMicrophone
+    }
+
+    var isSystemAudioCaptureActive: Bool {
+        systemAudioInput != nil && recordSystemAudio
     }
 
     var currentRecordingDuration: TimeInterval {
@@ -496,7 +502,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         }
 
         writingQueue.async { [weak self] in
-            guard let self, !self.isPaused, self.hasStartedWriting, let micAudioInput = self.micAudioInput, micAudioInput.isReadyForMoreMediaData else { return }
+            guard let self, !self.isPaused, !self.microphoneMuted, self.hasStartedWriting, let micAudioInput = self.micAudioInput, micAudioInput.isReadyForMoreMediaData else { return }
             if let adjustedSampleBuffer = self.adjustedSampleBuffer(sampleBuffer) {
                 micAudioInput.append(adjustedSampleBuffer)
             }
@@ -639,6 +645,20 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         }
     }
 
+    func setSystemAudioMuted(_ muted: Bool) {
+        writingQueue.async {
+            guard self.systemAudioInput != nil else { return }
+            self.systemAudioMuted = muted
+        }
+    }
+
+    func setMicrophoneMuted(_ muted: Bool) {
+        writingQueue.async {
+            guard self.micAudioInput != nil else { return }
+            self.microphoneMuted = muted
+        }
+    }
+
     func resume() {
         writingQueue.async {
             guard self.isPaused else { return }
@@ -689,6 +709,8 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         totalPausedDuration = .zero
         recordSystemAudio = false
         recordMicrophone = false
+        systemAudioMuted = false
+        microphoneMuted = false
         selectedMicrophoneID = ""
         onMicrophoneWarning?(nil)
         onMicrophoneLevel?(0)
@@ -755,7 +777,7 @@ extension VideoRecorder: SCStreamOutput {
             }
 
         case .audio:
-            guard hasStartedWriting, let systemAudioInput, systemAudioInput.isReadyForMoreMediaData else { return }
+            guard !systemAudioMuted, hasStartedWriting, let systemAudioInput, systemAudioInput.isReadyForMoreMediaData else { return }
             if let adjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) {
                 systemAudioInput.append(adjustedSampleBuffer)
             }

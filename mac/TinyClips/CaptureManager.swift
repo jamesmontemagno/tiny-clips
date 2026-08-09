@@ -124,7 +124,10 @@ class CaptureManager: ObservableObject {
         }
     }
     @Published var isRecordingPaused = false
+    @Published var recordingSystemAudioEnabled = false
     @Published var recordingMicrophoneEnabled = false
+    @Published var isRecordingSystemAudioMuted = false
+    @Published var isRecordingMicrophoneMuted = false
     @Published var activeMicrophoneName: String?
     @Published var activeWebcamName: String?
     @Published var microphoneLevel: Double = 0
@@ -546,6 +549,9 @@ class CaptureManager: ObservableObject {
                     self.activeMouseClickCaptureEnabledOverride = mouseClicksEnabled
                     self.startMouseClickMonitoringIfNeeded(for: .video, region: target.region)
                     self.recordingMicrophoneEnabled = false
+                    self.recordingSystemAudioEnabled = false
+                    self.isRecordingSystemAudioMuted = false
+                    self.isRecordingMicrophoneMuted = false
                     self.microphoneWarningMessage = nil
                     self.microphoneLevel = 0
                     self.activeMicrophoneName = nil
@@ -560,6 +566,7 @@ class CaptureManager: ObservableObject {
                         selectedMicrophoneID: selectedMicrophoneID
                     )
                     self.debugRecordingLifecycle("Video session \(sessionID) started")
+                    self.recordingSystemAudioEnabled = recorder.isSystemAudioCaptureActive
                     self.recordingMicrophoneEnabled = recorder.isMicrophoneCaptureActive
 
                     if webcamEnabled, let webcamOutputURL {
@@ -728,6 +735,18 @@ class CaptureManager: ObservableObject {
             gifWriter?.pause()
             isRecordingPaused = true
         }
+    }
+
+    func toggleRecordingSystemAudioMute() {
+        guard recordingSystemAudioEnabled else { return }
+        isRecordingSystemAudioMuted.toggle()
+        videoRecorder?.setSystemAudioMuted(isRecordingSystemAudioMuted)
+    }
+
+    func toggleRecordingMicrophoneMute() {
+        guard recordingMicrophoneEnabled else { return }
+        isRecordingMicrophoneMuted.toggle()
+        videoRecorder?.setMicrophoneMuted(isRecordingMicrophoneMuted)
     }
 
     func restartRecording() {
@@ -1504,7 +1523,10 @@ class CaptureManager: ObservableObject {
     }
 
     private func resetRecordingAudioStatus() {
+        recordingSystemAudioEnabled = false
         recordingMicrophoneEnabled = false
+        isRecordingSystemAudioMuted = false
+        isRecordingMicrophoneMuted = false
         activeMicrophoneName = nil
         activeWebcamName = nil
         microphoneLevel = 0

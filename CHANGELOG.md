@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Fixed macOS screenshot editor text annotations previewing larger than copied or saved images when background padding changes the displayed screenshot scale.
 
+### Added
+- Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.
+
 ## v1.5.4-mac - 2026-07-26
 
 ### Added
