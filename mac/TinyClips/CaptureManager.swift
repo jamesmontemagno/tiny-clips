@@ -705,6 +705,12 @@ class CaptureManager: ObservableObject {
                         recordMicrophone: microphone,
                         selectedMicrophoneID: selectedMicrophoneID
                     )
+                    guard self.isRecording,
+                          self.activeRecordingSessionID == sessionID,
+                          self.videoRecorder === recorder else {
+                        await recorder.cancel()
+                        return
+                    }
                     if CaptureSettings.shared.preventDisplaySleepWhileRecording {
                         try self.idleSleepAssertion.begin()
                     }
@@ -819,6 +825,12 @@ class CaptureManager: ObservableObject {
                     self.startMouseClickMonitoringIfNeeded(for: .gif, region: target.region)
 
                     try await writer.start(target: target)
+                    guard self.isRecording,
+                          self.activeRecordingSessionID == sessionID,
+                          self.gifWriter === writer else {
+                        await writer.cancel()
+                        return
+                    }
                     if CaptureSettings.shared.preventDisplaySleepWhileRecording {
                         try self.idleSleepAssertion.begin()
                     }
