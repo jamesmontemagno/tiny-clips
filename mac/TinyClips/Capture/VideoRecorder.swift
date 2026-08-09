@@ -4,6 +4,10 @@ import CoreMedia
 import CoreVideo
 import AudioToolbox
 
+private func isPositiveNumericTime(_ time: CMTime) -> Bool {
+    time.isNumeric && CMTimeCompare(time, .zero) > 0
+}
+
 private func monotonicSampleBuffer(
     _ sampleBuffer: CMSampleBuffer,
     lastPresentationTime: inout CMTime?,
@@ -20,11 +24,11 @@ private func monotonicSampleBuffer(
     )
     guard status == noErr, timingCount > 0 else { return nil }
 
-    let defaultStep = fallbackStep.isValid && CMTimeCompare(fallbackStep, .zero) > 0
+    let defaultStep = isPositiveNumericTime(fallbackStep)
         ? fallbackStep
         : CMTime(value: 1, timescale: 600)
     let bufferDuration = CMSampleBufferGetDuration(sampleBuffer)
-    let perSampleDuration = bufferDuration.isValid && CMTimeCompare(bufferDuration, .zero) > 0
+    let perSampleDuration = isPositiveNumericTime(bufferDuration)
         ? CMTimeMultiplyByRatio(bufferDuration, multiplier: 1, divisor: Int32(timingCount))
         : defaultStep
     var latestPresentationTime = lastPresentationTime
@@ -32,15 +36,18 @@ private func monotonicSampleBuffer(
 
     for index in 0..<timingCount {
         let presentationTime = timing[index].presentationTimeStamp
-        guard presentationTime.isValid || latestPresentationTime != nil else {
+        if let latestPresentationTime, !latestPresentationTime.isNumeric {
+            return nil
+        }
+        guard presentationTime.isNumeric || latestPresentationTime != nil else {
             return nil
         }
 
-        let step = timing[index].duration.isValid && CMTimeCompare(timing[index].duration, .zero) > 0
+        let step = isPositiveNumericTime(timing[index].duration)
             ? timing[index].duration
             : perSampleDuration
         if let latestPresentationTime,
-           !presentationTime.isValid || CMTimeCompare(presentationTime, latestPresentationTime) <= 0 {
+           !presentationTime.isNumeric || CMTimeCompare(presentationTime, latestPresentationTime) <= 0 {
             timing[index].presentationTimeStamp = CMTimeAdd(latestPresentationTime, step)
             didClamp = true
         }
@@ -165,7 +172,7 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
         let width = max(1, Int(dimensions.width))
         let height = max(1, Int(dimensions.height))
         let activeFrameDuration = device.activeVideoMinFrameDuration
-        if activeFrameDuration.isValid, CMTimeCompare(activeFrameDuration, .zero) > 0 {
+        if isPositiveNumericTime(activeFrameDuration) {
             fallbackFrameDuration = activeFrameDuration
         }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
