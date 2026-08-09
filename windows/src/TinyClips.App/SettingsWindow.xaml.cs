@@ -35,7 +35,8 @@ public sealed partial class SettingsWindow : Window
             App.Services.GetRequiredService<IAudioDeviceService>(),
             App.Services.GetRequiredService<IWebcamDeviceEnumerator>(),
             App.Services.GetRequiredService<IClipStorageService>(),
-            App.Services.GetRequiredService<IClipAnalyticsService>());
+            App.Services.GetRequiredService<IClipAnalyticsService>(),
+            App.Services.GetRequiredService<IUploadcareCredentialStore>());
 
         InitializeComponent();
 
@@ -98,6 +99,7 @@ public sealed partial class SettingsWindow : Window
         UserControl section = kind switch
         {
             SettingsSectionKind.General => CreateGeneralSection(),
+            SettingsSectionKind.Uploadcare => new UploadcareSettingsSection(ViewModel),
             SettingsSectionKind.Analytics => new AnalyticsSettingsSection(
                 ViewModel,
                 WinRT.Interop.WindowNative.GetWindowHandle(this)),

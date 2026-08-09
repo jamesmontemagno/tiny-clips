@@ -9,6 +9,7 @@ namespace TinyClips.App.Settings;
 public enum SettingsSectionKind
 {
     General,
+    Uploadcare,
     Analytics,
     Screenshot,
     Video,

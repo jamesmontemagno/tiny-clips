@@ -55,6 +55,30 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("showSaveNotifications", value);
     }
 
+    public bool UploadcareEnabled
+    {
+        get => _settings.Get("uploadcareEnabled", false);
+        set => _settings.Set("uploadcareEnabled", value);
+    }
+
+    public string UploadcarePublicKey
+    {
+        get => _settings.Get("uploadcarePublicKey", string.Empty);
+        set => _settings.Set("uploadcarePublicKey", value);
+    }
+
+    public bool UploadcareAutoUpload
+    {
+        get => _settings.Get("uploadcareAutoUpload", false);
+        set => _settings.Set("uploadcareAutoUpload", value);
+    }
+
+    public bool UploadcareCopyUrl
+    {
+        get => _settings.Get("uploadcareCopyUrl", false);
+        set => _settings.Set("uploadcareCopyUrl", value);
+    }
+
     public bool LaunchAtLogin
     {
         get => _settings.Get("launchAtLogin", false);
@@ -594,6 +618,10 @@ public sealed class CaptureSettings : ICaptureSettings
         ShowRegionIndicator = true;
         IncludeTinyClipsInCapture = false;
         ShowBrandingOverlay = false;
+        UploadcareEnabled = false;
+        UploadcarePublicKey = string.Empty;
+        UploadcareAutoUpload = false;
+        UploadcareCopyUrl = false;
         _analytics?.Clear();
         ScreenshotHotKeyCode = 53;
         ScreenshotHotKeyModifiers = 6;

@@ -32,6 +32,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IWebcamDeviceEnumerator _webcamDevices;
     private readonly IClipStorageService _storage;
     private readonly IClipAnalyticsService _analytics;
+    private readonly IUploadcareCredentialStore _uploadcareCredentials;
     private readonly DispatcherQueue? _dispatcherQueue;
     private bool _loading;
     private string _savedMicrophoneId = string.Empty;
@@ -71,7 +72,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         IAudioDeviceService audioDevices,
         IWebcamDeviceEnumerator webcamDevices,
         IClipStorageService storage,
-        IClipAnalyticsService analytics)
+        IClipAnalyticsService analytics,
+        IUploadcareCredentialStore uploadcareCredentials)
     {
         _settings = settings;
         _hotKeys = hotKeys;
@@ -80,6 +82,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _webcamDevices = webcamDevices;
         _storage = storage;
         _analytics = analytics;
+        _uploadcareCredentials = uploadcareCredentials;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         Load();
 
@@ -223,6 +226,27 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showSaveNotifications;
+
+    // Uploadcare
+    [ObservableProperty]
+    private bool _uploadcareEnabled;
+
+    [ObservableProperty]
+    private string _uploadcarePublicKey = string.Empty;
+
+    [ObservableProperty]
+    private bool _uploadcareAutoUpload;
+
+    [ObservableProperty]
+    private bool _uploadcareCopyUrl;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UploadcareSecretKeyStatus))]
+    private bool _hasUploadcareSecretKey;
+
+    public string UploadcareSecretKeyStatus => HasUploadcareSecretKey
+        ? "A secret key is stored securely in Windows Credential Locker."
+        : "No secret key is stored. It is only required for signed Uploadcare uploads.";
 
     [ObservableProperty]
     private bool _launchAtLogin;
@@ -611,6 +635,11 @@ public sealed partial class SettingsViewModel : ObservableObject
                 : _settings.FileNameTemplate;
             ShowInExplorer = _settings.ShowInExplorer;
             ShowSaveNotifications = _settings.ShowSaveNotifications;
+            UploadcareEnabled = _settings.UploadcareEnabled;
+            UploadcarePublicKey = _settings.UploadcarePublicKey;
+            UploadcareAutoUpload = _settings.UploadcareAutoUpload;
+            UploadcareCopyUrl = _settings.UploadcareCopyUrl;
+            HasUploadcareSecretKey = _uploadcareCredentials.HasSecretKey();
             LaunchAtLogin = _settings.LaunchAtLogin;
             CopyScreenshotToClipboard = _settings.CopyScreenshotToClipboard;
             CopyVideoToClipboard = _settings.CopyVideoToClipboard;
@@ -879,6 +908,26 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnShowSaveNotificationsChanged(bool value) => Persist(() => _settings.ShowSaveNotifications = value);
 
+    partial void OnUploadcareEnabledChanged(bool value) => Persist(() => _settings.UploadcareEnabled = value);
+
+    partial void OnUploadcarePublicKeyChanged(string value) => Persist(() => _settings.UploadcarePublicKey = value);
+
+    partial void OnUploadcareAutoUploadChanged(bool value) => Persist(() => _settings.UploadcareAutoUpload = value);
+
+    partial void OnUploadcareCopyUrlChanged(bool value) => Persist(() => _settings.UploadcareCopyUrl = value);
+
+    public void SaveUploadcareSecretKey(string secretKey)
+    {
+        _uploadcareCredentials.SaveSecretKey(secretKey);
+        HasUploadcareSecretKey = true;
+    }
+
+    public void ClearUploadcareSecretKey()
+    {
+        _uploadcareCredentials.RemoveSecretKey();
+        HasUploadcareSecretKey = false;
+    }
+
     partial void OnLaunchAtLoginChanged(bool value)
     {
         if (_loading || _pendingSectionRealizations > 0 || _suppressLaunchAtLogin)
@@ -1144,6 +1193,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public void ResetAllSettings()
     {
+        _uploadcareCredentials.RemoveSecretKey();
         _settings.ResetToDefaults();
         Load();
         ThemeChanged?.Invoke();
