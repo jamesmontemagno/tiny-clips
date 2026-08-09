@@ -170,7 +170,7 @@ public sealed partial class TrimBar : UserControl
 
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        Focus(FocusState.Pointer);
+        Focus(Microsoft.UI.Xaml.FocusState.Pointer);
 
         var x = e.GetCurrentPoint(this).Position.X;
         var half = HandleWidth / 2.0;
