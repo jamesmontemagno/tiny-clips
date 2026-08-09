@@ -1231,6 +1231,10 @@ public partial class App : Application
         window.ResumeRequested = () => _ = ResumeActiveRecordingAsync();
         window.RestartRequested = () => _ = RestartActiveRecordingAsync();
         window.DiscardRequested = () => _ = DiscardActiveRecordingAsync();
+        window.SystemAudioMuteChanged = muted =>
+            Services.GetRequiredService<IVideoRecordingService>().SetSystemAudioMuted(muted);
+        window.MicrophoneMuteChanged = muted =>
+            Services.GetRequiredService<IVideoRecordingService>().SetMicrophoneMuted(muted);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_recordingIndicator, window))
@@ -1265,6 +1269,12 @@ public partial class App : Application
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingElapsedBeforePause = TimeSpan.Zero;
         _recordingIndicator?.SetStopEnabled(true);
+        var video = Services.GetRequiredService<IVideoRecordingService>();
+        _recordingIndicator?.ConfigureAudioControls(
+            video.CanMuteSystemAudio,
+            video.IsSystemAudioMuted,
+            video.CanMuteMicrophone,
+            video.IsMicrophoneMuted);
         StartRecordingTimer();
     }
 

@@ -83,6 +83,14 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     public bool IsPaused { get; private set; }
 
+    public bool CanMuteSystemAudio => _audio?.CanMuteSystemAudio == true;
+
+    public bool CanMuteMicrophone => _audio?.CanMuteMicrophone == true;
+
+    public bool IsSystemAudioMuted => _audio?.IsSystemAudioMuted == true;
+
+    public bool IsMicrophoneMuted => _audio?.IsMicrophoneMuted == true;
+
     public event EventHandler<string?>? RecordingCompleted;
 
     public event EventHandler<string>? WebcamCaptureFailed;
@@ -860,6 +868,16 @@ public sealed class VideoRecordingService : IVideoRecordingService
         {
             _gate.Release();
         }
+    }
+
+    public void SetSystemAudioMuted(bool muted)
+    {
+        _audio?.SetSystemAudioMuted(muted);
+    }
+
+    public void SetMicrophoneMuted(bool muted)
+    {
+        _audio?.SetMicrophoneMuted(muted);
     }
 
     public async Task CancelAsync()

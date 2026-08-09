@@ -8,6 +8,9 @@ own `CHANGELOG.md` at the repository root.
 ### Changed
 - Screenshot, video, and GIF settings now each provide matching before/after capture-picker controls.
 
+### Added
+- Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.
+
 ## [v1.6.0-windows] - 2026-08-04
 
 ### Added

@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 - Updated macOS in-app Terms of Use links to open Apple's Standard EULA directly.
 - macOS capture settings now offer matching before/after picker controls for screenshots, video recordings, and GIF recordings.
 
+### Added
+- Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.
+
 ## v1.5.4-mac - 2026-07-26
 
 ### Added
