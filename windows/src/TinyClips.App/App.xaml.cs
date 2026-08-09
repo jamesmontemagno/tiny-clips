@@ -1678,27 +1678,27 @@ public partial class App : Application
 
             AppNotificationManager.Default.Show(notification);
         }
-
-        internal static void ShowUploadFailureNotification(string fileName)
-        {
-            try
-            {
-                EnsureNotificationsRegistered();
-                var notification = new AppNotificationBuilder()
-                    .AddText("Couldn't upload to Uploadcare")
-                    .AddText(fileName)
-                    .BuildNotification();
-
-                AppNotificationManager.Default.Show(notification);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to show upload failure notification: {ex}");
-            }
-        }
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to show clipboard failure notification: {ex}");
+        }
+    }
+
+    internal static void ShowUploadFailureNotification(string fileName)
+    {
+        try
+        {
+            EnsureNotificationsRegistered();
+            var notification = new AppNotificationBuilder()
+                .AddText("Couldn't upload to Uploadcare")
+                .AddText(fileName)
+                .BuildNotification();
+
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show upload failure notification: {ex}");
         }
     }
 
