@@ -156,8 +156,29 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 
 #if APPSTORE
     private let saveDirectoryBookmarkKey = "saveDirectoryBookmark"
-    private var activeSecurityScopedDirectoryURL: URL?
+    private let screenshotSaveDirectoryBookmarkKey = "screenshotSaveDirectoryBookmark"
+    private let videoGifSaveDirectoryBookmarkKey = "videoGifSaveDirectoryBookmark"
+    private var activeSecurityScopedDirectoryURLs: [String: URL] = [:]
     private let bookmarkQueue = DispatchQueue(label: "com.tinyclips.save-service.bookmark")
+
+    func invalidateSaveDirectoryBookmark(for type: CaptureType?) {
+        let keys: [String]
+        switch type {
+        case .screenshot:
+            keys = [screenshotSaveDirectoryBookmarkKey]
+        case .video, .gif:
+            keys = [videoGifSaveDirectoryBookmarkKey]
+        case nil:
+            keys = [saveDirectoryBookmarkKey]
+        }
+
+        bookmarkQueue.sync {
+            for key in keys {
+                activeSecurityScopedDirectoryURLs.removeValue(forKey: key)?
+                    .stopAccessingSecurityScopedResource()
+            }
+        }
+    }
 #endif
 
     func generateURL(for type: CaptureType) -> URL {
@@ -181,12 +202,11 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
             withIntermediateDirectories: true
         )
 #else
-        let directory = UserDefaults.standard.string(forKey: "saveDirectory")
-            ?? (NSHomeDirectory() + "/Desktop")
+        let directoryURL = CaptureSettings.shared.resolvedSaveDirectory(for: type)
 
         // Ensure directory exists
         try? FileManager.default.createDirectory(
-            atPath: directory,
+            at: directoryURL,
             withIntermediateDirectories: true
         )
 #endif
@@ -202,7 +222,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 #if APPSTORE
         return uniqueURL(in: directoryURL, filename: filename)
 #else
-        return uniqueURL(in: URL(fileURLWithPath: directory), filename: filename)
+        return uniqueURL(in: directoryURL, filename: filename)
 #endif
     }
 
@@ -210,9 +230,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 #if APPSTORE
         return appStoreOutputDirectoryURL(for: type)
 #else
-        let directory = UserDefaults.standard.string(forKey: "saveDirectory")
-            ?? (NSHomeDirectory() + "/Desktop")
-        return URL(fileURLWithPath: directory, isDirectory: true)
+        return CaptureSettings.shared.resolvedSaveDirectory(for: type)
 #endif
     }
 
@@ -283,7 +301,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 
 #if APPSTORE
     private func appStoreOutputDirectoryURL(for type: CaptureType) -> URL {
-        if let customDirectory = customDirectoryURLFromBookmark() {
+        if let customDirectory = customDirectoryURLFromBookmark(for: type) {
             return customDirectory
         }
         return defaultDirectoryURL(for: type)
@@ -303,40 +321,51 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         return baseURL.appendingPathComponent("TinyClips", isDirectory: true)
     }
 
-    private func customDirectoryURLFromBookmark() -> URL? {
+    private func customDirectoryURLFromBookmark(for type: CaptureType) -> URL? {
         bookmarkQueue.sync {
-            if let activeSecurityScopedDirectoryURL {
-                return activeSecurityScopedDirectoryURL
-            }
-
-            guard let bookmarkData = UserDefaults.standard.data(forKey: saveDirectoryBookmarkKey), !bookmarkData.isEmpty else {
-                return nil
-            }
-
-            do {
-                var isStale = false
-                let url = try URL(
-                    resolvingBookmarkData: bookmarkData,
-                    options: [.withSecurityScope],
-                    relativeTo: nil,
-                    bookmarkDataIsStale: &isStale
-                )
-
-                if isStale,
-                   let refreshedBookmark = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) {
-                    UserDefaults.standard.set(refreshedBookmark, forKey: saveDirectoryBookmarkKey)
+            for key in bookmarkKeys(for: type) {
+                if let activeURL = activeSecurityScopedDirectoryURLs[key] {
+                    return activeURL
                 }
 
-                guard url.startAccessingSecurityScopedResource() else {
-                    return nil
+                guard let bookmarkData = UserDefaults.standard.data(forKey: key), !bookmarkData.isEmpty else {
+                    continue
                 }
 
-                activeSecurityScopedDirectoryURL = url
-                return url
-            } catch {
-                UserDefaults.standard.removeObject(forKey: saveDirectoryBookmarkKey)
-                return nil
+                do {
+                    var isStale = false
+                    let url = try URL(
+                        resolvingBookmarkData: bookmarkData,
+                        options: [.withSecurityScope],
+                        relativeTo: nil,
+                        bookmarkDataIsStale: &isStale
+                    )
+
+                    if isStale,
+                       let refreshedBookmark = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) {
+                        UserDefaults.standard.set(refreshedBookmark, forKey: key)
+                    }
+
+                    guard url.startAccessingSecurityScopedResource() else {
+                        continue
+                    }
+
+                    activeSecurityScopedDirectoryURLs[key] = url
+                    return url
+                } catch {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
             }
+            return nil
+        }
+    }
+
+    private func bookmarkKeys(for type: CaptureType) -> [String] {
+        switch type {
+        case .screenshot:
+            return [screenshotSaveDirectoryBookmarkKey, saveDirectoryBookmarkKey]
+        case .video, .gif:
+            return [videoGifSaveDirectoryBookmarkKey, saveDirectoryBookmarkKey]
         }
     }
 #endif
