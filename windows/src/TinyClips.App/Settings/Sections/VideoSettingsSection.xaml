@@ -52,6 +52,51 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker before recording" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Choose Region, Screen, or Window before recording." />
+                </StackPanel>
+                <ToggleSwitch
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="ShowVideoCapturePickerToggle"
+                    AutomationProperties.Name="Show capture picker before recording"
+                    IsOn="{x:Bind ViewModel.ShowVideoCapturePicker, Mode=TwoWay}" />
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker after recording" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Start another recording with the same picker after saving." />
+                </StackPanel>
+                <ToggleSwitch
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="ShowVideoCapturePickerAfterCaptureToggle"
+                    AutomationProperties.Name="Show capture picker after recording"
+                    IsEnabled="{x:Bind ViewModel.VideoCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                    IsOn="{x:Bind ViewModel.ShowVideoCapturePickerAfterCapture, Mode=TwoWay}" />
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
                     <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Encoder profile" />
                     <TextBlock
                         Style="{StaticResource CaptionTextBlockStyle}"

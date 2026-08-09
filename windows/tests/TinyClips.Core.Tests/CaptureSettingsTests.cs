@@ -24,6 +24,9 @@ public sealed class CaptureSettingsTests
         Assert.Equal(WebcamCornerPosition.BottomRight, settings.WebcamCornerPosition);
         Assert.Null(settings.WebcamCornerRadius);
         Assert.Equal(MultiMonitorCaptureMode.Picker, settings.MultiMonitorCaptureMode);
+        Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Screenshot));
+        Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Video));
+        Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Gif));
     }
 
     [Fact]
@@ -135,6 +138,27 @@ public sealed class CaptureSettingsTests
         Assert.True(settings.ShouldShowCapturePicker(CaptureType.Screenshot));
         Assert.False(settings.ShouldShowCapturePicker(CaptureType.Video));
         Assert.True(settings.ShouldShowCapturePicker(CaptureType.Gif));
+    }
+
+    [Fact]
+    public void CapturePickerAfterCapture_IsConfiguredPerTypeAndRequiresTheBeforePicker()
+    {
+        var settings = CreateSettings();
+
+        settings.ShowScreenshotCapturePickerAfterCapture = true;
+        settings.ShowVideoCapturePickerAfterCapture = true;
+        settings.ShowGifCapturePickerAfterCapture = true;
+
+        Assert.True(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Screenshot));
+        Assert.True(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Video));
+        Assert.True(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Gif));
+
+        settings.ShowVideoCapturePicker = false;
+
+        Assert.False(settings.ShowVideoCapturePickerAfterCapture);
+        Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Video));
+        Assert.True(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Screenshot));
+        Assert.True(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Gif));
     }
 
     [Fact]

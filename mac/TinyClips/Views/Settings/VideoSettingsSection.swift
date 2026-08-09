@@ -91,7 +91,14 @@ struct VideoSettingsSection: View {
         Section("Before Capture") {
             Toggle("Show capture picker before recording", isOn: $settings.showVideoCapturePicker)
                 .help("When disabled, video recording goes straight to region selection.")
-
+                .onChange(of: settings.showVideoCapturePicker) { _, isEnabled in
+                    if !isEnabled {
+                        settings.showVideoCapturePickerAfterCapture = false
+                    }
+                }
+            Toggle("Show capture picker after recording", isOn: $settings.showVideoCapturePickerAfterCapture)
+                .help("Reopen the capture picker after each recording so you can quickly start another.")
+                .disabled(!settings.showVideoCapturePicker)
         }
 
         Section("After Capture") {

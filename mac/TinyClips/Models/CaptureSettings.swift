@@ -273,15 +273,41 @@ class CaptureSettings: ObservableObject {
             }
         }
     }
-    @AppStorage("showScreenshotCapturePickerAfterCapture") var showScreenshotCapturePickerAfterCapture: Bool = true {
+    @AppStorage("showScreenshotCapturePickerAfterCapture") var showScreenshotCapturePickerAfterCapture: Bool = false {
         didSet {
             if showScreenshotCapturePickerAfterCapture && !showScreenshotCapturePicker {
                 showScreenshotCapturePickerAfterCapture = false
             }
         }
     }
-    @AppStorage("showVideoCapturePicker") var showVideoCapturePicker: Bool = true
-    @AppStorage("showGifCapturePicker") var showGifCapturePicker: Bool = true
+    @AppStorage("showVideoCapturePicker") var showVideoCapturePicker: Bool = true {
+        didSet {
+            if !showVideoCapturePicker {
+                showVideoCapturePickerAfterCapture = false
+            }
+        }
+    }
+    @AppStorage("showVideoCapturePickerAfterCapture") var showVideoCapturePickerAfterCapture: Bool = false {
+        didSet {
+            if showVideoCapturePickerAfterCapture && !showVideoCapturePicker {
+                showVideoCapturePickerAfterCapture = false
+            }
+        }
+    }
+    @AppStorage("showGifCapturePicker") var showGifCapturePicker: Bool = true {
+        didSet {
+            if !showGifCapturePicker {
+                showGifCapturePickerAfterCapture = false
+            }
+        }
+    }
+    @AppStorage("showGifCapturePickerAfterCapture") var showGifCapturePickerAfterCapture: Bool = false {
+        didSet {
+            if showGifCapturePickerAfterCapture && !showGifCapturePicker {
+                showGifCapturePickerAfterCapture = false
+            }
+        }
+    }
     @AppStorage("screenshotFormat") var screenshotFormat: String = ImageFormat.jpeg.rawValue
     @AppStorage("screenshotScale") var screenshotScale: Int = 100
     @AppStorage("jpegQuality") var jpegQuality: Double = 0.85
@@ -340,8 +366,15 @@ class CaptureSettings: ObservableObject {
         }
     }
 
-    var shouldShowScreenshotCapturePickerAfterCapture: Bool {
-        showScreenshotCapturePicker && showScreenshotCapturePickerAfterCapture
+    func shouldShowCapturePickerAfterCapture(for type: CaptureType) -> Bool {
+        switch type {
+        case .screenshot:
+            return showScreenshotCapturePicker && showScreenshotCapturePickerAfterCapture
+        case .video:
+            return showVideoCapturePicker && showVideoCapturePickerAfterCapture
+        case .gif:
+            return showGifCapturePicker && showGifCapturePickerAfterCapture
+        }
     }
 
     func mouseClickOverlayStyle(for type: CaptureType) -> MouseClickOverlayStyle {
@@ -436,7 +469,9 @@ class CaptureSettings: ObservableObject {
             "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
             "showScreenshotEditor", "showGifTrimmer",
             "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
-            "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture", "showVideoCapturePicker", "showGifCapturePicker",
+            "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
+            "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
+            "showGifCapturePicker", "showGifCapturePickerAfterCapture",
             "screenshotFormat", "screenshotScale", "jpegQuality",
             "videoCountdownEnabled", "videoCountdownDuration",
             "videoRecordingTimeLimitMinutes",

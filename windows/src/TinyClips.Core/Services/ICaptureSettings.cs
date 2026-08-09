@@ -49,7 +49,9 @@ public interface ICaptureSettings
     bool ShowScreenshotCapturePicker { get; set; }
     bool ShowScreenshotCapturePickerAfterCapture { get; set; }
     bool ShowVideoCapturePicker { get; set; }
+    bool ShowVideoCapturePickerAfterCapture { get; set; }
     bool ShowGifCapturePicker { get; set; }
+    bool ShowGifCapturePickerAfterCapture { get; set; }
     string ScreenshotFormat { get; set; }
     int ScreenshotScale { get; set; }
     double JpegQuality { get; set; }
@@ -75,7 +77,7 @@ public interface ICaptureSettings
     ImageFormat ImageFormat { get; set; }
     bool ShouldCopyToClipboard(CaptureType type);
     bool ShouldShowCapturePicker(CaptureType type);
-    bool ShouldShowScreenshotCapturePickerAfterCapture { get; }
+    bool ShouldShowCapturePickerAfterCapture(CaptureType type);
     MouseClickOverlayStyle MouseClickOverlayStyleFor(CaptureType type);
     bool ShouldShowMouseClickVisuals(CaptureType type);
     void SetShowMouseClickVisuals(bool enabled, CaptureType type);

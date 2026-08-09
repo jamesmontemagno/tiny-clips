@@ -47,6 +47,51 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker before recording" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Choose Region, Screen, or Window before recording." />
+                </StackPanel>
+                <ToggleSwitch
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="ShowGifCapturePickerToggle"
+                    AutomationProperties.Name="Show capture picker before GIF recording"
+                    IsOn="{x:Bind ViewModel.ShowGifCapturePicker, Mode=TwoWay}" />
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker after recording" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Start another GIF recording with the same picker after saving." />
+                </StackPanel>
+                <ToggleSwitch
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="ShowGifCapturePickerAfterCaptureToggle"
+                    AutomationProperties.Name="Show capture picker after GIF recording"
+                    IsEnabled="{x:Bind ViewModel.GifCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                    IsOn="{x:Bind ViewModel.ShowGifCapturePickerAfterCapture, Mode=TwoWay}" />
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
                     <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Maximum width" />
                     <TextBlock
                         Style="{StaticResource CaptionTextBlockStyle}"

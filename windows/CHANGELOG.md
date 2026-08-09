@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- Screenshot, video, and GIF settings now each provide matching before/after capture-picker controls.
+
 ## [v1.6.0-windows] - 2026-08-04
 
 ### Added

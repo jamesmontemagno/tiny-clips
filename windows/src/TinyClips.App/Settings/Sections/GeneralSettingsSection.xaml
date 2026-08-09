@@ -206,28 +206,6 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Reopen capture picker after each capture" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Show the Region / Screen / Window picker again after a capture finishes." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ReopenPickerToggle"
-                    AutomationProperties.Name="Reopen capture picker after each capture"
-                    IsOn="{x:Bind ViewModel.ReopenPickerAfterCapture, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
                     <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Multi-monitor capture mode" />
                     <TextBlock
                         Style="{StaticResource CaptionTextBlockStyle}"
