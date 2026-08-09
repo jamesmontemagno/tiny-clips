@@ -165,7 +165,7 @@ struct GeneralSettingsSection: View {
                 .truncationMode(.middle)
 
             if settings.isUsingSharedSaveDirectory(for: type) {
-                Text("Using shared folder")
+                Text(saveDirectoryHint(for: type))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -174,10 +174,25 @@ struct GeneralSettingsSection: View {
 
     private func saveDirectoryPath(for type: CaptureType) -> String {
 #if APPSTORE
+        if type == .video,
+           settings.isUsingSharedSaveDirectory(for: type),
+           settings.saveDirectoryBookmark.isEmpty {
+            let videoPath = SaveService.shared.outputDirectoryURL(for: .video).path
+            let gifPath = SaveService.shared.outputDirectoryURL(for: .gif).path
+            return "Videos: \(videoPath)  GIFs: \(gifPath)"
+        }
         let path = settings.saveDirectoryDisplayPath(for: type)
         return path.isEmpty ? SaveService.shared.outputDirectoryURL(for: type).path : path
 #else
         return settings.resolvedSaveDirectory(for: type).path
+#endif
+    }
+
+    private func saveDirectoryHint(for type: CaptureType) -> String {
+#if APPSTORE
+        return settings.saveDirectoryBookmark.isEmpty ? "Using default folders" : "Using shared folder"
+#else
+        return "Using shared folder"
 #endif
     }
 

@@ -172,6 +172,18 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
             keys = [saveDirectoryBookmarkKey]
         }
 
+        invalidateSaveDirectoryBookmarks(for: keys)
+    }
+
+    func invalidateAllSaveDirectoryBookmarks() {
+        invalidateSaveDirectoryBookmarks(for: [
+            saveDirectoryBookmarkKey,
+            screenshotSaveDirectoryBookmarkKey,
+            videoGifSaveDirectoryBookmarkKey
+        ])
+    }
+
+    private func invalidateSaveDirectoryBookmarks(for keys: [String]) {
         bookmarkQueue.sync {
             for key in keys {
                 activeSecurityScopedDirectoryURLs.removeValue(forKey: key)?
@@ -347,13 +359,14 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
                     }
 
                     guard url.startAccessingSecurityScopedResource() else {
+                        clearBookmark(for: key)
                         continue
                     }
 
                     activeSecurityScopedDirectoryURLs[key] = url
                     return url
                 } catch {
-                    UserDefaults.standard.removeObject(forKey: key)
+                    clearBookmark(for: key)
                 }
             }
             return nil
@@ -366,6 +379,22 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
             return [screenshotSaveDirectoryBookmarkKey, saveDirectoryBookmarkKey]
         case .video, .gif:
             return [videoGifSaveDirectoryBookmarkKey, saveDirectoryBookmarkKey]
+        }
+    }
+
+    private func clearBookmark(for bookmarkKey: String) {
+        UserDefaults.standard.removeObject(forKey: bookmarkKey)
+        UserDefaults.standard.removeObject(forKey: displayPathKey(for: bookmarkKey))
+    }
+
+    private func displayPathKey(for bookmarkKey: String) -> String {
+        switch bookmarkKey {
+        case screenshotSaveDirectoryBookmarkKey:
+            return "screenshotSaveDirectoryDisplayPath"
+        case videoGifSaveDirectoryBookmarkKey:
+            return "videoGifSaveDirectoryDisplayPath"
+        default:
+            return "saveDirectoryDisplayPath"
         }
     }
 #endif

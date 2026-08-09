@@ -584,6 +584,9 @@ class CaptureSettings: ObservableObject {
         for key in keys + masKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
+#if APPSTORE
+        SaveService.shared.invalidateAllSaveDirectoryBookmarks()
+#endif
         UploadcareCredentialsStore.shared.clearAll()
         Task { @MainActor in
             CaptureAnalyticsStore.shared.clear()
