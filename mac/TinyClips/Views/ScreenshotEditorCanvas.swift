@@ -75,7 +75,11 @@ struct ScreenshotEditorCanvasView: View {
                     ForEach(viewModel.annotations.filter { $0.tool == .text }) { annotation in
                         let scaledRect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
                         Text(annotation.text)
-                            .font(textPreviewFont(family: annotation.fontFamily, size: annotation.fontSize, isBold: annotation.isBold))
+                            .font(textPreviewFont(
+                                family: annotation.fontFamily,
+                                size: viewModel.textFontSize(annotation.fontSize, forRenderedImageWidth: imageSize.width),
+                                isBold: annotation.isBold
+                            ))
                             .italic(annotation.isItalic)
                             .underline(annotation.isUnderlined)
                             .foregroundColor(annotation.color)
