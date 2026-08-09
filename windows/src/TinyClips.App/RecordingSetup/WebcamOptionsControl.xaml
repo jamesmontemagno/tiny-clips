@@ -3,6 +3,7 @@
     x:Class="TinyClips.App.RecordingSetup.WebcamOptionsControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="using:TinyClips.App"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -12,6 +13,13 @@
           once and cached — every option change updates IsChecked in place instead of clearing and
           rebuilding the flyout.  -->
     <StackPanel Orientation="Horizontal" Spacing="8">
+        <app:WebcamPreviewSurface
+            x:Name="SetupPreview"
+            Width="96"
+            Height="54"
+            AutomationProperties.Name="Live webcam preview"
+            Visibility="Collapsed" />
+
         <ToggleButton
             x:Name="WebcamToggle"
             Width="34"

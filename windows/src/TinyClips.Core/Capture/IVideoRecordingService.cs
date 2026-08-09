@@ -1,3 +1,5 @@
+using TinyClips.Core.Models;
+
 namespace TinyClips.Core.Capture;
 
 /// <summary>
@@ -42,6 +44,9 @@ public interface IVideoRecordingService
     Task PauseAsync();
 
     Task ResumeAsync();
+
+    /// <summary>Records a webcam corner change at the current pause-adjusted recording time.</summary>
+    void SetWebcamCorner(WebcamCornerPosition corner);
 
     void SetSystemAudioMuted(bool muted);
 

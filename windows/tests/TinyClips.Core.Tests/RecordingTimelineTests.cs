@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using NAudio.Wave;
 using TinyClips.Core.Capture;
+using TinyClips.Core.Models;
 
 namespace TinyClips.Core.Tests;
 
@@ -163,6 +164,32 @@ public sealed class RecordingTimelineTests
         provider.AddSamples(ToBytes(6, 7), 4, origin + TimeSpan.FromSeconds(1));
 
         Assert.Equal(new short[] { 6, 7 }, ReadSamples(provider, 2));
+    }
+
+    [Fact]
+    public void WebcamPlacements_ApplyEveryCornerAtItsRecordingTime()
+    {
+        var placements = new WebcamPlacementTimeline(WebcamCornerPosition.BottomRight);
+
+        placements.Add(TimeSpan.FromSeconds(2), WebcamCornerPosition.TopLeft);
+        placements.Add(TimeSpan.FromSeconds(5), WebcamCornerPosition.BottomLeft);
+
+        Assert.Equal(WebcamCornerPosition.BottomRight, placements.CornerAt(TimeSpan.FromSeconds(1)));
+        Assert.Equal(WebcamCornerPosition.TopLeft, placements.CornerAt(TimeSpan.FromSeconds(2)));
+        Assert.Equal(WebcamCornerPosition.TopLeft, placements.CornerAt(TimeSpan.FromSeconds(4)));
+        Assert.Equal(WebcamCornerPosition.BottomLeft, placements.CornerAt(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void WebcamPlacements_ReplaceChangesAtSamePausedTime()
+    {
+        var placements = new WebcamPlacementTimeline(WebcamCornerPosition.BottomRight);
+
+        placements.Add(TimeSpan.FromSeconds(2), WebcamCornerPosition.TopLeft);
+        placements.Add(TimeSpan.FromSeconds(2), WebcamCornerPosition.TopRight);
+
+        Assert.Equal(WebcamCornerPosition.TopRight, placements.CornerAt(TimeSpan.FromSeconds(2)));
+        Assert.Equal(2, placements.Events.Count);
     }
 
     private static byte[] ToBytes(params short[] samples)
