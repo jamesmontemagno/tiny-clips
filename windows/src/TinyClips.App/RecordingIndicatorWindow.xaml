@@ -72,7 +72,7 @@
                         Content="Resume"
                         ToolTipService.ToolTip="Resume recording"
                         Visibility="Collapsed" />
-                    <Button
+                    <ToggleButton
                         x:Name="SystemAudioButton"
                         AutomationProperties.AutomationId="SystemAudioMuteButton"
                         AutomationProperties.Name="System audio"
@@ -80,8 +80,8 @@
                         ToolTipService.ToolTip="System audio"
                         Visibility="Collapsed">
                         <FontIcon x:Name="SystemAudioIcon" Glyph="&#xE767;" />
-                    </Button>
-                    <Button
+                    </ToggleButton>
+                    <ToggleButton
                         x:Name="MicrophoneButton"
                         AutomationProperties.AutomationId="MicrophoneMuteButton"
                         AutomationProperties.Name="Microphone"
@@ -89,7 +89,7 @@
                         ToolTipService.ToolTip="Microphone"
                         Visibility="Collapsed">
                         <FontIcon x:Name="MicrophoneIcon" Glyph="&#xE720;" />
-                    </Button>
+                    </ToggleButton>
                     <Button
                         x:Name="RestartButton"
                         AutomationProperties.AutomationId="RestartRecordingButton"

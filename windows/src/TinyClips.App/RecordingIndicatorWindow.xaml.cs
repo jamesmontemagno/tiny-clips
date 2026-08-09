@@ -102,6 +102,8 @@ public sealed partial class RecordingIndicatorWindow : Window
         MicrophoneButton.Visibility = canMuteMicrophone ? Visibility.Visible : Visibility.Collapsed;
         _systemAudioMuted = systemAudioMuted;
         _microphoneMuted = microphoneMuted;
+        SystemAudioButton.IsChecked = systemAudioMuted;
+        MicrophoneButton.IsChecked = microphoneMuted;
         UpdateAudioControlVisuals();
     }
 
@@ -140,14 +142,14 @@ public sealed partial class RecordingIndicatorWindow : Window
 
     private void OnSystemAudioClick(object sender, RoutedEventArgs e)
     {
-        _systemAudioMuted = !_systemAudioMuted;
+        _systemAudioMuted = SystemAudioButton.IsChecked == true;
         SystemAudioMuteChanged?.Invoke(_systemAudioMuted);
         UpdateAudioControlVisuals();
     }
 
     private void OnMicrophoneClick(object sender, RoutedEventArgs e)
     {
-        _microphoneMuted = !_microphoneMuted;
+        _microphoneMuted = MicrophoneButton.IsChecked == true;
         MicrophoneMuteChanged?.Invoke(_microphoneMuted);
         UpdateAudioControlVisuals();
     }
