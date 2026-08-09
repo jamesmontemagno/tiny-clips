@@ -46,6 +46,11 @@
                     Icon="Setting"
                     Tag="General" />
                 <NavigationViewItem
+                    AutomationProperties.AutomationId="UploadcareNavigationItem"
+                    Content="Uploadcare"
+                    Icon="CloudUpload"
+                    Tag="Uploadcare" />
+                <NavigationViewItem
                     AutomationProperties.AutomationId="AnalyticsNavigationItem"
                     Content="Analytics"
                     Icon="CalendarWeek"

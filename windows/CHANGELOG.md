@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Uploadcare cloud uploads** — Settings → Uploadcare now stores the public key and upload preferences locally while keeping the optional signing secret only in Windows Credential Locker. Tiny Clips can upload finalized screenshots, videos, GIFs, and exported frames automatically, optionally copy the delivery URL, and lets the Clips Library upload a capture manually with Copy URL and Open URL actions.
 - **Clips Library** — A dedicated media library window (accessible from the tray popup) that lets users browse saved screenshots, videos, and GIFs without opening File Explorer. Each clip shows a thumbnail, filename, timestamp, and file size. Per-clip actions: Reveal in Explorer, Open in editor/trimmer, Copy to clipboard, and Delete with confirmation. Supports filter by capture type (All / Screenshots / Videos / GIFs), sort by newest or oldest first, and a grid/list view toggle. Window state (view mode, filter, sort) persists across sessions.
 - **Temporary-file controls in Settings → General** — an Advanced card now shows the Tiny Clips temporary-file count and size, opens its dedicated `%LOCALAPPDATA%\TinyClips\Temp` folder, and can purge those files without affecting saved captures.
 - **Narrator capture-status announcements** — Tiny Clips now announces screenshot, video, and GIF save results plus recording start and stop through a tray-lifetime UI Automation notification anchor, even when capture pickers and popups are closed.

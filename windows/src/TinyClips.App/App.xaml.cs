@@ -75,6 +75,7 @@ public partial class App : Application
         InitializeComponent();
         Services = new ServiceCollection()
             .AddTinyClipsCore()
+            .AddSingleton<IUploadcareCredentialStore, WindowsCredentialStore>()
             .AddSingleton<IMediaDevicePermissionService, MediaDevicePermissionService>()
             .BuildServiceProvider();
 
@@ -1547,6 +1548,7 @@ public partial class App : Application
     internal static void ShowSaveNotification(string path)
     {
         AnnounceCaptureSaved(path);
+        (Current as App)?.QueueAutoUpload(path);
 
         try
         {
@@ -1570,6 +1572,44 @@ public partial class App : Application
         }
     }
 
+    private void QueueAutoUpload(string path)
+    {
+        var settings = Services.GetRequiredService<ICaptureSettings>();
+        if (!settings.UploadcareEnabled ||
+            !settings.UploadcareAutoUpload ||
+            string.IsNullOrWhiteSpace(settings.UploadcarePublicKey))
+        {
+            return;
+        }
+
+        _ = UploadSavedClipAsync(path);
+    }
+
+    private async Task UploadSavedClipAsync(string path)
+    {
+        try
+        {
+            var result = await Services.GetRequiredService<IUploadcareUploadService>().UploadAsync(path);
+            var settings = Services.GetRequiredService<ICaptureSettings>();
+            if (settings.UploadcareCopyUrl)
+            {
+                try
+                {
+                    await ClipboardService.CopyTextAsync(result.DeliveryUri.AbsoluteUri);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Upload URL clipboard copy failed: {ex}");
+                    ShowClipboardFailureNotification(Path.GetFileName(path));
+                }
+            }
+        }
+        catch (UploadcareUploadException)
+        {
+            ShowUploadFailureNotification(Path.GetFileName(path));
+        }
+    }
+
     internal static void ShowClipboardFailureNotification(string fileName)
     {
         try
@@ -1581,6 +1621,24 @@ public partial class App : Application
                 .BuildNotification();
 
             AppNotificationManager.Default.Show(notification);
+        }
+
+        internal static void ShowUploadFailureNotification(string fileName)
+        {
+            try
+            {
+                EnsureNotificationsRegistered();
+                var notification = new AppNotificationBuilder()
+                    .AddText("Couldn't upload to Uploadcare")
+                    .AddText(fileName)
+                    .BuildNotification();
+
+                AppNotificationManager.Default.Show(notification);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to show upload failure notification: {ex}");
+            }
         }
         catch (Exception ex)
         {
