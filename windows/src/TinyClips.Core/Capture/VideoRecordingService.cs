@@ -479,6 +479,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         _recordingTimeline = null;
         _lastTimelineWebcamFrame = null;
         IsRecording = false;
+        WebcamDiagnostics.EndRecording();
     }
 
     private async Task StartWebcamOverlayAsync(CancellationToken cancellationToken)
@@ -489,7 +490,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         Interlocked.Exchange(ref _webcamOverlayNullFrames, 0);
         Interlocked.Exchange(ref _webcamNoFrameFrames, 0);
 
-        WebcamDiagnostics.Reset();
+        WebcamDiagnostics.BeginRecording();
         WebcamDiagnostics.Log($"StartWebcamOverlay: WebcamEnabled={_settings.WebcamEnabled} deviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedWebcamId) ? "(default)" : _settings.SelectedWebcamId)}' shape={_settings.WebcamShape} size={_settings.WebcamSizePreset} corner={_settings.WebcamCornerPosition}");
 
         if (!_settings.WebcamEnabled)
@@ -964,6 +965,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
         finally
         {
+            WebcamDiagnostics.EndRecording();
             Interlocked.Exchange(ref _stopping, 0);
             _gate.Release();
         }

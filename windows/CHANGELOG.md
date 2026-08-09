@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Temporary-file controls in Settings → General** — an Advanced card now shows the Tiny Clips temporary-file count and size, opens its dedicated `%LOCALAPPDATA%\TinyClips\Temp` folder, and can purge those files without affecting saved captures.
+
 ### Changed
 - Screenshot, video, and GIF settings now each provide matching before/after capture-picker controls.
 - Video recordings now always request the H.264 High profile for the best quality and smallest files; the automatic Baseline fallback remains when the system encoder cannot initialize.
