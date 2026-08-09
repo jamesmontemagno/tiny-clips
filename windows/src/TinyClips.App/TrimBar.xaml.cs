@@ -2,6 +2,8 @@ using System;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Windows.System;
+using Windows.UI.Core;
 
 namespace TinyClips.App;
 
@@ -14,7 +16,7 @@ namespace TinyClips.App;
 /// The control raises <see cref="StartFractionChanged"/>, <see cref="EndFractionChanged"/> and
 /// <see cref="SeekRequested"/> only in response to user pointer input. Assigning the matching
 /// properties (e.g. from the host while clamping) re-lays out without re-raising events, so there
-/// is no feedback loop.
+/// is no feedback loop. User input supports both pointer gestures and keyboard commands.
 /// </remarks>
 public sealed partial class TrimBar : UserControl
 {
@@ -30,6 +32,8 @@ public sealed partial class TrimBar : UserControl
     private const double HandleWidth = 14.0;
     private const double TrackHeight = 36.0;
     private const double HandleGrab = 12.0;
+    private const double KeyboardStep = 0.01;
+    private const double KeyboardRangeStep = 0.1;
 
     private static readonly InputSystemCursor SizeCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeWestEast);
     private static readonly InputSystemCursor MoveCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeAll);
@@ -54,20 +58,21 @@ public sealed partial class TrimBar : UserControl
         PointerReleased += OnPointerReleased;
         PointerCaptureLost += OnPointerCaptureLost;
         PointerExited += OnPointerExited;
+        KeyDown += OnKeyDown;
         SizeChanged += (_, _) => LayoutParts();
     }
 
-    /// <summary>Raised while the user drags the start handle. Carries the new start fraction.</summary>
+    /// <summary>Raised when the user changes the start handle. Carries the new start fraction.</summary>
     public event EventHandler<double>? StartFractionChanged;
 
-    /// <summary>Raised while the user drags the end handle. Carries the new end fraction.</summary>
+    /// <summary>Raised when the user changes the end handle. Carries the new end fraction.</summary>
     public event EventHandler<double>? EndFractionChanged;
 
-    /// <summary>Raised while the user scrubs the track body. Carries the requested playhead fraction.</summary>
+    /// <summary>Raised when the user requests a playhead position. Carries the requested fraction.</summary>
     public event EventHandler<double>? SeekRequested;
 
     /// <summary>
-    /// Raised while the user drags the selected region as a whole. Carries the new start and end
+    /// Raised when the user moves the selected region as a whole. Carries the new start and end
     /// fractions (the selection width is preserved).
     /// </summary>
     public event EventHandler<(double Start, double End)>? RangeChanged;
@@ -153,6 +158,8 @@ public sealed partial class TrimBar : UserControl
 
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        Focus(FocusState.Pointer);
+
         var x = e.GetCurrentPoint(this).Position.X;
         var half = HandleWidth / 2.0;
         var usable = Usable;
@@ -241,6 +248,65 @@ public sealed partial class TrimBar : UserControl
             ProtectedCursor = ArrowCursor;
         }
     }
+
+    private void OnKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        var control = IsKeyDown(VirtualKey.Control);
+        var shift = IsKeyDown(VirtualKey.Shift);
+
+        switch (e.Key)
+        {
+            case VirtualKey.Left:
+                ApplyKeyboardArrow(-KeyboardStep, control, shift);
+                break;
+            case VirtualKey.Right:
+                ApplyKeyboardArrow(KeyboardStep, control, shift);
+                break;
+            case VirtualKey.PageUp:
+                MoveRange(KeyboardRangeStep);
+                break;
+            case VirtualKey.PageDown:
+                MoveRange(-KeyboardRangeStep);
+                break;
+            case VirtualKey.Home:
+                SeekRequested?.Invoke(this, 0);
+                break;
+            case VirtualKey.End:
+                SeekRequested?.Invoke(this, 1);
+                break;
+            default:
+                return;
+        }
+
+        e.Handled = true;
+    }
+
+    private void ApplyKeyboardArrow(double delta, bool control, bool shift)
+    {
+        if (control)
+        {
+            StartFractionChanged?.Invoke(this, Clamp01(_start + delta));
+            return;
+        }
+
+        if (shift)
+        {
+            EndFractionChanged?.Invoke(this, Clamp01(_end + delta));
+            return;
+        }
+
+        SeekRequested?.Invoke(this, Clamp01(_play + delta));
+    }
+
+    private void MoveRange(double delta)
+    {
+        var width = _end - _start;
+        var start = Math.Clamp(_start + delta, 0, 1 - width);
+        RangeChanged?.Invoke(this, (start, start + width));
+    }
+
+    private static bool IsKeyDown(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
     private void UpdateHoverCursor(double x)
     {

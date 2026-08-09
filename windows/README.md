@@ -103,6 +103,13 @@ WASAPI capture, and audio back-pressure), see [`docs/audio-video-sync.md`](docs/
 `.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core tests on
 `windows-latest`. It is path-filtered to `windows/**`, so it only runs when Windows code changes.
 
+## Accessibility release gate
+
+Before shipping a Windows release, complete the manual [accessibility release-gate matrix](docs/accessibility-release-gate.md)
+against the packaged candidate. It covers keyboard-only and Narrator behavior for the tray,
+settings, capture flows, indicators, editor, trimmers, onboarding, and guide. A build or static
+automation review does not replace the documented hands-on results.
+
 ## Distribution
 
 - **Direct (available now):** signed MSIX distributed via **winget** — install with
