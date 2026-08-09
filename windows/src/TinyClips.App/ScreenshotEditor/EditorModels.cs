@@ -62,6 +62,91 @@ internal enum ExportBackgroundStyle
     Gradient,
 }
 
+internal enum ExportFramePreset
+{
+    Original,
+    Square,
+    LandscapeFourByThree,
+    LandscapeSixteenByNine,
+    PortraitThreeByFour,
+    PortraitNineBySixteen,
+}
+
+internal enum ExportHorizontalAlignment
+{
+    Left,
+    Center,
+    Right,
+}
+
+internal enum ExportVerticalAlignment
+{
+    Top,
+    Center,
+    Bottom,
+}
+
+internal readonly record struct ExportFrameLayout(Size FrameSize, Rect ImageBounds)
+{
+    public static ExportFrameLayout Create(
+        double imageWidth,
+        double imageHeight,
+        double padding,
+        ExportFramePreset preset,
+        ExportHorizontalAlignment horizontalAlignment,
+        ExportVerticalAlignment verticalAlignment)
+    {
+        var safePadding = Math.Max(0, padding);
+        var baseWidth = imageWidth + safePadding * 2;
+        var baseHeight = imageHeight + safePadding * 2;
+        var frameWidth = baseWidth;
+        var frameHeight = baseHeight;
+        var targetRatio = preset switch
+        {
+            ExportFramePreset.Square => 1.0,
+            ExportFramePreset.LandscapeFourByThree => 4.0 / 3.0,
+            ExportFramePreset.LandscapeSixteenByNine => 16.0 / 9.0,
+            ExportFramePreset.PortraitThreeByFour => 3.0 / 4.0,
+            ExportFramePreset.PortraitNineBySixteen => 9.0 / 16.0,
+            _ => 0.0,
+        };
+
+        if (targetRatio > 0 && baseWidth > 0 && baseHeight > 0)
+        {
+            if (baseWidth / baseHeight < targetRatio)
+            {
+                frameWidth = Math.Ceiling(baseHeight * targetRatio);
+            }
+            else if (baseWidth / baseHeight > targetRatio)
+            {
+                frameHeight = Math.Ceiling(baseWidth / targetRatio);
+            }
+        }
+
+        var horizontalFactor = horizontalAlignment switch
+        {
+            ExportHorizontalAlignment.Left => 0.0,
+            ExportHorizontalAlignment.Right => 1.0,
+            _ => 0.5,
+        };
+        var verticalFactor = verticalAlignment switch
+        {
+            ExportVerticalAlignment.Top => 0.0,
+            ExportVerticalAlignment.Bottom => 1.0,
+            _ => 0.5,
+        };
+        var extraHorizontalSpace = Math.Max(0, frameWidth - baseWidth);
+        var extraVerticalSpace = Math.Max(0, frameHeight - baseHeight);
+        return new ExportFrameLayout(
+            new Size(frameWidth, frameHeight),
+            new Rect(
+                safePadding + extraHorizontalSpace * horizontalFactor,
+                safePadding + extraVerticalSpace * verticalFactor,
+                imageWidth,
+                imageHeight));
+    }
+}
+
 /// <summary>
 /// One annotation in image-pixel coordinates. Mutable in place so the editor canvas can retain a
 /// live visual per instance and update it during drags instead of rebuilding the overlay.
