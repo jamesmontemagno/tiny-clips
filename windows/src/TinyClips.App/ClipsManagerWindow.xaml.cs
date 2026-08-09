@@ -299,7 +299,7 @@ public sealed partial class ClipsManagerWindow : Window
         var dialog = new ContentDialog
         {
             Title           = "Delete clip?",
-            Content         = $""{System.IO.Path.GetFileName(path)}" will be permanently deleted.",
+            Content         = $"\"{System.IO.Path.GetFileName(path)}\" will be permanently deleted.",
             PrimaryButtonText   = "Delete",
             CloseButtonText     = "Cancel",
             DefaultButton       = ContentDialogButton.Close,
