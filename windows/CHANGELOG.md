@@ -7,6 +7,27 @@ own `CHANGELOG.md` at the repository root.
 
 ### Added
 - Added a live webcam preview to video setup and recording on Windows. The in-recording preview can be dragged or moved with the keyboard between capture corners, and every move is synchronized to the exported recording timeline.
+- **Temporary-file controls in Settings → General** — an Advanced card now shows the Tiny Clips temporary-file count and size, opens its dedicated `%LOCALAPPDATA%\TinyClips\Temp` folder, and can purge those files without affecting saved captures.
+- **Narrator capture-status announcements** — Tiny Clips now announces screenshot, video, and GIF save results plus recording start and stop through a tray-lifetime UI Automation notification anchor, even when capture pickers and popups are closed.
+
+### Changed
+- Screenshot, video, and GIF settings now each provide matching before/after capture-picker controls.
+- Video recordings now always request the H.264 High profile for the best quality and smallest files; the automatic Baseline fallback remains when the system encoder cannot initialize.
+
+### Added
+- Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.
+
+## [v1.6.0-windows] - 2026-08-04
+
+### Added
+- **WebP files can now open in the screenshot editor** — File Explorer lists Tiny Clips as an Open with handler for `.webp` images, and the editor reports a clear message if Windows cannot decode an image.
+- **Faster tray access to saved work** — The tray popup now opens configured capture folders and keeps the 10 most recent screenshots, videos, and GIFs available for reopening in their editor or trimmer.
+- **Share capture analytics summaries** — Settings → Analytics now offers a Share button alongside Copy Summary, opening the native Windows share dialog with the selected-range activity summary.
+- **Resizable screenshot annotations** — Selected annotations now show four corner handles for direct resizing, while arrows and lines retain dedicated endpoint handles and inside dragging still moves annotations.
+- **Reset All Settings to Defaults** — Settings → General now has a "Reset All Settings to Defaults…" button under the new Advanced section. Clicking it shows a confirmation dialog; confirming resets every TinyClips setting to its default value and immediately refreshes the Settings window to reflect the restored state.
+
+### Fixed
+- **Winget-installed app launch is less likely to trip startup validation** — Tiny Clips now defers Windows app-notification registration until it actually needs to show a toast instead of registering during process launch, avoiding extra Windows App Runtime startup-task activation during install validation while preserving save/update/error notifications during normal use.
 
 ## [v1.5.3-windows] - 2026-07-25
 

@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ShortcutsSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
+    @ObservedObject var captureManager: CaptureManager
+
+    @State private var shortcutError: String?
 
     var body: some View {
         Section("Global Keyboard Shortcuts") {
@@ -9,27 +12,39 @@ struct ShortcutsSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if let shortcutError {
+                Label(shortcutError, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Shortcut error: \(shortcutError)")
+            } else if let registrationError = captureManager.hotKeyRegistrationError {
+                Label(registrationError, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Shortcut error: \(registrationError)")
+            }
+
             ShortcutRecorderField(
                 label: "Screenshot",
-                keyCode: $settings.screenshotHotKeyCode,
-                carbonModifiers: $settings.screenshotHotKeyModifiers,
-                defaultBinding: .defaultScreenshot
+                binding: screenshotBinding,
+                defaultBinding: .defaultScreenshot,
+                onBindingRecorded: { apply($0, for: .screenshot) }
             )
             .accessibilityLabel("Screenshot keyboard shortcut")
 
             ShortcutRecorderField(
                 label: "Record Video",
-                keyCode: $settings.videoHotKeyCode,
-                carbonModifiers: $settings.videoHotKeyModifiers,
-                defaultBinding: .defaultVideo
+                binding: videoBinding,
+                defaultBinding: .defaultVideo,
+                onBindingRecorded: { apply($0, for: .video) }
             )
             .accessibilityLabel("Record Video keyboard shortcut")
 
             ShortcutRecorderField(
                 label: "Record GIF",
-                keyCode: $settings.gifHotKeyCode,
-                carbonModifiers: $settings.gifHotKeyModifiers,
-                defaultBinding: .defaultGif
+                binding: gifBinding,
+                defaultBinding: .defaultGif,
+                onBindingRecorded: { apply($0, for: .gif) }
             )
             .accessibilityLabel("Record GIF keyboard shortcut")
         }
@@ -56,5 +71,30 @@ struct ShortcutsSettingsSection: View {
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var screenshotBinding: HotKeyBinding {
+        HotKeyBinding(
+            keyCode: settings.screenshotHotKeyCode,
+            carbonModifiers: settings.screenshotHotKeyModifiers
+        )
+    }
+
+    private var videoBinding: HotKeyBinding {
+        HotKeyBinding(
+            keyCode: settings.videoHotKeyCode,
+            carbonModifiers: settings.videoHotKeyModifiers
+        )
+    }
+
+    private var gifBinding: HotKeyBinding {
+        HotKeyBinding(
+            keyCode: settings.gifHotKeyCode,
+            carbonModifiers: settings.gifHotKeyModifiers
+        )
+    }
+
+    private func apply(_ binding: HotKeyBinding, for captureType: CaptureType) {
+        shortcutError = captureManager.applyCaptureHotKey(binding, for: captureType)
     }
 }

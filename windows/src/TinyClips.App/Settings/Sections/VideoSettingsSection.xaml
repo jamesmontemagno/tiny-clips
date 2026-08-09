@@ -52,22 +52,41 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Encoder profile" />
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker before recording" />
                     <TextBlock
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="High gives the best quality and smallest files. Baseline maximizes player compatibility." />
+                        Text="Choose Region, Screen, or Window before recording." />
                 </StackPanel>
-                <ComboBox
+                <ToggleSwitch
                     Grid.Column="1"
-                    MinWidth="220"
                     VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="VideoEncoderProfileCombo"
-                    AutomationProperties.Name="Video encoder profile"
-                    SelectedIndex="{x:Bind ViewModel.VideoEncoderProfileIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="High (recommended)" />
-                    <ComboBoxItem Content="Baseline (compatibility)" />
-                </ComboBox>
+                    AutomationProperties.AutomationId="ShowVideoCapturePickerToggle"
+                    AutomationProperties.Name="Show capture picker before recording"
+                    IsOn="{x:Bind ViewModel.ShowVideoCapturePicker, Mode=TwoWay}" />
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker after recording" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Start another recording with the same picker after saving." />
+                </StackPanel>
+                <ToggleSwitch
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="ShowVideoCapturePickerAfterCaptureToggle"
+                    AutomationProperties.Name="Show capture picker after recording"
+                    IsEnabled="{x:Bind ViewModel.VideoCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                    IsOn="{x:Bind ViewModel.ShowVideoCapturePickerAfterCapture, Mode=TwoWay}" />
             </Grid>
         </Border>
 

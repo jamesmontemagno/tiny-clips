@@ -13,6 +13,14 @@ public interface IVideoRecordingService
 
     bool IsPaused { get; }
 
+    bool CanMuteSystemAudio { get; }
+
+    bool CanMuteMicrophone { get; }
+
+    bool IsSystemAudioMuted { get; }
+
+    bool IsMicrophoneMuted { get; }
+
     /// <summary>Raised when a recording finishes (manual stop or time-limit), with the saved file path.</summary>
     event EventHandler<string?>? RecordingCompleted;
 
@@ -39,6 +47,10 @@ public interface IVideoRecordingService
 
     /// <summary>Records a webcam corner change at the current pause-adjusted recording time.</summary>
     void SetWebcamCorner(WebcamCornerPosition corner);
+
+    void SetSystemAudioMuted(bool muted);
+
+    void SetMicrophoneMuted(bool muted);
 
     Task CancelAsync();
 }

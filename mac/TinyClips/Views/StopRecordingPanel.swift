@@ -203,7 +203,7 @@ class StopRecordingPanel: NSPanel {
         onStop: @escaping () -> Void
     ) {
         self.init(
-            contentRect: NSRect(x: 0, y: 0, width: 430, height: 44),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 44),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -266,12 +266,21 @@ private struct StopRecordingView: View {
                 .accessibilityLabel("Elapsed recording time")
                 .accessibilityValue(formattedTime)
 
+            if captureManager.recordingSystemAudioEnabled {
+                audioControlButton(
+                    title: captureManager.isRecordingSystemAudioMuted ? "Unmute system audio" : "Mute system audio",
+                    systemName: captureManager.isRecordingSystemAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                    isMuted: captureManager.isRecordingSystemAudioMuted,
+                    action: captureManager.toggleRecordingSystemAudioMute
+                )
+            }
+
             if captureManager.recordingMicrophoneEnabled {
-                RecordingStatusIcon(
-                    systemName: "mic.fill",
-                    tint: captureManager.microphoneWarningMessage == nil ? .green : .yellow,
-                    accessibilityLabel: "Microphone recording",
-                    accessibilityValue: captureManager.microphoneWarningMessage ?? (captureManager.activeMicrophoneName ?? "Active")
+                audioControlButton(
+                    title: captureManager.isRecordingMicrophoneMuted ? "Unmute microphone" : "Mute microphone",
+                    systemName: captureManager.isRecordingMicrophoneMuted ? "mic.slash.fill" : "mic.fill",
+                    isMuted: captureManager.isRecordingMicrophoneMuted,
+                    action: captureManager.toggleRecordingMicrophoneMute
                 )
                 .help(captureManager.microphoneWarningMessage ?? captureManager.activeMicrophoneName ?? "Microphone is being recorded.")
             }
@@ -350,22 +359,19 @@ private struct StopRecordingView: View {
         .accessibilityLabel(title)
         .help(title)
     }
-}
 
-private struct RecordingStatusIcon: View {
-    let systemName: String
-    let tint: Color
-    let accessibilityLabel: String
-    let accessibilityValue: String
-
-    var body: some View {
-        Image(systemName: systemName)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(tint)
-            .frame(width: 24, height: 24)
-            .background(.primary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityValue(accessibilityValue)
+    private func audioControlButton(title: String, systemName: String, isMuted: Bool, action: @escaping () -> Void) -> some View {
+        SwiftUI.Button(action: { action() }, label: {
+            Image(systemName: systemName)
+                .foregroundStyle(isMuted ? Color.primary.opacity(0.55) : Color.white)
+                .font(.system(size: 12))
+                .frame(width: 28, height: 28)
+                .background(isMuted ? Color.primary.opacity(0.12) : Color.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        })
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(isMuted ? "Muted" : "Recording")
+        .help(title)
     }
 }

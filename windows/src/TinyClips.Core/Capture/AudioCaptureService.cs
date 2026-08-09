@@ -29,6 +29,8 @@ public sealed class AudioCaptureService : IDisposable
     private IWaveProvider? _output;
     private bool _disposed;
     private bool _paused;
+    private int _systemMuted;
+    private int _microphoneMuted;
 
     public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId)
     {
@@ -39,6 +41,30 @@ public sealed class AudioCaptureService : IDisposable
 
     /// <summary>True once at least one requested source started successfully.</summary>
     public bool IsActive { get; private set; }
+
+    public bool CanMuteSystemAudio => _loopback is not null;
+
+    public bool CanMuteMicrophone => _mic is not null;
+
+    public bool IsSystemAudioMuted => Volatile.Read(ref _systemMuted) != 0;
+
+    public bool IsMicrophoneMuted => Volatile.Read(ref _microphoneMuted) != 0;
+
+    public void SetSystemAudioMuted(bool muted)
+    {
+        if (CanMuteSystemAudio)
+        {
+            Volatile.Write(ref _systemMuted, muted ? 1 : 0);
+        }
+    }
+
+    public void SetMicrophoneMuted(bool muted)
+    {
+        if (CanMuteMicrophone)
+        {
+            Volatile.Write(ref _microphoneMuted, muted ? 1 : 0);
+        }
+    }
 
     /// <summary>
     /// Starts the requested capture sources. Each source is best-effort: if the microphone
@@ -91,7 +117,11 @@ public sealed class AudioCaptureService : IDisposable
                 }
             };
 
-            var provider = ToStereo48k(buffer.ToSampleProvider());
+            var provider = new MuteableSampleProvider(
+                ToStereo48k(buffer.ToSampleProvider()),
+                () => isLoopback
+                    ? Volatile.Read(ref _systemMuted) != 0
+                    : Volatile.Read(ref _microphoneMuted) != 0);
             _mixer!.AddMixerInput(provider);
 
             capture.Start();
@@ -333,5 +363,30 @@ public sealed class AudioCaptureService : IDisposable
         _output = null;
         _mixer = null;
         _buffers.Clear();
+    }
+
+    private sealed class MuteableSampleProvider : ISampleProvider
+    {
+        private readonly ISampleProvider _source;
+        private readonly Func<bool> _isMuted;
+
+        public MuteableSampleProvider(ISampleProvider source, Func<bool> isMuted)
+        {
+            _source = source;
+            _isMuted = isMuted;
+        }
+
+        public WaveFormat WaveFormat => _source.WaveFormat;
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            var read = _source.Read(buffer, offset, count);
+            if (read > 0 && _isMuted())
+            {
+                Array.Clear(buffer, offset, read);
+            }
+
+            return read;
+        }
     }
 }

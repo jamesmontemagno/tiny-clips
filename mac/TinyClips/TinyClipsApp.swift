@@ -49,7 +49,7 @@ struct TinyClipsApp: App {
         }
 
         Window("Tiny Clips Settings", id: "settings-window") {
-            SettingsView()
+            SettingsView(captureManager: captureManager)
         }
         .defaultSize(width: 720, height: 460)
         .commands {

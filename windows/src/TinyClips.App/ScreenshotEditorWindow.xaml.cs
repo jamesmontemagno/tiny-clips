@@ -77,6 +77,8 @@ public sealed partial class ScreenshotEditorWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Editor load failed: {ex}");
+            App.ShowImageLoadFailureNotification(System.IO.Path.GetFileName(_filePath));
+            Close();
         }
     }
 

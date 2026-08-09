@@ -8,6 +8,43 @@ struct GifCaptureData {
     let frames: [CGImage]
     let frameDelay: Double
     let maxWidth: CGFloat
+
+    init(frames: [CGImage], frameDelay: Double, maxWidth: CGFloat) {
+        self.frames = frames
+        self.frameDelay = frameDelay
+        self.maxWidth = maxWidth
+    }
+
+    init(contentsOf url: URL) throws {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+
+        let frameCount = CGImageSourceGetCount(source)
+        var decodedFrames: [CGImage] = []
+        decodedFrames.reserveCapacity(frameCount)
+        var totalDelay = 0.0
+
+        for index in 0..<frameCount {
+            guard let frame = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
+            decodedFrames.append(frame)
+
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+            let gifProperties = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+            let frameDelay = (gifProperties?[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
+                ?? (gifProperties?[kCGImagePropertyGIFDelayTime] as? Double)
+                ?? 0.1
+            totalDelay += max(0.01, frameDelay)
+        }
+
+        frames = decodedFrames
+        guard !frames.isEmpty else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+
+        frameDelay = totalDelay / Double(frames.count)
+        maxWidth = CGFloat(frames.map(\.width).max() ?? 1)
+    }
 }
 
 // MARK: - Window

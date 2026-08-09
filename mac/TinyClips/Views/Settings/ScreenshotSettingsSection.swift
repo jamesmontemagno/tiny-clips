@@ -34,7 +34,7 @@ struct ScreenshotSettingsSection: View {
         }
         
         Section("Picker Settings") {
-            Toggle("Show capture picker BEFORE screenshot", isOn: $settings.showScreenshotCapturePicker)
+            Toggle("Show capture picker before screenshot", isOn: $settings.showScreenshotCapturePicker)
                 .help("When disabled, screenshots go straight to region selection.")
                 .onChange(of: settings.showScreenshotCapturePicker) { _, isEnabled in
                     if !isEnabled {
@@ -42,7 +42,7 @@ struct ScreenshotSettingsSection: View {
                     }
                 }
             
-            Toggle("Show capture picker AFTER screenshot", isOn: $settings.showScreenshotCapturePickerAfterCapture)
+            Toggle("Show capture picker after screenshot", isOn: $settings.showScreenshotCapturePickerAfterCapture)
                 .help("Reopen the capture picker after each screenshot so you can quickly take another.")
                 .disabled(!settings.showScreenshotCapturePicker)
         }

@@ -153,6 +153,20 @@ enum ImageFormat: String, CaseIterable {
     }
 }
 
+enum MultiMonitorCaptureMode: String, CaseIterable {
+    case askEveryTime
+    case displayUnderCursor
+    case mainDisplay
+
+    var label: String {
+        switch self {
+        case .askEveryTime: return "Ask every time"
+        case .displayUnderCursor: return "Display under cursor"
+        case .mainDisplay: return "Main display"
+        }
+    }
+}
+
 // MARK: - Settings
 
 struct MouseClickOverlayStyle: Sendable {
@@ -204,9 +218,15 @@ class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
 
     @AppStorage("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
+    @AppStorage("screenshotSaveDirectory") var screenshotSaveDirectory: String = ""
+    @AppStorage("videoGifSaveDirectory") var videoGifSaveDirectory: String = ""
 #if APPSTORE
     @AppStorage("saveDirectoryBookmark") var saveDirectoryBookmark: Data = Data()
     @AppStorage("saveDirectoryDisplayPath") var saveDirectoryDisplayPath: String = ""
+    @AppStorage("screenshotSaveDirectoryBookmark") var screenshotSaveDirectoryBookmark: Data = Data()
+    @AppStorage("screenshotSaveDirectoryDisplayPath") var screenshotSaveDirectoryDisplayPath: String = ""
+    @AppStorage("videoGifSaveDirectoryBookmark") var videoGifSaveDirectoryBookmark: Data = Data()
+    @AppStorage("videoGifSaveDirectoryDisplayPath") var videoGifSaveDirectoryDisplayPath: String = ""
 #endif
     @AppStorage("copyScreenshotToClipboard") var copyScreenshotToClipboard: Bool = true
     @AppStorage("copyVideoToClipboard") var copyVideoToClipboard: Bool = false
@@ -273,15 +293,41 @@ class CaptureSettings: ObservableObject {
             }
         }
     }
-    @AppStorage("showScreenshotCapturePickerAfterCapture") var showScreenshotCapturePickerAfterCapture: Bool = true {
+    @AppStorage("showScreenshotCapturePickerAfterCapture") var showScreenshotCapturePickerAfterCapture: Bool = false {
         didSet {
             if showScreenshotCapturePickerAfterCapture && !showScreenshotCapturePicker {
                 showScreenshotCapturePickerAfterCapture = false
             }
         }
     }
-    @AppStorage("showVideoCapturePicker") var showVideoCapturePicker: Bool = true
-    @AppStorage("showGifCapturePicker") var showGifCapturePicker: Bool = true
+    @AppStorage("showVideoCapturePicker") var showVideoCapturePicker: Bool = true {
+        didSet {
+            if !showVideoCapturePicker {
+                showVideoCapturePickerAfterCapture = false
+            }
+        }
+    }
+    @AppStorage("showVideoCapturePickerAfterCapture") var showVideoCapturePickerAfterCapture: Bool = false {
+        didSet {
+            if showVideoCapturePickerAfterCapture && !showVideoCapturePicker {
+                showVideoCapturePickerAfterCapture = false
+            }
+        }
+    }
+    @AppStorage("showGifCapturePicker") var showGifCapturePicker: Bool = true {
+        didSet {
+            if !showGifCapturePicker {
+                showGifCapturePickerAfterCapture = false
+            }
+        }
+    }
+    @AppStorage("showGifCapturePickerAfterCapture") var showGifCapturePickerAfterCapture: Bool = false {
+        didSet {
+            if showGifCapturePickerAfterCapture && !showGifCapturePicker {
+                showGifCapturePickerAfterCapture = false
+            }
+        }
+    }
     @AppStorage("screenshotFormat") var screenshotFormat: String = ImageFormat.jpeg.rawValue
     @AppStorage("screenshotScale") var screenshotScale: Int = 100
     @AppStorage("jpegQuality") var jpegQuality: Double = 0.85
@@ -293,7 +339,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("screenshotCountdownEnabled") var screenshotCountdownEnabled: Bool = false
     @AppStorage("screenshotCountdownDuration") var screenshotCountdownDuration: Int = 3
     @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
-    @AppStorage("alwaysCaptureMainDisplay") var alwaysCaptureMainDisplay: Bool = false
+    @AppStorage("multiMonitorCaptureMode") var multiMonitorCaptureMode: MultiMonitorCaptureMode = .askEveryTime
     @AppStorage("showRegionIndicator") var showRegionIndicator: Bool = true
     @AppStorage("includeTinyClipsInCapture") var includeTinyClipsInCapture: Bool = false
     @AppStorage("showBrandingOverlay") var showBrandingOverlay: Bool = false
@@ -307,9 +353,76 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifHotKeyCode") var gifHotKeyCode: Int = 26                    // kVK_ANSI_7
     @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 6400
 
+    func resolvedSaveDirectory(for captureType: CaptureType) -> URL {
+        URL(fileURLWithPath: saveDirectoryPath(for: captureType), isDirectory: true)
+    }
+
+    func saveDirectoryPath(for captureType: CaptureType) -> String {
+        switch captureType {
+        case .screenshot:
+            return screenshotSaveDirectory.isEmpty ? saveDirectory : screenshotSaveDirectory
+        case .video, .gif:
+            return videoGifSaveDirectory.isEmpty ? saveDirectory : videoGifSaveDirectory
+        }
+    }
+
+    func isUsingSharedSaveDirectory(for captureType: CaptureType) -> Bool {
 #if APPSTORE
-    var hasCustomSaveDirectory: Bool {
-        !saveDirectoryBookmark.isEmpty
+        switch captureType {
+        case .screenshot:
+            return screenshotSaveDirectoryBookmark.isEmpty
+        case .video, .gif:
+            return videoGifSaveDirectoryBookmark.isEmpty
+        }
+#else
+        switch captureType {
+        case .screenshot:
+            return screenshotSaveDirectory.isEmpty
+        case .video, .gif:
+            return videoGifSaveDirectory.isEmpty
+        }
+#endif
+    }
+
+#if APPSTORE
+    func saveDirectoryBookmark(for captureType: CaptureType) -> Data {
+        switch captureType {
+        case .screenshot:
+            return screenshotSaveDirectoryBookmark
+        case .video, .gif:
+            return videoGifSaveDirectoryBookmark
+        }
+    }
+
+    func saveDirectoryDisplayPath(for captureType: CaptureType) -> String {
+        switch captureType {
+        case .screenshot:
+            return screenshotSaveDirectoryDisplayPath.isEmpty
+                ? saveDirectoryDisplayPath
+                : screenshotSaveDirectoryDisplayPath
+        case .video, .gif:
+            return videoGifSaveDirectoryDisplayPath.isEmpty
+                ? saveDirectoryDisplayPath
+                : videoGifSaveDirectoryDisplayPath
+        }
+    }
+
+    func setSaveDirectoryBookmark(_ bookmark: Data, displayPath: String, for captureType: CaptureType?) {
+        switch captureType {
+        case .screenshot:
+            screenshotSaveDirectoryBookmark = bookmark
+            screenshotSaveDirectoryDisplayPath = displayPath
+        case .video, .gif:
+            videoGifSaveDirectoryBookmark = bookmark
+            videoGifSaveDirectoryDisplayPath = displayPath
+        case nil:
+            saveDirectoryBookmark = bookmark
+            saveDirectoryDisplayPath = displayPath
+        }
+    }
+
+    func resetSaveDirectory(for captureType: CaptureType?) {
+        setSaveDirectoryBookmark(Data(), displayPath: "", for: captureType)
     }
 #endif
 
@@ -340,8 +453,15 @@ class CaptureSettings: ObservableObject {
         }
     }
 
-    var shouldShowScreenshotCapturePickerAfterCapture: Bool {
-        showScreenshotCapturePicker && showScreenshotCapturePickerAfterCapture
+    func shouldShowCapturePickerAfterCapture(for type: CaptureType) -> Bool {
+        switch type {
+        case .screenshot:
+            return showScreenshotCapturePicker && showScreenshotCapturePickerAfterCapture
+        case .video:
+            return showVideoCapturePicker && showVideoCapturePickerAfterCapture
+        case .gif:
+            return showGifCapturePicker && showGifCapturePickerAfterCapture
+        }
     }
 
     func mouseClickOverlayStyle(for type: CaptureType) -> MouseClickOverlayStyle {
@@ -412,10 +532,11 @@ class CaptureSettings: ObservableObject {
         set { gifMouseClickColorHex = newValue.hexRGBString }
     }
 
-    func resetToDefaults() {
+    func resetToDefaults(preservingHotKeys: Bool = false) {
         // Remove all keys in one pass so only a single objectWillChange fires
         let keys: [String] = [
-            "saveDirectory", "copyToClipboard", "copyScreenshotToClipboard", "copyVideoToClipboard", "copyGifToClipboard",
+            "saveDirectory", "screenshotSaveDirectory", "videoGifSaveDirectory",
+            "copyToClipboard", "copyScreenshotToClipboard", "copyVideoToClipboard", "copyGifToClipboard",
             "showInFinder", "showSaveNotifications", "showInDock",
             "autoUpdateEnabled",
             "fileNameTemplate",
@@ -436,32 +557,53 @@ class CaptureSettings: ObservableObject {
             "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
             "showScreenshotEditor", "showGifTrimmer",
             "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
-            "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture", "showVideoCapturePicker", "showGifCapturePicker",
+            "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
+            "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
+            "showGifCapturePicker", "showGifCapturePickerAfterCapture",
             "screenshotFormat", "screenshotScale", "jpegQuality",
             "videoCountdownEnabled", "videoCountdownDuration",
             "videoRecordingTimeLimitMinutes",
             "gifCountdownEnabled", "gifCountdownDuration",
             "screenshotCountdownEnabled", "screenshotCountdownDuration",
-            "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "showRegionIndicator",
+            "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "multiMonitorCaptureMode", "showRegionIndicator",
             "includeTinyClipsInCapture", "showBrandingOverlay",
-            "screenshotHotKeyCode", "screenshotHotKeyModifiers",
-            "videoHotKeyCode", "videoHotKeyModifiers",
-            "gifHotKeyCode", "gifHotKeyModifiers",
             "appStoreClipCountForReview", "appStoreReviewRequested"
         ]
+        let hotKeyKeys = [
+            "screenshotHotKeyCode", "screenshotHotKeyModifiers",
+            "videoHotKeyCode", "videoHotKeyModifiers",
+            "gifHotKeyCode", "gifHotKeyModifiers"
+        ]
 #if APPSTORE
-        let masKeys: [String] = ["saveDirectoryBookmark", "saveDirectoryDisplayPath"]
+        let masKeys: [String] = [
+            "saveDirectoryBookmark", "saveDirectoryDisplayPath",
+            "screenshotSaveDirectoryBookmark", "screenshotSaveDirectoryDisplayPath",
+            "videoGifSaveDirectoryBookmark", "videoGifSaveDirectoryDisplayPath"
+        ]
 #else
         let masKeys: [String] = []
 #endif
-        for key in keys + masKeys {
+        for key in keys + (preservingHotKeys ? [] : hotKeyKeys) + masKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
+#if APPSTORE
+        SaveService.shared.invalidateAllSaveDirectoryBookmarks()
+#endif
         UploadcareCredentialsStore.shared.clearAll()
         Task { @MainActor in
             CaptureAnalyticsStore.shared.clear()
         }
         objectWillChange.send()
+    }
+
+    private init() {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: "multiMonitorCaptureMode") == nil else { return }
+
+        multiMonitorCaptureMode = defaults.bool(forKey: "alwaysCaptureMainDisplay")
+            ? .mainDisplay
+            : .askEveryTime
+        defaults.removeObject(forKey: "alwaysCaptureMainDisplay")
     }
 }
 

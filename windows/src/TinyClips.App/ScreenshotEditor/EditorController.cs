@@ -685,6 +685,119 @@ internal sealed class EditorController : IDisposable
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
+    public void ResizeAnnotation(
+        Annotation ann,
+        Rect originalBounds,
+        IReadOnlyList<Vector2> originalPoints,
+        double originalFontSize,
+        double originalSizeScale,
+        AnnotationResizeHandle handle,
+        Point pixelPoint)
+    {
+        var oppositeX = handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.BottomLeft
+            ? originalBounds.Right
+            : originalBounds.Left;
+        var oppositeY = handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.TopRight
+            ? originalBounds.Bottom
+            : originalBounds.Top;
+        var resized = new Rect(
+            Math.Min(pixelPoint.X, oppositeX),
+            Math.Min(pixelPoint.Y, oppositeY),
+            Math.Max(Math.Abs(pixelPoint.X - oppositeX), 1),
+            Math.Max(Math.Abs(pixelPoint.Y - oppositeY), 1));
+        if (ann.Tool is EditTool.Text or EditTool.Counter)
+        {
+            var clampedX = handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.BottomLeft
+                ? Math.Min(pixelPoint.X, oppositeX - 1)
+                : Math.Max(pixelPoint.X, oppositeX + 1);
+            var clampedY = handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.TopRight
+                ? Math.Min(pixelPoint.Y, oppositeY - 1)
+                : Math.Max(pixelPoint.Y, oppositeY + 1);
+            var originalDiagonal = Math.Sqrt(
+                originalBounds.Width * originalBounds.Width + originalBounds.Height * originalBounds.Height);
+            var draggedDiagonal = Math.Sqrt(
+                Math.Pow(clampedX - oppositeX, 2) + Math.Pow(clampedY - oppositeY, 2));
+            var minimumScale = ann.Tool == EditTool.Text
+                ? 10 / Math.Max(originalFontSize, 1)
+                : 0.5 / Math.Max(originalSizeScale, 0.001);
+            var maximumScale = ann.Tool == EditTool.Text
+                ? 200 / Math.Max(originalFontSize, 1)
+                : 4 / Math.Max(originalSizeScale, 0.001);
+            var scale = Math.Clamp(
+                draggedDiagonal / Math.Max(originalDiagonal, 1),
+                minimumScale,
+                maximumScale);
+            var width = originalBounds.Width * scale;
+            var height = originalBounds.Height * scale;
+            resized = new Rect(
+                handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.BottomLeft ? oppositeX - width : oppositeX,
+                handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.TopRight ? oppositeY - height : oppositeY,
+                width,
+                height);
+        }
+
+        if (ann.Tool == EditTool.Pen)
+        {
+            var width = Math.Max(originalBounds.Width, 1);
+            var height = Math.Max(originalBounds.Height, 1);
+            ann.Points.Clear();
+            foreach (var original in originalPoints)
+            {
+                ann.Points.Add(new Vector2(
+                    (float)(resized.Left + ((original.X - originalBounds.Left) / width) * resized.Width),
+                    (float)(resized.Top + ((original.Y - originalBounds.Top) / height) * resized.Height)));
+            }
+            ann.Bounds = resized;
+        }
+        else if (ann.Tool == EditTool.Text)
+        {
+            ann.FontSize = Math.Max(8, originalFontSize * resized.Width / Math.Max(originalBounds.Width, 1));
+            ann.Bounds = new Rect(resized.X, resized.Y, resized.Width, resized.Height);
+            UpdateTextBounds(ann);
+            var measured = ann.Bounds;
+            ann.Bounds = new Rect(
+                handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.BottomLeft
+                    ? oppositeX - measured.Width
+                    : oppositeX,
+                handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.TopRight
+                    ? oppositeY - measured.Height
+                    : oppositeY,
+                measured.Width,
+                measured.Height);
+        }
+        else
+        {
+            ann.Bounds = resized;
+            if (ann.Tool == EditTool.Counter)
+            {
+                ann.SizeScale = originalSizeScale * resized.Width / Math.Max(originalBounds.Width, 1);
+            }
+        }
+
+        ann.RedactPreview = null;
+        AnnotationVisualInvalidated?.Invoke(this, ann);
+    }
+
+    public void MoveAnnotationEndpoint(Annotation ann, bool start, Point pixelPoint)
+    {
+        var (segmentStart, segmentEnd) = Segment(ann);
+        if (ann.Points.Count < 2)
+        {
+            ann.Points.Clear();
+            ann.Points.Add(segmentStart);
+            ann.Points.Add(segmentEnd);
+        }
+        ann.Points[start ? 0 : 1] = new Vector2((float)pixelPoint.X, (float)pixelPoint.Y);
+        var updatedStart = ann.Points[0];
+        var updatedEnd = ann.Points[1];
+        ann.Bounds = new Rect(
+            Math.Min(updatedStart.X, updatedEnd.X),
+            Math.Min(updatedStart.Y, updatedEnd.Y),
+            Math.Abs(updatedEnd.X - updatedStart.X),
+            Math.Abs(updatedEnd.Y - updatedStart.Y));
+        AnnotationVisualInvalidated?.Invoke(this, ann);
+    }
+
     public void Undo()
     {
         if (_annotations.Count == 0)

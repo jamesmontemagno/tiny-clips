@@ -8,19 +8,15 @@ import Carbon.HIToolbox
 /// record a new one by clicking "Record" and pressing any key combo.
 struct ShortcutRecorderField: View {
     let label: String
-    @Binding var keyCode: Int
-    @Binding var carbonModifiers: Int
+    let binding: HotKeyBinding
     let defaultBinding: HotKeyBinding
+    let onBindingRecorded: (HotKeyBinding) -> Void
 
     @State private var isRecording = false
     @State private var eventMonitor: Any?
 
-    private var current: HotKeyBinding {
-        HotKeyBinding(keyCode: keyCode, carbonModifiers: carbonModifiers)
-    }
-
     private var isCustom: Bool {
-        current != defaultBinding
+        binding != defaultBinding
     }
 
     var body: some View {
@@ -45,13 +41,13 @@ struct ShortcutRecorderField: View {
                 .accessibilityHint("Cancels recording and keeps the current shortcut.")
                 .help("Cancel shortcut recording.")
             } else {
-                Text(current.displayString)
+                Text(binding.displayString)
                     .font(.system(.body, design: .monospaced))
                     .frame(minWidth: 80, alignment: .center)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-                    .accessibilityLabel("Current shortcut: \(current.displayString)")
+                    .accessibilityLabel("Current shortcut: \(binding.displayString)")
 
                 Button("Record") {
                     startRecording()
@@ -62,8 +58,7 @@ struct ShortcutRecorderField: View {
 
                 if isCustom {
                     Button("Reset") {
-                        keyCode = defaultBinding.keyCode
-                        carbonModifiers = defaultBinding.carbonModifiers
+                        onBindingRecorded(defaultBinding)
                     }
                     .buttonStyle(.bordered)
                     .accessibilityHint("Resets this shortcut to its default value.")
@@ -105,9 +100,12 @@ struct ShortcutRecorderField: View {
                 return nil
             }
 
-            // Commit new shortcut
-            keyCode = code
-            carbonModifiers = HotKeyBinding.carbonModifiers(from: flags)
+            onBindingRecorded(
+                HotKeyBinding(
+                    keyCode: code,
+                    carbonModifiers: HotKeyBinding.carbonModifiers(from: flags)
+                )
+            )
             stopRecording()
             return nil
         }

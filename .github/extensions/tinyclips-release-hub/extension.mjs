@@ -3,10 +3,14 @@ import { randomBytes } from "node:crypto";
 import { createCanvas, CanvasError, joinSession } from "@github/copilot-sdk/extension";
 import {
     generateReleaseNotes,
+    executeReleaseAction,
+    executeWorkflowDispatch,
+    getActionsWorkflowDetails,
     getReleaseSnapshot,
     getWorkflowRunStatus,
-    performReleaseAction,
+    dispatchWorkflow,
 } from "./release-data.mjs";
+import { getSettings, setDemoMode } from "./settings.mjs";
 import { renderHtml } from "./renderer.mjs";
 
 const servers = new Map();
@@ -57,6 +61,10 @@ async function startServer(instanceId) {
                 sendJson(res, 200, await getReleaseSnapshot());
                 return;
             }
+            if (req.method === "GET" && requestUrl.pathname === "/api/settings") {
+                sendJson(res, 200, await getSettings());
+                return;
+            }
 
             if (req.method === "POST" && requestUrl.pathname === "/api/action") {
                 if (req.headers["x-release-hub-token"] !== token) {
@@ -70,9 +78,24 @@ async function startServer(instanceId) {
                     sendJson(res, 200, { result });
                     return;
                 }
+                if (body.action === "workflow_details") {
+                    const result = await getActionsWorkflowDetails(body.workflowId);
+                    sendJson(res, 200, { result, snapshot: await getReleaseSnapshot() });
+                    return;
+                }
+                if (body.action === "dispatch_workflow") {
+                    const result = await executeWorkflowDispatch(body);
+                    sendJson(res, 200, { result, snapshot: await getReleaseSnapshot() });
+                    return;
+                }
+                if (body.action === "update_settings") {
+                    const result = await setDemoMode(body.demoMode);
+                    sendJson(res, 200, { result, snapshot: await getReleaseSnapshot() });
+                    return;
+                }
                 const result = body.action === "generate_notes"
                     ? await generateReleaseNotes(body.platform, body.version)
-                    : await performReleaseAction(body.action, body);
+                    : await executeReleaseAction(body.action, body);
                 sendJson(res, 200, { result, snapshot: await getReleaseSnapshot() });
                 return;
             }
@@ -116,6 +139,24 @@ await joinSession({
                     handler: async () => getReleaseSnapshot(),
                 },
                 {
+                    name: "get_settings",
+                    description: "Return the persistent Release Hub settings.",
+                    handler: async () => getSettings(),
+                },
+                {
+                    name: "set_demo_mode",
+                    description: "Enable or disable persistent Demo Mode, which simulates all state-changing release actions.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            enabled: { type: "boolean" },
+                        },
+                        required: ["enabled"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => setDemoMode(ctx.input.enabled),
+                },
+                {
                     name: "generate_release_notes",
                     description: "Generate a release-notes preview from a platform changelog.",
                     inputSchema: {
@@ -149,6 +190,40 @@ await joinSession({
                         ctx.input.since,
                         ctx.input.tag,
                     ),
+                },
+                {
+                    name: "get_actions_workflow_details",
+                    description: "Inspect a GitHub Actions workflow, its manual-dispatch inputs, and its recent runs.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            workflowId: { type: "integer", minimum: 1 },
+                        },
+                        required: ["workflowId"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => getActionsWorkflowDetails(ctx.input.workflowId),
+                },
+                {
+                    name: "dispatch_workflow",
+                    description: "Manually dispatch a GitHub Actions workflow after exact typed confirmation.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            workflowId: { type: "integer", minimum: 1 },
+                            ref: { type: "string", minLength: 1 },
+                            inputs: {
+                                type: "object",
+                                additionalProperties: {
+                                    oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+                                },
+                            },
+                            confirmation: { type: "string", minLength: 1 },
+                        },
+                        required: ["workflowId", "confirmation"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => executeWorkflowDispatch(ctx.input),
                 },
                 {
                     name: "prepare_release",
@@ -211,7 +286,7 @@ await joinSession({
                 },
                 {
                     name: "submit_winget",
-                    description: "Dispatch the manually gated winget submission workflow for a published Windows release.",
+                    description: "Dispatch the manually gated winget submission for the latest published Windows release when winget is behind.",
                     inputSchema: {
                         type: "object",
                         properties: {

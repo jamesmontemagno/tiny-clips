@@ -98,7 +98,9 @@ public sealed partial class SettingsWindow : Window
         UserControl section = kind switch
         {
             SettingsSectionKind.General => CreateGeneralSection(),
-            SettingsSectionKind.Analytics => new AnalyticsSettingsSection(ViewModel),
+            SettingsSectionKind.Analytics => new AnalyticsSettingsSection(
+                ViewModel,
+                WinRT.Interop.WindowNative.GetWindowHandle(this)),
             SettingsSectionKind.Screenshot => new ScreenshotSettingsSection(ViewModel),
             SettingsSectionKind.Video => new VideoSettingsSection(ViewModel),
             SettingsSectionKind.Gif => new GifSettingsSection(ViewModel),

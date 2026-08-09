@@ -124,11 +124,20 @@ class CaptureManager: ObservableObject {
         }
     }
     @Published var isRecordingPaused = false
+    @Published var recordingSystemAudioEnabled = false
     @Published var recordingMicrophoneEnabled = false
+    @Published var isRecordingSystemAudioMuted = false
+    @Published var isRecordingMicrophoneMuted = false
     @Published var activeMicrophoneName: String?
     @Published var activeWebcamName: String?
     @Published var microphoneLevel: Double = 0
     @Published var microphoneWarningMessage: String?
+    @Published private(set) var captureHotKeyRegistrationError: String?
+    @Published private(set) var stopHotKeyRegistrationError: String?
+
+    var hotKeyRegistrationError: String? {
+        captureHotKeyRegistrationError ?? stopHotKeyRegistrationError
+    }
 
     private var videoRecorder: VideoRecorder?
     private var webcamRecorder: WebcamRecorder?
@@ -138,6 +147,7 @@ class CaptureManager: ObservableObject {
     private var screenshotPickerPosition: NSPoint?
     private var recordingPickerPanel: CapturePickerPanel?
     private var recordingPickerPosition: NSPoint?
+    private var shouldReturnToPickerAfterRecording = false
     private var startPanel: StartRecordingPanel?
     private var stopPanel: StopRecordingPanel?
     private var webcamPreviewPanel: WebcamPreviewPanel?
@@ -172,6 +182,7 @@ class CaptureManager: ObservableObject {
     private var webcamPositionEvents: [BrandingOverlayProcessor.WebcamPositionEvent] = []
     private let hotKeyManager = HotKeyManager()
     private var hotKeySettingsCancellable: AnyCancellable?
+    private var shouldIgnoreNextHotKeySettingsChange = false
 
     init() {
         configureGlobalHotKeys()
@@ -180,7 +191,12 @@ class CaptureManager: ObservableObject {
         hotKeySettingsCancellable = CaptureSettings.shared.objectWillChange
             .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] in
-                self?.configureGlobalHotKeys()
+                guard let self else { return }
+                if self.shouldIgnoreNextHotKeySettingsChange {
+                    self.shouldIgnoreNextHotKeySettingsChange = false
+                    return
+                }
+                self.configureGlobalHotKeys()
             }
 
         DispatchQueue.main.async { [weak self] in
@@ -204,60 +220,184 @@ class CaptureManager: ObservableObject {
 
     private func configureGlobalHotKeys() {
         let settings = CaptureSettings.shared
+        let result = registerCaptureHotKeys(
+            screenshot: HotKeyBinding(
+                keyCode: settings.screenshotHotKeyCode,
+                carbonModifiers: settings.screenshotHotKeyModifiers
+            ),
+            video: HotKeyBinding(
+                keyCode: settings.videoHotKeyCode,
+                carbonModifiers: settings.videoHotKeyModifiers
+            ),
+            gif: HotKeyBinding(
+                keyCode: settings.gifHotKeyCode,
+                carbonModifiers: settings.gifHotKeyModifiers
+            )
+        )
+        captureHotKeyRegistrationError = result.errorMessage
+
+        updateStopHotKeyRegistration()
+    }
+
+    @discardableResult
+    func applyCaptureHotKey(_ binding: HotKeyBinding, for captureType: CaptureType) -> String? {
+        let settings = CaptureSettings.shared
+        var screenshot = HotKeyBinding(
+            keyCode: settings.screenshotHotKeyCode,
+            carbonModifiers: settings.screenshotHotKeyModifiers
+        )
+        var video = HotKeyBinding(
+            keyCode: settings.videoHotKeyCode,
+            carbonModifiers: settings.videoHotKeyModifiers
+        )
+        var gif = HotKeyBinding(
+            keyCode: settings.gifHotKeyCode,
+            carbonModifiers: settings.gifHotKeyModifiers
+        )
+        let currentBinding: HotKeyBinding
+
+        switch captureType {
+        case .screenshot:
+            currentBinding = screenshot
+        case .video:
+            currentBinding = video
+        case .gif:
+            currentBinding = gif
+        }
+
+        if let validationError = HotKeyBinding.validationError(
+            for: binding,
+            captureType: captureType,
+            captureBindings: [(.screenshot, screenshot), (.video, video), (.gif, gif)]
+        ) {
+            captureHotKeyRegistrationError = validationError
+            return validationError
+        }
+
+        if binding == currentBinding {
+            let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
+            captureHotKeyRegistrationError = result.errorMessage
+            return result.errorMessage
+        }
+
+        switch captureType {
+        case .screenshot:
+            screenshot = binding
+        case .video:
+            video = binding
+        case .gif:
+            gif = binding
+        }
+
+        let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
+        guard let registrationError = result.errorMessage else {
+            persistCaptureHotKeys(screenshot: screenshot, video: video, gif: gif, settings: settings)
+            captureHotKeyRegistrationError = nil
+            return nil
+        }
+
+        captureHotKeyRegistrationError = registrationError
+        return registrationError
+    }
+
+    @discardableResult
+    func resetCaptureHotKeysToDefaults() -> String? {
+        let screenshot = HotKeyBinding.defaultScreenshot
+        let video = HotKeyBinding.defaultVideo
+        let gif = HotKeyBinding.defaultGif
+        let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
+
+        guard let registrationError = result.errorMessage else {
+            persistCaptureHotKeys(
+                screenshot: screenshot,
+                video: video,
+                gif: gif,
+                settings: CaptureSettings.shared
+            )
+            captureHotKeyRegistrationError = nil
+            return nil
+        }
+
+        captureHotKeyRegistrationError = registrationError
+        return registrationError
+    }
+
+    private func persistCaptureHotKeys(
+        screenshot: HotKeyBinding,
+        video: HotKeyBinding,
+        gif: HotKeyBinding,
+        settings: CaptureSettings
+    ) {
+        shouldIgnoreNextHotKeySettingsChange = true
+        settings.screenshotHotKeyCode = screenshot.keyCode
+        settings.screenshotHotKeyModifiers = screenshot.carbonModifiers
+        settings.videoHotKeyCode = video.keyCode
+        settings.videoHotKeyModifiers = video.carbonModifiers
+        settings.gifHotKeyCode = gif.keyCode
+        settings.gifHotKeyModifiers = gif.carbonModifiers
+    }
+
+    private func registerCaptureHotKeys(
+        screenshot: HotKeyBinding,
+        video: HotKeyBinding,
+        gif: HotKeyBinding
+    ) -> HotKeyManager.RegistrationResult {
         hotKeyManager.registerCaptureHotKeys(
-            screenshotKeyCode: UInt32(settings.screenshotHotKeyCode),
-            screenshotModifiers: UInt32(settings.screenshotHotKeyModifiers),
+            screenshotKeyCode: UInt32(screenshot.keyCode),
+            screenshotModifiers: UInt32(screenshot.carbonModifiers),
             onScreenshot: { [weak self] in
                 guard let self, !self.isRecording else { return }
                 self.takeScreenshot()
             },
-            videoKeyCode: UInt32(settings.videoHotKeyCode),
-            videoModifiers: UInt32(settings.videoHotKeyModifiers),
+            videoKeyCode: UInt32(video.keyCode),
+            videoModifiers: UInt32(video.carbonModifiers),
             onRecordVideo: { [weak self] in
                 guard let self, !self.isRecording else { return }
                 self.startVideoRecording()
             },
-            gifKeyCode: UInt32(settings.gifHotKeyCode),
-            gifModifiers: UInt32(settings.gifHotKeyModifiers),
+            gifKeyCode: UInt32(gif.keyCode),
+            gifModifiers: UInt32(gif.carbonModifiers),
             onRecordGif: { [weak self] in
                 guard let self, !self.isRecording else { return }
                 self.startGifRecording()
             }
         )
-
-        updateStopHotKeyRegistration()
     }
 
     private func updateStopHotKeyRegistration() {
         if isRecording {
-            hotKeyManager.registerStopHotKey { [weak self] in
+            let result = hotKeyManager.registerStopHotKey { [weak self] in
                 guard let self, self.isRecording else { return }
                 self.stopRecording()
             }
+            stopHotKeyRegistrationError = result.errorMessage
         } else {
             hotKeyManager.unregisterStopHotKey()
+            stopHotKeyRegistrationError = nil
         }
     }
 
     func takeScreenshot() {
+        let cursorScreen = screenUnderMouseCursor()
         Task {
             await prepareForNewCaptureRequest()
             guard await PermissionManager.shared.checkPermission() else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .screenshot) {
-                showScreenshotPicker()
+                showScreenshotPicker(cursorScreen: cursorScreen)
             } else {
                 await performScreenshotCapture(
                     mode: .region,
                     countdownEnabled: settings.screenshotCountdownEnabled,
                     countdownDuration: settings.screenshotCountdownDuration,
-                    shouldReturnToPicker: false
+                    shouldReturnToPicker: false,
+                    cursorScreen: cursorScreen
                 )
             }
         }
     }
 
-    private func showScreenshotPicker() {
+    private func showScreenshotPicker(cursorScreen: NSScreen? = nil) {
         if screenshotPickerPanel != nil {
             return
         }
@@ -275,7 +415,8 @@ class CaptureManager: ObservableObject {
                         mode: mode,
                         countdownEnabled: countdownEnabled,
                         countdownDuration: countdownDuration,
-                        shouldReturnToPicker: true
+                        shouldReturnToPicker: true,
+                        cursorScreen: cursorScreen
                     )
                 }
             },
@@ -299,13 +440,14 @@ class CaptureManager: ObservableObject {
         mode: CapturePickerMode,
         countdownEnabled: Bool,
         countdownDuration: Int,
-        shouldReturnToPicker: Bool
+        shouldReturnToPicker: Bool,
+        cursorScreen: NSScreen? = nil
     ) async {
         switch mode {
         case .region:
             guard let region = await RegionSelector.selectRegion() else {
                 if shouldReturnToPicker {
-                    showScreenshotPicker()
+                    showScreenshotPicker(cursorScreen: cursorScreen)
                 }
                 return
             }
@@ -318,16 +460,10 @@ class CaptureManager: ObservableObject {
             )
 
         case .screen:
-            let needsPicker = NSScreen.screens.count > 1 && !CaptureSettings.shared.alwaysCaptureMainDisplay
-            let screen: NSScreen?
-            if needsPicker {
-                screen = await pickScreen()
-            } else {
-                screen = screenUnderMouseCursor() ?? NSScreen.main
-            }
+            let screen = await chooseScreenForCapture(cursorScreen: cursorScreen)
             guard let screen, let region = CaptureRegion.fullScreen(for: screen) else {
                 if shouldReturnToPicker {
-                    showScreenshotPicker()
+                    showScreenshotPicker(cursorScreen: cursorScreen)
                 }
                 return
             }
@@ -342,7 +478,7 @@ class CaptureManager: ObservableObject {
         case .window:
             guard let window = await WindowSelector.selectWindow() else {
                 if shouldReturnToPicker {
-                    showScreenshotPicker()
+                    showScreenshotPicker(cursorScreen: cursorScreen)
                 }
                 return
             }
@@ -371,6 +507,7 @@ class CaptureManager: ObservableObject {
                 countdownCompleted: countdownEnabled
             )
             Task {
+                var didPresentEditor = false
                 do {
                     let settings = CaptureSettings.shared
                     let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
@@ -402,16 +539,19 @@ class CaptureManager: ObservableObject {
                         self.showScreenshotEditor(
                             for: url,
                             initialSaveURL: initialSaveURL,
-                            deleteSourceOnCancel: !shouldSaveImmediately
+                            deleteSourceOnCancel: !shouldSaveImmediately,
+                            reopenPickerAfterClose: shouldReturnToPickerAfterCapture
                         )
+                        didPresentEditor = true
                     } else {
                         SaveService.shared.handleSavedFile(url: url, type: .screenshot)
                     }
                 } catch {
                     SaveService.shared.showError("Screenshot failed: \(error.localizedDescription)")
                 }
-                if shouldReturnToPickerAfterCapture,
-                   CaptureSettings.shared.shouldShowScreenshotCapturePickerAfterCapture {
+                if !didPresentEditor,
+                   shouldReturnToPickerAfterCapture,
+                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
                     self.showScreenshotPicker()
                 }
             }
@@ -435,12 +575,13 @@ class CaptureManager: ObservableObject {
     }
 
     func startVideoRecording() {
+        let cursorScreen = screenUnderMouseCursor()
         Task {
             await prepareForNewCaptureRequest()
             guard await PermissionManager.shared.checkPermission() else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .video) {
-                showRecordingPicker(for: .video)
+                showRecordingPicker(for: .video, cursorScreen: cursorScreen)
             } else {
                 await performRecordingSetup(
                     type: .video,
@@ -448,7 +589,8 @@ class CaptureManager: ObservableObject {
                     countdownEnabled: settings.videoCountdownEnabled,
                     countdownDuration: settings.videoCountdownDuration,
                     videoTimeLimitMinutes: settings.videoRecordingTimeLimitMinutes,
-                    shouldReturnToPicker: false
+                    shouldReturnToPicker: false,
+                    cursorScreen: cursorScreen
                 )
             }
         }
@@ -541,6 +683,9 @@ class CaptureManager: ObservableObject {
                     self.activeMouseClickCaptureEnabledOverride = mouseClicksEnabled
                     self.startMouseClickMonitoringIfNeeded(for: .video, region: target.region)
                     self.recordingMicrophoneEnabled = false
+                    self.recordingSystemAudioEnabled = false
+                    self.isRecordingSystemAudioMuted = false
+                    self.isRecordingMicrophoneMuted = false
                     self.microphoneWarningMessage = nil
                     self.microphoneLevel = 0
                     self.activeMicrophoneName = nil
@@ -555,6 +700,7 @@ class CaptureManager: ObservableObject {
                         selectedMicrophoneID: selectedMicrophoneID
                     )
                     self.debugRecordingLifecycle("Video session \(sessionID) started")
+                    self.recordingSystemAudioEnabled = recorder.isSystemAudioCaptureActive
                     self.recordingMicrophoneEnabled = recorder.isMicrophoneCaptureActive
 
                     if webcamEnabled, let webcamOutputURL {
@@ -611,12 +757,13 @@ class CaptureManager: ObservableObject {
     }
 
     func startGifRecording() {
+        let cursorScreen = screenUnderMouseCursor()
         Task {
             await prepareForNewCaptureRequest()
             guard await PermissionManager.shared.checkPermission() else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .gif) {
-                showRecordingPicker(for: .gif)
+                showRecordingPicker(for: .gif, cursorScreen: cursorScreen)
             } else {
                 await performRecordingSetup(
                     type: .gif,
@@ -624,7 +771,8 @@ class CaptureManager: ObservableObject {
                     countdownEnabled: settings.gifCountdownEnabled,
                     countdownDuration: settings.gifCountdownDuration,
                     videoTimeLimitMinutes: settings.videoRecordingTimeLimitMinutes,
-                    shouldReturnToPicker: false
+                    shouldReturnToPicker: false,
+                    cursorScreen: cursorScreen
                 )
             }
         }
@@ -723,6 +871,18 @@ class CaptureManager: ObservableObject {
             gifWriter?.pause()
             isRecordingPaused = true
         }
+    }
+
+    func toggleRecordingSystemAudioMute() {
+        guard recordingSystemAudioEnabled else { return }
+        isRecordingSystemAudioMuted.toggle()
+        videoRecorder?.setSystemAudioMuted(isRecordingSystemAudioMuted)
+    }
+
+    func toggleRecordingMicrophoneMute() {
+        guard recordingMicrophoneEnabled else { return }
+        isRecordingMicrophoneMuted.toggle()
+        videoRecorder?.setMicrophoneMuted(isRecordingMicrophoneMuted)
     }
 
     func restartRecording() {
@@ -843,6 +1003,7 @@ class CaptureManager: ObservableObject {
         // the user changes preferences while export is in progress.
         let videoShowTrimmer = CaptureSettings.shared.showTrimmer
         let videoShouldSaveImmediately = !videoShowTrimmer || CaptureSettings.shared.saveImmediatelyVideo
+        let shouldReturnToPickerAfterRecording = self.shouldReturnToPickerAfterRecording
         let videoOverlayStyle = CaptureSettings.shared.mouseClickOverlayStyle(for: .video)
         let showBrandingOverlay = CaptureSettings.shared.showBrandingOverlay
         let webcamShapeSetting = CaptureSettings.shared.webcamShape
@@ -1050,7 +1211,11 @@ class CaptureManager: ObservableObject {
 
                     updateProcessingProgress(1.0, status: "Done")
                     CaptureAnalyticsStore.shared.recordCapture(.gif)
-                    showGifTrimmer(gifData: gifData, outputURL: url)
+                    showGifTrimmer(
+                        gifData: gifData,
+                        outputURL: url,
+                        reopenPickerAfterClose: shouldReturnToPickerAfterRecording
+                    )
                 } else {
                     try await writer.stop(outputURL: url)
                     updateProcessingProgress(0.5, status: "Applying overlays…")
@@ -1117,6 +1282,10 @@ class CaptureManager: ObservableObject {
                     CaptureAnalyticsStore.shared.recordCapture(.gif)
                     SaveService.shared.handleSavedFile(url: url, type: .gif)
                     updateProcessingProgress(1.0, status: "Done")
+                    if shouldReturnToPickerAfterRecording,
+                       settings.shouldShowCapturePickerAfterCapture(for: .gif) {
+                        showRecordingPicker(for: .gif)
+                    }
                 }
             } catch {
                 SaveService.shared.showError("GIF save failed: \(error.localizedDescription)")
@@ -1145,10 +1314,15 @@ class CaptureManager: ObservableObject {
 
                 showTrimmer(
                     for: savedVideoURL,
-                    saveImmediately: videoShouldSaveImmediately
+                    saveImmediately: videoShouldSaveImmediately,
+                    reopenPickerAfterClose: shouldReturnToPickerAfterRecording
                 )
             } else {
                 SaveService.shared.handleSavedFile(url: savedVideoURL, type: .video)
+                if shouldReturnToPickerAfterRecording,
+                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
+                    showRecordingPicker(for: .video)
+                }
             }
         }
 
@@ -1171,6 +1345,7 @@ class CaptureManager: ObservableObject {
 
         pendingRecordingTarget = nil
         pendingRecordingType = nil
+        shouldReturnToPickerAfterRecording = false
         lastVideoRecordingArtifacts = nil
         activeWebcamOverlaySelection = nil
         webcamPositionEvents = []
@@ -1196,21 +1371,55 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func showScreenshotEditor(for url: URL, initialSaveURL: URL, deleteSourceOnCancel: Bool) {
+    private func showScreenshotEditor(
+        for url: URL,
+        initialSaveURL: URL,
+        deleteSourceOnCancel: Bool,
+        reopenPickerAfterClose: Bool
+    ) {
         ScreenshotEditorRegistry.shared.present(
             imageURL: url,
             initialSaveURL: initialSaveURL,
             deleteSourceAfterSave: deleteSourceOnCancel
-        ) { resultURL in
+        ) { [weak self] resultURL in
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .screenshot)
             } else if deleteSourceOnCancel {
                 try? FileManager.default.removeItem(at: url)
             }
+            if reopenPickerAfterClose,
+               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
+                self?.showScreenshotPicker()
+            }
         }
     }
 
-    private func showTrimmer(for url: URL, saveImmediately: Bool) {
+    func openRecentCapture(_ item: RecentCaptureItem) {
+        guard FileManager.default.fileExists(atPath: item.path) else {
+            RecentCaptureStore.shared.remove(item)
+            return
+        }
+
+        switch item.type {
+        case .screenshot:
+            showScreenshotEditor(
+                for: item.url,
+                initialSaveURL: item.url,
+                deleteSourceOnCancel: false,
+                reopenPickerAfterClose: false
+            )
+        case .video:
+            showTrimmer(for: item.url, saveImmediately: true)
+        case .gif:
+            guard let gifData = try? GifCaptureData(contentsOf: item.url) else {
+                SaveService.shared.showError("GIF could not be opened.")
+                return
+            }
+            showGifTrimmer(gifData: gifData, outputURL: item.url)
+        }
+    }
+
+    private func showTrimmer(for url: URL, saveImmediately: Bool, reopenPickerAfterClose: Bool = false) {
         let window = VideoTrimmerWindow(videoURL: url) { [weak self] resultURL in
             guard let self else { return }
             if let resultURL {
@@ -1234,6 +1443,10 @@ class CaptureManager: ObservableObject {
             // Defer release so the window isn't deallocated mid-callback
             DispatchQueue.main.async {
                 self.trimmerWindow = nil
+                if reopenPickerAfterClose,
+                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
+                    self.showRecordingPicker(for: .video)
+                }
             }
         }
         self.trimmerWindow = window
@@ -1243,7 +1456,11 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func showGifTrimmer(gifData: GifCaptureData, outputURL: URL) {
+    private func showGifTrimmer(
+        gifData: GifCaptureData,
+        outputURL: URL,
+        reopenPickerAfterClose: Bool = false
+    ) {
         let window = GifTrimmerWindow(gifData: gifData, outputURL: outputURL) { [weak self] resultURL in
             guard let self else { return }
             if let resultURL {
@@ -1251,6 +1468,10 @@ class CaptureManager: ObservableObject {
             }
             DispatchQueue.main.async {
                 self.gifTrimmerWindow = nil
+                if reopenPickerAfterClose,
+                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .gif) {
+                    self.showRecordingPicker(for: .gif)
+                }
             }
         }
         self.gifTrimmerWindow = window
@@ -1438,7 +1659,10 @@ class CaptureManager: ObservableObject {
     }
 
     private func resetRecordingAudioStatus() {
+        recordingSystemAudioEnabled = false
         recordingMicrophoneEnabled = false
+        isRecordingSystemAudioMuted = false
+        isRecordingMicrophoneMuted = false
         activeMicrophoneName = nil
         activeWebcamName = nil
         microphoneLevel = 0
@@ -1540,7 +1764,7 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func showRecordingPicker(for type: CaptureType) {
+    private func showRecordingPicker(for type: CaptureType, cursorScreen: NSScreen? = nil) {
         dismissScreenshotPicker()
         dismissRecordingPicker()
 
@@ -1578,7 +1802,8 @@ class CaptureManager: ObservableObject {
                         countdownEnabled: enabled,
                         countdownDuration: duration,
                         videoTimeLimitMinutes: videoTimeLimitMinutes,
-                        shouldReturnToPicker: true
+                        shouldReturnToPicker: true,
+                        cursorScreen: cursorScreen
                     )
                 }
             },
@@ -1604,17 +1829,19 @@ class CaptureManager: ObservableObject {
         countdownEnabled: Bool,
         countdownDuration: Int,
         videoTimeLimitMinutes: Int,
-        shouldReturnToPicker: Bool
+        shouldReturnToPicker: Bool,
+        cursorScreen: NSScreen? = nil
     ) async {
-        guard let target = await chooseCaptureTarget(for: mode) else {
+        guard let target = await chooseCaptureTarget(for: mode, cursorScreen: cursorScreen) else {
             if shouldReturnToPicker {
-                showRecordingPicker(for: type)
+                showRecordingPicker(for: type, cursorScreen: cursorScreen)
             }
             return
         }
 
         pendingRecordingTarget = target
         pendingRecordingType = type
+        shouldReturnToPickerAfterRecording = shouldReturnToPicker
         pendingRecordingCountdownEnabled = countdownEnabled
         pendingRecordingCountdownDuration = countdownDuration
         pendingVideoTimeLimitMinutes = videoTimeLimitMinutes
@@ -1630,19 +1857,13 @@ class CaptureManager: ObservableObject {
         showStartPanel()
     }
 
-    private func chooseCaptureTarget(for mode: CapturePickerMode) async -> CaptureTarget? {
+    private func chooseCaptureTarget(for mode: CapturePickerMode, cursorScreen: NSScreen?) async -> CaptureTarget? {
         switch mode {
         case .region:
             guard let region = await RegionSelector.selectRegion() else { return nil }
             return CaptureTarget(region: region)
         case .screen:
-            let needsPicker = NSScreen.screens.count > 1 && !CaptureSettings.shared.alwaysCaptureMainDisplay
-            let screen: NSScreen?
-            if needsPicker {
-                screen = await pickScreen()
-            } else {
-                screen = screenUnderMouseCursor() ?? NSScreen.main
-            }
+            let screen = await chooseScreenForCapture(cursorScreen: cursorScreen)
             guard let screen else { return nil }
             guard let region = CaptureRegion.fullScreen(for: screen) else { return nil }
             return CaptureTarget(region: region)
@@ -1708,6 +1929,27 @@ class CaptureManager: ObservableObject {
             self.screenPickerWindow = nil
         }
         return screen
+    }
+
+    private func chooseScreenForCapture(cursorScreen: NSScreen?) async -> NSScreen? {
+        switch CaptureSettings.shared.multiMonitorCaptureMode {
+        case .askEveryTime:
+            if NSScreen.screens.count > 1 {
+                return await pickScreen()
+            }
+            return mainScreen()
+        case .displayUnderCursor:
+            return cursorScreen ?? screenUnderMouseCursor() ?? mainScreen()
+        case .mainDisplay:
+            return mainScreen()
+        }
+    }
+
+    private func mainScreen() -> NSScreen? {
+        let mainDisplayID = CGMainDisplayID()
+        return NSScreen.screens.first {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == mainDisplayID
+        } ?? NSScreen.screens.first
     }
 
     private func screenUnderMouseCursor() -> NSScreen? {

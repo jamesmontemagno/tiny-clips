@@ -8,7 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
@@ -23,6 +25,7 @@ namespace TinyClips.App;
 public partial class App : Application
 {
     private static readonly FontFamily FluentIconFont = new("Segoe Fluent Icons");
+    private static readonly object NotificationRegistrationGate = new();
 
     // Segoe Fluent Icons glyphs.
     private const string GlyphScreenshot = "\uE722";
@@ -30,6 +33,8 @@ public partial class App : Application
     private const string GlyphGif = "\uE8B9";
     private const string GlyphStop = "\uE71A";
     private const string GlyphCheckForUpdates = "\uE895";
+    private const string GlyphFolder = "\uE8B7";
+    private const string GlyphHistory = "\uE81C";
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
@@ -49,14 +54,18 @@ public partial class App : Application
     private TimeSpan _recordingElapsedBeforePause;
     private TargetSelection? _activeRecordingSelection;
     private CaptureType? _activeRecordingType;
+    private bool _activeRecordingWasPickerInitiated;
+    private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
     private TrayPopupWindow? _trayPopup;
+    private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
     private const double TrayPopupWidth = 288;
-    private const double TrayPopupHeight = 196;
+    private const double TrayPopupHeight = 242;
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
+    private static bool _notificationsRegistered;
 
     public static IServiceProvider Services { get; private set; } = null!;
 
@@ -75,9 +84,9 @@ public partial class App : Application
     {
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
-        RegisterNotifications();
         WireRecordingEvents();
         CreateTrayIcon();
+        CreateAutomationNotificationAnnouncer();
         RegisterGlobalHotKeys();
         ShowOnboardingIfNeeded();
         HandleFileActivation();
@@ -126,7 +135,8 @@ public partial class App : Application
         var ext = Path.GetExtension(path);
         return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase);
+            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
     }
 
     private void CreateTrayIcon()
@@ -158,6 +168,11 @@ public partial class App : Application
         UpdateRecordingState();
     }
 
+    private void CreateAutomationNotificationAnnouncer()
+    {
+        _automationNotificationAnnouncer ??= new AutomationNotificationAnnouncer();
+    }
+
     private void ShowTrayPopup()
     {
         if (_trayPopup is null)
@@ -165,6 +180,7 @@ public partial class App : Application
             return;
         }
 
+        _trayPopup.Content = BuildTrayPopupContent(Services.GetRequiredService<IHotKeyService>());
         UpdateRecordingState();
         _trayPopup.ShowNearCursor(TrayPopupWidth, TrayPopupHeight);
     }
@@ -224,6 +240,19 @@ public partial class App : Application
 
         root.Children.Add(tiles);
 
+        var quickAccess = new Grid { ColumnSpacing = 6 };
+        quickAccess.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        quickAccess.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var folders = CreateFolderButton(Dismiss);
+        Grid.SetColumn(folders, 0);
+        quickAccess.Children.Add(folders);
+
+        var recent = CreateRecentCapturesButton(Dismiss);
+        Grid.SetColumn(recent, 1);
+        quickAccess.Children.Add(recent);
+        root.Children.Add(quickAccess);
+
         root.Children.Add(new Border
         {
             Height = 1,
@@ -254,6 +283,108 @@ public partial class App : Application
             BorderBrush = ThemeBrush("SurfaceStrokeColorDefaultBrush"),
         };
     }
+
+    private ButtonBase CreateFolderButton(Action dismiss)
+    {
+        var settings = Services.GetRequiredService<ICaptureSettings>();
+        var storage = Services.GetRequiredService<IClipStorageService>();
+
+        if (!string.IsNullOrWhiteSpace(settings.SaveDirectory))
+        {
+            return CreateQuickAccessButton(
+                "Open Save Folder",
+                GlyphFolder,
+                new RelayCommand(() => OpenFolder(storage.OutputDirectory(CaptureType.Screenshot))),
+                dismiss);
+        }
+
+        var flyout = new MenuFlyout();
+        var button = new DropDownButton
+        {
+            Content = QuickAccessContent(GlyphFolder, "Open folders"),
+            Flyout = flyout,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(8, 6, 8, 6),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Open capture folders");
+        foreach (var type in Enum.GetValues<CaptureType>())
+        {
+            var capturedType = type;
+            var item = new MenuFlyoutItem { Text = $"Open {CaptureTypeLabel(type)} Folder" };
+            item.Click += (_, _) =>
+            {
+                dismiss();
+                OpenFolder(storage.OutputDirectory(capturedType));
+            };
+            flyout.Items.Add(item);
+        }
+        return button;
+    }
+
+    private ButtonBase CreateRecentCapturesButton(Action dismiss)
+    {
+        var history = Services.GetRequiredService<IRecentCaptureService>();
+        var captures = history.GetRecentCaptures();
+        var flyout = new MenuFlyout();
+        var button = new DropDownButton
+        {
+            Content = QuickAccessContent(GlyphHistory, captures.Count == 0 ? "No recent captures" : $"Recent ({captures.Count})"),
+            Flyout = flyout,
+            IsEnabled = captures.Count > 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(8, 6, 8, 6),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Recent captures");
+
+        foreach (var capture in captures)
+        {
+            var capturedItem = capture;
+            var item = new MenuFlyoutItem
+            {
+                Text = $"{Path.GetFileName(capture.Path)} — {CaptureTypeLabel(capture.Type)}, {capture.CapturedAt:g}",
+            };
+            item.Click += (_, _) =>
+            {
+                dismiss();
+                OpenRecentCapture(capturedItem);
+            };
+            flyout.Items.Add(item);
+        }
+        return button;
+    }
+
+    private Button CreateQuickAccessButton(string text, string glyph, ICommand command, Action dismiss)
+    {
+        var button = new Button
+        {
+            Content = QuickAccessContent(glyph, text),
+            Command = command,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(8, 6, 8, 6),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, text);
+        button.Click += (_, _) => dismiss();
+        return button;
+    }
+
+    private static StackPanel QuickAccessContent(string glyph, string text)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        panel.Children.Add(new FontIcon { Glyph = glyph, FontFamily = FluentIconFont, FontSize = 14 });
+        panel.Children.Add(new TextBlock { Text = text, TextTrimming = TextTrimming.CharacterEllipsis });
+        return panel;
+    }
+
+    private static string CaptureTypeLabel(CaptureType type) => type switch
+    {
+        CaptureType.Screenshot => "Screenshot",
+        CaptureType.Video => "Video",
+        CaptureType.Gif => "GIF",
+        _ => type.ToString(),
+    };
 
     private sealed class CaptureTile
     {
@@ -352,8 +483,15 @@ public partial class App : Application
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var (cdEnabled, cdDuration) = GetCountdown(settings, type);
+            var wasPickerInitiated = settings.ShouldShowCapturePicker(type);
 
-            var pick = await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes);
+            var pick = wasPickerInitiated
+                ? await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
+                : new CapturePickerResult(
+                    CapturePickerMode.Region,
+                    cdEnabled,
+                    cdDuration,
+                    settings.VideoRecordingTimeLimitMinutes);
             if (pick is null)
             {
                 return;
@@ -413,16 +551,17 @@ public partial class App : Application
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     var screenshots = Services.GetRequiredService<IScreenshotService>();
                     var path = await screenshots.CaptureTargetAsync(selection.Target, selection.Region);
+                    Services.GetRequiredService<IRecentCaptureService>().Record(path, CaptureType.Screenshot);
                     await CopyToClipboardAsync(path, CaptureType.Screenshot);
                     if (settings.ShowScreenshotEditor)
                     {
-                        OpenScreenshotEditor(path);
+                        OpenScreenshotEditor(path, reopenPickerAfterClose: wasPickerInitiated);
                     }
                     else
                     {
                         RevealInExplorer(path);
                         ShowSaveToast(path);
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
                     }
                     break;
 
@@ -431,6 +570,7 @@ public partial class App : Application
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Video;
+                    _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
                     {
@@ -438,7 +578,7 @@ public partial class App : Application
                     }
                     await Services.GetRequiredService<IVideoRecordingService>()
                         .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
-                    ActivateRecordingIndicatorForStartedCapture();
+                    ActivateRecordingIndicatorForStartedCapture(CaptureType.Video);
                     UpdateRecordingState();
                     break;
 
@@ -446,6 +586,7 @@ public partial class App : Application
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Gif;
+                    _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
                     {
@@ -453,7 +594,7 @@ public partial class App : Application
                     }
                     await Services.GetRequiredService<IGifRecordingService>()
                         .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
-                    ActivateRecordingIndicatorForStartedCapture();
+                    ActivateRecordingIndicatorForStartedCapture(CaptureType.Gif);
                     UpdateRecordingState();
                     break;
             }
@@ -464,15 +605,18 @@ public partial class App : Application
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
             UpdateRecordingState();
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Capture failed: {ex}");
+            ShowSaveFailureNotification(CaptureOutputDescription(type));
             UpdateRecordingState();
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
             HideRecordingIndicatorIfNotRecording();
         }
         finally
@@ -761,6 +905,7 @@ public partial class App : Application
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Webcam unavailable")
                 .AddText(reason)
@@ -829,36 +974,43 @@ public partial class App : Application
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            var wasPickerInitiated = _activeRecordingWasPickerInitiated;
+            _activeRecordingWasPickerInitiated = false;
             if (_isExiting)
             {
                 return;
             }
+
+            var type = sender is IGifRecordingService
+                ? CaptureType.Gif
+                : CaptureType.Video;
+            AnnounceRecordingStopped(type);
 
             if (string.IsNullOrEmpty(path))
             {
                 return;
             }
 
-            var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
-                ? CaptureType.Gif
-                : CaptureType.Video;
+            Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.ShowTrimmer;
             if (showTrimmer)
             {
-                OpenTrimmer(path, type);
+                OpenTrimmer(path, type, pickerInitiated: wasPickerInitiated);
             }
             else
             {
                 await FinalizeClipAsync(path, type);
-                ReopenPickerAfterCaptureIfNeeded(type);
+                ReopenPickerAfterCaptureIfNeeded(type, wasPickerInitiated);
             }
         });
     }
 
     private async Task StopActiveRecordingAsync()
     {
+        CaptureType? stoppedType = null;
+
         try
         {
             var video = Services.GetRequiredService<IVideoRecordingService>();
@@ -866,12 +1018,14 @@ public partial class App : Application
 
             if (video.IsRecording)
             {
+                stoppedType = CaptureType.Video;
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Video, _activeRecordingSelection);
                 await video.StopAsync();
             }
             else if (gif.IsRecording)
             {
+                stoppedType = CaptureType.Gif;
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Gif, _activeRecordingSelection);
                 await gif.StopAsync();
@@ -884,15 +1038,25 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to stop active recording: {ex}");
+            if (stoppedType is { } type)
+            {
+                ShowSaveFailureNotification(CaptureOutputDescription(type));
+            }
         }
         finally
         {
+            if (stoppedType is { } type && !IsAnyRecordingActive())
+            {
+                AnnounceRecordingStopped(type);
+            }
+
             HideProcessingIndicator();
             UpdateRecordingState();
             CloseRecordingRegionIndicatorIfNotRecording();
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
         }
     }
 
@@ -987,7 +1151,7 @@ public partial class App : Application
             await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
         }
 
-        ActivateRecordingIndicatorForStartedCapture();
+        ActivateRecordingIndicatorForStartedCapture(type);
         UpdateRecordingState();
     }
 
@@ -1097,6 +1261,10 @@ public partial class App : Application
         window.ResumeRequested = () => _ = ResumeActiveRecordingAsync();
         window.RestartRequested = () => _ = RestartActiveRecordingAsync();
         window.DiscardRequested = () => _ = DiscardActiveRecordingAsync();
+        window.SystemAudioMuteChanged = muted =>
+            Services.GetRequiredService<IVideoRecordingService>().SetSystemAudioMuted(muted);
+        window.MicrophoneMuteChanged = muted =>
+            Services.GetRequiredService<IVideoRecordingService>().SetMicrophoneMuted(muted);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_recordingIndicator, window))
@@ -1126,13 +1294,21 @@ public partial class App : Application
         }
     }
 
-    private void ActivateRecordingIndicatorForStartedCapture()
+    private void ActivateRecordingIndicatorForStartedCapture(CaptureType type)
     {
+        _recordingStopAnnounced = false;
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingElapsedBeforePause = TimeSpan.Zero;
         _recordingIndicator?.SetStopEnabled(true);
+        var video = Services.GetRequiredService<IVideoRecordingService>();
+        _recordingIndicator?.ConfigureAudioControls(
+            video.CanMuteSystemAudio,
+            video.IsSystemAudioMuted,
+            video.CanMuteMicrophone,
+            video.IsMicrophoneMuted);
         ShowWebcamPreviewForActiveRecording();
         StartRecordingTimer();
+        AnnounceRecordingStarted(type);
     }
 
     private void ShowWebcamPreviewForActiveRecording()
@@ -1271,7 +1447,11 @@ public partial class App : Application
         ShowSaveToast(path);
     }
 
-    private void OpenTrimmer(string path, CaptureType type)
+    private void OpenTrimmer(
+        string path,
+        CaptureType type,
+        bool isRecentCapture = false,
+        bool pickerInitiated = false)
     {
         _trimmerWindow?.Close();
         _lastTrimmerSourcePath = path;
@@ -1279,13 +1459,13 @@ public partial class App : Application
         if (type == CaptureType.Gif)
         {
             var gifTrimmer = new GifTrimmerWindow(path);
-            gifTrimmer.Completed += OnTrimmerCompleted;
+            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
             _trimmerWindow = gifTrimmer;
         }
         else
         {
             var videoTrimmer = new VideoTrimmerWindow(path);
-            videoTrimmer.Completed += OnTrimmerCompleted;
+            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
             _trimmerWindow = videoTrimmer;
         }
 
@@ -1293,11 +1473,20 @@ public partial class App : Application
         ActivateWindowToForeground(_trimmerWindow);
     }
 
-    private void OnTrimmerCompleted(object? sender, string? trimmedPath)
+    private void OnTrimmerCompleted(
+        object? sender,
+        string? trimmedPath,
+        bool isRecentCapture,
+        bool pickerInitiated)
     {
         _dispatcher?.TryEnqueue(async () =>
         {
             if (_isExiting)
+            {
+                return;
+            }
+
+            if (isRecentCapture && string.IsNullOrEmpty(trimmedPath))
             {
                 return;
             }
@@ -1312,7 +1501,14 @@ public partial class App : Application
                 ? CaptureType.Gif
                 : CaptureType.Video;
             await FinalizeClipAsync(path, type);
-            ReopenPickerAfterCaptureIfNeeded(type);
+            if (!string.IsNullOrEmpty(trimmedPath))
+            {
+                Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
+            }
+            if (!isRecentCapture)
+            {
+                ReopenPickerAfterCaptureIfNeeded(type, pickerInitiated);
+            }
         });
     }
 
@@ -1345,15 +1541,31 @@ public partial class App : Application
         }
     }
 
-    private static void RegisterNotifications()
+    // Register app notifications only when a toast is actually needed. That keeps packaged
+    // process launch lighter and avoids eagerly activating extra Windows App Runtime plumbing.
+    private static void EnsureNotificationsRegistered()
     {
-        try
+        if (_notificationsRegistered)
         {
-            AppNotificationManager.Default.Register();
+            return;
         }
-        catch (Exception ex)
+
+        lock (NotificationRegistrationGate)
         {
-            Debug.WriteLine($"Notification registration failed: {ex}");
+            if (_notificationsRegistered)
+            {
+                return;
+            }
+
+            try
+            {
+                AppNotificationManager.Default.Register();
+                _notificationsRegistered = true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Notification registration failed: {ex}");
+            }
         }
     }
 
@@ -1387,6 +1599,8 @@ public partial class App : Application
     /// </summary>
     internal static void ShowSaveNotification(string path)
     {
+        AnnounceCaptureSaved(path);
+
         try
         {
             var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -1395,6 +1609,7 @@ public partial class App : Application
                 return;
             }
 
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Saved to Tiny Clips")
                 .AddText(Path.GetFileName(path))
@@ -1412,6 +1627,7 @@ public partial class App : Application
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Couldn't copy to clipboard")
                 .AddText(fileName)
@@ -1425,10 +1641,29 @@ public partial class App : Application
         }
     }
 
+    internal static void ShowImageLoadFailureNotification(string fileName)
+    {
+        try
+        {
+            EnsureNotificationsRegistered();
+            var notification = new AppNotificationBuilder()
+                .AddText("Couldn't open image")
+                .AddText($"{fileName}. The image may be unsupported or its decoder is unavailable.")
+                .BuildNotification();
+
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show image load failure notification: {ex}");
+        }
+    }
+
     private static void ShowUpdateCheckNotification(string title, string details)
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText(title)
                 .AddText(details)
@@ -1449,8 +1684,11 @@ public partial class App : Application
     /// </summary>
     internal static void ShowSaveFailureNotification(string fileName)
     {
+        AnnounceSaveFailure(fileName);
+
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Couldn't save file")
                 .AddText(fileName)
@@ -1463,6 +1701,108 @@ public partial class App : Application
             Debug.WriteLine($"Failed to show save failure notification: {ex}");
         }
     }
+
+    private void AnnounceRecordingStarted(CaptureType type) =>
+        Announce(
+            AutomationNotificationKind.Other,
+            AutomationNotificationProcessing.MostRecent,
+            $"{CaptureTypeName(type)} recording started.",
+            $"{CaptureTypeName(type)}RecordingStarted");
+
+    private void AnnounceRecordingStopped(CaptureType type)
+    {
+        if (_recordingStopAnnounced)
+        {
+            return;
+        }
+
+        _recordingStopAnnounced = true;
+        Announce(
+            AutomationNotificationKind.ActionCompleted,
+            AutomationNotificationProcessing.MostRecent,
+            $"{CaptureTypeName(type)} recording stopped.",
+            $"{CaptureTypeName(type)}RecordingStopped");
+    }
+
+    private static void AnnounceCaptureSaved(string path)
+    {
+        var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
+            ? CaptureType.Gif
+            : Path.GetExtension(path).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+                ? CaptureType.Video
+                : CaptureType.Screenshot;
+        var fileName = Path.GetFileName(path);
+        var message = string.IsNullOrWhiteSpace(fileName)
+            ? $"{CaptureTypeName(type)} saved."
+            : $"{CaptureTypeName(type)} saved: {fileName}.";
+
+        if (Application.Current is App app)
+        {
+            app.Announce(
+                AutomationNotificationKind.ActionCompleted,
+                AutomationNotificationProcessing.MostRecent,
+                message,
+                $"{CaptureTypeName(type)}Saved");
+        }
+    }
+
+    private static void AnnounceSaveFailure(string fileName)
+    {
+        var message = string.IsNullOrWhiteSpace(fileName)
+            ? "Couldn't save file."
+            : $"Couldn't save {fileName}.";
+
+        if (Application.Current is App app)
+        {
+            app.Announce(
+                AutomationNotificationKind.ActionAborted,
+                AutomationNotificationProcessing.ImportantMostRecent,
+                message,
+                "CaptureSaveFailed");
+        }
+    }
+
+    private void Announce(
+        AutomationNotificationKind kind,
+        AutomationNotificationProcessing processing,
+        string message,
+        string activityId)
+    {
+        if (_automationNotificationAnnouncer is null)
+        {
+            Debug.WriteLine($"Automation announcement unavailable: {message}");
+            return;
+        }
+
+        var dispatcher = _dispatcher;
+        if (dispatcher is null)
+        {
+            Debug.WriteLine($"Automation announcement dispatcher unavailable: {message}");
+            return;
+        }
+
+        if (dispatcher.HasThreadAccess)
+        {
+            _automationNotificationAnnouncer.Announce(kind, processing, message, activityId);
+            return;
+        }
+
+        if (!dispatcher.TryEnqueue(() =>
+                _automationNotificationAnnouncer?.Announce(kind, processing, message, activityId)))
+        {
+            Debug.WriteLine($"Automation announcement dispatch failed: {message}");
+        }
+    }
+
+    private static string CaptureTypeName(CaptureType type) => type switch
+    {
+        CaptureType.Gif => "GIF",
+        CaptureType.Video => "Video",
+        _ => "Screenshot",
+    };
+
+    private static string CaptureOutputDescription(CaptureType type) =>
+        $"the {CaptureTypeName(type).ToLowerInvariant()} capture";
 
     private GlobalHotKeyRegistrationResult RegisterGlobalHotKeys()
     {
@@ -1571,6 +1911,41 @@ public partial class App : Application
         }
     }
 
+    private static void OpenFolder(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"OpenFolder failed: {ex}");
+        }
+    }
+
+    private void OpenRecentCapture(RecentCapture capture)
+    {
+        if (!File.Exists(capture.Path))
+        {
+            Services.GetRequiredService<IRecentCaptureService>().Remove(capture.Path);
+            return;
+        }
+
+        if (capture.Type == CaptureType.Screenshot)
+        {
+            OpenScreenshotEditor(capture.Path, reopenPickerAfterClose: false);
+        }
+        else
+        {
+            OpenTrimmer(capture.Path, capture.Type, isRecentCapture: true);
+        }
+    }
+
     private void OpenSettingsWindow()
     {
         if (_settingsWindow is null)
@@ -1600,7 +1975,7 @@ public partial class App : Application
             QuickBugReport.GetDistributionChannel()
         );
 
-    private void OpenScreenshotEditor(string path)
+    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
     {
         try
         {
@@ -1615,7 +1990,10 @@ public partial class App : Application
                 if (ReferenceEquals(_editorWindow, window))
                 {
                     _editorWindow = null;
-                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                    if (reopenPickerAfterClose)
+                    {
+                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
+                    }
                 }
             };
             ActivateWindowToForeground(window);
@@ -1625,7 +2003,10 @@ public partial class App : Application
             Debug.WriteLine($"OpenScreenshotEditor failed: {ex}");
             RevealInExplorer(path);
             ShowSaveToast(path);
-            ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+            if (reopenPickerAfterClose)
+            {
+                ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
+            }
         }
     }
 
@@ -1675,6 +2056,8 @@ public partial class App : Application
         _hotKeyManager = null;
         _taskbarIcon?.Dispose();
         _taskbarIcon = null;
+        _automationNotificationAnnouncer?.Close();
+        _automationNotificationAnnouncer = null;
         _settingsWindow?.Close();
         _guideWindow?.Close();
         _onboardingWindow?.Close();
@@ -1686,10 +2069,10 @@ public partial class App : Application
         Environment.Exit(0);
     }
 
-    private void ReopenPickerAfterCaptureIfNeeded(CaptureType type)
+    private void ReopenPickerAfterCaptureIfNeeded(CaptureType type, bool pickerInitiated)
     {
         var settings = Services.GetRequiredService<ICaptureSettings>();
-        if (!settings.ReopenPickerAfterCapture || _isExiting || IsAnyRecordingActive())
+        if (!pickerInitiated || !settings.ShouldShowCapturePickerAfterCapture(type) || _isExiting || IsAnyRecordingActive())
         {
             return;
         }
