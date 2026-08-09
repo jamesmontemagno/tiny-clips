@@ -175,7 +175,7 @@ struct SettingsView: View {
         settingsWindowManager.selectedTab = nil
     }
 
-    private func chooseSaveDirectory() {
+    private func chooseSaveDirectory(for captureType: CaptureType?) {
         DispatchQueue.main.async {
             let panel = NSOpenPanel()
             panel.canChooseFiles = false
@@ -189,24 +189,40 @@ struct SettingsView: View {
 #if APPSTORE
             do {
                 let bookmark = try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
-                settings.saveDirectoryBookmark = bookmark
-                settings.saveDirectoryDisplayPath = url.path
+                settings.setSaveDirectoryBookmark(bookmark, displayPath: url.path, for: captureType)
+                SaveService.shared.invalidateSaveDirectoryBookmark(for: captureType)
             } catch {
                 SaveService.shared.showError("Could not save folder permission: \(error.localizedDescription)")
             }
 #else
-            settings.saveDirectory = url.path
+            switch captureType {
+            case .screenshot:
+                settings.screenshotSaveDirectory = url.path
+            case .video, .gif:
+                settings.videoGifSaveDirectory = url.path
+            case nil:
+                settings.saveDirectory = url.path
+            }
 #endif
         }
     }
 
 #if APPSTORE
-    private func resetSaveDirectory() {
-        settings.saveDirectoryBookmark = Data()
-        settings.saveDirectoryDisplayPath = ""
+    private func resetSaveDirectory(for captureType: CaptureType?) {
+        settings.resetSaveDirectory(for: captureType)
+        SaveService.shared.invalidateSaveDirectoryBookmark(for: captureType)
     }
 #else
-    private func resetSaveDirectory() {}
+    private func resetSaveDirectory(for captureType: CaptureType?) {
+        switch captureType {
+        case .screenshot:
+            settings.screenshotSaveDirectory = ""
+        case .video, .gif:
+            settings.videoGifSaveDirectory = ""
+        case nil:
+            break
+        }
+    }
 #endif
 
     private func resetAllSettings() {

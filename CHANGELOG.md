@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.
+- macOS General settings now support separate screenshot and video/GIF save folders while preserving the shared folder as a fallback.
 
 ## v1.5.4-mac - 2026-07-26
 
