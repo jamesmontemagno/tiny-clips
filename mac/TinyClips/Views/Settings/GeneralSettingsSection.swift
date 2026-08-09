@@ -91,8 +91,12 @@ struct GeneralSettingsSection: View {
             ))
             Toggle("Show TinyClips in Dock (enables ⌘⇥)", isOn: showInDockBinding)
                 .help("When enabled, TinyClips appears in Command-Tab and can participate in normal app/window switching.")
-            Toggle("Always capture main display", isOn: $settings.alwaysCaptureMainDisplay)
-                .help("Skip the display picker when multiple monitors are connected")
+            Picker("When capturing a display", selection: $settings.multiMonitorCaptureMode) {
+                ForEach(MultiMonitorCaptureMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .help("Choose whether TinyClips asks for a display or captures one automatically when multiple monitors are connected.")
             Toggle("Include TinyClips in captures", isOn: $settings.includeTinyClipsInCapture)
                 .help("For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection.")
             Button {
