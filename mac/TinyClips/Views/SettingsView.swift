@@ -40,6 +40,7 @@ enum SettingsTab: String, CaseIterable {
 }
 
 struct SettingsView: View {
+    @ObservedObject var captureManager: CaptureManager
     @ObservedObject private var settings = CaptureSettings.shared
     @ObservedObject private var captureAnalytics = CaptureAnalyticsStore.shared
     @ObservedObject private var sparkleController = SparkleController.shared
@@ -98,7 +99,7 @@ struct SettingsView: View {
                 case .branding:
                     BrandingSettingsSection(settings: settings)
                 case .shortcuts:
-                    ShortcutsSettingsSection(settings: settings)
+                    ShortcutsSettingsSection(settings: settings, captureManager: captureManager)
                 case .pro:
 #if APPSTORE
                     ProSettingsSection()
@@ -234,9 +235,14 @@ struct SettingsView: View {
             alert.addButton(withTitle: "Cancel")
 
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            settings.resetToDefaults()
+            let hotKeyResetError = captureManager.resetCaptureHotKeysToDefaults()
+            settings.resetToDefaults(preservingHotKeys: true)
             sparkleController.resetPreferencesToDefaults()
             applyDockVisibility(settings.showInDock)
+
+            if let hotKeyResetError {
+                SaveService.shared.showError(hotKeyResetError)
+            }
         }
     }
 
