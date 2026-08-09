@@ -346,14 +346,15 @@ public sealed partial class GifTrimmerWindow : Window
 
         StopPlayback();
         ExportFrameButton.IsEnabled = false;
+        string? outputPath = null;
 
         try
         {
             var storage = App.Services.GetRequiredService<IClipStorageService>();
-            var path = storage.GenerateFilePath(CaptureType.Screenshot, ".png", "(frame)");
-            var folder = await StorageFolder.GetFolderFromPathAsync(System.IO.Path.GetDirectoryName(path)!);
+            outputPath = storage.GenerateFilePath(CaptureType.Screenshot, ".png", "(frame)");
+            var folder = await StorageFolder.GetFolderFromPathAsync(System.IO.Path.GetDirectoryName(outputPath)!);
             var file = await folder.CreateFileAsync(
-                System.IO.Path.GetFileName(path), CreationCollisionOption.GenerateUniqueName);
+                System.IO.Path.GetFileName(outputPath), CreationCollisionOption.GenerateUniqueName);
 
             using (var stream = await file.OpenAsync(FileAccessMode.ReadWrite))
             {
@@ -367,6 +368,7 @@ public sealed partial class GifTrimmerWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"GIF frame export failed: {ex}");
+            App.ShowSaveFailureNotification(System.IO.Path.GetFileName(outputPath ?? "GIF frame export"));
         }
         finally
         {
@@ -431,6 +433,7 @@ public sealed partial class GifTrimmerWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"GIF trim failed: {ex}");
+            App.ShowSaveFailureNotification(System.IO.Path.GetFileName(outputPath ?? _filePath));
             outputPath = null;
         }
         finally

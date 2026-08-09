@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
@@ -53,9 +54,11 @@ public partial class App : Application
     private TargetSelection? _activeRecordingSelection;
     private CaptureType? _activeRecordingType;
     private bool _activeRecordingWasPickerInitiated;
+    private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
     private TrayPopupWindow? _trayPopup;
+    private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
     private const double TrayPopupWidth = 288;
     private const double TrayPopupHeight = 242;
     private GlobalHotKeyManager? _hotKeyManager;
@@ -82,6 +85,7 @@ public partial class App : Application
 
         WireRecordingEvents();
         CreateTrayIcon();
+        CreateAutomationNotificationAnnouncer();
         RegisterGlobalHotKeys();
         ShowOnboardingIfNeeded();
         HandleFileActivation();
@@ -161,6 +165,11 @@ public partial class App : Application
         _taskbarIcon.ForceCreate();
 
         UpdateRecordingState();
+    }
+
+    private void CreateAutomationNotificationAnnouncer()
+    {
+        _automationNotificationAnnouncer ??= new AutomationNotificationAnnouncer();
     }
 
     private void ShowTrayPopup()
@@ -568,7 +577,7 @@ public partial class App : Application
                     }
                     await Services.GetRequiredService<IVideoRecordingService>()
                         .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
-                    ActivateRecordingIndicatorForStartedCapture();
+                    ActivateRecordingIndicatorForStartedCapture(CaptureType.Video);
                     UpdateRecordingState();
                     break;
 
@@ -584,7 +593,7 @@ public partial class App : Application
                     }
                     await Services.GetRequiredService<IGifRecordingService>()
                         .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
-                    ActivateRecordingIndicatorForStartedCapture();
+                    ActivateRecordingIndicatorForStartedCapture(CaptureType.Gif);
                     UpdateRecordingState();
                     break;
             }
@@ -601,6 +610,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Capture failed: {ex}");
+            ShowSaveFailureNotification(CaptureOutputDescription(type));
             UpdateRecordingState();
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
@@ -966,14 +976,16 @@ public partial class App : Application
                 return;
             }
 
+            var type = sender is IGifRecordingService
+                ? CaptureType.Gif
+                : CaptureType.Video;
+            AnnounceRecordingStopped(type);
+
             if (string.IsNullOrEmpty(path))
             {
                 return;
             }
 
-            var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
-                ? CaptureType.Gif
-                : CaptureType.Video;
             Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -992,6 +1004,8 @@ public partial class App : Application
 
     private async Task StopActiveRecordingAsync()
     {
+        CaptureType? stoppedType = null;
+
         try
         {
             var video = Services.GetRequiredService<IVideoRecordingService>();
@@ -999,12 +1013,14 @@ public partial class App : Application
 
             if (video.IsRecording)
             {
+                stoppedType = CaptureType.Video;
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Video, _activeRecordingSelection);
                 await video.StopAsync();
             }
             else if (gif.IsRecording)
             {
+                stoppedType = CaptureType.Gif;
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Gif, _activeRecordingSelection);
                 await gif.StopAsync();
@@ -1017,9 +1033,18 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to stop active recording: {ex}");
+            if (stoppedType is { } type)
+            {
+                ShowSaveFailureNotification(CaptureOutputDescription(type));
+            }
         }
         finally
         {
+            if (stoppedType is { } type && !IsAnyRecordingActive())
+            {
+                AnnounceRecordingStopped(type);
+            }
+
             HideProcessingIndicator();
             UpdateRecordingState();
             CloseRecordingRegionIndicatorIfNotRecording();
@@ -1121,7 +1146,7 @@ public partial class App : Application
             await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
         }
 
-        ActivateRecordingIndicatorForStartedCapture();
+        ActivateRecordingIndicatorForStartedCapture(type);
         UpdateRecordingState();
     }
 
@@ -1264,8 +1289,9 @@ public partial class App : Application
         }
     }
 
-    private void ActivateRecordingIndicatorForStartedCapture()
+    private void ActivateRecordingIndicatorForStartedCapture(CaptureType type)
     {
+        _recordingStopAnnounced = false;
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingElapsedBeforePause = TimeSpan.Zero;
         _recordingIndicator?.SetStopEnabled(true);
@@ -1276,6 +1302,7 @@ public partial class App : Application
             video.CanMuteMicrophone,
             video.IsMicrophoneMuted);
         StartRecordingTimer();
+        AnnounceRecordingStarted(type);
     }
 
     private void StartRecordingTimer()
@@ -1516,6 +1543,8 @@ public partial class App : Application
     /// </summary>
     internal static void ShowSaveNotification(string path)
     {
+        AnnounceCaptureSaved(path);
+
         try
         {
             var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -1599,6 +1628,8 @@ public partial class App : Application
     /// </summary>
     internal static void ShowSaveFailureNotification(string fileName)
     {
+        AnnounceSaveFailure(fileName);
+
         try
         {
             EnsureNotificationsRegistered();
@@ -1614,6 +1645,108 @@ public partial class App : Application
             Debug.WriteLine($"Failed to show save failure notification: {ex}");
         }
     }
+
+    private void AnnounceRecordingStarted(CaptureType type) =>
+        Announce(
+            AutomationNotificationKind.Other,
+            AutomationNotificationProcessing.MostRecent,
+            $"{CaptureTypeName(type)} recording started.",
+            $"{CaptureTypeName(type)}RecordingStarted");
+
+    private void AnnounceRecordingStopped(CaptureType type)
+    {
+        if (_recordingStopAnnounced)
+        {
+            return;
+        }
+
+        _recordingStopAnnounced = true;
+        Announce(
+            AutomationNotificationKind.ActionCompleted,
+            AutomationNotificationProcessing.MostRecent,
+            $"{CaptureTypeName(type)} recording stopped.",
+            $"{CaptureTypeName(type)}RecordingStopped");
+    }
+
+    private static void AnnounceCaptureSaved(string path)
+    {
+        var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
+            ? CaptureType.Gif
+            : Path.GetExtension(path).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+                ? CaptureType.Video
+                : CaptureType.Screenshot;
+        var fileName = Path.GetFileName(path);
+        var message = string.IsNullOrWhiteSpace(fileName)
+            ? $"{CaptureTypeName(type)} saved."
+            : $"{CaptureTypeName(type)} saved: {fileName}.";
+
+        if (Application.Current is App app)
+        {
+            app.Announce(
+                AutomationNotificationKind.ActionCompleted,
+                AutomationNotificationProcessing.MostRecent,
+                message,
+                $"{CaptureTypeName(type)}Saved");
+        }
+    }
+
+    private static void AnnounceSaveFailure(string fileName)
+    {
+        var message = string.IsNullOrWhiteSpace(fileName)
+            ? "Couldn't save file."
+            : $"Couldn't save {fileName}.";
+
+        if (Application.Current is App app)
+        {
+            app.Announce(
+                AutomationNotificationKind.ActionAborted,
+                AutomationNotificationProcessing.ImportantMostRecent,
+                message,
+                "CaptureSaveFailed");
+        }
+    }
+
+    private void Announce(
+        AutomationNotificationKind kind,
+        AutomationNotificationProcessing processing,
+        string message,
+        string activityId)
+    {
+        if (_automationNotificationAnnouncer is null)
+        {
+            Debug.WriteLine($"Automation announcement unavailable: {message}");
+            return;
+        }
+
+        var dispatcher = _dispatcher;
+        if (dispatcher is null)
+        {
+            Debug.WriteLine($"Automation announcement dispatcher unavailable: {message}");
+            return;
+        }
+
+        if (dispatcher.HasThreadAccess)
+        {
+            _automationNotificationAnnouncer.Announce(kind, processing, message, activityId);
+            return;
+        }
+
+        if (!dispatcher.TryEnqueue(() =>
+                _automationNotificationAnnouncer?.Announce(kind, processing, message, activityId)))
+        {
+            Debug.WriteLine($"Automation announcement dispatch failed: {message}");
+        }
+    }
+
+    private static string CaptureTypeName(CaptureType type) => type switch
+    {
+        CaptureType.Gif => "GIF",
+        CaptureType.Video => "Video",
+        _ => "Screenshot",
+    };
+
+    private static string CaptureOutputDescription(CaptureType type) =>
+        $"the {CaptureTypeName(type).ToLowerInvariant()} capture";
 
     private GlobalHotKeyRegistrationResult RegisterGlobalHotKeys()
     {
@@ -1867,6 +2000,8 @@ public partial class App : Application
         _hotKeyManager = null;
         _taskbarIcon?.Dispose();
         _taskbarIcon = null;
+        _automationNotificationAnnouncer?.Close();
+        _automationNotificationAnnouncer = null;
         _settingsWindow?.Close();
         _guideWindow?.Close();
         _onboardingWindow?.Close();
