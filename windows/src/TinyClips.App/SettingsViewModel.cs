@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
+using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 
@@ -159,9 +160,50 @@ public sealed partial class SettingsViewModel : ObservableObject
         ? "Using defaults by capture type."
         : "Custom save location override applies to all capture types.";
 
+    public string TempFolderSummary => FormatTemporaryFilesSummary(TinyClipsTemporaryFiles.GetSummary());
+
     private string ResolveEffectiveSaveLocation(CaptureType type) => string.IsNullOrWhiteSpace(SaveDirectory)
         ? $"{_storage.OutputDirectory(type)} (default)"
         : SaveDirectory;
+
+    public void OpenTempFolder()
+    {
+        var directory = TinyClipsTemporaryFiles.EnsureDirectoryExists();
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = directory,
+            UseShellExecute = true,
+        });
+    }
+
+    public TemporaryFilesPurgeResult PurgeTempFiles()
+    {
+        var result = TinyClipsTemporaryFiles.Purge(WebcamDiagnostics.ActiveFilePaths);
+        OnPropertyChanged(nameof(TempFolderSummary));
+        return result;
+    }
+
+    private static string FormatTemporaryFilesSummary(TemporaryFilesSummary summary)
+    {
+        var fileLabel = summary.FileCount == 1 ? "file" : "files";
+        return $"{summary.FileCount:N0} {fileLabel}, {FormatFileSize(summary.TotalSize)}";
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        var value = (double)bytes;
+        var unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.Length - 1)
+        {
+            value /= 1024;
+            unitIndex++;
+        }
+
+        return unitIndex == 0
+            ? $"{value:N0} {units[unitIndex]}"
+            : $"{value:N1} {units[unitIndex]}";
+    }
 
     // General
     [ObservableProperty]
