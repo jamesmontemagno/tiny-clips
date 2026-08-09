@@ -179,8 +179,12 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
     }
 
-    func textFontSize(_ fontSize: CGFloat, forImageWidth imageWidth: CGFloat) -> CGFloat {
-        fontSize * (imageWidth / 800.0)
+    /// Returns the text size for an image rendered at `renderedImageWidth`.
+    ///
+    /// Pass points for the SwiftUI preview and pixels for bitmap export so the
+    /// font scales with the image in the same coordinate space as its renderer.
+    func textFontSize(_ fontSize: CGFloat, forRenderedImageWidth renderedImageWidth: CGFloat) -> CGFloat {
+        fontSize * (renderedImageWidth / 800.0)
     }
 
     // Find which annotation is at a normalized point
@@ -1424,7 +1428,7 @@ class ScreenshotEditorViewModel: ObservableObject {
 
         case .text:
             let str = annotation.text as NSString
-            let fontSize = textFontSize(annotation.fontSize, forImageWidth: fullSize.width)
+            let fontSize = textFontSize(annotation.fontSize, forRenderedImageWidth: fullSize.width)
             let font = exportTextFont(
                 family: annotation.fontFamily,
                 size: fontSize,

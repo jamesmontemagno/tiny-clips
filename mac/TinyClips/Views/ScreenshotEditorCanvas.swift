@@ -77,7 +77,7 @@ struct ScreenshotEditorCanvasView: View {
                         Text(annotation.text)
                             .font(textPreviewFont(
                                 family: annotation.fontFamily,
-                                size: viewModel.textFontSize(annotation.fontSize, forImageWidth: imageSize.width),
+                                size: viewModel.textFontSize(annotation.fontSize, forRenderedImageWidth: imageSize.width),
                                 isBold: annotation.isBold
                             ))
                             .italic(annotation.isItalic)
