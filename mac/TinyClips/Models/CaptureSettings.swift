@@ -153,6 +153,20 @@ enum ImageFormat: String, CaseIterable {
     }
 }
 
+enum MultiMonitorCaptureMode: String, CaseIterable {
+    case askEveryTime
+    case displayUnderCursor
+    case mainDisplay
+
+    var label: String {
+        switch self {
+        case .askEveryTime: return "Ask every time"
+        case .displayUnderCursor: return "Display under cursor"
+        case .mainDisplay: return "Main display"
+        }
+    }
+}
+
 // MARK: - Settings
 
 struct MouseClickOverlayStyle: Sendable {
@@ -319,7 +333,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("screenshotCountdownEnabled") var screenshotCountdownEnabled: Bool = false
     @AppStorage("screenshotCountdownDuration") var screenshotCountdownDuration: Int = 3
     @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
-    @AppStorage("alwaysCaptureMainDisplay") var alwaysCaptureMainDisplay: Bool = false
+    @AppStorage("multiMonitorCaptureMode") var multiMonitorCaptureMode: MultiMonitorCaptureMode = .askEveryTime
     @AppStorage("showRegionIndicator") var showRegionIndicator: Bool = true
     @AppStorage("includeTinyClipsInCapture") var includeTinyClipsInCapture: Bool = false
     @AppStorage("showBrandingOverlay") var showBrandingOverlay: Bool = false
@@ -477,7 +491,7 @@ class CaptureSettings: ObservableObject {
             "videoRecordingTimeLimitMinutes",
             "gifCountdownEnabled", "gifCountdownDuration",
             "screenshotCountdownEnabled", "screenshotCountdownDuration",
-            "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "showRegionIndicator",
+            "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "multiMonitorCaptureMode", "showRegionIndicator",
             "includeTinyClipsInCapture", "showBrandingOverlay",
             "screenshotHotKeyCode", "screenshotHotKeyModifiers",
             "videoHotKeyCode", "videoHotKeyModifiers",
@@ -497,6 +511,16 @@ class CaptureSettings: ObservableObject {
             CaptureAnalyticsStore.shared.clear()
         }
         objectWillChange.send()
+    }
+
+    private init() {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: "multiMonitorCaptureMode") == nil else { return }
+
+        multiMonitorCaptureMode = defaults.bool(forKey: "alwaysCaptureMainDisplay")
+            ? .mainDisplay
+            : .askEveryTime
+        defaults.removeObject(forKey: "alwaysCaptureMainDisplay")
     }
 }
 

@@ -319,13 +319,7 @@ class CaptureManager: ObservableObject {
             )
 
         case .screen:
-            let needsPicker = NSScreen.screens.count > 1 && !CaptureSettings.shared.alwaysCaptureMainDisplay
-            let screen: NSScreen?
-            if needsPicker {
-                screen = await pickScreen()
-            } else {
-                screen = screenUnderMouseCursor() ?? NSScreen.main
-            }
+            let screen = await chooseScreenForCapture()
             guard let screen, let region = CaptureRegion.fullScreen(for: screen) else {
                 if shouldReturnToPicker {
                     showScreenshotPicker()
@@ -1703,13 +1697,7 @@ class CaptureManager: ObservableObject {
             guard let region = await RegionSelector.selectRegion() else { return nil }
             return CaptureTarget(region: region)
         case .screen:
-            let needsPicker = NSScreen.screens.count > 1 && !CaptureSettings.shared.alwaysCaptureMainDisplay
-            let screen: NSScreen?
-            if needsPicker {
-                screen = await pickScreen()
-            } else {
-                screen = screenUnderMouseCursor() ?? NSScreen.main
-            }
+            let screen = await chooseScreenForCapture()
             guard let screen else { return nil }
             guard let region = CaptureRegion.fullScreen(for: screen) else { return nil }
             return CaptureTarget(region: region)
@@ -1775,6 +1763,20 @@ class CaptureManager: ObservableObject {
             self.screenPickerWindow = nil
         }
         return screen
+    }
+
+    private func chooseScreenForCapture() async -> NSScreen? {
+        switch CaptureSettings.shared.multiMonitorCaptureMode {
+        case .askEveryTime:
+            if NSScreen.screens.count > 1 {
+                return await pickScreen()
+            }
+            return NSScreen.main ?? NSScreen.screens.first
+        case .displayUnderCursor:
+            return screenUnderMouseCursor() ?? NSScreen.main ?? NSScreen.screens.first
+        case .mainDisplay:
+            return NSScreen.main ?? NSScreen.screens.first
+        }
     }
 
     private func screenUnderMouseCursor() -> NSScreen? {
