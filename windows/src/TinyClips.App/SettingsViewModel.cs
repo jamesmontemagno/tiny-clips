@@ -212,9 +212,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _copyGifToClipboard;
 
     [ObservableProperty]
-    private bool _reopenPickerAfterCapture;
-
-    [ObservableProperty]
     private int _multiMonitorCaptureModeIndex;
 
     // Screenshot
@@ -235,6 +232,15 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showScreenshotEditor;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ScreenshotCapturePickerAfterCaptureEnabled))]
+    private bool _showScreenshotCapturePicker;
+
+    [ObservableProperty]
+    private bool _showScreenshotCapturePickerAfterCapture;
+
+    public bool ScreenshotCapturePickerAfterCaptureEnabled => ShowScreenshotCapturePicker;
 
     // Video
     [ObservableProperty]
@@ -328,6 +334,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _showTrimmer;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VideoCapturePickerAfterCaptureEnabled))]
+    private bool _showVideoCapturePicker;
+
+    [ObservableProperty]
+    private bool _showVideoCapturePickerAfterCapture;
+
+    public bool VideoCapturePickerAfterCaptureEnabled => ShowVideoCapturePicker;
+
     // GIF
     [ObservableProperty]
     private double _gifFrameRate;
@@ -343,6 +358,15 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showGifTrimmer;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GifCapturePickerAfterCaptureEnabled))]
+    private bool _showGifCapturePicker;
+
+    [ObservableProperty]
+    private bool _showGifCapturePickerAfterCapture;
+
+    public bool GifCapturePickerAfterCaptureEnabled => ShowGifCapturePicker;
 
     // Mouse clicks
     [ObservableProperty]
@@ -552,7 +576,6 @@ public sealed partial class SettingsViewModel : ObservableObject
             CopyScreenshotToClipboard = _settings.CopyScreenshotToClipboard;
             CopyVideoToClipboard = _settings.CopyVideoToClipboard;
             CopyGifToClipboard = _settings.CopyGifToClipboard;
-            ReopenPickerAfterCapture = _settings.ReopenPickerAfterCapture;
             MultiMonitorCaptureModeIndex = _settings.MultiMonitorCaptureMode switch
             {
                 MultiMonitorCaptureMode.UnderCursor => 1,
@@ -566,6 +589,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             ScreenshotCountdownEnabled = _settings.ScreenshotCountdownEnabled;
             ScreenshotCountdownDuration = _settings.ScreenshotCountdownDuration;
             ShowScreenshotEditor = _settings.ShowScreenshotEditor;
+            ShowScreenshotCapturePicker = _settings.ShowScreenshotCapturePicker;
+            ShowScreenshotCapturePickerAfterCapture = _settings.ShowScreenshotCapturePickerAfterCapture;
 
             VideoFrameRate = _settings.VideoFrameRate;
             RecordAudio = _settings.RecordAudio;
@@ -600,12 +625,16 @@ public sealed partial class SettingsViewModel : ObservableObject
             VideoCountdownEnabled = _settings.VideoCountdownEnabled;
             VideoCountdownDuration = _settings.VideoCountdownDuration;
             ShowTrimmer = _settings.ShowTrimmer;
+            ShowVideoCapturePicker = _settings.ShowVideoCapturePicker;
+            ShowVideoCapturePickerAfterCapture = _settings.ShowVideoCapturePickerAfterCapture;
 
             GifFrameRate = _settings.GifFrameRate;
             GifMaxWidth = _settings.GifMaxWidth;
             GifCountdownEnabled = _settings.GifCountdownEnabled;
             GifCountdownDuration = _settings.GifCountdownDuration;
             ShowGifTrimmer = _settings.ShowGifTrimmer;
+            ShowGifCapturePicker = _settings.ShowGifCapturePicker;
+            ShowGifCapturePickerAfterCapture = _settings.ShowGifCapturePickerAfterCapture;
 
             ShowMouseClicksInVideo = _settings.ShowMouseClickVisualsInVideo;
             ShowMouseClicksInGif = _settings.ShowMouseClickVisualsInGif;
@@ -866,8 +895,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnCopyGifToClipboardChanged(bool value) => Persist(() => _settings.CopyGifToClipboard = value);
 
-    partial void OnReopenPickerAfterCaptureChanged(bool value) => Persist(() => _settings.ReopenPickerAfterCapture = value);
-
     partial void OnMultiMonitorCaptureModeIndexChanged(int value) => Persist(() => _settings.MultiMonitorCaptureMode = value switch
     {
         1 => MultiMonitorCaptureMode.UnderCursor,
@@ -888,6 +915,27 @@ public sealed partial class SettingsViewModel : ObservableObject
         Persist(() => _settings.ScreenshotCountdownDuration = (int)Math.Round(value));
 
     partial void OnShowScreenshotEditorChanged(bool value) => Persist(() => _settings.ShowScreenshotEditor = value);
+
+    partial void OnShowScreenshotCapturePickerChanged(bool value) =>
+        Persist(() =>
+        {
+            _settings.ShowScreenshotCapturePicker = value;
+            if (!value)
+            {
+                ShowScreenshotCapturePickerAfterCapture = false;
+            }
+        });
+
+    partial void OnShowScreenshotCapturePickerAfterCaptureChanged(bool value)
+    {
+        if (value && !ShowScreenshotCapturePicker)
+        {
+            ShowScreenshotCapturePickerAfterCapture = false;
+            return;
+        }
+
+        Persist(() => _settings.ShowScreenshotCapturePickerAfterCapture = value);
+    }
 
     partial void OnVideoFrameRateChanged(double value) => Persist(() => _settings.VideoFrameRate = (int)Math.Round(value));
 
@@ -941,6 +989,27 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnShowTrimmerChanged(bool value) => Persist(() => _settings.ShowTrimmer = value);
 
+    partial void OnShowVideoCapturePickerChanged(bool value) =>
+        Persist(() =>
+        {
+            _settings.ShowVideoCapturePicker = value;
+            if (!value)
+            {
+                ShowVideoCapturePickerAfterCapture = false;
+            }
+        });
+
+    partial void OnShowVideoCapturePickerAfterCaptureChanged(bool value)
+    {
+        if (value && !ShowVideoCapturePicker)
+        {
+            ShowVideoCapturePickerAfterCapture = false;
+            return;
+        }
+
+        Persist(() => _settings.ShowVideoCapturePickerAfterCapture = value);
+    }
+
     partial void OnGifFrameRateChanged(double value) => Persist(() => _settings.GifFrameRate = value);
 
     partial void OnGifMaxWidthChanged(double value) => Persist(() => _settings.GifMaxWidth = (int)Math.Round(value));
@@ -951,6 +1020,27 @@ public sealed partial class SettingsViewModel : ObservableObject
         Persist(() => _settings.GifCountdownDuration = (int)Math.Round(value));
 
     partial void OnShowGifTrimmerChanged(bool value) => Persist(() => _settings.ShowGifTrimmer = value);
+
+    partial void OnShowGifCapturePickerChanged(bool value) =>
+        Persist(() =>
+        {
+            _settings.ShowGifCapturePicker = value;
+            if (!value)
+            {
+                ShowGifCapturePickerAfterCapture = false;
+            }
+        });
+
+    partial void OnShowGifCapturePickerAfterCaptureChanged(bool value)
+    {
+        if (value && !ShowGifCapturePicker)
+        {
+            ShowGifCapturePickerAfterCapture = false;
+            return;
+        }
+
+        Persist(() => _settings.ShowGifCapturePickerAfterCapture = value);
+    }
 
     partial void OnShowMouseClicksInVideoChanged(bool value) => Persist(() => _settings.ShowMouseClickVisualsInVideo = value);
 

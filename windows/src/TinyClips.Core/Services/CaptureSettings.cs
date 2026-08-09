@@ -272,25 +272,58 @@ public sealed class CaptureSettings : ICaptureSettings
     public bool ShowScreenshotCapturePicker
     {
         get => _settings.Get("showScreenshotCapturePicker", true);
-        set => _settings.Set("showScreenshotCapturePicker", value);
+        set
+        {
+            _settings.Set("showScreenshotCapturePicker", value);
+            if (!value)
+            {
+                ShowScreenshotCapturePickerAfterCapture = false;
+            }
+        }
     }
 
     public bool ShowScreenshotCapturePickerAfterCapture
     {
-        get => _settings.Get("showScreenshotCapturePickerAfterCapture", true);
-        set => _settings.Set("showScreenshotCapturePickerAfterCapture", value);
+        get => _settings.Get("showScreenshotCapturePickerAfterCapture", false);
+        set => _settings.Set("showScreenshotCapturePickerAfterCapture", value && ShowScreenshotCapturePicker);
     }
 
     public bool ShowVideoCapturePicker
     {
         get => _settings.Get("showVideoCapturePicker", true);
-        set => _settings.Set("showVideoCapturePicker", value);
+        set
+        {
+            _settings.Set("showVideoCapturePicker", value);
+            if (!value)
+            {
+                ShowVideoCapturePickerAfterCapture = false;
+            }
+        }
+    }
+
+    public bool ShowVideoCapturePickerAfterCapture
+    {
+        get => _settings.Get("showVideoCapturePickerAfterCapture", false);
+        set => _settings.Set("showVideoCapturePickerAfterCapture", value && ShowVideoCapturePicker);
     }
 
     public bool ShowGifCapturePicker
     {
         get => _settings.Get("showGifCapturePicker", true);
-        set => _settings.Set("showGifCapturePicker", value);
+        set
+        {
+            _settings.Set("showGifCapturePicker", value);
+            if (!value)
+            {
+                ShowGifCapturePickerAfterCapture = false;
+            }
+        }
+    }
+
+    public bool ShowGifCapturePickerAfterCapture
+    {
+        get => _settings.Get("showGifCapturePickerAfterCapture", false);
+        set => _settings.Set("showGifCapturePickerAfterCapture", value && ShowGifCapturePicker);
     }
 
     public string ScreenshotFormat
@@ -455,7 +488,13 @@ public sealed class CaptureSettings : ICaptureSettings
         _ => false,
     };
 
-    public bool ShouldShowScreenshotCapturePickerAfterCapture => ShowScreenshotCapturePicker && ShowScreenshotCapturePickerAfterCapture;
+    public bool ShouldShowCapturePickerAfterCapture(CaptureType type) => type switch
+    {
+        CaptureType.Screenshot => ShowScreenshotCapturePicker && ShowScreenshotCapturePickerAfterCapture,
+        CaptureType.Video => ShowVideoCapturePicker && ShowVideoCapturePickerAfterCapture,
+        CaptureType.Gif => ShowGifCapturePicker && ShowGifCapturePickerAfterCapture,
+        _ => false,
+    };
 
     public MouseClickOverlayStyle MouseClickOverlayStyleFor(CaptureType type) => type switch
     {
@@ -541,9 +580,11 @@ public sealed class CaptureSettings : ICaptureSettings
         SaveImmediatelyVideo = true;
         SaveImmediatelyGif = true;
         ShowScreenshotCapturePicker = true;
-        ShowScreenshotCapturePickerAfterCapture = true;
+        ShowScreenshotCapturePickerAfterCapture = false;
         ShowVideoCapturePicker = true;
+        ShowVideoCapturePickerAfterCapture = false;
         ShowGifCapturePicker = true;
+        ShowGifCapturePickerAfterCapture = false;
         ScreenshotFormat = "jpg";
         ScreenshotScale = 100;
         JpegQuality = 0.85;

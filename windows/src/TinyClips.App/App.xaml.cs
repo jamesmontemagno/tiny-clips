@@ -472,7 +472,13 @@ public partial class App : Application
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var (cdEnabled, cdDuration) = GetCountdown(settings, type);
 
-            var pick = await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes);
+            var pick = settings.ShouldShowCapturePicker(type)
+                ? await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
+                : new CapturePickerResult(
+                    CapturePickerMode.Region,
+                    cdEnabled,
+                    cdDuration,
+                    settings.VideoRecordingTimeLimitMinutes);
             if (pick is null)
             {
                 return;
@@ -1829,7 +1835,7 @@ public partial class App : Application
     private void ReopenPickerAfterCaptureIfNeeded(CaptureType type)
     {
         var settings = Services.GetRequiredService<ICaptureSettings>();
-        if (!settings.ReopenPickerAfterCapture || _isExiting || IsAnyRecordingActive())
+        if (!settings.ShouldShowCapturePickerAfterCapture(type) || _isExiting || IsAnyRecordingActive())
         {
             return;
         }

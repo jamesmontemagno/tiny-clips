@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Updated macOS in-app Terms of Use links to open Apple's Standard EULA directly.
+- macOS capture settings now offer matching before/after picker controls for screenshots, video recordings, and GIF recordings.
 
 ## v1.5.4-mac - 2026-07-26
 

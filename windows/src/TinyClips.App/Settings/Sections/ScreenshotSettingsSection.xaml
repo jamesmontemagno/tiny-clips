@@ -46,6 +46,51 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker before screenshot" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Choose Region, Screen, or Window before capturing." />
+                </StackPanel>
+                <ToggleSwitch
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="ShowScreenshotCapturePickerToggle"
+                    AutomationProperties.Name="Show capture picker before screenshot"
+                    IsOn="{x:Bind ViewModel.ShowScreenshotCapturePicker, Mode=TwoWay}" />
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker after screenshot" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Start another screenshot with the same picker after saving." />
+                </StackPanel>
+                <ToggleSwitch
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="ShowScreenshotCapturePickerAfterCaptureToggle"
+                    AutomationProperties.Name="Show capture picker after screenshot"
+                    IsEnabled="{x:Bind ViewModel.ScreenshotCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                    IsOn="{x:Bind ViewModel.ShowScreenshotCapturePickerAfterCapture, Mode=TwoWay}" />
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
                     <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Scale" />
                     <TextBlock
                         Style="{StaticResource CaptionTextBlockStyle}"
