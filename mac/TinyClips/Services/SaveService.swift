@@ -428,14 +428,31 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         startAutomaticUploadIfNeeded(for: url)
     }
 
+    @MainActor
     private func copyToClipboard(url: URL, type: CaptureType) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
 
         switch type {
         case .screenshot:
-            if let image = NSImage(contentsOf: url) {
-                pasteboard.writeObjects([image])
+            guard let image = NSImage(contentsOf: url),
+                  let tiffData = image.tiffRepresentation,
+                  let bitmap = NSBitmapImageRep(data: tiffData) else {
+                showError("Could not prepare the screenshot for the clipboard.")
+                return
+            }
+
+            let pngData = (url.pathExtension.lowercased() == "png" ? try? Data(contentsOf: url) : nil)
+                ?? bitmap.representation(using: .png, properties: [:])
+            guard let pngData else {
+                showError("Could not prepare the screenshot for the clipboard.")
+                return
+            }
+
+            let didWritePNG = pasteboard.setData(pngData, forType: .png)
+            let didWriteTIFF = pasteboard.setData(tiffData, forType: .tiff)
+            if !didWritePNG || !didWriteTIFF {
+                showError("Could not copy the screenshot to the clipboard.")
             }
         case .video, .gif:
             pasteboard.writeObjects([url as NSURL])

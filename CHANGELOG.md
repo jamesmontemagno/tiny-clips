@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - macOS microphone recording now applies a default-on soft-knee limiter that prevents loud peaks from hard-clipping before AAC encoding.
 - macOS General settings now support separate screenshot and video/GIF save folders while preserving the shared folder as a fallback.
 - macOS screenshot editor exports now offer Original, 1:1, 4:3, 16:9, 3:4, and 9:16 frames plus horizontal and vertical alignment, with image pixels and annotations preserved without stretching.
+- macOS screenshot clipboard copies now publish both PNG and TIFF image representations for wider app compatibility.
 
 ## v1.5.4-mac - 2026-07-26
 
