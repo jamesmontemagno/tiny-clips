@@ -356,6 +356,7 @@ public sealed partial class VideoTrimmerWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Video frame export failed: {ex}");
+            App.ShowSaveFailureNotification(System.IO.Path.GetFileName(_filePath));
         }
         finally
         {
@@ -445,6 +446,7 @@ public sealed partial class VideoTrimmerWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Video trim failed: {ex}");
+            App.ShowSaveFailureNotification(System.IO.Path.GetFileName(outputPath ?? _filePath));
             outputPath = null;
         }
         finally

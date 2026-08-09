@@ -7,6 +7,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Added
 - **Temporary-file controls in Settings → General** — an Advanced card now shows the Tiny Clips temporary-file count and size, opens its dedicated `%LOCALAPPDATA%\TinyClips\Temp` folder, and can purge those files without affecting saved captures.
+- **Narrator capture-status announcements** — Tiny Clips now announces screenshot, video, and GIF save results plus recording start and stop through a tray-lifetime UI Automation notification anchor, even when capture pickers and popups are closed.
 
 ### Changed
 - Screenshot, video, and GIF settings now each provide matching before/after capture-picker controls.

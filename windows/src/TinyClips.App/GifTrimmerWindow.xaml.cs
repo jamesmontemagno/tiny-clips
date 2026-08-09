@@ -367,6 +367,7 @@ public sealed partial class GifTrimmerWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"GIF frame export failed: {ex}");
+            App.ShowSaveFailureNotification(System.IO.Path.GetFileName(_filePath));
         }
         finally
         {
@@ -431,6 +432,7 @@ public sealed partial class GifTrimmerWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"GIF trim failed: {ex}");
+            App.ShowSaveFailureNotification(System.IO.Path.GetFileName(outputPath ?? _filePath));
             outputPath = null;
         }
         finally
