@@ -39,6 +39,8 @@ public sealed partial class EditorInspector : UserControl
         InitializeBackgroundControls();
 
         controller.ToolChanged += (_, tool) => ShowForTool(tool);
+        controller.BackgroundChanged += (_, _) => UpdateExportFrameControls();
+        controller.ImageChanged += (_, _) => UpdateExportFrameControls();
         controller.SelectionChanged += (_, ann) =>
         {
             // Matches the original behavior: deselecting (clicking empty space with the Select
@@ -514,8 +516,7 @@ public sealed partial class EditorInspector : UserControl
 
     private void UpdateExportFrameControls()
     {
-        var hasAdditionalFrameSpace = _controller.FramePreset != ExportFramePreset.Original;
-        HorizontalAlignmentCombo.IsEnabled = hasAdditionalFrameSpace;
-        VerticalAlignmentCombo.IsEnabled = hasAdditionalFrameSpace;
+        HorizontalAlignmentCombo.IsEnabled = _controller.HasHorizontalExportFrameSpace;
+        VerticalAlignmentCombo.IsEnabled = _controller.HasVerticalExportFrameSpace;
     }
 }

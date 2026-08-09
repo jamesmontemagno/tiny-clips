@@ -471,6 +471,34 @@ internal sealed class EditorController : IDisposable
             VerticalExportAlignment);
     }
 
+    public bool HasHorizontalExportFrameSpace
+    {
+        get
+        {
+            if (_bitmap is null)
+            {
+                return false;
+            }
+
+            var layout = GetExportFrameLayout();
+            return layout.FrameSize.Width > _bitmap.PixelWidth + Math.Max(0, CanvasPadding) * 2;
+        }
+    }
+
+    public bool HasVerticalExportFrameSpace
+    {
+        get
+        {
+            if (_bitmap is null)
+            {
+                return false;
+            }
+
+            var layout = GetExportFrameLayout();
+            return layout.FrameSize.Height > _bitmap.PixelHeight + Math.Max(0, CanvasPadding) * 2;
+        }
+    }
+
     // -- Coordinate mapping (pure; parameterized by the current host size) ------------------
 
     public (double Scale, double OffsetX, double OffsetY) ImageLayout(double hostW, double hostH)

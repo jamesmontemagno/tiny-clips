@@ -500,14 +500,14 @@ struct ScreenshotEditorView: View {
                         Text(alignment.label).tag(alignment)
                     }
                 }
-                .disabled(viewModel.exportFramePreset == .original)
+                .disabled(!viewModel.hasHorizontalExportFrameSpace)
 
                 Picker("Vertical", selection: $viewModel.verticalExportAlignment) {
                     ForEach(ExportVerticalAlignment.allCases) { alignment in
                         Text(alignment.label).tag(alignment)
                     }
                 }
-                .disabled(viewModel.exportFramePreset == .original)
+                .disabled(!viewModel.hasVerticalExportFrameSpace)
             }
             .accessibilityElement(children: .contain)
 
