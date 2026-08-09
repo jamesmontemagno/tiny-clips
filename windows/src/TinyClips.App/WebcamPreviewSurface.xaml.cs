@@ -52,7 +52,9 @@ public sealed partial class WebcamPreviewSurface : UserControl
         var radius = _shape switch
         {
             WebcamShape.Circle => Math.Min(ActualWidth, ActualHeight) / 2,
-            WebcamShape.RoundedRectangle => _cornerRadius ?? Math.Min(ActualWidth, ActualHeight) * 0.12,
+            WebcamShape.RoundedRectangle => _cornerRadius is { } configuredRadius
+                ? configuredRadius / Math.Max(1.0, XamlRoot?.RasterizationScale ?? 1.0)
+                : Math.Min(ActualWidth, ActualHeight) * 0.12,
             _ => 0,
         };
         PreviewBorder.CornerRadius = new CornerRadius(Math.Max(0, radius));
