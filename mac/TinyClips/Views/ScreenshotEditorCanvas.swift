@@ -8,10 +8,16 @@ struct ScreenshotEditorCanvasView: View {
     let containerSize: CGSize
 
     var body: some View {
-        let imageSize = viewModel.displaySize(in: containerSize)
+        let exportLayout = viewModel.displayLayout(in: containerSize)
+        let imageSize = exportLayout.imageRect.size
+        let frameSize = exportLayout.frameSize
+        let frameOrigin = CGPoint(
+            x: (containerSize.width - frameSize.width) / 2,
+            y: (containerSize.height - frameSize.height) / 2
+        )
         let origin = CGPoint(
-            x: (containerSize.width - imageSize.width) / 2,
-            y: (containerSize.height - imageSize.height) / 2
+            x: frameOrigin.x + exportLayout.imageRect.minX,
+            y: frameOrigin.y + exportLayout.imageRect.minY
         )
         let imageCornerRadius = min(
             viewModel.canvasCornerRadius,
@@ -23,13 +29,10 @@ struct ScreenshotEditorCanvasView: View {
             Color(nsColor: .controlBackgroundColor)
 
             if let image = viewModel.originalImage {
-                let backgroundWidth = imageSize.width + (viewModel.canvasPadding * 2)
-                let backgroundHeight = imageSize.height + (viewModel.canvasPadding * 2)
-
                 if viewModel.backgroundStyle == .solid {
                     Rectangle()
                         .fill(viewModel.backgroundColor)
-                        .frame(width: backgroundWidth, height: backgroundHeight)
+                        .frame(width: frameSize.width, height: frameSize.height)
                         .position(x: containerSize.width / 2, y: containerSize.height / 2)
                 } else if viewModel.backgroundStyle == .gradient {
                     Rectangle()
@@ -40,13 +43,14 @@ struct ScreenshotEditorCanvasView: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: backgroundWidth, height: backgroundHeight)
+                        .frame(width: frameSize.width, height: frameSize.height)
                         .position(x: containerSize.width / 2, y: containerSize.height / 2)
                 } else if viewModel.backgroundStyle == .wallpaper, let wallpaperImage = viewModel.wallpaperImage {
                     Image(nsImage: wallpaperImage)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: backgroundWidth, height: backgroundHeight)
+                        .frame(width: frameSize.width, height: frameSize.height)
+                        .clipped()
                         .position(x: containerSize.width / 2, y: containerSize.height / 2)
                 }
 
@@ -90,7 +94,7 @@ struct ScreenshotEditorCanvasView: View {
                 .frame(width: imageSize.width, height: imageSize.height, alignment: .topLeading)
                 .clipShape(RoundedRectangle(cornerRadius: imageCornerRadius))
                 .shadow(color: .black.opacity(0.25), radius: viewModel.canvasShadowRadius)
-                .position(x: containerSize.width / 2, y: containerSize.height / 2)
+                .position(x: origin.x + imageSize.width / 2, y: origin.y + imageSize.height / 2)
 
                 Canvas { context, size in
                     // Draw crop overlay
@@ -222,7 +226,7 @@ struct ScreenshotEditorCanvasView: View {
                     .accessibilityHint(viewModel.selectedTool == .move
                         ? "Select an annotation, drag inside it to move, or drag a corner handle to resize."
                         : "Use the selected tool to edit the screenshot.")
-                    .position(x: containerSize.width / 2, y: containerSize.height / 2)
+                    .position(x: origin.x + imageSize.width / 2, y: origin.y + imageSize.height / 2)
             }
         }
     }
