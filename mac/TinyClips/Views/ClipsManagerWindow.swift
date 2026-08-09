@@ -225,10 +225,6 @@ private class ClipsViewModel: ObservableObject {
 
     private var editorWindows: [NSWindow] = []
 
-#if APPSTORE
-    private var activeScopedURL: URL?
-#endif
-
     enum SortOption: String, CaseIterable {
         case newest = "Newest First"
         case oldest = "Oldest First"
@@ -399,44 +395,12 @@ private class ClipsViewModel: ObservableObject {
     }
 
     private func clipDirectories() -> [URL] {
-#if APPSTORE
-        let bookmark = UserDefaults.standard.data(forKey: "saveDirectoryBookmark")
-        if let bookmark, !bookmark.isEmpty,
-           let customURL = resolveBookmark(bookmark) {
-            return [customURL]
-        }
-        var dirs: [URL] = []
-        if let pics = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first {
-            dirs.append(pics.appendingPathComponent("TinyClips"))
-        }
-        if let movies = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first {
-            dirs.append(movies.appendingPathComponent("TinyClips"))
-        }
-        return dirs
-#else
-        let dir = UserDefaults.standard.string(forKey: "saveDirectory") ?? (NSHomeDirectory() + "/Desktop")
-        return [URL(fileURLWithPath: dir)]
-#endif
+        let types: [CaptureType] = [.screenshot, .video, .gif]
+        var seen = Set<String>()
+        return types
+            .map { SaveService.shared.outputDirectoryURL(for: $0) }
+            .filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
-
-#if APPSTORE
-    private func resolveBookmark(_ data: Data) -> URL? {
-        var isStale = false
-        guard let url = try? URL(
-            resolvingBookmarkData: data,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        ), url.startAccessingSecurityScopedResource() else { return nil }
-        activeScopedURL?.stopAccessingSecurityScopedResource()
-        activeScopedURL = url
-        return url
-    }
-
-    deinit {
-        activeScopedURL?.stopAccessingSecurityScopedResource()
-    }
-#endif
 
     private func filesInDirectory(_ dir: URL) -> [URL] {
         let settings = CaptureSettings.shared
