@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
@@ -11,6 +12,10 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         ExternalImageOpenCoordinator.shared.handleOpen(urls: [URL(fileURLWithPath: filename)])
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        SingleInstanceCoordinator.shared.release()
+    }
 }
 
 struct AppWindowCommands: Commands {
@@ -22,15 +27,25 @@ struct AppWindowCommands: Commands {
 @main
 struct TinyClipsApp: App {
     @NSApplicationDelegateAdaptor(TinyClipsAppDelegate.self) private var appDelegate
-    @StateObject private var captureManager = CaptureManager()
+    @StateObject private var captureManager: CaptureManager
     @ObservedObject private var sparkleController = SparkleController.shared
 
     init() {
-        _ = try? TinyClipsTemporaryFiles.removeStaleFiles(
-            olderThan: Date().addingTimeInterval(-24 * 60 * 60)
-        )
-        _ = SparkleController.shared
-        NSApplication.shared.setActivationPolicy(CaptureSettings.shared.showInDock ? .regular : .accessory)
+        switch SingleInstanceCoordinator.shared.acquire() {
+        case .primary:
+            _ = try? TinyClipsTemporaryFiles.removeStaleFiles(
+                olderThan: Date().addingTimeInterval(-24 * 60 * 60)
+            )
+            _ = SparkleController.shared
+            NSApplication.shared.setActivationPolicy(CaptureSettings.shared.showInDock ? .regular : .accessory)
+        case .alreadyRunning:
+            exit(EXIT_SUCCESS)
+        case let .failure(error):
+            NSAlert(error: error).runModal()
+            exit(EXIT_FAILURE)
+        }
+
+        _captureManager = StateObject(wrappedValue: CaptureManager())
     }
 
     var body: some Scene {
