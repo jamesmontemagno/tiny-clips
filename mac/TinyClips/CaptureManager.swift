@@ -241,24 +241,26 @@ class CaptureManager: ObservableObject {
     }
 
     func takeScreenshot() {
+        let cursorScreen = screenUnderMouseCursor()
         Task {
             await prepareForNewCaptureRequest()
             guard await PermissionManager.shared.checkPermission() else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .screenshot) {
-                showScreenshotPicker()
+                showScreenshotPicker(cursorScreen: cursorScreen)
             } else {
                 await performScreenshotCapture(
                     mode: .region,
                     countdownEnabled: settings.screenshotCountdownEnabled,
                     countdownDuration: settings.screenshotCountdownDuration,
-                    shouldReturnToPicker: false
+                    shouldReturnToPicker: false,
+                    cursorScreen: cursorScreen
                 )
             }
         }
     }
 
-    private func showScreenshotPicker() {
+    private func showScreenshotPicker(cursorScreen: NSScreen? = nil) {
         if screenshotPickerPanel != nil {
             return
         }
@@ -276,7 +278,8 @@ class CaptureManager: ObservableObject {
                         mode: mode,
                         countdownEnabled: countdownEnabled,
                         countdownDuration: countdownDuration,
-                        shouldReturnToPicker: true
+                        shouldReturnToPicker: true,
+                        cursorScreen: cursorScreen
                     )
                 }
             },
@@ -300,13 +303,14 @@ class CaptureManager: ObservableObject {
         mode: CapturePickerMode,
         countdownEnabled: Bool,
         countdownDuration: Int,
-        shouldReturnToPicker: Bool
+        shouldReturnToPicker: Bool,
+        cursorScreen: NSScreen? = nil
     ) async {
         switch mode {
         case .region:
             guard let region = await RegionSelector.selectRegion() else {
                 if shouldReturnToPicker {
-                    showScreenshotPicker()
+                    showScreenshotPicker(cursorScreen: cursorScreen)
                 }
                 return
             }
@@ -319,10 +323,10 @@ class CaptureManager: ObservableObject {
             )
 
         case .screen:
-            let screen = await chooseScreenForCapture()
+            let screen = await chooseScreenForCapture(cursorScreen: cursorScreen)
             guard let screen, let region = CaptureRegion.fullScreen(for: screen) else {
                 if shouldReturnToPicker {
-                    showScreenshotPicker()
+                    showScreenshotPicker(cursorScreen: cursorScreen)
                 }
                 return
             }
@@ -337,7 +341,7 @@ class CaptureManager: ObservableObject {
         case .window:
             guard let window = await WindowSelector.selectWindow() else {
                 if shouldReturnToPicker {
-                    showScreenshotPicker()
+                    showScreenshotPicker(cursorScreen: cursorScreen)
                 }
                 return
             }
@@ -434,12 +438,13 @@ class CaptureManager: ObservableObject {
     }
 
     func startVideoRecording() {
+        let cursorScreen = screenUnderMouseCursor()
         Task {
             await prepareForNewCaptureRequest()
             guard await PermissionManager.shared.checkPermission() else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .video) {
-                showRecordingPicker(for: .video)
+                showRecordingPicker(for: .video, cursorScreen: cursorScreen)
             } else {
                 await performRecordingSetup(
                     type: .video,
@@ -447,7 +452,8 @@ class CaptureManager: ObservableObject {
                     countdownEnabled: settings.videoCountdownEnabled,
                     countdownDuration: settings.videoCountdownDuration,
                     videoTimeLimitMinutes: settings.videoRecordingTimeLimitMinutes,
-                    shouldReturnToPicker: false
+                    shouldReturnToPicker: false,
+                    cursorScreen: cursorScreen
                 )
             }
         }
@@ -610,12 +616,13 @@ class CaptureManager: ObservableObject {
     }
 
     func startGifRecording() {
+        let cursorScreen = screenUnderMouseCursor()
         Task {
             await prepareForNewCaptureRequest()
             guard await PermissionManager.shared.checkPermission() else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .gif) {
-                showRecordingPicker(for: .gif)
+                showRecordingPicker(for: .gif, cursorScreen: cursorScreen)
             } else {
                 await performRecordingSetup(
                     type: .gif,
@@ -623,7 +630,8 @@ class CaptureManager: ObservableObject {
                     countdownEnabled: settings.gifCountdownEnabled,
                     countdownDuration: settings.gifCountdownDuration,
                     videoTimeLimitMinutes: settings.videoRecordingTimeLimitMinutes,
-                    shouldReturnToPicker: false
+                    shouldReturnToPicker: false,
+                    cursorScreen: cursorScreen
                 )
             }
         }
@@ -1600,7 +1608,7 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func showRecordingPicker(for type: CaptureType) {
+    private func showRecordingPicker(for type: CaptureType, cursorScreen: NSScreen? = nil) {
         dismissScreenshotPicker()
         dismissRecordingPicker()
 
@@ -1638,7 +1646,8 @@ class CaptureManager: ObservableObject {
                         countdownEnabled: enabled,
                         countdownDuration: duration,
                         videoTimeLimitMinutes: videoTimeLimitMinutes,
-                        shouldReturnToPicker: true
+                        shouldReturnToPicker: true,
+                        cursorScreen: cursorScreen
                     )
                 }
             },
@@ -1664,11 +1673,12 @@ class CaptureManager: ObservableObject {
         countdownEnabled: Bool,
         countdownDuration: Int,
         videoTimeLimitMinutes: Int,
-        shouldReturnToPicker: Bool
+        shouldReturnToPicker: Bool,
+        cursorScreen: NSScreen? = nil
     ) async {
-        guard let target = await chooseCaptureTarget(for: mode) else {
+        guard let target = await chooseCaptureTarget(for: mode, cursorScreen: cursorScreen) else {
             if shouldReturnToPicker {
-                showRecordingPicker(for: type)
+                showRecordingPicker(for: type, cursorScreen: cursorScreen)
             }
             return
         }
@@ -1691,13 +1701,13 @@ class CaptureManager: ObservableObject {
         showStartPanel()
     }
 
-    private func chooseCaptureTarget(for mode: CapturePickerMode) async -> CaptureTarget? {
+    private func chooseCaptureTarget(for mode: CapturePickerMode, cursorScreen: NSScreen?) async -> CaptureTarget? {
         switch mode {
         case .region:
             guard let region = await RegionSelector.selectRegion() else { return nil }
             return CaptureTarget(region: region)
         case .screen:
-            let screen = await chooseScreenForCapture()
+            let screen = await chooseScreenForCapture(cursorScreen: cursorScreen)
             guard let screen else { return nil }
             guard let region = CaptureRegion.fullScreen(for: screen) else { return nil }
             return CaptureTarget(region: region)
@@ -1765,18 +1775,25 @@ class CaptureManager: ObservableObject {
         return screen
     }
 
-    private func chooseScreenForCapture() async -> NSScreen? {
+    private func chooseScreenForCapture(cursorScreen: NSScreen?) async -> NSScreen? {
         switch CaptureSettings.shared.multiMonitorCaptureMode {
         case .askEveryTime:
             if NSScreen.screens.count > 1 {
                 return await pickScreen()
             }
-            return NSScreen.main ?? NSScreen.screens.first
+            return mainScreen()
         case .displayUnderCursor:
-            return screenUnderMouseCursor() ?? NSScreen.main ?? NSScreen.screens.first
+            return cursorScreen ?? screenUnderMouseCursor() ?? mainScreen()
         case .mainDisplay:
-            return NSScreen.main ?? NSScreen.screens.first
+            return mainScreen()
         }
+    }
+
+    private func mainScreen() -> NSScreen? {
+        let mainDisplayID = CGMainDisplayID()
+        return NSScreen.screens.first {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == mainDisplayID
+        } ?? NSScreen.screens.first
     }
 
     private func screenUnderMouseCursor() -> NSScreen? {
