@@ -27,7 +27,7 @@ public sealed class UploadcareUploadServiceTests : IDisposable
 
         Assert.Equal("22222222-2222-2222-2222-222222222222", result.FileId);
         Assert.Equal("https://ucarecdn.com/22222222-2222-2222-2222-222222222222/", result.DeliveryUri.AbsoluteUri);
-        var body = Assert.Single(handler.RequestBodies);
+        var body = Assert.Single(handler.RequestBodies).Body;
         Assert.Contains("UPLOADCARE_PUB_KEY", body, StringComparison.Ordinal);
         Assert.Contains("public-key", body, StringComparison.Ordinal);
         Assert.Contains("signature", body, StringComparison.Ordinal);
@@ -53,7 +53,11 @@ public sealed class UploadcareUploadServiceTests : IDisposable
             };
         });
         using var client = new HttpClient(handler);
-        var service = CreateService(client, publicKey: "public-key", directUploadLimitBytes: 1);
+        var service = CreateService(
+            client,
+            publicKey: "public-key",
+            secretKey: "secret-key",
+            directUploadLimitBytes: 1);
 
         var result = await service.UploadAsync(path);
 
@@ -61,6 +65,11 @@ public sealed class UploadcareUploadServiceTests : IDisposable
         Assert.Equal(
             new[] { "/multipart/start/", "/one", "/two", "/multipart/complete/" },
             requestPaths);
+        var multipartRequestBodies = handler.RequestBodies.ToDictionary(request => request.Path, request => request.Body);
+        Assert.Contains("signature", multipartRequestBodies["/multipart/start/"], StringComparison.Ordinal);
+        Assert.Contains("expire", multipartRequestBodies["/multipart/start/"], StringComparison.Ordinal);
+        Assert.Contains("signature", multipartRequestBodies["/multipart/complete/"], StringComparison.Ordinal);
+        Assert.Contains("expire", multipartRequestBodies["/multipart/complete/"], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -123,17 +132,21 @@ public sealed class UploadcareUploadServiceTests : IDisposable
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
-        public List<string> RequestBodies { get; } = [];
+        public List<RecordedRequest> RequestBodies { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (request.Content is not null && request.RequestUri?.AbsolutePath == "/base/")
+            if (request.Content is not null && request.RequestUri?.Host == "upload.uploadcare.com")
             {
-                RequestBodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
+                RequestBodies.Add(new RecordedRequest(
+                    request.RequestUri.AbsolutePath,
+                    await request.Content.ReadAsStringAsync(cancellationToken)));
             }
 
             return responseFactory(request);
         }
+
+        public sealed record RecordedRequest(string Path, string Body);
     }
 
     private sealed class TestCredentialStore(string? secretKey) : IUploadcareCredentialStore

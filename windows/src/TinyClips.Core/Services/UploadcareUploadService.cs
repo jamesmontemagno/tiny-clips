@@ -67,6 +67,10 @@ public sealed class UploadcareUploadService : IUploadcareUploadService
                 ? await UploadDirectAsync(file, publicKey, signing, cancellationToken)
                 : await UploadMultipartAsync(file, publicKey, signing, cancellationToken);
         }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new UploadcareUploadException("Uploadcare upload timed out. Try again.", ex);
+        }
         catch (OperationCanceledException)
         {
             throw;
@@ -161,6 +165,7 @@ public sealed class UploadcareUploadService : IUploadcareUploadService
         using var completeContent = new MultipartFormDataContent();
         completeContent.Add(new StringContent(publicKey), "UPLOADCARE_PUB_KEY");
         completeContent.Add(new StringContent(upload.FileId), "uuid");
+        AddSigningParameters(completeContent, signing);
         using var completeResponse = await _httpClient.PostAsync(MultipartCompleteUri, completeContent, cancellationToken);
         await EnsureSuccessAsync(completeResponse, cancellationToken);
         var completeBody = await completeResponse.Content.ReadAsStringAsync(cancellationToken);
@@ -173,25 +178,30 @@ public sealed class UploadcareUploadService : IUploadcareUploadService
         var content = new MultipartFormDataContent();
         content.Add(new StringContent(publicKey), "UPLOADCARE_PUB_KEY");
         content.Add(new StringContent("auto"), "UPLOADCARE_STORE");
+        AddSigningParameters(content, signing);
+        return content;
+    }
+
+    private static void AddSigningParameters(MultipartFormDataContent content, SigningParameters? signing)
+    {
         if (signing is { } parameters)
         {
             content.Add(new StringContent(parameters.Signature), "signature");
             content.Add(new StringContent(parameters.Expire), "expire");
         }
-
-        return content;
     }
 
     private static SigningParameters? CreateSigningParameters(string? secretKey)
     {
-        if (string.IsNullOrWhiteSpace(secretKey))
+        var normalizedSecretKey = secretKey?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedSecretKey))
         {
             return null;
         }
 
         var expire = DateTimeOffset.UtcNow.AddMinutes(30).ToUnixTimeSeconds()
             .ToString(System.Globalization.CultureInfo.InvariantCulture);
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secretKey));
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(normalizedSecretKey));
         var signature = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(expire))).ToLowerInvariant();
         return new SigningParameters(signature, expire);
     }

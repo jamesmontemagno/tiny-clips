@@ -1193,6 +1193,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public void ResetAllSettings()
     {
+        _uploadcareCredentials.RemoveSecretKey();
         _settings.ResetToDefaults();
         Load();
         ThemeChanged?.Invoke();

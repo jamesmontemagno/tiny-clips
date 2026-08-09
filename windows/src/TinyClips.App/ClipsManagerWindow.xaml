@@ -78,6 +78,7 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                AutomationProperties.LiveSetting="Polite"
                 TextTrimming="CharacterEllipsis"
                 Visibility="Collapsed" />
 

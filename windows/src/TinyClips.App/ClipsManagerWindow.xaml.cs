@@ -36,7 +36,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(UploadedUrlAvailable))]
     private string? _uploadedUrl;
 
-    public Visibility UploadAvailable => string.IsNullOrWhiteSpace(UploadedUrl)
+    public required bool IsUploadcareEnabled { get; init; }
+
+    public Visibility UploadAvailable => IsUploadcareEnabled && string.IsNullOrWhiteSpace(UploadedUrl)
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -44,7 +46,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
         ? Visibility.Collapsed
         : Visibility.Visible;
 
-    public static async Task<ClipItemViewModel> FromAsync(ClipEntry entry)
+    public static async Task<ClipItemViewModel> FromAsync(ClipEntry entry, bool isUploadcareEnabled)
     {
         var glyph = entry.Type switch
         {
@@ -83,6 +85,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
             FileSizeDisplay = sizeDisplay,
             CapturedAt     = entry.CapturedAt,
             Thumbnail      = thumbnail,
+            IsUploadcareEnabled = isUploadcareEnabled,
         };
     }
 
@@ -130,6 +133,7 @@ public sealed partial class ClipsManagerWindow : Window
     private readonly IClipLibraryService _library;
     private readonly IUploadcareUploadService _uploadcare;
     private readonly ISettingsService _settings;
+    private readonly ICaptureSettings _captureSettings;
 
     private readonly ObservableCollection<ClipItemViewModel> _visibleClips = [];
     private IReadOnlyList<ClipItemViewModel> _allClips = [];
@@ -141,6 +145,7 @@ public sealed partial class ClipsManagerWindow : Window
         _library  = App.Services.GetRequiredService<IClipLibraryService>();
         _uploadcare = App.Services.GetRequiredService<IUploadcareUploadService>();
         _settings = App.Services.GetRequiredService<ISettingsService>();
+        _captureSettings = App.Services.GetRequiredService<ICaptureSettings>();
 
         InitializeComponent();
 
@@ -181,7 +186,8 @@ public sealed partial class ClipsManagerWindow : Window
         try
         {
             var entries = await _library.GetClipsAsync();
-            _allClips = (await Task.WhenAll(entries.Select(ClipItemViewModel.FromAsync))).ToList();
+            _allClips = (await Task.WhenAll(entries.Select(entry =>
+                ClipItemViewModel.FromAsync(entry, _captureSettings.UploadcareEnabled)))).ToList();
             ApplyFilterAndSort();
         }
         catch (Exception ex)
@@ -331,6 +337,12 @@ public sealed partial class ClipsManagerWindow : Window
     {
         if (sender is not Button { Tag: string path } button)
         {
+            return;
+        }
+
+        if (!_captureSettings.UploadcareEnabled)
+        {
+            SetUploadStatus("Enable Uploadcare in Settings before uploading.");
             return;
         }
 
