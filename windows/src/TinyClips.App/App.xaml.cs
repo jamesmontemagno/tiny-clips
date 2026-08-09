@@ -52,6 +52,7 @@ public partial class App : Application
     private TimeSpan _recordingElapsedBeforePause;
     private TargetSelection? _activeRecordingSelection;
     private CaptureType? _activeRecordingType;
+    private bool _activeRecordingWasPickerInitiated;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
     private TrayPopupWindow? _trayPopup;
@@ -471,8 +472,9 @@ public partial class App : Application
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var (cdEnabled, cdDuration) = GetCountdown(settings, type);
+            var wasPickerInitiated = settings.ShouldShowCapturePicker(type);
 
-            var pick = settings.ShouldShowCapturePicker(type)
+            var pick = wasPickerInitiated
                 ? await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
                 : new CapturePickerResult(
                     CapturePickerMode.Region,
@@ -542,13 +544,13 @@ public partial class App : Application
                     await CopyToClipboardAsync(path, CaptureType.Screenshot);
                     if (settings.ShowScreenshotEditor)
                     {
-                        OpenScreenshotEditor(path);
+                        OpenScreenshotEditor(path, reopenPickerAfterClose: wasPickerInitiated);
                     }
                     else
                     {
                         RevealInExplorer(path);
                         ShowSaveToast(path);
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
                     }
                     break;
 
@@ -557,6 +559,7 @@ public partial class App : Application
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Video;
+                    _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
                     {
@@ -572,6 +575,7 @@ public partial class App : Application
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Gif;
+                    _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
                     {
@@ -590,6 +594,7 @@ public partial class App : Application
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
             UpdateRecordingState();
         }
         catch (Exception ex)
@@ -599,6 +604,7 @@ public partial class App : Application
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
             HideRecordingIndicatorIfNotRecording();
         }
         finally
@@ -952,6 +958,8 @@ public partial class App : Application
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            var wasPickerInitiated = _activeRecordingWasPickerInitiated;
+            _activeRecordingWasPickerInitiated = false;
             if (_isExiting)
             {
                 return;
@@ -971,12 +979,12 @@ public partial class App : Application
             var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.ShowTrimmer;
             if (showTrimmer)
             {
-                OpenTrimmer(path, type);
+                OpenTrimmer(path, type, pickerInitiated: wasPickerInitiated);
             }
             else
             {
                 await FinalizeClipAsync(path, type);
-                ReopenPickerAfterCaptureIfNeeded(type);
+                ReopenPickerAfterCaptureIfNeeded(type, wasPickerInitiated);
             }
         });
     }
@@ -1017,6 +1025,7 @@ public partial class App : Application
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
         }
     }
 
@@ -1344,7 +1353,11 @@ public partial class App : Application
         ShowSaveToast(path);
     }
 
-    private void OpenTrimmer(string path, CaptureType type, bool isRecentCapture = false)
+    private void OpenTrimmer(
+        string path,
+        CaptureType type,
+        bool isRecentCapture = false,
+        bool pickerInitiated = false)
     {
         _trimmerWindow?.Close();
         _lastTrimmerSourcePath = path;
@@ -1352,13 +1365,13 @@ public partial class App : Application
         if (type == CaptureType.Gif)
         {
             var gifTrimmer = new GifTrimmerWindow(path);
-            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture);
+            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
             _trimmerWindow = gifTrimmer;
         }
         else
         {
             var videoTrimmer = new VideoTrimmerWindow(path);
-            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture);
+            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
             _trimmerWindow = videoTrimmer;
         }
 
@@ -1366,7 +1379,11 @@ public partial class App : Application
         ActivateWindowToForeground(_trimmerWindow);
     }
 
-    private void OnTrimmerCompleted(object? sender, string? trimmedPath, bool isRecentCapture)
+    private void OnTrimmerCompleted(
+        object? sender,
+        string? trimmedPath,
+        bool isRecentCapture,
+        bool pickerInitiated)
     {
         _dispatcher?.TryEnqueue(async () =>
         {
@@ -1396,7 +1413,7 @@ public partial class App : Application
             }
             if (!isRecentCapture)
             {
-                ReopenPickerAfterCaptureIfNeeded(type);
+                ReopenPickerAfterCaptureIfNeeded(type, pickerInitiated);
             }
         });
     }
@@ -1740,7 +1757,7 @@ public partial class App : Application
             QuickBugReport.GetDistributionChannel()
         );
 
-    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = true)
+    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
     {
         try
         {
@@ -1757,7 +1774,7 @@ public partial class App : Application
                     _editorWindow = null;
                     if (reopenPickerAfterClose)
                     {
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
                     }
                 }
             };
@@ -1770,7 +1787,7 @@ public partial class App : Application
             ShowSaveToast(path);
             if (reopenPickerAfterClose)
             {
-                ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
             }
         }
     }
@@ -1832,10 +1849,10 @@ public partial class App : Application
         Environment.Exit(0);
     }
 
-    private void ReopenPickerAfterCaptureIfNeeded(CaptureType type)
+    private void ReopenPickerAfterCaptureIfNeeded(CaptureType type, bool pickerInitiated)
     {
         var settings = Services.GetRequiredService<ICaptureSettings>();
-        if (!settings.ShouldShowCapturePickerAfterCapture(type) || _isExiting || IsAnyRecordingActive())
+        if (!pickerInitiated || !settings.ShouldShowCapturePickerAfterCapture(type) || _isExiting || IsAnyRecordingActive())
         {
             return;
         }
