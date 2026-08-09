@@ -3,19 +3,39 @@ name: Windows Build
 on:
   pull_request:
     branches: [main, develop]
-    paths:
-      - 'windows/**'
-      - '.github/workflows/windows-build.yml'
   push:
     branches: [main, develop]
-    paths:
-      - 'windows/**'
-      - '.github/workflows/windows-build.yml'
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: Detect Windows changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      windows: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.windows }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Filter changed files
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            windows:
+              - 'windows/**'
+              - '.github/workflows/windows-build.yml'
+          base: ${{ github.ref }}
+
   build:
     name: Build (Windows, ${{ matrix.platform }})
+    needs: changes
+    if: ${{ needs.changes.outputs.windows == 'true' }}
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -40,7 +60,8 @@ jobs:
   test:
     name: Run Core Tests
     runs-on: windows-latest
-    needs: build
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.windows == 'true' }}
 
     steps:
       - name: Checkout code
@@ -56,3 +77,13 @@ jobs:
 
       - name: Run tests
         run: dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Release --no-restore
+
+  no-windows-changes:
+    name: Build skipped (no Windows changes)
+    needs: changes
+    if: ${{ needs.changes.outputs.windows != 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Report successful skip
+        run: echo "No Windows files changed; skipping the Windows build and tests."

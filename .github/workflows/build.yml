@@ -3,20 +3,40 @@ name: Build
 on:
   pull_request:
     branches: [main, develop]
-    paths:
-      - 'mac/**'
-      - '.github/workflows/build.yml'
   push:
     branches: [main, develop]
-    paths:
-      - 'mac/**'
-      - '.github/workflows/build.yml'
 
 env:
   SCHEME: TinyClips
 
 jobs:
+  changes:
+    name: Detect macOS changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      mac: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.mac }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Filter changed files
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            mac:
+              - 'mac/**'
+              - '.github/workflows/build.yml'
+          base: ${{ github.ref }}
+
   build:
+    needs: changes
+    if: ${{ needs.changes.outputs.mac == 'true' }}
     runs-on: macos-26
 
     steps:
@@ -51,3 +71,13 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
+
+  no-macos-changes:
+    name: Build skipped (no macOS changes)
+    needs: changes
+    if: ${{ needs.changes.outputs.mac != 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Report successful skip
+        run: echo "No macOS files changed; skipping the macOS build."
