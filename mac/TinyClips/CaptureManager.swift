@@ -132,7 +132,12 @@ class CaptureManager: ObservableObject {
     @Published var activeWebcamName: String?
     @Published var microphoneLevel: Double = 0
     @Published var microphoneWarningMessage: String?
-    @Published private(set) var hotKeyRegistrationError: String?
+    @Published private(set) var captureHotKeyRegistrationError: String?
+    @Published private(set) var stopHotKeyRegistrationError: String?
+
+    var hotKeyRegistrationError: String? {
+        captureHotKeyRegistrationError ?? stopHotKeyRegistrationError
+    }
 
     private var videoRecorder: VideoRecorder?
     private var webcamRecorder: WebcamRecorder?
@@ -229,7 +234,7 @@ class CaptureManager: ObservableObject {
                 carbonModifiers: settings.gifHotKeyModifiers
             )
         )
-        hotKeyRegistrationError = result.errorMessage
+        captureHotKeyRegistrationError = result.errorMessage
 
         updateStopHotKeyRegistration()
     }
@@ -260,18 +265,19 @@ class CaptureManager: ObservableObject {
             currentBinding = gif
         }
 
-        guard binding != currentBinding else {
-            hotKeyRegistrationError = nil
-            return nil
-        }
-
         if let validationError = HotKeyBinding.validationError(
             for: binding,
             captureType: captureType,
             captureBindings: [(.screenshot, screenshot), (.video, video), (.gif, gif)]
         ) {
-            hotKeyRegistrationError = validationError
+            captureHotKeyRegistrationError = validationError
             return validationError
+        }
+
+        if binding == currentBinding {
+            let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
+            captureHotKeyRegistrationError = result.errorMessage
+            return result.errorMessage
         }
 
         switch captureType {
@@ -285,24 +291,50 @@ class CaptureManager: ObservableObject {
 
         let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
         guard let registrationError = result.errorMessage else {
-            shouldIgnoreNextHotKeySettingsChange = true
-            switch captureType {
-            case .screenshot:
-                settings.screenshotHotKeyCode = binding.keyCode
-                settings.screenshotHotKeyModifiers = binding.carbonModifiers
-            case .video:
-                settings.videoHotKeyCode = binding.keyCode
-                settings.videoHotKeyModifiers = binding.carbonModifiers
-            case .gif:
-                settings.gifHotKeyCode = binding.keyCode
-                settings.gifHotKeyModifiers = binding.carbonModifiers
-            }
-            hotKeyRegistrationError = nil
+            persistCaptureHotKeys(screenshot: screenshot, video: video, gif: gif, settings: settings)
+            captureHotKeyRegistrationError = nil
             return nil
         }
 
-        hotKeyRegistrationError = registrationError
+        captureHotKeyRegistrationError = registrationError
         return registrationError
+    }
+
+    @discardableResult
+    func resetCaptureHotKeysToDefaults() -> String? {
+        let screenshot = HotKeyBinding.defaultScreenshot
+        let video = HotKeyBinding.defaultVideo
+        let gif = HotKeyBinding.defaultGif
+        let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
+
+        guard let registrationError = result.errorMessage else {
+            persistCaptureHotKeys(
+                screenshot: screenshot,
+                video: video,
+                gif: gif,
+                settings: CaptureSettings.shared
+            )
+            captureHotKeyRegistrationError = nil
+            return nil
+        }
+
+        captureHotKeyRegistrationError = registrationError
+        return registrationError
+    }
+
+    private func persistCaptureHotKeys(
+        screenshot: HotKeyBinding,
+        video: HotKeyBinding,
+        gif: HotKeyBinding,
+        settings: CaptureSettings
+    ) {
+        shouldIgnoreNextHotKeySettingsChange = true
+        settings.screenshotHotKeyCode = screenshot.keyCode
+        settings.screenshotHotKeyModifiers = screenshot.carbonModifiers
+        settings.videoHotKeyCode = video.keyCode
+        settings.videoHotKeyModifiers = video.carbonModifiers
+        settings.gifHotKeyCode = gif.keyCode
+        settings.gifHotKeyModifiers = gif.carbonModifiers
     }
 
     private func registerCaptureHotKeys(
@@ -338,11 +370,10 @@ class CaptureManager: ObservableObject {
                 guard let self, self.isRecording else { return }
                 self.stopRecording()
             }
-            if let registrationError = result.errorMessage {
-                hotKeyRegistrationError = registrationError
-            }
+            stopHotKeyRegistrationError = result.errorMessage
         } else {
             hotKeyManager.unregisterStopHotKey()
+            stopHotKeyRegistrationError = nil
         }
     }
 

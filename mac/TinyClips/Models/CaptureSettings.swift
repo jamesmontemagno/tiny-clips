@@ -532,7 +532,7 @@ class CaptureSettings: ObservableObject {
         set { gifMouseClickColorHex = newValue.hexRGBString }
     }
 
-    func resetToDefaults() {
+    func resetToDefaults(preservingHotKeys: Bool = false) {
         // Remove all keys in one pass so only a single objectWillChange fires
         let keys: [String] = [
             "saveDirectory", "screenshotSaveDirectory", "videoGifSaveDirectory",
@@ -567,10 +567,12 @@ class CaptureSettings: ObservableObject {
             "screenshotCountdownEnabled", "screenshotCountdownDuration",
             "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "multiMonitorCaptureMode", "showRegionIndicator",
             "includeTinyClipsInCapture", "showBrandingOverlay",
+            "appStoreClipCountForReview", "appStoreReviewRequested"
+        ]
+        let hotKeyKeys = [
             "screenshotHotKeyCode", "screenshotHotKeyModifiers",
             "videoHotKeyCode", "videoHotKeyModifiers",
-            "gifHotKeyCode", "gifHotKeyModifiers",
-            "appStoreClipCountForReview", "appStoreReviewRequested"
+            "gifHotKeyCode", "gifHotKeyModifiers"
         ]
 #if APPSTORE
         let masKeys: [String] = [
@@ -581,7 +583,7 @@ class CaptureSettings: ObservableObject {
 #else
         let masKeys: [String] = []
 #endif
-        for key in keys + masKeys {
+        for key in keys + (preservingHotKeys ? [] : hotKeyKeys) + masKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
 #if APPSTORE

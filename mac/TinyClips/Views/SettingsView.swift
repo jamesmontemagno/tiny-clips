@@ -235,9 +235,14 @@ struct SettingsView: View {
             alert.addButton(withTitle: "Cancel")
 
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            settings.resetToDefaults()
+            let hotKeyResetError = captureManager.resetCaptureHotKeysToDefaults()
+            settings.resetToDefaults(preservingHotKeys: true)
             sparkleController.resetPreferencesToDefaults()
             applyDockVisibility(settings.showInDock)
+
+            if let hotKeyResetError {
+                SaveService.shared.showError(hotKeyResetError)
+            }
         }
     }
 
