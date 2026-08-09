@@ -26,6 +26,9 @@ struct VideoSettingsSection: View {
             Toggle("Record microphone", isOn: $settings.recordMicrophone)
                 .help("Include microphone input in the recording.")
 
+            Toggle("Limit microphone peaks", isOn: $settings.microphoneLimiterEnabled)
+                .help("Softly compresses loud microphone peaks before encoding to prevent distortion.")
+
             Picker("Microphone input:", selection: $settings.selectedMicrophoneID) {
                 Text("System Default").tag("")
                 ForEach(availableMicrophones) { device in
