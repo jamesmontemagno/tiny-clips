@@ -709,6 +709,9 @@ class CaptureManager: ObservableObject {
                         recordMicrophone: microphone,
                         selectedMicrophoneID: selectedMicrophoneID
                     )
+                    guard self.activeRecordingSessionID == sessionID else {
+                        return
+                    }
                     self.debugRecordingLifecycle("Video session \(sessionID) started")
                     self.recordingSystemAudioEnabled = recorder.isSystemAudioCaptureActive
                     self.recordingMicrophoneEnabled = recorder.isMicrophoneCaptureActive
@@ -719,6 +722,10 @@ class CaptureManager: ObservableObject {
                                 outputURL: webcamOutputURL,
                                 selectedWebcamID: webcamSelection.deviceID
                             )
+                            guard self.activeRecordingSessionID == sessionID else {
+                                await webcamRecorder.cancel()
+                                return
+                            }
                             self.webcamRecorder = webcamRecorder
                             self.showWebcamPreview(
                                 session: webcamRecorder.previewSession,
@@ -727,6 +734,9 @@ class CaptureManager: ObservableObject {
                             )
                             self.debugRecordingLifecycle("Webcam session started at \(webcamOutputURL.path)")
                         } catch {
+                            guard self.activeRecordingSessionID == sessionID else {
+                                return
+                            }
                             self.webcamRecorder = nil
                             self.activeWebcamName = nil
                             self.activeWebcamOverlaySelection = nil
@@ -735,6 +745,9 @@ class CaptureManager: ObservableObject {
                         }
                     }
 
+                    guard self.activeRecordingSessionID == sessionID else {
+                        return
+                    }
                     self.showStopPanel()
                     self.scheduleVideoAutoStopIfNeeded(timeLimitMinutes: timeLimitMinutes, sessionID: sessionID)
                 } catch {
@@ -821,6 +834,9 @@ class CaptureManager: ObservableObject {
                     self.startMouseClickMonitoringIfNeeded(for: .gif, region: target.region)
 
                     try await writer.start(target: target)
+                    guard self.activeRecordingSessionID == sessionID else {
+                        return
+                    }
                     self.debugRecordingLifecycle("GIF session \(sessionID) started")
                     self.showStopPanel()
                 } catch {
@@ -1056,6 +1072,8 @@ class CaptureManager: ObservableObject {
 
         var savedVideoURL: URL?
         var savedWebcamURL: URL?
+        var partialOutputSaveError: String?
+        var noPartialFramesWereCaptured = false
 
         if let recorder = webcamRecorderAtStop {
             do {
@@ -1083,6 +1101,10 @@ class CaptureManager: ObservableObject {
             } catch {
                 if streamFailureMessage == nil {
                     SaveService.shared.showError("Video save failed: \(error.localizedDescription)")
+                } else if let captureError = error as? CaptureError, case .noFrames = captureError {
+                    noPartialFramesWereCaptured = true
+                } else {
+                    partialOutputSaveError = error.localizedDescription
                 }
             }
 
@@ -1189,6 +1211,19 @@ class CaptureManager: ObservableObject {
                 videoRecorder = nil
             } else {
                 debugRecordingLifecycle("Skipped clearing stale video recorder reference")
+            }
+        }
+
+        if streamFailureMessage != nil,
+           let currentURL = savedVideoURL,
+           currentURL.deletingLastPathComponent().standardizedFileURL == TinyClipsTemporaryFiles.directoryURL.standardizedFileURL {
+            let recoveryURL = SaveService.shared.generateURL(for: .video)
+            do {
+                try FileManager.default.moveItem(at: currentURL, to: recoveryURL)
+                savedVideoURL = recoveryURL
+            } catch {
+                savedVideoURL = nil
+                partialOutputSaveError = error.localizedDescription
             }
         }
 
@@ -1352,6 +1387,10 @@ class CaptureManager: ObservableObject {
             } catch {
                 if streamFailureMessage == nil {
                     SaveService.shared.showError("GIF save failed: \(error.localizedDescription)")
+                } else if let captureError = error as? CaptureError, case .noFrames = captureError {
+                    noPartialFramesWereCaptured = true
+                } else {
+                    partialOutputSaveError = error.localizedDescription
                 }
             }
             if gifWriter === writer {
@@ -1394,9 +1433,16 @@ class CaptureManager: ObservableObject {
 
         if let streamFailureMessage {
             let didSavePartialOutput = savedVideoURL != nil || savedGifURL != nil
-            let partialOutputMessage = didSavePartialOutput
-                ? "A partial recording was saved."
-                : "No captured frames could be saved."
+            let partialOutputMessage: String
+            if didSavePartialOutput {
+                partialOutputMessage = "A partial recording was saved."
+            } else if let partialOutputSaveError {
+                partialOutputMessage = "Tiny Clips could not save the partial recording: \(partialOutputSaveError)"
+            } else if noPartialFramesWereCaptured {
+                partialOutputMessage = "No captured frames could be saved."
+            } else {
+                partialOutputMessage = "No partial recording could be saved."
+            }
             SaveService.shared.showError(
                 "Screen capture stopped unexpectedly. \(partialOutputMessage) Check Screen Recording permission in System Settings, then start a new recording. Details: \(streamFailureMessage)"
             )

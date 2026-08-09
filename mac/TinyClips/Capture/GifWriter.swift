@@ -36,7 +36,12 @@ class GifWriter: NSObject, @unchecked Sendable {
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: processingQueue)
         self.stream = stream
-        try await stream.startCapture()
+        do {
+            try await stream.startCapture()
+        } catch {
+            self.stream = nil
+            throw error
+        }
         debugLifecycle("stream started")
     }
 
