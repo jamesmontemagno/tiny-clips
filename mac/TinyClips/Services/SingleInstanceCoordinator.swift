@@ -1,10 +1,11 @@
 import AppKit
+import Combine
 import Foundation
 import Darwin
 
 // MARK: - Single Instance Coordinator
 
-final class SingleInstanceCoordinator {
+final class SingleInstanceCoordinator: ObservableObject {
     static let shared = SingleInstanceCoordinator()
 
     enum AcquisitionResult {
@@ -36,6 +37,7 @@ final class SingleInstanceCoordinator {
     private let notificationName: Notification.Name
     private var lockFileDescriptor: Int32?
     private var activationObserver: NSObjectProtocol?
+    @Published private(set) var activationRequestID: UInt = 0
 
     private init() {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.tinyclips.app"
@@ -51,10 +53,13 @@ final class SingleInstanceCoordinator {
             return .primary
         }
 
+        observeActivationRequests()
+
         guard let applicationSupportDirectory = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first else {
+            removeActivationObserver()
             return .failure(.applicationSupportDirectoryUnavailable)
         }
 
@@ -68,6 +73,7 @@ final class SingleInstanceCoordinator {
                 withIntermediateDirectories: true
             )
         } catch {
+            removeActivationObserver()
             return .failure(.createApplicationSupportDirectory(error))
         }
 
@@ -76,17 +82,16 @@ final class SingleInstanceCoordinator {
             open($0, O_RDWR | O_CREAT, mode_t(S_IRUSR | S_IWUSR))
         }
         guard fileDescriptor != -1 else {
+            removeActivationObserver()
             return .failure(.openLockFile(errno))
         }
 
         guard flock(fileDescriptor, LOCK_EX | LOCK_NB) == 0 else {
             let errorCode = errno
             close(fileDescriptor)
+            removeActivationObserver()
 
             if errorCode == EWOULDBLOCK || errorCode == EAGAIN {
-                postActivationRequest()
-                // The first process may have acquired the lock immediately before registering its observer.
-                usleep(50_000)
                 postActivationRequest()
                 return .alreadyRunning
             }
@@ -95,15 +100,11 @@ final class SingleInstanceCoordinator {
         }
 
         lockFileDescriptor = fileDescriptor
-        observeActivationRequests()
         return .primary
     }
 
     func release() {
-        if let activationObserver {
-            DistributedNotificationCenter.default().removeObserver(activationObserver)
-            self.activationObserver = nil
-        }
+        removeActivationObserver()
 
         guard let lockFileDescriptor else { return }
         flock(lockFileDescriptor, LOCK_UN)
@@ -123,6 +124,13 @@ final class SingleInstanceCoordinator {
         }
     }
 
+    private func removeActivationObserver() {
+        if let activationObserver {
+            DistributedNotificationCenter.default().removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
+    }
+
     private func postActivationRequest() {
         DistributedNotificationCenter.default().postNotificationName(
             notificationName,
@@ -135,11 +143,32 @@ final class SingleInstanceCoordinator {
     private func activateExistingInstance() {
         NSRunningApplication.current.activate(options: [.activateAllWindows])
 
-        guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeKey }) else {
+        if let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeKey }) {
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+
+        activationRequestID &+= 1
+    }
+
+    func bringSettingsWindowToFront() {
+        focusSettingsWindow()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.focusSettingsWindow()
+        }
+    }
+
+    private func focusSettingsWindow() {
+        NSRunningApplication.current.activate(options: [.activateAllWindows])
+
+        guard let settingsWindow = NSApp.windows.first(where: {
+            $0.identifier?.rawValue == "settings-window" || $0.title == "Tiny Clips Settings"
+        }) else {
             return
         }
 
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
+        settingsWindow.makeKeyAndOrderFront(nil)
+        settingsWindow.orderFrontRegardless()
     }
 }

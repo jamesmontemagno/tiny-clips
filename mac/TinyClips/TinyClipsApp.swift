@@ -29,6 +29,7 @@ struct TinyClipsApp: App {
     @NSApplicationDelegateAdaptor(TinyClipsAppDelegate.self) private var appDelegate
     @StateObject private var captureManager: CaptureManager
     @ObservedObject private var sparkleController = SparkleController.shared
+    @ObservedObject private var singleInstanceCoordinator = SingleInstanceCoordinator.shared
 
     init() {
         switch SingleInstanceCoordinator.shared.acquire() {
@@ -53,6 +54,9 @@ struct TinyClipsApp: App {
             MenuBarContentView(captureManager: captureManager, sparkleController: sparkleController)
         } label: {
             MenuBarLabelView(captureManager: captureManager)
+                .background(
+                    SingleInstanceActivationHandler(coordinator: singleInstanceCoordinator)
+                )
         }
 
         Window("Clips Manager", id: "clips-manager") {
@@ -72,6 +76,31 @@ struct TinyClipsApp: App {
         }
 
         ScreenshotEditorScene()
+    }
+}
+
+private struct SingleInstanceActivationHandler: View {
+    @ObservedObject var coordinator: SingleInstanceCoordinator
+    @Environment(\.openWindow) private var openWindow
+    @State private var handledActivationRequestID: UInt = 0
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                handleActivationRequestIfNeeded()
+            }
+            .onChange(of: coordinator.activationRequestID) { _ in
+                handleActivationRequestIfNeeded()
+            }
+    }
+
+    private func handleActivationRequestIfNeeded() {
+        guard handledActivationRequestID != coordinator.activationRequestID else { return }
+
+        handledActivationRequestID = coordinator.activationRequestID
+        openWindow(id: "settings-window")
+        coordinator.bringSettingsWindowToFront()
     }
 }
 
