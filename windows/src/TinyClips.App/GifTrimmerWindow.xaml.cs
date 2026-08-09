@@ -87,6 +87,7 @@ public sealed partial class GifTrimmerWindow : Window
             _ready = true;
             TrimBar.StartFraction = 0;
             TrimBar.EndFraction = 1;
+            TrimBar.KeyboardStep = LastFrame == 0 ? 1 : 1.0 / LastFrame;
             UpdateLabels();
             SetCurrent(0);
         }
