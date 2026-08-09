@@ -273,6 +273,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
     @AppStorage("recordAudio") var recordAudio: Bool = false
     @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
+    @AppStorage("microphoneLimiterEnabled") var microphoneLimiterEnabled: Bool = true
     @AppStorage("selectedMicrophoneID") var selectedMicrophoneID: String = ""
     @AppStorage("webcamEnabled") var webcamEnabled: Bool = false
     @AppStorage("selectedWebcamID") var selectedWebcamID: String = ""
