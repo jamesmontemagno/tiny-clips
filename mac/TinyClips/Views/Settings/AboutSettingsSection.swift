@@ -63,7 +63,7 @@ struct AboutSettingsSection: View {
                 Link("Privacy Policy", destination: privacyURL)
                     .accessibilityHint("Opens Privacy Policy in your browser.")
             }
-            if let termsURL = URL(string: "https://tinyclips.app/terms.html") {
+            if let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                 Link("Terms of Use", destination: termsURL)
                     .accessibilityHint("Opens Terms of Use in your browser.")
             }

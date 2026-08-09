@@ -18,6 +18,33 @@ struct HotKeyBinding: Equatable {
     static let defaultScreenshot = HotKeyBinding(keyCode: 23, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘5
     static let defaultVideo      = HotKeyBinding(keyCode: 22, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘6
     static let defaultGif        = HotKeyBinding(keyCode: 26, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘7
+    static let stopRecording     = HotKeyBinding(keyCode: kVK_ANSI_Period, carbonModifiers: Int(cmdKey))
+
+    private static let supportedModifierMask = Int(controlKey | optionKey | shiftKey | cmdKey)
+
+    // MARK: - Validation
+
+    static func validationError(
+        for proposedBinding: HotKeyBinding,
+        captureType: CaptureType,
+        captureBindings: [(CaptureType, HotKeyBinding)]
+    ) -> String? {
+        guard proposedBinding.carbonModifiers & supportedModifierMask != 0 else {
+            return "Add at least one modifier key (Control, Option, Shift, or Command)."
+        }
+
+        if proposedBinding == stopRecording {
+            return "That shortcut is reserved for Stop Recording (\(stopRecording.displayString)). Choose a different combination."
+        }
+
+        if let conflictingType = captureBindings.first(where: {
+            $0.0 != captureType && $0.1 == proposedBinding
+        })?.0 {
+            return "That shortcut is already assigned to \(conflictingType.hotKeyDisplayName)."
+        }
+
+        return nil
+    }
 
     // MARK: - Display
 
@@ -136,6 +163,20 @@ struct HotKeyBinding: Equatable {
         case kVK_F11:           return "F11"
         case kVK_F12:           return "F12"
         default:                return nil
+        }
+    }
+
+}
+
+extension CaptureType {
+    var hotKeyDisplayName: String {
+        switch self {
+        case .screenshot:
+            return "Screenshot"
+        case .video:
+            return "Record Video"
+        case .gif:
+            return "Record GIF"
         }
     }
 }

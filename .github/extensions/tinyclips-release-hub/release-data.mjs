@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { getSettings } from "./settings.mjs";
 
 const execFileAsync = promisify(execFile);
 const TAG_PATTERNS = {
@@ -166,6 +167,288 @@ async function getWorkflow(workflow) {
     return { available: true, run: runs[0] ?? null, runs };
 }
 
+async function getActionsSnapshot() {
+    const [workflowResult, runResult] = await Promise.all([
+        tryRun("gh", ["workflow", "list", "--all", "--json", "id,name,path,state", "--limit", "100"]),
+        tryRun("gh", [
+            "run", "list", "--all", "--limit", "50",
+            "--json", "conclusion,createdAt,databaseId,displayTitle,event,headBranch,name,number,status,url,workflowDatabaseId,workflowName",
+        ]),
+    ]);
+    if (!workflowResult.ok || !runResult.ok) {
+        return {
+            available: false,
+            workflows: [],
+            runs: [],
+            error: workflowResult.error ?? runResult.error ?? "Could not query GitHub Actions.",
+        };
+    }
+
+    const runs = JSON.parse(runResult.output || "[]");
+    const latestRunsByWorkflowId = new Map();
+    for (const run of runs) {
+        const workflowId = String(run.workflowDatabaseId ?? "");
+        if (workflowId && !latestRunsByWorkflowId.has(workflowId)) {
+            latestRunsByWorkflowId.set(workflowId, run);
+        }
+    }
+    const workflows = JSON.parse(workflowResult.output || "[]")
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((workflow) => ({
+            ...workflow,
+            latestRun: latestRunsByWorkflowId.get(String(workflow.id)) ?? null,
+        }));
+    return { available: true, workflows, runs, error: null };
+}
+
+function parseWorkflowDispatch(yaml) {
+    const lines = yaml.replace(/\r/g, "").split("\n");
+    const onBlock = findYamlBlock(lines, "on");
+    if (!onBlock) {
+        return { supported: false, inputs: [] };
+    }
+    if (onBlock.inlineValue.includes("workflow_dispatch")) {
+        return { supported: true, inputs: [] };
+    }
+
+    const dispatchBlock = findChildBlock(lines, onBlock.startIndex, onBlock.indent, "workflow_dispatch");
+    if (!dispatchBlock) {
+        return { supported: false, inputs: [] };
+    }
+    const inputsBlock = findChildBlock(lines, dispatchBlock.startIndex, dispatchBlock.indent, "inputs");
+    return {
+        supported: true,
+        inputs: inputsBlock ? parseWorkflowInputs(lines, inputsBlock.startIndex, inputsBlock.indent) : [],
+    };
+}
+
+function findYamlBlock(lines, key) {
+    const matcher = new RegExp(`^\\s*["']?${escapeRegExp(key)}["']?\\s*:\\s*(.*)$`);
+    for (let index = 0; index < lines.length; index += 1) {
+        const match = lines[index].match(matcher);
+        if (match) {
+            return { startIndex: index, indent: countIndent(lines[index]), inlineValue: match[1] ?? "" };
+        }
+    }
+    return null;
+}
+
+function findChildBlock(lines, parentIndex, parentIndent, key) {
+    const matcher = new RegExp(`^\\s*["']?${escapeRegExp(key)}["']?\\s*:\\s*(.*)$`);
+    for (let index = parentIndex + 1; index < lines.length; index += 1) {
+        const line = lines[index];
+        if (!line.trim() || line.trim().startsWith("#")) {
+            continue;
+        }
+        const indent = countIndent(line);
+        if (indent <= parentIndent) {
+            break;
+        }
+        const match = line.match(matcher);
+        if (match) {
+            return { startIndex: index, indent };
+        }
+    }
+    return null;
+}
+
+function parseWorkflowInputs(lines, inputsIndex, inputsIndent) {
+    const inputs = [];
+    let currentInput = null;
+    let options = null;
+    for (let index = inputsIndex + 1; index < lines.length; index += 1) {
+        const line = lines[index];
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) {
+            continue;
+        }
+        const indent = countIndent(line);
+        if (indent <= inputsIndent) {
+            break;
+        }
+        if (indent === inputsIndent + 2 && /^[A-Za-z0-9_.-]+\s*:/.test(trimmed)) {
+            if (currentInput) {
+                inputs.push(currentInput);
+            }
+            currentInput = {
+                name: trimmed.slice(0, trimmed.indexOf(":")).trim(),
+                description: "",
+                required: false,
+                default: "",
+                type: "string",
+                options: [],
+            };
+            options = null;
+            continue;
+        }
+        if (!currentInput) {
+            continue;
+        }
+        if (trimmed === "options:") {
+            options = currentInput.options;
+            continue;
+        }
+        if (options && trimmed.startsWith("- ")) {
+            options.push(unquote(trimmed.slice(2).trim()));
+            continue;
+        }
+        options = null;
+        const separator = trimmed.indexOf(":");
+        if (separator < 0) {
+            continue;
+        }
+        const property = trimmed.slice(0, separator).trim();
+        const value = trimmed.slice(separator + 1).trim();
+        if (property === "description") currentInput.description = unquote(value);
+        if (property === "required") currentInput.required = value === "true";
+        if (property === "default") currentInput.default = unquote(value);
+        if (property === "type") currentInput.type = unquote(value) || "string";
+    }
+    if (currentInput) {
+        inputs.push(currentInput);
+    }
+    return inputs;
+}
+
+function countIndent(line) {
+    return line.length - line.trimStart().length;
+}
+
+function unquote(value) {
+    return (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))
+        ? value.slice(1, -1)
+        : value;
+}
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function getActionsWorkflowDetails(workflowId) {
+    const actions = await getActionsSnapshot();
+    if (!actions.available) {
+        throw new Error(actions.error);
+    }
+    const workflow = actions.workflows.find((candidate) => String(candidate.id) === String(workflowId));
+    if (!workflow) {
+        throw new Error(`Workflow ${workflowId} was not found.`);
+    }
+    const yaml = await run("gh", ["workflow", "view", String(workflow.id), "--yaml", "--ref", "main"]);
+    return {
+        workflow,
+        dispatch: parseWorkflowDispatch(yaml),
+        recentRuns: actions.runs.filter((run) => String(run.workflowDatabaseId) === String(workflow.id)).slice(0, 10),
+    };
+}
+
+function sanitizeWorkflowInputs(inputs, dispatch) {
+    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) {
+        return {};
+    }
+    const declaredInputs = new Map(dispatch.inputs.map((input) => [input.name, input]));
+    const sanitized = {};
+    for (const [name, value] of Object.entries(inputs)) {
+        const declared = declaredInputs.get(name);
+        if (!declared) {
+            throw new Error(`Workflow input "${name}" is not declared.`);
+        }
+        if (!["string", "number", "boolean"].includes(typeof value)) {
+            throw new Error(`Workflow input "${name}" must be a string, number, or boolean.`);
+        }
+        const normalized = String(value).trim();
+        if (declared.options.length > 0 && !declared.options.includes(normalized)) {
+            throw new Error(`Workflow input "${name}" must be one of: ${declared.options.join(", ")}.`);
+        }
+        sanitized[name] = normalized;
+    }
+    for (const declared of dispatch.inputs) {
+        if (declared.required && !sanitized[declared.name]) {
+            throw new Error(`Workflow input "${declared.name}" is required.`);
+        }
+    }
+    return sanitized;
+}
+
+export async function dispatchWorkflow(input) {
+    const details = await getActionsWorkflowDetails(input.workflowId);
+    if (!details.dispatch.supported) {
+        throw new Error(`Workflow "${details.workflow.name}" does not support manual dispatch.`);
+    }
+
+    assertConfirmation(input.confirmation, `RUN ${details.workflow.id}`);
+    const ref = typeof input.ref === "string" && input.ref.trim() ? input.ref.trim() : "main";
+    const inputs = sanitizeWorkflowInputs(input.inputs, details.dispatch);
+    const args = ["workflow", "run", String(details.workflow.id), "--ref", ref];
+    for (const [name, value] of Object.entries(inputs)) {
+        args.push("-f", `${name}=${value}`);
+    }
+    const output = await run("gh", args);
+    return {
+        action: "dispatch_workflow",
+        workflow: details.workflow,
+        ref,
+        inputs,
+        output: output || `Dispatched ${details.workflow.name}.`,
+    };
+}
+
+function simulateReleaseAction(action, input) {
+    if (action === "prepare_release") {
+        assertTag(input.platform, input.version);
+        assertConfirmation(input.confirmation, `PREPARE ${input.version}`);
+        return { action, tag: input.version, demo: true, output: `Simulated preparation for ${input.version}.` };
+    }
+    if (action === "undo_prepare") {
+        assertTag(input.platform, input.tag);
+        assertConfirmation(input.confirmation, `UNDO ${input.tag}`);
+        return { action, tag: input.tag, demo: true, output: `Simulated undo for ${input.tag}.` };
+    }
+    if (action === "push_release") {
+        const platform = input.tag.endsWith("-mac") ? "mac" : "windows";
+        assertTag(platform, input.tag);
+        assertConfirmation(input.confirmation, `PUSH ${input.tag}`);
+        return { action, tag: input.tag, demo: true, output: `Simulated push for ${input.tag}.` };
+    }
+    if (action === "run_release_workflow") {
+        assertTag(input.platform, input.tag);
+        assertConfirmation(input.confirmation, `RUN ${input.tag}`);
+        return { action, tag: input.tag, demo: true, output: `Simulated release workflow for ${input.tag}.` };
+    }
+    if (action === "submit_winget") {
+        assertTag("windows", input.tag);
+        assertConfirmation(input.confirmation, `SUBMIT ${input.tag}`);
+        return { action, tag: input.tag, demo: true, output: `Simulated winget submission for ${input.tag}.` };
+    }
+    throw new Error(`Unknown release action: ${action}`);
+}
+
+export async function executeReleaseAction(action, input) {
+    return (await getSettings()).demoMode
+        ? simulateReleaseAction(action, input)
+        : performReleaseAction(action, input);
+}
+
+export async function executeWorkflowDispatch(input) {
+    const details = await getActionsWorkflowDetails(input.workflowId);
+    if (!details.dispatch.supported) {
+        throw new Error(`Workflow "${details.workflow.name}" does not support manual dispatch.`);
+    }
+    assertConfirmation(input.confirmation, `RUN ${details.workflow.id}`);
+    const ref = typeof input.ref === "string" && input.ref.trim() ? input.ref.trim() : "main";
+    const inputs = sanitizeWorkflowInputs(input.inputs, details.dispatch);
+    if ((await getSettings()).demoMode) {
+        return {
+            action: "dispatch_workflow",
+            workflow: details.workflow,
+            ref,
+            inputs,
+            demo: true,
+            output: `Simulated dispatch for ${details.workflow.name}.`,
+        };
+    }
+    return dispatchWorkflow(input);
+}
+
 export async function getWorkflowRunStatus(platform, kind, since, tag) {
     const workflow = kind === "winget"
         ? "winget-submit.yml"
@@ -293,7 +576,7 @@ export async function generateReleaseNotes(platform, version) {
 
 export async function getReleaseSnapshot() {
     const root = await getRepoRoot();
-    const [branch, status, head, originMain, originUrl, aheadOfMain, behindMain, macTags, windowsTags, remoteMacTags, remoteWindowsTags, macVersion, releases, macWorkflow, windowsWorkflow, wingetWorkflow, wingetPublished] =
+    const [branch, status, head, originMain, originUrl, aheadOfMain, behindMain, macTags, windowsTags, remoteMacTags, remoteWindowsTags, macVersion, releases, macWorkflow, windowsWorkflow, wingetWorkflow, wingetPublished, actions, settings] =
         await Promise.all([
             run("git", ["branch", "--show-current"]),
             run("git", ["status", "--porcelain"]),
@@ -312,6 +595,8 @@ export async function getReleaseSnapshot() {
             getWorkflow("windows-release.yml"),
             getWorkflow("winget-submit.yml"),
             getWingetPublishedVersion(),
+            getActionsSnapshot(),
+            getSettings(),
         ]);
 
     const buildPlatform = async (platform, tags, remoteTagResult, workflow) => {
@@ -328,11 +613,25 @@ export async function getReleaseSnapshot() {
             latestRemoteTag ?? latestTag,
             platform === "mac" ? macVersion : null,
         );
-        const latestRelease = releases.releases.find((release) => TAG_PATTERNS[platform].test(release.tagName)) ?? null;
+        const latestRelease = releases.releases.find((release) =>
+            TAG_PATTERNS[platform].test(release.tagName) && !release.isDraft && !release.isPrerelease,
+        ) ?? null;
         const releasePackageVersion = platform === "windows" ? windowsTagToPackageVersion(latestRelease?.tagName) : null;
-        const wingetStatus = platform === "windows" && wingetPublished.available && wingetPublished.version && releasePackageVersion
-            ? (comparePackageVersions(wingetPublished.version, releasePackageVersion) === 0 ? "current" : "outdated")
-            : "unavailable";
+        let wingetStatus = "unavailable";
+        if (platform === "windows" && wingetPublished.available && releasePackageVersion) {
+            if (!wingetPublished.version) {
+                wingetStatus = "missing";
+            } else {
+                const versionComparison = comparePackageVersions(wingetPublished.version, releasePackageVersion);
+                wingetStatus = versionComparison === 0
+                    ? "current"
+                    : (versionComparison > 0 ? "behind" : "ahead");
+            }
+        }
+        const wingetSubmissionTag = platform === "windows" &&
+            (wingetStatus === "missing" || wingetStatus === "behind")
+            ? latestRelease?.tagName ?? null
+            : null;
         return {
             id: platform,
             label: platform === "mac" ? "macOS" : "Windows",
@@ -351,6 +650,7 @@ export async function getReleaseSnapshot() {
             wingetPublished: platform === "windows"
                 ? { ...wingetPublished, releasePackageVersion, status: wingetStatus }
                 : null,
+            wingetSubmissionTag,
         };
     };
 
@@ -370,6 +670,8 @@ export async function getReleaseSnapshot() {
         },
         githubAvailable: releases.available,
         githubError: releases.error ?? null,
+        actions,
+        settings,
         platforms: {
             mac: await buildPlatform("mac", macTags, remoteMacTags, macWorkflow),
             windows: await buildPlatform("windows", windowsTags, remoteWindowsTags, windowsWorkflow),
@@ -517,9 +819,30 @@ export async function performReleaseAction(action, input) {
     if (action === "submit_winget") {
         assertTag("windows", input.tag);
         assertConfirmation(input.confirmation, `SUBMIT ${input.tag}`);
-        const releaseResult = await tryRun("gh", ["release", "view", input.tag, "--json", "isDraft"]);
+        const [releaseResult, releases, wingetPublished] = await Promise.all([
+            tryRun("gh", ["release", "view", input.tag, "--json", "isDraft,isPrerelease"]),
+            getReleases(),
+            getWingetPublishedVersion(),
+        ]);
         if (!releaseResult.ok || JSON.parse(releaseResult.output).isDraft) {
             throw new Error(`Published GitHub release ${input.tag} was not found.`);
+        }
+        if (JSON.parse(releaseResult.output).isPrerelease) {
+            throw new Error(`GitHub release ${input.tag} is a prerelease and cannot be submitted to winget.`);
+        }
+        const latestPublishedWindowsRelease = releases.releases.find((release) =>
+            TAG_PATTERNS.windows.test(release.tagName) && !release.isDraft && !release.isPrerelease,
+        );
+        if (!latestPublishedWindowsRelease || latestPublishedWindowsRelease.tagName !== input.tag) {
+            throw new Error(`Winget submissions must target the latest published Windows release: ${latestPublishedWindowsRelease?.tagName ?? "none found"}.`);
+        }
+        if (!wingetPublished.available) {
+            throw new Error(`Could not verify the published winget version: ${wingetPublished.error ?? "unknown error"}`);
+        }
+        const packageVersion = windowsTagToPackageVersion(input.tag);
+        if (wingetPublished.version && packageVersion &&
+            comparePackageVersions(wingetPublished.version, packageVersion) <= 0) {
+            throw new Error(`Winget already provides ${wingetPublished.version}, which is not behind ${packageVersion}.`);
         }
         const output = await run("gh", [
             "workflow", "run", "winget-submit.yml", "-f", `tag=${input.tag}`,

@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
@@ -24,6 +25,7 @@ namespace TinyClips.App;
 public partial class App : Application
 {
     private static readonly FontFamily FluentIconFont = new("Segoe Fluent Icons");
+    private static readonly object NotificationRegistrationGate = new();
 
     // Segoe Fluent Icons glyphs.
     private const string GlyphScreenshot = "\uE722";
@@ -53,14 +55,18 @@ public partial class App : Application
     private TimeSpan _recordingElapsedBeforePause;
     private TargetSelection? _activeRecordingSelection;
     private CaptureType? _activeRecordingType;
+    private bool _activeRecordingWasPickerInitiated;
+    private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
     private TrayPopupWindow? _trayPopup;
+    private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
     private const double TrayPopupWidth = 288;
     private const double TrayPopupHeight = 242;
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
+    private static bool _notificationsRegistered;
 
     public static IServiceProvider Services { get; private set; } = null!;
 
@@ -79,9 +85,9 @@ public partial class App : Application
     {
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
-        RegisterNotifications();
         WireRecordingEvents();
         CreateTrayIcon();
+        CreateAutomationNotificationAnnouncer();
         RegisterGlobalHotKeys();
         ShowOnboardingIfNeeded();
         HandleFileActivation();
@@ -130,7 +136,8 @@ public partial class App : Application
         var ext = Path.GetExtension(path);
         return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase);
+            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
     }
 
     private void CreateTrayIcon()
@@ -160,6 +167,11 @@ public partial class App : Application
         _taskbarIcon.ForceCreate();
 
         UpdateRecordingState();
+    }
+
+    private void CreateAutomationNotificationAnnouncer()
+    {
+        _automationNotificationAnnouncer ??= new AutomationNotificationAnnouncer();
     }
 
     private void ShowTrayPopup()
@@ -473,8 +485,15 @@ public partial class App : Application
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var (cdEnabled, cdDuration) = GetCountdown(settings, type);
+            var wasPickerInitiated = settings.ShouldShowCapturePicker(type);
 
-            var pick = await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes);
+            var pick = wasPickerInitiated
+                ? await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
+                : new CapturePickerResult(
+                    CapturePickerMode.Region,
+                    cdEnabled,
+                    cdDuration,
+                    settings.VideoRecordingTimeLimitMinutes);
             if (pick is null)
             {
                 return;
@@ -538,13 +557,13 @@ public partial class App : Application
                     await CopyToClipboardAsync(path, CaptureType.Screenshot);
                     if (settings.ShowScreenshotEditor)
                     {
-                        OpenScreenshotEditor(path);
+                        OpenScreenshotEditor(path, reopenPickerAfterClose: wasPickerInitiated);
                     }
                     else
                     {
                         RevealInExplorer(path);
                         ShowSaveToast(path);
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
                     }
                     break;
 
@@ -553,6 +572,7 @@ public partial class App : Application
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Video;
+                    _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
                     {
@@ -560,7 +580,7 @@ public partial class App : Application
                     }
                     await Services.GetRequiredService<IVideoRecordingService>()
                         .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
-                    ActivateRecordingIndicatorForStartedCapture();
+                    ActivateRecordingIndicatorForStartedCapture(CaptureType.Video);
                     UpdateRecordingState();
                     break;
 
@@ -568,6 +588,7 @@ public partial class App : Application
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     _activeRecordingSelection = selection;
                     _activeRecordingType = CaptureType.Gif;
+                    _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
                     {
@@ -575,7 +596,7 @@ public partial class App : Application
                     }
                     await Services.GetRequiredService<IGifRecordingService>()
                         .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
-                    ActivateRecordingIndicatorForStartedCapture();
+                    ActivateRecordingIndicatorForStartedCapture(CaptureType.Gif);
                     UpdateRecordingState();
                     break;
             }
@@ -586,15 +607,18 @@ public partial class App : Application
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
             UpdateRecordingState();
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Capture failed: {ex}");
+            ShowSaveFailureNotification(CaptureOutputDescription(type));
             UpdateRecordingState();
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
             HideRecordingIndicatorIfNotRecording();
         }
         finally
@@ -879,6 +903,7 @@ public partial class App : Application
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Webcam unavailable")
                 .AddText(reason)
@@ -947,37 +972,43 @@ public partial class App : Application
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            var wasPickerInitiated = _activeRecordingWasPickerInitiated;
+            _activeRecordingWasPickerInitiated = false;
             if (_isExiting)
             {
                 return;
             }
+
+            var type = sender is IGifRecordingService
+                ? CaptureType.Gif
+                : CaptureType.Video;
+            AnnounceRecordingStopped(type);
 
             if (string.IsNullOrEmpty(path))
             {
                 return;
             }
 
-            var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
-                ? CaptureType.Gif
-                : CaptureType.Video;
             Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.ShowTrimmer;
             if (showTrimmer)
             {
-                OpenTrimmer(path, type);
+                OpenTrimmer(path, type, pickerInitiated: wasPickerInitiated);
             }
             else
             {
                 await FinalizeClipAsync(path, type);
-                ReopenPickerAfterCaptureIfNeeded(type);
+                ReopenPickerAfterCaptureIfNeeded(type, wasPickerInitiated);
             }
         });
     }
 
     private async Task StopActiveRecordingAsync()
     {
+        CaptureType? stoppedType = null;
+
         try
         {
             var video = Services.GetRequiredService<IVideoRecordingService>();
@@ -985,12 +1016,14 @@ public partial class App : Application
 
             if (video.IsRecording)
             {
+                stoppedType = CaptureType.Video;
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Video, _activeRecordingSelection);
                 await video.StopAsync();
             }
             else if (gif.IsRecording)
             {
+                stoppedType = CaptureType.Gif;
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Gif, _activeRecordingSelection);
                 await gif.StopAsync();
@@ -1003,15 +1036,25 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to stop active recording: {ex}");
+            if (stoppedType is { } type)
+            {
+                ShowSaveFailureNotification(CaptureOutputDescription(type));
+            }
         }
         finally
         {
+            if (stoppedType is { } type && !IsAnyRecordingActive())
+            {
+                AnnounceRecordingStopped(type);
+            }
+
             HideProcessingIndicator();
             UpdateRecordingState();
             CloseRecordingRegionIndicatorIfNotRecording();
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
         }
     }
 
@@ -1106,7 +1149,7 @@ public partial class App : Application
             await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
         }
 
-        ActivateRecordingIndicatorForStartedCapture();
+        ActivateRecordingIndicatorForStartedCapture(type);
         UpdateRecordingState();
     }
 
@@ -1216,6 +1259,10 @@ public partial class App : Application
         window.ResumeRequested = () => _ = ResumeActiveRecordingAsync();
         window.RestartRequested = () => _ = RestartActiveRecordingAsync();
         window.DiscardRequested = () => _ = DiscardActiveRecordingAsync();
+        window.SystemAudioMuteChanged = muted =>
+            Services.GetRequiredService<IVideoRecordingService>().SetSystemAudioMuted(muted);
+        window.MicrophoneMuteChanged = muted =>
+            Services.GetRequiredService<IVideoRecordingService>().SetMicrophoneMuted(muted);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_recordingIndicator, window))
@@ -1245,12 +1292,20 @@ public partial class App : Application
         }
     }
 
-    private void ActivateRecordingIndicatorForStartedCapture()
+    private void ActivateRecordingIndicatorForStartedCapture(CaptureType type)
     {
+        _recordingStopAnnounced = false;
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingElapsedBeforePause = TimeSpan.Zero;
         _recordingIndicator?.SetStopEnabled(true);
+        var video = Services.GetRequiredService<IVideoRecordingService>();
+        _recordingIndicator?.ConfigureAudioControls(
+            video.CanMuteSystemAudio,
+            video.IsSystemAudioMuted,
+            video.CanMuteMicrophone,
+            video.IsMicrophoneMuted);
         StartRecordingTimer();
+        AnnounceRecordingStarted(type);
     }
 
     private void StartRecordingTimer()
@@ -1339,7 +1394,11 @@ public partial class App : Application
         ShowSaveToast(path);
     }
 
-    private void OpenTrimmer(string path, CaptureType type, bool isRecentCapture = false)
+    private void OpenTrimmer(
+        string path,
+        CaptureType type,
+        bool isRecentCapture = false,
+        bool pickerInitiated = false)
     {
         _trimmerWindow?.Close();
         _lastTrimmerSourcePath = path;
@@ -1347,13 +1406,13 @@ public partial class App : Application
         if (type == CaptureType.Gif)
         {
             var gifTrimmer = new GifTrimmerWindow(path);
-            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture);
+            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
             _trimmerWindow = gifTrimmer;
         }
         else
         {
             var videoTrimmer = new VideoTrimmerWindow(path);
-            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture);
+            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
             _trimmerWindow = videoTrimmer;
         }
 
@@ -1361,7 +1420,11 @@ public partial class App : Application
         ActivateWindowToForeground(_trimmerWindow);
     }
 
-    private void OnTrimmerCompleted(object? sender, string? trimmedPath, bool isRecentCapture)
+    private void OnTrimmerCompleted(
+        object? sender,
+        string? trimmedPath,
+        bool isRecentCapture,
+        bool pickerInitiated)
     {
         _dispatcher?.TryEnqueue(async () =>
         {
@@ -1391,7 +1454,7 @@ public partial class App : Application
             }
             if (!isRecentCapture)
             {
-                ReopenPickerAfterCaptureIfNeeded(type);
+                ReopenPickerAfterCaptureIfNeeded(type, pickerInitiated);
             }
         });
     }
@@ -1425,15 +1488,31 @@ public partial class App : Application
         }
     }
 
-    private static void RegisterNotifications()
+    // Register app notifications only when a toast is actually needed. That keeps packaged
+    // process launch lighter and avoids eagerly activating extra Windows App Runtime plumbing.
+    private static void EnsureNotificationsRegistered()
     {
-        try
+        if (_notificationsRegistered)
         {
-            AppNotificationManager.Default.Register();
+            return;
         }
-        catch (Exception ex)
+
+        lock (NotificationRegistrationGate)
         {
-            Debug.WriteLine($"Notification registration failed: {ex}");
+            if (_notificationsRegistered)
+            {
+                return;
+            }
+
+            try
+            {
+                AppNotificationManager.Default.Register();
+                _notificationsRegistered = true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Notification registration failed: {ex}");
+            }
         }
     }
 
@@ -1467,6 +1546,8 @@ public partial class App : Application
     /// </summary>
     internal static void ShowSaveNotification(string path)
     {
+        AnnounceCaptureSaved(path);
+
         try
         {
             var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -1475,6 +1556,7 @@ public partial class App : Application
                 return;
             }
 
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Saved to Tiny Clips")
                 .AddText(Path.GetFileName(path))
@@ -1492,6 +1574,7 @@ public partial class App : Application
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Couldn't copy to clipboard")
                 .AddText(fileName)
@@ -1505,10 +1588,29 @@ public partial class App : Application
         }
     }
 
+    internal static void ShowImageLoadFailureNotification(string fileName)
+    {
+        try
+        {
+            EnsureNotificationsRegistered();
+            var notification = new AppNotificationBuilder()
+                .AddText("Couldn't open image")
+                .AddText($"{fileName}. The image may be unsupported or its decoder is unavailable.")
+                .BuildNotification();
+
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show image load failure notification: {ex}");
+        }
+    }
+
     private static void ShowUpdateCheckNotification(string title, string details)
     {
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText(title)
                 .AddText(details)
@@ -1529,8 +1631,11 @@ public partial class App : Application
     /// </summary>
     internal static void ShowSaveFailureNotification(string fileName)
     {
+        AnnounceSaveFailure(fileName);
+
         try
         {
+            EnsureNotificationsRegistered();
             var notification = new AppNotificationBuilder()
                 .AddText("Couldn't save file")
                 .AddText(fileName)
@@ -1543,6 +1648,108 @@ public partial class App : Application
             Debug.WriteLine($"Failed to show save failure notification: {ex}");
         }
     }
+
+    private void AnnounceRecordingStarted(CaptureType type) =>
+        Announce(
+            AutomationNotificationKind.Other,
+            AutomationNotificationProcessing.MostRecent,
+            $"{CaptureTypeName(type)} recording started.",
+            $"{CaptureTypeName(type)}RecordingStarted");
+
+    private void AnnounceRecordingStopped(CaptureType type)
+    {
+        if (_recordingStopAnnounced)
+        {
+            return;
+        }
+
+        _recordingStopAnnounced = true;
+        Announce(
+            AutomationNotificationKind.ActionCompleted,
+            AutomationNotificationProcessing.MostRecent,
+            $"{CaptureTypeName(type)} recording stopped.",
+            $"{CaptureTypeName(type)}RecordingStopped");
+    }
+
+    private static void AnnounceCaptureSaved(string path)
+    {
+        var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
+            ? CaptureType.Gif
+            : Path.GetExtension(path).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+                ? CaptureType.Video
+                : CaptureType.Screenshot;
+        var fileName = Path.GetFileName(path);
+        var message = string.IsNullOrWhiteSpace(fileName)
+            ? $"{CaptureTypeName(type)} saved."
+            : $"{CaptureTypeName(type)} saved: {fileName}.";
+
+        if (Application.Current is App app)
+        {
+            app.Announce(
+                AutomationNotificationKind.ActionCompleted,
+                AutomationNotificationProcessing.MostRecent,
+                message,
+                $"{CaptureTypeName(type)}Saved");
+        }
+    }
+
+    private static void AnnounceSaveFailure(string fileName)
+    {
+        var message = string.IsNullOrWhiteSpace(fileName)
+            ? "Couldn't save file."
+            : $"Couldn't save {fileName}.";
+
+        if (Application.Current is App app)
+        {
+            app.Announce(
+                AutomationNotificationKind.ActionAborted,
+                AutomationNotificationProcessing.ImportantMostRecent,
+                message,
+                "CaptureSaveFailed");
+        }
+    }
+
+    private void Announce(
+        AutomationNotificationKind kind,
+        AutomationNotificationProcessing processing,
+        string message,
+        string activityId)
+    {
+        if (_automationNotificationAnnouncer is null)
+        {
+            Debug.WriteLine($"Automation announcement unavailable: {message}");
+            return;
+        }
+
+        var dispatcher = _dispatcher;
+        if (dispatcher is null)
+        {
+            Debug.WriteLine($"Automation announcement dispatcher unavailable: {message}");
+            return;
+        }
+
+        if (dispatcher.HasThreadAccess)
+        {
+            _automationNotificationAnnouncer.Announce(kind, processing, message, activityId);
+            return;
+        }
+
+        if (!dispatcher.TryEnqueue(() =>
+                _automationNotificationAnnouncer?.Announce(kind, processing, message, activityId)))
+        {
+            Debug.WriteLine($"Automation announcement dispatch failed: {message}");
+        }
+    }
+
+    private static string CaptureTypeName(CaptureType type) => type switch
+    {
+        CaptureType.Gif => "GIF",
+        CaptureType.Video => "Video",
+        _ => "Screenshot",
+    };
+
+    private static string CaptureOutputDescription(CaptureType type) =>
+        $"the {CaptureTypeName(type).ToLowerInvariant()} capture";
 
     private GlobalHotKeyRegistrationResult RegisterGlobalHotKeys()
     {
@@ -1747,7 +1954,7 @@ public partial class App : Application
             QuickBugReport.GetDistributionChannel()
         );
 
-    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = true)
+    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
     {
         try
         {
@@ -1764,7 +1971,7 @@ public partial class App : Application
                     _editorWindow = null;
                     if (reopenPickerAfterClose)
                     {
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
                     }
                 }
             };
@@ -1777,7 +1984,7 @@ public partial class App : Application
             ShowSaveToast(path);
             if (reopenPickerAfterClose)
             {
-                ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot);
+                ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
             }
         }
     }
@@ -1828,6 +2035,8 @@ public partial class App : Application
         _hotKeyManager = null;
         _taskbarIcon?.Dispose();
         _taskbarIcon = null;
+        _automationNotificationAnnouncer?.Close();
+        _automationNotificationAnnouncer = null;
         _settingsWindow?.Close();
         _guideWindow?.Close();
         _clipsManagerWindow?.Close();
@@ -1840,10 +2049,10 @@ public partial class App : Application
         Environment.Exit(0);
     }
 
-    private void ReopenPickerAfterCaptureIfNeeded(CaptureType type)
+    private void ReopenPickerAfterCaptureIfNeeded(CaptureType type, bool pickerInitiated)
     {
         var settings = Services.GetRequiredService<ICaptureSettings>();
-        if (!settings.ReopenPickerAfterCapture || _isExiting || IsAnyRecordingActive())
+        if (!pickerInitiated || !settings.ShouldShowCapturePickerAfterCapture(type) || _isExiting || IsAnyRecordingActive())
         {
             return;
         }

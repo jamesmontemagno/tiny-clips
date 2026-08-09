@@ -24,7 +24,7 @@ public sealed class ClipLibraryService : IClipLibraryService
         _fileSystem = fileSystem;
     }
 
-    public Task<IReadOnlyList<ClipEntry>> GetClipsAsync()
+    public Task<IReadOnlyList<ClipEntry>> GetClipsAsync() => Task.Run(() =>
     {
         // Collect unique output directories (custom dir collapses all types to one path).
         var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -59,8 +59,8 @@ public sealed class ClipLibraryService : IClipLibraryService
             .OrderByDescending(c => c.CapturedAt)
             .ToList();
 
-        return Task.FromResult(sorted);
-    }
+        return sorted;
+    });
 
     public void Delete(string path)
     {

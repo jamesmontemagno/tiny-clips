@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Updated macOS in-app Terms of Use links to open Apple's Standard EULA directly.
+- macOS capture settings now offer matching before/after picker controls for screenshots, video recordings, and GIF recordings.
+- macOS multi-monitor capture settings now let you choose to ask every time, capture the display under the cursor, or capture the main display.
+- macOS and Windows CI workflows now always report a successful check when their platform-specific files are unchanged, while skipping the unnecessary build work.
+
+### Fixed
+- Fixed macOS screenshot editor text annotations previewing larger than copied or saved images when background padding changes the displayed screenshot scale.
+- Fixed macOS shortcut changes silently accepting unavailable or conflicting global hotkeys; Settings now validates conflicts and keeps the prior working shortcut when registration fails.
+
+### Added
+- Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.
+- macOS General settings now support separate screenshot and video/GIF save folders while preserving the shared folder as a fallback.
+
 ## v1.5.4-mac - 2026-07-26
 
 ### Added

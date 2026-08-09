@@ -4,8 +4,8 @@ import SwiftUI
 struct GeneralSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
     @ObservedObject var launchAtLogin: LaunchAtLoginManager
-    let chooseSaveDirectory: () -> Void
-    let resetSaveDirectory: () -> Void
+    let chooseSaveDirectory: (CaptureType?) -> Void
+    let resetSaveDirectory: (CaptureType?) -> Void
     let resetAllSettings: () -> Void
     let showInDockBinding: Binding<Bool>
     @State private var showPurgeConfirmation = false
@@ -28,12 +28,12 @@ struct GeneralSettingsSection: View {
                     Spacer()
 
                     Button("Browse…") {
-                        chooseSaveDirectory()
+                        chooseSaveDirectory(nil)
                     }
 
-                    if settings.hasCustomSaveDirectory {
+                    if !settings.saveDirectoryBookmark.isEmpty {
                         Button("Reset") {
-                            resetSaveDirectory()
+                            resetSaveDirectory(nil)
                         }
                     }
                 }
@@ -43,10 +43,12 @@ struct GeneralSettingsSection: View {
                 TextField("Save to", text: $settings.saveDirectory)
                     .textFieldStyle(.roundedBorder)
                 Button("Browse…") {
-                    chooseSaveDirectory()
+                    chooseSaveDirectory(nil)
                 }
             }
 #endif
+            saveDirectoryRow(title: "Screenshots folder", type: .screenshot)
+            saveDirectoryRow(title: "Videos & GIFs folder", type: .video)
             VStack(alignment: .leading, spacing: 6) {
                 TextField("File name template", text: $settings.fileNameTemplate)
                     .textFieldStyle(.roundedBorder)
@@ -91,8 +93,12 @@ struct GeneralSettingsSection: View {
             ))
             Toggle("Show TinyClips in Dock (enables ⌘⇥)", isOn: showInDockBinding)
                 .help("When enabled, TinyClips appears in Command-Tab and can participate in normal app/window switching.")
-            Toggle("Always capture main display", isOn: $settings.alwaysCaptureMainDisplay)
-                .help("Skip the display picker when multiple monitors are connected")
+            Picker("When capturing a display", selection: $settings.multiMonitorCaptureMode) {
+                ForEach(MultiMonitorCaptureMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .help("Choose whether TinyClips asks for a display or captures one automatically when multiple monitors are connected.")
             Toggle("Include TinyClips in captures", isOn: $settings.includeTinyClipsInCapture)
                 .help("For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection.")
             Button {
@@ -134,6 +140,60 @@ struct GeneralSettingsSection: View {
         .task {
             await loadTemporaryFilesSummary()
         }
+    }
+
+    @ViewBuilder
+    private func saveDirectoryRow(title: String, type: CaptureType) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                Spacer()
+                Button("Choose…") {
+                    chooseSaveDirectory(type)
+                }
+                if !settings.isUsingSharedSaveDirectory(for: type) {
+                    Button("Reset to shared") {
+                        resetSaveDirectory(type)
+                    }
+                }
+            }
+
+            Text(saveDirectoryPath(for: type))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            if settings.isUsingSharedSaveDirectory(for: type) {
+                Text(saveDirectoryHint(for: type))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func saveDirectoryPath(for type: CaptureType) -> String {
+#if APPSTORE
+        if type == .video,
+           settings.isUsingSharedSaveDirectory(for: type),
+           settings.saveDirectoryBookmark.isEmpty {
+            let videoPath = SaveService.shared.outputDirectoryURL(for: .video).path
+            let gifPath = SaveService.shared.outputDirectoryURL(for: .gif).path
+            return "Videos: \(videoPath)  GIFs: \(gifPath)"
+        }
+        let path = settings.saveDirectoryDisplayPath(for: type)
+        return path.isEmpty ? SaveService.shared.outputDirectoryURL(for: type).path : path
+#else
+        return settings.resolvedSaveDirectory(for: type).path
+#endif
+    }
+
+    private func saveDirectoryHint(for type: CaptureType) -> String {
+#if APPSTORE
+        return settings.saveDirectoryBookmark.isEmpty ? "Using default folders" : "Using shared folder"
+#else
+        return "Using shared folder"
+#endif
     }
 
     @ViewBuilder

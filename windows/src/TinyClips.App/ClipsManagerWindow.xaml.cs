@@ -7,6 +7,9 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Graphics;
+using Windows.Media.Editing;
+using Windows.Storage;
+using Windows.Storage.Streams;
 
 namespace TinyClips.App;
 
@@ -27,7 +30,7 @@ public sealed class ClipItemViewModel
     public Visibility HasThumbnail => Thumbnail is not null ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NoThumbnail => Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
 
-    public static ClipItemViewModel From(ClipEntry entry)
+    public static async Task<ClipItemViewModel> FromAsync(ClipEntry entry)
     {
         var glyph = entry.Type switch
         {
@@ -53,21 +56,7 @@ public sealed class ClipItemViewModel
             _                => $"{entry.FileSizeBytes} B",
         };
 
-        BitmapImage? thumbnail = null;
-        if (entry.Type != CaptureType.Video && File.Exists(entry.Path))
-        {
-            try
-            {
-                var bmp = new BitmapImage();
-                bmp.DecodePixelWidth = 180;
-                bmp.UriSource = new Uri(entry.Path);
-                thumbnail = bmp;
-            }
-            catch
-            {
-                // Thumbnail load failures are non-fatal; fall back to the type icon.
-            }
-        }
+        var thumbnail = await LoadThumbnailAsync(entry);
 
         return new ClipItemViewModel
         {
@@ -81,6 +70,36 @@ public sealed class ClipItemViewModel
             CapturedAt     = entry.CapturedAt,
             Thumbnail      = thumbnail,
         };
+    }
+
+    private static async Task<BitmapImage?> LoadThumbnailAsync(ClipEntry entry)
+    {
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(entry.Path);
+            var bitmap = new BitmapImage { DecodePixelWidth = 180 };
+            if (entry.Type == CaptureType.Video)
+            {
+                var clip = await MediaClip.CreateFromFileAsync(file);
+                var composition = new MediaComposition();
+                composition.Clips.Add(clip);
+                using var thumbnail = await composition.GetThumbnailAsync(
+                    TimeSpan.Zero, 180, 108, VideoFramePrecision.NearestFrame);
+                await bitmap.SetSourceAsync(thumbnail);
+            }
+            else
+            {
+                using var stream = await file.OpenReadAsync();
+                await bitmap.SetSourceAsync(stream);
+            }
+
+            return bitmap;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"ClipsManagerWindow: thumbnail load failed: {ex}");
+            return null;
+        }
     }
 }
 
@@ -146,7 +165,7 @@ public sealed partial class ClipsManagerWindow : Window
         try
         {
             var entries = await _library.GetClipsAsync();
-            _allClips = entries.Select(ClipItemViewModel.From).ToList();
+            _allClips = (await Task.WhenAll(entries.Select(ClipItemViewModel.FromAsync))).ToList();
             ApplyFilterAndSort();
         }
         catch (Exception ex)

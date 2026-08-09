@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
@@ -47,6 +49,11 @@ public sealed partial class RecordingIndicatorWindow : Window
     public Action? ResumeRequested { get; set; }
     public Action? RestartRequested { get; set; }
     public Action? DiscardRequested { get; set; }
+    public Action<bool>? SystemAudioMuteChanged { get; set; }
+    public Action<bool>? MicrophoneMuteChanged { get; set; }
+
+    private bool _systemAudioMuted;
+    private bool _microphoneMuted;
 
     public void ShowNear()
     {
@@ -87,6 +94,21 @@ public sealed partial class RecordingIndicatorWindow : Window
         HotKeyText.Text = paused ? "Paused" : _stopHintText;
     }
 
+    public void ConfigureAudioControls(
+        bool canMuteSystemAudio,
+        bool systemAudioMuted,
+        bool canMuteMicrophone,
+        bool microphoneMuted)
+    {
+        SystemAudioButton.Visibility = canMuteSystemAudio ? Visibility.Visible : Visibility.Collapsed;
+        MicrophoneButton.Visibility = canMuteMicrophone ? Visibility.Visible : Visibility.Collapsed;
+        _systemAudioMuted = systemAudioMuted;
+        _microphoneMuted = microphoneMuted;
+        SystemAudioButton.IsChecked = systemAudioMuted;
+        MicrophoneButton.IsChecked = microphoneMuted;
+        UpdateAudioControlVisuals();
+    }
+
     public void ClosePanel()
     {
         if (_closed)
@@ -100,6 +122,8 @@ public sealed partial class RecordingIndicatorWindow : Window
         ResumeRequested = null;
         RestartRequested = null;
         DiscardRequested = null;
+        SystemAudioMuteChanged = null;
+        MicrophoneMuteChanged = null;
         Close();
     }
 
@@ -116,6 +140,20 @@ public sealed partial class RecordingIndicatorWindow : Window
     private void OnRestartClick(object sender, RoutedEventArgs e)
     {
         CompleteWith(RestartRequested);
+    }
+
+    private void OnSystemAudioClick(object sender, RoutedEventArgs e)
+    {
+        _systemAudioMuted = SystemAudioButton.IsChecked == true;
+        SystemAudioMuteChanged?.Invoke(_systemAudioMuted);
+        UpdateAudioControlVisuals();
+    }
+
+    private void OnMicrophoneClick(object sender, RoutedEventArgs e)
+    {
+        _microphoneMuted = MicrophoneButton.IsChecked == true;
+        MicrophoneMuteChanged?.Invoke(_microphoneMuted);
+        UpdateAudioControlVisuals();
     }
 
     private void OnDiscardClick(object sender, RoutedEventArgs e)
@@ -142,6 +180,8 @@ public sealed partial class RecordingIndicatorWindow : Window
         ResumeRequested = null;
         RestartRequested = null;
         DiscardRequested = null;
+        SystemAudioMuteChanged = null;
+        MicrophoneMuteChanged = null;
         callback?.Invoke();
     }
 
@@ -152,6 +192,21 @@ public sealed partial class RecordingIndicatorWindow : Window
         RestartButton.IsEnabled = enabled;
         DiscardButton.IsEnabled = enabled;
         StopButton.IsEnabled = enabled;
+        SystemAudioButton.IsEnabled = enabled;
+        MicrophoneButton.IsEnabled = enabled;
+    }
+
+    private void UpdateAudioControlVisuals()
+    {
+        SystemAudioIcon.Glyph = _systemAudioMuted ? "\uE74F" : "\uE767";
+        var systemAudioState = _systemAudioMuted ? "muted" : "recording";
+        ToolTipService.SetToolTip(SystemAudioButton, $"System audio {systemAudioState}");
+        AutomationProperties.SetName(SystemAudioButton, $"System audio {systemAudioState}");
+
+        MicrophoneIcon.Glyph = _microphoneMuted ? "\uE74F" : "\uE720";
+        var microphoneState = _microphoneMuted ? "muted" : "recording";
+        ToolTipService.SetToolTip(MicrophoneButton, $"Microphone {microphoneState}");
+        AutomationProperties.SetName(MicrophoneButton, $"Microphone {microphoneState}");
     }
 
     // Drag-anywhere support: pressing the Stop button is handled by the Button itself
@@ -273,6 +328,8 @@ public sealed partial class RecordingIndicatorWindow : Window
         ResumeRequested = null;
         RestartRequested = null;
         DiscardRequested = null;
+        SystemAudioMuteChanged = null;
+        MicrophoneMuteChanged = null;
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]

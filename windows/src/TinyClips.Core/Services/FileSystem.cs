@@ -23,7 +23,7 @@ public sealed class FileSystem : IFileSystem
     {
         try
         {
-            return Directory.EnumerateFiles(directory);
+            return Directory.EnumerateFiles(directory).ToArray();
         }
         catch
         {

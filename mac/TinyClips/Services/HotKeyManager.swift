@@ -10,7 +10,7 @@ final class HotKeyManager {
 
     // MARK: - Types
 
-    private enum HotKeyID: UInt32 {
+    enum HotKeyID: UInt32 {
         case screenshot = 1
         case recordVideo = 2
         case recordGif = 3
@@ -19,6 +19,46 @@ final class HotKeyManager {
 
     private struct RegisteredHotKey {
         let reference: EventHotKeyRef
+        let keyCode: UInt32
+        let modifiers: UInt32
+        let action: () -> Void
+    }
+
+    struct RegistrationFailure {
+        let name: String
+        let status: OSStatus
+    }
+
+    struct RegistrationResult {
+        let failures: [RegistrationFailure]
+        let restorationFailures: [RegistrationFailure]
+
+        static let success = RegistrationResult(failures: [], restorationFailures: [])
+
+        var isSuccess: Bool {
+            failures.isEmpty
+        }
+
+        var errorMessage: String? {
+            guard !failures.isEmpty else { return nil }
+
+            let rejectedNames = failures.map(\.name).joined(separator: ", ")
+            var message = "macOS could not register \(rejectedNames). Another app may already use this shortcut. Choose a different combination."
+
+            if !restorationFailures.isEmpty {
+                let restoredNames = restorationFailures.map(\.name).joined(separator: ", ")
+                message += " The previous shortcut remains in Settings, but macOS could not reactivate \(restoredNames). Close the competing app or restart TinyClips."
+            }
+
+            return message
+        }
+    }
+
+    private struct HotKeyRegistration {
+        let id: HotKeyID
+        let name: String
+        let keyCode: UInt32
+        let modifiers: UInt32
         let action: () -> Void
     }
 
@@ -53,35 +93,45 @@ final class HotKeyManager {
         gifKeyCode: UInt32,
         gifModifiers: UInt32,
         onRecordGif: @escaping () -> Void
-    ) {
-        register(
-            id: .screenshot,
-            keyCode: screenshotKeyCode,
-            modifiers: screenshotModifiers,
-            action: onScreenshot
-        )
-
-        register(
-            id: .recordVideo,
-            keyCode: videoKeyCode,
-            modifiers: videoModifiers,
-            action: onRecordVideo
-        )
-
-        register(
-            id: .recordGif,
-            keyCode: gifKeyCode,
-            modifiers: gifModifiers,
-            action: onRecordGif
+    ) -> RegistrationResult {
+        replace(
+            hotKeys: [
+                HotKeyRegistration(
+                    id: .screenshot,
+                    name: "Screenshot",
+                    keyCode: screenshotKeyCode,
+                    modifiers: screenshotModifiers,
+                    action: onScreenshot
+                ),
+                HotKeyRegistration(
+                    id: .recordVideo,
+                    name: "Record Video",
+                    keyCode: videoKeyCode,
+                    modifiers: videoModifiers,
+                    action: onRecordVideo
+                ),
+                HotKeyRegistration(
+                    id: .recordGif,
+                    name: "Record GIF",
+                    keyCode: gifKeyCode,
+                    modifiers: gifModifiers,
+                    action: onRecordGif
+                )
+            ]
         )
     }
 
-    func registerStopHotKey(onStopRecording: @escaping () -> Void) {
-        register(
-            id: .stopRecording,
-            keyCode: 47, // kVK_ANSI_Period
-            modifiers: UInt32(cmdKey),
-            action: onStopRecording
+    func registerStopHotKey(onStopRecording: @escaping () -> Void) -> RegistrationResult {
+        replace(
+            hotKeys: [
+                HotKeyRegistration(
+                    id: .stopRecording,
+                    name: "Stop Recording",
+                    keyCode: UInt32(HotKeyBinding.stopRecording.keyCode),
+                    modifiers: UInt32(HotKeyBinding.stopRecording.carbonModifiers),
+                    action: onStopRecording
+                )
+            ]
         )
     }
 
@@ -100,24 +150,74 @@ final class HotKeyManager {
 
     // MARK: - Registration
 
-    private func register(id: HotKeyID, keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
-        unregister(id: id)
+    private func replace(hotKeys: [HotKeyRegistration]) -> RegistrationResult {
+        let ids = hotKeys.map(\.id)
+        let previousHotKeys = ids.compactMap { id in
+            registeredHotKeys[id.rawValue].map {
+                HotKeyRegistration(
+                    id: id,
+                    name: name(for: id),
+                    keyCode: $0.keyCode,
+                    modifiers: $0.modifiers,
+                    action: $0.action
+                )
+            }
+        }
 
+        ids.forEach(unregister)
+
+        let failures = hotKeys.compactMap { hotKey -> RegistrationFailure? in
+            register(hotKey) ? nil : RegistrationFailure(name: hotKey.name, status: lastRegistrationStatus)
+        }
+        guard failures.isEmpty else {
+            ids.forEach(unregister)
+
+            let restorationFailures = previousHotKeys.compactMap { hotKey -> RegistrationFailure? in
+                register(hotKey) ? nil : RegistrationFailure(name: hotKey.name, status: lastRegistrationStatus)
+            }
+            return RegistrationResult(failures: failures, restorationFailures: restorationFailures)
+        }
+
+        return .success
+    }
+
+    private var lastRegistrationStatus: OSStatus = noErr
+
+    private func register(_ hotKey: HotKeyRegistration) -> Bool {
         var hotKeyRef: EventHotKeyRef?
-        let hotKeyID = EventHotKeyID(signature: Self.hotKeySignature, id: id.rawValue)
+        let hotKeyID = EventHotKeyID(signature: Self.hotKeySignature, id: hotKey.id.rawValue)
 
-        let status = RegisterEventHotKey(
-            keyCode,
-            modifiers,
+        lastRegistrationStatus = RegisterEventHotKey(
+            hotKey.keyCode,
+            hotKey.modifiers,
             hotKeyID,
             GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )
 
-        guard status == noErr, let hotKeyRef else { return }
+        guard lastRegistrationStatus == noErr, let hotKeyRef else { return false }
 
-        registeredHotKeys[id.rawValue] = RegisteredHotKey(reference: hotKeyRef, action: action)
+        registeredHotKeys[hotKey.id.rawValue] = RegisteredHotKey(
+            reference: hotKeyRef,
+            keyCode: hotKey.keyCode,
+            modifiers: hotKey.modifiers,
+            action: hotKey.action
+        )
+        return true
+    }
+
+    private func name(for id: HotKeyID) -> String {
+        switch id {
+        case .screenshot:
+            return "Screenshot"
+        case .recordVideo:
+            return "Record Video"
+        case .recordGif:
+            return "Record GIF"
+        case .stopRecording:
+            return "Stop Recording"
+        }
     }
 
     private func unregister(id: HotKeyID) {

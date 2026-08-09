@@ -54,10 +54,18 @@ struct GifSettingsSection: View {
             }
             .buttonStyle(.link)
         }
-        
+
         Section("Before Capture") {
             Toggle("Show capture picker before recording", isOn: $settings.showGifCapturePicker)
                 .help("When disabled, GIF recording goes straight to region selection.")
+                .onChange(of: settings.showGifCapturePicker) { _, isEnabled in
+                    if !isEnabled {
+                        settings.showGifCapturePickerAfterCapture = false
+                    }
+                }
+            Toggle("Show capture picker after recording", isOn: $settings.showGifCapturePickerAfterCapture)
+                .help("Reopen the capture picker after each recording so you can quickly start another.")
+                .disabled(!settings.showGifCapturePicker)
         }
 
         Section("After Capture") {
