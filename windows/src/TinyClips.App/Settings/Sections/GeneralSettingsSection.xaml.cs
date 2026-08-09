@@ -33,6 +33,26 @@ public sealed partial class GeneralSettingsSection : UserControl
     private void OnBrowseSaveDirectory(object sender, RoutedEventArgs e) =>
         BrowseSaveDirectoryRequested?.Invoke(this, EventArgs.Empty);
 
+    private void OnOpenTempFolder(object sender, RoutedEventArgs e) => ViewModel.OpenTempFolder();
+
+    private async void OnPurgeTempFiles(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Purge temporary files?",
+            Content = $"This deletes {ViewModel.TempFolderSummary} from Tiny Clips' temporary folder. Your saved captures will not be affected.",
+            PrimaryButtonText = "Purge",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            ViewModel.PurgeTempFiles();
+        }
+    }
+
     private async void OnResetAllSettings(object sender, RoutedEventArgs e)
     {
         var dialog = new ContentDialog

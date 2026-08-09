@@ -1,9 +1,11 @@
+using TinyClips.Core.Services;
+
 namespace TinyClips.Core.Capture;
 
 /// <summary>
 /// Lightweight, best-effort file logger for diagnosing webcam capture/overlay failures
 /// in the packaged app, where Debug.WriteLine is invisible. Writes timestamped lines to
-/// <c>%LOCALAPPDATA%\TinyClips\webcam-diagnostics.log</c>. LocalApplicationData is used
+/// <c>%LOCALAPPDATA%\TinyClips\Temp\webcam-diagnostics.log</c>. LocalApplicationData is used
 /// (rather than Pictures) because it is writable without tripping Controlled Folder Access /
 /// Windows Security prompts. All I/O failures are swallowed. The log is truncated at the start
 /// of each recording so it always reflects the latest run.
@@ -20,20 +22,7 @@ public static class WebcamDiagnostics
             return _logPath;
         }
 
-        string directory;
-        try
-        {
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            directory = string.IsNullOrWhiteSpace(localAppData)
-                ? Path.GetTempPath()
-                : Path.Combine(localAppData, "TinyClips");
-        }
-        catch
-        {
-            directory = Path.GetTempPath();
-        }
-
-        _logPath = Path.Combine(directory, "webcam-diagnostics.log");
+        _logPath = Path.Combine(TinyClipsTemporaryFiles.EnsureDirectoryExists(), "webcam-diagnostics.log");
         return _logPath;
     }
 
