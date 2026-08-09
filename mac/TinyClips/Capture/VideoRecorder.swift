@@ -389,6 +389,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private let recorderID = UUID().uuidString
     private let microphoneSignalThreshold = 0.01
     private let microphoneSignalTimeoutSeconds: TimeInterval = 2
+    private let microphoneLimiterKnee: Float = 0.98
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -408,6 +409,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var videoFallbackFrameDuration = CMTime(value: 1, timescale: 60)
     private var recordSystemAudio = false
     private var recordMicrophone = false
+    private var microphoneLimiterEnabled = true
     private var systemAudioMuted = false
     private var microphoneMuted = false
     private var selectedMicrophoneID = ""
@@ -471,6 +473,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
 
         self.recordSystemAudio = recordSystemAudio
         self.recordMicrophone = recordMicrophone
+        self.microphoneLimiterEnabled = settings.microphoneLimiterEnabled
         self.selectedMicrophoneID = selectedMicrophoneID
 
         if recordSystemAudio {
@@ -605,9 +608,10 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         writingQueue.async { [weak self] in
             guard let self, !self.isPaused, !self.microphoneMuted, self.hasStartedWriting, let micAudioInput = self.micAudioInput, micAudioInput.isReadyForMoreMediaData else { return }
             let pauseAdjustedSampleBuffer = self.adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+            let limitedSampleBuffer = self.limitedMicrophoneSampleBuffer(from: pauseAdjustedSampleBuffer)
             var proposedLastPresentationTime = self.lastMicrophonePresentationTime
             guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
-                pauseAdjustedSampleBuffer,
+                limitedSampleBuffer,
                 lastPresentationTime: &proposedLastPresentationTime,
                 fallbackStep: CMTime(value: 1024, timescale: 48_000)
             ) else {
@@ -621,6 +625,173 @@ class VideoRecorder: NSObject, @unchecked Sendable {
                 self.lastMicrophonePresentationTime = proposedLastPresentationTime
             }
         }
+    }
+
+    private func limitedMicrophoneSampleBuffer(from sampleBuffer: CMSampleBuffer) -> CMSampleBuffer {
+        guard microphoneLimiterEnabled,
+              let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let streamDescriptionPointer = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
+            return sampleBuffer
+        }
+
+        let streamDescription = streamDescriptionPointer.pointee
+        guard streamDescription.mFormatID == kAudioFormatLinearPCM,
+              streamDescription.mBitsPerChannel == 32,
+              (streamDescription.mFormatFlags & kAudioFormatFlagIsFloat) != 0 else {
+            return sampleBuffer
+        }
+
+        let isNonInterleaved = (streamDescription.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+        let bufferCount = isNonInterleaved ? max(1, Int(streamDescription.mChannelsPerFrame)) : 1
+        let audioBufferListSize = MemoryLayout<AudioBufferList>.size
+            + max(0, bufferCount - 1) * MemoryLayout<AudioBuffer>.size
+        let audioBufferListMemory = UnsafeMutableRawPointer.allocate(
+            byteCount: audioBufferListSize,
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { audioBufferListMemory.deallocate() }
+
+        let audioBufferList = audioBufferListMemory.assumingMemoryBound(to: AudioBufferList.self)
+        var sourceBlockBuffer: CMBlockBuffer?
+        let audioBufferListStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: audioBufferList,
+            bufferListSize: audioBufferListSize,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: UInt32(kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment),
+            blockBufferOut: &sourceBlockBuffer
+        )
+        guard audioBufferListStatus == noErr else {
+            return sampleBuffer
+        }
+        defer { withExtendedLifetime(sourceBlockBuffer) {} }
+
+        let audioBuffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
+        guard !audioBuffers.isEmpty else {
+            return sampleBuffer
+        }
+
+        var totalByteCount = 0
+        for audioBuffer in audioBuffers {
+            let byteCount = Int(audioBuffer.mDataByteSize)
+            guard audioBuffer.mData != nil,
+                  byteCount > 0,
+                  byteCount.isMultiple(of: MemoryLayout<Float>.stride) else {
+                return sampleBuffer
+            }
+            totalByteCount += byteCount
+        }
+
+        var limitedBlockBuffer: CMBlockBuffer?
+        let blockBufferStatus = CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: totalByteCount,
+            blockAllocator: kCFAllocatorDefault,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: totalByteCount,
+            flags: 0,
+            blockBufferOut: &limitedBlockBuffer
+        )
+        guard blockBufferStatus == noErr, let limitedBlockBuffer else {
+            return sampleBuffer
+        }
+
+        var contiguousLength = 0
+        var totalLength = 0
+        var destinationData: UnsafeMutablePointer<Int8>?
+        let dataPointerStatus = CMBlockBufferGetDataPointer(
+            limitedBlockBuffer,
+            atOffset: 0,
+            lengthAtOffsetOut: &contiguousLength,
+            totalLengthOut: &totalLength,
+            dataPointerOut: &destinationData
+        )
+        guard dataPointerStatus == noErr,
+              totalLength == totalByteCount,
+              contiguousLength == totalByteCount,
+              let destinationData else {
+            return sampleBuffer
+        }
+
+        var destinationOffset = 0
+        for audioBuffer in audioBuffers {
+            guard let sourceData = audioBuffer.mData else {
+                return sampleBuffer
+            }
+
+            let sampleCount = Int(audioBuffer.mDataByteSize) / MemoryLayout<Float>.stride
+            let sourceSamples = sourceData.bindMemory(to: Float.self, capacity: sampleCount)
+            let destinationSamples = UnsafeMutableRawPointer(destinationData.advanced(by: destinationOffset))
+                .bindMemory(to: Float.self, capacity: sampleCount)
+
+            for sampleIndex in 0..<sampleCount {
+                let sample = sourceSamples[sampleIndex]
+                guard sample.isFinite else {
+                    return sampleBuffer
+                }
+                destinationSamples[sampleIndex] = softKneeLimitedSample(sample)
+            }
+            destinationOffset += Int(audioBuffer.mDataByteSize)
+        }
+
+        var limitedSampleBuffer: CMSampleBuffer?
+        let sampleBufferStatus = CMAudioSampleBufferCreateWithPacketDescriptions(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: limitedBlockBuffer,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: formatDescription,
+            sampleCount: CMSampleBufferGetNumSamples(sampleBuffer),
+            presentationTimeStamp: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
+            packetDescriptions: nil,
+            sampleBufferOut: &limitedSampleBuffer
+        )
+        guard sampleBufferStatus == noErr, let limitedSampleBuffer else {
+            return sampleBuffer
+        }
+
+        let timingEntryCount = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard timingEntryCount > 0 else {
+            return sampleBuffer
+        }
+        var timing = Array(repeating: CMSampleTimingInfo(), count: timingEntryCount)
+        var timingCount = 0
+        let timingStatus = CMSampleBufferGetSampleTimingInfoArray(
+            sampleBuffer,
+            entryCount: timing.count,
+            arrayToFill: &timing,
+            entriesNeededOut: &timingCount
+        )
+        guard timingStatus == noErr, timingCount > 0 else {
+            return sampleBuffer
+        }
+
+        var timestampPreservingSampleBuffer: CMSampleBuffer?
+        let copyStatus = CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: limitedSampleBuffer,
+            sampleTimingEntryCount: timingCount,
+            sampleTimingArray: timing,
+            sampleBufferOut: &timestampPreservingSampleBuffer
+        )
+        return copyStatus == noErr ? (timestampPreservingSampleBuffer ?? sampleBuffer) : sampleBuffer
+    }
+
+    private func softKneeLimitedSample(_ sample: Float) -> Float {
+        let magnitude = abs(sample)
+        guard magnitude > microphoneLimiterKnee else {
+            return sample
+        }
+
+        let normalizedOverage = (magnitude - microphoneLimiterKnee) / (1 - microphoneLimiterKnee)
+        let limitedMagnitude = microphoneLimiterKnee
+            + (1 - microphoneLimiterKnee) * (2 / .pi) * atan(.pi / 2 * normalizedOverage)
+        return sample.sign == .minus ? -limitedMagnitude : limitedMagnitude
     }
 
     private func rmsLevel(from sampleBuffer: CMSampleBuffer) -> Double {
@@ -846,6 +1017,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         lastMicrophonePresentationTime = nil
         recordSystemAudio = false
         recordMicrophone = false
+        microphoneLimiterEnabled = true
         systemAudioMuted = false
         microphoneMuted = false
         selectedMicrophoneID = ""
