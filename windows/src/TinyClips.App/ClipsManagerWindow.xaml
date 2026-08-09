@@ -73,6 +73,14 @@
                     GroupName="TypeFilter" />
             </StackPanel>
 
+            <TextBlock
+                x:Name="UploadStatusText"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextTrimming="CharacterEllipsis"
+                Visibility="Collapsed" />
+
             <!--  Sort  -->
             <ComboBox
                 x:Name="SortCombo"
@@ -234,6 +242,8 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Button
                                         Grid.Column="0"
@@ -273,6 +283,42 @@
                                         HorizontalAlignment="Stretch"
                                         HorizontalContentAlignment="Center"
                                         Padding="4,6"
+                                        AutomationProperties.Name="Upload to Uploadcare"
+                                        Click="OnUploadClicked"
+                                        Tag="{x:Bind Path}"
+                                        ToolTipService.ToolTip="Upload to Uploadcare"
+                                        Visibility="{x:Bind UploadAvailable, Mode=OneWay}">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="13" Glyph="&#xE898;" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="3"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="4,6"
+                                        AutomationProperties.Name="Copy Uploadcare URL"
+                                        Click="OnCopyUploadUrlClicked"
+                                        Tag="{x:Bind Path}"
+                                        ToolTipService.ToolTip="Copy Uploadcare URL"
+                                        Visibility="{x:Bind UploadedUrlAvailable, Mode=OneWay}">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="13" Glyph="&#xE8C8;" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="4"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="4,6"
+                                        AutomationProperties.Name="Open Uploadcare URL"
+                                        Click="OnOpenUploadUrlClicked"
+                                        Tag="{x:Bind Path}"
+                                        ToolTipService.ToolTip="Open Uploadcare URL"
+                                        Visibility="{x:Bind UploadedUrlAvailable, Mode=OneWay}">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="13" Glyph="&#xE71B;" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="5"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="4,6"
                                         AutomationProperties.Name="Delete"
                                         Click="OnDeleteClicked"
                                         Tag="{x:Bind Path}"
@@ -301,6 +347,8 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -372,6 +420,39 @@
                             </Button>
                             <Button
                                 Grid.Column="5"
+                                Width="32"
+                                Padding="0"
+                                AutomationProperties.Name="Upload to Uploadcare"
+                                Click="OnUploadClicked"
+                                Tag="{x:Bind Path}"
+                                ToolTipService.ToolTip="Upload to Uploadcare"
+                                Visibility="{x:Bind UploadAvailable, Mode=OneWay}">
+                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE898;" />
+                            </Button>
+                            <Button
+                                Grid.Column="5"
+                                Width="32"
+                                Padding="0"
+                                AutomationProperties.Name="Copy Uploadcare URL"
+                                Click="OnCopyUploadUrlClicked"
+                                Tag="{x:Bind Path}"
+                                ToolTipService.ToolTip="Copy Uploadcare URL"
+                                Visibility="{x:Bind UploadedUrlAvailable, Mode=OneWay}">
+                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8C8;" />
+                            </Button>
+                            <Button
+                                Grid.Column="6"
+                                Width="32"
+                                Padding="0"
+                                AutomationProperties.Name="Open Uploadcare URL"
+                                Click="OnOpenUploadUrlClicked"
+                                Tag="{x:Bind Path}"
+                                ToolTipService.ToolTip="Open Uploadcare URL"
+                                Visibility="{x:Bind UploadedUrlAvailable, Mode=OneWay}">
+                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE71B;" />
+                            </Button>
+                            <Button
+                                Grid.Column="7"
                                 Width="32"
                                 Padding="0"
                                 AutomationProperties.Name="Delete"

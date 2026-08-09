@@ -23,6 +23,10 @@ public sealed class CaptureSettingsTests
         Assert.Equal(WebcamCornerPosition.BottomRight, settings.WebcamCornerPosition);
         Assert.Null(settings.WebcamCornerRadius);
         Assert.Equal(MultiMonitorCaptureMode.Picker, settings.MultiMonitorCaptureMode);
+        Assert.False(settings.UploadcareEnabled);
+        Assert.Equal(string.Empty, settings.UploadcarePublicKey);
+        Assert.False(settings.UploadcareAutoUpload);
+        Assert.False(settings.UploadcareCopyUrl);
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Screenshot));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Video));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Gif));
@@ -44,6 +48,10 @@ public sealed class CaptureSettingsTests
         settings.WebcamSizePreset = WebcamSizePreset.Large;
         settings.WebcamCornerPosition = WebcamCornerPosition.TopLeft;
         settings.WebcamCornerRadius = 16.0;
+        settings.UploadcareEnabled = true;
+        settings.UploadcarePublicKey = "public-key";
+        settings.UploadcareAutoUpload = true;
+        settings.UploadcareCopyUrl = true;
 
         Assert.False(settings.CopyScreenshotToClipboard);
         Assert.Equal(24.5, settings.GifFrameRate);
@@ -56,6 +64,10 @@ public sealed class CaptureSettingsTests
         Assert.Equal(WebcamSizePreset.Large, settings.WebcamSizePreset);
         Assert.Equal(WebcamCornerPosition.TopLeft, settings.WebcamCornerPosition);
         Assert.Equal(16.0, settings.WebcamCornerRadius);
+        Assert.True(settings.UploadcareEnabled);
+        Assert.Equal("public-key", settings.UploadcarePublicKey);
+        Assert.True(settings.UploadcareAutoUpload);
+        Assert.True(settings.UploadcareCopyUrl);
     }
 
     [Fact]

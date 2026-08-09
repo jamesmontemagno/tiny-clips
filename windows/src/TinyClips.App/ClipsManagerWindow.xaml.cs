@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -16,7 +17,7 @@ namespace TinyClips.App;
 /// <summary>
 /// View model for a single clip entry shown in the library grid or list.
 /// </summary>
-public sealed class ClipItemViewModel
+public sealed partial class ClipItemViewModel : ObservableObject
 {
     public required string Path { get; init; }
     public required CaptureType Type { get; init; }
@@ -29,6 +30,19 @@ public sealed class ClipItemViewModel
     public BitmapImage? Thumbnail { get; init; }
     public Visibility HasThumbnail => Thumbnail is not null ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NoThumbnail => Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UploadAvailable))]
+    [NotifyPropertyChangedFor(nameof(UploadedUrlAvailable))]
+    private string? _uploadedUrl;
+
+    public Visibility UploadAvailable => string.IsNullOrWhiteSpace(UploadedUrl)
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility UploadedUrlAvailable => string.IsNullOrWhiteSpace(UploadedUrl)
+        ? Visibility.Collapsed
+        : Visibility.Visible;
 
     public static async Task<ClipItemViewModel> FromAsync(ClipEntry entry)
     {
@@ -114,6 +128,7 @@ public sealed partial class ClipsManagerWindow : Window
     private const string SettingsKeySort     = "clipsManagerSort";
 
     private readonly IClipLibraryService _library;
+    private readonly IUploadcareUploadService _uploadcare;
     private readonly ISettingsService _settings;
 
     private readonly ObservableCollection<ClipItemViewModel> _visibleClips = [];
@@ -124,6 +139,7 @@ public sealed partial class ClipsManagerWindow : Window
     public ClipsManagerWindow()
     {
         _library  = App.Services.GetRequiredService<IClipLibraryService>();
+        _uploadcare = App.Services.GetRequiredService<IUploadcareUploadService>();
         _settings = App.Services.GetRequiredService<ISettingsService>();
 
         InitializeComponent();
@@ -311,6 +327,82 @@ public sealed partial class ClipsManagerWindow : Window
         }
     }
 
+    private async void OnUploadClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string path } button)
+        {
+            return;
+        }
+
+        var item = _allClips.FirstOrDefault(c => string.Equals(c.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+        SetUploadStatus("Uploading capture...");
+        try
+        {
+            var result = await _uploadcare.UploadAsync(path);
+            item.UploadedUrl = result.DeliveryUri.AbsoluteUri;
+            SetUploadStatus("Uploaded to Uploadcare. Use Copy URL or Open URL to access it.");
+        }
+        catch (UploadcareUploadException ex)
+        {
+            SetUploadStatus(ex.Message);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async void OnCopyUploadUrlClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string path })
+        {
+            return;
+        }
+
+        var item = _allClips.FirstOrDefault(c => string.Equals(c.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(item?.UploadedUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            await ClipboardService.CopyTextAsync(item.UploadedUrl);
+            SetUploadStatus("Upload URL copied to the clipboard.");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"ClipsManagerWindow: upload URL clipboard copy failed: {ex}");
+            App.ShowClipboardFailureNotification(System.IO.Path.GetFileName(path));
+        }
+    }
+
+    private async void OnOpenUploadUrlClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string path })
+        {
+            return;
+        }
+
+        var item = _allClips.FirstOrDefault(c => string.Equals(c.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(item?.UploadedUrl) ||
+            !Uri.TryCreate(item.UploadedUrl, UriKind.Absolute, out var uri))
+        {
+            return;
+        }
+
+        if (!await Windows.System.Launcher.LaunchUriAsync(uri))
+        {
+            SetUploadStatus("Windows couldn't open the Uploadcare URL.");
+        }
+    }
+
     private async void OnDeleteClicked(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: string path }) return;
@@ -388,6 +480,12 @@ public sealed partial class ClipsManagerWindow : Window
                    : "All";
         _settings.Set(SettingsKeyFilter, filter);
         _settings.Set(SettingsKeySort, SortCombo.SelectedIndex);
+    }
+
+    private void SetUploadStatus(string status)
+    {
+        UploadStatusText.Text = status;
+        UploadStatusText.Visibility = Visibility.Visible;
     }
 
     // -----------------------------------------------------------------------

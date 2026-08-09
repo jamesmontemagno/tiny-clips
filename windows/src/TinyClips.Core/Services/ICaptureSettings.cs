@@ -66,6 +66,10 @@ public interface ICaptureSettings
     bool ShowRegionIndicator { get; set; }
     bool IncludeTinyClipsInCapture { get; set; }
     bool ShowBrandingOverlay { get; set; }
+    bool UploadcareEnabled { get; set; }
+    string UploadcarePublicKey { get; set; }
+    bool UploadcareAutoUpload { get; set; }
+    bool UploadcareCopyUrl { get; set; }
     int ScreenshotHotKeyCode { get; set; }
     int ScreenshotHotKeyModifiers { get; set; }
     int VideoHotKeyCode { get; set; }
