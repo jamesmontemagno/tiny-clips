@@ -328,6 +328,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     var onMicrophoneWarning: ((String?) -> Void)?
     var onMicrophoneDeviceName: ((String) -> Void)?
     var onMicrophoneError: ((String) -> Void)?
+    var onStreamError: ((Error) -> Void)?
 
     var isMicrophoneCaptureActive: Bool {
         microphoneSession != nil && recordMicrophone
@@ -422,7 +423,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.hasStartedWriting = false
 
         do {
-            let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+            let stream = SCStream(filter: filter, configuration: config, delegate: self)
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: writingQueue)
             if recordSystemAudio {
                 try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: writingQueue)
@@ -745,7 +746,11 @@ private final class MicrophoneOutputDelegate: NSObject, AVCaptureAudioDataOutput
     }
 }
 
-extension VideoRecorder: SCStreamOutput {
+extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        onStreamError?(error)
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
         guard let writer else { return }

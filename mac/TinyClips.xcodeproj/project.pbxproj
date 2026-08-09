@@ -46,6 +46,7 @@
 		B10000000000000000000036 /* ScreenshotEditorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000036 /* ScreenshotEditorControls.swift */; };
 		B10000000000000000000037 /* ScreenshotEditorCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000037 /* ScreenshotEditorCanvas.swift */; };
 		B10000000000000000000038 /* ScreenshotEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000038 /* ScreenshotEditorViewModel.swift */; };
+		B10000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
 		B20000000000000000000001 /* TinyClipsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* TinyClipsApp.swift */; };
 		B20000000000000000000002 /* CaptureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CaptureSettings.swift */; };
 		B20000000000000000000003 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* SettingsView.swift */; };
@@ -85,6 +86,7 @@
 		B20000000000000000000036 /* ScreenshotEditorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000036 /* ScreenshotEditorControls.swift */; };
 		B20000000000000000000037 /* ScreenshotEditorCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000037 /* ScreenshotEditorCanvas.swift */; };
 		B20000000000000000000038 /* ScreenshotEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000038 /* ScreenshotEditorViewModel.swift */; };
+		B20000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
 		B10000000000000000000021 /* CaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000024 /* CaptureManager.swift */; };
 		B10000000000000000000022 /* MenuBarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000025 /* MenuBarViews.swift */; };
 		B10000000000000000000023 /* ProcessingIndicatorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000026 /* ProcessingIndicatorWindow.swift */; };
@@ -157,6 +159,7 @@
 		A10000000000000000000036 /* ScreenshotEditorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorControls.swift; sourceTree = "<group>"; };
 		A10000000000000000000037 /* ScreenshotEditorCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorCanvas.swift; sourceTree = "<group>"; };
 		A10000000000000000000038 /* ScreenshotEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorViewModel.swift; sourceTree = "<group>"; };
+		A10000000000000000000039 /* IdleSleepAssertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleSleepAssertion.swift; sourceTree = "<group>"; };
 		A10000000000000000000024 /* CaptureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureManager.swift; sourceTree = "<group>"; };
 		A10000000000000000000025 /* MenuBarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViews.swift; sourceTree = "<group>"; };
 		A10000000000000000000026 /* ProcessingIndicatorWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingIndicatorWindow.swift; sourceTree = "<group>"; };
@@ -295,6 +298,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000009 /* SaveService.swift */,
+				A10000000000000000000039 /* IdleSleepAssertion.swift */,
 				A10000000000000000000032 /* CaptureAnalyticsStore.swift */,
 				A1000000000000000000000A /* PermissionManager.swift */,
 				A1000000000000000000000F /* SparkleController.swift */,
@@ -433,6 +437,7 @@
 				B10000000000000000000036 /* ScreenshotEditorControls.swift in Sources */,
 				B10000000000000000000037 /* ScreenshotEditorCanvas.swift in Sources */,
 				B10000000000000000000038 /* ScreenshotEditorViewModel.swift in Sources */,
+				B10000000000000000000039 /* IdleSleepAssertion.swift in Sources */,
 				B1000000000000000000000F /* GifTrimmerWindow.swift in Sources */,
 				B10000000000000000000010 /* StartRecordingPanel.swift in Sources */,
 				B10000000000000000000011 /* CountdownWindow.swift in Sources */,
@@ -491,6 +496,7 @@
 				B20000000000000000000036 /* ScreenshotEditorControls.swift in Sources */,
 				B20000000000000000000037 /* ScreenshotEditorCanvas.swift in Sources */,
 				B20000000000000000000038 /* ScreenshotEditorViewModel.swift in Sources */,
+				B20000000000000000000039 /* IdleSleepAssertion.swift in Sources */,
 				B2000000000000000000000F /* GifTrimmerWindow.swift in Sources */,
 				B20000000000000000000010 /* StartRecordingPanel.swift in Sources */,
 				B20000000000000000000011 /* CountdownWindow.swift in Sources */,

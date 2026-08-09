@@ -12,6 +12,7 @@ class GifWriter: NSObject, @unchecked Sendable {
     private var isPaused = false
     private let processingQueue = DispatchQueue(label: "com.tinyclips.gif-processing")
     private let ciContext = CIContext()
+    var onStreamError: ((Error) -> Void)?
 
     func start(target: CaptureTarget) async throws {
         debugLifecycle("start requested")
@@ -30,7 +31,7 @@ class GifWriter: NSObject, @unchecked Sendable {
 
         frames = []
 
-        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+        let stream = SCStream(filter: filter, configuration: config, delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: processingQueue)
         try await stream.startCapture()
         self.stream = stream
@@ -151,7 +152,11 @@ class GifWriter: NSObject, @unchecked Sendable {
     }
 }
 
-extension GifWriter: SCStreamOutput {
+extension GifWriter: SCStreamOutput, SCStreamDelegate {
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        onStreamError?(error)
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sampleBuffer.isValid else { return }
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
