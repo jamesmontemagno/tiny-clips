@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - macOS Video and GIF settings now let you disable the default behavior that keeps the display awake while recording.
 
 ### Fixed
+- Fixed macOS recording writer failures caused by invalid or non-increasing screen, system-audio, microphone, or webcam presentation timestamps.
 - Fixed macOS video and GIF recordings allowing the display to idle-sleep or start the screen saver during capture.
 - Fixed macOS screenshot editor text annotations previewing larger than copied or saved images when background padding changes the displayed screenshot scale.
 - Fixed macOS shortcut changes silently accepting unavailable or conflicting global hotkeys; Settings now validates conflicts and keeps the prior working shortcut when registration fails.
