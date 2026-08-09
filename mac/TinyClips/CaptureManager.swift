@@ -142,6 +142,7 @@ class CaptureManager: ObservableObject {
     private var videoRecorder: VideoRecorder?
     private var webcamRecorder: WebcamRecorder?
     private var gifWriter: GifWriter?
+    private let idleSleepAssertion = IdleSleepAssertion()
     private(set) var lastVideoRecordingArtifacts: VideoRecordingArtifacts?
     private var screenshotPickerPanel: CapturePickerPanel?
     private var screenshotPickerPosition: NSPoint?
@@ -627,8 +628,9 @@ class CaptureManager: ObservableObject {
                     ? [.init(time: .zero, corner: webcamSelection.corner)]
                     : []
 
+                let recorder = VideoRecorder()
+                let webcamRecorder = WebcamRecorder()
                 do {
-                    let recorder = VideoRecorder()
                     let sessionID = self.nextRecordingSessionID()
                     self.activeRecordingSessionID = sessionID
                     self.debugRecordingLifecycle("Starting video session \(sessionID)")
@@ -653,8 +655,12 @@ class CaptureManager: ObservableObject {
                             SaveService.shared.showError("Microphone error: \(message)")
                         }
                     }
+                    recorder.onStreamError = { [weak self] error in
+                        DispatchQueue.main.async {
+                            self?.handleRecordingStreamFailure(error, sessionID: sessionID)
+                        }
+                    }
 
-                    let webcamRecorder = WebcamRecorder()
                     webcamRecorder.onWebcamDeviceName = { [weak self] name in
                         DispatchQueue.main.async {
                             self?.activeWebcamName = name.isEmpty ? nil : name
@@ -699,6 +705,15 @@ class CaptureManager: ObservableObject {
                         recordMicrophone: microphone,
                         selectedMicrophoneID: selectedMicrophoneID
                     )
+                    guard self.isRecording,
+                          self.activeRecordingSessionID == sessionID,
+                          self.videoRecorder === recorder else {
+                        await recorder.cancel()
+                        return
+                    }
+                    if CaptureSettings.shared.preventDisplaySleepWhileRecording {
+                        try self.idleSleepAssertion.begin()
+                    }
                     self.debugRecordingLifecycle("Video session \(sessionID) started")
                     self.recordingSystemAudioEnabled = recorder.isSystemAudioCaptureActive
                     self.recordingMicrophoneEnabled = recorder.isMicrophoneCaptureActive
@@ -728,6 +743,9 @@ class CaptureManager: ObservableObject {
                     self.showStopPanel()
                     self.scheduleVideoAutoStopIfNeeded(timeLimitMinutes: timeLimitMinutes, sessionID: sessionID)
                 } catch {
+                    self.endIdleSleepAssertion()
+                    await recorder.cancel()
+                    await webcamRecorder.cancel()
                     self.cancelVideoAutoStopTask()
                     _ = self.stopMouseClickMonitoring()
                     self.activeMouseClickCaptureEnabledOverride = nil
@@ -739,6 +757,7 @@ class CaptureManager: ObservableObject {
                     self.activeRecordingRegion = nil
                     self.dismissRegionIndicator()
                     self.activeRecordingSessionID = nil
+                    self.videoRecorder = nil
                     self.webcamRecorder = nil
                     self.activeWebcamOverlaySelection = nil
                     self.webcamPositionEvents = []
@@ -787,11 +806,16 @@ class CaptureManager: ObservableObject {
                 countdownCompleted: countdownEnabled
             )
             Task {
+                let writer = GifWriter()
                 do {
-                    let writer = GifWriter()
                     let sessionID = self.nextRecordingSessionID()
                     self.activeRecordingSessionID = sessionID
                     self.debugRecordingLifecycle("Starting GIF session \(sessionID)")
+                    writer.onStreamError = { [weak self] error in
+                        DispatchQueue.main.async {
+                            self?.handleRecordingStreamFailure(error, sessionID: sessionID)
+                        }
+                    }
                     self.gifWriter = writer
                     self.activeRecordingRegion = target.region
                     self.isRecording = true
@@ -801,9 +825,20 @@ class CaptureManager: ObservableObject {
                     self.startMouseClickMonitoringIfNeeded(for: .gif, region: target.region)
 
                     try await writer.start(target: target)
+                    guard self.isRecording,
+                          self.activeRecordingSessionID == sessionID,
+                          self.gifWriter === writer else {
+                        await writer.cancel()
+                        return
+                    }
+                    if CaptureSettings.shared.preventDisplaySleepWhileRecording {
+                        try self.idleSleepAssertion.begin()
+                    }
                     self.debugRecordingLifecycle("GIF session \(sessionID) started")
                     self.showStopPanel()
                 } catch {
+                    self.endIdleSleepAssertion()
+                    await writer.cancel()
                     _ = self.stopMouseClickMonitoring()
                     self.activeMouseClickCaptureEnabledOverride = nil
                     self.isRecording = false
@@ -812,6 +847,7 @@ class CaptureManager: ObservableObject {
                     self.activeRecordingRegion = nil
                     self.dismissRegionIndicator()
                     self.activeRecordingSessionID = nil
+                    self.gifWriter = nil
                     self.debugRecordingLifecycle("GIF session failed to start: \(error.localizedDescription)")
                     SaveService.shared.showError("GIF recording failed: \(error.localizedDescription)")
                 }
@@ -846,6 +882,7 @@ class CaptureManager: ObservableObject {
         isRecording = false
         isRecordingPaused = false
         activeRecordingRequest = nil
+        endIdleSleepAssertion()
         let stoppingSessionID = activeRecordingSessionID
         activeRecordingSessionID = nil
         finalizingSessionID = stoppingSessionID
@@ -923,6 +960,7 @@ class CaptureManager: ObservableObject {
     private func discardRecording(clearActiveRequest: Bool) async {
         dismissWebcamPreview()
         dismissRegionIndicator()
+        endIdleSleepAssertion()
         guard isRecording || videoRecorder != nil || webcamRecorder != nil || gifWriter != nil else { return }
         cancelVideoAutoStopTask()
         dismissStopPanel()
@@ -1360,6 +1398,7 @@ class CaptureManager: ObservableObject {
         }
 
         if videoRecorder != nil || webcamRecorder != nil || gifWriter != nil || isRecording {
+            endIdleSleepAssertion()
             isStoppingRecording = true
             let stoppingSessionID = activeRecordingSessionID
             activeRecordingSessionID = nil
@@ -1368,6 +1407,22 @@ class CaptureManager: ObservableObject {
             await stopRecordingFlow(stoppingSessionID: stoppingSessionID)
         } else {
             dismissStopPanel()
+        }
+    }
+
+    private func handleRecordingStreamFailure(_ error: Error, sessionID: UInt64) {
+        guard activeRecordingSessionID == sessionID, isRecording else { return }
+
+        endIdleSleepAssertion()
+        SaveService.shared.showError("Recording stopped because screen capture failed: \(error.localizedDescription)")
+        discardRecording()
+    }
+
+    private func endIdleSleepAssertion() {
+        do {
+            try idleSleepAssertion.end()
+        } catch {
+            NSLog("Unable to release TinyClips idle sleep assertion: \(error.localizedDescription)")
         }
     }
 
