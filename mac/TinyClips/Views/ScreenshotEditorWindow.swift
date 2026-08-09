@@ -487,6 +487,30 @@ struct ScreenshotEditorView: View {
                 Slider(value: $viewModel.canvasPadding, in: 0...160, step: 2)
             }
 
+            Picker("Frame", selection: $viewModel.exportFramePreset) {
+                ForEach(ExportFramePreset.allCases) { preset in
+                    Text(preset.label).tag(preset)
+                }
+            }
+            .accessibilityHint("Sets the export frame without stretching the screenshot.")
+
+            HStack(spacing: 8) {
+                Picker("Horizontal", selection: $viewModel.horizontalExportAlignment) {
+                    ForEach(ExportHorizontalAlignment.allCases) { alignment in
+                        Text(alignment.label).tag(alignment)
+                    }
+                }
+                .disabled(!viewModel.hasHorizontalExportFrameSpace)
+
+                Picker("Vertical", selection: $viewModel.verticalExportAlignment) {
+                    ForEach(ExportVerticalAlignment.allCases) { alignment in
+                        Text(alignment.label).tag(alignment)
+                    }
+                }
+                .disabled(!viewModel.hasVerticalExportFrameSpace)
+            }
+            .accessibilityElement(children: .contain)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Image corners: \(Int(viewModel.canvasCornerRadius)) px")
                     .font(.caption)

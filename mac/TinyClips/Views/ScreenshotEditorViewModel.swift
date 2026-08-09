@@ -55,6 +55,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var canvasPadding: CGFloat = 0
     @Published var canvasCornerRadius: CGFloat = 0
     @Published var canvasShadowRadius: CGFloat = 0
+    @Published var exportFramePreset: ExportFramePreset = .original
+    @Published var horizontalExportAlignment: ExportHorizontalAlignment = .center
+    @Published var verticalExportAlignment: ExportVerticalAlignment = .center
 
     private var pencilPoints: [CGPoint] = []
     private var imagePixelSize: CGSize = .zero
@@ -79,6 +82,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var initialCanvasPadding: CGFloat
     private var initialCanvasCornerRadius: CGFloat
     private var initialCanvasShadowRadius: CGFloat
+    private var initialExportFramePreset: ExportFramePreset
+    private var initialHorizontalExportAlignment: ExportHorizontalAlignment
+    private var initialVerticalExportAlignment: ExportVerticalAlignment
     private var hasPendingChanges = false
 
     init(url: URL) {
@@ -102,6 +108,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         self.initialCanvasPadding = 0
         self.initialCanvasCornerRadius = 0
         self.initialCanvasShadowRadius = 0
+        self.initialExportFramePreset = .original
+        self.initialHorizontalExportAlignment = .center
+        self.initialVerticalExportAlignment = .center
     }
 
     // Convert point in overlay-local space to 0..1 normalized coordinate
@@ -157,26 +166,53 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    // Calculate display size maintaining aspect ratio, capped at native pixel size
-    func displaySize(in containerSize: CGSize) -> CGSize {
-        guard let image = originalImage, image.size.width > 0, image.size.height > 0 else {
-            return .zero
+    func displayLayout(in containerSize: CGSize) -> ExportFrameLayout {
+        guard originalImage != nil, imagePixelSize.width > 0, imagePixelSize.height > 0 else {
+            return ExportFrameLayout.make(
+                imageSize: .zero,
+                padding: canvasPadding,
+                preset: exportFramePreset,
+                horizontalAlignment: horizontalExportAlignment,
+                verticalAlignment: verticalExportAlignment
+            )
         }
-        let imageAspect = image.size.width / image.size.height
-        let effectivePadding = max(0, canvasPadding)
-        let availableWidth = max(1, containerSize.width - (effectivePadding * 2))
-        let availableHeight = max(1, containerSize.height - (effectivePadding * 2))
 
-        // Cap at native pixel dimensions to prevent upscaling blur on Retina
+        let pixelLayout = ExportFrameLayout.make(
+            imageSize: imagePixelSize,
+            padding: canvasPadding,
+            preset: exportFramePreset,
+            horizontalAlignment: horizontalExportAlignment,
+            verticalAlignment: verticalExportAlignment
+        )
         let screenScale = NSScreen.main?.backingScaleFactor ?? 2.0
-        let maxWidth = min(availableWidth * 0.95, imagePixelSize.width / screenScale)
-        let maxHeight = min(availableHeight * 0.95, imagePixelSize.height / screenScale)
+        let maxFrameWidth = max(1, containerSize.width * 0.95)
+        let maxFrameHeight = max(1, containerSize.height * 0.95)
+        let displayScale = min(
+            1 / screenScale,
+            maxFrameWidth / pixelLayout.frameSize.width,
+            maxFrameHeight / pixelLayout.frameSize.height
+        )
 
-        if maxWidth / maxHeight < imageAspect {
-            return CGSize(width: maxWidth, height: maxWidth / imageAspect)
-        } else {
-            return CGSize(width: maxHeight * imageAspect, height: maxHeight)
-        }
+        return ExportFrameLayout.make(
+            imageSize: CGSize(
+                width: imagePixelSize.width * displayScale,
+                height: imagePixelSize.height * displayScale
+            ),
+            padding: canvasPadding * displayScale,
+            preset: exportFramePreset,
+            horizontalAlignment: horizontalExportAlignment,
+            verticalAlignment: verticalExportAlignment
+        )
+    }
+
+    var hasHorizontalExportFrameSpace: Bool {
+        let layout = exportLayout(for: exportImageSize)
+        return layout.frameSize.width > exportImageSize.width + max(0, canvasPadding) * 2
+    }
+
+    var hasVerticalExportFrameSpace: Bool {
+        let layout = exportLayout(for: exportImageSize)
+        return layout.frameSize.height > exportImageSize.height + max(0, canvasPadding) * 2
     }
 
     /// Returns the text size for an image rendered at `renderedImageWidth`.
@@ -345,7 +381,10 @@ class ScreenshotEditorViewModel: ObservableObject {
 
         if abs(canvasPadding - initialCanvasPadding) > 0.0001 ||
             abs(canvasCornerRadius - initialCanvasCornerRadius) > 0.0001 ||
-            abs(canvasShadowRadius - initialCanvasShadowRadius) > 0.0001 {
+            abs(canvasShadowRadius - initialCanvasShadowRadius) > 0.0001 ||
+            exportFramePreset != initialExportFramePreset ||
+            horizontalExportAlignment != initialHorizontalExportAlignment ||
+            verticalExportAlignment != initialVerticalExportAlignment {
             return true
         }
 
@@ -801,6 +840,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         initialCanvasPadding = canvasPadding
         initialCanvasCornerRadius = canvasCornerRadius
         initialCanvasShadowRadius = canvasShadowRadius
+        initialExportFramePreset = exportFramePreset
+        initialHorizontalExportAlignment = horizontalExportAlignment
+        initialVerticalExportAlignment = verticalExportAlignment
     }
 
     private func canvasState() -> EditorCanvasState {
@@ -925,11 +967,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             cropPixelRect = CGRect(origin: .zero, size: imagePixelSize)
         }
 
-        let exportPadding = max(0, Int(canvasPadding))
-        return CGSize(
-            width: Int(cropPixelRect.width) + (exportPadding * 2),
-            height: Int(cropPixelRect.height) + (exportPadding * 2)
-        )
+        return exportLayout(for: cropPixelRect.size).frameSize
     }
 
     private func originalLinePoints() -> LinePoints {
@@ -1158,9 +1196,9 @@ class ScreenshotEditorViewModel: ObservableObject {
             cropPixelRect = CGRect(origin: .zero, size: imagePixelSize)
         }
 
-        let exportPadding = max(0, Int(canvasPadding))
-        let outputW = Int(cropPixelRect.width) + (exportPadding * 2)
-        let outputH = Int(cropPixelRect.height) + (exportPadding * 2)
+        let layout = exportLayout(for: cropPixelRect.size)
+        let outputW = Int(layout.frameSize.width)
+        let outputH = Int(layout.frameSize.height)
         guard outputW > 0 && outputH > 0 else { return nil }
 
         guard let result = NSBitmapImageRep(
@@ -1203,10 +1241,10 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
 
         let imageRect = CGRect(
-            x: exportPadding,
-            y: exportPadding,
-            width: Int(cropPixelRect.width),
-            height: Int(cropPixelRect.height)
+            x: layout.imageRect.minX,
+            y: CGFloat(outputH) - layout.imageRect.maxY,
+            width: layout.imageRect.width,
+            height: layout.imageRect.height
         )
         let imageCornerRadius = max(0, min(canvasCornerRadius, min(imageRect.width, imageRect.height) / 2))
         let imageClipPath = CGPath(
@@ -1256,7 +1294,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                 cropOrigin: cropPixelRect.origin,
                 outputSize: CGSize(width: outputW, height: outputH),
                 fullSize: imagePixelSize,
-                contentOffset: CGPoint(x: exportPadding, y: exportPadding),
+                contentOffset: imageRect.origin,
+                imageHeight: imageRect.height,
                 sourceCGImage: sourceCGImage
             )
         }
@@ -1270,8 +1309,8 @@ class ScreenshotEditorViewModel: ObservableObject {
         return result
     }
 
-    private func drawAnnotationCG(_ annotation: ScreenshotAnnotation, in ctx: CGContext, cropOrigin: CGPoint, outputSize: CGSize, fullSize: CGSize, contentOffset: CGPoint, sourceCGImage: CGImage? = nil) {
-        let imageOutputHeight = outputSize.height - (contentOffset.y * 2)
+    private func drawAnnotationCG(_ annotation: ScreenshotAnnotation, in ctx: CGContext, cropOrigin: CGPoint, outputSize: CGSize, fullSize: CGSize, contentOffset: CGPoint, imageHeight: CGFloat, sourceCGImage: CGImage? = nil) {
+        let imageOutputHeight = imageHeight
         // Convert normalized rect to pixel coords relative to crop
         let pixelRect = CGRect(
             x: (annotation.rect.origin.x * fullSize.width) - cropOrigin.x + contentOffset.x,
@@ -1293,6 +1332,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                 ctx.setFillColor(fillCGColor)
                 ctx.fill(pixelRect)
             }
+
             ctx.stroke(pixelRect)
 
         case .circle:
@@ -1453,6 +1493,25 @@ class ScreenshotEditorViewModel: ObservableObject {
         case .crop, .move:
             break
         }
+    }
+
+    private var exportImageSize: CGSize {
+        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return .zero }
+        guard let crop = cropRect else { return imagePixelSize }
+        return CGSize(
+            width: crop.width * imagePixelSize.width,
+            height: crop.height * imagePixelSize.height
+        )
+    }
+
+    private func exportLayout(for imageSize: CGSize) -> ExportFrameLayout {
+        ExportFrameLayout.make(
+            imageSize: imageSize,
+            padding: canvasPadding,
+            preset: exportFramePreset,
+            horizontalAlignment: horizontalExportAlignment,
+            verticalAlignment: verticalExportAlignment
+        )
     }
 
     private func exportStrokeWidth(baseWidth: CGFloat, outputWidth: CGFloat) -> CGFloat {

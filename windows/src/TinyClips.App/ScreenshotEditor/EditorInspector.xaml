@@ -232,6 +232,39 @@
                             Minimum="0"
                             StepFrequency="2"
                             ValueChanged="OnPaddingChanged" />
+                        <ComboBox
+                            x:Name="ExportFrameCombo"
+                            AutomationProperties.AutomationId="EditorExportFrameCombo"
+                            AutomationProperties.Name="Export frame"
+                            Header="Frame"
+                            SelectionChanged="OnExportFrameChanged">
+                            <ComboBoxItem Content="Original" />
+                            <ComboBoxItem Content="1:1" />
+                            <ComboBoxItem Content="4:3" />
+                            <ComboBoxItem Content="16:9" />
+                            <ComboBoxItem Content="3:4" />
+                            <ComboBoxItem Content="9:16" />
+                        </ComboBox>
+                        <ComboBox
+                            x:Name="HorizontalAlignmentCombo"
+                            AutomationProperties.AutomationId="EditorHorizontalAlignmentCombo"
+                            AutomationProperties.Name="Horizontal image alignment"
+                            Header="Horizontal alignment"
+                            SelectionChanged="OnHorizontalAlignmentChanged">
+                            <ComboBoxItem Content="Left" />
+                            <ComboBoxItem Content="Center" />
+                            <ComboBoxItem Content="Right" />
+                        </ComboBox>
+                        <ComboBox
+                            x:Name="VerticalAlignmentCombo"
+                            AutomationProperties.AutomationId="EditorVerticalAlignmentCombo"
+                            AutomationProperties.Name="Vertical image alignment"
+                            Header="Vertical alignment"
+                            SelectionChanged="OnVerticalAlignmentChanged">
+                            <ComboBoxItem Content="Top" />
+                            <ComboBoxItem Content="Center" />
+                            <ComboBoxItem Content="Bottom" />
+                        </ComboBox>
                         <Slider
                             x:Name="CornerSlider"
                             AutomationProperties.AutomationId="EditorCornerSlider"
