@@ -33,6 +33,9 @@ struct GifSettingsSection: View {
             .help("Limit GIF output width to reduce file size.")
             Toggle("Show capture region during recording", isOn: $settings.showRegionIndicator)
                 .help("Show a visible border around the selected capture area while recording.")
+            Toggle("Prevent display sleep while recording", isOn: $settings.preventDisplaySleepWhileRecording)
+                .help("Keep the display awake and prevent the screen saver while recording video or GIFs.")
+                .accessibilityHint("When enabled, TinyClips keeps the display awake while recording video or GIFs.")
             Toggle(
                 settings.gifMouseClicksUseVideoSettings
                     ? "Show mouse clicks in recording (mirrors Video)"

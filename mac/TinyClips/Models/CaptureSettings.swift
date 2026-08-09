@@ -341,6 +341,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
     @AppStorage("multiMonitorCaptureMode") var multiMonitorCaptureMode: MultiMonitorCaptureMode = .askEveryTime
     @AppStorage("showRegionIndicator") var showRegionIndicator: Bool = true
+    @AppStorage("preventDisplaySleepWhileRecording") var preventDisplaySleepWhileRecording: Bool = true
     @AppStorage("includeTinyClipsInCapture") var includeTinyClipsInCapture: Bool = false
     @AppStorage("showBrandingOverlay") var showBrandingOverlay: Bool = false
     // Custom global hotkeys (stored as Carbon keyCode + modifiers bitmask).

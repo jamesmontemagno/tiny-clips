@@ -9,8 +9,10 @@ All notable changes to this project will be documented in this file.
 - macOS capture settings now offer matching before/after picker controls for screenshots, video recordings, and GIF recordings.
 - macOS multi-monitor capture settings now let you choose to ask every time, capture the display under the cursor, or capture the main display.
 - macOS and Windows CI workflows now always report a successful check when their platform-specific files are unchanged, while skipping the unnecessary build work.
+- macOS Video and GIF settings now let you disable the default behavior that keeps the display awake while recording.
 
 ### Fixed
+- Fixed macOS video and GIF recordings allowing the display to idle-sleep or start the screen saver during capture.
 - Fixed macOS screenshot editor text annotations previewing larger than copied or saved images when background padding changes the displayed screenshot scale.
 - Fixed macOS shortcut changes silently accepting unavailable or conflicting global hotkeys; Settings now validates conflicts and keeps the prior working shortcut when registration fails.
 - Fixed macOS video and GIF recordings leaving capture controls active after ScreenCaptureKit unexpectedly stops a stream; recordings now save available partial frames and explain how to recover.
