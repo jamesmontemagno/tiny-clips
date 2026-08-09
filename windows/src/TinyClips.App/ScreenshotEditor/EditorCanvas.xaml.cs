@@ -255,16 +255,18 @@ public sealed partial class EditorCanvas : UserControl
         double imgW = _controller.Bitmap.PixelWidth;
         double imgH = _controller.Bitmap.PixelHeight;
         var (scale, imageOffX, imageOffY) = HostLayout();
-        var pad = _controller.CanvasPadding * scale;
+        var frame = _controller.GetExportFrameLayout();
+        var frameOffX = imageOffX - frame.ImageBounds.X * scale;
+        var frameOffY = imageOffY - frame.ImageBounds.Y * scale;
 
         var showBackground = _controller.BgStyle != ExportBackgroundStyle.Transparent;
         CanvasBackground.Visibility = showBackground ? Visibility.Visible : Visibility.Collapsed;
         if (showBackground)
         {
-            Canvas.SetLeft(CanvasBackground, imageOffX - pad);
-            Canvas.SetTop(CanvasBackground, imageOffY - pad);
-            CanvasBackground.Width = imgW * scale + pad * 2;
-            CanvasBackground.Height = imgH * scale + pad * 2;
+            Canvas.SetLeft(CanvasBackground, frameOffX);
+            Canvas.SetTop(CanvasBackground, frameOffY);
+            CanvasBackground.Width = frame.FrameSize.Width * scale;
+            CanvasBackground.Height = frame.FrameSize.Height * scale;
             CanvasBackground.Background = MakeBackgroundBrush();
         }
 

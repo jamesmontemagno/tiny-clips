@@ -157,6 +157,127 @@ enum ExportBackgroundStyle: String, CaseIterable, Identifiable {
     }
 }
 
+enum ExportFramePreset: String, CaseIterable, Identifiable {
+    case original
+    case square
+    case landscapeFourByThree
+    case landscapeSixteenByNine
+    case portraitThreeByFour
+    case portraitNineBySixteen
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .original: return "Original"
+        case .square: return "1:1"
+        case .landscapeFourByThree: return "4:3"
+        case .landscapeSixteenByNine: return "16:9"
+        case .portraitThreeByFour: return "3:4"
+        case .portraitNineBySixteen: return "9:16"
+        }
+    }
+
+    var aspectRatio: CGFloat? {
+        switch self {
+        case .original: return nil
+        case .square: return 1
+        case .landscapeFourByThree: return 4.0 / 3.0
+        case .landscapeSixteenByNine: return 16.0 / 9.0
+        case .portraitThreeByFour: return 3.0 / 4.0
+        case .portraitNineBySixteen: return 9.0 / 16.0
+        }
+    }
+}
+
+enum ExportHorizontalAlignment: String, CaseIterable, Identifiable {
+    case leading
+    case center
+    case trailing
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .leading: return "Left"
+        case .center: return "Center"
+        case .trailing: return "Right"
+        }
+    }
+
+    var placementFactor: CGFloat {
+        switch self {
+        case .leading: return 0
+        case .center: return 0.5
+        case .trailing: return 1
+        }
+    }
+}
+
+enum ExportVerticalAlignment: String, CaseIterable, Identifiable {
+    case top
+    case center
+    case bottom
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .top: return "Top"
+        case .center: return "Center"
+        case .bottom: return "Bottom"
+        }
+    }
+
+    var placementFactor: CGFloat {
+        switch self {
+        case .top: return 0
+        case .center: return 0.5
+        case .bottom: return 1
+        }
+    }
+}
+
+struct ExportFrameLayout {
+    let frameSize: CGSize
+    let imageRect: CGRect
+
+    static func make(
+        imageSize: CGSize,
+        padding: CGFloat,
+        preset: ExportFramePreset,
+        horizontalAlignment: ExportHorizontalAlignment,
+        verticalAlignment: ExportVerticalAlignment
+    ) -> Self {
+        let safePadding = max(0, padding)
+        let baseSize = CGSize(
+            width: imageSize.width + (safePadding * 2),
+            height: imageSize.height + (safePadding * 2)
+        )
+
+        var frameSize = baseSize
+        if let targetRatio = preset.aspectRatio, baseSize.width > 0, baseSize.height > 0 {
+            if baseSize.width / baseSize.height < targetRatio {
+                frameSize.width = ceil(baseSize.height * targetRatio)
+            } else if baseSize.width / baseSize.height > targetRatio {
+                frameSize.height = ceil(baseSize.width / targetRatio)
+            }
+        }
+
+        let extraHorizontalSpace = max(0, frameSize.width - baseSize.width)
+        let extraVerticalSpace = max(0, frameSize.height - baseSize.height)
+        return Self(
+            frameSize: frameSize,
+            imageRect: CGRect(
+                x: safePadding + (extraHorizontalSpace * horizontalAlignment.placementFactor),
+                y: safePadding + (extraVerticalSpace * verticalAlignment.placementFactor),
+                width: imageSize.width,
+                height: imageSize.height
+            )
+        )
+    }
+}
+
 struct ExportBackgroundPreset: Identifiable {
     let id: String
     let label: String

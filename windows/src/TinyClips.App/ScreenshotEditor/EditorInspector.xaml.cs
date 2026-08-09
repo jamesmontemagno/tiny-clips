@@ -101,8 +101,12 @@ public sealed partial class EditorInspector : UserControl
         PaddingSlider.Value = _controller.CanvasPadding;
         CornerSlider.Value = _controller.CanvasCornerRadius;
         ShadowSlider.Value = _controller.CanvasShadow;
+        ExportFrameCombo.SelectedIndex = (int)_controller.FramePreset;
+        HorizontalAlignmentCombo.SelectedIndex = (int)_controller.HorizontalExportAlignment;
+        VerticalAlignmentCombo.SelectedIndex = (int)_controller.VerticalExportAlignment;
         UpdateSliderHeaders();
         UpdateBackgroundStyleUi();
+        UpdateExportFrameControls();
 
         _bgInitializing = false;
     }
@@ -452,6 +456,33 @@ public sealed partial class EditorInspector : UserControl
         UpdateSliderHeaders();
     }
 
+    private void OnExportFrameChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_bgInitializing)
+        {
+            return;
+        }
+
+        _controller.SetExportFramePreset((ExportFramePreset)ExportFrameCombo.SelectedIndex);
+        UpdateExportFrameControls();
+    }
+
+    private void OnHorizontalAlignmentChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_bgInitializing)
+        {
+            _controller.SetHorizontalExportAlignment((ExportHorizontalAlignment)HorizontalAlignmentCombo.SelectedIndex);
+        }
+    }
+
+    private void OnVerticalAlignmentChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_bgInitializing)
+        {
+            _controller.SetVerticalExportAlignment((ExportVerticalAlignment)VerticalAlignmentCombo.SelectedIndex);
+        }
+    }
+
     private void OnCornerChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_bgInitializing)
@@ -479,5 +510,12 @@ public sealed partial class EditorInspector : UserControl
         PaddingSlider.Header = $"Padding — {(int)_controller.CanvasPadding} px";
         CornerSlider.Header = $"Image corners — {(int)_controller.CanvasCornerRadius} px";
         ShadowSlider.Header = $"Shadow — {(int)_controller.CanvasShadow}";
+    }
+
+    private void UpdateExportFrameControls()
+    {
+        var hasAdditionalFrameSpace = _controller.FramePreset != ExportFramePreset.Original;
+        HorizontalAlignmentCombo.IsEnabled = hasAdditionalFrameSpace;
+        VerticalAlignmentCombo.IsEnabled = hasAdditionalFrameSpace;
     }
 }

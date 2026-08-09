@@ -129,6 +129,12 @@ internal sealed class EditorController : IDisposable
 
     public double CanvasShadow { get; private set; }
 
+    public ExportFramePreset FramePreset { get; private set; } = ExportFramePreset.Original;
+
+    public ExportHorizontalAlignment HorizontalExportAlignment { get; private set; } = ExportHorizontalAlignment.Center;
+
+    public ExportVerticalAlignment VerticalExportAlignment { get; private set; } = ExportVerticalAlignment.Center;
+
     // -- Events -------------------------------------------------------------------------------
 
     /// <summary>The loaded bitmap changed (initial load, crop, or reset). Full relayout/redraw.</summary>
@@ -434,6 +440,37 @@ internal sealed class EditorController : IDisposable
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public void SetExportFramePreset(ExportFramePreset preset)
+    {
+        FramePreset = preset;
+        BackgroundChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetHorizontalExportAlignment(ExportHorizontalAlignment alignment)
+    {
+        HorizontalExportAlignment = alignment;
+        BackgroundChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetVerticalExportAlignment(ExportVerticalAlignment alignment)
+    {
+        VerticalExportAlignment = alignment;
+        BackgroundChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public ExportFrameLayout GetExportFrameLayout()
+    {
+        var imageWidth = _bitmap?.PixelWidth ?? 0;
+        var imageHeight = _bitmap?.PixelHeight ?? 0;
+        return ExportFrameLayout.Create(
+            imageWidth,
+            imageHeight,
+            CanvasPadding,
+            FramePreset,
+            HorizontalExportAlignment,
+            VerticalExportAlignment);
+    }
+
     // -- Coordinate mapping (pure; parameterized by the current host size) ------------------
 
     public (double Scale, double OffsetX, double OffsetY) ImageLayout(double hostW, double hostH)
@@ -445,17 +482,14 @@ internal sealed class EditorController : IDisposable
             return (1, 0, 0);
         }
 
-        // The composite (background frame) is the image plus padding on every side.
-        var pad = CanvasPadding;
-        var compW = imgW + pad * 2;
-        var compH = imgH + pad * 2;
-        var scale = Math.Min(hostW / compW, hostH / compH);
-        var frameOffsetX = (hostW - compW * scale) / 2.0;
-        var frameOffsetY = (hostH - compH * scale) / 2.0;
+        var frame = GetExportFrameLayout();
+        var scale = Math.Min(hostW / frame.FrameSize.Width, hostH / frame.FrameSize.Height);
+        var frameOffsetX = (hostW - frame.FrameSize.Width * scale) / 2.0;
+        var frameOffsetY = (hostH - frame.FrameSize.Height * scale) / 2.0;
         // Offsets returned are the image card's top-left (inside the padded frame),
         // so annotation pixel<->canvas mapping stays aligned with the screenshot.
-        var offsetX = frameOffsetX + pad * scale;
-        var offsetY = frameOffsetY + pad * scale;
+        var offsetX = frameOffsetX + frame.ImageBounds.X * scale;
+        var offsetY = frameOffsetY + frame.ImageBounds.Y * scale;
         return (scale, offsetX, offsetY);
     }
 
@@ -917,7 +951,8 @@ internal sealed class EditorController : IDisposable
         var hasBackground = BgStyle != ExportBackgroundStyle.Transparent
             || CanvasPadding > 0
             || CanvasCornerRadius > 0
-            || CanvasShadow > 0;
+            || CanvasShadow > 0
+            || FramePreset != ExportFramePreset.Original;
 
         // Simple path: no background/padding/corners/shadow, or caller opted out (crop pre-bake).
         if (!includeBackground || !hasBackground)
@@ -946,10 +981,10 @@ internal sealed class EditorController : IDisposable
         }
 
         // Composited path: padded background frame, rounded screenshot card, optional shadow.
-        var pad = (float)Math.Round(CanvasPadding);
+        var frame = GetExportFrameLayout();
         var corner = (float)CanvasCornerRadius;
-        var outW = imgW + pad * 2;
-        var outH = imgH + pad * 2;
+        var outW = (float)frame.FrameSize.Width;
+        var outH = (float)frame.FrameSize.Height;
 
         using var target = new CanvasRenderTarget(device, outW, outH, 96);
         using (var ds = target.CreateDrawingSession())
@@ -971,7 +1006,14 @@ internal sealed class EditorController : IDisposable
                 ds.FillRectangle(fullRect, brush);
             }
 
-            using var cardGeo = CanvasGeometry.CreateRoundedRectangle(device, pad, pad, imgW, imgH, corner, corner);
+            using var cardGeo = CanvasGeometry.CreateRoundedRectangle(
+                device,
+                (float)frame.ImageBounds.X,
+                (float)frame.ImageBounds.Y,
+                imgW,
+                imgH,
+                corner,
+                corner);
 
             if (CanvasShadow > 0)
             {
@@ -992,7 +1034,7 @@ internal sealed class EditorController : IDisposable
 
             using (ds.CreateLayer(1f, cardGeo))
             {
-                ds.Transform = Matrix3x2.CreateTranslation(pad, pad);
+                ds.Transform = Matrix3x2.CreateTranslation((float)frame.ImageBounds.X, (float)frame.ImageBounds.Y);
                 ds.DrawImage(source);
                 // Same single stable-order pass as the simple path above (kept in sync
                 // deliberately — see the comment there).
