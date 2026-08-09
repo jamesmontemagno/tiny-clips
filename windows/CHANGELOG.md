@@ -7,6 +7,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Changed
 - Screenshot, video, and GIF settings now each provide matching before/after capture-picker controls.
+- Video recordings now always request the H.264 High profile for the best quality and smallest files; the automatic Baseline fallback remains when the system encoder cannot initialize.
 
 ## [v1.6.0-windows] - 2026-08-04
 

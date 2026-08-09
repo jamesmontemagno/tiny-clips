@@ -144,8 +144,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 StartAudioCapture();
 
                 var includeAudio = _hasAudio;
-                var requestedEncoderProfile = _settings.VideoEncoderProfile;
-                var profile = CreateEncodingProfile(width, height, fps, requestedEncoderProfile, includeAudio);
+                var profile = CreateEncodingProfile(width, height, fps, includeAudio);
                 var mediaStreamSource = CreateMediaStreamSource(width, height, fps);
 
                 var transcoder = new MediaTranscoder { HardwareAccelerationEnabled = true };
@@ -330,8 +329,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
         int width,
         int height,
         int fps,
-        VideoEncoderProfile encoderProfile,
-        bool includeAudio)
+        bool includeAudio,
+        bool useBaselineProfile = false)
     {
         var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.HD1080p);
         profile.Container.Subtype = MediaEncodingSubtypes.Mpeg4;
@@ -347,13 +346,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
         profile.Video.PixelAspectRatio.Denominator = 1;
         profile.Video.Bitrate = (uint)Math.Clamp((long)width * height * fps / 10, 2_000_000, 24_000_000);
 
-        // H.264 profile is configurable. High (default) enables B-frames + CABAC for the
-        // best quality/size. Baseline disables B-frames for maximum playback compatibility.
-        // (eAVEncH264VProfile_Base = 66, eAVEncH264VProfile_High = 100.)
+        // High is the normal recording profile. Baseline is reserved for the recovery path when
+        // the system encoder cannot initialize with High.
         profile.Video.Properties[Mpeg2ProfileAttribute] =
-            encoderProfile == VideoEncoderProfile.Baseline
-                ? AvcBaselineProfile
-                : AvcHighProfile;
+            useBaselineProfile ? AvcBaselineProfile : AvcHighProfile;
 
         return profile;
     }
@@ -437,8 +433,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
             width,
             height,
             fps,
-            VideoEncoderProfile.Baseline,
-            includeAudio);
+            includeAudio,
+            useBaselineProfile: true);
         var fallbackSource = CreateMediaStreamSource(width, height, fps);
         var fallbackTranscoder = new MediaTranscoder { HardwareAccelerationEnabled = false };
         return await PrepareTranscodeAsync(

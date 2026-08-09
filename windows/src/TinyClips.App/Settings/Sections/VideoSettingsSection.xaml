@@ -90,32 +90,6 @@
             </Grid>
         </Border>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Encoder profile" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="High gives the best quality and smallest files. Baseline maximizes player compatibility." />
-                </StackPanel>
-                <ComboBox
-                    Grid.Column="1"
-                    MinWidth="220"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="VideoEncoderProfileCombo"
-                    AutomationProperties.Name="Video encoder profile"
-                    SelectedIndex="{x:Bind ViewModel.VideoEncoderProfileIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="High (recommended)" />
-                    <ComboBoxItem Content="Baseline (compatibility)" />
-                </ComboBox>
-            </Grid>
-        </Border>
-
         <TextBlock
             Margin="4,16,0,0"
             Style="{StaticResource BodyStrongTextBlockStyle}"
