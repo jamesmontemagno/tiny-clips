@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="TinyClips.App.ClipsManagerWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:TinyClips.App"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="Tiny Clips — Library"
+    mc:Ignorable="d">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Title bar  -->
+        <Grid
+            x:Name="AppTitleBar"
+            Grid.Row="0"
+            Height="48"
+            Padding="16,0">
+            <TextBlock
+                VerticalAlignment="Center"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Clips Library" />
+        </Grid>
+
+        <!--  Filter / toolbar  -->
+        <Grid
+            Grid.Row="1"
+            Padding="16,8,16,8"
+            ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!--  Type filter  -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+                <RadioButton
+                    x:Name="FilterAll"
+                    AutomationProperties.AutomationId="FilterAll"
+                    Checked="OnFilterChanged"
+                    Content="All"
+                    GroupName="TypeFilter"
+                    IsChecked="True" />
+                <RadioButton
+                    x:Name="FilterScreenshot"
+                    AutomationProperties.AutomationId="FilterScreenshot"
+                    Checked="OnFilterChanged"
+                    Content="Screenshots"
+                    GroupName="TypeFilter" />
+                <RadioButton
+                    x:Name="FilterVideo"
+                    AutomationProperties.AutomationId="FilterVideo"
+                    Checked="OnFilterChanged"
+                    Content="Videos"
+                    GroupName="TypeFilter" />
+                <RadioButton
+                    x:Name="FilterGif"
+                    AutomationProperties.AutomationId="FilterGif"
+                    Checked="OnFilterChanged"
+                    Content="GIFs"
+                    GroupName="TypeFilter" />
+            </StackPanel>
+
+            <!--  Sort  -->
+            <ComboBox
+                x:Name="SortCombo"
+                Grid.Column="2"
+                AutomationProperties.AutomationId="SortCombo"
+                AutomationProperties.Name="Sort order"
+                MinWidth="140"
+                SelectionChanged="OnSortChanged">
+                <ComboBoxItem x:Name="SortNewest" Content="Newest first" IsSelected="True" />
+                <ComboBoxItem x:Name="SortOldest" Content="Oldest first" />
+            </ComboBox>
+
+            <!--  Grid / List toggle  -->
+            <ToggleButton
+                x:Name="GridViewToggle"
+                Grid.Column="3"
+                AutomationProperties.AutomationId="GridViewToggle"
+                AutomationProperties.Name="Grid view"
+                Click="OnViewModeToggled"
+                IsChecked="True"
+                ToolTipService.ToolTip="Toggle grid / list view">
+                <FontIcon
+                    FontFamily="Segoe Fluent Icons"
+                    FontSize="16"
+                    Glyph="&#xF0E2;" />
+            </ToggleButton>
+
+            <!--  Refresh  -->
+            <Button
+                x:Name="RefreshButton"
+                Grid.Column="4"
+                AutomationProperties.AutomationId="RefreshButton"
+                AutomationProperties.Name="Refresh"
+                Click="OnRefreshClicked"
+                ToolTipService.ToolTip="Refresh library">
+                <FontIcon
+                    FontFamily="Segoe Fluent Icons"
+                    FontSize="16"
+                    Glyph="&#xE72C;" />
+            </Button>
+        </Grid>
+
+        <!--  Content area  -->
+        <Grid Grid.Row="2" Padding="16,0,16,16">
+
+            <!--  Loading ring  -->
+            <ProgressRing
+                x:Name="LoadingRing"
+                Width="40"
+                Height="40"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                IsActive="True"
+                Visibility="Collapsed" />
+
+            <!--  Empty state  -->
+            <StackPanel
+                x:Name="EmptyState"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8"
+                Visibility="Collapsed">
+                <FontIcon
+                    HorizontalAlignment="Center"
+                    FontFamily="Segoe Fluent Icons"
+                    FontSize="48"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Glyph="&#xEB9F;" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="No captures found" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Take a screenshot, video, or GIF to get started." />
+            </StackPanel>
+
+            <!--  Grid view  -->
+            <GridView
+                x:Name="ClipsGridView"
+                AutomationProperties.AutomationId="ClipsGridView"
+                IsItemClickEnabled="False"
+                SelectionMode="None"
+                Visibility="Collapsed">
+                <GridView.ItemContainerStyle>
+                    <Style TargetType="GridViewItem">
+                        <Setter Property="Margin" Value="4" />
+                        <Setter Property="Padding" Value="0" />
+                    </Style>
+                </GridView.ItemContainerStyle>
+                <GridView.ItemTemplate>
+                    <DataTemplate x:DataType="local:ClipItemViewModel">
+                        <Border
+                            Width="180"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <StackPanel>
+                                <!--  Thumbnail  -->
+                                <Grid
+                                    Width="180"
+                                    Height="108"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                    <Image
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        Source="{x:Bind Thumbnail}"
+                                        Stretch="UniformToFill"
+                                        Visibility="{x:Bind HasThumbnail}" />
+                                    <FontIcon
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontFamily="Segoe Fluent Icons"
+                                        FontSize="36"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Glyph="{x:Bind TypeGlyph}"
+                                        Visibility="{x:Bind NoThumbnail}" />
+                                    <!--  Type badge  -->
+                                    <Border
+                                        Margin="6"
+                                        Padding="6,3"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+                                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                                        <TextBlock
+                                            FontSize="11"
+                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                            Text="{x:Bind TypeLabel}" />
+                                    </Border>
+                                </Grid>
+
+                                <!--  Metadata  -->
+                                <StackPanel Padding="10,8,10,4" Spacing="2">
+                                    <TextBlock
+                                        FontSize="12"
+                                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                                        Text="{x:Bind FileName}"
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="NoWrap" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind DisplayDate}" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="{x:Bind FileSizeDisplay}" />
+                                </StackPanel>
+
+                                <!--  Action buttons  -->
+                                <Grid Padding="6,0,6,8" ColumnSpacing="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        Grid.Column="0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="4,6"
+                                        AutomationProperties.Name="Reveal in Explorer"
+                                        Click="OnRevealClicked"
+                                        Tag="{x:Bind Path}"
+                                        ToolTipService.ToolTip="Reveal in Explorer">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="13" Glyph="&#xEC50;" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="1"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="4,6"
+                                        AutomationProperties.Name="Open"
+                                        Click="OnOpenClicked"
+                                        Tag="{x:Bind Path}"
+                                        ToolTipService.ToolTip="Open in editor / trimmer">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="13" Glyph="&#xE8A7;" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="2"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="4,6"
+                                        AutomationProperties.Name="Copy to clipboard"
+                                        Click="OnCopyClicked"
+                                        Tag="{x:Bind Path}"
+                                        ToolTipService.ToolTip="Copy to clipboard">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="13" Glyph="&#xE8C8;" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="3"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="4,6"
+                                        AutomationProperties.Name="Delete"
+                                        Click="OnDeleteClicked"
+                                        Tag="{x:Bind Path}"
+                                        ToolTipService.ToolTip="Delete">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="13" Glyph="&#xE74D;" />
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </GridView.ItemTemplate>
+            </GridView>
+
+            <!--  List view  -->
+            <ListView
+                x:Name="ClipsListView"
+                AutomationProperties.AutomationId="ClipsListView"
+                IsItemClickEnabled="False"
+                SelectionMode="None"
+                Visibility="Collapsed">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:ClipItemViewModel">
+                        <Grid
+                            Padding="4,6"
+                            ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!--  Type icon  -->
+                            <FontIcon
+                                Grid.Column="0"
+                                Width="32"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="20"
+                                Glyph="{x:Bind TypeGlyph}" />
+
+                            <!--  Filename + date + size  -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                    Text="{x:Bind FileName}"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="NoWrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind TypeLabel}" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind DisplayDate}" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="{x:Bind FileSizeDisplay}" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!--  Action buttons  -->
+                            <Button
+                                Grid.Column="2"
+                                Width="32"
+                                Padding="0"
+                                AutomationProperties.Name="Reveal in Explorer"
+                                Click="OnRevealClicked"
+                                Tag="{x:Bind Path}"
+                                ToolTipService.ToolTip="Reveal in Explorer">
+                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xEC50;" />
+                            </Button>
+                            <Button
+                                Grid.Column="3"
+                                Width="32"
+                                Padding="0"
+                                AutomationProperties.Name="Open"
+                                Click="OnOpenClicked"
+                                Tag="{x:Bind Path}"
+                                ToolTipService.ToolTip="Open in editor / trimmer">
+                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8A7;" />
+                            </Button>
+                            <Button
+                                Grid.Column="4"
+                                Width="32"
+                                Padding="0"
+                                AutomationProperties.Name="Copy to clipboard"
+                                Click="OnCopyClicked"
+                                Tag="{x:Bind Path}"
+                                ToolTipService.ToolTip="Copy to clipboard">
+                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8C8;" />
+                            </Button>
+                            <Button
+                                Grid.Column="5"
+                                Width="32"
+                                Padding="0"
+                                AutomationProperties.Name="Delete"
+                                Click="OnDeleteClicked"
+                                Tag="{x:Bind Path}"
+                                ToolTipService.ToolTip="Delete">
+                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE74D;" />
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+    </Grid>
+</Window>
