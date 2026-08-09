@@ -319,6 +319,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var selectedMicrophoneID = ""
     private var outputURL: URL?
     private var recordingStartedAtUptime: TimeInterval?
+    private var didReportStreamFailure = false
     /// Presentation timestamp (host-clock based) of the first screen frame written.
     /// Used to align the separately-recorded webcam track to the audio timeline.
     private(set) var firstScreenSampleTime: CMTime?
@@ -328,6 +329,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     var onMicrophoneWarning: ((String?) -> Void)?
     var onMicrophoneDeviceName: ((String) -> Void)?
     var onMicrophoneError: ((String) -> Void)?
+    var onStreamFailure: ((Error) -> Void)?
 
     var isMicrophoneCaptureActive: Bool {
         microphoneSession != nil && recordMicrophone
@@ -420,16 +422,17 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.writer = writer
         self.videoInput = videoInput
         self.hasStartedWriting = false
+        self.didReportStreamFailure = false
 
         do {
-            let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+            let stream = SCStream(filter: filter, configuration: config, delegate: self)
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: writingQueue)
             if recordSystemAudio {
                 try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: writingQueue)
             }
+            self.stream = stream
             try await stream.startCapture()
             recordingStartedAtUptime = ProcessInfo.processInfo.systemUptime
-            self.stream = stream
             debugLifecycle("stream started")
 
             if recordMicrophone {
@@ -603,11 +606,31 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         stream = nil
         debugLifecycle("stream stopped")
 
+        return try await finishWriting(removeOutputIfEmpty: false)
+    }
+
+    func finishAfterStreamFailure() async throws -> URL {
+        defer { recordingStartedAtUptime = nil }
+        debugLifecycle("finalizing after stream failure")
+
+        stopMicrophoneCapture()
+        stream = nil
+
+        return try await finishWriting(removeOutputIfEmpty: true)
+    }
+
+    private func finishWriting(removeOutputIfEmpty: Bool) async throws -> URL {
         guard let writer, let videoInput, let outputURL else {
             throw CaptureError.saveFailed
         }
 
         guard hasStartedWriting else {
+            writingQueue.sync {
+                writer.cancelWriting()
+            }
+            if removeOutputIfEmpty {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
             throw CaptureError.noFrames
         }
 
@@ -720,6 +743,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         }
         outputURL = nil
         recordingStartedAtUptime = nil
+        didReportStreamFailure = false
     }
 
     private func debugLifecycle(_ message: String) {
@@ -745,7 +769,7 @@ private final class MicrophoneOutputDelegate: NSObject, AVCaptureAudioDataOutput
     }
 }
 
-extension VideoRecorder: SCStreamOutput {
+extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
         guard let writer else { return }
@@ -822,5 +846,14 @@ extension VideoRecorder: SCStreamOutput {
             sampleBufferOut: &adjusted
         )
         return copyStatus == noErr ? adjusted : sampleBuffer
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        writingQueue.async { [weak self] in
+            guard let self, self.stream === stream, !self.didReportStreamFailure else { return }
+            self.didReportStreamFailure = true
+            self.debugLifecycle("stream stopped unexpectedly: \(error.localizedDescription)")
+            self.onStreamFailure?(error)
+        }
     }
 }

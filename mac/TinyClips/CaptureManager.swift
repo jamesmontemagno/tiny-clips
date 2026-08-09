@@ -632,6 +632,16 @@ class CaptureManager: ObservableObject {
                     let sessionID = self.nextRecordingSessionID()
                     self.activeRecordingSessionID = sessionID
                     self.debugRecordingLifecycle("Starting video session \(sessionID)")
+                    recorder.onStreamFailure = { [weak self] error in
+                        let message = error.localizedDescription
+                        Task { @MainActor [weak self] in
+                            self?.handleStreamFailure(
+                                for: sessionID,
+                                type: .video,
+                                message: message
+                            )
+                        }
+                    }
                     recorder.onMicrophoneLevel = { [weak self] level in
                         DispatchQueue.main.async {
                             self?.microphoneLevel = level
@@ -792,6 +802,16 @@ class CaptureManager: ObservableObject {
                     let sessionID = self.nextRecordingSessionID()
                     self.activeRecordingSessionID = sessionID
                     self.debugRecordingLifecycle("Starting GIF session \(sessionID)")
+                    writer.onStreamFailure = { [weak self] error in
+                        let message = error.localizedDescription
+                        Task { @MainActor [weak self] in
+                            self?.handleStreamFailure(
+                                for: sessionID,
+                                type: .gif,
+                                message: message
+                            )
+                        }
+                    }
                     self.gifWriter = writer
                     self.activeRecordingRegion = target.region
                     self.isRecording = true
@@ -827,6 +847,10 @@ class CaptureManager: ObservableObject {
     }
 
     func stopRecording() {
+        stopRecording(streamFailureMessage: nil)
+    }
+
+    private func stopRecording(streamFailureMessage: String?) {
         // Tear down all recording UI synchronously so the user sees an
         // immediate response (menu bar icon flips, stop panel, webcam preview,
         // and region indicator disappear, stop hotkey unregisters) regardless of
@@ -849,13 +873,30 @@ class CaptureManager: ObservableObject {
         let stoppingSessionID = activeRecordingSessionID
         activeRecordingSessionID = nil
         finalizingSessionID = stoppingSessionID
-        debugRecordingLifecycle("Stopping session \(stoppingSessionID.map(String.init) ?? "unknown")")
+        if let streamFailureMessage {
+            debugRecordingLifecycle("Stopping session \(stoppingSessionID.map(String.init) ?? "unknown") after stream failure: \(streamFailureMessage)")
+        } else {
+            debugRecordingLifecycle("Stopping session \(stoppingSessionID.map(String.init) ?? "unknown")")
+        }
 
         let task = Task<Void, Never> { [weak self] in
             guard let self else { return }
-            await self.stopRecordingFlow(stoppingSessionID: stoppingSessionID)
+            await self.stopRecordingFlow(
+                stoppingSessionID: stoppingSessionID,
+                streamFailureMessage: streamFailureMessage
+            )
         }
         stopRecordingTask = task
+    }
+
+    private func handleStreamFailure(for sessionID: UInt64, type: CaptureType, message: String) {
+        guard activeRecordingSessionID == sessionID, !isStoppingRecording, finalizingSessionID != sessionID else {
+            debugRecordingLifecycle("Ignored stale \(type.label.lowercased()) stream failure for session \(sessionID)")
+            return
+        }
+
+        debugRecordingLifecycle("\(type.label) stream failed for session \(sessionID): \(message)")
+        stopRecording(streamFailureMessage: message)
     }
 
     func togglePauseRecording() {
@@ -953,7 +994,7 @@ class CaptureManager: ObservableObject {
         await writer?.cancel()
     }
 
-    private func stopRecordingFlow(stoppingSessionID: UInt64?) async {
+    private func stopRecordingFlow(stoppingSessionID: UInt64?, streamFailureMessage: String? = nil) async {
         defer {
             isStoppingRecording = false
             if finalizingSessionID == stoppingSessionID {
@@ -1001,9 +1042,9 @@ class CaptureManager: ObservableObject {
         // Snapshot video settings before any suspension so that overlay output URL
         // selection and downstream trimmer/save decisions stay consistent even if
         // the user changes preferences while export is in progress.
-        let videoShowTrimmer = CaptureSettings.shared.showTrimmer
-        let videoShouldSaveImmediately = !videoShowTrimmer || CaptureSettings.shared.saveImmediatelyVideo
-        let shouldReturnToPickerAfterRecording = self.shouldReturnToPickerAfterRecording
+        let videoShowTrimmer = streamFailureMessage == nil && CaptureSettings.shared.showTrimmer
+        let videoShouldSaveImmediately = streamFailureMessage != nil || !videoShowTrimmer || CaptureSettings.shared.saveImmediatelyVideo
+        let shouldReturnToPickerAfterRecording = streamFailureMessage == nil && self.shouldReturnToPickerAfterRecording
         let videoOverlayStyle = CaptureSettings.shared.mouseClickOverlayStyle(for: .video)
         let showBrandingOverlay = CaptureSettings.shared.showBrandingOverlay
         let webcamShapeSetting = CaptureSettings.shared.webcamShape
@@ -1033,10 +1074,16 @@ class CaptureManager: ObservableObject {
         if let recorder = videoRecorderAtStop {
             do {
                 updateProcessingProgress(0.15, status: "Exporting video...")
-                savedVideoURL = try await recorder.stop()
+                savedVideoURL = try await (
+                    streamFailureMessage == nil
+                        ? recorder.stop()
+                        : recorder.finishAfterStreamFailure()
+                )
                 updateProcessingProgress(0.55, status: "Applying overlays...")
             } catch {
-                SaveService.shared.showError("Video save failed: \(error.localizedDescription)")
+                if streamFailureMessage == nil {
+                    SaveService.shared.showError("Video save failed: \(error.localizedDescription)")
+                }
             }
 
             if let currentURL = savedVideoURL,
@@ -1158,15 +1205,17 @@ class CaptureManager: ObservableObject {
         activeWebcamOverlaySelection = nil
         self.webcamPositionEvents = []
 
+        var savedGifURL: URL?
         if let writer = gifWriterAtStop {
             let url = SaveService.shared.generateURL(for: .gif)
             do {
                 let settings = CaptureSettings.shared
-                let shouldSaveImmediately = !settings.showGifTrimmer || settings.saveImmediatelyGif
+                let gifShowTrimmer = streamFailureMessage == nil && settings.showGifTrimmer
+                let shouldSaveImmediately = streamFailureMessage != nil || !gifShowTrimmer || settings.saveImmediatelyGif
 
                 updateProcessingProgress(0.1, status: "Exporting GIF…")
 
-                if settings.showGifTrimmer {
+                if gifShowTrimmer {
                     var gifData = try await writer.stopAndReturnData()
                     updateProcessingProgress(0.5, status: "Applying overlays…")
 
@@ -1217,7 +1266,20 @@ class CaptureManager: ObservableObject {
                         reopenPickerAfterClose: shouldReturnToPickerAfterRecording
                     )
                 } else {
-                    try await writer.stop(outputURL: url)
+                    if streamFailureMessage == nil {
+                        try await writer.stop(outputURL: url)
+                    } else {
+                        let gifData = try writer.finishAfterStreamFailure()
+                        try await Self.runOffMainThrowing {
+                            try GifWriter.writeGIF(
+                                frames: gifData.frames,
+                                frameDelay: gifData.frameDelay,
+                                maxWidth: gifData.maxWidth,
+                                to: url
+                            )
+                        }
+                    }
+                    savedGifURL = url
                     updateProcessingProgress(0.5, status: "Applying overlays…")
 
                     if let capturedMouseClickData,
@@ -1288,7 +1350,9 @@ class CaptureManager: ObservableObject {
                     }
                 }
             } catch {
-                SaveService.shared.showError("GIF save failed: \(error.localizedDescription)")
+                if streamFailureMessage == nil {
+                    SaveService.shared.showError("GIF save failed: \(error.localizedDescription)")
+                }
             }
             if gifWriter === writer {
                 gifWriter = nil
@@ -1327,6 +1391,16 @@ class CaptureManager: ObservableObject {
         }
 
         dismissProcessingIndicator()
+
+        if let streamFailureMessage {
+            let didSavePartialOutput = savedVideoURL != nil || savedGifURL != nil
+            let partialOutputMessage = didSavePartialOutput
+                ? "A partial recording was saved."
+                : "No captured frames could be saved."
+            SaveService.shared.showError(
+                "Screen capture stopped unexpectedly. \(partialOutputMessage) Check Screen Recording permission in System Settings, then start a new recording. Details: \(streamFailureMessage)"
+            )
+        }
     }
 
     private func prepareForNewCaptureRequest() async {
