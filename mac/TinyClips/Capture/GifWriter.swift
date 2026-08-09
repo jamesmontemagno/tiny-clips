@@ -10,9 +10,10 @@ class GifWriter: NSObject, @unchecked Sendable {
     private var frameDelay: Double = 0.1
     private var maxWidth: CGFloat = 640
     private var isPaused = false
+    private var didReportStreamFailure = false
     private let processingQueue = DispatchQueue(label: "com.tinyclips.gif-processing")
     private let ciContext = CIContext()
-    var onStreamError: ((Error) -> Void)?
+    var onStreamFailure: ((Error) -> Void)?
 
     func start(target: CaptureTarget) async throws {
         debugLifecycle("start requested")
@@ -30,11 +31,17 @@ class GifWriter: NSObject, @unchecked Sendable {
         config.queueDepth = 5
 
         frames = []
+        didReportStreamFailure = false
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: processingQueue)
-        try await stream.startCapture()
         self.stream = stream
+        do {
+            try await stream.startCapture()
+        } catch {
+            self.stream = nil
+            throw error
+        }
         debugLifecycle("stream started")
     }
 
@@ -66,6 +73,18 @@ class GifWriter: NSObject, @unchecked Sendable {
         return GifCaptureData(frames: capturedFrames, frameDelay: frameDelay, maxWidth: maxWidth)
     }
 
+    func finishAfterStreamFailure() throws -> GifCaptureData {
+        debugLifecycle("finalizing after stream failure")
+        stream = nil
+
+        let capturedFrames = processingQueue.sync { self.frames }
+        guard !capturedFrames.isEmpty else {
+            throw CaptureError.noFrames
+        }
+
+        return GifCaptureData(frames: capturedFrames, frameDelay: frameDelay, maxWidth: maxWidth)
+    }
+
     func pause() {
         processingQueue.async {
             self.isPaused = true
@@ -84,6 +103,7 @@ class GifWriter: NSObject, @unchecked Sendable {
         processingQueue.sync {
             frames.removeAll()
             isPaused = false
+            didReportStreamFailure = false
         }
     }
 
@@ -153,10 +173,6 @@ class GifWriter: NSObject, @unchecked Sendable {
 }
 
 extension GifWriter: SCStreamOutput, SCStreamDelegate {
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
-        onStreamError?(error)
-    }
-
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sampleBuffer.isValid else { return }
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
@@ -166,5 +182,14 @@ extension GifWriter: SCStreamOutput, SCStreamDelegate {
 
         guard !isPaused else { return }
         frames.append(cgImage)
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        processingQueue.async { [weak self] in
+            guard let self, self.stream === stream, !self.didReportStreamFailure else { return }
+            self.didReportStreamFailure = true
+            self.debugLifecycle("stream stopped unexpectedly: \(error.localizedDescription)")
+            self.onStreamFailure?(error)
+        }
     }
 }
