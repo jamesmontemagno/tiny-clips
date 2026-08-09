@@ -13,7 +13,6 @@ public sealed class CaptureSettingsTests
         Assert.True(settings.CopyScreenshotToClipboard);
         Assert.Equal(10.0, settings.GifFrameRate);
         Assert.Equal(30, settings.VideoFrameRate);
-        Assert.Equal(VideoEncoderProfile.High, settings.VideoEncoderProfile);
         Assert.Equal(100, settings.ScreenshotScale);
         Assert.Equal("TinyClips {date} at {time}", settings.FileNameTemplate);
         Assert.True(settings.ShowTrimmer);
@@ -37,7 +36,6 @@ public sealed class CaptureSettingsTests
         settings.CopyScreenshotToClipboard = false;
         settings.GifFrameRate = 24.5;
         settings.VideoFrameRate = 60;
-        settings.VideoEncoderProfile = VideoEncoderProfile.Baseline;
         settings.FileNameTemplate = "Custom {date}";
         settings.MultiMonitorCaptureMode = MultiMonitorCaptureMode.UnderCursor;
         settings.WebcamEnabled = true;
@@ -50,7 +48,6 @@ public sealed class CaptureSettingsTests
         Assert.False(settings.CopyScreenshotToClipboard);
         Assert.Equal(24.5, settings.GifFrameRate);
         Assert.Equal(60, settings.VideoFrameRate);
-        Assert.Equal(VideoEncoderProfile.Baseline, settings.VideoEncoderProfile);
         Assert.Equal("Custom {date}", settings.FileNameTemplate);
         Assert.Equal(MultiMonitorCaptureMode.UnderCursor, settings.MultiMonitorCaptureMode);
         Assert.True(settings.WebcamEnabled);

@@ -365,9 +365,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     private double _videoRecordingTimeLimitMinutes;
 
     [ObservableProperty]
-    private int _videoEncoderProfileIndex;
-
-    [ObservableProperty]
     private bool _videoCountdownEnabled;
 
     [ObservableProperty]
@@ -663,7 +660,6 @@ public sealed partial class SettingsViewModel : ObservableObject
             WebcamCornerRadius = _settings.WebcamCornerRadius ?? -1;
 
             VideoRecordingTimeLimitMinutes = _settings.VideoRecordingTimeLimitMinutes;
-            VideoEncoderProfileIndex = _settings.VideoEncoderProfile == VideoEncoderProfile.Baseline ? 1 : 0;
             VideoCountdownEnabled = _settings.VideoCountdownEnabled;
             VideoCountdownDuration = _settings.VideoCountdownDuration;
             ShowTrimmer = _settings.ShowTrimmer;
@@ -1020,9 +1016,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnVideoRecordingTimeLimitMinutesChanged(double value) =>
         Persist(() => _settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(value));
-
-    partial void OnVideoEncoderProfileIndexChanged(int value) =>
-        Persist(() => _settings.VideoEncoderProfile = value == 1 ? VideoEncoderProfile.Baseline : VideoEncoderProfile.High);
 
     partial void OnVideoCountdownEnabledChanged(bool value) => Persist(() => _settings.VideoCountdownEnabled = value);
 
