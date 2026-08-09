@@ -78,6 +78,7 @@ public sealed partial class VideoTrimmerWindow : Window
             TrimBar.StartFraction = 0;
             TrimBar.EndFraction = 1;
             TrimBar.PlayheadFraction = 0;
+            TrimBar.KeyboardStep = Math.Min(1, FrameStep.TotalSeconds / _duration.TotalSeconds);
             UpdateLabels();
             UpdatePositionLabel(TimeSpan.Zero);
         }

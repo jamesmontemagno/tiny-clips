@@ -1,5 +1,7 @@
 using System;
 using Microsoft.UI.Input;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
@@ -32,7 +34,6 @@ public sealed partial class TrimBar : UserControl
     private const double HandleWidth = 14.0;
     private const double TrackHeight = 36.0;
     private const double HandleGrab = 12.0;
-    private const double KeyboardStep = 0.01;
     private const double KeyboardRangeStep = 0.1;
 
     private static readonly InputSystemCursor SizeCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeWestEast);
@@ -43,6 +44,7 @@ public sealed partial class TrimBar : UserControl
     private double _start;
     private double _end = 1.0;
     private double _play;
+    private string _automationName = string.Empty;
 
     // Anchors captured at the start of a range drag so the selection moves rigidly with the cursor.
     private double _rangeGrabFraction;
@@ -60,6 +62,7 @@ public sealed partial class TrimBar : UserControl
         PointerExited += OnPointerExited;
         KeyDown += OnKeyDown;
         SizeChanged += (_, _) => LayoutParts();
+        UpdateAutomationName();
     }
 
     /// <summary>Raised when the user changes the start handle. Carries the new start fraction.</summary>
@@ -77,6 +80,12 @@ public sealed partial class TrimBar : UserControl
     /// </summary>
     public event EventHandler<(double Start, double End)>? RangeChanged;
 
+    /// <summary>
+    /// Gets or sets the fraction changed by each arrow-key press. Hosts set this to their
+    /// smallest meaningful unit, such as one frame for GIFs.
+    /// </summary>
+    public double KeyboardStep { get; set; } = 0.01;
+
     public double StartFraction
     {
         get => _start;
@@ -84,6 +93,7 @@ public sealed partial class TrimBar : UserControl
         {
             _start = Clamp01(value);
             LayoutParts();
+            UpdateAutomationName();
         }
     }
 
@@ -94,6 +104,7 @@ public sealed partial class TrimBar : UserControl
         {
             _end = Clamp01(value);
             LayoutParts();
+            UpdateAutomationName();
         }
     }
 
@@ -104,6 +115,7 @@ public sealed partial class TrimBar : UserControl
         {
             _play = Clamp01(value);
             LayoutParts();
+            UpdateAutomationName();
         }
     }
 
@@ -253,20 +265,22 @@ public sealed partial class TrimBar : UserControl
     {
         var control = IsKeyDown(VirtualKey.Control);
         var shift = IsKeyDown(VirtualKey.Shift);
+        var previousAutomationName = _automationName;
+        var step = Math.Clamp(KeyboardStep, double.Epsilon, 1);
 
         switch (e.Key)
         {
             case VirtualKey.Left:
-                ApplyKeyboardArrow(-KeyboardStep, control, shift);
+                ApplyKeyboardArrow(-step, control, shift);
                 break;
             case VirtualKey.Right:
-                ApplyKeyboardArrow(KeyboardStep, control, shift);
+                ApplyKeyboardArrow(step, control, shift);
                 break;
             case VirtualKey.PageUp:
-                MoveRange(KeyboardRangeStep);
+                MoveRange(Math.Max(KeyboardRangeStep, step));
                 break;
             case VirtualKey.PageDown:
-                MoveRange(-KeyboardRangeStep);
+                MoveRange(-Math.Max(KeyboardRangeStep, step));
                 break;
             case VirtualKey.Home:
                 SeekRequested?.Invoke(this, 0);
@@ -278,6 +292,7 @@ public sealed partial class TrimBar : UserControl
                 return;
         }
 
+        UpdateAutomationName(previousAutomationName);
         e.Handled = true;
     }
 
@@ -307,6 +322,24 @@ public sealed partial class TrimBar : UserControl
 
     private static bool IsKeyDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+
+    private void UpdateAutomationName(string? previousName = null)
+    {
+        var name = $"Trim range. Start {FormatFraction(_start)}, end {FormatFraction(_end)}, current {FormatFraction(_play)}.";
+        var oldName = previousName ?? _automationName;
+        _automationName = name;
+        AutomationProperties.SetName(this, name);
+
+        if (previousName is not null && !string.Equals(oldName, name, StringComparison.Ordinal))
+        {
+            var peer = FrameworkElementAutomationPeer.FromElement(this)
+                ?? FrameworkElementAutomationPeer.CreatePeerForElement(this);
+            peer?.RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, oldName, name);
+        }
+    }
+
+    private static string FormatFraction(double fraction) =>
+        $"{Math.Round(Clamp01(fraction) * 100):0}%";
 
     private void UpdateHoverCursor(double x)
     {
