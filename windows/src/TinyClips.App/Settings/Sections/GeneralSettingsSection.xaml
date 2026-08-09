@@ -231,6 +231,34 @@
             Style="{StaticResource BodyStrongTextBlockStyle}"
             Text="Advanced" />
 
+        <Border Style="{StaticResource SettingCardStyle}">
+            <StackPanel Spacing="12">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Temporary files" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Temporary diagnostics are stored separately from your saved captures." />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind ViewModel.TempFolderSummary, Mode=OneWay}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        AutomationProperties.AutomationId="OpenTempFolderButton"
+                        AutomationProperties.Name="Open Tiny Clips temporary files folder"
+                        Click="OnOpenTempFolder"
+                        Content="Open Temp Folder" />
+                    <Button
+                        AutomationProperties.AutomationId="PurgeTempFilesButton"
+                        AutomationProperties.Name="Purge Tiny Clips temporary files"
+                        Click="OnPurgeTempFiles"
+                        Content="Purge Temp Files Now&#x2026;" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <Button
             HorizontalAlignment="Left"
             AutomationProperties.AutomationId="ResetAllSettingsButton"

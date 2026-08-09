@@ -33,6 +33,37 @@ public sealed partial class GeneralSettingsSection : UserControl
     private void OnBrowseSaveDirectory(object sender, RoutedEventArgs e) =>
         BrowseSaveDirectoryRequested?.Invoke(this, EventArgs.Empty);
 
+    private void OnOpenTempFolder(object sender, RoutedEventArgs e) => ViewModel.OpenTempFolder();
+
+    private async void OnPurgeTempFiles(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Purge temporary files?",
+            Content = $"This deletes {ViewModel.TempFolderSummary} from Tiny Clips' temporary folder. Your saved captures will not be affected.",
+            PrimaryButtonText = "Purge",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var result = ViewModel.PurgeTempFiles();
+            if (result.SkippedFileCount > 0)
+            {
+                var skippedDialog = new ContentDialog
+                {
+                    Title = "Some temporary files are still in use",
+                    Content = $"{result.RemovedFileCount} temporary file(s) were removed. {result.SkippedFileCount} active or unavailable file(s) were kept.",
+                    CloseButtonText = "OK",
+                    XamlRoot = XamlRoot,
+                };
+                await skippedDialog.ShowAsync();
+            }
+        }
+    }
+
     private async void OnResetAllSettings(object sender, RoutedEventArgs e)
     {
         var dialog = new ContentDialog
