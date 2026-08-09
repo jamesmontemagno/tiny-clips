@@ -4,6 +4,67 @@ import CoreMedia
 import CoreVideo
 import AudioToolbox
 
+private func monotonicSampleBuffer(
+    _ sampleBuffer: CMSampleBuffer,
+    lastPresentationTime: inout CMTime?,
+    fallbackStep: CMTime
+) -> (sampleBuffer: CMSampleBuffer, didClamp: Bool)? {
+    let sampleCount = max(1, CMSampleBufferGetNumSamples(sampleBuffer))
+    var timing = Array(repeating: CMSampleTimingInfo(), count: sampleCount)
+    var timingCount = 0
+    let status = CMSampleBufferGetSampleTimingInfoArray(
+        sampleBuffer,
+        entryCount: timing.count,
+        arrayToFill: &timing,
+        entriesNeededOut: &timingCount
+    )
+    guard status == noErr, timingCount > 0 else { return nil }
+
+    let defaultStep = fallbackStep.isValid && CMTimeCompare(fallbackStep, .zero) > 0
+        ? fallbackStep
+        : CMTime(value: 1, timescale: 600)
+    let bufferDuration = CMSampleBufferGetDuration(sampleBuffer)
+    let perSampleDuration = bufferDuration.isValid && CMTimeCompare(bufferDuration, .zero) > 0
+        ? CMTimeMultiplyByRatio(bufferDuration, multiplier: 1, divisor: Int32(timingCount))
+        : defaultStep
+    var latestPresentationTime = lastPresentationTime
+    var didClamp = false
+
+    for index in 0..<timingCount {
+        let presentationTime = timing[index].presentationTimeStamp
+        guard presentationTime.isValid || latestPresentationTime != nil else {
+            return nil
+        }
+
+        let step = timing[index].duration.isValid && CMTimeCompare(timing[index].duration, .zero) > 0
+            ? timing[index].duration
+            : perSampleDuration
+        if let latestPresentationTime,
+           !presentationTime.isValid || CMTimeCompare(presentationTime, latestPresentationTime) <= 0 {
+            timing[index].presentationTimeStamp = CMTimeAdd(latestPresentationTime, step)
+            didClamp = true
+        }
+        latestPresentationTime = timing[index].presentationTimeStamp
+    }
+
+    guard didClamp else {
+        lastPresentationTime = latestPresentationTime
+        return (sampleBuffer, false)
+    }
+
+    var correctedSampleBuffer: CMSampleBuffer?
+    let copyStatus = CMSampleBufferCreateCopyWithNewTiming(
+        allocator: kCFAllocatorDefault,
+        sampleBuffer: sampleBuffer,
+        sampleTimingEntryCount: timingCount,
+        sampleTimingArray: timing,
+        sampleBufferOut: &correctedSampleBuffer
+    )
+    guard copyStatus == noErr, let correctedSampleBuffer else { return nil }
+    lastPresentationTime = latestPresentationTime
+    return (correctedSampleBuffer, true)
+}
+
 struct MicrophoneDeviceOption: Identifiable, Hashable {
     let id: String
     let name: String
@@ -64,6 +125,8 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
     private var isPaused = false
     private var pauseStartedAt: CMTime?
     private var totalPausedDuration = CMTime.zero
+    private var lastPresentationTime: CMTime?
+    private var fallbackFrameDuration = CMTime(value: 1, timescale: 60)
     /// Presentation timestamp (host-clock based) of the first webcam frame written.
     /// Compared against the screen recorder's first sample time to align the webcam
     /// overlay with the audio timeline. Intentionally preserved across `reset()`.
@@ -101,6 +164,10 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
         let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
         let width = max(1, Int(dimensions.width))
         let height = max(1, Int(dimensions.height))
+        let activeFrameDuration = device.activeVideoMinFrameDuration
+        if activeFrameDuration.isValid, CMTimeCompare(activeFrameDuration, .zero) > 0 {
+            fallbackFrameDuration = activeFrameDuration
+        }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
@@ -135,6 +202,7 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
         self.videoInput = input
         self.session = session
         hasStartedWriting = false
+        lastPresentationTime = nil
 
         captureQueue.sync {
             session.startRunning()
@@ -236,6 +304,7 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
         isPaused = false
         pauseStartedAt = nil
         totalPausedDuration = .zero
+        lastPresentationTime = nil
     }
 
     private func debugLifecycle(_ message: String) {
@@ -255,7 +324,19 @@ extension WebcamRecorder: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let writer, let videoInput else { return }
         guard !isPaused else { return }
 
-        let adjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+        let pauseAdjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+        var proposedLastPresentationTime = lastPresentationTime
+        guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
+            pauseAdjustedSampleBuffer,
+            lastPresentationTime: &proposedLastPresentationTime,
+            fallbackStep: fallbackFrameDuration
+        ) else {
+            debugLifecycle("dropped webcam sample with unusable timing")
+            return
+        }
+        if didClamp {
+            debugLifecycle("clamped non-monotonic webcam presentation timestamp")
+        }
 
         if !hasStartedWriting {
             guard writer.startWriting() else {
@@ -268,7 +349,9 @@ extension WebcamRecorder: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
 
         guard videoInput.isReadyForMoreMediaData else { return }
-        _ = videoInput.append(adjustedSampleBuffer)
+        if videoInput.append(adjustedSampleBuffer) {
+            lastPresentationTime = proposedLastPresentationTime
+        }
     }
 
     private func adjustedSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
@@ -312,6 +395,10 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var isPaused = false
     private var pauseStartedAt: CMTime?
     private var totalPausedDuration = CMTime.zero
+    private var lastVideoPresentationTime: CMTime?
+    private var lastSystemAudioPresentationTime: CMTime?
+    private var lastMicrophonePresentationTime: CMTime?
+    private var videoFallbackFrameDuration = CMTime(value: 1, timescale: 60)
     private var recordSystemAudio = false
     private var recordMicrophone = false
     private var systemAudioMuted = false
@@ -370,6 +457,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
 
         let settings = CaptureSettings.shared
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(settings.videoFrameRate))
+        videoFallbackFrameDuration = config.minimumFrameInterval
         config.showsCursor = true
         config.queueDepth = 8
         config.pixelFormat = kCVPixelFormatType_32BGRA
@@ -423,6 +511,9 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.videoInput = videoInput
         self.hasStartedWriting = false
         self.didReportStreamFailure = false
+        self.lastVideoPresentationTime = nil
+        self.lastSystemAudioPresentationTime = nil
+        self.lastMicrophonePresentationTime = nil
 
         do {
             let stream = SCStream(filter: filter, configuration: config, delegate: self)
@@ -506,8 +597,21 @@ class VideoRecorder: NSObject, @unchecked Sendable {
 
         writingQueue.async { [weak self] in
             guard let self, !self.isPaused, !self.microphoneMuted, self.hasStartedWriting, let micAudioInput = self.micAudioInput, micAudioInput.isReadyForMoreMediaData else { return }
-            if let adjustedSampleBuffer = self.adjustedSampleBuffer(sampleBuffer) {
-                micAudioInput.append(adjustedSampleBuffer)
+            let pauseAdjustedSampleBuffer = self.adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+            var proposedLastPresentationTime = self.lastMicrophonePresentationTime
+            guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
+                pauseAdjustedSampleBuffer,
+                lastPresentationTime: &proposedLastPresentationTime,
+                fallbackStep: CMTime(value: 1024, timescale: 48_000)
+            ) else {
+                self.debugLifecycle("dropped microphone sample with unusable timing")
+                return
+            }
+            if didClamp {
+                self.debugLifecycle("clamped non-monotonic microphone presentation timestamp")
+            }
+            if micAudioInput.append(adjustedSampleBuffer) {
+                self.lastMicrophonePresentationTime = proposedLastPresentationTime
             }
         }
     }
@@ -730,6 +834,9 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         isPaused = false
         pauseStartedAt = nil
         totalPausedDuration = .zero
+        lastVideoPresentationTime = nil
+        lastSystemAudioPresentationTime = nil
+        lastMicrophonePresentationTime = nil
         recordSystemAudio = false
         recordMicrophone = false
         systemAudioMuted = false
@@ -787,7 +894,19 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
 
             guard let videoInput else { return }
 
-            guard let adjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) else { return }
+            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+            var proposedLastPresentationTime = lastVideoPresentationTime
+            guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
+                pauseAdjustedSampleBuffer,
+                lastPresentationTime: &proposedLastPresentationTime,
+                fallbackStep: videoFallbackFrameDuration
+            ) else {
+                debugLifecycle("dropped screen sample with unusable timing")
+                return
+            }
+            if didClamp {
+                debugLifecycle("clamped non-monotonic screen presentation timestamp")
+            }
 
             if !hasStartedWriting {
                 guard writer.startWriting() else { return }
@@ -797,13 +916,28 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
             }
 
             if videoInput.isReadyForMoreMediaData {
-                videoInput.append(adjustedSampleBuffer)
+                if videoInput.append(adjustedSampleBuffer) {
+                    lastVideoPresentationTime = proposedLastPresentationTime
+                }
             }
 
         case .audio:
             guard !systemAudioMuted, hasStartedWriting, let systemAudioInput, systemAudioInput.isReadyForMoreMediaData else { return }
-            if let adjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) {
-                systemAudioInput.append(adjustedSampleBuffer)
+            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+            var proposedLastPresentationTime = lastSystemAudioPresentationTime
+            guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
+                pauseAdjustedSampleBuffer,
+                lastPresentationTime: &proposedLastPresentationTime,
+                fallbackStep: CMTime(value: 1024, timescale: 48_000)
+            ) else {
+                debugLifecycle("dropped system-audio sample with unusable timing")
+                return
+            }
+            if didClamp {
+                debugLifecycle("clamped non-monotonic system-audio presentation timestamp")
+            }
+            if systemAudioInput.append(adjustedSampleBuffer) {
+                lastSystemAudioPresentationTime = proposedLastPresentationTime
             }
 
         case .microphone:
