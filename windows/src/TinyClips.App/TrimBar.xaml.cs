@@ -14,7 +14,7 @@ namespace TinyClips.App;
 /// </summary>
 /// <remarks>
 /// The control raises <see cref="StartFractionChanged"/>, <see cref="EndFractionChanged"/> and
-/// <see cref="SeekRequested"/> only in response to user pointer input. Assigning the matching
+/// <see cref="SeekRequested"/> only in response to direct user input. Assigning the matching
 /// properties (e.g. from the host while clamping) re-lays out without re-raising events, so there
 /// is no feedback loop. User input supports both pointer gestures and keyboard commands.
 /// </remarks>
