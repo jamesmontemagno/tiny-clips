@@ -553,6 +553,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         guard audioBufferListStatus == noErr else {
             return sampleBuffer
         }
+        defer { withExtendedLifetime(sourceBlockBuffer) {} }
 
         let audioBuffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
         guard !audioBuffers.isEmpty else {
