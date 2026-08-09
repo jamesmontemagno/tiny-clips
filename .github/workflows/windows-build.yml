@@ -91,3 +91,17 @@ jobs:
       - name: Run tests
         if: ${{ needs.changes.outputs.windows == 'true' }}
         run: dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Release --no-restore
+
+  no-windows-changes:
+    name: Build skipped (no Windows changes)
+    needs: changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Report successful skip
+        if: ${{ needs.changes.outputs.windows != 'true' }}
+        run: echo "No Windows files changed; skipping the Windows build and tests."
+
+      - name: Report Windows checks ran
+        if: ${{ needs.changes.outputs.windows == 'true' }}
+        run: echo "Windows files changed; the Windows build and tests ran."
