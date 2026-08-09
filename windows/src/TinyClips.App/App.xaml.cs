@@ -54,6 +54,7 @@ public partial class App : Application
     private TargetSelection? _activeRecordingSelection;
     private CaptureType? _activeRecordingType;
     private bool _activeRecordingWasPickerInitiated;
+    private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
     private TrayPopupWindow? _trayPopup;
@@ -609,6 +610,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Capture failed: {ex}");
+            ShowSaveFailureNotification(CaptureOutputDescription(type));
             UpdateRecordingState();
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
@@ -1002,6 +1004,8 @@ public partial class App : Application
 
     private async Task StopActiveRecordingAsync()
     {
+        CaptureType? stoppedType = null;
+
         try
         {
             var video = Services.GetRequiredService<IVideoRecordingService>();
@@ -1009,12 +1013,14 @@ public partial class App : Application
 
             if (video.IsRecording)
             {
+                stoppedType = CaptureType.Video;
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Video, _activeRecordingSelection);
                 await video.StopAsync();
             }
             else if (gif.IsRecording)
             {
+                stoppedType = CaptureType.Gif;
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Gif, _activeRecordingSelection);
                 await gif.StopAsync();
@@ -1027,9 +1033,18 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to stop active recording: {ex}");
+            if (stoppedType is { } type)
+            {
+                ShowSaveFailureNotification(CaptureOutputDescription(type));
+            }
         }
         finally
         {
+            if (stoppedType is { } type && !IsAnyRecordingActive())
+            {
+                AnnounceRecordingStopped(type);
+            }
+
             HideProcessingIndicator();
             UpdateRecordingState();
             CloseRecordingRegionIndicatorIfNotRecording();
@@ -1276,6 +1291,7 @@ public partial class App : Application
 
     private void ActivateRecordingIndicatorForStartedCapture(CaptureType type)
     {
+        _recordingStopAnnounced = false;
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingElapsedBeforePause = TimeSpan.Zero;
         _recordingIndicator?.SetStopEnabled(true);
@@ -1633,16 +1649,24 @@ public partial class App : Application
     private void AnnounceRecordingStarted(CaptureType type) =>
         Announce(
             AutomationNotificationKind.Other,
-            AutomationNotificationProcessing.All,
+            AutomationNotificationProcessing.MostRecent,
             $"{CaptureTypeName(type)} recording started.",
             $"{CaptureTypeName(type)}RecordingStarted");
 
-    private void AnnounceRecordingStopped(CaptureType type) =>
+    private void AnnounceRecordingStopped(CaptureType type)
+    {
+        if (_recordingStopAnnounced)
+        {
+            return;
+        }
+
+        _recordingStopAnnounced = true;
         Announce(
             AutomationNotificationKind.ActionCompleted,
-            AutomationNotificationProcessing.All,
+            AutomationNotificationProcessing.MostRecent,
             $"{CaptureTypeName(type)} recording stopped.",
             $"{CaptureTypeName(type)}RecordingStopped");
+    }
 
     private static void AnnounceCaptureSaved(string path)
     {
@@ -1660,7 +1684,7 @@ public partial class App : Application
         {
             app.Announce(
                 AutomationNotificationKind.ActionCompleted,
-                AutomationNotificationProcessing.All,
+                AutomationNotificationProcessing.MostRecent,
                 message,
                 $"{CaptureTypeName(type)}Saved");
         }
@@ -1676,7 +1700,7 @@ public partial class App : Application
         {
             app.Announce(
                 AutomationNotificationKind.ActionAborted,
-                AutomationNotificationProcessing.All,
+                AutomationNotificationProcessing.ImportantMostRecent,
                 message,
                 "CaptureSaveFailed");
         }
@@ -1720,6 +1744,9 @@ public partial class App : Application
         CaptureType.Video => "Video",
         _ => "Screenshot",
     };
+
+    private static string CaptureOutputDescription(CaptureType type) =>
+        $"the {CaptureTypeName(type).ToLowerInvariant()} capture";
 
     private GlobalHotKeyRegistrationResult RegisterGlobalHotKeys()
     {

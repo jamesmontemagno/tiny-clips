@@ -324,6 +324,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
         BusyBar.Visibility = Visibility.Visible;
         ExportFrameButton.IsEnabled = false;
+        string? outputPath = null;
 
         try
         {
@@ -339,10 +340,10 @@ public sealed partial class VideoTrimmerWindow : Window
             var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
 
             var storage = App.Services.GetRequiredService<IClipStorageService>();
-            var path = storage.GenerateFilePath(CaptureType.Screenshot, ".png", "(frame)");
-            var folder = await StorageFolder.GetFolderFromPathAsync(System.IO.Path.GetDirectoryName(path)!);
+            outputPath = storage.GenerateFilePath(CaptureType.Screenshot, ".png", "(frame)");
+            var folder = await StorageFolder.GetFolderFromPathAsync(System.IO.Path.GetDirectoryName(outputPath)!);
             var outFile = await folder.CreateFileAsync(
-                System.IO.Path.GetFileName(path), CreationCollisionOption.GenerateUniqueName);
+                System.IO.Path.GetFileName(outputPath), CreationCollisionOption.GenerateUniqueName);
 
             using (var outStream = await outFile.OpenAsync(FileAccessMode.ReadWrite))
             {
@@ -356,7 +357,7 @@ public sealed partial class VideoTrimmerWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Video frame export failed: {ex}");
-            App.ShowSaveFailureNotification(System.IO.Path.GetFileName(_filePath));
+            App.ShowSaveFailureNotification(System.IO.Path.GetFileName(outputPath ?? "video frame export"));
         }
         finally
         {
