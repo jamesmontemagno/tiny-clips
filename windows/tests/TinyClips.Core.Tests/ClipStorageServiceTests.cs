@@ -106,10 +106,13 @@ public sealed class ClipStorageServiceTests
         public Dictionary<Environment.SpecialFolder, string> FolderPaths { get; } = new();
 
         public bool FileExists(string path) => ExistingPaths.Contains(path);
-
+        public bool DirectoryExists(string path) => false;
         public void CreateDirectory(string path) => ExistingPaths.Add(path);
-
         public string GetFolderPath(Environment.SpecialFolder folder) => FolderPaths.TryGetValue(folder, out var value) ? value : string.Empty;
+        public IEnumerable<string> EnumerateFiles(string directory) => [];
+        public DateTimeOffset GetFileLastWriteTime(string path) => DateTimeOffset.MinValue;
+        public long GetFileSizeBytes(string path) => 0;
+        public void DeleteFile(string path) { }
     }
 
     private sealed class FixedFileNameService : IFileNameService
