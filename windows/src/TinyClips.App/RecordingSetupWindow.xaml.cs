@@ -57,6 +57,7 @@ public sealed partial class RecordingSetupWindow : Window
 
     private bool _completed;
     private bool _closed;
+    private RecordingSetupResult? _pendingResult;
     private bool _suppressEvents;
     private bool _showMouseClicks;
     private bool _microphonePermissionPending;
@@ -524,7 +525,7 @@ public sealed partial class RecordingSetupWindow : Window
         }
 
         _completed = true;
-        _result.TrySetResult(result);
+        _pendingResult = result;
         ClosePanel();
     }
 
@@ -549,25 +550,34 @@ public sealed partial class RecordingSetupWindow : Window
         WebcamOptions.ReadinessChanged -= OnSelectionReadinessChanged;
         _previewCts.Cancel();
         WebcamOptions.HidePreview();
-        _ = DisposeSetupPreviewAsync();
-
         if (!_completed)
         {
             _completed = true;
-            _result.TrySetResult(null);
         }
+
+        _ = CompleteAfterPreviewCleanupAsync();
     }
 
-    private async Task DisposeSetupPreviewAsync()
+    private async Task CompleteAfterPreviewCleanupAsync()
     {
-        await _previewGate.WaitAsync();
         try
         {
-            await _previewCapture.DisposeAsync();
+            await _previewGate.WaitAsync();
+            try
+            {
+                await _previewCapture.DisposeAsync();
+            }
+            finally
+            {
+                _previewGate.Release();
+            }
+
+            _previewCts.Dispose();
+            _result.TrySetResult(_pendingResult);
         }
-        finally
+        catch (Exception ex)
         {
-            _previewGate.Release();
+            _result.TrySetException(ex);
         }
     }
 
