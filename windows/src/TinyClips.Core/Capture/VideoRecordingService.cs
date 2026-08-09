@@ -54,6 +54,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private long _webcamOverlayNullFrames;
     private long _webcamNoFrameFrames;
     private WebcamFrame? _lastTimelineWebcamFrame;
+    private WebcamPlacementTimeline? _webcamPlacements;
 
     private AudioCaptureService? _audio;
     private AudioStreamDescriptor? _audioDescriptor;
@@ -207,6 +208,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 // the bounded frame channel so real frames near the end were dropped.
                 await WaitForFirstWebcamFrameAsync(cancellationToken).ConfigureAwait(false);
                 _recordingTimeline = RecordingTimeline.StartNow();
+                _webcamPlacements = new WebcamPlacementTimeline(_settings.WebcamCornerPosition);
                 _audio?.BeginTimeline(_recordingTimeline);
                 _capture.BeginEmitting(_recordingTimeline);
 
@@ -256,7 +258,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             if (_lastTimelineWebcamFrame is not null)
             {
-                _webcamOverlay.Draw(frame.BgraPixels, frame.Width, frame.Height, _lastTimelineWebcamFrame);
+                var corner = _webcamPlacements?.CornerAt(pts) ?? _settings.WebcamCornerPosition;
+                _webcamOverlay.Draw(frame.BgraPixels, frame.Width, frame.Height, _lastTimelineWebcamFrame, corner);
                 Interlocked.Increment(ref _webcamCompositedFrames);
             }
             else
@@ -485,6 +488,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         _outputPath = null;
         _recordingTimeline = null;
+        _webcamPlacements = null;
         _lastTimelineWebcamFrame = null;
         IsRecording = false;
         WebcamDiagnostics.EndRecording();
@@ -867,6 +871,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
     }
 
+    public void SetWebcamCorner(WebcamCornerPosition corner)
+    {
+        _settings.WebcamCornerPosition = corner;
+        var timeline = _recordingTimeline;
+        _webcamPlacements?.Add(timeline?.Elapsed ?? TimeSpan.Zero, corner);
+    }
+
     public void SetSystemAudioMuted(bool muted)
     {
         _audio?.SetSystemAudioMuted(muted);
@@ -957,6 +968,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _channel = null;
             _transcodeTask = null;
             _recordingTimeline = null;
+            _webcamPlacements = null;
             _lastTimelineWebcamFrame = null;
             DetachMediaStreamSource();
 

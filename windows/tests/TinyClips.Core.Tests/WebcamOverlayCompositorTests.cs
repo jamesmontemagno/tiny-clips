@@ -28,4 +28,28 @@ public sealed class WebcamOverlayCompositorTests
 
         Assert.Contains(destination.Chunk(4), pixel => pixel[2] == 255);
     }
+
+    [Fact]
+    public void Draw_UsesCornerSelectedForEachTimelineFrame()
+    {
+        var compositor = new WebcamOverlayCompositor(
+            WebcamCornerPosition.TopLeft,
+            WebcamSizePreset.Small,
+            WebcamShape.Rectangle,
+            cornerRadius: null);
+        var webcam = Enumerable.Repeat((byte)255, 10 * 10 * 4).ToArray();
+        var topLeft = new byte[200 * 200 * 4];
+        var bottomRight = new byte[200 * 200 * 4];
+        var frame = new WebcamFrame(webcam, 10, 10, TimeSpan.Zero);
+
+        compositor.Draw(topLeft, 200, 200, frame, WebcamCornerPosition.TopLeft);
+        compositor.Draw(bottomRight, 200, 200, frame, WebcamCornerPosition.BottomRight);
+
+        Assert.Equal(255, RedAt(topLeft, 200, 12, 12));
+        Assert.Equal(0, RedAt(bottomRight, 200, 12, 12));
+        Assert.Equal(255, RedAt(bottomRight, 200, 187, 187));
+    }
+
+    private static byte RedAt(byte[] pixels, int width, int x, int y) =>
+        pixels[((y * width) + x) * 4 + 2];
 }

@@ -11,7 +11,8 @@ namespace TinyClips.Core.Capture;
 [SupportedOSPlatform("windows")]
 public sealed class WebcamOverlayCompositor
 {
-    private readonly WebcamCornerPosition _corner;
+    private readonly object _drawGate = new();
+    private WebcamCornerPosition _corner;
     private readonly WebcamSizePreset _sizePreset;
     private readonly WebcamShape _shape;
     private readonly double? _configuredCornerRadius;
@@ -52,6 +53,14 @@ public sealed class WebcamOverlayCompositor
     /// Blends <paramref name="webcamFrame"/> onto <paramref name="bgra"/> if all dimensions are valid.
     /// </summary>
     public void Draw(byte[] bgra, int frameWidth, int frameHeight, WebcamFrame webcamFrame)
+    {
+        lock (_drawGate)
+        {
+            DrawCore(bgra, frameWidth, frameHeight, webcamFrame);
+        }
+    }
+
+    private void DrawCore(byte[] bgra, int frameWidth, int frameHeight, WebcamFrame webcamFrame)
     {
         if (bgra.Length == 0 ||
             frameWidth <= 0 ||
@@ -121,6 +130,25 @@ public sealed class WebcamOverlayCompositor
                 bgra[destIndex + 1] = Blend(bgra[destIndex + 1], source[sourceIndex + 1], alpha);
                 bgra[destIndex + 2] = Blend(bgra[destIndex + 2], source[sourceIndex + 2], alpha);
             }
+        }
+    }
+
+    public void Draw(
+        byte[] bgra,
+        int frameWidth,
+        int frameHeight,
+        WebcamFrame webcamFrame,
+        WebcamCornerPosition corner)
+    {
+        lock (_drawGate)
+        {
+            if (_corner != corner)
+            {
+                _corner = corner;
+                _builtForFrameWidth = -1;
+            }
+
+            DrawCore(bgra, frameWidth, frameHeight, webcamFrame);
         }
     }
 
