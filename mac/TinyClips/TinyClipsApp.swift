@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
@@ -11,6 +12,10 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         ExternalImageOpenCoordinator.shared.handleOpen(urls: [URL(fileURLWithPath: filename)])
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        SingleInstanceCoordinator.shared.release()
+    }
 }
 
 struct AppWindowCommands: Commands {
@@ -22,15 +27,26 @@ struct AppWindowCommands: Commands {
 @main
 struct TinyClipsApp: App {
     @NSApplicationDelegateAdaptor(TinyClipsAppDelegate.self) private var appDelegate
-    @StateObject private var captureManager = CaptureManager()
+    @StateObject private var captureManager: CaptureManager
     @ObservedObject private var sparkleController = SparkleController.shared
+    @ObservedObject private var singleInstanceCoordinator = SingleInstanceCoordinator.shared
 
     init() {
-        _ = try? TinyClipsTemporaryFiles.removeStaleFiles(
-            olderThan: Date().addingTimeInterval(-24 * 60 * 60)
-        )
-        _ = SparkleController.shared
-        NSApplication.shared.setActivationPolicy(CaptureSettings.shared.showInDock ? .regular : .accessory)
+        switch SingleInstanceCoordinator.shared.acquire() {
+        case .primary:
+            _ = try? TinyClipsTemporaryFiles.removeStaleFiles(
+                olderThan: Date().addingTimeInterval(-24 * 60 * 60)
+            )
+            _ = SparkleController.shared
+            NSApplication.shared.setActivationPolicy(CaptureSettings.shared.showInDock ? .regular : .accessory)
+        case .alreadyRunning:
+            exit(EXIT_SUCCESS)
+        case let .failure(error):
+            NSAlert(error: error).runModal()
+            exit(EXIT_FAILURE)
+        }
+
+        _captureManager = StateObject(wrappedValue: CaptureManager())
     }
 
     var body: some Scene {
@@ -38,6 +54,9 @@ struct TinyClipsApp: App {
             MenuBarContentView(captureManager: captureManager, sparkleController: sparkleController)
         } label: {
             MenuBarLabelView(captureManager: captureManager)
+                .background(
+                    SingleInstanceActivationHandler(coordinator: singleInstanceCoordinator)
+                )
         }
 
         Window("Clips Manager", id: "clips-manager") {
@@ -57,6 +76,31 @@ struct TinyClipsApp: App {
         }
 
         ScreenshotEditorScene()
+    }
+}
+
+private struct SingleInstanceActivationHandler: View {
+    @ObservedObject var coordinator: SingleInstanceCoordinator
+    @Environment(\.openWindow) private var openWindow
+    @State private var handledActivationRequestID: UInt = 0
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                handleActivationRequestIfNeeded()
+            }
+            .onChange(of: coordinator.activationRequestID) { _ in
+                handleActivationRequestIfNeeded()
+            }
+    }
+
+    private func handleActivationRequestIfNeeded() {
+        guard handledActivationRequestID != coordinator.activationRequestID else { return }
+
+        handledActivationRequestID = coordinator.activationRequestID
+        openWindow(id: "settings-window")
+        coordinator.bringSettingsWindowToFront()
     }
 }
 
