@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed macOS launching a second Tiny Clips process by activating the existing instance instead of duplicating the menu-bar app and global hotkeys.
+- Fixed macOS recording writer failures caused by invalid or non-increasing screen, system-audio, microphone, or webcam presentation timestamps.
 - Fixed macOS video and GIF recordings allowing the display to idle-sleep or start the screen saver during capture.
 - Fixed macOS screenshot editor text annotations previewing larger than copied or saved images when background padding changes the displayed screenshot scale.
 - Fixed macOS shortcut changes silently accepting unavailable or conflicting global hotkeys; Settings now validates conflicts and keeps the prior working shortcut when registration fails.
@@ -23,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - macOS microphone recording now applies a default-on soft-knee limiter that prevents loud peaks from hard-clipping before AAC encoding.
 - macOS General settings now support separate screenshot and video/GIF save folders while preserving the shared folder as a fallback.
 - macOS screenshot editor exports now offer Original, 1:1, 4:3, 16:9, 3:4, and 9:16 frames plus horizontal and vertical alignment, with image pixels and annotations preserved without stretching.
+- macOS screenshot clipboard copies now publish both PNG and TIFF image representations for wider app compatibility.
 
 ## v1.5.4-mac - 2026-07-26
 
