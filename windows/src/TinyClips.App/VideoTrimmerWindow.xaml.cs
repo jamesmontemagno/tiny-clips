@@ -374,6 +374,7 @@ public sealed partial class VideoTrimmerWindow : Window
             return;
         }
 
+        StopPlayback();
         var outputPath = await ExportVideoAsync(trimmed: true);
         Completed?.Invoke(this, outputPath);
         Close();
@@ -381,6 +382,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveOriginal(object sender, RoutedEventArgs e)
     {
+        StopPlayback();
         if (RemoveAudioCheck.IsChecked == true)
         {
             var outputPath = await ExportVideoAsync(trimmed: false);
@@ -464,6 +466,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private void OnDone(object sender, RoutedEventArgs e)
     {
+        StopPlayback();
         Completed?.Invoke(this, null);
         Close();
     }
@@ -471,6 +474,7 @@ public sealed partial class VideoTrimmerWindow : Window
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
         var player = Player.MediaPlayer;
+        StopPlayback();
         if (player?.PlaybackSession is { } session)
         {
             session.PositionChanged -= OnPositionChanged;
@@ -478,6 +482,11 @@ public sealed partial class VideoTrimmerWindow : Window
 
         Player.SetMediaPlayer(null);
         player?.Dispose();
+    }
+
+    private void StopPlayback()
+    {
+        Player.MediaPlayer?.Pause();
     }
 
     /// <summary>Raised once when the window closes. Carries the trimmed file path, or null if untrimmed.</summary>

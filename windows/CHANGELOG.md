@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed the video trimmer so preview playback stops immediately when saving or closing the window.
+
 ### Added
 - Added a live webcam preview to video setup and recording on Windows. The in-recording preview can be dragged or moved with the keyboard between capture corners, and every move is synchronized to the exported recording timeline.
 - **Uploadcare cloud uploads** — Settings → Uploadcare now stores the public key and upload preferences locally while keeping the optional signing secret only in Windows Credential Locker. Tiny Clips can upload finalized screenshots, videos, GIFs, and exported frames automatically, optionally copy the delivery URL, and lets the Clips Library upload a capture manually with Copy URL and Open URL actions.
