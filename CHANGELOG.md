@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - macOS Video and GIF settings now let you disable the default behavior that keeps the display awake while recording.
 
 ### Fixed
+- Fixed the macOS video trimmer so preview playback stops immediately when saving or closing the trimmer.
 - Fixed macOS launching a second Tiny Clips process by activating the existing instance instead of duplicating the menu-bar app and global hotkeys.
 - Fixed macOS recording writer failures caused by invalid or non-increasing screen, system-audio, microphone, or webcam presentation timestamps.
 - Fixed macOS video and GIF recordings allowing the display to idle-sleep or start the screen saver during capture.

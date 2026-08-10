@@ -14,6 +14,7 @@ final class TrimmerMenuActions {
     var togglePlayback: (() -> Void)?
     var previousFrame: (() -> Void)?
     var nextFrame: (() -> Void)?
+    var stopPlayback: (() -> Void)?
 
     func handles(_ action: Selector?) -> Bool {
         switch action {
@@ -63,6 +64,7 @@ final class TrimmerMenuActions {
         togglePlayback = nil
         previousFrame = nil
         nextFrame = nil
+        stopPlayback = nil
     }
 }
 
@@ -138,6 +140,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         guard !didComplete, let callback = onComplete else { return }
         didComplete = true
         onComplete = nil
+        menuActions.stopPlayback?()
         callback(url)
         orderOut(nil)
     }
@@ -362,6 +365,7 @@ private struct VideoTrimmerView: View {
                                 DispatchQueue.main.async { onDone(resultURL) }
                             }
                         } else {
+                            viewModel.stopPlayback()
                             onDone(videoURL)
                         }
                     }
@@ -435,12 +439,14 @@ private struct VideoTrimmerView: View {
                     DispatchQueue.main.async { onDone(resultURL) }
                 }
             } else {
+                viewModel.stopPlayback()
                 onDone(videoURL)
             }
         }
         menuActions.togglePlayback = { [viewModel] in viewModel.previewTrimmed() }
         menuActions.previousFrame = { [viewModel] in viewModel.stepFrame(by: -1) }
         menuActions.nextFrame = { [viewModel] in viewModel.stepFrame(by: 1) }
+        menuActions.stopPlayback = { [viewModel] in viewModel.stopPlayback() }
     }
 
     private func formatTime(_ seconds: Double) -> String {
@@ -694,11 +700,16 @@ private class TrimmerViewModel: ObservableObject {
     }
 
     func cleanup() {
-        player.pause()
+        stopPlayback()
         if let obs = timeObserver {
             player.removeTimeObserver(obs)
             timeObserver = nil
         }
+    }
+
+    func stopPlayback() {
+        player.pause()
+        isPlaying = false
     }
 
     func seek(to time: Double) {
@@ -811,6 +822,7 @@ private class TrimmerViewModel: ObservableObject {
 
     func exportVideo(trimmed: Bool, completion: @escaping (URL?) -> Void) {
         isExporting = true
+        stopPlayback()
 
         let outputSuffix = trimmed ? (removeAudio ? " (trimmed, no audio)" : " (trimmed)") : " (no audio)"
         let outputURL = sourceURL.deletingLastPathComponent()
