@@ -402,6 +402,7 @@ public sealed partial class VideoTrimmerWindow : Window
         SaveOriginalButton.IsEnabled = false;
         SaveTrimmedButton.IsEnabled = false;
         RemoveAudioCheck.IsEnabled = false;
+        PlayToggle.IsEnabled = false;
         string? outputPath = null;
 
         try
@@ -459,6 +460,7 @@ public sealed partial class VideoTrimmerWindow : Window
             SaveOriginalButton.IsEnabled = true;
             SaveTrimmedButton.IsEnabled = true;
             RemoveAudioCheck.IsEnabled = true;
+            PlayToggle.IsEnabled = true;
         }
 
         return outputPath;
