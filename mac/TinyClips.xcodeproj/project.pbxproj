@@ -29,6 +29,7 @@
 		B10000000000000000000014 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* HotKeyManager.swift */; };
 		B10000000000000000000015 /* ScreenPickerWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* ScreenPickerWindow.swift */; };
 		B10000000000000000000016 /* RegionIndicatorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* RegionIndicatorPanel.swift */; };
+		B1000000000000000000003C /* TeleprompterPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003C /* TeleprompterPanel.swift */; };
 		B10000000000000000000017 /* StoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* StoreService.swift */; };
 		B10000000000000000000018 /* ClipsManagerWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001B /* ClipsManagerWindow.swift */; };
 		B10000000000000000000019 /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001C /* SubscriptionView.swift */; };
@@ -71,6 +72,7 @@
 		B20000000000000000000014 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* HotKeyManager.swift */; };
 		B20000000000000000000015 /* ScreenPickerWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* ScreenPickerWindow.swift */; };
 		B20000000000000000000016 /* RegionIndicatorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* RegionIndicatorPanel.swift */; };
+		B2000000000000000000003C /* TeleprompterPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003C /* TeleprompterPanel.swift */; };
 		B20000000000000000000017 /* StoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* StoreService.swift */; };
 		B20000000000000000000018 /* ClipsManagerWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001B /* ClipsManagerWindow.swift */; };
 		B20000000000000000000019 /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001C /* SubscriptionView.swift */; };
@@ -97,6 +99,7 @@
 		B10000000000000000000024 /* GeneralSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000027 /* GeneralSettingsSection.swift */; };
 		B10000000000000000000025 /* ScreenshotSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000028 /* ScreenshotSettingsSection.swift */; };
 		B10000000000000000000026 /* VideoSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000029 /* VideoSettingsSection.swift */; };
+		B1000000000000000000003D /* TeleprompterSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003D /* TeleprompterSettingsSection.swift */; };
 		B10000000000000000000027 /* GifSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002A /* GifSettingsSection.swift */; };
 		B10000000000000000000028 /* ShortcutsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002B /* ShortcutsSettingsSection.swift */; };
 		B10000000000000000000029 /* AboutSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002C /* AboutSettingsSection.swift */; };
@@ -110,6 +113,7 @@
 		B20000000000000000000024 /* GeneralSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000027 /* GeneralSettingsSection.swift */; };
 		B20000000000000000000025 /* ScreenshotSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000028 /* ScreenshotSettingsSection.swift */; };
 		B20000000000000000000026 /* VideoSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000029 /* VideoSettingsSection.swift */; };
+		B2000000000000000000003D /* TeleprompterSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003D /* TeleprompterSettingsSection.swift */; };
 		B20000000000000000000027 /* GifSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002A /* GifSettingsSection.swift */; };
 		B20000000000000000000028 /* ShortcutsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002B /* ShortcutsSettingsSection.swift */; };
 		B20000000000000000000029 /* AboutSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002C /* AboutSettingsSection.swift */; };
@@ -148,6 +152,7 @@
 		A10000000000000000000017 /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		A10000000000000000000018 /* ScreenPickerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenPickerWindow.swift; sourceTree = "<group>"; };
 		A10000000000000000000019 /* RegionIndicatorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegionIndicatorPanel.swift; sourceTree = "<group>"; };
+		A1000000000000000000003C /* TeleprompterPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeleprompterPanel.swift; sourceTree = "<group>"; };
 		A1000000000000000000001A /* StoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreService.swift; sourceTree = "<group>"; };
 		A1000000000000000000001B /* ClipsManagerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipsManagerWindow.swift; sourceTree = "<group>"; };
 		A1000000000000000000001C /* SubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionView.swift; sourceTree = "<group>"; };
@@ -172,6 +177,7 @@
 		A10000000000000000000027 /* GeneralSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsSection.swift; sourceTree = "<group>"; };
 		A10000000000000000000028 /* ScreenshotSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotSettingsSection.swift; sourceTree = "<group>"; };
 		A10000000000000000000029 /* VideoSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoSettingsSection.swift; sourceTree = "<group>"; };
+		A1000000000000000000003D /* TeleprompterSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeleprompterSettingsSection.swift; sourceTree = "<group>"; };
 		A1000000000000000000002A /* GifSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifSettingsSection.swift; sourceTree = "<group>"; };
 		A1000000000000000000002B /* ShortcutsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsSettingsSection.swift; sourceTree = "<group>"; };
 		A1000000000000000000002C /* AboutSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsSection.swift; sourceTree = "<group>"; };
@@ -258,6 +264,7 @@
 				A10000000000000000000016 /* GuideWindow.swift */,
 				A10000000000000000000018 /* ScreenPickerWindow.swift */,
 				A10000000000000000000019 /* RegionIndicatorPanel.swift */,
+				A1000000000000000000003C /* TeleprompterPanel.swift */,
 				A1000000000000000000001B /* ClipsManagerWindow.swift */,
 				A1000000000000000000001C /* SubscriptionView.swift */,
 				A1000000000000000000001F /* CapturePickerPanel.swift */,
@@ -282,6 +289,7 @@
 				A1000000000000000000002B /* ShortcutsSettingsSection.swift */,
 				A10000000000000000000029 /* VideoSettingsSection.swift */,
 				A10000000000000000000033 /* AnalyticsSettingsSection.swift */,
+				A1000000000000000000003D /* TeleprompterSettingsSection.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -456,6 +464,7 @@
 				B10000000000000000000014 /* HotKeyManager.swift in Sources */,
 				B10000000000000000000015 /* ScreenPickerWindow.swift in Sources */,
 				B10000000000000000000016 /* RegionIndicatorPanel.swift in Sources */,
+				B1000000000000000000003C /* TeleprompterPanel.swift in Sources */,
 				B10000000000000000000017 /* StoreService.swift in Sources */,
 				B10000000000000000000018 /* ClipsManagerWindow.swift in Sources */,
 				B10000000000000000000019 /* SubscriptionView.swift in Sources */,
@@ -473,6 +482,7 @@
 				B10000000000000000000024 /* GeneralSettingsSection.swift in Sources */,
 				B10000000000000000000025 /* ScreenshotSettingsSection.swift in Sources */,
 				B10000000000000000000026 /* VideoSettingsSection.swift in Sources */,
+				B1000000000000000000003D /* TeleprompterSettingsSection.swift in Sources */,
 				B10000000000000000000027 /* GifSettingsSection.swift in Sources */,
 				B10000000000000000000028 /* ShortcutsSettingsSection.swift in Sources */,
 				B10000000000000000000029 /* AboutSettingsSection.swift in Sources */,
@@ -517,6 +527,7 @@
 				B20000000000000000000014 /* HotKeyManager.swift in Sources */,
 				B20000000000000000000015 /* ScreenPickerWindow.swift in Sources */,
 				B20000000000000000000016 /* RegionIndicatorPanel.swift in Sources */,
+				B2000000000000000000003C /* TeleprompterPanel.swift in Sources */,
 				B20000000000000000000017 /* StoreService.swift in Sources */,
 				B20000000000000000000018 /* ClipsManagerWindow.swift in Sources */,
 				B20000000000000000000019 /* SubscriptionView.swift in Sources */,
@@ -534,6 +545,7 @@
 				B20000000000000000000024 /* GeneralSettingsSection.swift in Sources */,
 				B20000000000000000000025 /* ScreenshotSettingsSection.swift in Sources */,
 				B20000000000000000000026 /* VideoSettingsSection.swift in Sources */,
+				B2000000000000000000003D /* TeleprompterSettingsSection.swift in Sources */,
 				B20000000000000000000027 /* GifSettingsSection.swift in Sources */,
 				B20000000000000000000028 /* ShortcutsSettingsSection.swift in Sources */,
 				B20000000000000000000029 /* AboutSettingsSection.swift in Sources */,

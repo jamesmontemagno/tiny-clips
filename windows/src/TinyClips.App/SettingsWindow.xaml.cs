@@ -108,6 +108,7 @@ public sealed partial class SettingsWindow : Window
             SettingsSectionKind.Gif => new GifSettingsSection(ViewModel),
             SettingsSectionKind.MouseClicks => new MouseClicksSettingsSection(ViewModel),
             SettingsSectionKind.Branding => new BrandingSettingsSection(ViewModel),
+            SettingsSectionKind.Teleprompter => new TeleprompterSettingsSection(ViewModel),
             SettingsSectionKind.Hotkeys => new HotkeysSettingsSection(ViewModel),
             SettingsSectionKind.About => new AboutSettingsSection(ViewModel),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, message: null),

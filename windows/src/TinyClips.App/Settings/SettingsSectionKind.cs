@@ -16,6 +16,7 @@ public enum SettingsSectionKind
     Gif,
     MouseClicks,
     Branding,
+    Teleprompter,
     Hotkeys,
     About,
 }

@@ -34,7 +34,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IClipAnalyticsService _analytics;
     private readonly IUploadcareCredentialStore _uploadcareCredentials;
     private readonly DispatcherQueue? _dispatcherQueue;
+    private readonly DispatcherQueueTimer? _teleprompterTranscriptSaveTimer;
     private bool _loading;
+    private string? _pendingTeleprompterTranscript;
     private string _savedMicrophoneId = string.Empty;
     private string _savedWebcamId = string.Empty;
 
@@ -84,6 +86,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         _analytics = analytics;
         _uploadcareCredentials = uploadcareCredentials;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        if (_dispatcherQueue is not null)
+        {
+            _teleprompterTranscriptSaveTimer = _dispatcherQueue.CreateTimer();
+            _teleprompterTranscriptSaveTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _teleprompterTranscriptSaveTimer.IsRepeating = false;
+            _teleprompterTranscriptSaveTimer.Tick += (_, _) => PersistPendingTeleprompterTranscript();
+        }
         Load();
 
         // Analytics history and microphone/webcam enumeration are deferred until their
@@ -140,7 +149,23 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>Stops async continuations (media enumeration, permission prompts) from touching
     /// this view model once the owning window has closed.</summary>
-    public void NotifyClosed() => _closed = true;
+    public void NotifyClosed()
+    {
+        _teleprompterTranscriptSaveTimer?.Stop();
+        PersistPendingTeleprompterTranscript();
+        _closed = true;
+    }
+
+    private void PersistPendingTeleprompterTranscript()
+    {
+        if (_pendingTeleprompterTranscript is not { } transcript)
+        {
+            return;
+        }
+
+        _pendingTeleprompterTranscript = null;
+        _settings.TeleprompterTranscript = transcript;
+    }
 
     private sealed class SectionRealizationScope : IDisposable
     {
@@ -477,6 +502,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _showBrandingOverlay;
 
+    // Teleprompter
+    [ObservableProperty]
+    private bool _teleprompterEnabled;
+
+    [ObservableProperty]
+    private string _teleprompterTranscript = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TeleprompterScrollSpeedDisplay))]
+    private double _teleprompterScrollSpeed = 50;
+
+    public string TeleprompterScrollSpeedDisplay => $"{TeleprompterScrollSpeed:N0} DIPs/s";
+
     // Analytics
     public System.Collections.ObjectModel.ObservableCollection<CaptureAnalyticsDayViewModel> AnalyticsDays { get; } = new();
 
@@ -713,6 +751,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             GifMouseClickOpacity = _settings.GifMouseClickOpacity;
             GifMouseClickColorHex = _settings.GifMouseClickColorHex;
             ShowBrandingOverlay = _settings.ShowBrandingOverlay;
+
+            TeleprompterEnabled = _settings.TeleprompterEnabled;
+            TeleprompterTranscript = _settings.TeleprompterTranscript;
+            TeleprompterScrollSpeed = Math.Clamp(_settings.TeleprompterScrollSpeed, 10.0, 200.0);
         }
         finally
         {
@@ -1157,6 +1199,28 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnGifMouseClickColorHexChanged(string value) => Persist(() => _settings.GifMouseClickColorHex = value);
 
     partial void OnShowBrandingOverlayChanged(bool value) => Persist(() => _settings.ShowBrandingOverlay = value);
+
+    partial void OnTeleprompterEnabledChanged(bool value) => Persist(() => _settings.TeleprompterEnabled = value);
+
+    partial void OnTeleprompterTranscriptChanged(string value)
+    {
+        if (_loading || _pendingSectionRealizations > 0)
+        {
+            return;
+        }
+
+        _pendingTeleprompterTranscript = value;
+        if (_teleprompterTranscriptSaveTimer is null)
+        {
+            PersistPendingTeleprompterTranscript();
+            return;
+        }
+
+        _teleprompterTranscriptSaveTimer.Stop();
+        _teleprompterTranscriptSaveTimer.Start();
+    }
+
+    partial void OnTeleprompterScrollSpeedChanged(double value) => Persist(() => _settings.TeleprompterScrollSpeed = value);
 
     partial void OnAnalyticsRangeIndexChanged(int value)
     {

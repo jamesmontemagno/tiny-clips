@@ -448,6 +448,54 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("showBrandingOverlay", value);
     }
 
+    public bool TeleprompterEnabled
+    {
+        get => _settings.Get("teleprompterEnabled", false);
+        set => _settings.Set("teleprompterEnabled", value);
+    }
+
+    public string TeleprompterTranscript
+    {
+        get => _settings is ILargeTextSettingsService largeTextSettings
+            ? largeTextSettings.GetLargeText("teleprompterTranscript", string.Empty)
+            : _settings.Get("teleprompterTranscript", string.Empty);
+        set
+        {
+            if (_settings is ILargeTextSettingsService largeTextSettings)
+            {
+                largeTextSettings.SetLargeText("teleprompterTranscript", value);
+            }
+            else
+            {
+                _settings.Set("teleprompterTranscript", value);
+            }
+        }
+    }
+
+    public double TeleprompterScrollSpeed
+    {
+        get => _settings.Get("teleprompterScrollSpeed", 50.0);
+        set => _settings.Set("teleprompterScrollSpeed", value);
+    }
+
+    public double TeleprompterPosX
+    {
+        get => _settings.Get("teleprompterPosX", -1.0);
+        set => _settings.Set("teleprompterPosX", value);
+    }
+
+    public double TeleprompterPosY
+    {
+        get => _settings.Get("teleprompterPosY", -1.0);
+        set => _settings.Set("teleprompterPosY", value);
+    }
+
+    public string TeleprompterMonitorDeviceName
+    {
+        get => _settings.Get("teleprompterMonitorDeviceName", string.Empty);
+        set => _settings.Set("teleprompterMonitorDeviceName", value);
+    }
+
     public int ScreenshotHotKeyCode
     {
         get => _settings.Get("screenshotHotKeyCode", 53);
@@ -618,6 +666,12 @@ public sealed class CaptureSettings : ICaptureSettings
         ShowRegionIndicator = true;
         IncludeTinyClipsInCapture = false;
         ShowBrandingOverlay = false;
+        TeleprompterEnabled = false;
+        TeleprompterTranscript = string.Empty;
+        TeleprompterScrollSpeed = 50.0;
+        TeleprompterPosX = -1.0;
+        TeleprompterPosY = -1.0;
+        TeleprompterMonitorDeviceName = string.Empty;
         UploadcareEnabled = false;
         UploadcarePublicKey = string.Empty;
         UploadcareAutoUpload = false;

@@ -81,6 +81,11 @@
                     Icon="Flag"
                     Tag="Branding" />
                 <NavigationViewItem
+                    AutomationProperties.AutomationId="TeleprompterNavigationItem"
+                    Content="Teleprompter"
+                    Icon="ShowResults"
+                    Tag="Teleprompter" />
+                <NavigationViewItem
                     AutomationProperties.AutomationId="HotkeysNavigationItem"
                     Content="Hotkeys"
                     Icon="Keyboard"

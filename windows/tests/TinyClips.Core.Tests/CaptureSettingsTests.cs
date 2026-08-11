@@ -253,9 +253,72 @@ public sealed class CaptureSettingsTests
         Assert.Equal(1, today.GifCount);
     }
 
+    [Fact]
+    public void TeleprompterSettings_DefaultToHiddenOverlayWithNoTranscript()
+    {
+        var settings = CreateSettings();
+
+        Assert.False(settings.TeleprompterEnabled);
+        Assert.Equal(string.Empty, settings.TeleprompterTranscript);
+        Assert.Equal(50.0, settings.TeleprompterScrollSpeed);
+        Assert.Equal(-1.0, settings.TeleprompterPosX);
+        Assert.Equal(-1.0, settings.TeleprompterPosY);
+        Assert.Equal(string.Empty, settings.TeleprompterMonitorDeviceName);
+    }
+
+    [Fact]
+    public void TeleprompterSettings_RoundTripThroughPersistedKeys()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        settings.TeleprompterEnabled = true;
+        settings.TeleprompterTranscript = "Hello\nworld";
+        settings.TeleprompterScrollSpeed = 120.5;
+        settings.TeleprompterPosX = 640.0;
+        settings.TeleprompterPosY = 42.25;
+        settings.TeleprompterMonitorDeviceName = @"\\.\DISPLAY2";
+
+        Assert.True(settings.TeleprompterEnabled);
+        Assert.Equal("Hello\nworld", settings.TeleprompterTranscript);
+        Assert.Equal(120.5, settings.TeleprompterScrollSpeed);
+        Assert.Equal(640.0, settings.TeleprompterPosX);
+        Assert.Equal(42.25, settings.TeleprompterPosY);
+        Assert.Equal(@"\\.\DISPLAY2", settings.TeleprompterMonitorDeviceName);
+
+        Assert.True(settingsService.Get("teleprompterEnabled", false));
+        Assert.Equal("Hello\nworld", settingsService.Get("teleprompterTranscript", string.Empty));
+        Assert.Equal(120.5, settingsService.Get("teleprompterScrollSpeed", 50.0));
+        Assert.Equal(640.0, settingsService.Get("teleprompterPosX", -1.0));
+        Assert.Equal(42.25, settingsService.Get("teleprompterPosY", -1.0));
+        Assert.Equal(@"\\.\DISPLAY2", settingsService.Get("teleprompterMonitorDeviceName", string.Empty));
+    }
+
+    [Fact]
+    public void ResetToDefaults_RestoresTeleprompterDefaults()
+    {
+        var settings = CreateSettings();
+
+        settings.TeleprompterEnabled = true;
+        settings.TeleprompterTranscript = "Script";
+        settings.TeleprompterScrollSpeed = 180.0;
+        settings.TeleprompterPosX = 100.0;
+        settings.TeleprompterPosY = 200.0;
+        settings.TeleprompterMonitorDeviceName = @"\\.\DISPLAY2";
+
+        settings.ResetToDefaults();
+
+        Assert.False(settings.TeleprompterEnabled);
+        Assert.Equal(string.Empty, settings.TeleprompterTranscript);
+        Assert.Equal(50.0, settings.TeleprompterScrollSpeed);
+        Assert.Equal(-1.0, settings.TeleprompterPosX);
+        Assert.Equal(-1.0, settings.TeleprompterPosY);
+        Assert.Equal(string.Empty, settings.TeleprompterMonitorDeviceName);
+    }
+
     private static ICaptureSettings CreateSettings() => new CaptureSettings(new TestSettingsService());
 
-    private sealed class TestSettingsService : ISettingsService
+    private sealed class TestSettingsService : ISettingsService, ILargeTextSettingsService
     {
         private readonly Dictionary<string, object> _values = new(StringComparer.OrdinalIgnoreCase);
 
@@ -285,5 +348,9 @@ public sealed class CaptureSettingsTests
         {
             _values[key] = value is null ? string.Empty : value;
         }
+
+        public string GetLargeText(string key, string defaultValue) => Get(key, defaultValue);
+
+        public void SetLargeText(string key, string value) => Set(key, value);
     }
 }

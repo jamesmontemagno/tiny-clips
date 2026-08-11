@@ -88,6 +88,7 @@ struct SettingsView: View {
                         availableWebcams: availableWebcams,
                         selectedTab: $selectedTab
                     )
+                    TeleprompterSettingsSection(settings: settings)
                 case .gif:
                     GifSettingsSection(
                         settings: settings,

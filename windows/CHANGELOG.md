@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Teleprompter transcript overlay** — Settings → Teleprompter lets you paste a script, enable the teleprompter, and tune the scroll speed (10–200 DIPs/s). During video recordings a small semi-transparent black overlay auto-scrolls the transcript on screen. The overlay appears only after recording starts, pauses and resumes with recording, fails closed if Windows cannot exclude it from capture, and remembers a monitor-relative position across mixed-DPI display changes.
+
 ### Fixed
 - Fixed the video trimmer so preview playback stops immediately when saving or closing the window.
 

@@ -47,6 +47,7 @@ public partial class App : Application
     private Window? _trimmerWindow;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
+    private TeleprompterWindow? _teleprompter;
     private WebcamPreviewWindow? _webcamPreview;
     private ProcessingIndicatorWindow? _processingIndicator;
     private RegionIndicatorWindow? _recordingRegionIndicator;
@@ -923,6 +924,24 @@ public partial class App : Application
         }
     }
 
+    private static void ShowTeleprompterFailureNotification()
+    {
+        try
+        {
+            EnsureNotificationsRegistered();
+            var notification = new AppNotificationBuilder()
+                .AddText("Teleprompter unavailable")
+                .AddText("Windows could not exclude the overlay from capture, so it was kept hidden. Recording continues.")
+                .BuildNotification();
+
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show teleprompter failure notification: {ex}");
+        }
+    }
+
     private async Task RunStartupUpdateCheckAsync()
     {
         var result = await CheckForUpdatesAsync(isManualCheck: false);
@@ -1096,6 +1115,7 @@ public partial class App : Application
         StopRecordingTimer();
         _recordingIndicator?.UpdateElapsed(_recordingElapsedBeforePause);
         _recordingIndicator?.SetPaused(true);
+        _teleprompter?.PauseScrolling();
     }
 
     private async Task ResumeActiveRecordingAsync()
@@ -1128,6 +1148,7 @@ public partial class App : Application
 
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingIndicator?.SetPaused(false);
+        _teleprompter?.ResumeScrolling();
         StartRecordingTimer();
     }
 
@@ -1138,25 +1159,39 @@ public partial class App : Application
             return;
         }
 
-        await DiscardActiveRecordingAsync(clearActiveSelection: false);
-        _activeRecordingSelection = selection;
-        _activeRecordingType = type;
-        ShowRecordingRegionIndicator(selection);
-        ShowRecordingIndicator(type, selection, stopEnabled: false, startTimer: false);
-
-        if (type == CaptureType.Video)
+        try
         {
-            var settings = Services.GetRequiredService<ICaptureSettings>();
-            await Services.GetRequiredService<IVideoRecordingService>()
-                .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes);
-        }
-        else
-        {
-            await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
-        }
+            await DiscardActiveRecordingAsync(clearActiveSelection: false);
+            _activeRecordingSelection = selection;
+            _activeRecordingType = type;
+            ShowRecordingRegionIndicator(selection);
+            ShowRecordingIndicator(type, selection, stopEnabled: false, startTimer: false);
 
-        ActivateRecordingIndicatorForStartedCapture(type);
-        UpdateRecordingState();
+            if (type == CaptureType.Video)
+            {
+                var settings = Services.GetRequiredService<ICaptureSettings>();
+                await Services.GetRequiredService<IVideoRecordingService>()
+                    .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes);
+            }
+            else
+            {
+                await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
+            }
+
+            ActivateRecordingIndicatorForStartedCapture(type);
+            UpdateRecordingState();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to restart {type} recording: {ex}");
+            ShowSaveFailureNotification(CaptureOutputDescription(type));
+            HideRecordingIndicator();
+            CloseRecordingRegionIndicator();
+            _activeRecordingSelection = null;
+            _activeRecordingType = null;
+            _activeRecordingWasPickerInitiated = false;
+            UpdateRecordingState();
+        }
     }
 
     private Task DiscardActiveRecordingAsync() => DiscardActiveRecordingAsync(clearActiveSelection: true);
@@ -1258,7 +1293,6 @@ public partial class App : Application
         HideRecordingIndicator();
 
         var hotKeys = Services.GetRequiredService<IHotKeyService>();
-        var settings = Services.GetRequiredService<ICaptureSettings>();
         var window = new RecordingIndicatorWindow(hotKeys.StopRecordingDisplayString);
         window.StopRequested = () => _ = StopActiveRecordingAsync();
         window.PauseRequested = () => _ = PauseActiveRecordingAsync();
@@ -1311,6 +1345,14 @@ public partial class App : Application
             video.CanMuteMicrophone,
             video.IsMicrophoneMuted);
         ShowWebcamPreviewForActiveRecording();
+        if (_activeRecordingSelection is { } selection)
+        {
+            var monitor = selection.Monitor ?? ResolveMonitorForTarget(selection.Target);
+            ShowTeleprompterIfNeeded(
+                type,
+                monitor,
+                Services.GetRequiredService<ICaptureSettings>());
+        }
         StartRecordingTimer();
         AnnounceRecordingStarted(type);
     }
@@ -1381,10 +1423,49 @@ public partial class App : Application
         }
     }
 
+    private void ShowTeleprompterIfNeeded(CaptureType type, MonitorInfo? monitor, ICaptureSettings settings)
+    {
+        HideTeleprompter();
+
+        // Video recordings only — the teleprompter never appears for GIFs or screenshots,
+        // and stays hidden when disabled or when there is no transcript to scroll.
+        if (type != CaptureType.Video ||
+            !settings.TeleprompterEnabled ||
+            string.IsNullOrWhiteSpace(settings.TeleprompterTranscript))
+        {
+            return;
+        }
+
+        var monitorService = Services.GetRequiredService<IMonitorService>();
+        var window = new TeleprompterWindow(settings, monitorService, monitor);
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_teleprompter, window))
+            {
+                _teleprompter = null;
+            }
+        };
+        if (!window.TryShow())
+        {
+            ShowTeleprompterFailureNotification();
+            return;
+        }
+
+        _teleprompter = window;
+    }
+
+    private void HideTeleprompter()
+    {
+        var window = _teleprompter;
+        _teleprompter = null;
+        window?.ClosePanel();
+    }
+
     private void HideRecordingIndicator()
     {
         StopRecordingTimer();
         HideWebcamPreview();
+        HideTeleprompter();
 
         var window = _recordingIndicator;
         _recordingIndicator = null;
