@@ -41,14 +41,20 @@ struct CaptureRegion: Sendable {
         return config
     }
 
-    func makeFilter() async throws -> SCContentFilter {
+    func makeFilter(alwaysExcluding windows: [SCWindow] = []) async throws -> SCContentFilter {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         guard let display = content.displays.first(where: { $0.displayID == self.displayID }) else {
             throw CaptureError.displayNotFound
         }
         let includeTinyClips = CaptureSettings.shared.includeTinyClipsInCapture
-        let excludedApps: [SCRunningApplication] = includeTinyClips ? [] : content.applications.filter {
+        if includeTinyClips {
+            return SCContentFilter(display: display, excludingWindows: windows)
+        }
+        let excludedApps: [SCRunningApplication] = content.applications.filter {
             $0.bundleIdentifier == Bundle.main.bundleIdentifier
+        }
+        if excludedApps.isEmpty {
+            return SCContentFilter(display: display, excludingWindows: windows)
         }
         return SCContentFilter(display: display, excludingApplications: excludedApps, exceptingWindows: [])
     }
@@ -61,9 +67,9 @@ struct CaptureTarget {
         self.region = region
     }
 
-    func prepare() async throws -> PreparedCaptureTarget {
+    func prepare(alwaysExcluding windows: [SCWindow] = []) async throws -> PreparedCaptureTarget {
         PreparedCaptureTarget(
-            filter: try await region.makeFilter(),
+            filter: try await region.makeFilter(alwaysExcluding: windows),
             config: region.makeStreamConfig(),
             pixelWidth: region.pixelWidth,
             pixelHeight: region.pixelHeight

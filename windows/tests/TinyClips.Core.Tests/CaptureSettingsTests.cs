@@ -263,6 +263,7 @@ public sealed class CaptureSettingsTests
         Assert.Equal(50.0, settings.TeleprompterScrollSpeed);
         Assert.Equal(-1.0, settings.TeleprompterPosX);
         Assert.Equal(-1.0, settings.TeleprompterPosY);
+        Assert.Equal(string.Empty, settings.TeleprompterMonitorDeviceName);
     }
 
     [Fact]
@@ -276,18 +277,21 @@ public sealed class CaptureSettingsTests
         settings.TeleprompterScrollSpeed = 120.5;
         settings.TeleprompterPosX = 640.0;
         settings.TeleprompterPosY = 42.25;
+        settings.TeleprompterMonitorDeviceName = @"\\.\DISPLAY2";
 
         Assert.True(settings.TeleprompterEnabled);
         Assert.Equal("Hello\nworld", settings.TeleprompterTranscript);
         Assert.Equal(120.5, settings.TeleprompterScrollSpeed);
         Assert.Equal(640.0, settings.TeleprompterPosX);
         Assert.Equal(42.25, settings.TeleprompterPosY);
+        Assert.Equal(@"\\.\DISPLAY2", settings.TeleprompterMonitorDeviceName);
 
         Assert.True(settingsService.Get("teleprompterEnabled", false));
         Assert.Equal("Hello\nworld", settingsService.Get("teleprompterTranscript", string.Empty));
         Assert.Equal(120.5, settingsService.Get("teleprompterScrollSpeed", 50.0));
         Assert.Equal(640.0, settingsService.Get("teleprompterPosX", -1.0));
         Assert.Equal(42.25, settingsService.Get("teleprompterPosY", -1.0));
+        Assert.Equal(@"\\.\DISPLAY2", settingsService.Get("teleprompterMonitorDeviceName", string.Empty));
     }
 
     [Fact]
@@ -300,6 +304,7 @@ public sealed class CaptureSettingsTests
         settings.TeleprompterScrollSpeed = 180.0;
         settings.TeleprompterPosX = 100.0;
         settings.TeleprompterPosY = 200.0;
+        settings.TeleprompterMonitorDeviceName = @"\\.\DISPLAY2";
 
         settings.ResetToDefaults();
 
@@ -308,6 +313,7 @@ public sealed class CaptureSettingsTests
         Assert.Equal(50.0, settings.TeleprompterScrollSpeed);
         Assert.Equal(-1.0, settings.TeleprompterPosX);
         Assert.Equal(-1.0, settings.TeleprompterPosY);
+        Assert.Equal(string.Empty, settings.TeleprompterMonitorDeviceName);
     }
 
     private static ICaptureSettings CreateSettings() => new CaptureSettings(new TestSettingsService());

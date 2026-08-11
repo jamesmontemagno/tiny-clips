@@ -492,13 +492,14 @@ class VideoRecorder: NSObject, @unchecked Sendable {
 
     func start(
         target: CaptureTarget,
+        alwaysExcludedWindows: [SCWindow],
         outputURL: URL,
         recordSystemAudio: Bool,
         recordMicrophone: Bool,
         selectedMicrophoneID: String
     ) async throws {
         debugLifecycle("start requested")
-        let preparedTarget = try await target.prepare()
+        let preparedTarget = try await target.prepare(alwaysExcluding: alwaysExcludedWindows)
         let filter = preparedTarget.filter
         let config = preparedTarget.config
 

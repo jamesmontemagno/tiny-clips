@@ -742,8 +742,18 @@ class CaptureManager: ObservableObject {
                     self.activeWebcamName = nil
                     self.lastVideoRecordingArtifacts = nil
 
+                    let teleprompterWindow = await self.prepareTeleprompterIfNeeded(
+                        region: target.region,
+                        sessionID: sessionID
+                    )
+                    guard self.isRecording,
+                          self.activeRecordingSessionID == sessionID,
+                          self.videoRecorder === recorder else {
+                        return
+                    }
                     try await recorder.start(
                         target: target,
+                        alwaysExcludedWindows: teleprompterWindow.map { [$0] } ?? [],
                         outputURL: url,
                         recordSystemAudio: systemAudio,
                         recordMicrophone: microphone,
@@ -760,6 +770,11 @@ class CaptureManager: ObservableObject {
                     self.debugRecordingLifecycle("Video session \(sessionID) started")
                     self.recordingSystemAudioEnabled = recorder.isSystemAudioCaptureActive
                     self.recordingMicrophoneEnabled = recorder.isMicrophoneCaptureActive
+                    if self.isRecordingPaused {
+                        self.teleprompterPanel?.pause()
+                    } else {
+                        self.teleprompterPanel?.resume()
+                    }
 
                     if webcamEnabled, let webcamOutputURL {
                         do {
@@ -794,7 +809,6 @@ class CaptureManager: ObservableObject {
                         return
                     }
                     self.showStopPanel()
-                    self.showTeleprompterIfNeeded(region: target.region)
                     self.scheduleVideoAutoStopIfNeeded(timeLimitMinutes: timeLimitMinutes, sessionID: sessionID)
                 } catch {
                     self.endIdleSleepAssertion()
@@ -994,11 +1008,13 @@ class CaptureManager: ObservableObject {
             videoRecorder?.resume()
             webcamRecorder?.resume()
             gifWriter?.resume()
+            teleprompterPanel?.resume()
             isRecordingPaused = false
         } else {
             videoRecorder?.pause()
             webcamRecorder?.pause()
             gifWriter?.pause()
+            teleprompterPanel?.pause()
             isRecordingPaused = true
         }
     }
@@ -1777,13 +1793,37 @@ class CaptureManager: ObservableObject {
         recordPanelPosition = nil
     }
 
-    private func showTeleprompterIfNeeded(region: CaptureRegion) {
+    private func prepareTeleprompterIfNeeded(region: CaptureRegion, sessionID: UInt64) async -> SCWindow? {
         let settings = CaptureSettings.shared
         let transcript = settings.teleprompterTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard settings.teleprompterEnabled, !transcript.isEmpty else { return }
+        guard settings.teleprompterEnabled, !transcript.isEmpty else { return nil }
+
+        dismissTeleprompter()
         let panel = TeleprompterPanel(transcript: transcript, scrollSpeed: settings.teleprompterScrollSpeed)
-        panel.show(relativeTo: region)
         teleprompterPanel = panel
+        panel.show(relativeTo: region)
+
+        let windowID = CGWindowID(panel.windowNumber)
+        for attempt in 0..<3 {
+            if let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
+               let window = content.windows.first(where: { $0.windowID == windowID }) {
+                guard teleprompterPanel === panel,
+                      isRecording,
+                      activeRecordingSessionID == sessionID else {
+                    return nil
+                }
+                return window
+            }
+            if attempt < 2 {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+
+        if teleprompterPanel === panel {
+            dismissTeleprompter()
+        }
+        debugRecordingLifecycle("Teleprompter was hidden because ScreenCaptureKit could not exclude its window")
+        return nil
     }
 
     private func dismissTeleprompter() {

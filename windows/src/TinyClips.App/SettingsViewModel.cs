@@ -488,7 +488,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(TeleprompterScrollSpeedDisplay))]
     private double _teleprompterScrollSpeed = 50;
 
-    public string TeleprompterScrollSpeedDisplay => $"{TeleprompterScrollSpeed:N0} px/s";
+    public string TeleprompterScrollSpeedDisplay => $"{TeleprompterScrollSpeed:N0} DIPs/s";
 
     // Analytics
     public System.Collections.ObjectModel.ObservableCollection<CaptureAnalyticsDayViewModel> AnalyticsDays { get; } = new();

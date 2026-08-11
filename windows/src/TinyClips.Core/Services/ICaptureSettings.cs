@@ -71,6 +71,7 @@ public interface ICaptureSettings
     double TeleprompterScrollSpeed { get; set; }
     double TeleprompterPosX { get; set; }
     double TeleprompterPosY { get; set; }
+    string TeleprompterMonitorDeviceName { get; set; }
     bool UploadcareEnabled { get; set; }
     string UploadcarePublicKey { get; set; }
     bool UploadcareAutoUpload { get; set; }

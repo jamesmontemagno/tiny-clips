@@ -8,8 +8,11 @@ final class TeleprompterPanel: NSPanel {
     private static let positionYKey = "teleprompterPanelY"
 
     private var didPersistPosition = false
+    private let scrollState: TeleprompterScrollState
 
     init(transcript: String, scrollSpeed: Double) {
+        let scrollState = TeleprompterScrollState(scrollSpeed: scrollSpeed)
+        self.scrollState = scrollState
         super.init(
             contentRect: NSRect(origin: .zero, size: Self.panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -22,10 +25,10 @@ final class TeleprompterPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        sharingType = .none
         isMovableByWindowBackground = true
 
-        let state = TeleprompterScrollState(scrollSpeed: scrollSpeed)
-        let hostingView = NSHostingView(rootView: TeleprompterView(state: state, transcript: transcript))
+        let hostingView = NSHostingView(rootView: TeleprompterView(state: scrollState, transcript: transcript))
         hostingView.setAccessibilityElement(true)
         hostingView.setAccessibilityRole(.staticText)
         hostingView.setAccessibilityLabel("Teleprompter")
@@ -38,7 +41,16 @@ final class TeleprompterPanel: NSPanel {
         orderFront(nil)
     }
 
+    func pause() {
+        scrollState.pause()
+    }
+
+    func resume() {
+        scrollState.resume()
+    }
+
     override func close() {
+        scrollState.stop()
         persistPosition()
         super.close()
     }
@@ -87,18 +99,50 @@ final class TeleprompterPanel: NSPanel {
 
 private final class TeleprompterScrollState: ObservableObject {
     @Published var scrollOffset: CGFloat = 0
-    @Published var contentHeight: CGFloat = 0
+    @Published var contentHeight: CGFloat = 0 {
+        didSet {
+            if !isPaused {
+                startTimer()
+            }
+        }
+    }
 
     let scrollSpeed: Double
-    var timer: Timer?
+    private var timer: Timer?
+    private var viewportHeight: CGFloat?
+    private var isPaused = true
 
     init(scrollSpeed: Double) {
         self.scrollSpeed = scrollSpeed
     }
 
     func start(viewportHeight: CGFloat) {
-        stop()
-        scrollOffset = 0
+        self.viewportHeight = viewportHeight
+        if !isPaused {
+            startTimer()
+        }
+    }
+
+    func pause() {
+        isPaused = true
+        stopTimer()
+    }
+
+    func resume() {
+        isPaused = false
+        startTimer()
+    }
+
+    func stop() {
+        isPaused = true
+        viewportHeight = nil
+        stopTimer()
+    }
+
+    private func startTimer() {
+        guard timer == nil, let viewportHeight else { return }
+        let maxOffset = max(0, contentHeight - viewportHeight)
+        guard scrollOffset < maxOffset else { return }
         let interval: TimeInterval = 1.0 / 60.0
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -107,7 +151,7 @@ private final class TeleprompterScrollState: ObservableObject {
             let next = self.scrollOffset + self.scrollSpeed * interval
             if next >= maxOffset {
                 self.scrollOffset = maxOffset
-                self.stop()
+                self.stopTimer()
             } else {
                 self.scrollOffset = next
             }
@@ -117,7 +161,7 @@ private final class TeleprompterScrollState: ObservableObject {
         }
     }
 
-    func stop() {
+    private func stopTimer() {
         timer?.invalidate()
         timer = nil
     }
