@@ -274,6 +274,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("recordAudio") var recordAudio: Bool = false
     @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
     @AppStorage("microphoneLimiterEnabled") var microphoneLimiterEnabled: Bool = true
+    @AppStorage("windNoiseRemovalEnabled") var windNoiseRemovalEnabled: Bool = false
     @AppStorage("selectedMicrophoneID") var selectedMicrophoneID: String = ""
     @AppStorage("webcamEnabled") var webcamEnabled: Bool = false
     @AppStorage("selectedWebcamID") var selectedWebcamID: String = ""
@@ -607,7 +608,7 @@ class CaptureSettings: ObservableObject {
             "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
             "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
             "showTrimmer",
-            "recordAudio", "recordMicrophone", "selectedMicrophoneID",
+            "recordAudio", "recordMicrophone", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
             "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
             "showScreenshotEditor", "showGifTrimmer",
             "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",

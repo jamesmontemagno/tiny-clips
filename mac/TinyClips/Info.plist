@@ -26,6 +26,8 @@
 	<string>TinyClips needs microphone access to record your voice alongside screen recordings.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>TinyClips needs camera access to record your camera alongside screen recordings.</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>https://jamesmontemagno.github.io/tiny-clips/appcast.xml</string>
 	<key>SUEnableAutomaticChecks</key>
