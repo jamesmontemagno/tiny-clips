@@ -29,6 +29,10 @@ struct VideoSettingsSection: View {
             Toggle("Limit microphone peaks", isOn: $settings.microphoneLimiterEnabled)
                 .help("Softly compresses loud microphone peaks before encoding to prevent distortion.")
 
+            Toggle("Reduce background and wind noise", isOn: $settings.windNoiseRemovalEnabled)
+                .help("Uses macOS wind-noise removal when the selected microphone supports it.")
+                .accessibilityHint("When enabled, supported microphones reduce background and wind noise before recording.")
+
             Picker("Microphone input:", selection: $settings.selectedMicrophoneID) {
                 Text("System Default").tag("")
                 ForEach(availableMicrophones) { device in

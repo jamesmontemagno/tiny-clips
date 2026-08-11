@@ -102,7 +102,7 @@ struct WebcamDeviceOption: Identifiable, Hashable {
 enum WebcamDeviceCatalog {
     private static func videoDevices() -> [AVCaptureDevice] {
         AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera, .externalUnknown],
+            deviceTypes: [.builtInWideAngleCamera, .external, .continuityCamera],
             mediaType: .video,
             position: .unspecified
         ).devices
@@ -447,6 +447,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var recordSystemAudio = false
     private var recordMicrophone = false
     private var microphoneLimiterEnabled = true
+    private var windNoiseRemovalEnabled = false
     private var systemAudioMuted = false
     private var microphoneMuted = false
     private var selectedMicrophoneID = ""
@@ -511,6 +512,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.recordSystemAudio = recordSystemAudio
         self.recordMicrophone = recordMicrophone
         self.microphoneLimiterEnabled = settings.microphoneLimiterEnabled
+        self.windNoiseRemovalEnabled = settings.windNoiseRemovalEnabled
         self.selectedMicrophoneID = selectedMicrophoneID
 
         if recordSystemAudio {
@@ -606,6 +608,9 @@ class VideoRecorder: NSObject, @unchecked Sendable {
 
         let session = AVCaptureSession()
         let input = try AVCaptureDeviceInput(device: device)
+        if windNoiseRemovalEnabled, input.isWindNoiseRemovalSupported {
+            input.isWindNoiseRemovalEnabled = true
+        }
         guard session.canAddInput(input) else {
             throw CaptureError.microphoneConnectionFailed
         }
@@ -1067,6 +1072,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         recordSystemAudio = false
         recordMicrophone = false
         microphoneLimiterEnabled = true
+        windNoiseRemovalEnabled = false
         systemAudioMuted = false
         microphoneMuted = false
         selectedMicrophoneID = ""
