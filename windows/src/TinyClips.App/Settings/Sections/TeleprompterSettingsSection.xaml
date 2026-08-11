@@ -100,6 +100,7 @@
                 </Grid>
                 <Border
                     Height="140"
+                    Padding="16,12"
                     AutomationProperties.HelpText="Shows how quickly the transcript will move during a recording."
                     AutomationProperties.Name="Teleprompter scroll speed preview"
                     Background="#99000000"
@@ -115,11 +116,8 @@
                         ZoomMode="Disabled">
                         <TextBlock
                             x:Name="PreviewText"
-                            Margin="20,12"
                             FontSize="24"
-                            FontWeight="Medium"
                             Foreground="#FFFFFFFF"
-                            TextAlignment="Center"
                             TextWrapping="Wrap" />
                     </ScrollViewer>
                 </Border>
