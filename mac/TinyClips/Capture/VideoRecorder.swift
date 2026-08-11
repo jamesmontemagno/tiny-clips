@@ -129,6 +129,7 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
     private var videoInput: AVAssetWriterInput?
     private var outputURL: URL?
     private var hasStartedWriting = false
+    private var hasWrittenVideoFrame = false
     private var isPaused = false
     private var pauseStartedAt: CMTime?
     private var totalPausedDuration = CMTime.zero
@@ -167,92 +168,116 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
         onWebcamDeviceName?(device.localizedName)
         self.outputURL = outputURL
 
-        let writer = try AVAssetWriter(url: outputURL, fileType: .mp4)
-        let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
-        let width = max(1, Int(dimensions.width))
-        let height = max(1, Int(dimensions.height))
-        let activeFrameDuration = device.activeVideoMinFrameDuration
-        if isPositiveNumericTime(activeFrameDuration) {
-            fallbackFrameDuration = activeFrameDuration
+        let writer: AVAssetWriter
+        do {
+            writer = try AVAssetWriter(url: outputURL, fileType: .mp4)
+        } catch {
+            removeOutputFile(at: outputURL)
+            reset()
+            throw error
         }
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: width,
-            AVVideoHeightKey: height,
-        ])
-        input.expectsMediaDataInRealTime = true
-        guard writer.canAdd(input) else {
-            throw CaptureError.saveFailed
-        }
-        writer.add(input)
 
-        let session = AVCaptureSession()
-        session.sessionPreset = .high
-        let cameraInput = try AVCaptureDeviceInput(device: device)
-        guard session.canAddInput(cameraInput) else {
-            throw CaptureError.webcamConnectionFailed
-        }
-        session.addInput(cameraInput)
+        do {
+            let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+            let width = max(1, Int(dimensions.width))
+            let height = max(1, Int(dimensions.height))
+            let activeFrameDuration = device.activeVideoMinFrameDuration
+            if isPositiveNumericTime(activeFrameDuration) {
+                fallbackFrameDuration = activeFrameDuration
+            }
+            let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: width,
+                AVVideoHeightKey: height,
+            ])
+            input.expectsMediaDataInRealTime = true
+            guard writer.canAdd(input) else {
+                throw CaptureError.saveFailed
+            }
+            writer.add(input)
 
-        let output = AVCaptureVideoDataOutput()
-        output.videoSettings = [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
-        ]
-        output.alwaysDiscardsLateVideoFrames = true
-        output.setSampleBufferDelegate(self, queue: writingQueue)
-        guard session.canAddOutput(output) else {
-            throw CaptureError.webcamReadFailed
-        }
-        session.addOutput(output)
+            let session = AVCaptureSession()
+            session.sessionPreset = .high
+            let cameraInput = try AVCaptureDeviceInput(device: device)
+            guard session.canAddInput(cameraInput) else {
+                throw CaptureError.webcamConnectionFailed
+            }
+            session.addInput(cameraInput)
 
-        self.writer = writer
-        self.videoInput = input
-        self.session = session
-        hasStartedWriting = false
-        lastPresentationTime = nil
+            let output = AVCaptureVideoDataOutput()
+            output.videoSettings = [
+                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+            ]
+            output.alwaysDiscardsLateVideoFrames = true
+            output.setSampleBufferDelegate(self, queue: writingQueue)
+            guard session.canAddOutput(output) else {
+                throw CaptureError.webcamReadFailed
+            }
+            session.addOutput(output)
 
-        captureQueue.sync {
-            session.startRunning()
+            self.writer = writer
+            self.videoInput = input
+            self.session = session
+            hasStartedWriting = false
+            hasWrittenVideoFrame = false
+            lastPresentationTime = nil
+
+            captureQueue.sync {
+                session.startRunning()
+            }
+        } catch {
+            writer.cancelWriting()
+            removeOutputFile(at: outputURL)
+            reset()
+            throw error
         }
         debugLifecycle("session started")
     }
 
     func stop() async throws -> URL {
-        guard let outputURL else {
-            throw CaptureError.saveFailed
-        }
-
         captureQueue.sync {
             if let session, session.isRunning {
                 session.stopRunning()
             }
         }
 
-        guard let writer, let videoInput else {
-            reset()
-            throw CaptureError.saveFailed
-        }
-
-        if !hasStartedWriting {
-            writer.cancelWriting()
-            reset()
-            throw CaptureError.noFrames
-        }
-
         return try await withCheckedThrowingContinuation { continuation in
             writingQueue.async {
+                guard let outputURL = self.outputURL,
+                      let writer = self.writer,
+                      let videoInput = self.videoInput else {
+                    if let outputURL = self.outputURL {
+                        self.removeOutputFile(at: outputURL)
+                    }
+                    self.reset()
+                    continuation.resume(throwing: CaptureError.saveFailed)
+                    return
+                }
+
+                guard self.hasWrittenVideoFrame else {
+                    let writerError = writer.status == .failed ? writer.error : nil
+                    writer.cancelWriting()
+                    self.removeOutputFile(at: outputURL)
+                    self.reset()
+                    continuation.resume(throwing: writerError ?? CaptureError.noFrames)
+                    return
+                }
+
                 videoInput.markAsFinished()
                 writer.finishWriting {
-                    if writer.status == .completed {
-                        self.debugLifecycle("finishWriting completed")
-                        self.reset()
-                        continuation.resume(returning: outputURL)
-                    } else {
-                        let message = writer.error?.localizedDescription ?? CaptureError.saveFailed.localizedDescription
-                        self.onWebcamError?(message)
-                        self.debugLifecycle("finishWriting failed: \(message)")
-                        self.reset()
-                        continuation.resume(throwing: writer.error ?? CaptureError.saveFailed)
+                    self.writingQueue.async {
+                        if writer.status == .completed {
+                            self.debugLifecycle("finishWriting completed")
+                            self.reset()
+                            continuation.resume(returning: outputURL)
+                        } else {
+                            let message = writer.error?.localizedDescription ?? CaptureError.saveFailed.localizedDescription
+                            self.onWebcamError?(message)
+                            self.debugLifecycle("finishWriting failed: \(message)")
+                            self.removeOutputFile(at: outputURL)
+                            self.reset()
+                            continuation.resume(throwing: writer.error ?? CaptureError.saveFailed)
+                        }
                     }
                 }
             }
@@ -295,11 +320,11 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
         }
         writingQueue.sync {
             writer?.cancelWriting()
+            if let outputURL {
+                removeOutputFile(at: outputURL)
+            }
+            reset()
         }
-        if let outputURL {
-            try? FileManager.default.removeItem(at: outputURL)
-        }
-        reset()
     }
 
     private func reset() {
@@ -308,10 +333,20 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
         videoInput = nil
         outputURL = nil
         hasStartedWriting = false
+        hasWrittenVideoFrame = false
         isPaused = false
         pauseStartedAt = nil
         totalPausedDuration = .zero
         lastPresentationTime = nil
+    }
+
+    private func removeOutputFile(at url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            debugLifecycle("failed to remove incomplete output: \(error.localizedDescription)")
+        }
     }
 
     private func debugLifecycle(_ message: String) {
@@ -357,6 +392,7 @@ extension WebcamRecorder: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         guard videoInput.isReadyForMoreMediaData else { return }
         if videoInput.append(adjustedSampleBuffer) {
+            hasWrittenVideoFrame = true
             lastPresentationTime = proposedLastPresentationTime
         }
     }
@@ -400,6 +436,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var microphoneObservers: [NSObjectProtocol] = []
     private var lastMicSignalAt = CACurrentMediaTime()
     private var hasStartedWriting = false
+    private var hasWrittenVideoFrame = false
     private var isPaused = false
     private var pauseStartedAt: CMTime?
     private var totalPausedDuration = CMTime.zero
@@ -522,6 +559,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.writer = writer
         self.videoInput = videoInput
         self.hasStartedWriting = false
+        self.hasWrittenVideoFrame = false
         self.didReportStreamFailure = false
         self.lastVideoPresentationTime = nil
         self.lastSystemAudioPresentationTime = nil
@@ -893,7 +931,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         stream = nil
         debugLifecycle("stream stopped")
 
-        return try await finishWriting(removeOutputIfEmpty: false)
+        return try await finishWriting()
     }
 
     func finishAfterStreamFailure() async throws -> URL {
@@ -903,41 +941,51 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         stopMicrophoneCapture()
         stream = nil
 
-        return try await finishWriting(removeOutputIfEmpty: true)
+        return try await finishWriting()
     }
 
-    private func finishWriting(removeOutputIfEmpty: Bool) async throws -> URL {
-        guard let writer, let videoInput, let outputURL else {
-            throw CaptureError.saveFailed
-        }
-
-        guard hasStartedWriting else {
-            writingQueue.sync {
-                writer.cancelWriting()
-            }
-            if removeOutputIfEmpty {
-                try? FileManager.default.removeItem(at: outputURL)
-            }
-            throw CaptureError.noFrames
-        }
-
-        nonisolated(unsafe) let capturedVideoInput = videoInput
-        nonisolated(unsafe) let capturedSystemAudioInput = self.systemAudioInput
-        nonisolated(unsafe) let capturedMicAudioInput = self.micAudioInput
-        nonisolated(unsafe) let capturedWriter = writer
-
+    private func finishWriting() async throws -> URL {
         return try await withCheckedThrowingContinuation { continuation in
             writingQueue.async {
-                capturedVideoInput.markAsFinished()
-                capturedSystemAudioInput?.markAsFinished()
-                capturedMicAudioInput?.markAsFinished()
-                capturedWriter.finishWriting {
-                    if capturedWriter.status == .completed {
-                        self.debugLifecycle("finishWriting completed")
-                        continuation.resume(returning: outputURL)
-                    } else {
-                        self.debugLifecycle("finishWriting failed: \(capturedWriter.error?.localizedDescription ?? "unknown error")")
-                        continuation.resume(throwing: capturedWriter.error ?? CaptureError.saveFailed)
+                guard let outputURL = self.outputURL,
+                      let writer = self.writer else {
+                    if let outputURL = self.outputURL {
+                        self.removeOutputFile(at: outputURL)
+                    }
+                    continuation.resume(throwing: CaptureError.saveFailed)
+                    return
+                }
+
+                guard self.hasWrittenVideoFrame else {
+                    let writerError = writer.status == .failed ? writer.error : nil
+                    writer.cancelWriting()
+                    self.removeOutputFile(at: outputURL)
+                    continuation.resume(throwing: writerError ?? CaptureError.noFrames)
+                    return
+                }
+
+                guard let videoInput = self.videoInput else {
+                    writer.cancelWriting()
+                    self.removeOutputFile(at: outputURL)
+                    continuation.resume(throwing: CaptureError.saveFailed)
+                    return
+                }
+
+                let systemAudioInput = self.systemAudioInput
+                let micAudioInput = self.micAudioInput
+                videoInput.markAsFinished()
+                systemAudioInput?.markAsFinished()
+                micAudioInput?.markAsFinished()
+                writer.finishWriting {
+                    self.writingQueue.async {
+                        if writer.status == .completed {
+                            self.debugLifecycle("finishWriting completed")
+                            continuation.resume(returning: outputURL)
+                        } else {
+                            self.debugLifecycle("finishWriting failed: \(writer.error?.localizedDescription ?? "unknown error")")
+                            self.removeOutputFile(at: outputURL)
+                            continuation.resume(throwing: writer.error ?? CaptureError.saveFailed)
+                        }
                     }
                 }
             }
@@ -1002,7 +1050,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         microphoneSession = nil
     }
 
-    private func resetAfterFailedStart(removeOutputFile: Bool) async {
+    private func resetAfterFailedStart(removeOutputFile shouldRemoveOutputFile: Bool) async {
         stopMicrophoneCapture()
         if let stream {
             try? await stream.stopCapture()
@@ -1014,6 +1062,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         systemAudioInput = nil
         micAudioInput = nil
         hasStartedWriting = false
+        hasWrittenVideoFrame = false
         isPaused = false
         pauseStartedAt = nil
         totalPausedDuration = .zero
@@ -1030,12 +1079,21 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         onMicrophoneWarning?(nil)
         onMicrophoneLevel?(0)
         onMicrophoneDeviceName?("")
-        if removeOutputFile, let outputURL {
-            try? FileManager.default.removeItem(at: outputURL)
+        if shouldRemoveOutputFile, let outputURL {
+            removeOutputFile(at: outputURL)
         }
         outputURL = nil
         recordingStartedAtUptime = nil
         didReportStreamFailure = false
+    }
+
+    private func removeOutputFile(at url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            debugLifecycle("failed to remove incomplete output: \(error.localizedDescription)")
+        }
     }
 
     private func debugLifecycle(_ message: String) {
@@ -1102,6 +1160,7 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
 
             if videoInput.isReadyForMoreMediaData {
                 if videoInput.append(adjustedSampleBuffer) {
+                    hasWrittenVideoFrame = true
                     lastVideoPresentationTime = proposedLastPresentationTime
                 }
             }
