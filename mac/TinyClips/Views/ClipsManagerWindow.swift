@@ -410,9 +410,13 @@ private class ClipsViewModel: ObservableObject {
             options: .skipsHiddenFiles
         ) else { return [] }
         return contents.filter {
-            let isRegularFile = (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
+            let values = try? $0.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            let isRegularFile = values?.isRegularFile ?? false
+            let fileSize = values?.fileSize ?? 0
             let ext = $0.pathExtension.lowercased()
-            guard isRegularFile && ["png", "jpg", "jpeg", "mp4", "gif"].contains(ext) else { return false }
+            guard isRegularFile,
+                  fileSize > 0,
+                  ["png", "jpg", "jpeg", "mp4", "gif"].contains(ext) else { return false }
             if settings.clipsManagerIgnoreNonTinyClipsFiles {
                 return $0.lastPathComponent.hasPrefix("TinyClips ")
             }
