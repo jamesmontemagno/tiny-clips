@@ -24,29 +24,15 @@ struct ShortcutsSettingsSection: View {
                     .accessibilityLabel("Shortcut error: \(registrationError)")
             }
 
-            ShortcutRecorderField(
-                label: "Screenshot",
-                binding: screenshotBinding,
-                defaultBinding: .defaultScreenshot,
-                onBindingRecorded: { apply($0, for: .screenshot) }
-            )
-            .accessibilityLabel("Screenshot keyboard shortcut")
-
-            ShortcutRecorderField(
-                label: "Record Video",
-                binding: videoBinding,
-                defaultBinding: .defaultVideo,
-                onBindingRecorded: { apply($0, for: .video) }
-            )
-            .accessibilityLabel("Record Video keyboard shortcut")
-
-            ShortcutRecorderField(
-                label: "Record GIF",
-                binding: gifBinding,
-                defaultBinding: .defaultGif,
-                onBindingRecorded: { apply($0, for: .gif) }
-            )
-            .accessibilityLabel("Record GIF keyboard shortcut")
+            ForEach(HotKeyAction.allCases, id: \.self) { action in
+                ShortcutRecorderField(
+                    label: action.displayName,
+                    binding: settings.hotKeyBinding(for: action),
+                    defaultBinding: HotKeyBinding.defaultBinding(for: action),
+                    onBindingRecorded: { apply($0, for: action) }
+                )
+                .accessibilityLabel("\(action.displayName) keyboard shortcut")
+            }
         }
 
         Section("Fixed Shortcuts") {
@@ -73,28 +59,7 @@ struct ShortcutsSettingsSection: View {
         }
     }
 
-    private var screenshotBinding: HotKeyBinding {
-        HotKeyBinding(
-            keyCode: settings.screenshotHotKeyCode,
-            carbonModifiers: settings.screenshotHotKeyModifiers
-        )
-    }
-
-    private var videoBinding: HotKeyBinding {
-        HotKeyBinding(
-            keyCode: settings.videoHotKeyCode,
-            carbonModifiers: settings.videoHotKeyModifiers
-        )
-    }
-
-    private var gifBinding: HotKeyBinding {
-        HotKeyBinding(
-            keyCode: settings.gifHotKeyCode,
-            carbonModifiers: settings.gifHotKeyModifiers
-        )
-    }
-
-    private func apply(_ binding: HotKeyBinding, for captureType: CaptureType) {
-        shortcutError = captureManager.applyCaptureHotKey(binding, for: captureType)
+    private func apply(_ binding: HotKeyBinding, for action: HotKeyAction) {
+        shortcutError = captureManager.applyCaptureHotKey(binding, for: action)
     }
 }

@@ -4,11 +4,17 @@ import AppKit
 class RegionSelector {
     private static var activeSelector: RegionSelectorController?
 
+    static var isSelecting: Bool {
+        activeSelector != nil
+    }
+
     static func selectRegion() async -> CaptureRegion? {
         return await selectRegion(on: nil)
     }
 
     static func selectRegion(on screen: NSScreen?) async -> CaptureRegion? {
+        activeSelector?.cancel()
+
         return await withCheckedContinuation { continuation in
             let selector = RegionSelectorController(screen: screen, completion: { region in
                 Self.activeSelector = nil
@@ -27,6 +33,7 @@ private class RegionSelectorController {
     private var localMonitor: Any?
     private var globalMonitor: Any?
     private let targetScreen: NSScreen?
+    private var didFinish = false
 
     init(screen: NSScreen? = nil, completion: @escaping (CaptureRegion?) -> Void) {
         self.targetScreen = screen
@@ -89,7 +96,14 @@ private class RegionSelectorController {
         }
     }
 
+    func cancel() {
+        finish(with: nil)
+    }
+
     private func finish(with region: CaptureRegion?) {
+        guard !didFinish else { return }
+        didFinish = true
+
         if let monitor = localMonitor {
             NSEvent.removeMonitor(monitor)
             localMonitor = nil

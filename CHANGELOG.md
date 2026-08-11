@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Fixed macOS video and GIF recordings leaving capture controls active after ScreenCaptureKit unexpectedly stops a stream; recordings now save available partial frames and explain how to recover.
 
 ### Added
+- Added macOS OCR region capture to recognize selected screen text and copy it to the clipboard.
 - Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.
 - macOS microphone recording now applies a default-on soft-knee limiter that prevents loud peaks from hard-clipping before AAC encoding.
 - macOS General settings now support separate screenshot and video/GIF save folders while preserving the shared folder as a fallback.
