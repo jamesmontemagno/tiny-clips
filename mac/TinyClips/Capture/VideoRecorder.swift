@@ -255,10 +255,11 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
                 }
 
                 guard self.hasWrittenVideoFrame else {
+                    let writerError = writer.status == .failed ? writer.error : nil
                     writer.cancelWriting()
                     self.removeOutputFile(at: outputURL)
                     self.reset()
-                    continuation.resume(throwing: CaptureError.noFrames)
+                    continuation.resume(throwing: writerError ?? CaptureError.noFrames)
                     return
                 }
 
@@ -951,9 +952,10 @@ class VideoRecorder: NSObject, @unchecked Sendable {
                 }
 
                 guard self.hasWrittenVideoFrame else {
+                    let writerError = writer.status == .failed ? writer.error : nil
                     writer.cancelWriting()
                     self.removeOutputFile(at: outputURL)
-                    continuation.resume(throwing: CaptureError.noFrames)
+                    continuation.resume(throwing: writerError ?? CaptureError.noFrames)
                     return
                 }
 
