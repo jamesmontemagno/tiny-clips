@@ -91,6 +91,7 @@ public sealed class SettingsService : ISettingsService, ILargeTextSettingsServic
         if (_fallbackValues.TryGetValue(key, out var fallbackValue) &&
             fallbackValue is string fallbackText)
         {
+            SetLargeText(key, fallbackText);
             return fallbackText;
         }
 
