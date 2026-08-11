@@ -8,6 +8,7 @@ enum SettingsTab: String, CaseIterable {
     case analytics = "Analytics"
     case screenshot = "Screenshot"
     case video = "Video"
+    case teleprompter = "Teleprompter"
     case gif = "GIF"
     case mouseClicks = "Mouse Clicks"
     case branding = "Branding"
@@ -21,6 +22,7 @@ enum SettingsTab: String, CaseIterable {
         case .analytics: return "chart.bar.xaxis"
         case .screenshot: return "camera"
         case .video: return "video"
+        case .teleprompter: return "text.alignleft"
         case .gif: return "photo.on.rectangle"
         case .mouseClicks: return "cursorarrow.rays"
         case .branding: return "flag"
@@ -52,6 +54,7 @@ struct SettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var selectedTab: SettingsTab? = .general
     @State private var splitVisibility: NavigationSplitViewVisibility = .all
+    @State private var videoSettingsExpanded = true
     @State private var showDisableDockWarning = false
     @State private var showQuickBugReportForm = false
     @State private var availableMicrophones: [MicrophoneDeviceOption] = []
@@ -59,9 +62,22 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
-            List(SettingsTab.displayCases, id: \.self, selection: $selectedTab) { tab in
-                Label(tab.rawValue, systemImage: tab.icon)
-                    .tag(tab as SettingsTab?)
+            List(selection: $selectedTab) {
+                ForEach(SettingsTab.displayCases.filter { $0 != .teleprompter }, id: \.self) { tab in
+                    if tab == .video {
+                        DisclosureGroup(isExpanded: $videoSettingsExpanded) {
+                            Label("Recording", systemImage: "slider.horizontal.3")
+                                .tag(SettingsTab.video as SettingsTab?)
+                            Label(SettingsTab.teleprompter.rawValue, systemImage: SettingsTab.teleprompter.icon)
+                                .tag(SettingsTab.teleprompter as SettingsTab?)
+                        } label: {
+                            Label(tab.rawValue, systemImage: tab.icon)
+                        }
+                    } else {
+                        Label(tab.rawValue, systemImage: tab.icon)
+                            .tag(tab as SettingsTab?)
+                    }
+                }
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
@@ -88,6 +104,7 @@ struct SettingsView: View {
                         availableWebcams: availableWebcams,
                         selectedTab: $selectedTab
                     )
+                case .teleprompter:
                     TeleprompterSettingsSection(settings: settings)
                 case .gif:
                     GifSettingsSection(
