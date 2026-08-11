@@ -149,8 +149,10 @@ class CaptureManager: ObservableObject {
             || isScreenshotCaptureInProgress
             || isRecordingSetupInProgress
             || RegionSelector.isSelecting
+            || WindowSelector.isSelecting
             || screenshotPickerPanel != nil
             || recordingPickerPanel != nil
+            || startPanel != nil
             || countdownWindow != nil
             || screenPickerWindow != nil
     }
@@ -383,14 +385,13 @@ class CaptureManager: ObservableObject {
             guard await PermissionManager.shared.checkPermission() else { return }
             guard let region = await RegionSelector.selectRegion() else { return }
 
-            AccessibilityAnnouncementService.shared.announce(
-                "Recognizing text from selected region.",
-                priority: .high
-            )
-            showProcessingIndicator(message: "Copying Text...", status: "Capturing region...")
-
             do {
                 let image = try await ScreenshotCapture.captureImage(region: region)
+                AccessibilityAnnouncementService.shared.announce(
+                    "Recognizing text from selected region.",
+                    priority: .high
+                )
+                showProcessingIndicator(message: "Copying Text...", status: "Recognizing text...")
                 updateProcessingProgress(0.5, status: "Recognizing text...")
 
                 switch try await TextRecognitionService.recognizeText(in: image) {
@@ -458,6 +459,16 @@ class CaptureManager: ObservableObject {
         shouldReturnToPicker: Bool,
         cursorScreen: NSScreen? = nil
     ) async {
+        let ownsPreparationState = !isCapturePreparationInProgress
+        if ownsPreparationState {
+            isCapturePreparationInProgress = true
+        }
+        defer {
+            if ownsPreparationState {
+                isCapturePreparationInProgress = false
+            }
+        }
+
         switch mode {
         case .region:
             guard let region = await RegionSelector.selectRegion() else {
@@ -2028,6 +2039,16 @@ class CaptureManager: ObservableObject {
         shouldReturnToPicker: Bool,
         cursorScreen: NSScreen? = nil
     ) async {
+        let ownsPreparationState = !isCapturePreparationInProgress
+        if ownsPreparationState {
+            isCapturePreparationInProgress = true
+        }
+        defer {
+            if ownsPreparationState {
+                isCapturePreparationInProgress = false
+            }
+        }
+
         guard let target = await chooseCaptureTarget(for: mode, cursorScreen: cursorScreen) else {
             if shouldReturnToPicker {
                 showRecordingPicker(for: type, cursorScreen: cursorScreen)
