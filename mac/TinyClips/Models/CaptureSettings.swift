@@ -346,6 +346,9 @@ class CaptureSettings: ObservableObject {
     @AppStorage("preventDisplaySleepWhileRecording") var preventDisplaySleepWhileRecording: Bool = true
     @AppStorage("includeTinyClipsInCapture") var includeTinyClipsInCapture: Bool = false
     @AppStorage("showBrandingOverlay") var showBrandingOverlay: Bool = false
+    @AppStorage("teleprompterEnabled") var teleprompterEnabled: Bool = false
+    @AppStorage("teleprompterTranscript") var teleprompterTranscript: String = ""
+    @AppStorage("teleprompterScrollSpeed") var teleprompterScrollSpeed: Double = 50
     // Custom global hotkeys (stored as Carbon keyCode + modifiers bitmask).
     // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7 / ⌃⌥⌘8
     // 6400 = controlKey (4096) | optionKey (2048) | cmdKey (256)
@@ -622,6 +625,8 @@ class CaptureSettings: ObservableObject {
             "screenshotCountdownEnabled", "screenshotCountdownDuration",
             "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "multiMonitorCaptureMode", "showRegionIndicator",
             "includeTinyClipsInCapture", "showBrandingOverlay",
+            "teleprompterEnabled", "teleprompterTranscript", "teleprompterScrollSpeed",
+            "teleprompterPanelX", "teleprompterPanelY",
             "appStoreClipCountForReview", "appStoreReviewRequested"
         ]
         let hotKeyKeys = [

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="TinyClips.App.TeleprompterWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid
+        x:Name="RootGrid"
+        Background="Transparent"
+        PointerMoved="OnPointerMoved"
+        PointerPressed="OnPointerPressed"
+        PointerReleased="OnPointerReleased">
+        <Border
+            x:Name="Container"
+            Padding="16,12"
+            AutomationProperties.AutomationId="TeleprompterOverlay"
+            AutomationProperties.Name="Teleprompter"
+            Background="#99000000"
+            CornerRadius="{StaticResource OverlayCornerRadius}">
+            <Border.Shadow>
+                <ThemeShadow />
+            </Border.Shadow>
+
+            <ScrollViewer
+                x:Name="Scroller"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Hidden"
+                VerticalScrollMode="Disabled"
+                ZoomMode="Disabled">
+                <TextBlock
+                    x:Name="TranscriptText"
+                    FontSize="24"
+                    Foreground="#FFFFFFFF"
+                    TextWrapping="Wrap" />
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

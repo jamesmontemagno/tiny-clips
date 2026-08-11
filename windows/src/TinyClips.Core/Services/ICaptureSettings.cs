@@ -66,6 +66,11 @@ public interface ICaptureSettings
     bool ShowRegionIndicator { get; set; }
     bool IncludeTinyClipsInCapture { get; set; }
     bool ShowBrandingOverlay { get; set; }
+    bool TeleprompterEnabled { get; set; }
+    string TeleprompterTranscript { get; set; }
+    double TeleprompterScrollSpeed { get; set; }
+    double TeleprompterPosX { get; set; }
+    double TeleprompterPosY { get; set; }
     bool UploadcareEnabled { get; set; }
     string UploadcarePublicKey { get; set; }
     bool UploadcareAutoUpload { get; set; }

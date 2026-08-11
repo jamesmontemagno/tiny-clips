@@ -169,6 +169,7 @@ class CaptureManager: ObservableObject {
     private var shouldReturnToPickerAfterRecording = false
     private var startPanel: StartRecordingPanel?
     private var stopPanel: StopRecordingPanel?
+    private var teleprompterPanel: TeleprompterPanel?
     private var webcamPreviewPanel: WebcamPreviewPanel?
     private var regionIndicatorPanel: RegionIndicatorPanel?
     private var pendingRecordingTarget: CaptureTarget?
@@ -793,6 +794,7 @@ class CaptureManager: ObservableObject {
                         return
                     }
                     self.showStopPanel()
+                    self.showTeleprompterIfNeeded(region: target.region)
                     self.scheduleVideoAutoStopIfNeeded(timeLimitMinutes: timeLimitMinutes, sessionID: sessionID)
                 } catch {
                     self.endIdleSleepAssertion()
@@ -808,6 +810,7 @@ class CaptureManager: ObservableObject {
                     self.activeRecordingRequest = nil
                     self.activeRecordingRegion = nil
                     self.dismissRegionIndicator()
+                    self.dismissTeleprompter()
                     self.activeRecordingSessionID = nil
                     self.videoRecorder = nil
                     self.webcamRecorder = nil
@@ -949,6 +952,7 @@ class CaptureManager: ObservableObject {
         cancelVideoAutoStopTask()
 
         dismissStopPanel()
+        dismissTeleprompter()
         resetRecordingAudioStatus()
         activeRecordingRegion = nil
         isRecording = false
@@ -1053,6 +1057,7 @@ class CaptureManager: ObservableObject {
         guard isRecording || videoRecorder != nil || webcamRecorder != nil || gifWriter != nil else { return }
         cancelVideoAutoStopTask()
         dismissStopPanel()
+        dismissTeleprompter()
         _ = stopMouseClickMonitoring()
         activeMouseClickCaptureEnabledOverride = nil
         activeWebcamOverlaySelection = nil
@@ -1770,6 +1775,25 @@ class CaptureManager: ObservableObject {
         stopPanel?.close()
         stopPanel = nil
         recordPanelPosition = nil
+    }
+
+    private func showTeleprompterIfNeeded(region: CaptureRegion) {
+        let settings = CaptureSettings.shared
+        let transcript = settings.teleprompterTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard settings.teleprompterEnabled, !transcript.isEmpty else { return }
+        let panel = TeleprompterPanel(transcript: transcript, scrollSpeed: settings.teleprompterScrollSpeed)
+        panel.show(relativeTo: region)
+        teleprompterPanel = panel
+    }
+
+    private func dismissTeleprompter() {
+        teleprompterPanel?.orderOut(nil)
+        let panel = teleprompterPanel
+        teleprompterPanel = nil
+        // Defer the final release so the panel isn't deallocated mid-callback.
+        DispatchQueue.main.async {
+            panel?.close()
+        }
     }
 
     private func showWebcamPreview(

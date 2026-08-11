@@ -47,6 +47,7 @@ public partial class App : Application
     private Window? _trimmerWindow;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
+    private TeleprompterWindow? _teleprompter;
     private WebcamPreviewWindow? _webcamPreview;
     private ProcessingIndicatorWindow? _processingIndicator;
     private RegionIndicatorWindow? _recordingRegionIndicator;
@@ -1290,6 +1291,8 @@ public partial class App : Application
         }
         window.ShowNear(monitor, region);
 
+        ShowTeleprompterIfNeeded(type, monitor, settings);
+
         if (startTimer)
         {
             _recordingStartedUtc = DateTime.UtcNow;
@@ -1381,10 +1384,43 @@ public partial class App : Application
         }
     }
 
+    private void ShowTeleprompterIfNeeded(CaptureType type, MonitorInfo? monitor, ICaptureSettings settings)
+    {
+        HideTeleprompter();
+
+        // Video recordings only — the teleprompter never appears for GIFs or screenshots,
+        // and stays hidden when disabled or when there is no transcript to scroll.
+        if (type != CaptureType.Video ||
+            !settings.TeleprompterEnabled ||
+            string.IsNullOrWhiteSpace(settings.TeleprompterTranscript))
+        {
+            return;
+        }
+
+        var window = new TeleprompterWindow(settings, monitor);
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_teleprompter, window))
+            {
+                _teleprompter = null;
+            }
+        };
+        _teleprompter = window;
+        window.Show();
+    }
+
+    private void HideTeleprompter()
+    {
+        var window = _teleprompter;
+        _teleprompter = null;
+        window?.ClosePanel();
+    }
+
     private void HideRecordingIndicator()
     {
         StopRecordingTimer();
         HideWebcamPreview();
+        HideTeleprompter();
 
         var window = _recordingIndicator;
         _recordingIndicator = null;

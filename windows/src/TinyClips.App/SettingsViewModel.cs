@@ -477,6 +477,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _showBrandingOverlay;
 
+    // Teleprompter
+    [ObservableProperty]
+    private bool _teleprompterEnabled;
+
+    [ObservableProperty]
+    private string _teleprompterTranscript = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TeleprompterScrollSpeedDisplay))]
+    private double _teleprompterScrollSpeed = 50;
+
+    public string TeleprompterScrollSpeedDisplay => $"{TeleprompterScrollSpeed:N0} px/s";
+
     // Analytics
     public System.Collections.ObjectModel.ObservableCollection<CaptureAnalyticsDayViewModel> AnalyticsDays { get; } = new();
 
@@ -713,6 +726,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             GifMouseClickOpacity = _settings.GifMouseClickOpacity;
             GifMouseClickColorHex = _settings.GifMouseClickColorHex;
             ShowBrandingOverlay = _settings.ShowBrandingOverlay;
+
+            TeleprompterEnabled = _settings.TeleprompterEnabled;
+            TeleprompterTranscript = _settings.TeleprompterTranscript;
+            TeleprompterScrollSpeed = Math.Clamp(_settings.TeleprompterScrollSpeed, 10.0, 200.0);
         }
         finally
         {
@@ -1157,6 +1174,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnGifMouseClickColorHexChanged(string value) => Persist(() => _settings.GifMouseClickColorHex = value);
 
     partial void OnShowBrandingOverlayChanged(bool value) => Persist(() => _settings.ShowBrandingOverlay = value);
+
+    partial void OnTeleprompterEnabledChanged(bool value) => Persist(() => _settings.TeleprompterEnabled = value);
+
+    partial void OnTeleprompterTranscriptChanged(string value) => Persist(() => _settings.TeleprompterTranscript = value);
+
+    partial void OnTeleprompterScrollSpeedChanged(double value) => Persist(() => _settings.TeleprompterScrollSpeed = value);
 
     partial void OnAnalyticsRangeIndexChanged(int value)
     {
