@@ -10,15 +10,9 @@ final class HotKeyManager {
 
     // MARK: - Types
 
-    enum HotKeyID: UInt32 {
-        case screenshot = 1
-        case recordVideo = 2
-        case recordGif = 3
-        case stopRecording = 4
-    }
-
     private struct RegisteredHotKey {
         let reference: EventHotKeyRef
+        let name: String
         let keyCode: UInt32
         let modifiers: UInt32
         let action: () -> Void
@@ -54,8 +48,14 @@ final class HotKeyManager {
         }
     }
 
+    struct ActionRegistration {
+        let action: HotKeyAction
+        let binding: HotKeyBinding
+        let handler: () -> Void
+    }
+
     private struct HotKeyRegistration {
-        let id: HotKeyID
+        let id: UInt32
         let name: String
         let keyCode: UInt32
         let modifiers: UInt32
@@ -66,6 +66,7 @@ final class HotKeyManager {
 
     private var eventHandlerRef: EventHandlerRef?
     private var registeredHotKeys: [UInt32: RegisteredHotKey] = [:]
+    private let stopRecordingID: UInt32 = 99
 
     // MARK: - Lifecycle
 
@@ -83,49 +84,24 @@ final class HotKeyManager {
 
     // MARK: - Public
 
-    func registerCaptureHotKeys(
-        screenshotKeyCode: UInt32,
-        screenshotModifiers: UInt32,
-        onScreenshot: @escaping () -> Void,
-        videoKeyCode: UInt32,
-        videoModifiers: UInt32,
-        onRecordVideo: @escaping () -> Void,
-        gifKeyCode: UInt32,
-        gifModifiers: UInt32,
-        onRecordGif: @escaping () -> Void
-    ) -> RegistrationResult {
-        replace(
-            hotKeys: [
-                HotKeyRegistration(
-                    id: .screenshot,
-                    name: "Screenshot",
-                    keyCode: screenshotKeyCode,
-                    modifiers: screenshotModifiers,
-                    action: onScreenshot
-                ),
-                HotKeyRegistration(
-                    id: .recordVideo,
-                    name: "Record Video",
-                    keyCode: videoKeyCode,
-                    modifiers: videoModifiers,
-                    action: onRecordVideo
-                ),
-                HotKeyRegistration(
-                    id: .recordGif,
-                    name: "Record GIF",
-                    keyCode: gifKeyCode,
-                    modifiers: gifModifiers,
-                    action: onRecordGif
-                )
-            ]
-        )
+    func registerActionHotKeys(_ registrations: [ActionRegistration]) -> RegistrationResult {
+        let hotKeys = registrations.map {
+            HotKeyRegistration(
+                id: $0.action.rawValue,
+                name: $0.action.displayName,
+                keyCode: UInt32($0.binding.keyCode),
+                modifiers: UInt32($0.binding.carbonModifiers),
+                action: $0.handler
+            )
+        }
+        return replace(hotKeys: hotKeys)
     }
 
     func registerStopHotKey(onStopRecording: @escaping () -> Void) -> RegistrationResult {
         replace(
             hotKeys: [
                 HotKeyRegistration(
-                    id: .stopRecording,
+                    id: stopRecordingID,
                     name: "Stop Recording",
                     keyCode: UInt32(HotKeyBinding.stopRecording.keyCode),
                     modifiers: UInt32(HotKeyBinding.stopRecording.carbonModifiers),
@@ -136,7 +112,7 @@ final class HotKeyManager {
     }
 
     func unregisterStopHotKey() {
-        unregister(id: .stopRecording)
+        unregister(id: stopRecordingID)
     }
 
     func unregisterAll() {
@@ -153,10 +129,10 @@ final class HotKeyManager {
     private func replace(hotKeys: [HotKeyRegistration]) -> RegistrationResult {
         let ids = hotKeys.map(\.id)
         let previousHotKeys = ids.compactMap { id in
-            registeredHotKeys[id.rawValue].map {
+            registeredHotKeys[id].map {
                 HotKeyRegistration(
                     id: id,
-                    name: name(for: id),
+                    name: $0.name,
                     keyCode: $0.keyCode,
                     modifiers: $0.modifiers,
                     action: $0.action
@@ -185,7 +161,7 @@ final class HotKeyManager {
 
     private func register(_ hotKey: HotKeyRegistration) -> Bool {
         var hotKeyRef: EventHotKeyRef?
-        let hotKeyID = EventHotKeyID(signature: Self.hotKeySignature, id: hotKey.id.rawValue)
+        let hotKeyID = EventHotKeyID(signature: Self.hotKeySignature, id: hotKey.id)
 
         lastRegistrationStatus = RegisterEventHotKey(
             hotKey.keyCode,
@@ -198,8 +174,9 @@ final class HotKeyManager {
 
         guard lastRegistrationStatus == noErr, let hotKeyRef else { return false }
 
-        registeredHotKeys[hotKey.id.rawValue] = RegisteredHotKey(
+        registeredHotKeys[hotKey.id] = RegisteredHotKey(
             reference: hotKeyRef,
+            name: hotKey.name,
             keyCode: hotKey.keyCode,
             modifiers: hotKey.modifiers,
             action: hotKey.action
@@ -207,21 +184,8 @@ final class HotKeyManager {
         return true
     }
 
-    private func name(for id: HotKeyID) -> String {
-        switch id {
-        case .screenshot:
-            return "Screenshot"
-        case .recordVideo:
-            return "Record Video"
-        case .recordGif:
-            return "Record GIF"
-        case .stopRecording:
-            return "Stop Recording"
-        }
-    }
-
-    private func unregister(id: HotKeyID) {
-        guard let registeredHotKey = registeredHotKeys.removeValue(forKey: id.rawValue) else { return }
+    private func unregister(id: UInt32) {
+        guard let registeredHotKey = registeredHotKeys.removeValue(forKey: id) else { return }
         UnregisterEventHotKey(registeredHotKey.reference)
     }
 

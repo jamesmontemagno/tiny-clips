@@ -14,6 +14,10 @@ class WindowSelector {
         "com.apple.systemuiserver",
     ]
 
+    static var isSelecting: Bool {
+        activeSelector != nil
+    }
+
     static func selectWindow() async -> SCWindow? {
         let windows: [SCWindow]
         do {

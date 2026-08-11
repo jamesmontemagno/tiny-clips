@@ -36,24 +36,36 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Screenshot…", systemImage: "camera")
             }
-            .keyboardShortcut(screenshotKey, modifiers: screenshotModifiers)
+            .keyboardShortcut(key(for: .screenshot, fallback: "5"), modifiers: modifiers(for: .screenshot))
             .accessibilityHint("Starts screenshot capture.")
+            .disabled(captureManager.isCaptureActionInProgress)
+
+            Button {
+                captureManager.copyTextFromRegion()
+            } label: {
+                Label("Copy Text from Region…", systemImage: "text.viewfinder")
+            }
+            .keyboardShortcut(key(for: .copyTextFromRegion, fallback: "8"), modifiers: modifiers(for: .copyTextFromRegion))
+            .accessibilityHint("Selects a screen region and copies recognized text to the clipboard.")
+            .disabled(captureManager.isCaptureActionInProgress)
 
             Button {
                 captureManager.startVideoRecording()
             } label: {
                 Label("Record Video...", systemImage: "video")
             }
-            .keyboardShortcut(videoKey, modifiers: videoModifiers)
+            .keyboardShortcut(key(for: .recordVideo, fallback: "6"), modifiers: modifiers(for: .recordVideo))
             .accessibilityHint("Starts video recording.")
+            .disabled(captureManager.isCaptureActionInProgress)
 
             Button {
                 captureManager.startGifRecording()
             } label: {
                 Label("Record GIF...", systemImage: "photo.on.rectangle")
             }
-            .keyboardShortcut(gifKey, modifiers: gifModifiers)
+            .keyboardShortcut(key(for: .recordGif, fallback: "7"), modifiers: modifiers(for: .recordGif))
             .accessibilityHint("Starts GIF recording.")
+            .disabled(captureManager.isCaptureActionInProgress)
 
             Divider()
         } else {
@@ -264,28 +276,12 @@ struct MenuBarContentView: View {
 
     // MARK: - Dynamic Shortcut Keys
 
-    private var screenshotKey: KeyEquivalent {
-        keyEquivalent(for: settings.screenshotHotKeyCode, fallback: "5")
+    private func key(for action: HotKeyAction, fallback: Character) -> KeyEquivalent {
+        keyEquivalent(for: settings.hotKeyBinding(for: action).keyCode, fallback: fallback)
     }
 
-    private var screenshotModifiers: EventModifiers {
-        HotKeyBinding(keyCode: settings.screenshotHotKeyCode, carbonModifiers: settings.screenshotHotKeyModifiers).swiftUIModifiers
-    }
-
-    private var videoKey: KeyEquivalent {
-        keyEquivalent(for: settings.videoHotKeyCode, fallback: "6")
-    }
-
-    private var videoModifiers: EventModifiers {
-        HotKeyBinding(keyCode: settings.videoHotKeyCode, carbonModifiers: settings.videoHotKeyModifiers).swiftUIModifiers
-    }
-
-    private var gifKey: KeyEquivalent {
-        keyEquivalent(for: settings.gifHotKeyCode, fallback: "7")
-    }
-
-    private var gifModifiers: EventModifiers {
-        HotKeyBinding(keyCode: settings.gifHotKeyCode, carbonModifiers: settings.gifHotKeyModifiers).swiftUIModifiers
+    private func modifiers(for action: HotKeyAction) -> EventModifiers {
+        settings.hotKeyBinding(for: action).swiftUIModifiers
     }
 
     private func keyEquivalent(for keyCode: Int, fallback: Character) -> KeyEquivalent {

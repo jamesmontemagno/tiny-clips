@@ -485,7 +485,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
                         metadata.uploadcareURL = result.fileURL.absoluteString
                     }
                     if shouldCopyLink {
-                        self.copyTextToClipboard(result.fileURL.absoluteString)
+                        _ = self.copyTextToClipboard(result.fileURL.absoluteString)
                     }
                 }
             } catch {
@@ -497,10 +497,28 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     @MainActor
-    private func copyTextToClipboard(_ text: String) {
+    func copyTextToClipboard(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+
         let pasteboard = NSPasteboard.general
+        let previousItems = pasteboard.pasteboardItems?.map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) {
+                    copy.setData(data, forType: type)
+                }
+            }
+            return copy
+        }
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        guard pasteboard.setString(text, forType: .string) else {
+            if let previousItems, !previousItems.isEmpty {
+                pasteboard.clearContents()
+                _ = pasteboard.writeObjects(previousItems)
+            }
+            return false
+        }
+        return true
     }
 
     private func showNotification(type: CaptureType, url: URL) {

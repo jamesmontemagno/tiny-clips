@@ -132,11 +132,29 @@ class CaptureManager: ObservableObject {
     @Published var activeWebcamName: String?
     @Published var microphoneLevel: Double = 0
     @Published var microphoneWarningMessage: String?
+    @Published private(set) var isOCRInFlight = false
+    @Published private(set) var isCapturePreparationInProgress = false
+    @Published private(set) var isScreenshotCaptureInProgress = false
+    @Published private(set) var isRecordingSetupInProgress = false
     @Published private(set) var captureHotKeyRegistrationError: String?
     @Published private(set) var stopHotKeyRegistrationError: String?
 
     var hotKeyRegistrationError: String? {
         captureHotKeyRegistrationError ?? stopHotKeyRegistrationError
+    }
+
+    var isCaptureActionInProgress: Bool {
+        isOCRInFlight
+            || isCapturePreparationInProgress
+            || isScreenshotCaptureInProgress
+            || isRecordingSetupInProgress
+            || RegionSelector.isSelecting
+            || WindowSelector.isSelecting
+            || screenshotPickerPanel != nil
+            || recordingPickerPanel != nil
+            || startPanel != nil
+            || countdownWindow != nil
+            || screenPickerWindow != nil
     }
 
     private var videoRecorder: VideoRecorder?
@@ -220,79 +238,37 @@ class CaptureManager: ObservableObject {
     }
 
     private func configureGlobalHotKeys() {
-        let settings = CaptureSettings.shared
-        let result = registerCaptureHotKeys(
-            screenshot: HotKeyBinding(
-                keyCode: settings.screenshotHotKeyCode,
-                carbonModifiers: settings.screenshotHotKeyModifiers
-            ),
-            video: HotKeyBinding(
-                keyCode: settings.videoHotKeyCode,
-                carbonModifiers: settings.videoHotKeyModifiers
-            ),
-            gif: HotKeyBinding(
-                keyCode: settings.gifHotKeyCode,
-                carbonModifiers: settings.gifHotKeyModifiers
-            )
-        )
+        let result = registerCaptureHotKeys(CaptureSettings.shared.hotKeyBindings)
         captureHotKeyRegistrationError = result.errorMessage
 
         updateStopHotKeyRegistration()
     }
 
     @discardableResult
-    func applyCaptureHotKey(_ binding: HotKeyBinding, for captureType: CaptureType) -> String? {
+    func applyCaptureHotKey(_ binding: HotKeyBinding, for action: HotKeyAction) -> String? {
         let settings = CaptureSettings.shared
-        var screenshot = HotKeyBinding(
-            keyCode: settings.screenshotHotKeyCode,
-            carbonModifiers: settings.screenshotHotKeyModifiers
-        )
-        var video = HotKeyBinding(
-            keyCode: settings.videoHotKeyCode,
-            carbonModifiers: settings.videoHotKeyModifiers
-        )
-        var gif = HotKeyBinding(
-            keyCode: settings.gifHotKeyCode,
-            carbonModifiers: settings.gifHotKeyModifiers
-        )
-        let currentBinding: HotKeyBinding
-
-        switch captureType {
-        case .screenshot:
-            currentBinding = screenshot
-        case .video:
-            currentBinding = video
-        case .gif:
-            currentBinding = gif
-        }
+        var bindings = settings.hotKeyBindings
+        guard let currentBinding = bindings[action] else { return nil }
 
         if let validationError = HotKeyBinding.validationError(
             for: binding,
-            captureType: captureType,
-            captureBindings: [(.screenshot, screenshot), (.video, video), (.gif, gif)]
+            action: action,
+            bindings: bindings
         ) {
             captureHotKeyRegistrationError = validationError
             return validationError
         }
 
         if binding == currentBinding {
-            let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
+            let result = registerCaptureHotKeys(bindings)
             captureHotKeyRegistrationError = result.errorMessage
             return result.errorMessage
         }
 
-        switch captureType {
-        case .screenshot:
-            screenshot = binding
-        case .video:
-            video = binding
-        case .gif:
-            gif = binding
-        }
-
-        let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
+        bindings[action] = binding
+        let result = registerCaptureHotKeys(bindings)
         guard let registrationError = result.errorMessage else {
-            persistCaptureHotKeys(screenshot: screenshot, video: video, gif: gif, settings: settings)
+            persistCaptureHotKeys(bindings, settings: settings)
             captureHotKeyRegistrationError = nil
             return nil
         }
@@ -303,18 +279,15 @@ class CaptureManager: ObservableObject {
 
     @discardableResult
     func resetCaptureHotKeysToDefaults() -> String? {
-        let screenshot = HotKeyBinding.defaultScreenshot
-        let video = HotKeyBinding.defaultVideo
-        let gif = HotKeyBinding.defaultGif
-        let result = registerCaptureHotKeys(screenshot: screenshot, video: video, gif: gif)
+        let bindings = Dictionary(
+            uniqueKeysWithValues: HotKeyAction.allCases.map {
+                ($0, HotKeyBinding.defaultBinding(for: $0))
+            }
+        )
+        let result = registerCaptureHotKeys(bindings)
 
         guard let registrationError = result.errorMessage else {
-            persistCaptureHotKeys(
-                screenshot: screenshot,
-                video: video,
-                gif: gif,
-                settings: CaptureSettings.shared
-            )
+            persistCaptureHotKeys(bindings, settings: CaptureSettings.shared)
             captureHotKeyRegistrationError = nil
             return nil
         }
@@ -324,45 +297,40 @@ class CaptureManager: ObservableObject {
     }
 
     private func persistCaptureHotKeys(
-        screenshot: HotKeyBinding,
-        video: HotKeyBinding,
-        gif: HotKeyBinding,
+        _ bindings: [HotKeyAction: HotKeyBinding],
         settings: CaptureSettings
     ) {
         shouldIgnoreNextHotKeySettingsChange = true
-        settings.screenshotHotKeyCode = screenshot.keyCode
-        settings.screenshotHotKeyModifiers = screenshot.carbonModifiers
-        settings.videoHotKeyCode = video.keyCode
-        settings.videoHotKeyModifiers = video.carbonModifiers
-        settings.gifHotKeyCode = gif.keyCode
-        settings.gifHotKeyModifiers = gif.carbonModifiers
+        for action in HotKeyAction.allCases {
+            guard let binding = bindings[action] else { continue }
+            settings.setHotKeyBinding(binding, for: action)
+        }
     }
 
     private func registerCaptureHotKeys(
-        screenshot: HotKeyBinding,
-        video: HotKeyBinding,
-        gif: HotKeyBinding
+        _ bindings: [HotKeyAction: HotKeyBinding]
     ) -> HotKeyManager.RegistrationResult {
-        hotKeyManager.registerCaptureHotKeys(
-            screenshotKeyCode: UInt32(screenshot.keyCode),
-            screenshotModifiers: UInt32(screenshot.carbonModifiers),
-            onScreenshot: { [weak self] in
-                guard let self, !self.isRecording else { return }
-                self.takeScreenshot()
-            },
-            videoKeyCode: UInt32(video.keyCode),
-            videoModifiers: UInt32(video.carbonModifiers),
-            onRecordVideo: { [weak self] in
-                guard let self, !self.isRecording else { return }
-                self.startVideoRecording()
-            },
-            gifKeyCode: UInt32(gif.keyCode),
-            gifModifiers: UInt32(gif.carbonModifiers),
-            onRecordGif: { [weak self] in
-                guard let self, !self.isRecording else { return }
-                self.startGifRecording()
-            }
-        )
+        let registrations = HotKeyAction.allCases.compactMap { action -> HotKeyManager.ActionRegistration? in
+            guard let binding = bindings[action] else { return nil }
+            return HotKeyManager.ActionRegistration(
+                action: action,
+                binding: binding,
+                handler: { [weak self] in
+                    guard let self, !self.isRecording, !self.isCaptureActionInProgress else { return }
+                    switch action {
+                    case .screenshot:
+                        self.takeScreenshot()
+                    case .recordVideo:
+                        self.startVideoRecording()
+                    case .recordGif:
+                        self.startGifRecording()
+                    case .copyTextFromRegion:
+                        self.copyTextFromRegion()
+                    }
+                }
+            )
+        }
+        return hotKeyManager.registerActionHotKeys(registrations)
     }
 
     private func updateStopHotKeyRegistration() {
@@ -379,10 +347,15 @@ class CaptureManager: ObservableObject {
     }
 
     func takeScreenshot() {
+        guard !isCaptureActionInProgress else { return }
+
+        isCapturePreparationInProgress = true
         let cursorScreen = screenUnderMouseCursor()
         Task {
-            await prepareForNewCaptureRequest()
+            defer { isCapturePreparationInProgress = false }
+            guard await prepareForNewCaptureRequest() else { return }
             guard await PermissionManager.shared.checkPermission() else { return }
+            guard !isOCRInFlight else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .screenshot) {
                 showScreenshotPicker(cursorScreen: cursorScreen)
@@ -394,6 +367,48 @@ class CaptureManager: ObservableObject {
                     shouldReturnToPicker: false,
                     cursorScreen: cursorScreen
                 )
+            }
+        }
+    }
+
+    func copyTextFromRegion() {
+        guard !isRecording, !isCaptureActionInProgress else { return }
+
+        isOCRInFlight = true
+        Task {
+            defer {
+                dismissProcessingIndicator()
+                isOCRInFlight = false
+            }
+
+            guard await prepareForNewCaptureRequest(allowOCRInFlight: true) else { return }
+            guard await PermissionManager.shared.checkPermission() else { return }
+            guard let region = await RegionSelector.selectRegion() else { return }
+
+            do {
+                let image = try await ScreenshotCapture.captureImage(region: region)
+                AccessibilityAnnouncementService.shared.announce(
+                    "Recognizing text from selected region.",
+                    priority: .high
+                )
+                showProcessingIndicator(message: "Copying Text...", status: "Recognizing text...")
+                updateProcessingProgress(0.5, status: "Recognizing text...")
+
+                switch try await TextRecognitionService.recognizeText(in: image) {
+                case .success(let text):
+                    guard SaveService.shared.copyTextToClipboard(text) else {
+                        SaveService.shared.showError("Could not copy recognized text to the clipboard.")
+                        return
+                    }
+                    AccessibilityAnnouncementService.shared.announce(
+                        "Text copied to clipboard.",
+                        priority: .medium
+                    )
+                case .noTextFound:
+                    SaveService.shared.showError("No text found in the selected region.")
+                }
+            } catch {
+                SaveService.shared.showError("Text recognition failed: \(error.localizedDescription)")
             }
         }
     }
@@ -444,6 +459,16 @@ class CaptureManager: ObservableObject {
         shouldReturnToPicker: Bool,
         cursorScreen: NSScreen? = nil
     ) async {
+        let ownsPreparationState = !isCapturePreparationInProgress
+        if ownsPreparationState {
+            isCapturePreparationInProgress = true
+        }
+        defer {
+            if ownsPreparationState {
+                isCapturePreparationInProgress = false
+            }
+        }
+
         switch mode {
         case .region:
             guard let region = await RegionSelector.selectRegion() else {
@@ -503,11 +528,13 @@ class CaptureManager: ObservableObject {
         let doCapture = { [weak self] in
             guard let self else { return }
             self.dismissRegionIndicator()
+            self.isScreenshotCaptureInProgress = true
             AccessibilityAnnouncementService.shared.announceCaptureStart(
                 for: .screenshot,
                 countdownCompleted: countdownEnabled
             )
             Task {
+                defer { self.isScreenshotCaptureInProgress = false }
                 var didPresentEditor = false
                 do {
                     let settings = CaptureSettings.shared
@@ -576,10 +603,15 @@ class CaptureManager: ObservableObject {
     }
 
     func startVideoRecording() {
+        guard !isCaptureActionInProgress else { return }
+
+        isCapturePreparationInProgress = true
         let cursorScreen = screenUnderMouseCursor()
         Task {
-            await prepareForNewCaptureRequest()
+            defer { isCapturePreparationInProgress = false }
+            guard await prepareForNewCaptureRequest() else { return }
             guard await PermissionManager.shared.checkPermission() else { return }
+            guard !isOCRInFlight else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .video) {
                 showRecordingPicker(for: .video, cursorScreen: cursorScreen)
@@ -612,11 +644,17 @@ class CaptureManager: ObservableObject {
 
         let doRecord = { [weak self] in
             guard let self else { return }
+            self.isRecordingSetupInProgress = true
             AccessibilityAnnouncementService.shared.announceCaptureStart(
                 for: .video,
                 countdownCompleted: countdownEnabled
             )
             Task {
+                defer {
+                    if !self.isRecording {
+                        self.isRecordingSetupInProgress = false
+                    }
+                }
                 let shouldSaveImmediately = !settings.showTrimmer || settings.saveImmediatelyVideo
                 let url = shouldSaveImmediately
                     ? SaveService.shared.generateURL(for: .video)
@@ -680,6 +718,7 @@ class CaptureManager: ObservableObject {
                     self.webcamRecorder = nil
                     self.activeRecordingRegion = target.region
                     self.isRecording = true
+                    self.isRecordingSetupInProgress = false
                     self.isRecordingPaused = false
                     self.activeRecordingRequest = .video(
                         target: target,
@@ -789,10 +828,15 @@ class CaptureManager: ObservableObject {
     }
 
     func startGifRecording() {
+        guard !isCaptureActionInProgress else { return }
+
+        isCapturePreparationInProgress = true
         let cursorScreen = screenUnderMouseCursor()
         Task {
-            await prepareForNewCaptureRequest()
+            defer { isCapturePreparationInProgress = false }
+            guard await prepareForNewCaptureRequest() else { return }
             guard await PermissionManager.shared.checkPermission() else { return }
+            guard !isOCRInFlight else { return }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .gif) {
                 showRecordingPicker(for: .gif, cursorScreen: cursorScreen)
@@ -814,11 +858,17 @@ class CaptureManager: ObservableObject {
         resetRecordingAudioStatus()
         let doRecord = { [weak self] in
             guard let self else { return }
+            self.isRecordingSetupInProgress = true
             AccessibilityAnnouncementService.shared.announceCaptureStart(
                 for: .gif,
                 countdownCompleted: countdownEnabled
             )
             Task {
+                defer {
+                    if !self.isRecording {
+                        self.isRecordingSetupInProgress = false
+                    }
+                }
                 let writer = GifWriter()
                 do {
                     let sessionID = self.nextRecordingSessionID()
@@ -837,6 +887,7 @@ class CaptureManager: ObservableObject {
                     self.gifWriter = writer
                     self.activeRecordingRegion = target.region
                     self.isRecording = true
+                    self.isRecordingSetupInProgress = false
                     self.isRecordingPaused = false
                     self.activeRecordingRequest = .gif(target: target, mouseClicksEnabled: mouseClicksEnabled)
                     self.activeMouseClickCaptureEnabledOverride = mouseClicksEnabled
@@ -1468,7 +1519,9 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func prepareForNewCaptureRequest() async {
+    private func prepareForNewCaptureRequest(allowOCRInFlight: Bool = false) async -> Bool {
+        guard allowOCRInFlight || !isOCRInFlight else { return false }
+
         if let stopRecordingTask {
             debugRecordingLifecycle("Waiting for ongoing finalize before new capture")
             await stopRecordingTask.value
@@ -1495,7 +1548,7 @@ class CaptureManager: ObservableObject {
 
         if isStoppingRecording {
             debugRecordingLifecycle("Capture request blocked while finalize in progress")
-            return
+            return false
         }
 
         if videoRecorder != nil || webcamRecorder != nil || gifWriter != nil || isRecording {
@@ -1509,6 +1562,8 @@ class CaptureManager: ObservableObject {
         } else {
             dismissStopPanel()
         }
+
+        return true
     }
 
     private func endIdleSleepAssertion() {
@@ -1750,9 +1805,12 @@ class CaptureManager: ObservableObject {
         webcamPreviewPanel = nil
     }
 
-    private func showProcessingIndicator() {
+    private func showProcessingIndicator(
+        message: String = "Processing...",
+        status: String? = "Preparing export..."
+    ) {
         guard processingIndicatorWindow == nil else { return }
-        let window = ProcessingIndicatorWindow(message: "Processing...", status: "Preparing export...", progress: 0.0)
+        let window = ProcessingIndicatorWindow(message: message, status: status, progress: 0.0)
         processingIndicatorWindow = window
         processingIndicatorShownAt = Date()
         window.show()
@@ -1786,6 +1844,7 @@ class CaptureManager: ObservableObject {
         )
 
         func dismissNow() {
+            guard self.processingIndicatorWindow === window else { return }
             window.close()
             processingIndicatorWindow = nil
             processingIndicatorShownAt = nil
@@ -1980,6 +2039,16 @@ class CaptureManager: ObservableObject {
         shouldReturnToPicker: Bool,
         cursorScreen: NSScreen? = nil
     ) async {
+        let ownsPreparationState = !isCapturePreparationInProgress
+        if ownsPreparationState {
+            isCapturePreparationInProgress = true
+        }
+        defer {
+            if ownsPreparationState {
+                isCapturePreparationInProgress = false
+            }
+        }
+
         guard let target = await chooseCaptureTarget(for: mode, cursorScreen: cursorScreen) else {
             if shouldReturnToPicker {
                 showRecordingPicker(for: type, cursorScreen: cursorScreen)

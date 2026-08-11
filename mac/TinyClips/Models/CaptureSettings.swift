@@ -347,7 +347,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("includeTinyClipsInCapture") var includeTinyClipsInCapture: Bool = false
     @AppStorage("showBrandingOverlay") var showBrandingOverlay: Bool = false
     // Custom global hotkeys (stored as Carbon keyCode + modifiers bitmask).
-    // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7
+    // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7 / ⌃⌥⌘8
     // 6400 = controlKey (4096) | optionKey (2048) | cmdKey (256)
     @AppStorage("screenshotHotKeyCode") var screenshotHotKeyCode: Int = 23      // kVK_ANSI_5
     @AppStorage("screenshotHotKeyModifiers") var screenshotHotKeyModifiers: Int = 6400
@@ -355,6 +355,8 @@ class CaptureSettings: ObservableObject {
     @AppStorage("videoHotKeyModifiers") var videoHotKeyModifiers: Int = 6400
     @AppStorage("gifHotKeyCode") var gifHotKeyCode: Int = 26                    // kVK_ANSI_7
     @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 6400
+    @AppStorage("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = 28 // kVK_ANSI_8
+    @AppStorage("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 6400
 
     func resolvedSaveDirectory(for captureType: CaptureType) -> URL {
         URL(fileURLWithPath: saveDirectoryPath(for: captureType), isDirectory: true)
@@ -443,6 +445,56 @@ class CaptureSettings: ObservableObject {
         case .gif:
             return copyGifToClipboard
         }
+    }
+
+    func hotKeyBinding(for action: HotKeyAction) -> HotKeyBinding {
+        switch action {
+        case .screenshot:
+            return HotKeyBinding(
+                keyCode: screenshotHotKeyCode,
+                carbonModifiers: screenshotHotKeyModifiers
+            )
+        case .recordVideo:
+            return HotKeyBinding(
+                keyCode: videoHotKeyCode,
+                carbonModifiers: videoHotKeyModifiers
+            )
+        case .recordGif:
+            return HotKeyBinding(
+                keyCode: gifHotKeyCode,
+                carbonModifiers: gifHotKeyModifiers
+            )
+        case .copyTextFromRegion:
+            return HotKeyBinding(
+                keyCode: copyTextFromRegionHotKeyCode,
+                carbonModifiers: copyTextFromRegionHotKeyModifiers
+            )
+        }
+    }
+
+    func setHotKeyBinding(_ binding: HotKeyBinding, for action: HotKeyAction) {
+        switch action {
+        case .screenshot:
+            screenshotHotKeyCode = binding.keyCode
+            screenshotHotKeyModifiers = binding.carbonModifiers
+        case .recordVideo:
+            videoHotKeyCode = binding.keyCode
+            videoHotKeyModifiers = binding.carbonModifiers
+        case .recordGif:
+            gifHotKeyCode = binding.keyCode
+            gifHotKeyModifiers = binding.carbonModifiers
+        case .copyTextFromRegion:
+            copyTextFromRegionHotKeyCode = binding.keyCode
+            copyTextFromRegionHotKeyModifiers = binding.carbonModifiers
+        }
+    }
+
+    var hotKeyBindings: [HotKeyAction: HotKeyBinding] {
+        Dictionary(
+            uniqueKeysWithValues: HotKeyAction.allCases.map {
+                ($0, hotKeyBinding(for: $0))
+            }
+        )
     }
 
     func shouldShowCapturePicker(for type: CaptureType) -> Bool {
@@ -575,7 +627,8 @@ class CaptureSettings: ObservableObject {
         let hotKeyKeys = [
             "screenshotHotKeyCode", "screenshotHotKeyModifiers",
             "videoHotKeyCode", "videoHotKeyModifiers",
-            "gifHotKeyCode", "gifHotKeyModifiers"
+            "gifHotKeyCode", "gifHotKeyModifiers",
+            "copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers"
         ]
 #if APPSTORE
         let masKeys: [String] = [
