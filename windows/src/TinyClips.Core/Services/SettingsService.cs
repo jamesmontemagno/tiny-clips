@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Windows.Storage;
 using TinyClips.Core.Models;
 
@@ -6,6 +7,16 @@ namespace TinyClips.Core.Services;
 public sealed class SettingsService : ISettingsService, ILargeTextSettingsService
 {
     private readonly Dictionary<string, object> _fallbackValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string? _largeTextDirectory;
+
+    public SettingsService()
+    {
+    }
+
+    internal SettingsService(string largeTextDirectory)
+    {
+        _largeTextDirectory = largeTextDirectory;
+    }
 
     public AppTheme Theme
     {
@@ -77,6 +88,12 @@ public sealed class SettingsService : ISettingsService, ILargeTextSettingsServic
 
     public string GetLargeText(string key, string defaultValue)
     {
+        if (_fallbackValues.TryGetValue(key, out var fallbackValue) &&
+            fallbackValue is string fallbackText)
+        {
+            return fallbackText;
+        }
+
         try
         {
             var path = GetLargeTextPath(key);
@@ -105,9 +122,49 @@ public sealed class SettingsService : ISettingsService, ILargeTextSettingsServic
 
     public void SetLargeText(string key, string value)
     {
-        File.WriteAllText(GetLargeTextPath(key), value ?? string.Empty);
+        var persistedValue = value ?? string.Empty;
+        var path = GetLargeTextPath(key);
+        var temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(temporaryPath, persistedValue);
+            File.Move(temporaryPath, path, overwrite: true);
+            _fallbackValues.Remove(key);
+        }
+        catch (IOException ex)
+        {
+            Debug.WriteLine($"Failed to persist large text setting '{key}': {ex}");
+            _fallbackValues[key] = persistedValue;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Debug.WriteLine($"Failed to persist large text setting '{key}': {ex}");
+            _fallbackValues[key] = persistedValue;
+        }
+        finally
+        {
+            DeleteTemporaryFile(temporaryPath);
+        }
     }
 
-    private static string GetLargeTextPath(string key) =>
-        Path.Combine(ApplicationData.Current.LocalFolder.Path, $"{key}.txt");
+    private string GetLargeTextPath(string key) =>
+        Path.Combine(_largeTextDirectory ?? ApplicationData.Current.LocalFolder.Path, $"{key}.txt");
+
+    private static void DeleteTemporaryFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException ex)
+        {
+            Debug.WriteLine($"Failed to remove temporary settings file '{path}': {ex}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Debug.WriteLine($"Failed to remove temporary settings file '{path}': {ex}");
+        }
+    }
 }

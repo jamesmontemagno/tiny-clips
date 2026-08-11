@@ -1184,6 +1184,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to restart {type} recording: {ex}");
+            ShowSaveFailureNotification(CaptureOutputDescription(type));
             HideRecordingIndicator();
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;

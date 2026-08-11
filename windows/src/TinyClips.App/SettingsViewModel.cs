@@ -34,7 +34,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IClipAnalyticsService _analytics;
     private readonly IUploadcareCredentialStore _uploadcareCredentials;
     private readonly DispatcherQueue? _dispatcherQueue;
+    private readonly DispatcherQueueTimer? _teleprompterTranscriptSaveTimer;
     private bool _loading;
+    private string? _pendingTeleprompterTranscript;
     private string _savedMicrophoneId = string.Empty;
     private string _savedWebcamId = string.Empty;
 
@@ -84,6 +86,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         _analytics = analytics;
         _uploadcareCredentials = uploadcareCredentials;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        if (_dispatcherQueue is not null)
+        {
+            _teleprompterTranscriptSaveTimer = _dispatcherQueue.CreateTimer();
+            _teleprompterTranscriptSaveTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _teleprompterTranscriptSaveTimer.IsRepeating = false;
+            _teleprompterTranscriptSaveTimer.Tick += (_, _) => PersistPendingTeleprompterTranscript();
+        }
         Load();
 
         // Analytics history and microphone/webcam enumeration are deferred until their
@@ -140,7 +149,23 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>Stops async continuations (media enumeration, permission prompts) from touching
     /// this view model once the owning window has closed.</summary>
-    public void NotifyClosed() => _closed = true;
+    public void NotifyClosed()
+    {
+        _teleprompterTranscriptSaveTimer?.Stop();
+        PersistPendingTeleprompterTranscript();
+        _closed = true;
+    }
+
+    private void PersistPendingTeleprompterTranscript()
+    {
+        if (_pendingTeleprompterTranscript is not { } transcript)
+        {
+            return;
+        }
+
+        _pendingTeleprompterTranscript = null;
+        _settings.TeleprompterTranscript = transcript;
+    }
 
     private sealed class SectionRealizationScope : IDisposable
     {
@@ -1177,7 +1202,23 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnTeleprompterEnabledChanged(bool value) => Persist(() => _settings.TeleprompterEnabled = value);
 
-    partial void OnTeleprompterTranscriptChanged(string value) => Persist(() => _settings.TeleprompterTranscript = value);
+    partial void OnTeleprompterTranscriptChanged(string value)
+    {
+        if (_loading || _pendingSectionRealizations > 0)
+        {
+            return;
+        }
+
+        _pendingTeleprompterTranscript = value;
+        if (_teleprompterTranscriptSaveTimer is null)
+        {
+            PersistPendingTeleprompterTranscript();
+            return;
+        }
+
+        _teleprompterTranscriptSaveTimer.Stop();
+        _teleprompterTranscriptSaveTimer.Start();
+    }
 
     partial void OnTeleprompterScrollSpeedChanged(double value) => Persist(() => _settings.TeleprompterScrollSpeed = value);
 
