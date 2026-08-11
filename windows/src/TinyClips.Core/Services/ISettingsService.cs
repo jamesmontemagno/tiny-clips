@@ -10,3 +10,9 @@ public interface ISettingsService
     AppTheme Theme { get; set; }
     string SaveDirectory { get; set; }
 }
+
+public interface ILargeTextSettingsService
+{
+    string GetLargeText(string key, string defaultValue);
+    void SetLargeText(string key, string value);
+}

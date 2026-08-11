@@ -3,7 +3,7 @@ using TinyClips.Core.Models;
 
 namespace TinyClips.Core.Services;
 
-public sealed class SettingsService : ISettingsService
+public sealed class SettingsService : ISettingsService, ILargeTextSettingsService
 {
     private readonly Dictionary<string, object> _fallbackValues = new(StringComparer.OrdinalIgnoreCase);
 
@@ -74,4 +74,40 @@ public sealed class SettingsService : ISettingsService
             _fallbackValues[key] = persistedValue;
         }
     }
+
+    public string GetLargeText(string key, string defaultValue)
+    {
+        try
+        {
+            var path = GetLargeTextPath(key);
+            if (File.Exists(path))
+            {
+                return File.ReadAllText(path);
+            }
+
+            var legacyValue = Get(key, defaultValue);
+            if (!string.Equals(legacyValue, defaultValue, StringComparison.Ordinal))
+            {
+                SetLargeText(key, legacyValue);
+            }
+
+            return legacyValue;
+        }
+        catch (IOException)
+        {
+            return Get(key, defaultValue);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Get(key, defaultValue);
+        }
+    }
+
+    public void SetLargeText(string key, string value)
+    {
+        File.WriteAllText(GetLargeTextPath(key), value ?? string.Empty);
+    }
+
+    private static string GetLargeTextPath(string key) =>
+        Path.Combine(ApplicationData.Current.LocalFolder.Path, $"{key}.txt");
 }

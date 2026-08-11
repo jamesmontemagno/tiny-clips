@@ -36,9 +36,16 @@ final class TeleprompterPanel: NSPanel {
         contentView = hostingView
     }
 
-    func show(relativeTo region: CaptureRegion?) {
+    func prepareHidden(relativeTo region: CaptureRegion?) {
         restorePosition(for: region)
+        alphaValue = 0
+        ignoresMouseEvents = true
         orderFront(nil)
+    }
+
+    func reveal() {
+        alphaValue = 1
+        ignoresMouseEvents = false
     }
 
     func pause() {
@@ -85,7 +92,8 @@ final class TeleprompterPanel: NSPanel {
     private static func isUsableOrigin(_ origin: NSPoint, panelSize: NSSize) -> Bool {
         let panelRect = NSRect(origin: origin, size: panelSize)
         return NSScreen.screens.contains { screen in
-            screen.visibleFrame.intersects(panelRect.insetBy(dx: -panelSize.width / 4, dy: -panelSize.height / 4))
+            let visibleIntersection = screen.visibleFrame.intersection(panelRect)
+            return visibleIntersection.width >= 80 && visibleIntersection.height >= 40
         }
     }
 
@@ -179,6 +187,7 @@ private struct TeleprompterView: View {
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
                 .background {
@@ -187,10 +196,11 @@ private struct TeleprompterView: View {
                     }
                 }
         }
-        .frame(width: TeleprompterPanel.panelSize.width, height: viewportHeight, alignment: .top)
+        .frame(width: TeleprompterPanel.panelSize.width, alignment: .top)
+        .fixedSize(horizontal: false, vertical: true)
         .offset(y: -state.scrollOffset)
+        .frame(width: TeleprompterPanel.panelSize.width, height: viewportHeight, alignment: .top)
         .clipped()
-        .frame(width: TeleprompterPanel.panelSize.width, height: viewportHeight)
         .background {
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.black.opacity(0.7))

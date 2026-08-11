@@ -51,6 +51,29 @@ public sealed class TeleprompterPlacementTests
     }
 
     [Fact]
+    public void Calculate_CapsPanelSizeToNarrowWorkArea()
+    {
+        var monitor = CreateMonitor(
+            deviceName: @"\\.\DISPLAY1",
+            workAreaX: 0,
+            workAreaY: 0,
+            workAreaWidth: 800,
+            workAreaHeight: 600,
+            dpi: 144);
+
+        var placement = TeleprompterPlacement.Calculate(
+            monitor,
+            widthDip: 600,
+            heightDip: 500,
+            topOffsetDip: 24,
+            savedXDip: -1,
+            savedYDip: -1,
+            savedPositionIsMonitorRelative: false);
+
+        Assert.Equal(new PixelRect(0, 0, 800, 600), placement);
+    }
+
+    [Fact]
     public void RelativePosition_RoundTripsAcrossDifferentMonitorScale()
     {
         var oldMonitor = CreateMonitor(@"\\.\DISPLAY2", 1920, 40, 2560, 1400, 144);

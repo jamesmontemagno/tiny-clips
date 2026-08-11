@@ -12,8 +12,14 @@ public static class TeleprompterPlacement
         bool savedPositionIsMonitorRelative)
     {
         var scale = monitor.ScaleFactor > 0 ? monitor.ScaleFactor : 1.0;
-        var width = Math.Max(1, (int)Math.Round(widthDip * scale));
-        var height = Math.Max(1, (int)Math.Round(heightDip * scale));
+        var width = Math.Clamp(
+            (int)Math.Round(widthDip * scale),
+            1,
+            Math.Max(1, monitor.WorkAreaWidth));
+        var height = Math.Clamp(
+            (int)Math.Round(heightDip * scale),
+            1,
+            Math.Max(1, monitor.WorkAreaHeight));
         var workRight = monitor.WorkAreaX + Math.Max(0, monitor.WorkAreaWidth - width);
         var workBottom = monitor.WorkAreaY + Math.Max(0, monitor.WorkAreaHeight - height);
 

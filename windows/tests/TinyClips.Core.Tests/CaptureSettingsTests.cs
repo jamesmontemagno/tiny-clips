@@ -318,7 +318,7 @@ public sealed class CaptureSettingsTests
 
     private static ICaptureSettings CreateSettings() => new CaptureSettings(new TestSettingsService());
 
-    private sealed class TestSettingsService : ISettingsService
+    private sealed class TestSettingsService : ISettingsService, ILargeTextSettingsService
     {
         private readonly Dictionary<string, object> _values = new(StringComparer.OrdinalIgnoreCase);
 
@@ -348,5 +348,9 @@ public sealed class CaptureSettingsTests
         {
             _values[key] = value is null ? string.Empty : value;
         }
+
+        public string GetLargeText(string key, string defaultValue) => Get(key, defaultValue);
+
+        public void SetLargeText(string key, string value) => Set(key, value);
     }
 }

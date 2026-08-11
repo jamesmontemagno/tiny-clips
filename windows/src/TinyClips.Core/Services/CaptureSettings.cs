@@ -456,8 +456,20 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public string TeleprompterTranscript
     {
-        get => _settings.Get("teleprompterTranscript", string.Empty);
-        set => _settings.Set("teleprompterTranscript", value);
+        get => _settings is ILargeTextSettingsService largeTextSettings
+            ? largeTextSettings.GetLargeText("teleprompterTranscript", string.Empty)
+            : _settings.Get("teleprompterTranscript", string.Empty);
+        set
+        {
+            if (_settings is ILargeTextSettingsService largeTextSettings)
+            {
+                largeTextSettings.SetLargeText("teleprompterTranscript", value);
+            }
+            else
+            {
+                _settings.Set("teleprompterTranscript", value);
+            }
+        }
     }
 
     public double TeleprompterScrollSpeed

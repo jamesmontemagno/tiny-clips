@@ -770,6 +770,7 @@ class CaptureManager: ObservableObject {
                     self.debugRecordingLifecycle("Video session \(sessionID) started")
                     self.recordingSystemAudioEnabled = recorder.isSystemAudioCaptureActive
                     self.recordingMicrophoneEnabled = recorder.isMicrophoneCaptureActive
+                    self.teleprompterPanel?.reveal()
                     if self.isRecordingPaused {
                         self.teleprompterPanel?.pause()
                     } else {
@@ -1801,7 +1802,7 @@ class CaptureManager: ObservableObject {
         dismissTeleprompter()
         let panel = TeleprompterPanel(transcript: transcript, scrollSpeed: settings.teleprompterScrollSpeed)
         teleprompterPanel = panel
-        panel.show(relativeTo: region)
+        panel.prepareHidden(relativeTo: region)
 
         let windowID = CGWindowID(panel.windowNumber)
         for attempt in 0..<3 {
