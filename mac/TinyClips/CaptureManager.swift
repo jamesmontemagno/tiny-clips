@@ -162,12 +162,12 @@ class CaptureManager: ObservableObject {
     private var gifWriter: GifWriter?
     private let idleSleepAssertion = IdleSleepAssertion()
     private(set) var lastVideoRecordingArtifacts: VideoRecordingArtifacts?
-    private var screenshotPickerPanel: CapturePickerPanel?
+    @Published private var screenshotPickerPanel: CapturePickerPanel?
     private var screenshotPickerPosition: NSPoint?
-    private var recordingPickerPanel: CapturePickerPanel?
+    @Published private var recordingPickerPanel: CapturePickerPanel?
     private var recordingPickerPosition: NSPoint?
     private var shouldReturnToPickerAfterRecording = false
-    private var startPanel: StartRecordingPanel?
+    @Published private var startPanel: StartRecordingPanel?
     private var stopPanel: StopRecordingPanel?
     private var teleprompterPanel: TeleprompterPanel?
     private var webcamPreviewPanel: WebcamPreviewPanel?
@@ -181,7 +181,7 @@ class CaptureManager: ObservableObject {
     private var recordPanelPosition: NSPoint?
     private var trimmerWindow: VideoTrimmerWindow?
     private var gifTrimmerWindow: GifTrimmerWindow?
-    private var countdownWindow: CountdownWindow?
+    @Published private var countdownWindow: CountdownWindow?
     private var processingIndicatorWindow: ProcessingIndicatorWindow?
     private var processingIndicatorShownAt: Date?
     private var isStoppingRecording = false
@@ -193,7 +193,7 @@ class CaptureManager: ObservableObject {
     private var activeRecordingRequest: ActiveRecordingRequest?
     private var onboardingWindow: OnboardingWizardWindow?
     private var guideWindow: GuideWindow?
-    private var screenPickerWindow: ScreenPickerWindow?
+    @Published private var screenPickerWindow: ScreenPickerWindow?
     private var mouseClickMonitor: MouseClickMonitor?
     private var activeMouseClickRegion: CaptureRegion?
     private var activeMouseClickCaptureType: CaptureType?
@@ -596,7 +596,8 @@ class CaptureManager: ObservableObject {
             doCapture()
             return
         }
-        let window = CountdownWindow(duration: countdownDuration) {
+        let window = CountdownWindow(duration: countdownDuration) { [weak self] in
+            self?.countdownWindow = nil
             doCapture()
         }
         self.countdownWindow = window
@@ -1990,7 +1991,8 @@ class CaptureManager: ObservableObject {
             action()
             return
         }
-        let window = CountdownWindow(duration: duration) {
+        let window = CountdownWindow(duration: duration) { [weak self] in
+            self?.countdownWindow = nil
             action()
         }
         self.countdownWindow = window
