@@ -64,7 +64,21 @@
                     AutomationProperties.AutomationId="VideoNavigationItem"
                     Content="Video"
                     Icon="Video"
-                    Tag="Video" />
+                    IsExpanded="True"
+                    SelectsOnInvoked="False">
+                    <NavigationViewItem.MenuItems>
+                        <NavigationViewItem
+                            AutomationProperties.AutomationId="VideoRecordingNavigationItem"
+                            Content="Recording"
+                            Icon="Video"
+                            Tag="Video" />
+                        <NavigationViewItem
+                            AutomationProperties.AutomationId="TeleprompterNavigationItem"
+                            Content="Teleprompter"
+                            Icon="ShowResults"
+                            Tag="Teleprompter" />
+                    </NavigationViewItem.MenuItems>
+                </NavigationViewItem>
                 <NavigationViewItem
                     AutomationProperties.AutomationId="GifNavigationItem"
                     Content="GIF"
@@ -80,11 +94,6 @@
                     Content="Branding"
                     Icon="Flag"
                     Tag="Branding" />
-                <NavigationViewItem
-                    AutomationProperties.AutomationId="TeleprompterNavigationItem"
-                    Content="Teleprompter"
-                    Icon="ShowResults"
-                    Tag="Teleprompter" />
                 <NavigationViewItem
                     AutomationProperties.AutomationId="HotkeysNavigationItem"
                     Content="Hotkeys"

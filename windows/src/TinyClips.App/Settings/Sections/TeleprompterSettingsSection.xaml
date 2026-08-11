@@ -83,5 +83,50 @@
                     Value="{x:Bind ViewModel.TeleprompterScrollSpeed, Mode=TwoWay}" />
             </StackPanel>
         </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
+            <StackPanel Spacing="8">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Preview" />
+                    <TextBlock
+                        Grid.Column="1"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind ViewModel.TeleprompterScrollSpeedDisplay, Mode=OneWay}" />
+                </Grid>
+                <Border
+                    Height="140"
+                    Padding="16,12"
+                    AutomationProperties.HelpText="Shows how quickly the transcript will move during a recording."
+                    AutomationProperties.Name="Teleprompter scroll speed preview"
+                    Background="#99000000"
+                    CornerRadius="{StaticResource OverlayCornerRadius}">
+                    <ScrollViewer
+                        x:Name="PreviewScroller"
+                        HorizontalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        IsHitTestVisible="False"
+                        SizeChanged="OnPreviewSizeChanged"
+                        VerticalScrollBarVisibility="Hidden"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled">
+                        <TextBlock
+                            x:Name="PreviewText"
+                            FontSize="24"
+                            Foreground="#FFFFFFFF"
+                            TextWrapping="Wrap" />
+                    </ScrollViewer>
+                </Border>
+                <TextBlock
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="This preview uses the same scroll speed as the recording overlay."
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
     </StackPanel>
 </UserControl>
