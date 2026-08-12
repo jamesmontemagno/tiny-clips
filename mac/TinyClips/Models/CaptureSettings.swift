@@ -491,8 +491,46 @@ class CaptureSettings: ObservableObject {
 #endif
 
     var imageFormat: ImageFormat {
-        get { ImageFormat(rawValue: screenshotFormat) ?? .jpeg }
+        get { Self.imageFormat(from: screenshotFormat) }
         set { screenshotFormat = newValue.rawValue }
+    }
+
+    static func imageFormat(from rawValue: String) -> ImageFormat {
+        ImageFormat(rawValue: rawValue) ?? .jpeg
+    }
+
+    static func hotKeyBinding(for action: HotKeyAction, defaults: UserDefaults) -> HotKeyBinding {
+        let fallback = HotKeyBinding.defaultBinding(for: action)
+        let keys = hotKeyDefaultsKeys(for: action)
+        return HotKeyBinding(
+            keyCode: defaults.object(forKey: keys.keyCode) as? Int ?? fallback.keyCode,
+            carbonModifiers: defaults.object(forKey: keys.modifiers) as? Int ?? fallback.carbonModifiers
+        )
+    }
+
+    static func setHotKeyBinding(
+        _ binding: HotKeyBinding,
+        for action: HotKeyAction,
+        defaults: UserDefaults
+    ) {
+        let keys = hotKeyDefaultsKeys(for: action)
+        defaults.set(binding.keyCode, forKey: keys.keyCode)
+        defaults.set(binding.carbonModifiers, forKey: keys.modifiers)
+    }
+
+    private static func hotKeyDefaultsKeys(
+        for action: HotKeyAction
+    ) -> (keyCode: String, modifiers: String) {
+        switch action {
+        case .screenshot:
+            return ("screenshotHotKeyCode", "screenshotHotKeyModifiers")
+        case .recordVideo:
+            return ("videoHotKeyCode", "videoHotKeyModifiers")
+        case .recordGif:
+            return ("gifHotKeyCode", "gifHotKeyModifiers")
+        case .copyTextFromRegion:
+            return ("copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers")
+        }
     }
 
     func shouldCopyToClipboard(for type: CaptureType) -> Bool {
