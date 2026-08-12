@@ -52,6 +52,18 @@ public sealed class ClipStorageServiceTests
     }
 
     [Fact]
+    public void OutputDirectory_UsesAbsoluteFallbackWhenUserFoldersAreUnavailable()
+    {
+        var settings = CreateSettings();
+        var service = CreateService(settings, new FakeFileSystem());
+
+        var directory = service.OutputDirectory(CaptureType.Screenshot);
+
+        Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Screenshot), directory);
+        Assert.True(Path.IsPathFullyQualified(directory));
+    }
+
+    [Fact]
     public void GenerateFilePath_UsesUniqueSuffixesAndStemSuffix()
     {
         var fakeFileSystem = new FakeFileSystem();

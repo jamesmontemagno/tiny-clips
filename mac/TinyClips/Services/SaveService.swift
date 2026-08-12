@@ -310,17 +310,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func defaultDirectoryURL(for type: CaptureType) -> URL {
-        let fallbackBase = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-        let baseURL: URL
-
-        switch type {
-        case .video, .gif:
-            baseURL = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? fallbackBase
-        case .screenshot:
-            baseURL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first ?? fallbackBase
-        }
-
-        return baseURL.appendingPathComponent("TinyClips", isDirectory: true)
+        CaptureSettings.defaultSaveDirectoryURL(for: type)
     }
 
 #if APPSTORE
