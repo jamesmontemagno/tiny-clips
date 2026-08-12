@@ -179,8 +179,7 @@ private struct TeleprompterScrollPreview: View {
 
     @State private var contentHeight: CGFloat = 0
     @State private var isPreviewing = false
-    @State private var previewOffset: CGFloat = 0
-    @State private var lastTimelineDate: Date?
+    @State private var previewStartedAt: Date?
 
     private var previewTranscript: String {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -202,33 +201,19 @@ private struct TeleprompterScrollPreview: View {
         isPreviewing && canScroll
     }
 
-    private var currentScrollOffset: CGFloat {
-        guard isPreviewing, maximumOffset > 0 else { return 0 }
-        return previewOffset.truncatingRemainder(dividingBy: maximumOffset)
-    }
-
-    private func advancePreview(to date: Date) {
-        guard isScrolling else {
-            lastTimelineDate = nil
-            return
-        }
-        defer { lastTimelineDate = date }
-
-        guard let lastTimelineDate else { return }
-        let elapsed = max(0, date.timeIntervalSince(lastTimelineDate))
-        previewOffset = (previewOffset + CGFloat(elapsed * scrollSpeed))
-            .truncatingRemainder(dividingBy: maximumOffset)
+    private func scrollOffset(at date: Date) -> CGFloat {
+        guard isScrolling, let previewStartedAt else { return 0 }
+        let elapsed = max(0, date.timeIntervalSince(previewStartedAt))
+        return CGFloat(elapsed * scrollSpeed).truncatingRemainder(dividingBy: maximumOffset)
     }
 
     private func togglePreview() {
         if isPreviewing {
             isPreviewing = false
-            previewOffset = 0
-            lastTimelineDate = nil
+            previewStartedAt = nil
         } else {
             guard canScroll else { return }
-            previewOffset = 0
-            lastTimelineDate = nil
+            previewStartedAt = .now
             isPreviewing = true
         }
     }
@@ -277,7 +262,7 @@ private struct TeleprompterScrollPreview: View {
                                 )
                             }
                         }
-                        .offset(y: -currentScrollOffset)
+                        .offset(y: -scrollOffset(at: context.date))
                 }
                 .frame(height: viewportHeight)
                 .clipped()
@@ -296,17 +281,9 @@ private struct TeleprompterScrollPreview: View {
                         ? "Scrolling at \(Int(scrollSpeed)) points per second"
                         : "Stopped"
                 )
-                .onChange(of: context.date) { _, date in
-                    advancePreview(to: date)
-                }
             }
         }
         .onPreferenceChange(PreviewContentHeightKey.self) { contentHeight = $0 }
-        .onChange(of: isScrolling) { _, isScrolling in
-            if !isScrolling {
-                lastTimelineDate = nil
-            }
-        }
     }
 }
 
