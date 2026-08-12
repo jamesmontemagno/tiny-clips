@@ -1801,7 +1801,12 @@ class CaptureManager: ObservableObject {
         guard settings.teleprompterEnabled, !transcript.isEmpty else { return nil }
 
         dismissTeleprompter()
-        let panel = TeleprompterPanel(transcript: transcript, scrollSpeed: settings.teleprompterScrollSpeed)
+        let panel = TeleprompterPanel(
+            transcript: transcript,
+            scrollSpeed: settings.teleprompterScrollSpeed,
+            fontSize: TeleprompterDisplaySize(rawValue: settings.teleprompterFontSize) ?? .medium,
+            panelHeight: TeleprompterDisplaySize(rawValue: settings.teleprompterPanelHeight) ?? .medium
+        )
         teleprompterPanel = panel
         panel.prepareHidden(relativeTo: region)
 
