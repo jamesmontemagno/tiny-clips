@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.Settings;
 using TinyClips.App.Settings.Sections;
+using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Graphics;
 using Windows.Storage;
