@@ -2,19 +2,25 @@ import AppKit
 import SwiftUI
 
 final class TeleprompterPanel: NSPanel {
-    static let panelSize = NSSize(width: 600, height: 140)
-
     private static let positionXKey = "teleprompterPanelX"
     private static let positionYKey = "teleprompterPanelY"
 
     private var didPersistPosition = false
     private let scrollState: TeleprompterScrollState
+    private let panelSize: NSSize
 
-    init(transcript: String, scrollSpeed: Double) {
+    init(
+        transcript: String,
+        scrollSpeed: Double,
+        fontSize: TeleprompterDisplaySize,
+        panelHeight: TeleprompterDisplaySize
+    ) {
+        let panelSize = NSSize(width: 600, height: panelHeight.panelHeight)
         let scrollState = TeleprompterScrollState(scrollSpeed: scrollSpeed)
+        self.panelSize = panelSize
         self.scrollState = scrollState
         super.init(
-            contentRect: NSRect(origin: .zero, size: Self.panelSize),
+            contentRect: NSRect(origin: .zero, size: panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -28,7 +34,14 @@ final class TeleprompterPanel: NSPanel {
         sharingType = .none
         isMovableByWindowBackground = true
 
-        let hostingView = NSHostingView(rootView: TeleprompterView(state: scrollState, transcript: transcript))
+        let hostingView = NSHostingView(
+            rootView: TeleprompterView(
+                state: scrollState,
+                transcript: transcript,
+                panelSize: panelSize,
+                fontSize: fontSize.fontSize
+            )
+        )
         hostingView.setAccessibilityElement(true)
         hostingView.setAccessibilityRole(.staticText)
         hostingView.setAccessibilityLabel("Teleprompter")
@@ -76,8 +89,8 @@ final class TeleprompterPanel: NSPanel {
         guard let screen = Self.screen(for: region) ?? NSScreen.main else { return }
         let frame = screen.frame
         setFrameOrigin(NSPoint(
-            x: frame.midX - Self.panelSize.width / 2,
-            y: frame.maxY - Self.panelSize.height - 120
+            x: frame.midX - panelSize.width / 2,
+            y: frame.maxY - panelSize.height - 120
         ))
     }
 
@@ -121,7 +134,7 @@ private final class TeleprompterScrollState: ObservableObject {
     private var isPaused = true
 
     init(scrollSpeed: Double) {
-        self.scrollSpeed = scrollSpeed
+        self.scrollSpeed = min(max(scrollSpeed, 0), 100)
     }
 
     func start(viewportHeight: CGFloat) {
@@ -148,7 +161,7 @@ private final class TeleprompterScrollState: ObservableObject {
     }
 
     private func startTimer() {
-        guard timer == nil, let viewportHeight else { return }
+        guard timer == nil, scrollSpeed > 0, let viewportHeight else { return }
         let maxOffset = max(0, contentHeight - viewportHeight)
         guard scrollOffset < maxOffset else { return }
         let interval: TimeInterval = 1.0 / 60.0
@@ -178,13 +191,17 @@ private final class TeleprompterScrollState: ObservableObject {
 private struct TeleprompterView: View {
     @ObservedObject var state: TeleprompterScrollState
     let transcript: String
+    let panelSize: NSSize
+    let fontSize: CGFloat
 
-    private let viewportHeight: CGFloat = TeleprompterPanel.panelSize.height - 24
+    private var viewportHeight: CGFloat {
+        panelSize.height - 24
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Text(transcript)
-                .font(.system(size: 24, weight: .medium))
+                .font(.system(size: fontSize, weight: .medium))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -196,10 +213,10 @@ private struct TeleprompterView: View {
                     }
                 }
         }
-        .frame(width: TeleprompterPanel.panelSize.width, alignment: .top)
+        .frame(width: panelSize.width, alignment: .top)
         .fixedSize(horizontal: false, vertical: true)
         .offset(y: -state.scrollOffset)
-        .frame(width: TeleprompterPanel.panelSize.width, height: viewportHeight, alignment: .top)
+        .frame(width: panelSize.width, height: viewportHeight, alignment: .top)
         .clipped()
         .background {
             RoundedRectangle(cornerRadius: 12)

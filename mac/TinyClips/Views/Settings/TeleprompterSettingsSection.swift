@@ -3,6 +3,14 @@ import SwiftUI
 struct TeleprompterSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
 
+    private var fontSize: TeleprompterDisplaySize {
+        TeleprompterDisplaySize(rawValue: settings.teleprompterFontSize) ?? .medium
+    }
+
+    private var panelHeight: TeleprompterDisplaySize {
+        TeleprompterDisplaySize(rawValue: settings.teleprompterPanelHeight) ?? .medium
+    }
+
     var body: some View {
         Section("Teleprompter") {
             Toggle("Enable teleprompter", isOn: $settings.teleprompterEnabled)
@@ -31,10 +39,15 @@ struct TeleprompterSettingsSection: View {
             HStack {
                 Slider(
                     value: $settings.teleprompterScrollSpeed,
-                    in: 10...200,
-                    step: 5
+                    in: 0...100,
+                    step: 1
                 )
+                .controlSize(.large)
+                .frame(height: 28)
                 .disabled(!settings.teleprompterEnabled)
+                .onAppear {
+                    settings.teleprompterScrollSpeed = min(max(settings.teleprompterScrollSpeed, 0), 100)
+                }
                 .accessibilityLabel("Teleprompter scroll speed")
                 .accessibilityValue("\(Int(settings.teleprompterScrollSpeed)) points per second")
                 Text("\(Int(settings.teleprompterScrollSpeed)) pt/s")
@@ -44,12 +57,34 @@ struct TeleprompterSettingsSection: View {
             .help("Set how fast the transcript scrolls, in points per second.")
         }
 
+        Section("Appearance") {
+            Picker("Text size:", selection: $settings.teleprompterFontSize) {
+                ForEach(TeleprompterDisplaySize.allCases, id: \.rawValue) { size in
+                    Text(size.label).tag(size.rawValue)
+                }
+            }
+            .disabled(!settings.teleprompterEnabled)
+            .help("Choose the teleprompter text size.")
+            .accessibilityLabel("Teleprompter text size")
+
+            Picker("Panel height:", selection: $settings.teleprompterPanelHeight) {
+                ForEach(TeleprompterDisplaySize.allCases, id: \.rawValue) { size in
+                    Text(size.label).tag(size.rawValue)
+                }
+            }
+            .disabled(!settings.teleprompterEnabled)
+            .help("Choose the teleprompter panel height.")
+            .accessibilityLabel("Teleprompter panel height")
+        }
+
         Section("Preview") {
             TeleprompterScrollPreview(
                 transcript: settings.teleprompterTranscript,
-                scrollSpeed: settings.teleprompterScrollSpeed
+                scrollSpeed: settings.teleprompterScrollSpeed,
+                fontSize: fontSize.fontSize,
+                viewportHeight: panelHeight.panelHeight
             )
-            Text("This preview uses the same scroll speed as the recording overlay.")
+            Text("This preview uses the same size, height, and scroll speed as the recording overlay.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -59,11 +94,13 @@ struct TeleprompterSettingsSection: View {
 private struct TeleprompterScrollPreview: View {
     let transcript: String
     let scrollSpeed: Double
+    let fontSize: CGFloat
+    let viewportHeight: CGFloat
 
     @State private var contentHeight: CGFloat = 0
     @State private var scrollOffset: CGFloat = 0
+    @State private var isPreviewing = false
 
-    private let viewportHeight: CGFloat = 140
     private let frameInterval = 1.0 / 60.0
 
     private var previewTranscript: String {
@@ -78,43 +115,60 @@ private struct TeleprompterScrollPreview: View {
         PreviewConfiguration(
             transcript: previewTranscript,
             scrollSpeed: scrollSpeed,
-            contentHeight: contentHeight
+            contentHeight: contentHeight,
+            isPreviewing: isPreviewing,
+            fontSize: fontSize,
+            viewportHeight: viewportHeight
         )
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            Text(previewTranscript)
-                .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .frame(width: proxy.size.width, alignment: .top)
-                .background {
-                    GeometryReader { contentProxy in
-                        Color.clear.preference(
-                            key: PreviewContentHeightKey.self,
-                            value: contentProxy.size.height
-                        )
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { proxy in
+                Text(previewTranscript)
+                    .font(.system(size: fontSize, weight: .medium))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .frame(width: proxy.size.width, alignment: .top)
+                    .background {
+                        GeometryReader { contentProxy in
+                            Color.clear.preference(
+                                key: PreviewContentHeightKey.self,
+                                value: contentProxy.size.height
+                            )
+                        }
                     }
+                    .offset(y: -scrollOffset)
+            }
+            .frame(height: viewportHeight)
+            .clipped()
+            .background {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.black.opacity(0.7))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Teleprompter scroll speed preview")
+            .accessibilityValue("Scrolling at \(Int(scrollSpeed)) points per second")
+
+            Button(isPreviewing ? "Stop Preview" : "Start Preview") {
+                isPreviewing.toggle()
+                if !isPreviewing {
+                    scrollOffset = 0
                 }
-                .offset(y: -scrollOffset)
-        }
-        .frame(height: viewportHeight)
-        .clipped()
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.7))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            }
+            .accessibilityHint(isPreviewing ? "Stops and resets the preview." : "Starts the preview from the beginning.")
         }
         .onPreferenceChange(PreviewContentHeightKey.self) { contentHeight = $0 }
         .task(id: configuration) {
             scrollOffset = 0
+            guard isPreviewing, scrollSpeed > 0 else { return }
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(nanoseconds: 16_666_667)
@@ -128,9 +182,6 @@ private struct TeleprompterScrollPreview: View {
                 scrollOffset = nextOffset >= maximumOffset ? 0 : nextOffset
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Teleprompter scroll speed preview")
-        .accessibilityValue("Scrolling at \(Int(scrollSpeed)) points per second")
     }
 }
 
@@ -138,6 +189,9 @@ private struct PreviewConfiguration: Hashable {
     let transcript: String
     let scrollSpeed: Double
     let contentHeight: CGFloat
+    let isPreviewing: Bool
+    let fontSize: CGFloat
+    let viewportHeight: CGFloat
 }
 
 private struct PreviewContentHeightKey: PreferenceKey {
