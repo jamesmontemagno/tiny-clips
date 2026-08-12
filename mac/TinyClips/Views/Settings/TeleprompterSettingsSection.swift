@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct TeleprompterSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
+    @State private var transcriptLoadGeneration = 0
 
     // Keeps the AppStorage-backed transcript small enough for UserDefaults.
     private static let maximumTranscriptByteCount = 1_000_000
@@ -115,18 +116,24 @@ struct TeleprompterSettingsSection: View {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
+        transcriptLoadGeneration += 1
+        let loadGeneration = transcriptLoadGeneration
+
         Task { @MainActor in
             do {
-                settings.teleprompterTranscript = try await Task.detached(priority: .userInitiated) {
+                let transcript = try await Task.detached(priority: .userInitiated) {
                     try Self.transcriptContents(from: url)
                 }.value
+                guard loadGeneration == transcriptLoadGeneration else { return }
+                settings.teleprompterTranscript = transcript
             } catch {
+                guard loadGeneration == transcriptLoadGeneration else { return }
                 NSAlert(error: error).runModal()
             }
         }
     }
 
-    private static func transcriptContents(from url: URL) throws -> String {
+    nonisolated private static func transcriptContents(from url: URL) throws -> String {
         let didAccessSecurityScopedResource = url.startAccessingSecurityScopedResource()
         defer {
             if didAccessSecurityScopedResource {
@@ -134,28 +141,25 @@ struct TeleprompterSettingsSection: View {
             }
         }
 
-        let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
-        guard let fileSize = resourceValues.fileSize else {
-            throw TranscriptLoadError.unavailableFileSize
-        }
-        guard fileSize <= maximumTranscriptByteCount else {
+        let fileHandle = try FileHandle(forReadingFrom: url)
+        defer { try? fileHandle.close() }
+
+        let data = try fileHandle.read(upToCount: maximumTranscriptByteCount + 1) ?? Data()
+        guard data.count <= maximumTranscriptByteCount else {
             throw TranscriptLoadError.fileTooLarge
         }
 
-        return try String(contentsOf: url)
+        return String(decoding: data, as: UTF8.self)
     }
 }
 
 private enum TranscriptLoadError: LocalizedError {
     case fileTooLarge
-    case unavailableFileSize
 
     var errorDescription: String? {
         switch self {
         case .fileTooLarge:
             "The selected transcript is larger than 1 MB."
-        case .unavailableFileSize:
-            "TinyClips could not determine the selected transcript's size."
         }
     }
 
@@ -163,8 +167,6 @@ private enum TranscriptLoadError: LocalizedError {
         switch self {
         case .fileTooLarge:
             "Choose a plain-text transcript file that is 1 MB or smaller."
-        case .unavailableFileSize:
-            "Choose a different plain-text transcript file."
         }
     }
 }
