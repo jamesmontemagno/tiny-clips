@@ -4,6 +4,10 @@ import UniformTypeIdentifiers
 
 struct TeleprompterSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
+    @State private var transcriptLoadGeneration = 0
+
+    // Keeps the AppStorage-backed transcript small enough for UserDefaults.
+    private static let maximumTranscriptByteCount = 1_000_000
 
     private var fontSize: TeleprompterDisplaySize {
         TeleprompterDisplaySize(rawValue: settings.teleprompterFontSize) ?? .medium
@@ -108,10 +112,28 @@ struct TeleprompterSettingsSection: View {
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.title = "Load Teleprompter Transcript"
-        panel.message = "Choose a plain-text file to use as the transcript."
+        panel.message = "Choose a plain-text file up to 1 MB to use as the transcript."
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
+        transcriptLoadGeneration += 1
+        let loadGeneration = transcriptLoadGeneration
+
+        Task { @MainActor in
+            do {
+                let transcript = try await Task.detached(priority: .userInitiated) {
+                    try Self.transcriptContents(from: url)
+                }.value
+                guard loadGeneration == transcriptLoadGeneration else { return }
+                settings.teleprompterTranscript = transcript
+            } catch {
+                guard loadGeneration == transcriptLoadGeneration else { return }
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    nonisolated private static func transcriptContents(from url: URL) throws -> String {
         let didAccessSecurityScopedResource = url.startAccessingSecurityScopedResource()
         defer {
             if didAccessSecurityScopedResource {
@@ -119,10 +141,32 @@ struct TeleprompterSettingsSection: View {
             }
         }
 
-        do {
-            settings.teleprompterTranscript = try String(contentsOf: url)
-        } catch {
-            NSAlert(error: error).runModal()
+        let fileHandle = try FileHandle(forReadingFrom: url)
+        defer { try? fileHandle.close() }
+
+        let data = try fileHandle.read(upToCount: maximumTranscriptByteCount + 1) ?? Data()
+        guard data.count <= maximumTranscriptByteCount else {
+            throw TranscriptLoadError.fileTooLarge
+        }
+
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+private enum TranscriptLoadError: LocalizedError {
+    case fileTooLarge
+
+    var errorDescription: String? {
+        switch self {
+        case .fileTooLarge:
+            "The selected transcript is larger than 1 MB."
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .fileTooLarge:
+            "Choose a plain-text transcript file that is 1 MB or smaller."
         }
     }
 }
@@ -135,7 +179,8 @@ private struct TeleprompterScrollPreview: View {
 
     @State private var contentHeight: CGFloat = 0
     @State private var isPreviewing = false
-    @State private var previewStartedAt: Date?
+    @State private var previewOffset: CGFloat = 0
+    @State private var lastTimelineDate: Date?
 
     private var previewTranscript: String {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -157,19 +202,33 @@ private struct TeleprompterScrollPreview: View {
         isPreviewing && canScroll
     }
 
-    private func scrollOffset(at date: Date) -> CGFloat {
-        guard isScrolling, let previewStartedAt else { return 0 }
-        let elapsed = max(0, date.timeIntervalSince(previewStartedAt))
-        return CGFloat(elapsed * scrollSpeed).truncatingRemainder(dividingBy: maximumOffset)
+    private var currentScrollOffset: CGFloat {
+        guard isPreviewing, maximumOffset > 0 else { return 0 }
+        return previewOffset.truncatingRemainder(dividingBy: maximumOffset)
+    }
+
+    private func advancePreview(to date: Date) {
+        guard isScrolling else {
+            lastTimelineDate = nil
+            return
+        }
+        defer { lastTimelineDate = date }
+
+        guard let lastTimelineDate else { return }
+        let elapsed = max(0, date.timeIntervalSince(lastTimelineDate))
+        previewOffset = (previewOffset + CGFloat(elapsed * scrollSpeed))
+            .truncatingRemainder(dividingBy: maximumOffset)
     }
 
     private func togglePreview() {
         if isPreviewing {
             isPreviewing = false
-            previewStartedAt = nil
+            previewOffset = 0
+            lastTimelineDate = nil
         } else {
             guard canScroll else { return }
-            previewStartedAt = .now
+            previewOffset = 0
+            lastTimelineDate = nil
             isPreviewing = true
         }
     }
@@ -194,7 +253,9 @@ private struct TeleprompterScrollPreview: View {
                         ? "Stops and resets the preview."
                         : canScroll
                             ? "Starts the preview from the beginning."
-                            : "Set a scroll speed above zero to start the preview."
+                            : scrollSpeed <= 0
+                                ? "Set a scroll speed above zero to start the preview."
+                                : "The transcript is too short to scroll at the selected panel height. Add more text or choose a smaller panel height."
                 )
             }
 
@@ -216,7 +277,7 @@ private struct TeleprompterScrollPreview: View {
                                 )
                             }
                         }
-                        .offset(y: -scrollOffset(at: context.date))
+                        .offset(y: -currentScrollOffset)
                 }
                 .frame(height: viewportHeight)
                 .clipped()
@@ -235,9 +296,17 @@ private struct TeleprompterScrollPreview: View {
                         ? "Scrolling at \(Int(scrollSpeed)) points per second"
                         : "Stopped"
                 )
+                .onChange(of: context.date) { _, date in
+                    advancePreview(to: date)
+                }
             }
         }
         .onPreferenceChange(PreviewContentHeightKey.self) { contentHeight = $0 }
+        .onChange(of: isScrolling) { _, isScrolling in
+            if !isScrolling {
+                lastTimelineDate = nil
+            }
+        }
     }
 }
 
