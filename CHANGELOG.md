@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Changed
+- macOS teleprompter preview now starts only on demand, with a Start/Stop control, a speed slider that supports 0–100 pt/s in 1 pt/s increments with a larger interaction target, and small/medium/large text-size and panel-height presets.
 - Updated macOS in-app Terms of Use links to open Apple's Standard EULA directly.
 - macOS capture settings now offer matching before/after picker controls for screenshots, video recordings, and GIF recordings.
 - macOS multi-monitor capture settings now let you choose to ask every time, capture the display under the cursor, or capture the main display.

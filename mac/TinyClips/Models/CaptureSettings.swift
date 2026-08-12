@@ -173,6 +173,32 @@ enum MultiMonitorCaptureMode: String, CaseIterable {
     }
 }
 
+enum TeleprompterDisplaySize: String, CaseIterable {
+    case small
+    case medium
+    case large
+
+    var label: String {
+        rawValue.capitalized
+    }
+
+    var fontSize: CGFloat {
+        switch self {
+        case .small: return 20
+        case .medium: return 24
+        case .large: return 30
+        }
+    }
+
+    var panelHeight: CGFloat {
+        switch self {
+        case .small: return 120
+        case .medium: return 140
+        case .large: return 220
+        }
+    }
+}
+
 // MARK: - Settings
 
 struct MouseClickOverlayStyle: Sendable {
@@ -355,6 +381,8 @@ class CaptureSettings: ObservableObject {
     @AppStorage("teleprompterEnabled") var teleprompterEnabled: Bool = false
     @AppStorage("teleprompterTranscript") var teleprompterTranscript: String = ""
     @AppStorage("teleprompterScrollSpeed") var teleprompterScrollSpeed: Double = 50
+    @AppStorage("teleprompterFontSize") var teleprompterFontSize: String = TeleprompterDisplaySize.medium.rawValue
+    @AppStorage("teleprompterPanelHeight") var teleprompterPanelHeight: String = TeleprompterDisplaySize.medium.rawValue
     // Custom global hotkeys (stored as Carbon keyCode + modifiers bitmask).
     // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7 / ⌃⌥⌘8
     // 6400 = controlKey (4096) | optionKey (2048) | cmdKey (256)
@@ -631,7 +659,7 @@ class CaptureSettings: ObservableObject {
             "screenshotCountdownEnabled", "screenshotCountdownDuration",
             "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "multiMonitorCaptureMode", "showRegionIndicator",
             "includeTinyClipsInCapture", "showBrandingOverlay",
-            "teleprompterEnabled", "teleprompterTranscript", "teleprompterScrollSpeed",
+            "teleprompterEnabled", "teleprompterTranscript", "teleprompterScrollSpeed", "teleprompterFontSize", "teleprompterPanelHeight",
             "teleprompterPanelX", "teleprompterPanelY",
             "appStoreClipCountForReview", "appStoreReviewRequested"
         ]
