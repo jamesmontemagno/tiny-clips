@@ -705,6 +705,12 @@ public sealed class CaptureSettings : ICaptureSettings
         UploadcarePublicKey = string.Empty;
         UploadcareAutoUpload = false;
         UploadcareCopyUrl = false;
+        ScreenshotHotKeyCode = 53;
+        ScreenshotHotKeyModifiers = 6;
+        VideoHotKeyCode = 54;
+        VideoHotKeyModifiers = 6;
+        GifHotKeyCode = 55;
+        GifHotKeyModifiers = 6;
         _analytics?.Clear();
     }
 
@@ -725,12 +731,6 @@ public sealed class CaptureSettings : ICaptureSettings
         }
 
         _settings.Set("saveDirectoryFoldersMigrated", true);
-        ScreenshotHotKeyCode = 53;
-        ScreenshotHotKeyModifiers = 6;
-        VideoHotKeyCode = 54;
-        VideoHotKeyModifiers = 6;
-        GifHotKeyCode = 55;
-        GifHotKeyModifiers = 6;
     }
 
     private static WebcamShape ParseWebcamShape(string value) =>        (value ?? string.Empty).ToLowerInvariant() switch

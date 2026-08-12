@@ -31,6 +31,36 @@ public sealed class CaptureSettingsTests
         Assert.Equal(string.Empty, settings.UploadcarePublicKey);
         Assert.False(settings.UploadcareAutoUpload);
         Assert.False(settings.UploadcareCopyUrl);
+    }
+
+    [Fact]
+    public void SaveDirectoryMigration_PreservesHotkeys_AndResetRestoresDefaults()
+    {
+        var settingsService = new TestSettingsService { SaveDirectory = @"C:\Captures" };
+        settingsService.Set("screenshotHotKeyCode", 80);
+        settingsService.Set("screenshotHotKeyModifiers", 4);
+        settingsService.Set("videoHotKeyCode", 81);
+        settingsService.Set("videoHotKeyModifiers", 5);
+        settingsService.Set("gifHotKeyCode", 82);
+        settingsService.Set("gifHotKeyModifiers", 7);
+
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.Equal(80, settings.ScreenshotHotKeyCode);
+        Assert.Equal(4, settings.ScreenshotHotKeyModifiers);
+        Assert.Equal(81, settings.VideoHotKeyCode);
+        Assert.Equal(5, settings.VideoHotKeyModifiers);
+        Assert.Equal(82, settings.GifHotKeyCode);
+        Assert.Equal(7, settings.GifHotKeyModifiers);
+
+        settings.ResetToDefaults();
+
+        Assert.Equal(53, settings.ScreenshotHotKeyCode);
+        Assert.Equal(6, settings.ScreenshotHotKeyModifiers);
+        Assert.Equal(54, settings.VideoHotKeyCode);
+        Assert.Equal(6, settings.VideoHotKeyModifiers);
+        Assert.Equal(55, settings.GifHotKeyCode);
+        Assert.Equal(6, settings.GifHotKeyModifiers);
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Screenshot));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Video));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Gif));
