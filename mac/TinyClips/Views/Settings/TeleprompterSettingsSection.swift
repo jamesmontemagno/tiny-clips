@@ -82,7 +82,7 @@ struct TeleprompterSettingsSection: View {
                 transcript: settings.teleprompterTranscript,
                 scrollSpeed: settings.teleprompterScrollSpeed,
                 fontSize: fontSize.fontSize,
-                viewportHeight: panelHeight.panelHeight
+                viewportHeight: panelHeight.viewportHeight
             )
             Text("This preview uses the same size, height, and scroll speed as the recording overlay.")
                 .font(.caption)
@@ -122,6 +122,10 @@ private struct TeleprompterScrollPreview: View {
         )
     }
 
+    private var isScrolling: Bool {
+        isPreviewing && scrollSpeed > 0 && contentHeight > viewportHeight
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { proxy in
@@ -155,7 +159,11 @@ private struct TeleprompterScrollPreview: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Teleprompter scroll speed preview")
-            .accessibilityValue("Scrolling at \(Int(scrollSpeed)) points per second")
+            .accessibilityValue(
+                isScrolling
+                    ? "Scrolling at \(Int(scrollSpeed)) points per second"
+                    : "Stopped"
+            )
 
             Button(isPreviewing ? "Stop Preview" : "Start Preview") {
                 isPreviewing.toggle()

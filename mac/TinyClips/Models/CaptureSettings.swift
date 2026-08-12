@@ -197,6 +197,10 @@ enum TeleprompterDisplaySize: String, CaseIterable {
         case .large: return 220
         }
     }
+
+    var viewportHeight: CGFloat {
+        panelHeight - 24
+    }
 }
 
 // MARK: - Settings
