@@ -128,11 +128,13 @@ public sealed partial class SettingsWindow : Window
     // The folder picker must be owned by this window (it needs an HWND via
     // WinRT.Interop.WindowNative), so GeneralSettingsSection only raises a request event and this
     // shell shows the picker on its behalf.
-    private async void OnBrowseSaveDirectoryRequested(object? sender, EventArgs e)
+    private async void OnBrowseSaveDirectoryRequested(CaptureType type)
     {
         var picker = new FolderPicker
         {
-            SuggestedStartLocation = PickerLocationId.PicturesLibrary,
+            SuggestedStartLocation = type == CaptureType.Screenshot
+                ? PickerLocationId.PicturesLibrary
+                : PickerLocationId.VideosLibrary,
         };
         picker.FileTypeFilter.Add("*");
 
@@ -142,7 +144,18 @@ public sealed partial class SettingsWindow : Window
         StorageFolder? folder = await picker.PickSingleFolderAsync();
         if (folder is not null)
         {
-            ViewModel.SaveDirectory = folder.Path;
+            switch (type)
+            {
+                case CaptureType.Screenshot:
+                    ViewModel.ScreenshotSaveDirectory = folder.Path;
+                    break;
+                case CaptureType.Video:
+                    ViewModel.VideoSaveDirectory = folder.Path;
+                    break;
+                case CaptureType.Gif:
+                    ViewModel.GifSaveDirectory = folder.Path;
+                    break;
+            }
         }
     }
 }

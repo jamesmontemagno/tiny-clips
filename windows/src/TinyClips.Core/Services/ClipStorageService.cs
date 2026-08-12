@@ -19,14 +19,23 @@ public sealed class ClipStorageService : IClipStorageService
 
     public string OutputDirectory(CaptureType type)
     {
-        if (!string.IsNullOrWhiteSpace(_settings.SaveDirectory))
+        if (!_settings.UseDefaultSaveDirectories)
         {
-            return _settings.SaveDirectory.Trim();
+            var customDirectory = type switch
+            {
+                CaptureType.Screenshot => _settings.ScreenshotSaveDirectory,
+                CaptureType.Video => _settings.VideoSaveDirectory,
+                CaptureType.Gif => _settings.GifSaveDirectory,
+                _ => string.Empty,
+            };
+
+            if (!string.IsNullOrWhiteSpace(customDirectory))
+            {
+                return customDirectory.Trim();
+            }
         }
 
-        // Split defaults by media type: screenshots in Pictures, recordings in Videos.
-        // This keeps recording flows away from Pictures (which is commonly CFA-protected)
-        // while preserving screenshot expectations.
+        // Screenshots belong in Pictures; video formats belong in Videos.
         var folder = type == CaptureType.Screenshot
             ? _fileSystem.GetFolderPath(Environment.SpecialFolder.MyPictures)
             : _fileSystem.GetFolderPath(Environment.SpecialFolder.MyVideos);

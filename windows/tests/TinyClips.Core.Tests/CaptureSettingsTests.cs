@@ -11,6 +11,10 @@ public sealed class CaptureSettingsTests
         var settings = CreateSettings();
 
         Assert.True(settings.CopyScreenshotToClipboard);
+        Assert.True(settings.UseDefaultSaveDirectories);
+        Assert.Equal(string.Empty, settings.ScreenshotSaveDirectory);
+        Assert.Equal(string.Empty, settings.VideoSaveDirectory);
+        Assert.Equal(string.Empty, settings.GifSaveDirectory);
         Assert.Equal(10.0, settings.GifFrameRate);
         Assert.Equal(30, settings.VideoFrameRate);
         Assert.Equal(100, settings.ScreenshotScale);
@@ -38,6 +42,10 @@ public sealed class CaptureSettingsTests
         var settings = CreateSettings();
 
         settings.CopyScreenshotToClipboard = false;
+        settings.UseDefaultSaveDirectories = false;
+        settings.ScreenshotSaveDirectory = @"C:\Captures\Screenshots";
+        settings.VideoSaveDirectory = @"C:\Captures\Videos";
+        settings.GifSaveDirectory = @"C:\Captures\Gifs";
         settings.GifFrameRate = 24.5;
         settings.VideoFrameRate = 60;
         settings.FileNameTemplate = "Custom {date}";
@@ -54,6 +62,10 @@ public sealed class CaptureSettingsTests
         settings.UploadcareCopyUrl = true;
 
         Assert.False(settings.CopyScreenshotToClipboard);
+        Assert.False(settings.UseDefaultSaveDirectories);
+        Assert.Equal(@"C:\Captures\Screenshots", settings.ScreenshotSaveDirectory);
+        Assert.Equal(@"C:\Captures\Videos", settings.VideoSaveDirectory);
+        Assert.Equal(@"C:\Captures\Gifs", settings.GifSaveDirectory);
         Assert.Equal(24.5, settings.GifFrameRate);
         Assert.Equal(60, settings.VideoFrameRate);
         Assert.Equal("Custom {date}", settings.FileNameTemplate);

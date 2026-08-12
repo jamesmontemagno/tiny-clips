@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using TinyClips.Core.Models;
 
 namespace TinyClips.App.Settings.Sections;
 
@@ -20,7 +21,7 @@ public sealed partial class GeneralSettingsSection : UserControl
     /// (it needs an HWND via <c>WinRT.Interop.WindowNative</c>), so this section only requests it
     /// rather than showing a picker itself.
     /// </summary>
-    public event EventHandler? BrowseSaveDirectoryRequested;
+    public event Action<CaptureType>? BrowseSaveDirectoryRequested;
 
     public GeneralSettingsSection(SettingsViewModel viewModel)
     {
@@ -30,8 +31,14 @@ public sealed partial class GeneralSettingsSection : UserControl
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
     }
 
-    private void OnBrowseSaveDirectory(object sender, RoutedEventArgs e) =>
-        BrowseSaveDirectoryRequested?.Invoke(this, EventArgs.Empty);
+    private void OnBrowseScreenshotSaveDirectory(object sender, RoutedEventArgs e) =>
+        BrowseSaveDirectoryRequested?.Invoke(CaptureType.Screenshot);
+
+    private void OnBrowseVideoSaveDirectory(object sender, RoutedEventArgs e) =>
+        BrowseSaveDirectoryRequested?.Invoke(CaptureType.Video);
+
+    private void OnBrowseGifSaveDirectory(object sender, RoutedEventArgs e) =>
+        BrowseSaveDirectoryRequested?.Invoke(CaptureType.Gif);
 
     private void OnOpenTempFolder(object sender, RoutedEventArgs e) => ViewModel.OpenTempFolder();
 

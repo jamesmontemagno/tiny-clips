@@ -19,7 +19,7 @@ public sealed class ClipStorageServiceTests
     }
 
     [Fact]
-    public void OutputDirectory_UsesSaveDirectoryOrTypeSpecificDefaults()
+    public void OutputDirectory_UsesCustomDirectoriesOrTypeSpecificDefaults()
     {
         var fakeFileSystem = new FakeFileSystem
         {
@@ -31,12 +31,17 @@ public sealed class ClipStorageServiceTests
         };
 
         var settings = CreateSettings();
-        settings.SaveDirectory = "C:\\Temp\\TinyClips";
+        settings.UseDefaultSaveDirectories = false;
+        settings.ScreenshotSaveDirectory = "C:\\Temp\\Screenshots";
+        settings.VideoSaveDirectory = "C:\\Temp\\Videos";
+        settings.GifSaveDirectory = "C:\\Temp\\Gifs";
         var saveDirectoryService = CreateService(settings, fakeFileSystem);
 
-        Assert.Equal("C:\\Temp\\TinyClips", saveDirectoryService.OutputDirectory(CaptureType.Screenshot));
+        Assert.Equal("C:\\Temp\\Screenshots", saveDirectoryService.OutputDirectory(CaptureType.Screenshot));
+        Assert.Equal("C:\\Temp\\Videos", saveDirectoryService.OutputDirectory(CaptureType.Video));
+        Assert.Equal("C:\\Temp\\Gifs", saveDirectoryService.OutputDirectory(CaptureType.Gif));
 
-        settings.SaveDirectory = string.Empty;
+        settings.UseDefaultSaveDirectories = true;
         var defaultService = CreateService(settings, fakeFileSystem);
 
         var expectedVideos = Path.Combine("C:\\Users\\Test\\Videos", "TinyClips");
@@ -51,7 +56,8 @@ public sealed class ClipStorageServiceTests
     {
         var fakeFileSystem = new FakeFileSystem();
         var settings = CreateSettings();
-        settings.SaveDirectory = "C:\\Temp\\TinyClips";
+        settings.UseDefaultSaveDirectories = false;
+        settings.ScreenshotSaveDirectory = "C:\\Temp\\TinyClips";
         var deterministicNames = new FixedFileNameService();
         var service = new ClipStorageService(settings, deterministicNames, fakeFileSystem);
 

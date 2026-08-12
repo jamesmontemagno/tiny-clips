@@ -50,36 +50,84 @@
             Text="Files &amp; saving" />
 
         <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Save locations" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind ViewModel.ScreenshotSaveLocationDisplay, Mode=OneWay}"
-                        TextTrimming="CharacterEllipsis" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind ViewModel.VideoGifSaveLocationDisplay, Mode=OneWay}"
-                        TextTrimming="CharacterEllipsis" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind ViewModel.SaveLocationModeDisplay, Mode=OneWay}"
-                        TextTrimming="CharacterEllipsis" />
+            <StackPanel Spacing="8">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Save locations" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.SaveLocationModeDisplay, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="UseDefaultSaveDirectoriesToggle"
+                        AutomationProperties.Name="Use default capture folders"
+                        Header="Use defaults"
+                        IsOn="{x:Bind ViewModel.UseDefaultSaveDirectories, Mode=TwoWay}" />
+                </Grid>
+                <StackPanel
+                    Spacing="8"
+                    Visibility="{x:Bind ViewModel.CustomSaveLocationsVisibility, Mode=OneWay}">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.ScreenshotSaveLocationDisplay, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <Button
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="BrowseScreenshotSaveDirectoryButton"
+                            AutomationProperties.Name="Choose screenshots folder"
+                            Click="OnBrowseScreenshotSaveDirectory"
+                            Content="Choose&#x2026;" />
+                    </Grid>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.VideoSaveLocationDisplay, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <Button
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="BrowseVideoSaveDirectoryButton"
+                            AutomationProperties.Name="Choose videos folder"
+                            Click="OnBrowseVideoSaveDirectory"
+                            Content="Choose&#x2026;" />
+                    </Grid>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.GifSaveLocationDisplay, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <Button
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="BrowseGifSaveDirectoryButton"
+                            AutomationProperties.Name="Choose GIFs folder"
+                            Click="OnBrowseGifSaveDirectory"
+                            Content="Choose&#x2026;" />
+                    </Grid>
                 </StackPanel>
-                <Button
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="BrowseSaveDirectoryButton"
-                    Click="OnBrowseSaveDirectory"
-                    Content="Browse&#x2026;" />
-            </Grid>
+            </StackPanel>
         </Border>
 
         <Border Style="{StaticResource SettingCardStyle}">
