@@ -180,19 +180,39 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public string ScreenshotSaveLocationDisplay => $"Screenshot: {ResolveEffectiveSaveLocation(CaptureType.Screenshot)}";
+    public string ScreenshotSaveLocationDisplay => $"Screenshots: {ResolveSaveLocation(CaptureType.Screenshot)}";
 
-    public string VideoGifSaveLocationDisplay => $"Video/GIF: {ResolveEffectiveSaveLocation(CaptureType.Video)}";
+    public string VideoSaveLocationDisplay => $"Videos: {ResolveSaveLocation(CaptureType.Video)}";
 
-    public string SaveLocationModeDisplay => string.IsNullOrWhiteSpace(SaveDirectory)
-        ? "Using defaults by capture type."
-        : "Custom save location override applies to all capture types.";
+    public string GifSaveLocationDisplay => $"GIFs: {ResolveSaveLocation(CaptureType.Gif)}";
+
+    public string SaveLocationModeDisplay => UseDefaultSaveDirectories
+        ? "Screenshots save to Pictures/TinyClips; videos and GIFs save to Videos/TinyClips."
+        : "Choose a folder for each capture type.";
+
+    public Microsoft.UI.Xaml.Visibility CustomSaveLocationsVisibility => UseDefaultSaveDirectories
+        ? Microsoft.UI.Xaml.Visibility.Collapsed
+        : Microsoft.UI.Xaml.Visibility.Visible;
 
     public string TempFolderSummary => FormatTemporaryFilesSummary(TinyClipsTemporaryFiles.GetSummary());
 
-    private string ResolveEffectiveSaveLocation(CaptureType type) => string.IsNullOrWhiteSpace(SaveDirectory)
-        ? $"{_storage.OutputDirectory(type)} (default)"
-        : SaveDirectory;
+    private string ResolveSaveLocation(CaptureType type)
+    {
+        if (UseDefaultSaveDirectories)
+        {
+            return $"{_storage.OutputDirectory(type)} (default)";
+        }
+
+        var customDirectory = type switch
+        {
+            CaptureType.Screenshot => ScreenshotSaveDirectory,
+            CaptureType.Video => VideoSaveDirectory,
+            CaptureType.Gif => GifSaveDirectory,
+            _ => string.Empty,
+        };
+
+        return string.IsNullOrWhiteSpace(customDirectory) ? "No folder selected" : customDirectory;
+    }
 
     public void OpenTempFolder()
     {
@@ -239,9 +259,23 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ScreenshotSaveLocationDisplay))]
-    [NotifyPropertyChangedFor(nameof(VideoGifSaveLocationDisplay))]
+    [NotifyPropertyChangedFor(nameof(VideoSaveLocationDisplay))]
+    [NotifyPropertyChangedFor(nameof(GifSaveLocationDisplay))]
     [NotifyPropertyChangedFor(nameof(SaveLocationModeDisplay))]
-    private string _saveDirectory = string.Empty;
+    [NotifyPropertyChangedFor(nameof(CustomSaveLocationsVisibility))]
+    private bool _useDefaultSaveDirectories;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ScreenshotSaveLocationDisplay))]
+    private string _screenshotSaveDirectory = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VideoSaveLocationDisplay))]
+    private string _videoSaveDirectory = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GifSaveLocationDisplay))]
+    private string _gifSaveDirectory = string.Empty;
 
     [ObservableProperty]
     private string _fileNameTemplate = string.Empty;
@@ -667,7 +701,10 @@ public sealed partial class SettingsViewModel : ObservableObject
                 AppTheme.Dark => 2,
                 _ => 0,
             };
-            SaveDirectory = _settings.SaveDirectory;
+            UseDefaultSaveDirectories = _settings.UseDefaultSaveDirectories;
+            ScreenshotSaveDirectory = _settings.ScreenshotSaveDirectory;
+            VideoSaveDirectory = _settings.VideoSaveDirectory;
+            GifSaveDirectory = _settings.GifSaveDirectory;
             FileNameTemplate = string.IsNullOrWhiteSpace(_settings.FileNameTemplate)
                 ? "TinyClips {date} at {time}"
                 : _settings.FileNameTemplate;
@@ -939,10 +976,17 @@ public sealed partial class SettingsViewModel : ObservableObject
         ThemeChanged?.Invoke();
     }
 
-    partial void OnSaveDirectoryChanged(string value)
-    {
-        Persist(() => _settings.SaveDirectory = value);
-    }
+    partial void OnUseDefaultSaveDirectoriesChanged(bool value) =>
+        Persist(() => _settings.UseDefaultSaveDirectories = value);
+
+    partial void OnScreenshotSaveDirectoryChanged(string value) =>
+        Persist(() => _settings.ScreenshotSaveDirectory = value);
+
+    partial void OnVideoSaveDirectoryChanged(string value) =>
+        Persist(() => _settings.VideoSaveDirectory = value);
+
+    partial void OnGifSaveDirectoryChanged(string value) =>
+        Persist(() => _settings.GifSaveDirectory = value);
 
     partial void OnFileNameTemplateChanged(string value) => Persist(() => _settings.FileNameTemplate = value);
 

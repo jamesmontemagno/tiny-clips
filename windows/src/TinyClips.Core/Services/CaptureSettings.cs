@@ -11,12 +11,37 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         _settings = settings;
         _analytics = analytics;
+        MigrateLegacySaveDirectory();
     }
 
     public string SaveDirectory
     {
         get => _settings.SaveDirectory;
         set => _settings.SaveDirectory = value;
+    }
+
+    public bool UseDefaultSaveDirectories
+    {
+        get => _settings.Get("useDefaultSaveDirectories", true);
+        set => _settings.Set("useDefaultSaveDirectories", value);
+    }
+
+    public string ScreenshotSaveDirectory
+    {
+        get => _settings.Get("screenshotSaveDirectory", string.Empty);
+        set => _settings.Set("screenshotSaveDirectory", value);
+    }
+
+    public string VideoSaveDirectory
+    {
+        get => _settings.Get("videoSaveDirectory", string.Empty);
+        set => _settings.Set("videoSaveDirectory", value);
+    }
+
+    public string GifSaveDirectory
+    {
+        get => _settings.Get("gifSaveDirectory", string.Empty);
+        set => _settings.Set("gifSaveDirectory", value);
     }
 
     public AppTheme Theme
@@ -605,6 +630,10 @@ public sealed class CaptureSettings : ICaptureSettings
     public void ResetToDefaults()
     {
         SaveDirectory = string.Empty;
+        UseDefaultSaveDirectories = true;
+        ScreenshotSaveDirectory = string.Empty;
+        VideoSaveDirectory = string.Empty;
+        GifSaveDirectory = string.Empty;
         Theme = AppTheme.Default;
         CopyScreenshotToClipboard = true;
         CopyVideoToClipboard = false;
@@ -676,13 +705,32 @@ public sealed class CaptureSettings : ICaptureSettings
         UploadcarePublicKey = string.Empty;
         UploadcareAutoUpload = false;
         UploadcareCopyUrl = false;
-        _analytics?.Clear();
         ScreenshotHotKeyCode = 53;
         ScreenshotHotKeyModifiers = 6;
         VideoHotKeyCode = 54;
         VideoHotKeyModifiers = 6;
         GifHotKeyCode = 55;
         GifHotKeyModifiers = 6;
+        _analytics?.Clear();
+    }
+
+    private void MigrateLegacySaveDirectory()
+    {
+        if (_settings.Get("saveDirectoryFoldersMigrated", false))
+        {
+            return;
+        }
+
+        var legacyDirectory = SaveDirectory.Trim();
+        if (!string.IsNullOrWhiteSpace(legacyDirectory))
+        {
+            UseDefaultSaveDirectories = false;
+            ScreenshotSaveDirectory = legacyDirectory;
+            VideoSaveDirectory = legacyDirectory;
+            GifSaveDirectory = legacyDirectory;
+        }
+
+        _settings.Set("saveDirectoryFoldersMigrated", true);
     }
 
     private static WebcamShape ParseWebcamShape(string value) =>        (value ?? string.Empty).ToLowerInvariant() switch

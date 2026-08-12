@@ -5,6 +5,10 @@ namespace TinyClips.Core.Services;
 public interface ICaptureSettings
 {
     string SaveDirectory { get; set; }
+    bool UseDefaultSaveDirectories { get; set; }
+    string ScreenshotSaveDirectory { get; set; }
+    string VideoSaveDirectory { get; set; }
+    string GifSaveDirectory { get; set; }
     AppTheme Theme { get; set; }
     bool CopyScreenshotToClipboard { get; set; }
     bool CopyVideoToClipboard { get; set; }

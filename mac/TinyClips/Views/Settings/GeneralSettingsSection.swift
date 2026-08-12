@@ -4,8 +4,7 @@ import SwiftUI
 struct GeneralSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
     @ObservedObject var launchAtLogin: LaunchAtLoginManager
-    let chooseSaveDirectory: (CaptureType?) -> Void
-    let resetSaveDirectory: (CaptureType?) -> Void
+    let chooseSaveDirectory: (CaptureType) -> Void
     let resetAllSettings: () -> Void
     let showInDockBinding: Binding<Bool>
     @State private var showPurgeConfirmation = false
@@ -14,41 +13,21 @@ struct GeneralSettingsSection: View {
 
     var body: some View {
         Section("Output") {
-#if APPSTORE
             VStack(alignment: .leading, spacing: 6) {
-                Text("Default locations: Screenshots/GIFs → Pictures/TinyClips, Videos → Movies/TinyClips")
+                Toggle("Use default folders", isOn: $settings.useDefaultSaveDirectories)
+                    .accessibilityLabel("Use default capture folders")
+
+                Text("Screenshots → Pictures/TinyClips, Videos and GIFs → Movies/TinyClips")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
-                HStack {
-                    Text(settings.saveDirectoryDisplayPath.isEmpty ? "Using default folders" : settings.saveDirectoryDisplayPath)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    Spacer()
-
-                    Button("Browse…") {
-                        chooseSaveDirectory(nil)
-                    }
-
-                    if !settings.saveDirectoryBookmark.isEmpty {
-                        Button("Reset") {
-                            resetSaveDirectory(nil)
-                        }
-                    }
-                }
             }
-#else
-            HStack {
-                TextField("Save to", text: $settings.saveDirectory)
-                    .textFieldStyle(.roundedBorder)
-                Button("Browse…") {
-                    chooseSaveDirectory(nil)
-                }
+
+            if !settings.useDefaultSaveDirectories {
+                saveDirectoryRow(title: "Screenshots folder", type: .screenshot)
+                saveDirectoryRow(title: "Videos folder", type: .video)
+                saveDirectoryRow(title: "GIFs folder", type: .gif)
             }
-#endif
-            saveDirectoryRow(title: "Screenshots folder", type: .screenshot)
-            saveDirectoryRow(title: "Videos & GIFs folder", type: .video)
+
             VStack(alignment: .leading, spacing: 6) {
                 TextField("File name template", text: $settings.fileNameTemplate)
                     .textFieldStyle(.roundedBorder)
@@ -151,11 +130,6 @@ struct GeneralSettingsSection: View {
                 Button("Choose…") {
                     chooseSaveDirectory(type)
                 }
-                if !settings.isUsingSharedSaveDirectory(for: type) {
-                    Button("Reset to shared") {
-                        resetSaveDirectory(type)
-                    }
-                }
             }
 
             Text(saveDirectoryPath(for: type))
@@ -164,36 +138,26 @@ struct GeneralSettingsSection: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            if settings.isUsingSharedSaveDirectory(for: type) {
-                Text(saveDirectoryHint(for: type))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            Text(saveDirectoryHint(for: type))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 
     private func saveDirectoryPath(for type: CaptureType) -> String {
 #if APPSTORE
-        if type == .video,
-           settings.isUsingSharedSaveDirectory(for: type),
-           settings.saveDirectoryBookmark.isEmpty {
-            let videoPath = SaveService.shared.outputDirectoryURL(for: .video).path
-            let gifPath = SaveService.shared.outputDirectoryURL(for: .gif).path
-            return "Videos: \(videoPath)  GIFs: \(gifPath)"
-        }
         let path = settings.saveDirectoryDisplayPath(for: type)
-        return path.isEmpty ? SaveService.shared.outputDirectoryURL(for: type).path : path
+        return path.isEmpty ? "No folder selected" : path
 #else
-        return settings.resolvedSaveDirectory(for: type).path
+        let path = settings.saveDirectoryPath(for: type)
+        return path.isEmpty ? "No folder selected" : path
 #endif
     }
 
     private func saveDirectoryHint(for type: CaptureType) -> String {
-#if APPSTORE
-        return settings.saveDirectoryBookmark.isEmpty ? "Using default folders" : "Using shared folder"
-#else
-        return "Using shared folder"
-#endif
+        settings.hasCustomSaveDirectory(for: type)
+            ? "Custom folder"
+            : "Choose a folder for this capture type."
     }
 
     @ViewBuilder
