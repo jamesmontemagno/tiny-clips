@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TeleprompterSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
@@ -30,9 +32,18 @@ struct TeleprompterSettingsSection: View {
                 .accessibilityLabel("Teleprompter transcript")
                 .accessibilityHint("Enter the text to scroll during video recordings.")
 
-            Text("Paste or type the script you want to read while recording.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Paste or type the script you want to read while recording.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Load Text File...") {
+                    loadTranscript()
+                }
+                .disabled(!settings.teleprompterEnabled)
+                .help("Replace the transcript with the contents of a plain-text file.")
+                .accessibilityLabel("Load teleprompter transcript from text file")
+            }
         }
 
         Section("Scroll Speed") {
@@ -89,6 +100,31 @@ struct TeleprompterSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
     }
+
+    private func loadTranscript() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.title = "Load Teleprompter Transcript"
+        panel.message = "Choose a plain-text file to use as the transcript."
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let didAccessSecurityScopedResource = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessSecurityScopedResource {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            settings.teleprompterTranscript = try String(contentsOf: url)
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+    }
 }
 
 private struct TeleprompterScrollPreview: View {
@@ -98,10 +134,8 @@ private struct TeleprompterScrollPreview: View {
     let viewportHeight: CGFloat
 
     @State private var contentHeight: CGFloat = 0
-    @State private var scrollOffset: CGFloat = 0
     @State private var isPreviewing = false
-
-    private let frameInterval = 1.0 / 60.0
+    @State private var previewStartedAt: Date?
 
     private var previewTranscript: String {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -111,95 +145,100 @@ private struct TeleprompterScrollPreview: View {
         return Array(repeating: text, count: 3).joined(separator: "\n\n")
     }
 
-    private var configuration: PreviewConfiguration {
-        PreviewConfiguration(
-            transcript: previewTranscript,
-            scrollSpeed: scrollSpeed,
-            contentHeight: contentHeight,
-            isPreviewing: isPreviewing,
-            fontSize: fontSize,
-            viewportHeight: viewportHeight
-        )
+    private var maximumOffset: CGFloat {
+        max(0, contentHeight - viewportHeight)
+    }
+
+    private var canScroll: Bool {
+        scrollSpeed > 0 && maximumOffset > 0
     }
 
     private var isScrolling: Bool {
-        isPreviewing && scrollSpeed > 0 && contentHeight > viewportHeight
+        isPreviewing && canScroll
+    }
+
+    private func scrollOffset(at date: Date) -> CGFloat {
+        guard isScrolling, let previewStartedAt else { return 0 }
+        let elapsed = max(0, date.timeIntervalSince(previewStartedAt))
+        return CGFloat(elapsed * scrollSpeed).truncatingRemainder(dividingBy: maximumOffset)
+    }
+
+    private func togglePreview() {
+        if isPreviewing {
+            isPreviewing = false
+            previewStartedAt = nil
+        } else {
+            guard canScroll else { return }
+            previewStartedAt = .now
+            isPreviewing = true
+        }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            GeometryReader { proxy in
-                Text(previewTranscript)
-                    .font(.system(size: fontSize, weight: .medium))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .frame(width: proxy.size.width, alignment: .top)
-                    .background {
-                        GeometryReader { contentProxy in
-                            Color.clear.preference(
-                                key: PreviewContentHeightKey.self,
-                                value: contentProxy.size.height
-                            )
-                        }
-                    }
-                    .offset(y: -scrollOffset)
-            }
-            .frame(height: viewportHeight)
-            .clipped()
-            .background {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.black.opacity(0.7))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Teleprompter scroll speed preview")
-            .accessibilityValue(
-                isScrolling
-                    ? "Scrolling at \(Int(scrollSpeed)) points per second"
-                    : "Stopped"
-            )
-
-            Button(isPreviewing ? "Stop Preview" : "Start Preview") {
-                isPreviewing.toggle()
-                if !isPreviewing {
-                    scrollOffset = 0
+            HStack {
+                Spacer()
+                Button {
+                    togglePreview()
+                } label: {
+                    Label(
+                        isPreviewing ? "Stop Preview" : "Start Preview",
+                        systemImage: isPreviewing ? "stop.fill" : "play.fill"
+                    )
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(!isPreviewing && !canScroll)
+                .help(isPreviewing ? "Stop and reset the preview." : "Start the preview from the beginning.")
+                .accessibilityHint(
+                    isPreviewing
+                        ? "Stops and resets the preview."
+                        : canScroll
+                            ? "Starts the preview from the beginning."
+                            : "Set a scroll speed above zero to start the preview."
+                )
             }
-            .accessibilityHint(isPreviewing ? "Stops and resets the preview." : "Starts the preview from the beginning.")
+
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isScrolling)) { context in
+                GeometryReader { proxy in
+                    Text(previewTranscript)
+                        .font(.system(size: fontSize, weight: .medium))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .frame(width: proxy.size.width, alignment: .top)
+                        .background {
+                            GeometryReader { contentProxy in
+                                Color.clear.preference(
+                                    key: PreviewContentHeightKey.self,
+                                    value: contentProxy.size.height
+                                )
+                            }
+                        }
+                        .offset(y: -scrollOffset(at: context.date))
+                }
+                .frame(height: viewportHeight)
+                .clipped()
+                .background {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.black.opacity(0.7))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Teleprompter scroll speed preview")
+                .accessibilityValue(
+                    isScrolling
+                        ? "Scrolling at \(Int(scrollSpeed)) points per second"
+                        : "Stopped"
+                )
+            }
         }
         .onPreferenceChange(PreviewContentHeightKey.self) { contentHeight = $0 }
-        .task(id: configuration) {
-            scrollOffset = 0
-            guard isPreviewing, scrollSpeed > 0 else { return }
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(nanoseconds: 16_666_667)
-                } catch {
-                    return
-                }
-
-                let maximumOffset = max(0, contentHeight - viewportHeight)
-                guard maximumOffset > 0 else { continue }
-                let nextOffset = scrollOffset + CGFloat(scrollSpeed * frameInterval)
-                scrollOffset = nextOffset >= maximumOffset ? 0 : nextOffset
-            }
-        }
     }
-}
-
-private struct PreviewConfiguration: Hashable {
-    let transcript: String
-    let scrollSpeed: Double
-    let contentHeight: CGFloat
-    let isPreviewing: Bool
-    let fontSize: CGFloat
-    let viewportHeight: CGFloat
 }
 
 private struct PreviewContentHeightKey: PreferenceKey {
