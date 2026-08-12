@@ -12,9 +12,9 @@ public sealed class CaptureSettingsTests
 
         Assert.True(settings.CopyScreenshotToClipboard);
         Assert.True(settings.UseDefaultSaveDirectories);
-        Assert.Equal(string.Empty, settings.ScreenshotSaveDirectory);
-        Assert.Equal(string.Empty, settings.VideoSaveDirectory);
-        Assert.Equal(string.Empty, settings.GifSaveDirectory);
+        Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Screenshot), settings.ScreenshotSaveDirectory);
+        Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Video), settings.VideoSaveDirectory);
+        Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Gif), settings.GifSaveDirectory);
         Assert.Equal(10.0, settings.GifFrameRate);
         Assert.Equal(30, settings.VideoFrameRate);
         Assert.Equal(100, settings.ScreenshotScale);
@@ -31,6 +31,25 @@ public sealed class CaptureSettingsTests
         Assert.Equal(string.Empty, settings.UploadcarePublicKey);
         Assert.False(settings.UploadcareAutoUpload);
         Assert.False(settings.UploadcareCopyUrl);
+    }
+
+    [Fact]
+    public void SaveDirectoryDefaults_ArePersistedForExistingSettings()
+    {
+        var settingsService = new TestSettingsService();
+        settingsService.Set("saveDirectoryFoldersMigrated", true);
+
+        _ = new CaptureSettings(settingsService);
+
+        Assert.Equal(
+            CaptureSettings.DefaultSaveDirectory(CaptureType.Screenshot),
+            settingsService.Get("screenshotSaveDirectory", string.Empty));
+        Assert.Equal(
+            CaptureSettings.DefaultSaveDirectory(CaptureType.Video),
+            settingsService.Get("videoSaveDirectory", string.Empty));
+        Assert.Equal(
+            CaptureSettings.DefaultSaveDirectory(CaptureType.Gif),
+            settingsService.Get("gifSaveDirectory", string.Empty));
     }
 
     [Fact]
@@ -61,6 +80,9 @@ public sealed class CaptureSettingsTests
         Assert.Equal(6, settings.VideoHotKeyModifiers);
         Assert.Equal(55, settings.GifHotKeyCode);
         Assert.Equal(6, settings.GifHotKeyModifiers);
+        Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Screenshot), settings.ScreenshotSaveDirectory);
+        Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Video), settings.VideoSaveDirectory);
+        Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Gif), settings.GifSaveDirectory);
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Screenshot));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Video));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Gif));

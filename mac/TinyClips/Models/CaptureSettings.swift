@@ -250,20 +250,20 @@ class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
 
     @AppStorage("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
-    @AppStorage("screenshotSaveDirectory") var screenshotSaveDirectory: String = ""
-    @AppStorage("videoSaveDirectory") var videoSaveDirectory: String = ""
-    @AppStorage("gifSaveDirectory") var gifSaveDirectory: String = ""
+    @AppStorage("screenshotSaveDirectory") var screenshotSaveDirectory: String = defaultSaveDirectoryURL(for: .screenshot).path
+    @AppStorage("videoSaveDirectory") var videoSaveDirectory: String = defaultSaveDirectoryURL(for: .video).path
+    @AppStorage("gifSaveDirectory") var gifSaveDirectory: String = defaultSaveDirectoryURL(for: .gif).path
     @AppStorage("videoGifSaveDirectory") var videoGifSaveDirectory: String = ""
     @AppStorage("useDefaultSaveDirectories") var useDefaultSaveDirectories: Bool = true
 #if APPSTORE
     @AppStorage("saveDirectoryBookmark") var saveDirectoryBookmark: Data = Data()
     @AppStorage("saveDirectoryDisplayPath") var saveDirectoryDisplayPath: String = ""
     @AppStorage("screenshotSaveDirectoryBookmark") var screenshotSaveDirectoryBookmark: Data = Data()
-    @AppStorage("screenshotSaveDirectoryDisplayPath") var screenshotSaveDirectoryDisplayPath: String = ""
+    @AppStorage("screenshotSaveDirectoryDisplayPath") var screenshotSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .screenshot).path
     @AppStorage("videoSaveDirectoryBookmark") var videoSaveDirectoryBookmark: Data = Data()
-    @AppStorage("videoSaveDirectoryDisplayPath") var videoSaveDirectoryDisplayPath: String = ""
+    @AppStorage("videoSaveDirectoryDisplayPath") var videoSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .video).path
     @AppStorage("gifSaveDirectoryBookmark") var gifSaveDirectoryBookmark: Data = Data()
-    @AppStorage("gifSaveDirectoryDisplayPath") var gifSaveDirectoryDisplayPath: String = ""
+    @AppStorage("gifSaveDirectoryDisplayPath") var gifSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .gif).path
     @AppStorage("videoGifSaveDirectoryBookmark") var videoGifSaveDirectoryBookmark: Data = Data()
     @AppStorage("videoGifSaveDirectoryDisplayPath") var videoGifSaveDirectoryDisplayPath: String = ""
 #endif
@@ -404,6 +404,15 @@ class CaptureSettings: ObservableObject {
 
     func resolvedSaveDirectory(for captureType: CaptureType) -> URL {
         URL(fileURLWithPath: saveDirectoryPath(for: captureType), isDirectory: true)
+    }
+
+    static func defaultSaveDirectoryURL(for captureType: CaptureType) -> URL {
+        let fallbackBase = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        let searchPath: FileManager.SearchPathDirectory = captureType == .screenshot
+            ? .picturesDirectory
+            : .moviesDirectory
+        let baseURL = FileManager.default.urls(for: searchPath, in: .userDomainMask).first ?? fallbackBase
+        return baseURL.appendingPathComponent("TinyClips", isDirectory: true)
     }
 
     func saveDirectoryPath(for captureType: CaptureType) -> String {
@@ -693,6 +702,14 @@ class CaptureSettings: ObservableObject {
         for key in keys + (preservingHotKeys ? [] : hotKeyKeys) + masKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
+        screenshotSaveDirectory = Self.defaultSaveDirectoryURL(for: .screenshot).path
+        videoSaveDirectory = Self.defaultSaveDirectoryURL(for: .video).path
+        gifSaveDirectory = Self.defaultSaveDirectoryURL(for: .gif).path
+#if APPSTORE
+        screenshotSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .screenshot).path
+        videoSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .video).path
+        gifSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .gif).path
+#endif
 #if APPSTORE
         SaveService.shared.invalidateAllSaveDirectoryBookmarks()
 #endif
@@ -706,6 +723,7 @@ class CaptureSettings: ObservableObject {
     private init() {
         let defaults = UserDefaults.standard
         migrateSaveDirectorySettings(defaults)
+        ensureSaveDirectoryDefaults(defaults)
 
         guard defaults.object(forKey: "multiMonitorCaptureMode") == nil else { return }
 
@@ -720,8 +738,9 @@ class CaptureSettings: ObservableObject {
 
         let legacySharedDirectory = defaults.string(forKey: "saveDirectory") ?? ""
         let legacyVideoGifDirectory = defaults.string(forKey: "videoGifSaveDirectory") ?? ""
+        let legacyScreenshotDirectory = defaults.string(forKey: "screenshotSaveDirectory") ?? ""
         let hasCustomDirectory = !legacySharedDirectory.isEmpty ||
-            !screenshotSaveDirectory.isEmpty ||
+            !legacyScreenshotDirectory.isEmpty ||
             !legacyVideoGifDirectory.isEmpty
 #if APPSTORE
         let hasCustomBookmark = !saveDirectoryBookmark.isEmpty ||
@@ -734,8 +753,10 @@ class CaptureSettings: ObservableObject {
         guard hasCustomDirectory || hasCustomBookmark else { return }
 
         useDefaultSaveDirectories = false
-        if screenshotSaveDirectory.isEmpty {
+        if legacyScreenshotDirectory.isEmpty {
             screenshotSaveDirectory = legacySharedDirectory
+        } else {
+            screenshotSaveDirectory = legacyScreenshotDirectory
         }
         videoSaveDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
         gifSaveDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
@@ -751,6 +772,30 @@ class CaptureSettings: ObservableObject {
         videoSaveDirectoryDisplayPath = videoGifDisplayPath
         gifSaveDirectoryBookmark = videoGifBookmark
         gifSaveDirectoryDisplayPath = videoGifDisplayPath
+#endif
+    }
+
+    private func ensureSaveDirectoryDefaults(_ defaults: UserDefaults) {
+        let paths: [(String, URL)] = [
+            ("screenshotSaveDirectory", Self.defaultSaveDirectoryURL(for: .screenshot)),
+            ("videoSaveDirectory", Self.defaultSaveDirectoryURL(for: .video)),
+            ("gifSaveDirectory", Self.defaultSaveDirectoryURL(for: .gif))
+        ]
+
+        for (key, url) in paths where (defaults.string(forKey: key) ?? "").isEmpty {
+            defaults.set(url.path, forKey: key)
+        }
+
+#if APPSTORE
+        let displayPaths: [(String, URL)] = [
+            ("screenshotSaveDirectoryDisplayPath", Self.defaultSaveDirectoryURL(for: .screenshot)),
+            ("videoSaveDirectoryDisplayPath", Self.defaultSaveDirectoryURL(for: .video)),
+            ("gifSaveDirectoryDisplayPath", Self.defaultSaveDirectoryURL(for: .gif))
+        ]
+
+        for (key, url) in displayPaths where (defaults.string(forKey: key) ?? "").isEmpty {
+            defaults.set(url.path, forKey: key)
+        }
 #endif
     }
 }

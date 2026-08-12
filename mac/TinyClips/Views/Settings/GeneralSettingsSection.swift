@@ -155,9 +155,7 @@ struct GeneralSettingsSection: View {
     }
 
     private func saveDirectoryHint(for type: CaptureType) -> String {
-        settings.hasCustomSaveDirectory(for: type)
-            ? "Custom folder"
-            : "Choose a folder for this capture type."
+        "Saved captures of this type use this folder."
     }
 
     @ViewBuilder

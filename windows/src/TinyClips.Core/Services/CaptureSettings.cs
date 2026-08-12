@@ -28,20 +28,34 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public string ScreenshotSaveDirectory
     {
-        get => _settings.Get("screenshotSaveDirectory", string.Empty);
+        get => _settings.Get("screenshotSaveDirectory", DefaultSaveDirectory(CaptureType.Screenshot));
         set => _settings.Set("screenshotSaveDirectory", value);
     }
 
     public string VideoSaveDirectory
     {
-        get => _settings.Get("videoSaveDirectory", string.Empty);
+        get => _settings.Get("videoSaveDirectory", DefaultSaveDirectory(CaptureType.Video));
         set => _settings.Set("videoSaveDirectory", value);
     }
 
     public string GifSaveDirectory
     {
-        get => _settings.Get("gifSaveDirectory", string.Empty);
+        get => _settings.Get("gifSaveDirectory", DefaultSaveDirectory(CaptureType.Gif));
         set => _settings.Set("gifSaveDirectory", value);
+    }
+
+    public static string DefaultSaveDirectory(CaptureType type)
+    {
+        var folder = type == CaptureType.Screenshot
+            ? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+            : Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            folder = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        }
+
+        return Path.Combine(folder, "TinyClips");
     }
 
     public AppTheme Theme
@@ -631,9 +645,9 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         SaveDirectory = string.Empty;
         UseDefaultSaveDirectories = true;
-        ScreenshotSaveDirectory = string.Empty;
-        VideoSaveDirectory = string.Empty;
-        GifSaveDirectory = string.Empty;
+        ScreenshotSaveDirectory = DefaultSaveDirectory(CaptureType.Screenshot);
+        VideoSaveDirectory = DefaultSaveDirectory(CaptureType.Video);
+        GifSaveDirectory = DefaultSaveDirectory(CaptureType.Gif);
         Theme = AppTheme.Default;
         CopyScreenshotToClipboard = true;
         CopyVideoToClipboard = false;
@@ -718,6 +732,7 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         if (_settings.Get("saveDirectoryFoldersMigrated", false))
         {
+            EnsureSaveDirectoryDefaults();
             return;
         }
 
@@ -730,7 +745,26 @@ public sealed class CaptureSettings : ICaptureSettings
             GifSaveDirectory = legacyDirectory;
         }
 
+        EnsureSaveDirectoryDefaults();
         _settings.Set("saveDirectoryFoldersMigrated", true);
+    }
+
+    private void EnsureSaveDirectoryDefaults()
+    {
+        if (string.IsNullOrWhiteSpace(_settings.Get("screenshotSaveDirectory", string.Empty)))
+        {
+            ScreenshotSaveDirectory = DefaultSaveDirectory(CaptureType.Screenshot);
+        }
+
+        if (string.IsNullOrWhiteSpace(_settings.Get("videoSaveDirectory", string.Empty)))
+        {
+            VideoSaveDirectory = DefaultSaveDirectory(CaptureType.Video);
+        }
+
+        if (string.IsNullOrWhiteSpace(_settings.Get("gifSaveDirectory", string.Empty)))
+        {
+            GifSaveDirectory = DefaultSaveDirectory(CaptureType.Gif);
+        }
     }
 
     private static WebcamShape ParseWebcamShape(string value) =>        (value ?? string.Empty).ToLowerInvariant() switch
