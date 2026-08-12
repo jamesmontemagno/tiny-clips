@@ -13,7 +13,7 @@ enum SettingsTab: String, CaseIterable {
     case mouseClicks = "Mouse Clicks"
     case branding = "Branding"
     case shortcuts = "Shortcuts"
-    case pro = "Support Tiny Clips"
+    case pro = "Support"
     case about = "About"
 
     var icon: String {
@@ -54,7 +54,6 @@ struct SettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var selectedTab: SettingsTab? = .general
     @State private var splitVisibility: NavigationSplitViewVisibility = .all
-    @State private var videoSettingsExpanded = true
     @State private var showDisableDockWarning = false
     @State private var showQuickBugReportForm = false
     @State private var availableMicrophones: [MicrophoneDeviceOption] = []
@@ -63,20 +62,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
             List(selection: $selectedTab) {
-                ForEach(SettingsTab.displayCases.filter { $0 != .teleprompter }, id: \.self) { tab in
-                    if tab == .video {
-                        DisclosureGroup(isExpanded: $videoSettingsExpanded) {
-                            Label("Recording", systemImage: "slider.horizontal.3")
-                                .tag(SettingsTab.video as SettingsTab?)
-                            Label(SettingsTab.teleprompter.rawValue, systemImage: SettingsTab.teleprompter.icon)
-                                .tag(SettingsTab.teleprompter as SettingsTab?)
-                        } label: {
-                            Label(tab.rawValue, systemImage: tab.icon)
-                        }
-                    } else {
-                        Label(tab.rawValue, systemImage: tab.icon)
-                            .tag(tab as SettingsTab?)
-                    }
+                ForEach(SettingsTab.displayCases, id: \.self) { tab in
+                    Label(tab.rawValue, systemImage: tab.icon)
+                        .tag(tab as SettingsTab?)
                 }
             }
             .listStyle(.sidebar)

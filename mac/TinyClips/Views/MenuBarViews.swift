@@ -150,7 +150,7 @@ struct MenuBarContentView: View {
             openWindow(id: "settings-window")
             bringSettingsWindowToFront()
         } label: {
-            Label("Support Tiny Clips…", systemImage: "heart")
+            Label("Support…", systemImage: "heart")
         }
         .accessibilityHint("Opens support and tip options.")
 #endif

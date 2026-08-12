@@ -494,20 +494,24 @@ struct ScreenshotEditorView: View {
             }
             .accessibilityHint("Sets the export frame without stretching the screenshot.")
 
-            HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
                 Picker("Horizontal", selection: $viewModel.horizontalExportAlignment) {
                     ForEach(ExportHorizontalAlignment.allCases) { alignment in
                         Text(alignment.label).tag(alignment)
                     }
                 }
+                .labelsHidden()
                 .disabled(!viewModel.hasHorizontalExportFrameSpace)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Picker("Vertical", selection: $viewModel.verticalExportAlignment) {
                     ForEach(ExportVerticalAlignment.allCases) { alignment in
                         Text(alignment.label).tag(alignment)
                     }
                 }
+                .labelsHidden()
                 .disabled(!viewModel.hasVerticalExportFrameSpace)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .accessibilityElement(children: .contain)
 

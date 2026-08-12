@@ -44,7 +44,7 @@ struct ProSubscriptionView: View {
                     .cornerRadius(16)
             }
 
-            Text("Support Tiny Clips")
+            Text("Support")
                 .font(.largeTitle.bold())
 
             Text("Tiny Clips is always free. Consider tipping to support independent development.")
