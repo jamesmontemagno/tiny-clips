@@ -494,20 +494,36 @@ struct ScreenshotEditorView: View {
             }
             .accessibilityHint("Sets the export frame without stretching the screenshot.")
 
-            HStack(spacing: 8) {
-                Picker("Horizontal", selection: $viewModel.horizontalExportAlignment) {
-                    ForEach(ExportHorizontalAlignment.allCases) { alignment in
-                        Text(alignment.label).tag(alignment)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text("Horizontal")
+                        .frame(width: 72, alignment: .leading)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $viewModel.horizontalExportAlignment) {
+                        ForEach(ExportHorizontalAlignment.allCases) { alignment in
+                            Text(alignment.label).tag(alignment)
+                        }
                     }
+                    .labelsHidden()
+                    .disabled(!viewModel.hasHorizontalExportFrameSpace)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .disabled(!viewModel.hasHorizontalExportFrameSpace)
 
-                Picker("Vertical", selection: $viewModel.verticalExportAlignment) {
-                    ForEach(ExportVerticalAlignment.allCases) { alignment in
-                        Text(alignment.label).tag(alignment)
+                HStack(alignment: .center, spacing: 8) {
+                    Text("Vertical")
+                        .frame(width: 72, alignment: .leading)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $viewModel.verticalExportAlignment) {
+                        ForEach(ExportVerticalAlignment.allCases) { alignment in
+                            Text(alignment.label).tag(alignment)
+                        }
                     }
+                    .labelsHidden()
+                    .disabled(!viewModel.hasVerticalExportFrameSpace)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .disabled(!viewModel.hasVerticalExportFrameSpace)
             }
             .accessibilityElement(children: .contain)
 
