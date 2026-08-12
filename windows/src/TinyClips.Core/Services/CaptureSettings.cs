@@ -55,6 +55,21 @@ public sealed class CaptureSettings : ICaptureSettings
             folder = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
         }
 
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            folder = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        }
+
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            folder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            folder = AppContext.BaseDirectory;
+        }
+
         return Path.Combine(folder, "TinyClips");
     }
 
