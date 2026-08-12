@@ -45,7 +45,9 @@ public sealed class ClipStorageService : IClipStorageService
             folder = _fileSystem.GetFolderPath(Environment.SpecialFolder.MyPictures);
         }
 
-        return Path.Combine(folder, "TinyClips");
+        return string.IsNullOrWhiteSpace(folder)
+            ? CaptureSettings.DefaultSaveDirectory(type)
+            : Path.Combine(folder, "TinyClips");
     }
 
     public string GenerateFilePath(CaptureType type, string? fileExtension = null, string? stemSuffix = null)

@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Persisted default capture folders** — Tiny Clips now saves concrete Pictures/TinyClips and Videos/TinyClips values for every capture type, including existing settings and reset settings.
 - **Independent capture folders** — Settings → General now uses Pictures/TinyClips for screenshots and Videos/TinyClips for videos and GIFs by default. Turn off **Use defaults** to choose separate folders for screenshots, videos, and GIFs.
 - **Teleprompter transcript overlay** — Settings → Video → Teleprompter lets you paste a script, enable the teleprompter, tune the scroll speed (10–200 DIPs/s), and preview that speed live. During video recordings a small semi-transparent black overlay auto-scrolls the transcript on screen. The overlay appears only after recording starts, pauses and resumes with recording, fails closed if Windows cannot exclude it from capture, and remembers a monitor-relative position across mixed-DPI display changes.
 
