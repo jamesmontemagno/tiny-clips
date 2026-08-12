@@ -209,13 +209,17 @@ private struct TeleprompterScrollPreview: View {
 
     private func togglePreview() {
         if isPreviewing {
-            isPreviewing = false
-            previewStartedAt = nil
+            stopPreview()
         } else {
             guard canScroll else { return }
             previewStartedAt = .now
             isPreviewing = true
         }
+    }
+
+    private func stopPreview() {
+        isPreviewing = false
+        previewStartedAt = nil
     }
 
     var body: some View {
@@ -263,6 +267,7 @@ private struct TeleprompterScrollPreview: View {
                             }
                         }
                         .offset(y: -scrollOffset(at: context.date))
+                        .allowsHitTesting(false)
                 }
                 .frame(height: viewportHeight)
                 .clipped()
@@ -284,6 +289,7 @@ private struct TeleprompterScrollPreview: View {
             }
         }
         .onPreferenceChange(PreviewContentHeightKey.self) { contentHeight = $0 }
+        .onDisappear { stopPreview() }
     }
 }
 
