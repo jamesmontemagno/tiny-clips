@@ -39,6 +39,7 @@ final class TeleprompterPanel: NSPanel {
                 state: scrollState,
                 transcript: transcript,
                 panelSize: panelSize,
+                viewportHeight: panelHeight.viewportHeight,
                 fontSize: fontSize.fontSize
             )
         )
@@ -192,11 +193,8 @@ private struct TeleprompterView: View {
     @ObservedObject var state: TeleprompterScrollState
     let transcript: String
     let panelSize: NSSize
+    let viewportHeight: CGFloat
     let fontSize: CGFloat
-
-    private var viewportHeight: CGFloat {
-        panelSize.height - 24
-    }
 
     var body: some View {
         VStack(spacing: 0) {

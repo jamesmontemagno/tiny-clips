@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - macOS Video and GIF settings now let you disable the default behavior that keeps the display awake while recording.
 
 ### Fixed
+- Fixed the macOS teleprompter preview viewport height and VoiceOver scrolling-status announcement.
 - Fixed the macOS and Windows settings sidebars to keep Video and Teleprompter as separate entries, cleaned up the Support label wording, and prevented the screenshot editor’s Horizontal/Vertical alignment labels from being clipped when the window is narrow.
 - Fixed macOS capture actions staying disabled after canceling a capture picker, target selection, or recording setup, and after a pre-capture countdown completes.
 - Fixed macOS recordings that capture no frames leaving zero-byte MP4 artifacts.
