@@ -291,17 +291,7 @@ public partial class App : Application
 
     private ButtonBase CreateFolderButton(Action dismiss)
     {
-        var settings = Services.GetRequiredService<ICaptureSettings>();
         var storage = Services.GetRequiredService<IClipStorageService>();
-
-        if (!string.IsNullOrWhiteSpace(settings.SaveDirectory))
-        {
-            return CreateQuickAccessButton(
-                "Open Save Folder",
-                GlyphFolder,
-                new RelayCommand(() => OpenFolder(storage.OutputDirectory(CaptureType.Screenshot))),
-                dismiss);
-        }
 
         var flyout = new MenuFlyout();
         var button = new DropDownButton

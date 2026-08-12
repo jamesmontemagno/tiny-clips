@@ -255,12 +255,19 @@ class CaptureSettings: ObservableObject {
 
     @AppStorage("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
     @AppStorage("screenshotSaveDirectory") var screenshotSaveDirectory: String = ""
+    @AppStorage("videoSaveDirectory") var videoSaveDirectory: String = ""
+    @AppStorage("gifSaveDirectory") var gifSaveDirectory: String = ""
     @AppStorage("videoGifSaveDirectory") var videoGifSaveDirectory: String = ""
+    @AppStorage("useDefaultSaveDirectories") var useDefaultSaveDirectories: Bool = true
 #if APPSTORE
     @AppStorage("saveDirectoryBookmark") var saveDirectoryBookmark: Data = Data()
     @AppStorage("saveDirectoryDisplayPath") var saveDirectoryDisplayPath: String = ""
     @AppStorage("screenshotSaveDirectoryBookmark") var screenshotSaveDirectoryBookmark: Data = Data()
     @AppStorage("screenshotSaveDirectoryDisplayPath") var screenshotSaveDirectoryDisplayPath: String = ""
+    @AppStorage("videoSaveDirectoryBookmark") var videoSaveDirectoryBookmark: Data = Data()
+    @AppStorage("videoSaveDirectoryDisplayPath") var videoSaveDirectoryDisplayPath: String = ""
+    @AppStorage("gifSaveDirectoryBookmark") var gifSaveDirectoryBookmark: Data = Data()
+    @AppStorage("gifSaveDirectoryDisplayPath") var gifSaveDirectoryDisplayPath: String = ""
     @AppStorage("videoGifSaveDirectoryBookmark") var videoGifSaveDirectoryBookmark: Data = Data()
     @AppStorage("videoGifSaveDirectoryDisplayPath") var videoGifSaveDirectoryDisplayPath: String = ""
 #endif
@@ -406,27 +413,26 @@ class CaptureSettings: ObservableObject {
     func saveDirectoryPath(for captureType: CaptureType) -> String {
         switch captureType {
         case .screenshot:
-            return screenshotSaveDirectory.isEmpty ? saveDirectory : screenshotSaveDirectory
-        case .video, .gif:
-            return videoGifSaveDirectory.isEmpty ? saveDirectory : videoGifSaveDirectory
+            return screenshotSaveDirectory
+        case .video:
+            return videoSaveDirectory
+        case .gif:
+            return gifSaveDirectory
         }
     }
 
-    func isUsingSharedSaveDirectory(for captureType: CaptureType) -> Bool {
+    func hasCustomSaveDirectory(for captureType: CaptureType) -> Bool {
 #if APPSTORE
         switch captureType {
         case .screenshot:
-            return screenshotSaveDirectoryBookmark.isEmpty
-        case .video, .gif:
-            return videoGifSaveDirectoryBookmark.isEmpty
+            return !screenshotSaveDirectoryBookmark.isEmpty
+        case .video:
+            return !videoSaveDirectoryBookmark.isEmpty
+        case .gif:
+            return !gifSaveDirectoryBookmark.isEmpty
         }
 #else
-        switch captureType {
-        case .screenshot:
-            return screenshotSaveDirectory.isEmpty
-        case .video, .gif:
-            return videoGifSaveDirectory.isEmpty
-        }
+        return !saveDirectoryPath(for: captureType).isEmpty
 #endif
     }
 
@@ -435,21 +441,21 @@ class CaptureSettings: ObservableObject {
         switch captureType {
         case .screenshot:
             return screenshotSaveDirectoryBookmark
-        case .video, .gif:
-            return videoGifSaveDirectoryBookmark
+        case .video:
+            return videoSaveDirectoryBookmark
+        case .gif:
+            return gifSaveDirectoryBookmark
         }
     }
 
     func saveDirectoryDisplayPath(for captureType: CaptureType) -> String {
         switch captureType {
         case .screenshot:
-            return screenshotSaveDirectoryDisplayPath.isEmpty
-                ? saveDirectoryDisplayPath
-                : screenshotSaveDirectoryDisplayPath
-        case .video, .gif:
-            return videoGifSaveDirectoryDisplayPath.isEmpty
-                ? saveDirectoryDisplayPath
-                : videoGifSaveDirectoryDisplayPath
+            return screenshotSaveDirectoryDisplayPath
+        case .video:
+            return videoSaveDirectoryDisplayPath
+        case .gif:
+            return gifSaveDirectoryDisplayPath
         }
     }
 
@@ -458,9 +464,12 @@ class CaptureSettings: ObservableObject {
         case .screenshot:
             screenshotSaveDirectoryBookmark = bookmark
             screenshotSaveDirectoryDisplayPath = displayPath
-        case .video, .gif:
-            videoGifSaveDirectoryBookmark = bookmark
-            videoGifSaveDirectoryDisplayPath = displayPath
+        case .video:
+            videoSaveDirectoryBookmark = bookmark
+            videoSaveDirectoryDisplayPath = displayPath
+        case .gif:
+            gifSaveDirectoryBookmark = bookmark
+            gifSaveDirectoryDisplayPath = displayPath
         case nil:
             saveDirectoryBookmark = bookmark
             saveDirectoryDisplayPath = displayPath
@@ -631,7 +640,8 @@ class CaptureSettings: ObservableObject {
     func resetToDefaults(preservingHotKeys: Bool = false) {
         // Remove all keys in one pass so only a single objectWillChange fires
         let keys: [String] = [
-            "saveDirectory", "screenshotSaveDirectory", "videoGifSaveDirectory",
+            "saveDirectory", "screenshotSaveDirectory", "videoSaveDirectory", "gifSaveDirectory",
+            "videoGifSaveDirectory", "useDefaultSaveDirectories",
             "copyToClipboard", "copyScreenshotToClipboard", "copyVideoToClipboard", "copyGifToClipboard",
             "showInFinder", "showSaveNotifications", "showInDock",
             "autoUpdateEnabled",
@@ -677,6 +687,8 @@ class CaptureSettings: ObservableObject {
         let masKeys: [String] = [
             "saveDirectoryBookmark", "saveDirectoryDisplayPath",
             "screenshotSaveDirectoryBookmark", "screenshotSaveDirectoryDisplayPath",
+            "videoSaveDirectoryBookmark", "videoSaveDirectoryDisplayPath",
+            "gifSaveDirectoryBookmark", "gifSaveDirectoryDisplayPath",
             "videoGifSaveDirectoryBookmark", "videoGifSaveDirectoryDisplayPath"
         ]
 #else
@@ -697,12 +709,53 @@ class CaptureSettings: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
+        migrateSaveDirectorySettings(defaults)
+
         guard defaults.object(forKey: "multiMonitorCaptureMode") == nil else { return }
 
         multiMonitorCaptureMode = defaults.bool(forKey: "alwaysCaptureMainDisplay")
             ? .mainDisplay
             : .askEveryTime
         defaults.removeObject(forKey: "alwaysCaptureMainDisplay")
+    }
+
+    private func migrateSaveDirectorySettings(_ defaults: UserDefaults) {
+        guard defaults.object(forKey: "useDefaultSaveDirectories") == nil else { return }
+
+        let legacySharedDirectory = defaults.string(forKey: "saveDirectory") ?? ""
+        let legacyVideoGifDirectory = defaults.string(forKey: "videoGifSaveDirectory") ?? ""
+        let hasCustomDirectory = !legacySharedDirectory.isEmpty ||
+            !screenshotSaveDirectory.isEmpty ||
+            !legacyVideoGifDirectory.isEmpty
+#if APPSTORE
+        let hasCustomBookmark = !saveDirectoryBookmark.isEmpty ||
+            !screenshotSaveDirectoryBookmark.isEmpty ||
+            !videoGifSaveDirectoryBookmark.isEmpty
+#else
+        let hasCustomBookmark = false
+#endif
+
+        guard hasCustomDirectory || hasCustomBookmark else { return }
+
+        useDefaultSaveDirectories = false
+        if screenshotSaveDirectory.isEmpty {
+            screenshotSaveDirectory = legacySharedDirectory
+        }
+        videoSaveDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
+        gifSaveDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
+
+#if APPSTORE
+        if screenshotSaveDirectoryBookmark.isEmpty, !saveDirectoryBookmark.isEmpty {
+            screenshotSaveDirectoryBookmark = saveDirectoryBookmark
+            screenshotSaveDirectoryDisplayPath = saveDirectoryDisplayPath
+        }
+        let videoGifBookmark = videoGifSaveDirectoryBookmark.isEmpty ? saveDirectoryBookmark : videoGifSaveDirectoryBookmark
+        let videoGifDisplayPath = videoGifSaveDirectoryDisplayPath.isEmpty ? saveDirectoryDisplayPath : videoGifSaveDirectoryDisplayPath
+        videoSaveDirectoryBookmark = videoGifBookmark
+        videoSaveDirectoryDisplayPath = videoGifDisplayPath
+        gifSaveDirectoryBookmark = videoGifBookmark
+        gifSaveDirectoryDisplayPath = videoGifDisplayPath
+#endif
     }
 }
 

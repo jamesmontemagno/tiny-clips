@@ -77,7 +77,6 @@ struct SettingsView: View {
                         settings: settings,
                         launchAtLogin: launchAtLogin,
                         chooseSaveDirectory: chooseSaveDirectory,
-                        resetSaveDirectory: resetSaveDirectory,
                         resetAllSettings: resetAllSettings,
                         showInDockBinding: showInDockBinding
                     )
@@ -181,7 +180,7 @@ struct SettingsView: View {
         settingsWindowManager.selectedTab = nil
     }
 
-    private func chooseSaveDirectory(for captureType: CaptureType?) {
+    private func chooseSaveDirectory(for captureType: CaptureType) {
         DispatchQueue.main.async {
             let panel = NSOpenPanel()
             panel.canChooseFiles = false
@@ -189,7 +188,9 @@ struct SettingsView: View {
             panel.allowsMultipleSelection = false
             panel.canCreateDirectories = true
 #if APPSTORE
-            panel.directoryURL = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
+            panel.directoryURL = captureType == .screenshot
+                ? FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+                : FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
 #endif
             guard panel.runModal() == .OK, let url = panel.url else { return }
 #if APPSTORE
@@ -204,32 +205,14 @@ struct SettingsView: View {
             switch captureType {
             case .screenshot:
                 settings.screenshotSaveDirectory = url.path
-            case .video, .gif:
-                settings.videoGifSaveDirectory = url.path
-            case nil:
-                settings.saveDirectory = url.path
+            case .video:
+                settings.videoSaveDirectory = url.path
+            case .gif:
+                settings.gifSaveDirectory = url.path
             }
 #endif
         }
     }
-
-#if APPSTORE
-    private func resetSaveDirectory(for captureType: CaptureType?) {
-        settings.resetSaveDirectory(for: captureType)
-        SaveService.shared.invalidateSaveDirectoryBookmark(for: captureType)
-    }
-#else
-    private func resetSaveDirectory(for captureType: CaptureType?) {
-        switch captureType {
-        case .screenshot:
-            settings.screenshotSaveDirectory = ""
-        case .video, .gif:
-            settings.videoGifSaveDirectory = ""
-        case nil:
-            break
-        }
-    }
-#endif
 
     private func resetAllSettings() {
         DispatchQueue.main.async {

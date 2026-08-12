@@ -157,7 +157,8 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 #if APPSTORE
     private let saveDirectoryBookmarkKey = "saveDirectoryBookmark"
     private let screenshotSaveDirectoryBookmarkKey = "screenshotSaveDirectoryBookmark"
-    private let videoGifSaveDirectoryBookmarkKey = "videoGifSaveDirectoryBookmark"
+    private let videoSaveDirectoryBookmarkKey = "videoSaveDirectoryBookmark"
+    private let gifSaveDirectoryBookmarkKey = "gifSaveDirectoryBookmark"
     private var activeSecurityScopedDirectoryURLs: [String: URL] = [:]
     private let bookmarkQueue = DispatchQueue(label: "com.tinyclips.save-service.bookmark")
 
@@ -166,8 +167,10 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         switch type {
         case .screenshot:
             keys = [screenshotSaveDirectoryBookmarkKey]
-        case .video, .gif:
-            keys = [videoGifSaveDirectoryBookmarkKey]
+        case .video:
+            keys = [videoSaveDirectoryBookmarkKey]
+        case .gif:
+            keys = [gifSaveDirectoryBookmarkKey]
         case nil:
             keys = [saveDirectoryBookmarkKey]
         }
@@ -179,7 +182,8 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         invalidateSaveDirectoryBookmarks(for: [
             saveDirectoryBookmarkKey,
             screenshotSaveDirectoryBookmarkKey,
-            videoGifSaveDirectoryBookmarkKey
+            videoSaveDirectoryBookmarkKey,
+            gifSaveDirectoryBookmarkKey
         ])
     }
 
@@ -206,22 +210,12 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func generateURL(for type: CaptureType, fileExtension: String, stemSuffix: String?) -> URL {
-#if APPSTORE
         let directoryURL = outputDirectoryURL(for: type)
 
         try? FileManager.default.createDirectory(
             at: directoryURL,
             withIntermediateDirectories: true
         )
-#else
-        let directoryURL = CaptureSettings.shared.resolvedSaveDirectory(for: type)
-
-        // Ensure directory exists
-        try? FileManager.default.createDirectory(
-            at: directoryURL,
-            withIntermediateDirectories: true
-        )
-#endif
 
         var filename = generatedFileName(for: type, fileExtension: fileExtension)
         if let stemSuffix,
@@ -231,18 +225,22 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
             filename = ext.isEmpty ? "\(stem) \(stemSuffix)" : "\(stem) \(stemSuffix).\(ext)"
         }
 
-#if APPSTORE
         return uniqueURL(in: directoryURL, filename: filename)
-#else
-        return uniqueURL(in: directoryURL, filename: filename)
-#endif
     }
 
     func outputDirectoryURL(for type: CaptureType) -> URL {
+        let settings = CaptureSettings.shared
+        guard !settings.useDefaultSaveDirectories else {
+            return defaultDirectoryURL(for: type)
+        }
+
 #if APPSTORE
-        return appStoreOutputDirectoryURL(for: type)
+        return customDirectoryURLFromBookmark(for: type) ?? defaultDirectoryURL(for: type)
 #else
-        return CaptureSettings.shared.resolvedSaveDirectory(for: type)
+        let directory = settings.saveDirectoryPath(for: type)
+        return directory.isEmpty
+            ? defaultDirectoryURL(for: type)
+            : URL(fileURLWithPath: directory, isDirectory: true)
 #endif
     }
 
@@ -311,28 +309,21 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-#if APPSTORE
-    private func appStoreOutputDirectoryURL(for type: CaptureType) -> URL {
-        if let customDirectory = customDirectoryURLFromBookmark(for: type) {
-            return customDirectory
-        }
-        return defaultDirectoryURL(for: type)
-    }
-
     private func defaultDirectoryURL(for type: CaptureType) -> URL {
         let fallbackBase = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         let baseURL: URL
 
         switch type {
-        case .video:
+        case .video, .gif:
             baseURL = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? fallbackBase
-        case .screenshot, .gif:
+        case .screenshot:
             baseURL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first ?? fallbackBase
         }
 
         return baseURL.appendingPathComponent("TinyClips", isDirectory: true)
     }
 
+#if APPSTORE
     private func customDirectoryURLFromBookmark(for type: CaptureType) -> URL? {
         bookmarkQueue.sync {
             for key in bookmarkKeys(for: type) {
@@ -376,9 +367,11 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     private func bookmarkKeys(for type: CaptureType) -> [String] {
         switch type {
         case .screenshot:
-            return [screenshotSaveDirectoryBookmarkKey, saveDirectoryBookmarkKey]
-        case .video, .gif:
-            return [videoGifSaveDirectoryBookmarkKey, saveDirectoryBookmarkKey]
+            return [screenshotSaveDirectoryBookmarkKey]
+        case .video:
+            return [videoSaveDirectoryBookmarkKey]
+        case .gif:
+            return [gifSaveDirectoryBookmarkKey]
         }
     }
 
@@ -391,8 +384,10 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         switch bookmarkKey {
         case screenshotSaveDirectoryBookmarkKey:
             return "screenshotSaveDirectoryDisplayPath"
-        case videoGifSaveDirectoryBookmarkKey:
-            return "videoGifSaveDirectoryDisplayPath"
+        case videoSaveDirectoryBookmarkKey:
+            return "videoSaveDirectoryDisplayPath"
+        case gifSaveDirectoryBookmarkKey:
+            return "gifSaveDirectoryDisplayPath"
         default:
             return "saveDirectoryDisplayPath"
         }
