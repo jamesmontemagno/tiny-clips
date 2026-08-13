@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
@@ -119,9 +119,24 @@ jobs:
         shell: pwsh
         env:
           STORE_PRODUCT_ID: ${{ vars.MICROSOFT_STORE_PRODUCT_ID }}
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:STORE_PRODUCT_ID)) {
-            throw "Set the MICROSOFT_STORE_PRODUCT_ID repository variable before enabling Store publication."
+          $requiredValues = @{
+            "MICROSOFT_STORE_PRODUCT_ID repository variable" = $env:STORE_PRODUCT_ID
+            "PARTNER_CENTER_TENANT_ID environment secret" = $env:PARTNER_CENTER_TENANT_ID
+            "PARTNER_CENTER_SELLER_ID environment secret" = $env:PARTNER_CENTER_SELLER_ID
+            "PARTNER_CENTER_CLIENT_ID environment secret" = $env:PARTNER_CENTER_CLIENT_ID
+            "PARTNER_CENTER_CLIENT_SECRET environment secret" = $env:PARTNER_CENTER_CLIENT_SECRET
+          }
+          $missing = $requiredValues.GetEnumerator() |
+            Where-Object { [string]::IsNullOrWhiteSpace($_.Value) } |
+            ForEach-Object Key
+
+          if ($missing) {
+            throw "Configure the following before enabling Store publication: $($missing -join ', ')."
           }
 
       - name: Setup Microsoft Store Developer CLI
