@@ -75,13 +75,13 @@ struct ScreenshotEditorCanvasView: View {
                     Canvas { context, _ in
                         for annotation in viewModel.annotations {
                             let scaledRect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
-                            drawAnnotation(annotation, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage)
+                            drawAnnotation(annotation, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage, zoomScale: zoomScale)
                         }
 
                         // Draw in-progress annotation
                         if let current = viewModel.currentAnnotation {
                             let scaledRect = viewModel.scaledRect(current.rect, imageSize: imageSize, origin: .zero)
-                            drawAnnotation(current, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage)
+                            drawAnnotation(current, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage, zoomScale: zoomScale)
                         }
                     }
 
@@ -253,9 +253,13 @@ struct ScreenshotEditorCanvasView: View {
         ]
     }
 
-    private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil) {
+    private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil, zoomScale: CGFloat = 1) {
         let color = annotation.color
-        let lineWidth = annotation.lineWidth
+        // `imageSize` already grows with zoomScale, but stroke widths, arrowheads, and
+        // number-badge fonts are stored in fixed screen-space units. Scale them by
+        // zoomScale so the preview matches the exported annotation proportions at
+        // any zoom level instead of appearing thinner as the canvas is enlarged.
+        let lineWidth = annotation.lineWidth * zoomScale
 
         switch annotation.tool {
         case .rectangle:
@@ -274,7 +278,7 @@ struct ScreenshotEditorCanvasView: View {
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
             let start = linePoints.start
             let end = linePoints.end
-            let headLength = max(18, lineWidth * 4.0)
+            let headLength = max(18 * zoomScale, lineWidth * 4.0)
             let headAngle: CGFloat = .pi / 6
             let control = arrowControlPoint(start: start, end: end, style: annotation.arrowStyle)
             let tipAngle: CGFloat

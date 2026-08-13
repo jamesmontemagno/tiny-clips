@@ -331,9 +331,14 @@ public sealed partial class EditorCanvas : UserControl
     {
         var clamped = Math.Clamp(zoom, MinZoomFactor, MaxZoomFactor);
         _zoomFactor = clamped;
+        // ZoomTo's centerPoint is expressed in content coordinates, not viewport
+        // coordinates. Once the user has panned away from the origin, the viewport's
+        // fixed midpoint no longer corresponds to the content point under the visible
+        // center, so convert through the current scroll offsets and zoom factor to
+        // keep the currently-centered content point stable across zoom changes.
         var focal = focalPoint ?? new Point(
-            ViewportScrollView.ViewportWidth / 2.0,
-            ViewportScrollView.ViewportHeight / 2.0);
+            (ViewportScrollView.HorizontalOffset + ViewportScrollView.ViewportWidth / 2.0) / ViewportScrollView.ZoomFactor,
+            (ViewportScrollView.VerticalOffset + ViewportScrollView.ViewportHeight / 2.0) / ViewportScrollView.ZoomFactor);
         ViewportScrollView.ZoomTo(
             clamped,
             new Vector2((float)focal.X, (float)focal.Y),
