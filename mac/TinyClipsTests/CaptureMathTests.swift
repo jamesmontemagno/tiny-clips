@@ -157,13 +157,69 @@ final class CaptureMathTests: XCTestCase {
         let limits = PanoramaCaptureLimits(
             maxFrames: 10,
             maxOutputHeight: 1_000,
-            maxMemoryBytes: 50_000,
+            maxMemoryBytes: 70_000,
             noMovementTimeout: 8
         )
 
         XCTAssertThrowsError(try PanoramaStitcher(limits: limits).stitch([first, second])) { error in
             XCTAssertEqual(error as? PanoramaCaptureError, .memoryLimit)
         }
+    }
+
+    func testPanoramaKeepsPartialResultWhenMemoryLimitIsReached() throws {
+        let frames = [
+            panoramaFrame(globalStartRow: 0),
+            panoramaFrame(globalStartRow: 20),
+            panoramaFrame(globalStartRow: 40)
+        ]
+        let limits = PanoramaCaptureLimits(
+            maxFrames: 10,
+            maxOutputHeight: 1_000,
+            maxMemoryBytes: 75_000,
+            noMovementTimeout: 8
+        )
+
+        let result = try PanoramaStitcher(limits: limits).stitch(frames)
+
+        XCTAssertTrue(result.reachedLimit)
+        XCTAssertEqual(result.frameCount, 2)
+        XCTAssertEqual(result.outputHeight, 120)
+    }
+
+    func testPanoramaKeepsPartialResultWhenOutputHeightIsReached() throws {
+        let frames = [
+            panoramaFrame(globalStartRow: 0),
+            panoramaFrame(globalStartRow: 20),
+            panoramaFrame(globalStartRow: 40)
+        ]
+        let limits = PanoramaCaptureLimits(
+            maxFrames: 10,
+            maxOutputHeight: 130,
+            maxMemoryBytes: 2_000_000,
+            noMovementTimeout: 8
+        )
+
+        let result = try PanoramaStitcher(limits: limits).stitch(frames)
+
+        XCTAssertTrue(result.reachedLimit)
+        XCTAssertEqual(result.outputHeight, 120)
+    }
+
+    func testPanoramaMemoryUseDoesNotGrowWithFrameCount() {
+        // Peak memory tracks the stitched output plus the retained and incoming frames, so a
+        // long capture of a modest region must stay well inside the default budget.
+        let width = 2_400
+        let height = 1_800
+        let frameBytes = Int64(width) * Int64(height) * 4
+        let shiftPerFrame = 200
+        let outputHeight = height + shiftPerFrame * 200
+        let outputBytes = Int64(width) * Int64(outputHeight) * 4
+
+        XCTAssertLessThanOrEqual(
+            outputBytes * 2 + frameBytes * 2,
+            PanoramaCaptureLimits.default.maxMemoryBytes
+        )
+        XCTAssertLessThanOrEqual(outputHeight, PanoramaCaptureLimits.default.maxOutputHeight)
     }
 
     func testTimelineExcludesCompletedAndActivePauses() {

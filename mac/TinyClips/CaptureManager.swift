@@ -187,6 +187,7 @@ class CaptureManager: ObservableObject {
     @Published private var scrollingCapturePanel: ScrollingCapturePanel?
     private var scrollingCaptureSession: ScrollingPanoramaCapture?
     private var scrollingCapturePanelPosition: NSPoint?
+    private var isStoppingScrollingCapture = false
     private var processingIndicatorShownAt: Date?
     private var isStoppingRecording = false
     private var stopRecordingTask: Task<Void, Never>?
@@ -537,6 +538,7 @@ class CaptureManager: ObservableObject {
     private func startScrollingCapture(region: CaptureRegion, shouldReturnToPickerAfterCapture: Bool) {
         guard scrollingCaptureSession == nil else { return }
         isScreenshotCaptureInProgress = true
+        isStoppingScrollingCapture = false
         AccessibilityAnnouncementService.shared.announce(
             "Scrolling capture started. Scroll the page, then press Return to finish.",
             priority: .high
@@ -556,25 +558,30 @@ class CaptureManager: ObservableObject {
                 )
             }
         }
+        session.onProgress = { [weak self, weak session] count in
+            Task { @MainActor [weak self, weak session] in
+                guard let self, let session, self.scrollingCaptureSession === session else { return }
+                self.scrollingCapturePanel?.updateFrameCount(count)
+            }
+        }
+        session.onLimitReached = { [weak self, weak session] reason in
+            Task { @MainActor [weak self, weak session] in
+                guard let self, let session, self.scrollingCaptureSession === session else { return }
+                self.scrollingCapturePanel?.showStatus(reason.message)
+                AccessibilityAnnouncementService.shared.announce(reason.message, priority: .high)
+                self.stopScrollingCapture(
+                    session: session,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
+            }
+        }
         let panel = ScrollingCapturePanel(
             onStop: { [weak self, weak session] in
                 guard let self, let session else { return }
-                Task {
-                    do {
-                        let image = try await session.stop()
-                        self.finishScrollingCapture(
-                            session: session,
-                            image: image,
-                            shouldReturnToPicker: shouldReturnToPickerAfterCapture
-                        )
-                    } catch {
-                        self.finishScrollingCapture(
-                            session: session,
-                            with: error,
-                            shouldReturnToPicker: shouldReturnToPickerAfterCapture
-                        )
-                    }
-                }
+                self.stopScrollingCapture(
+                    session: session,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
             },
             onCancel: { [weak self, weak session] in
                 guard let self, let session else { return }
@@ -603,6 +610,32 @@ class CaptureManager: ObservableObject {
     }
 
     @MainActor
+    private func stopScrollingCapture(
+        session: ScrollingPanoramaCapture,
+        shouldReturnToPicker: Bool
+    ) {
+        guard scrollingCaptureSession === session, !isStoppingScrollingCapture else { return }
+        isStoppingScrollingCapture = true
+        scrollingCapturePanel?.markCompleted()
+        Task {
+            do {
+                let image = try await session.stop()
+                self.finishScrollingCapture(
+                    session: session,
+                    image: image,
+                    shouldReturnToPicker: shouldReturnToPicker
+                )
+            } catch {
+                self.finishScrollingCapture(
+                    session: session,
+                    with: error,
+                    shouldReturnToPicker: shouldReturnToPicker
+                )
+            }
+        }
+    }
+
+    @MainActor
     private func finishScrollingCapture(
         session: ScrollingPanoramaCapture,
         image: CGImage? = nil,
@@ -616,6 +649,7 @@ class CaptureManager: ObservableObject {
         scrollingCapturePanel?.dismiss()
         scrollingCapturePanel = nil
         scrollingCaptureSession = nil
+        isStoppingScrollingCapture = false
         isScreenshotCaptureInProgress = false
 
         if let error {
