@@ -1031,7 +1031,7 @@ public sealed partial class EditorCanvas : UserControl
 
         OverlayCanvas.Focus(FocusState.Pointer);
 
-        if (e.Pointer.PointerDeviceType == PointerDeviceType.Touch)
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
         {
             return;
         }
