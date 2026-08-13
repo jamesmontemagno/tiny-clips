@@ -118,3 +118,6 @@ automation review does not replace the documented hands-on results.
 - **Microsoft Store (planned):** Store auto-update. Feature set matches Direct; no Windows Pro tier.
 
 See the plan for the full phased roadmap, packaging, and signing details.
+
+For the Microsoft Store listing copy, screenshot plan, compliance answers, and protected CI/CD
+setup, see [docs/microsoft-store-listing.md](docs/microsoft-store-listing.md).
