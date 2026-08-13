@@ -1,7 +1,6 @@
-import AppKit
 import CoreImage
 import CoreMedia
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 struct PanoramaCaptureLimits: Sendable {
     let maxFrames: Int
@@ -12,12 +11,12 @@ struct PanoramaCaptureLimits: Sendable {
     static let `default` = PanoramaCaptureLimits(
         maxFrames: 120,
         maxOutputHeight: 30_000,
-        maxMemoryBytes: 1_200_000_000,
+        maxMemoryBytes: 600_000_000,
         noMovementTimeout: 8
     )
 }
 
-enum PanoramaCaptureError: LocalizedError {
+enum PanoramaCaptureError: LocalizedError, Equatable {
     case cancelled
     case noMovement
     case outputTooLarge
@@ -37,6 +36,43 @@ enum PanoramaCaptureError: LocalizedError {
     }
 }
 
+struct PanoramaFrame: Sendable {
+    let width: Int
+    let height: Int
+    let pixels: [UInt8]
+
+    var byteCount: Int64 {
+        Int64(pixels.count)
+    }
+
+    init(image: CGImage) throws {
+        width = image.width
+        height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard width > 0,
+              height > 0,
+              let context = CGContext(
+                data: &pixels,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            throw PanoramaCaptureError.noFrames
+        }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        self.pixels = pixels
+    }
+
+    init(width: Int, height: Int, pixels: [UInt8]) {
+        self.width = width
+        self.height = height
+        self.pixels = pixels
+    }
+}
+
 struct PanoramaStitcher {
     struct Result {
         let image: CGImage
@@ -44,130 +80,207 @@ struct PanoramaStitcher {
         let outputHeight: Int
     }
 
+    private struct Alignment {
+        let shift: Int
+        let score: Double
+        let fixedBottomHeight: Int
+    }
+
     let limits: PanoramaCaptureLimits
 
-    func stitch(_ frames: [CGImage]) throws -> Result {
+    func stitch(_ frames: [PanoramaFrame]) throws -> Result {
         guard let first = frames.first else { throw PanoramaCaptureError.noFrames }
-        let width = first.width
-        let height = first.height
-        guard width > 0, height > 0 else { throw PanoramaCaptureError.noFrames }
+        guard first.width > 0, first.height > 0 else { throw PanoramaCaptureError.noFrames }
 
-        var images: [[UInt8]] = []
-        images.reserveCapacity(frames.count)
-        let bytesPerImage = Int64(width) * Int64(height) * 4
-        for frame in frames {
-            guard frame.width == width, frame.height == height else {
+        var acceptedFrames = [first]
+        var alignments: [Alignment] = []
+        var outputHeight = first.height
+
+        for frame in frames.dropFirst() {
+            guard frame.width == first.width, frame.height == first.height else {
                 throw PanoramaCaptureError.alignmentFailed
             }
-            guard Int64(images.count + 1) * bytesPerImage <= limits.maxMemoryBytes else {
-                throw PanoramaCaptureError.memoryLimit
+            guard let alignment = estimateVerticalShift(previous: acceptedFrames.last!, current: frame) else {
+                continue
             }
-            images.append(try rgbaBytes(for: frame))
-        }
-
-        var outputHeight = height
-        var placements: [(image: [UInt8], y: Int)] = [(images[0], 0)]
-        for index in 1..<images.count {
-            let previous = placements.last!.image
-            let current = images[index]
-            let shift = estimateVerticalShift(previous: previous, current: current, width: width, height: height)
-            guard shift > 0 else { continue }
-            outputHeight += shift
+            outputHeight += alignment.shift
             guard outputHeight <= limits.maxOutputHeight else {
                 throw PanoramaCaptureError.outputTooLarge
             }
-            placements.append((current, outputHeight - height))
+            acceptedFrames.append(frame)
+            alignments.append(alignment)
         }
 
-        guard placements.count > 1 else { throw PanoramaCaptureError.noMovement }
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: outputHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: width * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
+        guard acceptedFrames.count > 1 else {
+            throw frames.count > 1 ? PanoramaCaptureError.alignmentFailed : PanoramaCaptureError.noMovement
+        }
+
+        let frameBytes = frames.reduce(Int64(0)) { $0 + $1.byteCount }
+        let outputBytes = Int64(first.width) * Int64(outputHeight) * 4
+        // The final CGImage provider may copy the output Data, so budget two output buffers.
+        guard frameBytes + outputBytes * 2 <= limits.maxMemoryBytes else {
+            throw PanoramaCaptureError.memoryLimit
+        }
+
+        let fixedBottomHeight = alignments.map(\.fixedBottomHeight).max() ?? 0
+        var output = [UInt8](repeating: 0, count: Int(outputBytes))
+        copyRows(
+            from: first,
+            sourceStartRow: 0,
+            rowCount: first.height - fixedBottomHeight,
+            to: &output,
+            destinationStartRow: 0
+        )
+        var destinationRow = first.height - fixedBottomHeight
+        for (index, alignment) in alignments.enumerated() {
+            let frame = acceptedFrames[index + 1]
+            let rowCount = alignment.shift
+            copyRows(
+                from: frame,
+                sourceStartRow: frame.height - fixedBottomHeight - alignment.shift,
+                rowCount: rowCount,
+                to: &output,
+                destinationStartRow: destinationRow
+            )
+            destinationRow += rowCount
+        }
+        if fixedBottomHeight > 0, let last = acceptedFrames.last {
+            copyRows(
+                from: last,
+                sourceStartRow: last.height - fixedBottomHeight,
+                rowCount: fixedBottomHeight,
+                to: &output,
+                destinationStartRow: destinationRow
+            )
+        }
+
+        let data = Data(output) as CFData
+        guard let provider = CGDataProvider(data: data),
+              let image = CGImage(
+                width: first.width,
+                height: outputHeight,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: first.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+              ) else {
             throw PanoramaCaptureError.alignmentFailed
         }
+        return Result(image: image, frameCount: acceptedFrames.count, outputHeight: outputHeight)
+    }
 
-        context.setBlendMode(.copy)
-        for placement in placements {
-            placement.image.withUnsafeBytes { bytes in
-                guard let baseAddress = bytes.baseAddress,
-                      let image = CGImage(
-                        width: width,
-                        height: height,
-                        bitsPerComponent: 8,
-                        bitsPerPixel: 32,
-                        bytesPerRow: width * 4,
-                        space: CGColorSpaceCreateDeviceRGB(),
-                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                        provider: CGDataProvider(data: Data(bytes: baseAddress, count: bytes.count) as CFData)!,
-                        decode: nil,
-                        shouldInterpolate: false,
-                        intent: .defaultIntent
-                      ) else { return }
-                context.draw(image, in: CGRect(x: 0, y: outputHeight - placement.y - height, width: width, height: height))
+    func areMeaningfullyDifferent(_ first: PanoramaFrame, _ second: PanoramaFrame) -> Bool {
+        guard first.width == second.width, first.height == second.height else { return true }
+        let rowStep = max(1, first.height / 80)
+        let columnStep = max(1, first.width / 80)
+        var difference = 0.0
+        var samples = 0
+        for y in stride(from: 0, to: first.height, by: rowStep) {
+            for x in stride(from: 0, to: first.width, by: columnStep) {
+                let index = (y * first.width + x) * 4
+                difference += abs(luma(first.pixels, index) - luma(second.pixels, index))
+                samples += 1
             }
         }
-
-        guard let result = context.makeImage() else { throw PanoramaCaptureError.alignmentFailed }
-        return Result(image: result, frameCount: placements.count, outputHeight: outputHeight)
+        return samples == 0 || difference / Double(samples) > 2.5
     }
 
-    private func rgbaBytes(for image: CGImage) throws -> [UInt8] {
-        var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
-        guard let context = CGContext(
-            data: &bytes,
-            width: image.width,
-            height: image.height,
-            bitsPerComponent: 8,
-            bytesPerRow: image.width * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            throw PanoramaCaptureError.alignmentFailed
-        }
-        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        return bytes
-    }
-
-    private func estimateVerticalShift(previous: [UInt8], current: [UInt8], width: Int, height: Int) -> Int {
+    private func estimateVerticalShift(previous: PanoramaFrame, current: PanoramaFrame) -> Alignment? {
+        let height = previous.height
+        let width = previous.width
         let minimumShift = max(2, height / 40)
         let maximumShift = max(minimumShift, height - height / 10)
-        let band = max(1, height / 10)
-        let sampleStep = max(1, width / 160)
+        let ignoredTopBand = max(1, height / 10)
+        let columnStep = max(1, width / 160)
         var bestShift = 0
         var bestScore = Double.greatestFiniteMagnitude
 
         for shift in stride(from: minimumShift, through: maximumShift, by: max(1, height / 120)) {
             let overlap = height - shift
+            let comparisonEnd = overlap - ignoredTopBand
+            guard comparisonEnd > ignoredTopBand else { continue }
             var score = 0.0
             var samples = 0
-            for y in stride(from: band, to: overlap - band, by: max(1, overlap / 80)) {
-                let previousY = y + shift
-                for x in stride(from: 0, to: width, by: sampleStep) {
-                    let previousIndex = (previousY * width + x) * 4
+            for y in stride(from: ignoredTopBand, to: comparisonEnd, by: max(1, overlap / 80)) {
+                for x in stride(from: 0, to: width, by: columnStep) {
+                    let previousIndex = ((y + shift) * width + x) * 4
                     let currentIndex = (y * width + x) * 4
-                    score += abs(luma(previous, previousIndex) - luma(current, currentIndex))
+                    score += abs(luma(previous.pixels, previousIndex) - luma(current.pixels, currentIndex))
                     samples += 1
                 }
             }
-            if samples > 0 {
-                let normalizedScore = score / Double(samples)
-                if normalizedScore < bestScore {
-                    bestScore = normalizedScore
-                    bestShift = shift
-                }
+            guard samples > 0 else { continue }
+            let normalizedScore = score / Double(samples)
+            if normalizedScore < bestScore {
+                bestScore = normalizedScore
+                bestShift = shift
             }
         }
-        return bestShift
+
+        guard bestShift > 0, bestScore <= 18 else { return nil }
+        let fixedBottomHeight = stationaryBottomBand(
+            previous: previous,
+            current: current,
+            maximumHeight: bestShift / 2
+        )
+        guard bestShift + fixedBottomHeight <= height else { return nil }
+        return Alignment(
+            shift: bestShift,
+            score: bestScore,
+            fixedBottomHeight: fixedBottomHeight
+        )
+    }
+
+    private func stationaryBottomBand(
+        previous: PanoramaFrame,
+        current: PanoramaFrame,
+        maximumHeight: Int
+    ) -> Int {
+        let maximum = min(maximumHeight, previous.height / 4)
+        guard maximum > 0 else { return 0 }
+        let columnStep = max(1, previous.width / 160)
+        var stationaryRows = 0
+        for offset in 0..<maximum {
+            let y = previous.height - 1 - offset
+            var difference = 0.0
+            var samples = 0
+            for x in stride(from: 0, to: previous.width, by: columnStep) {
+                let index = (y * previous.width + x) * 4
+                difference += abs(luma(previous.pixels, index) - luma(current.pixels, index))
+                samples += 1
+            }
+            guard samples > 0, difference / Double(samples) <= 2 else { break }
+            stationaryRows += 1
+        }
+        return stationaryRows
+    }
+
+    private func copyRows(
+        from frame: PanoramaFrame,
+        sourceStartRow: Int,
+        rowCount: Int,
+        to output: inout [UInt8],
+        destinationStartRow: Int
+    ) {
+        let bytesPerRow = frame.width * 4
+        let sourceStart = sourceStartRow * bytesPerRow
+        let sourceEnd = sourceStart + rowCount * bytesPerRow
+        let destinationStart = destinationStartRow * bytesPerRow
+        output.replaceSubrange(
+            destinationStart..<(destinationStart + rowCount * bytesPerRow),
+            with: frame.pixels[sourceStart..<sourceEnd]
+        )
     }
 
     private func luma(_ bytes: [UInt8], _ index: Int) -> Double {
-        (0.299 * Double(bytes[index])) + (0.587 * Double(bytes[index + 1])) + (0.114 * Double(bytes[index + 2]))
+        (0.299 * Double(bytes[index]))
+            + (0.587 * Double(bytes[index + 1]))
+            + (0.114 * Double(bytes[index + 2]))
     }
 }
 
@@ -179,10 +292,12 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
     private let processingQueue = DispatchQueue(label: "com.tinyclips.scrolling-panorama")
     private let context = CIContext()
     private var stream: SCStream?
-    private var frames: [CGImage] = []
+    private var frames: [PanoramaFrame] = []
+    private var retainedFrameBytes: Int64 = 0
     private var lastFrameDate = Date()
     private var stopContinuation: CheckedContinuation<CGImage, Error>?
     private var didFinish = false
+    private var didReportFailure = false
 
     init(limits: PanoramaCaptureLimits = .default) {
         self.limits = limits
@@ -195,9 +310,40 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 12)
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: processingQueue)
-        try await stream.startCapture()
-        self.stream = stream
-        lastFrameDate = Date()
+
+        let mayStart = await withCheckedContinuation { continuation in
+            processingQueue.async {
+                guard !self.didFinish else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                self.stream = stream
+                continuation.resume(returning: true)
+            }
+        }
+        guard mayStart else { throw PanoramaCaptureError.cancelled }
+
+        do {
+            try await stream.startCapture()
+        } catch {
+            processingQueue.async {
+                if self.stream === stream {
+                    self.stream = nil
+                }
+            }
+            throw error
+        }
+
+        let cancelledDuringStartup = await withCheckedContinuation { continuation in
+            processingQueue.async {
+                self.lastFrameDate = Date()
+                continuation.resume(returning: self.didFinish)
+            }
+        }
+        if cancelledDuringStartup {
+            try? await stream.stopCapture()
+            throw PanoramaCaptureError.cancelled
+        }
     }
 
     func stop() async throws -> CGImage {
@@ -208,9 +354,12 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
                     return
                 }
                 self.stopContinuation = continuation
+                let stream = self.stream
                 Task {
-                    try? await self.stream?.stopCapture()
-                    self.finish()
+                    try? await stream?.stopCapture()
+                    self.processingQueue.async {
+                        self.finish()
+                    }
                 }
             }
         }
@@ -220,11 +369,15 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
         processingQueue.async {
             guard !self.didFinish else { return }
             self.didFinish = true
-            self.stream?.stopCapture { _ in }
+            let stream = self.stream
+            self.stream = nil
             self.stopContinuation?.resume(throwing: PanoramaCaptureError.cancelled)
             self.stopContinuation = nil
-            self.stream = nil
             self.frames.removeAll()
+            self.retainedFrameBytes = 0
+            Task {
+                try? await stream?.stopCapture()
+            }
         }
     }
 
@@ -240,52 +393,43 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
         }
         stopContinuation = nil
         frames.removeAll()
+        retainedFrameBytes = 0
     }
 
     private func process(_ sampleBuffer: CMSampleBuffer) {
         guard !didFinish,
-              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
-              let image = context.createCGImage(CIImage(cvPixelBuffer: pixelBuffer), from: CIImage(cvPixelBuffer: pixelBuffer).extent) else {
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             return
         }
-        let frameBytes: Int64 = Int64(image.width) * Int64(image.height) * 4
-        guard Int64(frames.count + 1) * frameBytes <= limits.maxMemoryBytes else {
-            onFailure?(PanoramaCaptureError.memoryLimit)
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let image = context.createCGImage(ciImage, from: ciImage.extent),
+              let frame = try? PanoramaFrame(image: image) else {
             return
         }
-        if let previous = frames.last, !isMeaningfullyDifferent(previous, image) {
+        guard retainedFrameBytes + frame.byteCount <= limits.maxMemoryBytes / 2 else {
+            reportFailure(PanoramaCaptureError.memoryLimit)
+            return
+        }
+        if let previous = frames.last,
+           !PanoramaStitcher(limits: limits).areMeaningfullyDifferent(previous, frame) {
             if Date().timeIntervalSince(lastFrameDate) > limits.noMovementTimeout {
-                onFailure?(PanoramaCaptureError.noMovement)
+                reportFailure(PanoramaCaptureError.noMovement)
             }
             return
         }
-        frames.append(image)
+        frames.append(frame)
+        retainedFrameBytes += frame.byteCount
         lastFrameDate = Date()
         onProgress?(frames.count)
         if frames.count >= limits.maxFrames {
-            onFailure?(PanoramaCaptureError.outputTooLarge)
+            reportFailure(PanoramaCaptureError.outputTooLarge)
         }
     }
 
-    private func isMeaningfullyDifferent(_ first: CGImage, _ second: CGImage) -> Bool {
-        guard let firstData = try? PanoramaStitcher(limits: limits).rgbaBytesForComparison(first),
-              let secondData = try? PanoramaStitcher(limits: limits).rgbaBytesForComparison(second) else {
-            return true
-        }
-        let sampleStride = max(4, first.width / 80) * 4
-        var difference = 0
-        var samples = 0
-        for index in Swift.stride(from: 0, to: min(firstData.count, secondData.count), by: sampleStride) {
-            difference += abs(Int(firstData[index]) - Int(secondData[index]))
-            samples += 1
-        }
-        return samples == 0 || Double(difference) / Double(samples) > 2.5
-    }
-}
-
-private extension PanoramaStitcher {
-    func rgbaBytesForComparison(_ image: CGImage) throws -> [UInt8] {
-        try rgbaBytes(for: image)
+    private func reportFailure(_ error: Error) {
+        guard !didReportFailure else { return }
+        didReportFailure = true
+        onFailure?(error)
     }
 }
 
@@ -297,7 +441,7 @@ extension ScrollingPanoramaCapture: SCStreamOutput, SCStreamDelegate {
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         processingQueue.async {
-            self.onFailure?(error)
+            self.reportFailure(error)
         }
     }
 }

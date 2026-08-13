@@ -24,6 +24,7 @@ final class ScrollingCapturePanel: NSPanel {
         backgroundColor = .clear
         hasShadow = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        isMovableByWindowBackground = true
         contentView = NSHostingView(rootView: ScrollingCapturePanelView(
             onStop: { [weak self] in self?.finish(stop: true) },
             onCancel: { [weak self] in self?.finish(stop: false) }
@@ -32,11 +33,15 @@ final class ScrollingCapturePanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
-    func show() {
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else {
-            return
+    func show(at position: NSPoint? = nil) {
+        if let position {
+            setFrameOrigin(position)
+        } else {
+            guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else {
+                return
+            }
+            setFrameOrigin(NSPoint(x: screen.visibleFrame.midX - frame.width / 2, y: screen.visibleFrame.minY + 32))
         }
-        setFrameOrigin(NSPoint(x: screen.visibleFrame.midX - frame.width / 2, y: screen.visibleFrame.minY + 32))
         makeKeyAndOrderFront(nil)
         NSApp.activate()
         installMonitors()
@@ -75,6 +80,8 @@ final class ScrollingCapturePanel: NSPanel {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 {
                 self?.finish(stop: false)
+            } else if event.keyCode == 36 || event.keyCode == 76 {
+                self?.finish(stop: true)
             }
         }
     }

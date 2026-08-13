@@ -186,6 +186,7 @@ class CaptureManager: ObservableObject {
     private var processingIndicatorWindow: ProcessingIndicatorWindow?
     @Published private var scrollingCapturePanel: ScrollingCapturePanel?
     private var scrollingCaptureSession: ScrollingPanoramaCapture?
+    private var scrollingCapturePanelPosition: NSPoint?
     private var processingIndicatorShownAt: Date?
     private var isStoppingRecording = false
     private var stopRecordingTask: Task<Void, Never>?
@@ -547,7 +548,12 @@ class CaptureManager: ObservableObject {
             Task { @MainActor [weak self, weak session] in
                 guard let self, self.scrollingCaptureSession === session else { return }
                 session?.cancel()
-                self.finishScrollingCapture(with: error, shouldReturnToPicker: shouldReturnToPickerAfterCapture)
+                guard let session else { return }
+                self.finishScrollingCapture(
+                    session: session,
+                    with: error,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
             }
         }
         let panel = ScrollingCapturePanel(
@@ -556,35 +562,57 @@ class CaptureManager: ObservableObject {
                 Task {
                     do {
                         let image = try await session.stop()
-                        await self.finishScrollingCapture(image: image, shouldReturnToPicker: shouldReturnToPickerAfterCapture)
+                        self.finishScrollingCapture(
+                            session: session,
+                            image: image,
+                            shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                        )
                     } catch {
-                        await self.finishScrollingCapture(with: error, shouldReturnToPicker: shouldReturnToPickerAfterCapture)
+                        self.finishScrollingCapture(
+                            session: session,
+                            with: error,
+                            shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                        )
                     }
                 }
             },
             onCancel: { [weak self, weak session] in
-                session?.cancel()
-                self?.finishScrollingCapture(with: PanoramaCaptureError.cancelled, shouldReturnToPicker: shouldReturnToPickerAfterCapture)
+                guard let self, let session else { return }
+                session.cancel()
+                self.finishScrollingCapture(
+                    session: session,
+                    with: PanoramaCaptureError.cancelled,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
             }
         )
         scrollingCapturePanel = panel
-        panel.show()
+        panel.show(at: scrollingCapturePanelPosition)
 
         Task {
             do {
                 try await session.start(region: region)
             } catch {
-                await self.finishScrollingCapture(with: error, shouldReturnToPicker: shouldReturnToPickerAfterCapture)
+                self.finishScrollingCapture(
+                    session: session,
+                    with: error,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
             }
         }
     }
 
     @MainActor
     private func finishScrollingCapture(
+        session: ScrollingPanoramaCapture,
         image: CGImage? = nil,
         with error: Error? = nil,
         shouldReturnToPicker: Bool
     ) {
+        guard scrollingCaptureSession === session else { return }
+        if let panel = scrollingCapturePanel {
+            scrollingCapturePanelPosition = panel.frame.origin
+        }
         scrollingCapturePanel?.dismiss()
         scrollingCapturePanel = nil
         scrollingCaptureSession = nil
@@ -613,6 +641,7 @@ class CaptureManager: ObservableObject {
         guard let image else { return }
 
         Task {
+            var didPresentEditor = false
             do {
                 let settings = CaptureSettings.shared
                 let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
@@ -634,13 +663,15 @@ class CaptureManager: ObservableObject {
                         deleteSourceOnCancel: !shouldSaveImmediately,
                         reopenPickerAfterClose: shouldReturnToPicker
                     )
+                    didPresentEditor = true
                 } else {
                     SaveService.shared.handleSavedFile(url: url, type: .screenshot)
                 }
             } catch {
                 SaveService.shared.showError("Scrolling capture failed: \(error.localizedDescription)")
             }
-            if shouldReturnToPicker,
+            if !didPresentEditor,
+               shouldReturnToPicker,
                CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
                 showScreenshotPicker()
             }
