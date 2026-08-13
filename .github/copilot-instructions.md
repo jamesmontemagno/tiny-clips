@@ -4,7 +4,7 @@ TinyClips is now a cross-platform repository with:
 - macOS app in `mac/` (SwiftUI + AppKit, Xcode project)
 - Windows app in `windows/` (WinUI 3 + Windows App SDK, .NET solution)
 
-If i ask a question or need somethign and I don't specify windows or mac or both ask me.
+If I ask a question or need something and I don't specify Windows or macOS or both, ask me.
 
 Use this file for repo-wide rules and platform selection. Keep behavior platform-aware and avoid cross-app assumptions.
 
@@ -45,7 +45,7 @@ xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClipsMAS -configur
 ### Windows (required for `windows/**` changes)
 
 ```powershell
-dotnet restore windows/TinyClips.Windows.slnx
+dotnet restore windows/TinyClips.Windows.sln
 dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:Platform=x64
 dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Debug
 ```
@@ -65,10 +65,17 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
 
 ### Windows
 
+- Organize UI code by responsibility:
+  - Models in `Models`
+  - ViewModels in `ViewModels`
+  - Windows/pages in `Views`
+  - Reusable controls in `Controls`
+  - Group related classes into appropriate feature folders
 - Keep UI app concerns in `windows/src/TinyClips.App` and reusable/domain logic in `windows/src/TinyClips.Core`.
 - Follow DPI-safe coordinate handling from [windows/docs/dpi-and-coordinates.md](../windows/docs/dpi-and-coordinates.md).
 - Preserve tray-first behavior (no main window at startup) unless explicitly requested.
 - Keep global hotkey defaults aligned with Windows conventions documented in [windows/README.md](../windows/README.md).
+- Prefer compact flyout-based filtering for the Windows Clips Library, inspired by the macOS app, while keeping grid and list presentations polished and action buttons well organized.
 
 ## PR Checklist
 

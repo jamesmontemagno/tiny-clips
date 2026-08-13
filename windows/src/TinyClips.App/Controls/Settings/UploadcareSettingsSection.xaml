@@ -19,6 +19,23 @@
             Text="Cloud uploads" />
 
         <Border Style="{StaticResource SettingCardStyle}">
+            <StackPanel Spacing="4">
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Tiny Clips uploads directly to your own Uploadcare project. It does not include credentials or manage your Uploadcare account."
+                    TextWrapping="Wrap" />
+                <HyperlinkButton
+                    HorizontalAlignment="Left"
+                    Padding="0,4"
+                    AutomationProperties.AutomationId="UploadcareApiKeysLink"
+                    AutomationProperties.Name="Create an Uploadcare account or find API keys"
+                    Content="Create an account or find your API keys"
+                    NavigateUri="https://app.uploadcare.com/projects/-/api-keys/" />
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource SettingCardStyle}">
             <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

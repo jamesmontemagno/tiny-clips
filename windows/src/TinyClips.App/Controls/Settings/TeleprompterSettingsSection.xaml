@@ -121,10 +121,18 @@
                             TextWrapping="Wrap" />
                     </ScrollViewer>
                 </Border>
+                <Button
+                    x:Name="PreviewToggleButton"
+                    HorizontalAlignment="Left"
+                    AutomationProperties.AutomationId="TeleprompterPreviewToggleButton"
+                    AutomationProperties.Name="Start teleprompter preview"
+                    Click="OnPreviewToggleClicked"
+                    Content="Start Preview"
+                    IsEnabled="{x:Bind ViewModel.TeleprompterEnabled, Mode=OneWay}" />
                 <TextBlock
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="This preview uses the same scroll speed as the recording overlay."
+                    Text="Start the preview to test the same scroll speed used by the recording overlay."
                     TextWrapping="Wrap" />
             </StackPanel>
         </Border>
