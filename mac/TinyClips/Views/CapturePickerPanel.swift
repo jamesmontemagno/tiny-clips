@@ -7,6 +7,7 @@ enum CapturePickerMode {
     case region
     case screen
     case window
+    case scrolling
 }
 
 @MainActor
@@ -33,6 +34,7 @@ class CapturePickerPanel: NSPanel {
     private var onCapture: ((CapturePickerMode, Bool, Int, Int) -> Void)?
     private var onCancel: (() -> Void)?
     private let state: CapturePickerState
+    private var captureType: CaptureType = .screenshot
 
     override var canBecomeKey: Bool { true }
 
@@ -63,6 +65,7 @@ class CapturePickerPanel: NSPanel {
         self.state.countdownEnabled = countdownEnabled
         self.state.countdownDuration = countdownDuration
         self.state.videoTimeLimitMinutes = videoTimeLimitMinutes
+        self.captureType = captureType
         self.onCapture = onCapture
         self.onCancel = onCancel
         self.isReleasedWhenClosed = false
@@ -183,6 +186,17 @@ class CapturePickerPanel: NSPanel {
                 videoTimeLimitMinutes: state.videoTimeLimitMinutes
             )
             return true
+        case "p":
+            if captureType == .screenshot {
+                finishCapture(
+                    mode: .scrolling,
+                    countdownEnabled: false,
+                    countdownDuration: 0,
+                    videoTimeLimitMinutes: 0
+                )
+                return true
+            }
+            return false
         default:
             return false
         }
@@ -328,6 +342,27 @@ private struct CapturePickerView: View {
             .help("Select a window (W)")
             .keyboardShortcut("w", modifiers: [])
             .accessibilityHint("Starts window capture.")
+
+            if captureType == .screenshot {
+                Button { onCapture(.scrolling, false, 0, 0) } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.down.doc")
+                            .font(.system(size: 12))
+                        Text("Scroll")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(.primary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help("Scrolling capture (P)")
+                .keyboardShortcut("p", modifiers: [])
+                .accessibilityLabel("Scrolling capture")
+                .accessibilityHint("Select a region and stitch a long page while you scroll.")
+            }
 
             Divider()
                 .frame(height: 20)

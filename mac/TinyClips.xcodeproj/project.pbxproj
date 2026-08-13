@@ -50,6 +50,8 @@
 		B10000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
 		B1000000000000000000003A /* SingleInstanceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003A /* SingleInstanceCoordinator.swift */; };
 		B1000000000000000000003B /* TextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003B /* TextRecognitionService.swift */; };
+		B1000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003E /* ScrollingPanoramaCapture.swift */; };
+		B1000000000000000000003F /* ScrollingCapturePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003F /* ScrollingCapturePanel.swift */; };
 		B20000000000000000000001 /* TinyClipsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* TinyClipsApp.swift */; };
 		B20000000000000000000002 /* CaptureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CaptureSettings.swift */; };
 		B20000000000000000000003 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* SettingsView.swift */; };
@@ -93,6 +95,8 @@
 		B20000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
 		B2000000000000000000003A /* SingleInstanceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003A /* SingleInstanceCoordinator.swift */; };
 		B2000000000000000000003B /* TextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003B /* TextRecognitionService.swift */; };
+		B2000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003E /* ScrollingPanoramaCapture.swift */; };
+		B2000000000000000000003F /* ScrollingCapturePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003F /* ScrollingCapturePanel.swift */; };
 		B10000000000000000000021 /* CaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000024 /* CaptureManager.swift */; };
 		B10000000000000000000022 /* MenuBarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000025 /* MenuBarViews.swift */; };
 		B10000000000000000000023 /* ProcessingIndicatorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000026 /* ProcessingIndicatorWindow.swift */; };
@@ -157,6 +161,8 @@
 		A1000000000000000000000F /* SparkleController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleController.swift; sourceTree = "<group>"; };
 		A1000000000000000000003A /* SingleInstanceCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleInstanceCoordinator.swift; sourceTree = "<group>"; };
 		A1000000000000000000003B /* TextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRecognitionService.swift; sourceTree = "<group>"; };
+		A1000000000000000000003E /* ScrollingPanoramaCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollingPanoramaCapture.swift; sourceTree = "<group>"; };
+		A1000000000000000000003F /* ScrollingCapturePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollingCapturePanel.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* VideoTrimmerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTrimmerWindow.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* ScreenshotEditorWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorWindow.swift; sourceTree = "<group>"; };
 		A10000000000000000000012 /* GifTrimmerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifTrimmerWindow.swift; sourceTree = "<group>"; };
@@ -300,6 +306,7 @@
 				A10000000000000000000022 /* ShortcutRecorderField.swift */,
 				A10000000000000000000025 /* MenuBarViews.swift */,
 				A10000000000000000000026 /* ProcessingIndicatorWindow.swift */,
+				A1000000000000000000003F /* ScrollingCapturePanel.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -333,6 +340,7 @@
 				A10000000000000000000023 /* MouseClickOverlayProcessor.swift */,
 				A10000000000000000000031 /* BrandingOverlayProcessor.swift */,
 				A1000000000000000000001E /* WindowSelector.swift */,
+				A1000000000000000000003E /* ScrollingPanoramaCapture.swift */,
 			);
 			path = Capture;
 			sourceTree = "<group>";
@@ -555,6 +563,8 @@
 				B1000000000000000000002C /* MouseClicksSettingsSection.swift in Sources */,
 				B1000000000000000000002D /* SettingsViewHelpers.swift in Sources */,
 				B10000000000000000000033 /* AnalyticsSettingsSection.swift in Sources */,
+				B1000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */,
+				B1000000000000000000003F /* ScrollingCapturePanel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -618,6 +628,8 @@
 				B2000000000000000000002C /* MouseClicksSettingsSection.swift in Sources */,
 				B2000000000000000000002D /* SettingsViewHelpers.swift in Sources */,
 				B20000000000000000000033 /* AnalyticsSettingsSection.swift in Sources */,
+				B2000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */,
+				B2000000000000000000003F /* ScrollingCapturePanel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
