@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.7.0-windows] - 2026-08-13
+
 ### Internal
 - **Microsoft Store release path** — Store builds now use the Partner Center-assigned package
   identity, and a protected GitHub Actions workflow produces and submits the Store upload package.
