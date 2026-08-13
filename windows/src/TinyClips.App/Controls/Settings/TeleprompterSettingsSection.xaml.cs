@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace TinyClips.App.Settings.Sections;
@@ -17,6 +18,7 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
 
     private readonly IDisposable _realizationScope;
     private readonly DispatcherTimer _previewTimer;
+    private bool _isPreviewRequested;
     private bool _windowClosed;
 
     public SettingsViewModel ViewModel { get; }
@@ -45,7 +47,7 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
         }
 
         _windowClosed = true;
-        _previewTimer.Stop();
+        StopPreview();
         _previewTimer.Tick -= OnPreviewTick;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         Loaded -= OnLoaded;
@@ -55,12 +57,11 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         PreviewScroller.ChangeView(null, 0, null, disableAnimation: true);
-        DispatcherQueue.TryEnqueue(StartPreviewIfPossible);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        _previewTimer.Stop();
+        StopPreview();
     }
 
     private void OnPreviewSizeChanged(object sender, SizeChangedEventArgs e)
@@ -70,6 +71,16 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(SettingsViewModel.TeleprompterEnabled))
+        {
+            if (!ViewModel.TeleprompterEnabled)
+            {
+                StopPreview();
+            }
+
+            return;
+        }
+
         if (e.PropertyName != nameof(SettingsViewModel.TeleprompterTranscript))
         {
             return;
@@ -79,8 +90,25 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
         if (IsLoaded)
         {
             PreviewScroller.ChangeView(null, 0, null, disableAnimation: true);
-            DispatcherQueue.TryEnqueue(StartPreviewIfPossible);
+            if (_isPreviewRequested)
+            {
+                DispatcherQueue.TryEnqueue(StartPreviewIfPossible);
+            }
         }
+    }
+
+    private void OnPreviewToggleClicked(object sender, RoutedEventArgs e)
+    {
+        if (_isPreviewRequested)
+        {
+            StopPreview();
+            return;
+        }
+
+        _isPreviewRequested = true;
+        UpdatePreviewButton();
+        PreviewScroller.ChangeView(null, 0, null, disableAnimation: true);
+        StartPreviewIfPossible();
     }
 
     private void OnPreviewTick(object? sender, object e)
@@ -103,12 +131,28 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
 
     private void StartPreviewIfPossible()
     {
-        if (!_windowClosed &&
+        if (_isPreviewRequested &&
+            !_windowClosed &&
             IsLoaded &&
             PreviewScroller.ExtentHeight > PreviewScroller.ViewportHeight)
         {
             _previewTimer.Start();
         }
+    }
+
+    private void StopPreview()
+    {
+        _isPreviewRequested = false;
+        _previewTimer.Stop();
+        UpdatePreviewButton();
+    }
+
+    private void UpdatePreviewButton()
+    {
+        PreviewToggleButton.Content = _isPreviewRequested ? "Stop Preview" : "Start Preview";
+        AutomationProperties.SetName(
+            PreviewToggleButton,
+            _isPreviewRequested ? "Stop teleprompter preview" : "Start teleprompter preview");
     }
 
     private void UpdatePreviewTranscript()
