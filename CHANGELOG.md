@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - Fixed macOS video and GIF recordings leaving capture controls active after ScreenCaptureKit unexpectedly stops a stream; recordings now save available partial frames and explain how to recover.
 
 ### Added
+- Added deterministic macOS unit-test coverage for capture and Retina coordinate math, recording pause timelines, settings and hotkeys, save-file naming, and capture analytics.
 - Added a macOS teleprompter overlay for video recordings: configure it from the dedicated Settings → Video → Teleprompter screen, preview the selected scroll speed, and read from an auto-scrolling, draggable, never-captured panel with a remembered position.
 - Added macOS OCR region capture to recognize selected screen text and copy it to the clipboard.
 - Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.

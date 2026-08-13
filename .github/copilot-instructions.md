@@ -33,13 +33,15 @@ Do not mix platform-specific implementation patterns:
 ### macOS (always validate both schemes for mac changes)
 
 ```bash
+xcodebuild test -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug \
   CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClipsMAS -configuration Debug \
   CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 ```
 
-- mac has no test target.
+- mac unit tests cover deterministic logic only; do not add permission, hardware, or UI dependencies.
 - If sandbox blocks `xcodebuild` (for example `Operation not permitted` or SwiftPM write errors), rerun unsandboxed.
 
 ### Windows (required for `windows/**` changes)

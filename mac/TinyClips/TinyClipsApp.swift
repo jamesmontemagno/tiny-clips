@@ -4,6 +4,12 @@ import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum TinyClipsRuntime {
+    static var isRunningUnitTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+}
+
 final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         ExternalImageOpenCoordinator.shared.handleOpen(urls: urls)
@@ -32,6 +38,11 @@ struct TinyClipsApp: App {
     @ObservedObject private var singleInstanceCoordinator = SingleInstanceCoordinator.shared
 
     init() {
+        if TinyClipsRuntime.isRunningUnitTests {
+            _captureManager = StateObject(wrappedValue: CaptureManager())
+            return
+        }
+
         switch SingleInstanceCoordinator.shared.acquire() {
         case .primary:
             _ = try? TinyClipsTemporaryFiles.removeStaleFiles(

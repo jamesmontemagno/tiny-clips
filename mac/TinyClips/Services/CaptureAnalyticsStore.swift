@@ -86,7 +86,7 @@ final class CaptureAnalyticsStore: ObservableObject {
         return formatter
     }()
 
-    private init(
+    init(
         userDefaults: UserDefaults = .standard,
         calendar: Calendar = .autoupdatingCurrent
     ) {

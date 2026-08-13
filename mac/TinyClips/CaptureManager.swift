@@ -205,6 +205,8 @@ class CaptureManager: ObservableObject {
     private var shouldIgnoreNextHotKeySettingsChange = false
 
     init() {
+        guard !TinyClipsRuntime.isRunningUnitTests else { return }
+
         configureGlobalHotKeys()
 
         // Re-register capture hotkeys whenever shortcut settings change.

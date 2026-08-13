@@ -70,6 +70,16 @@ xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClipsMAS -configur
   CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 ```
 
+### Running macOS unit tests
+
+The `TinyClipsTests` target covers deterministic capture math, settings, hotkey,
+filename, and analytics behavior without requiring capture permissions or hardware:
+
+```bash
+xcodebuild test -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+```
+
 ### Permissions
 
 TinyClips requires **Screen Recording** permission at runtime. On first launch, macOS will prompt you to grant access in **System Settings → Privacy & Security → Screen Recording**.
@@ -153,8 +163,11 @@ Accessibility is treated as a release gate. When adding or changing UI:
    git checkout -b feature/short-description
    ```
 4. **Make your changes** following the code style guidelines below.
-5. **Build both schemes** to confirm nothing is broken:
+5. **Run unit tests and build both schemes** to confirm nothing is broken:
    ```bash
+   xcodebuild test -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug \
+     CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
    xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug \
      CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
