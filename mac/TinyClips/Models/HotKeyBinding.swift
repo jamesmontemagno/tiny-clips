@@ -131,6 +131,12 @@ struct HotKeyBinding: Equatable {
 
     /// Converts a Carbon/CGKeyCode to a display string using the current keyboard layout.
     static func keyCodeToDisplayString(_ code: Int) -> String? {
+        if let fallback = fallbackKeyCodeString(code) {
+            return fallback
+        }
+        guard let keyCode = UInt16(exactly: code) else {
+            return nil
+        }
         guard let rawSource = TISCopyCurrentKeyboardLayoutInputSource() else {
             return fallbackKeyCodeString(code)
         }
@@ -148,7 +154,7 @@ struct HotKeyBinding: Equatable {
             var length = 0
             let result = UCKeyTranslate(
                 layout,
-                UInt16(code),
+                keyCode,
                 UInt16(kUCKeyActionDisplay),
                 0,
                 UInt32(LMGetKbdType()),

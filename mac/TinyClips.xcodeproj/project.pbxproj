@@ -50,6 +50,8 @@
 		B10000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
 		B1000000000000000000003A /* SingleInstanceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003A /* SingleInstanceCoordinator.swift */; };
 		B1000000000000000000003B /* TextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003B /* TextRecognitionService.swift */; };
+		B1000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003E /* ScrollingPanoramaCapture.swift */; };
+		B1000000000000000000003F /* ScrollingCapturePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003F /* ScrollingCapturePanel.swift */; };
 		B20000000000000000000001 /* TinyClipsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* TinyClipsApp.swift */; };
 		B20000000000000000000002 /* CaptureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CaptureSettings.swift */; };
 		B20000000000000000000003 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* SettingsView.swift */; };
@@ -93,6 +95,8 @@
 		B20000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
 		B2000000000000000000003A /* SingleInstanceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003A /* SingleInstanceCoordinator.swift */; };
 		B2000000000000000000003B /* TextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003B /* TextRecognitionService.swift */; };
+		B2000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003E /* ScrollingPanoramaCapture.swift */; };
+		B2000000000000000000003F /* ScrollingCapturePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003F /* ScrollingCapturePanel.swift */; };
 		B10000000000000000000021 /* CaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000024 /* CaptureManager.swift */; };
 		B10000000000000000000022 /* MenuBarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000025 /* MenuBarViews.swift */; };
 		B10000000000000000000023 /* ProcessingIndicatorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000026 /* ProcessingIndicatorWindow.swift */; };
@@ -122,7 +126,22 @@
 		B2000000000000000000002C /* MouseClicksSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002F /* MouseClicksSettingsSection.swift */; };
 		B2000000000000000000002D /* SettingsViewHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000030 /* SettingsViewHelpers.swift */; };
 		B3EB92CF2F3FCA0B002723CD /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B3EB92CE2F3FCA0B002723CD /* Sparkle */; };
+		B30000000000000000000001 /* CaptureMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* CaptureMathTests.swift */; };
+		B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* HotKeyBindingTests.swift */; };
+		B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* CaptureSettingsTests.swift */; };
+		B30000000000000000000004 /* SaveServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SaveServiceTests.swift */; };
+		B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A31000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F10000000000000000000007 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E10000000000000000000001;
+			remoteInfo = TinyClips;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A10000000000000000000001 /* TinyClipsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyClipsApp.swift; sourceTree = "<group>"; };
@@ -142,6 +161,8 @@
 		A1000000000000000000000F /* SparkleController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleController.swift; sourceTree = "<group>"; };
 		A1000000000000000000003A /* SingleInstanceCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleInstanceCoordinator.swift; sourceTree = "<group>"; };
 		A1000000000000000000003B /* TextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRecognitionService.swift; sourceTree = "<group>"; };
+		A1000000000000000000003E /* ScrollingPanoramaCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollingPanoramaCapture.swift; sourceTree = "<group>"; };
+		A1000000000000000000003F /* ScrollingCapturePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollingCapturePanel.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* VideoTrimmerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTrimmerWindow.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* ScreenshotEditorWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorWindow.swift; sourceTree = "<group>"; };
 		A10000000000000000000012 /* GifTrimmerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifTrimmerWindow.swift; sourceTree = "<group>"; };
@@ -188,6 +209,12 @@
 		A2000000000000000000000C /* Info-MAS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-MAS.plist"; sourceTree = "<group>"; };
 		A2000000000000000000000D /* TinyClipsMAS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TinyClipsMAS.entitlements; sourceTree = "<group>"; };
 		A2000000000000000000000E /* TinyClipsMAS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TinyClipsMAS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000001 /* CaptureMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureMathTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000002 /* HotKeyBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyBindingTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000003 /* CaptureSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettingsTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000004 /* SaveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveServiceTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAnalyticsStoreTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000006 /* TinyClipsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinyClipsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -206,6 +233,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D30000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -213,6 +247,7 @@
 			isa = PBXGroup;
 			children = (
 				C10000000000000000000002 /* TinyClips */,
+				C30000000000000000000001 /* TinyClipsTests */,
 				C10000000000000000000007 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -271,6 +306,7 @@
 				A10000000000000000000022 /* ShortcutRecorderField.swift */,
 				A10000000000000000000025 /* MenuBarViews.swift */,
 				A10000000000000000000026 /* ProcessingIndicatorWindow.swift */,
+				A1000000000000000000003F /* ScrollingCapturePanel.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -304,6 +340,7 @@
 				A10000000000000000000023 /* MouseClickOverlayProcessor.swift */,
 				A10000000000000000000031 /* BrandingOverlayProcessor.swift */,
 				A1000000000000000000001E /* WindowSelector.swift */,
+				A1000000000000000000003E /* ScrollingPanoramaCapture.swift */,
 			);
 			path = Capture;
 			sourceTree = "<group>";
@@ -330,8 +367,21 @@
 			children = (
 				A1000000000000000000000E /* TinyClips.app */,
 				A2000000000000000000000E /* TinyClipsMAS.app */,
+				A30000000000000000000006 /* TinyClipsTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C30000000000000000000001 /* TinyClipsTests */ = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000001 /* CaptureMathTests.swift */,
+				A30000000000000000000002 /* HotKeyBindingTests.swift */,
+				A30000000000000000000003 /* CaptureSettingsTests.swift */,
+				A30000000000000000000004 /* SaveServiceTests.swift */,
+				A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */,
+			);
+			path = TinyClipsTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -371,6 +421,23 @@
 			productReference = A2000000000000000000000E /* TinyClipsMAS.app */;
 			productType = "com.apple.product-type.application";
 		};
+		E30000000000000000000001 /* TinyClipsTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F30000000000000000000003 /* Build configuration list for PBXNativeTarget "TinyClipsTests" */;
+			buildPhases = (
+				D30000000000000000000001 /* Sources */,
+				D30000000000000000000002 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A31000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = TinyClipsTests;
+			productName = TinyClipsTests;
+			productReference = A30000000000000000000006 /* TinyClipsTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -386,6 +453,10 @@
 					};
 					E20000000000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					E30000000000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = E10000000000000000000001;
 					};
 				};
 			};
@@ -407,6 +478,7 @@
 			targets = (
 				E10000000000000000000001 /* TinyClips */,
 				E20000000000000000000001 /* TinyClipsMAS */,
+				E30000000000000000000001 /* TinyClipsTests */,
 			);
 		};
 /* End PBXProject section */
@@ -491,6 +563,8 @@
 				B1000000000000000000002C /* MouseClicksSettingsSection.swift in Sources */,
 				B1000000000000000000002D /* SettingsViewHelpers.swift in Sources */,
 				B10000000000000000000033 /* AnalyticsSettingsSection.swift in Sources */,
+				B1000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */,
+				B1000000000000000000003F /* ScrollingCapturePanel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -554,10 +628,32 @@
 				B2000000000000000000002C /* MouseClicksSettingsSection.swift in Sources */,
 				B2000000000000000000002D /* SettingsViewHelpers.swift in Sources */,
 				B20000000000000000000033 /* AnalyticsSettingsSection.swift in Sources */,
+				B2000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */,
+				B2000000000000000000003F /* ScrollingCapturePanel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D30000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B30000000000000000000001 /* CaptureMathTests.swift in Sources */,
+				B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */,
+				B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */,
+				B30000000000000000000004 /* SaveServiceTests.swift in Sources */,
+				B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A31000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E10000000000000000000001 /* TinyClips */;
+			targetProxy = A31000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		F10000000000000000000001 /* Debug */ = {
@@ -791,6 +887,48 @@
 			};
 			name = Release;
 		};
+		F30000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tinyclips.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TinyClips.app/Contents/MacOS/TinyClips";
+			};
+			name = Debug;
+		};
+		F30000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tinyclips.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TinyClips.app/Contents/MacOS/TinyClips";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -817,6 +955,15 @@
 			buildConfigurations = (
 				F20000000000000000000003 /* Debug */,
 				F20000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F30000000000000000000003 /* Build configuration list for PBXNativeTarget "TinyClipsTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F30000000000000000000001 /* Debug */,
+				F30000000000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

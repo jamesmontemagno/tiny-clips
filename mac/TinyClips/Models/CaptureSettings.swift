@@ -252,6 +252,7 @@ extension NSColor {
 
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
+    private let defaults: UserDefaults
 
     @AppStorage("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
     @AppStorage("screenshotSaveDirectory") var screenshotSaveDirectory: String = defaultSaveDirectoryURL(for: .screenshot).path
@@ -491,8 +492,46 @@ class CaptureSettings: ObservableObject {
 #endif
 
     var imageFormat: ImageFormat {
-        get { ImageFormat(rawValue: screenshotFormat) ?? .jpeg }
+        get { Self.imageFormat(from: screenshotFormat) }
         set { screenshotFormat = newValue.rawValue }
+    }
+
+    static func imageFormat(from rawValue: String) -> ImageFormat {
+        ImageFormat(rawValue: rawValue) ?? .jpeg
+    }
+
+    static func hotKeyBinding(for action: HotKeyAction, defaults: UserDefaults) -> HotKeyBinding {
+        let fallback = HotKeyBinding.defaultBinding(for: action)
+        let keys = hotKeyDefaultsKeys(for: action)
+        return HotKeyBinding(
+            keyCode: defaults.object(forKey: keys.keyCode) as? Int ?? fallback.keyCode,
+            carbonModifiers: defaults.object(forKey: keys.modifiers) as? Int ?? fallback.carbonModifiers
+        )
+    }
+
+    static func setHotKeyBinding(
+        _ binding: HotKeyBinding,
+        for action: HotKeyAction,
+        defaults: UserDefaults
+    ) {
+        let keys = hotKeyDefaultsKeys(for: action)
+        defaults.set(binding.keyCode, forKey: keys.keyCode)
+        defaults.set(binding.carbonModifiers, forKey: keys.modifiers)
+    }
+
+    private static func hotKeyDefaultsKeys(
+        for action: HotKeyAction
+    ) -> (keyCode: String, modifiers: String) {
+        switch action {
+        case .screenshot:
+            return ("screenshotHotKeyCode", "screenshotHotKeyModifiers")
+        case .recordVideo:
+            return ("videoHotKeyCode", "videoHotKeyModifiers")
+        case .recordGif:
+            return ("gifHotKeyCode", "gifHotKeyModifiers")
+        case .copyTextFromRegion:
+            return ("copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers")
+        }
     }
 
     func shouldCopyToClipboard(for type: CaptureType) -> Bool {
@@ -507,45 +546,12 @@ class CaptureSettings: ObservableObject {
     }
 
     func hotKeyBinding(for action: HotKeyAction) -> HotKeyBinding {
-        switch action {
-        case .screenshot:
-            return HotKeyBinding(
-                keyCode: screenshotHotKeyCode,
-                carbonModifiers: screenshotHotKeyModifiers
-            )
-        case .recordVideo:
-            return HotKeyBinding(
-                keyCode: videoHotKeyCode,
-                carbonModifiers: videoHotKeyModifiers
-            )
-        case .recordGif:
-            return HotKeyBinding(
-                keyCode: gifHotKeyCode,
-                carbonModifiers: gifHotKeyModifiers
-            )
-        case .copyTextFromRegion:
-            return HotKeyBinding(
-                keyCode: copyTextFromRegionHotKeyCode,
-                carbonModifiers: copyTextFromRegionHotKeyModifiers
-            )
-        }
+        Self.hotKeyBinding(for: action, defaults: defaults)
     }
 
     func setHotKeyBinding(_ binding: HotKeyBinding, for action: HotKeyAction) {
-        switch action {
-        case .screenshot:
-            screenshotHotKeyCode = binding.keyCode
-            screenshotHotKeyModifiers = binding.carbonModifiers
-        case .recordVideo:
-            videoHotKeyCode = binding.keyCode
-            videoHotKeyModifiers = binding.carbonModifiers
-        case .recordGif:
-            gifHotKeyCode = binding.keyCode
-            gifHotKeyModifiers = binding.carbonModifiers
-        case .copyTextFromRegion:
-            copyTextFromRegionHotKeyCode = binding.keyCode
-            copyTextFromRegionHotKeyModifiers = binding.carbonModifiers
-        }
+        Self.setHotKeyBinding(binding, for: action, defaults: defaults)
+        objectWillChange.send()
     }
 
     var hotKeyBindings: [HotKeyAction: HotKeyBinding] {
@@ -724,8 +730,10 @@ class CaptureSettings: ObservableObject {
         objectWillChange.send()
     }
 
-    private init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
+        self.defaults = defaults
+        guard performMigrations else { return }
+
         migrateSaveDirectorySettings(defaults)
         ensureSaveDirectoryDefaults(defaults)
 

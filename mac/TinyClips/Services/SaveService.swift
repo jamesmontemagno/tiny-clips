@@ -218,14 +218,9 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         )
 
         var filename = generatedFileName(for: type, fileExtension: fileExtension)
-        if let stemSuffix,
-           !stemSuffix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let ext = (filename as NSString).pathExtension
-            let stem = (filename as NSString).deletingPathExtension
-            filename = ext.isEmpty ? "\(stem) \(stemSuffix)" : "\(stem) \(stemSuffix).\(ext)"
-        }
+        filename = Self.appendingStemSuffix(stemSuffix, to: filename)
 
-        return uniqueURL(in: directoryURL, filename: filename)
+        return Self.uniqueURL(in: directoryURL, filename: filename)
     }
 
     func outputDirectoryURL(for type: CaptureType) -> URL {
@@ -245,8 +240,21 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func generatedFileName(for type: CaptureType, fileExtension: String, date: Date = Date()) -> String {
-        let settings = CaptureSettings.shared
-        let rawTemplate = settings.fileNameTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.generatedFileName(
+            for: type,
+            fileExtension: fileExtension,
+            template: CaptureSettings.shared.fileNameTemplate,
+            date: date
+        )
+    }
+
+    static func generatedFileName(
+        for type: CaptureType,
+        fileExtension: String,
+        template rawTemplate: String,
+        date: Date
+    ) -> String {
+        let rawTemplate = rawTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         let template = rawTemplate.isEmpty ? "TinyClips {date} at {time}" : rawTemplate
 
         var stem = template
@@ -264,17 +272,28 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         return cleanExtension.isEmpty ? stem : "\(stem).\(cleanExtension)"
     }
 
+    static func appendingStemSuffix(_ suffix: String?, to filename: String) -> String {
+        guard let suffix,
+              !suffix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return filename
+        }
+
+        let ext = (filename as NSString).pathExtension
+        let stem = (filename as NSString).deletingPathExtension
+        return ext.isEmpty ? "\(stem) \(suffix)" : "\(stem) \(suffix).\(ext)"
+    }
+
     func namingPreview(for type: CaptureType = .screenshot) -> String {
         generatedFileName(for: type, fileExtension: type.fileExtension)
     }
 
-    private func formatted(_ date: Date, format: String) -> String {
+    private static func formatted(_ date: Date, format: String) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = format
         return formatter.string(from: date)
     }
 
-    private func sanitizedFilenameStem(_ stem: String, fallbackDate: Date) -> String {
+    private static func sanitizedFilenameStem(_ stem: String, fallbackDate: Date) -> String {
         let invalidCharacters = CharacterSet(charactersIn: "/\\:?*\"<>|")
         var cleaned = stem
             .components(separatedBy: invalidCharacters)
@@ -289,7 +308,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         return cleaned
     }
 
-    private func uniqueURL(in directoryURL: URL, filename: String) -> URL {
+    static func uniqueURL(in directoryURL: URL, filename: String) -> URL {
         let initialURL = directoryURL.appendingPathComponent(filename)
         guard FileManager.default.fileExists(atPath: initialURL.path) else {
             return initialURL

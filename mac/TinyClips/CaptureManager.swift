@@ -155,6 +155,7 @@ class CaptureManager: ObservableObject {
             || startPanel != nil
             || countdownWindow != nil
             || screenPickerWindow != nil
+            || scrollingCapturePanel != nil
     }
 
     private var videoRecorder: VideoRecorder?
@@ -183,6 +184,10 @@ class CaptureManager: ObservableObject {
     private var gifTrimmerWindow: GifTrimmerWindow?
     @Published private var countdownWindow: CountdownWindow?
     private var processingIndicatorWindow: ProcessingIndicatorWindow?
+    @Published private var scrollingCapturePanel: ScrollingCapturePanel?
+    private var scrollingCaptureSession: ScrollingPanoramaCapture?
+    private var scrollingCapturePanelPosition: NSPoint?
+    private var isStoppingScrollingCapture = false
     private var processingIndicatorShownAt: Date?
     private var isStoppingRecording = false
     private var stopRecordingTask: Task<Void, Never>?
@@ -205,6 +210,8 @@ class CaptureManager: ObservableObject {
     private var shouldIgnoreNextHotKeySettingsChange = false
 
     init() {
+        guard !TinyClipsRuntime.isRunningUnitTests else { return }
+
         configureGlobalHotKeys()
 
         // Re-register capture hotkeys whenever shortcut settings change.
@@ -516,6 +523,200 @@ class CaptureManager: ObservableObject {
                 countdownDuration: countdownDuration,
                 shouldReturnToPickerAfterCapture: shouldReturnToPicker
             )
+
+        case .scrolling:
+            guard let region = await RegionSelector.selectRegion() else {
+                if shouldReturnToPicker {
+                    showScreenshotPicker(cursorScreen: cursorScreen)
+                }
+                return
+            }
+            startScrollingCapture(region: region, shouldReturnToPickerAfterCapture: shouldReturnToPicker)
+        }
+    }
+
+    private func startScrollingCapture(region: CaptureRegion, shouldReturnToPickerAfterCapture: Bool) {
+        guard scrollingCaptureSession == nil else { return }
+        isScreenshotCaptureInProgress = true
+        isStoppingScrollingCapture = false
+        AccessibilityAnnouncementService.shared.announce(
+            "Scrolling capture started. Scroll the page, then press Return to finish.",
+            priority: .high
+        )
+
+        let session = ScrollingPanoramaCapture()
+        scrollingCaptureSession = session
+        session.onFailure = { [weak self, weak session] error in
+            Task { @MainActor [weak self, weak session] in
+                guard let self, self.scrollingCaptureSession === session else { return }
+                session?.cancel()
+                guard let session else { return }
+                self.finishScrollingCapture(
+                    session: session,
+                    with: error,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
+            }
+        }
+        session.onProgress = { [weak self, weak session] count in
+            Task { @MainActor [weak self, weak session] in
+                guard let self, let session, self.scrollingCaptureSession === session else { return }
+                self.scrollingCapturePanel?.updateFrameCount(count)
+            }
+        }
+        session.onLimitReached = { [weak self, weak session] reason in
+            Task { @MainActor [weak self, weak session] in
+                guard let self, let session, self.scrollingCaptureSession === session else { return }
+                self.scrollingCapturePanel?.showStatus(reason.message)
+                AccessibilityAnnouncementService.shared.announce(reason.message, priority: .high)
+                self.stopScrollingCapture(
+                    session: session,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
+            }
+        }
+        let panel = ScrollingCapturePanel(
+            onStop: { [weak self, weak session] in
+                guard let self, let session else { return }
+                self.stopScrollingCapture(
+                    session: session,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
+            },
+            onCancel: { [weak self, weak session] in
+                guard let self, let session else { return }
+                session.cancel()
+                self.finishScrollingCapture(
+                    session: session,
+                    with: PanoramaCaptureError.cancelled,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
+            }
+        )
+        scrollingCapturePanel = panel
+        panel.show(at: scrollingCapturePanelPosition)
+
+        dismissRegionIndicator()
+        if CaptureSettings.shared.showRegionIndicator {
+            let indicator = RegionIndicatorPanel(region: region)
+            indicator.show()
+            regionIndicatorPanel = indicator
+        }
+
+        Task {
+            do {
+                try await session.start(region: region)
+            } catch {
+                self.finishScrollingCapture(
+                    session: session,
+                    with: error,
+                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
+                )
+            }
+        }
+    }
+
+    @MainActor
+    private func stopScrollingCapture(
+        session: ScrollingPanoramaCapture,
+        shouldReturnToPicker: Bool
+    ) {
+        guard scrollingCaptureSession === session, !isStoppingScrollingCapture else { return }
+        isStoppingScrollingCapture = true
+        scrollingCapturePanel?.markCompleted()
+        Task {
+            do {
+                let image = try await session.stop()
+                self.finishScrollingCapture(
+                    session: session,
+                    image: image,
+                    shouldReturnToPicker: shouldReturnToPicker
+                )
+            } catch {
+                self.finishScrollingCapture(
+                    session: session,
+                    with: error,
+                    shouldReturnToPicker: shouldReturnToPicker
+                )
+            }
+        }
+    }
+
+    @MainActor
+    private func finishScrollingCapture(
+        session: ScrollingPanoramaCapture,
+        image: CGImage? = nil,
+        with error: Error? = nil,
+        shouldReturnToPicker: Bool
+    ) {
+        guard scrollingCaptureSession === session else { return }
+        if let panel = scrollingCapturePanel {
+            scrollingCapturePanelPosition = panel.frame.origin
+        }
+        scrollingCapturePanel?.dismiss()
+        scrollingCapturePanel = nil
+        dismissRegionIndicator()
+        scrollingCaptureSession = nil
+        isStoppingScrollingCapture = false
+        isScreenshotCaptureInProgress = false
+
+        if let error {
+            let wasCancelled: Bool
+            if let panoramaError = error as? PanoramaCaptureError {
+                if case .cancelled = panoramaError {
+                    wasCancelled = true
+                } else {
+                    wasCancelled = false
+                }
+            } else {
+                wasCancelled = false
+            }
+            if !wasCancelled {
+                SaveService.shared.showError("Scrolling capture failed: \(error.localizedDescription)")
+            }
+            if shouldReturnToPicker,
+               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
+                showScreenshotPicker()
+            }
+            return
+        }
+        guard let image else { return }
+
+        Task {
+            var didPresentEditor = false
+            do {
+                let settings = CaptureSettings.shared
+                let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
+                let outputURL = shouldSaveImmediately
+                    ? SaveService.shared.generateURL(for: .screenshot)
+                    : TinyClipsTemporaryFiles.makeURL(fileExtension: settings.imageFormat.rawValue)
+                let url = try ScreenshotCapture.saveImage(image, to: outputURL)
+                CaptureAnalyticsStore.shared.recordCapture(.screenshot)
+                if settings.showScreenshotEditor {
+                    if shouldSaveImmediately {
+                        SaveService.shared.handleSavedFile(url: url, type: .screenshot)
+                    }
+                    let initialSaveURL = shouldSaveImmediately
+                        ? url
+                        : SaveService.shared.generateURL(for: .screenshot, fileExtension: settings.imageFormat.rawValue)
+                    showScreenshotEditor(
+                        for: url,
+                        initialSaveURL: initialSaveURL,
+                        deleteSourceOnCancel: !shouldSaveImmediately,
+                        reopenPickerAfterClose: shouldReturnToPicker
+                    )
+                    didPresentEditor = true
+                } else {
+                    SaveService.shared.handleSavedFile(url: url, type: .screenshot)
+                }
+            } catch {
+                SaveService.shared.showError("Scrolling capture failed: \(error.localizedDescription)")
+            }
+            if !didPresentEditor,
+               shouldReturnToPicker,
+               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
+                showScreenshotPicker()
+            }
         }
     }
 
@@ -2163,6 +2364,8 @@ class CaptureManager: ObservableObject {
                 return nil
             }
             return CaptureTarget(region: region)
+        case .scrolling:
+            return nil
         }
     }
 

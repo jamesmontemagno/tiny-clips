@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file.
 - macOS Video and GIF settings now let you disable the default behavior that keeps the display awake while recording.
 
 ### Fixed
+- Fixed macOS scrolling capture stitching duplicated rows of content by aligning frames with per-row signatures at single-pixel resolution and preferring the smallest matching scroll distance, which also handles slow scrolls and repeating layouts such as card lists.
+- Fixed the macOS scrolling capture not showing the red region outline while it records.
+- Fixed macOS scrolling capture running out of memory on modest regions by stitching frames incrementally, and guardrails now stop and save the panorama captured so far instead of discarding it.
+- Fixed the macOS scrolling capture control panel to match the other capture bars, with a live frame count and enough room for its status text.
 - Fixed the macOS teleprompter settings preview blocking its Stop button and other controls while the transcript scrolls, and ensured scrolling stops when leaving Teleprompter settings.
 - Fixed the macOS teleprompter preview viewport height and VoiceOver scrolling-status announcement.
 - Fixed the macOS and Windows settings sidebars to keep Video and Teleprompter as separate entries, cleaned up the Support label wording, and prevented the screenshot editor’s Horizontal/Vertical alignment labels from being clipped when the window is narrow.
@@ -29,6 +33,8 @@ All notable changes to this project will be documented in this file.
 - Fixed macOS video and GIF recordings leaving capture controls active after ScreenCaptureKit unexpectedly stops a stream; recordings now save available partial frames and explain how to recover.
 
 ### Added
+- Added macOS vertical scrolling capture for selected regions, with bounded ScreenCaptureKit sampling, duplicate-frame rejection, automatic stitching, keyboard stop/cancel controls, and existing screenshot editor/save integration.
+- Added deterministic macOS unit-test coverage for capture and Retina coordinate math, recording pause timelines, settings and hotkeys, save-file naming, and capture analytics.
 - Added a macOS teleprompter overlay for video recordings: configure it from the dedicated Settings → Video → Teleprompter screen, preview the selected scroll speed, and read from an auto-scrolling, draggable, never-captured panel with a remembered position.
 - Added macOS OCR region capture to recognize selected screen text and copy it to the clipboard.
 - Video recording controls now offer session-only microphone and system-audio mute buttons for sources that started with the recording.

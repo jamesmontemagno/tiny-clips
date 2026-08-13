@@ -4,6 +4,41 @@ import CoreMedia
 import CoreVideo
 import AudioToolbox
 
+enum RecordingTimelineMath {
+    static func accumulatedPauseDuration(
+        _ accumulated: CMTime,
+        pauseStartedAt: CMTime?,
+        resumedAt: CMTime
+    ) -> CMTime {
+        guard let pauseStartedAt else { return accumulated }
+        return CMTimeAdd(accumulated, CMTimeSubtract(resumedAt, pauseStartedAt))
+    }
+
+    static func timelineTime(
+        now: CMTime,
+        firstSampleTime: CMTime?,
+        totalPausedDuration: CMTime,
+        pauseStartedAt: CMTime?
+    ) -> CMTime {
+        guard let firstSampleTime else { return .zero }
+        let activePauseDuration = pauseStartedAt.map {
+            CMTimeSubtract(now, $0)
+        } ?? .zero
+        return CMTimeMaximum(
+            .zero,
+            CMTimeSubtract(
+                CMTimeSubtract(now, totalPausedDuration),
+                CMTimeAdd(firstSampleTime, activePauseDuration)
+            )
+        )
+    }
+
+    static func adjustedTimestamp(_ timestamp: CMTime, totalPausedDuration: CMTime) -> CMTime {
+        guard timestamp.isValid else { return timestamp }
+        return CMTimeSubtract(timestamp, totalPausedDuration)
+    }
+}
+
 private func isPositiveNumericTime(_ time: CMTime) -> Bool {
     time.isNumeric && CMTimeCompare(time, .zero) > 0
 }
@@ -302,7 +337,11 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
             guard self.isPaused else { return }
             if let pauseStartedAt = self.pauseStartedAt {
                 let now = CMClockGetTime(CMClockGetHostTimeClock())
-                self.totalPausedDuration = CMTimeAdd(self.totalPausedDuration, CMTimeSubtract(now, pauseStartedAt))
+                self.totalPausedDuration = RecordingTimelineMath.accumulatedPauseDuration(
+                    self.totalPausedDuration,
+                    pauseStartedAt: pauseStartedAt,
+                    resumedAt: now
+                )
             }
             self.pauseStartedAt = nil
             self.isPaused = false
@@ -404,10 +443,16 @@ extension WebcamRecorder: AVCaptureVideoDataOutputSampleBufferDelegate {
             return sampleBuffer
         }
         if timing.presentationTimeStamp.isValid {
-            timing.presentationTimeStamp = CMTimeSubtract(timing.presentationTimeStamp, totalPausedDuration)
+            timing.presentationTimeStamp = RecordingTimelineMath.adjustedTimestamp(
+                timing.presentationTimeStamp,
+                totalPausedDuration: totalPausedDuration
+            )
         }
         if timing.decodeTimeStamp.isValid {
-            timing.decodeTimeStamp = CMTimeSubtract(timing.decodeTimeStamp, totalPausedDuration)
+            timing.decodeTimeStamp = RecordingTimelineMath.adjustedTimestamp(
+                timing.decodeTimeStamp,
+                totalPausedDuration: totalPausedDuration
+            )
         }
         var adjusted: CMSampleBuffer?
         let status = CMSampleBufferCreateCopyWithNewTiming(
@@ -480,12 +525,12 @@ class VideoRecorder: NSObject, @unchecked Sendable {
 
     func currentTimelineTime() -> CMTime {
         writingQueue.sync {
-            guard let firstScreenSampleTime else { return .zero }
             let now = CMClockGetTime(CMClockGetHostTimeClock())
-            let activePauseDuration = pauseStartedAt.map { CMTimeSubtract(now, $0) } ?? .zero
-            return CMTimeMaximum(
-                .zero,
-                CMTimeSubtract(CMTimeSubtract(now, totalPausedDuration), CMTimeAdd(firstScreenSampleTime, activePauseDuration))
+            return RecordingTimelineMath.timelineTime(
+                now: now,
+                firstSampleTime: firstScreenSampleTime,
+                totalPausedDuration: totalPausedDuration,
+                pauseStartedAt: pauseStartedAt
             )
         }
     }
@@ -1023,7 +1068,11 @@ class VideoRecorder: NSObject, @unchecked Sendable {
             guard self.isPaused else { return }
             if let pauseStartedAt = self.pauseStartedAt {
                 let now = CMClockGetTime(CMClockGetHostTimeClock())
-                self.totalPausedDuration = CMTimeAdd(self.totalPausedDuration, CMTimeSubtract(now, pauseStartedAt))
+                self.totalPausedDuration = RecordingTimelineMath.accumulatedPauseDuration(
+                    self.totalPausedDuration,
+                    pauseStartedAt: pauseStartedAt,
+                    resumedAt: now
+                )
             }
             self.pauseStartedAt = nil
             self.isPaused = false
@@ -1209,10 +1258,16 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
 
         for index in 0..<timingCount {
             if timing[index].presentationTimeStamp.isValid {
-                timing[index].presentationTimeStamp = CMTimeSubtract(timing[index].presentationTimeStamp, totalPausedDuration)
+                timing[index].presentationTimeStamp = RecordingTimelineMath.adjustedTimestamp(
+                    timing[index].presentationTimeStamp,
+                    totalPausedDuration: totalPausedDuration
+                )
             }
             if timing[index].decodeTimeStamp.isValid {
-                timing[index].decodeTimeStamp = CMTimeSubtract(timing[index].decodeTimeStamp, totalPausedDuration)
+                timing[index].decodeTimeStamp = RecordingTimelineMath.adjustedTimestamp(
+                    timing[index].decodeTimeStamp,
+                    totalPausedDuration: totalPausedDuration
+                )
             }
         }
 

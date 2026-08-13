@@ -294,17 +294,12 @@ enum MouseClickOverlayProcessor {
             return nil
         }
 
-        let localX = globalPoint.x - screen.frame.minX
-        let localY = screen.frame.maxY - globalPoint.y
-        let localPoint = CGPoint(x: localX, y: localY)
-
-        guard region.sourceRect.contains(localPoint) else {
-            return nil
-        }
-
-        let relativeX = (localX - region.sourceRect.minX) * region.scaleFactor
-        let relativeY = (localY - region.sourceRect.minY) * region.scaleFactor
-        return CGPoint(x: relativeX, y: relativeY)
+        return CaptureCoordinateMath.capturePoint(
+            for: globalPoint,
+            screenFrame: screen.frame,
+            sourceRect: region.sourceRect,
+            scaleFactor: region.scaleFactor
+        )
     }
 
     private static func screen(for displayID: CGDirectDisplayID) -> NSScreen? {
