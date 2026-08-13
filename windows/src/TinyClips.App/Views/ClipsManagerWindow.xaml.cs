@@ -206,7 +206,8 @@ public sealed partial class ClipsManagerWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppWindow.Resize(new SizeInt32(1600, 820));
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 1600, 820);
 
         ApplyTheme();
         RestorePersistedState();

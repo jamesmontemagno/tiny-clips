@@ -48,7 +48,8 @@ public sealed partial class SettingsWindow : Window
         // General section — the only section realized at startup.
         SettingsNavigation.SelectedItem = GeneralNavigationItem;
 
-        AppWindow.Resize(new SizeInt32(1200, 860));
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 1200, 860);
 
         ApplyTheme();
         ViewModel.ThemeChanged += ApplyTheme;

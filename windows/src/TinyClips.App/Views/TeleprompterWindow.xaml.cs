@@ -233,12 +233,17 @@ public sealed partial class TeleprompterWindow : Window
         if (placementMonitor is null)
         {
             var work = DisplayArea.Primary?.WorkArea ?? new RectInt32(0, 0, 1920, 1080);
-            var width = Math.Min(WidthDip, work.Width);
-            var height = Math.Min(HeightDip, work.Height);
-            AppWindow.Resize(new SizeInt32(width, height));
-            AppWindow.Move(new PointInt32(
+            var hwnd = WindowNative.GetWindowHandle(this);
+            var target = AppWindowPlacement.PrepareForTargetWorkArea(AppWindow, hwnd, work);
+            var width = Math.Min(AppWindowPlacement.DipToPixels(WidthDip, target.Scale), work.Width);
+            var height = Math.Min(AppWindowPlacement.DipToPixels(HeightDip, target.Scale), work.Height);
+            var topOffset = AppWindowPlacement.DipToPixels(TopOffsetDip, target.Scale);
+            AppWindow.MoveAndResize(AppWindowPlacement.ClampToWorkArea(
+                work,
                 work.X + Math.Max(0, (work.Width - width) / 2),
-                work.Y + TopOffsetDip));
+                work.Y + topOffset,
+                width,
+                height));
             return;
         }
 

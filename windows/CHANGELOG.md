@@ -15,6 +15,7 @@ own `CHANGELOG.md` at the repository root.
 - **Teleprompter transcript overlay** — Settings → Video → Teleprompter lets you paste a script, enable the teleprompter, tune the scroll speed (10–200 DIPs/s), and start or stop a speed-accurate preview. During video recordings a small semi-transparent black overlay auto-scrolls the transcript on screen. The overlay appears only after recording starts, pauses and resumes with recording, fails closed if Windows cannot exclude it from capture, and remembers a monitor-relative position across mixed-DPI display changes.
 
 ### Fixed
+- **DPI-correct secondary windows** — Settings, onboarding, guides, the Clips Library, tray popup, and capture overlays now size and position correctly across mixed-DPI monitors.
 - **Reliable curved arrows** — Switching arrow styles no longer crashes the screenshot editor during short or active draws.
 - **Clips Library opens reliably** — Replaced unsupported folder symbol values in clip action menus with valid Fluent font icons.
 - **Settings opens reliably** — Replaced the unsupported Uploadcare navigation symbol that caused a `XamlParseException` when creating the Settings window.

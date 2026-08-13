@@ -214,21 +214,17 @@ public sealed partial class RecordingSetupWindow : Window
 
     private void PositionNearMonitorWorkArea(MonitorInfo? monitor, PixelRect? regionInVirtualDesktop)
     {
-        var scale = GetScale();
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var target = AppWindowPlacement.PrepareForTargetMonitor(AppWindow, hwnd, monitor);
+        var work = target.WorkArea;
+        var scale = target.Scale;
         RootGrid.UpdateLayout();
         RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
 
         var width = (int)Math.Ceiling(RootGrid.DesiredSize.Width * scale) + 2;
         var height = (int)Math.Ceiling(RootGrid.DesiredSize.Height * scale) + 2;
-        var topOffset = (int)Math.Round(TopOffsetDip * scale);
-        var regionOutsideOffset = (int)Math.Round(RegionOutsideOffsetDip * scale);
-
-        AppWindow.Resize(new SizeInt32(width, height));
-
-        if (GetWorkArea(monitor) is not { } work)
-        {
-            return;
-        }
+        var topOffset = AppWindowPlacement.DipToPixels(TopOffsetDip, scale);
+        var regionOutsideOffset = AppWindowPlacement.DipToPixels(RegionOutsideOffsetDip, scale);
 
         var x = work.X + Math.Max(0, (work.Width - width) / 2);
         var y = work.Y + topOffset;
@@ -252,26 +248,7 @@ public sealed partial class RecordingSetupWindow : Window
             }
         }
 
-        x = Math.Clamp(x, work.X, work.X + Math.Max(0, work.Width - width));
-        y = Math.Clamp(y, work.Y, work.Y + Math.Max(0, work.Height - height));
-        AppWindow.Move(new PointInt32(x, y));
-    }
-
-    private static RectInt32? GetWorkArea(MonitorInfo? monitor)
-    {
-        if (monitor is { WorkAreaWidth: > 0, WorkAreaHeight: > 0 })
-        {
-            return new RectInt32(monitor.WorkAreaX, monitor.WorkAreaY, monitor.WorkAreaWidth, monitor.WorkAreaHeight);
-        }
-
-        return DisplayArea.Primary?.WorkArea;
-    }
-
-    private double GetScale()
-    {
-        var hwnd = WindowNative.GetWindowHandle(this);
-        var dpi = GetDpiForWindow(hwnd);
-        return dpi <= 0 ? 1.0 : dpi / 96.0;
+        AppWindow.MoveAndResize(AppWindowPlacement.ClampToWorkArea(work, x, y, width, height));
     }
 
     private void ConfigurePresenter()
@@ -441,7 +418,8 @@ public sealed partial class RecordingSetupWindow : Window
     {
         RootGrid.UpdateLayout();
         RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var scale = GetScale();
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var scale = AppWindowPlacement.GetScaleForWindow(hwnd);
         AppWindow.Resize(new SizeInt32(
             (int)Math.Ceiling(RootGrid.DesiredSize.Width * scale) + 2,
             (int)Math.Ceiling(RootGrid.DesiredSize.Height * scale) + 2));
@@ -648,9 +626,6 @@ public sealed partial class RecordingSetupWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT lpPoint);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(nint hwnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

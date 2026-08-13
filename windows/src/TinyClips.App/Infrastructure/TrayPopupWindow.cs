@@ -49,24 +49,31 @@ internal sealed class TrayPopupWindow : Window
     // bottom-right of the screen), clamped to the work area of the active monitor.
     public void ShowNearCursor(double logicalWidth, double logicalHeight)
     {
-        var dpi = GetDpiForWindow(_hwnd);
-        var scale = dpi <= 0 ? 1.0 : dpi / 96.0;
-        var w = (int)(logicalWidth * scale);
-        var h = (int)(logicalHeight * scale);
-
-        var x = w;
-        var y = h;
+        RectInt32 area;
         if (GetCursorPos(out var pt))
         {
-            x = pt.X - w;
-            y = pt.Y - h;
-
-            var area = DisplayArea.GetFromPoint(new PointInt32(pt.X, pt.Y), DisplayAreaFallback.Nearest).WorkArea;
-            x = Math.Max(area.X, Math.Min(x, area.X + area.Width - w));
-            y = Math.Max(area.Y, Math.Min(y, area.Y + area.Height - h));
+            area = DisplayArea.GetFromPoint(
+                new PointInt32(pt.X, pt.Y),
+                DisplayAreaFallback.Nearest).WorkArea;
+        }
+        else
+        {
+            area = DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+            pt.X = area.X + area.Width;
+            pt.Y = area.Y + area.Height;
         }
 
-        _appWindow.MoveAndResize(new RectInt32(x, y, w, h));
+        var target = AppWindowPlacement.PrepareForTargetWorkArea(_appWindow, _hwnd, area);
+        var width = AppWindowPlacement.DipToPixels(logicalWidth, target.Scale);
+        var height = AppWindowPlacement.DipToPixels(logicalHeight, target.Scale);
+        var rect = AppWindowPlacement.ClampToWorkArea(
+            target.WorkArea,
+            pt.X - width,
+            pt.Y - height,
+            width,
+            height);
+
+        _appWindow.MoveAndResize(rect);
         _appWindow.Show();
         Activate();
         SetForegroundWindow(_hwnd);
@@ -82,9 +89,6 @@ internal sealed class TrayPopupWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetCursorPos(out POINT point);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(nint hwnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
