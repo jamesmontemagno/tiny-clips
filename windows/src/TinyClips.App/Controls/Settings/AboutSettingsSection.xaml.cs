@@ -144,9 +144,9 @@ public sealed partial class AboutSettingsSection : UserControl
         await OpenQuickBugReportAsync();
     }
 
-    private Task OpenQuickBugReportAsync() =>
-        QuickBugReport.ShowQuickBugDialogAndOpenAsync(
-            XamlRoot,
-            _appVersion,
-            QuickBugReport.GetDistributionChannel());
+    private static Task OpenQuickBugReportAsync()
+    {
+        (Application.Current as App)?.OpenQuickBugReportWindow();
+        return Task.CompletedTask;
+    }
 }

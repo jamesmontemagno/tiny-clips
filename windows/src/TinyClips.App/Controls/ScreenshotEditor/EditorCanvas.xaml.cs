@@ -35,9 +35,10 @@ public sealed partial class EditorCanvas : UserControl
         new(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore);
 
     /// <summary>A retained visual for one annotation. The element type is fixed for the
-    /// annotation's lifetime except for Arrow (shaft swaps Line/Path if the style changes between
-    /// straight/curved) and Redact (placeholder Rectangle swaps to Image once a blurred preview is
-    /// ready). Brushes are allocated once and mutated in place to avoid hot-path allocation.</summary>
+    /// annotation's lifetime except for Arrow (its Primary shaft swaps Line/Path if the style
+    /// changes between straight/curved) and Redact (placeholder Rectangle swaps to Image once a
+    /// blurred preview is ready). Arrow's Secondary head and brushes survive shaft swaps. Brushes
+    /// are allocated once and mutated in place to avoid hot-path allocation.</summary>
     private sealed class AnnotationVisual
     {
         public UIElement Primary = null!;
@@ -450,13 +451,7 @@ public sealed partial class EditorCanvas : UserControl
 
         if (exists && ann.Tool == EditTool.Arrow)
         {
-            var wantsCurved = ann.ArrowStyle != ArrowStyle.Straight;
-            var isPath = visual!.Primary is ShapesPath;
-            if (wantsCurved != isPath)
-            {
-                RemoveVisual(ann);
-                exists = false;
-            }
+            EnsureArrowShaft(ann, visual!);
         }
 
         if (exists && ann.Tool == EditTool.Redact)
@@ -481,17 +476,52 @@ public sealed partial class EditorCanvas : UserControl
     }
 
     /// <summary>
+    /// Replaces only an arrow's polymorphic shaft when its style crosses the straight/curved
+    /// boundary. The retained head and brushes stay intact, and preserving the old child index
+    /// keeps the head after (and therefore above) the shaft when their ZIndex values tie.
+    /// </summary>
+    private void EnsureArrowShaft(Annotation ann, AnnotationVisual visual)
+    {
+        var wantsCurved = ann.ArrowStyle != ArrowStyle.Straight;
+        if ((wantsCurved && visual.Primary is ShapesPath)
+            || (!wantsCurved && visual.Primary is Line))
+        {
+            return;
+        }
+
+        var oldShaft = visual.Primary;
+        var childIndex = OverlayCanvas.Children.IndexOf(oldShaft);
+        if (childIndex >= 0)
+        {
+            OverlayCanvas.Children.RemoveAt(childIndex);
+        }
+        else if (visual.Secondary is { } head)
+        {
+            childIndex = OverlayCanvas.Children.IndexOf(head);
+        }
+
+        var newShaft = CreateArrowShaft(wantsCurved, visual.StrokeBrush!);
+        if (childIndex >= 0)
+        {
+            OverlayCanvas.Children.Insert(childIndex, newShaft);
+        }
+        else
+        {
+            OverlayCanvas.Children.Add(newShaft);
+        }
+        visual.Primary = newShaft;
+    }
+
+    /// <summary>
     /// Assigns a stable <c>Canvas.ZIndex</c> derived from this annotation's position in the
     /// controller's ordered <see cref="EditorController.Annotations"/> list (or, for the
     /// not-yet-committed drag preview, just above the topmost committed annotation). Recreating a
     /// visual — an arrow's shaft swapping Line/Path between straight/curved, or a redaction's
-    /// placeholder Rectangle swapping for its blurred Image — removes and re-adds elements to
-    /// <see cref="OverlayCanvas"/>'s Children collection, which would otherwise always move the
-    /// recreated visual to the very top of the paint order regardless of where the annotation sits
-    /// in the list. Pinning ZIndex to list order keeps preview stacking stable and matching
-    /// export/undo order no matter how many times a visual gets torn down and rebuilt. The fixed
-    /// crop-selection and selection-marquee adorners are pinned to a much higher ZIndex in XAML so
-    /// they always stay above every annotation visual.
+    /// placeholder Rectangle swapping for its blurred Image — changes elements in
+    /// <see cref="OverlayCanvas"/>'s Children collection. Pinning ZIndex to list order keeps preview
+    /// stacking stable and matching export/undo order no matter how many times an element is
+    /// replaced. The fixed crop-selection and selection-marquee adorners are pinned to a much
+    /// higher ZIndex in XAML so they always stay above every annotation visual.
     /// </summary>
     private void ApplyZOrder(Annotation ann, AnnotationVisual visual)
     {
@@ -501,7 +531,7 @@ public sealed partial class EditorCanvas : UserControl
         {
             // Same ZIndex as Primary: ties are broken by Children collection order, and Primary
             // is always added before Secondary (see CreateVisual), so e.g. an arrow's head stays
-            // above its own shaft even after both are torn down and recreated.
+            // above its own shaft even after the shaft is replaced.
             Canvas.SetZIndex(visual.Secondary, z);
         }
     }
@@ -560,10 +590,7 @@ public sealed partial class EditorCanvas : UserControl
             {
                 var stroke = new SolidColorBrush();
                 var fill = new SolidColorBrush();
-                var wantsCurved = ann.ArrowStyle != ArrowStyle.Straight;
-                UIElement shaft = wantsCurved
-                    ? new ShapesPath { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round }
-                    : new Line { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
+                var shaft = CreateArrowShaft(ann.ArrowStyle != ArrowStyle.Straight, stroke);
                 var head = new Polygon { Fill = fill };
                 OverlayCanvas.Children.Add(shaft);
                 OverlayCanvas.Children.Add(head);
@@ -628,6 +655,11 @@ public sealed partial class EditorCanvas : UserControl
                 throw new ArgumentOutOfRangeException(nameof(ann), ann.Tool, "Unsupported annotation tool.");
         }
     }
+
+    private static UIElement CreateArrowShaft(bool curved, SolidColorBrush stroke) =>
+        curved
+            ? new ShapesPath { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round }
+            : new Line { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
 
     private void PositionVisual(Annotation ann, AnnotationVisual visual)
     {
@@ -710,9 +742,12 @@ public sealed partial class EditorCanvas : UserControl
         visual.StrokeBrush!.Color = ann.Color;
         visual.FillBrush!.Color = ann.Color;
 
-        if (shape.Curved)
+        // The retained element reflects the requested style. BuildArrow deliberately reports a
+        // zero-length curved arrow as non-curved because there is no meaningful tangent yet, so
+        // branching on shape.Curved here would incorrectly cast its retained Path to Line during
+        // the first/tiniest pointer moves.
+        if (visual.Primary is ShapesPath path)
         {
-            var path = (ShapesPath)visual.Primary;
             path.StrokeThickness = thickness;
             var figure = new PathFigure { StartPoint = new Point(shape.ShaftStart.X, shape.ShaftStart.Y) };
             figure.Segments.Add(new QuadraticBezierSegment
@@ -724,17 +759,23 @@ public sealed partial class EditorCanvas : UserControl
             geometry.Figures.Add(figure);
             path.Data = geometry;
         }
-        else
+        else if (visual.Primary is Line line)
         {
-            var line = (Line)visual.Primary;
             line.StrokeThickness = thickness;
             line.X1 = shape.ShaftStart.X;
             line.Y1 = shape.ShaftStart.Y;
             line.X2 = shape.ShaftEnd.X;
             line.Y2 = shape.ShaftEnd.Y;
         }
+        else
+        {
+            throw new InvalidOperationException($"Unsupported arrow shaft visual: {visual.Primary.GetType().FullName}");
+        }
 
-        var head = (Polygon)visual.Secondary!;
+        if (visual.Secondary is not Polygon head)
+        {
+            throw new InvalidOperationException("Arrow visual is missing its polygon head.");
+        }
         head.Points.Clear();
         head.Points.Add(new Point(shape.Tip.X, shape.Tip.Y));
         head.Points.Add(new Point(shape.Head1.X, shape.Head1.Y));

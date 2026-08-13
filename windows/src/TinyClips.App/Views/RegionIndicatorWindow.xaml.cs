@@ -38,11 +38,16 @@ public sealed partial class RegionIndicatorWindow : Window
     public void Show(PixelRect regionInPhysicalPixels)
     {
         var hwnd = WindowNative.GetWindowHandle(this);
-        var scale = GetScale(hwnd);
+        var center = new PointInt32(
+            regionInPhysicalPixels.X + (regionInPhysicalPixels.Width / 2),
+            regionInPhysicalPixels.Y + (regionInPhysicalPixels.Height / 2));
+        var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
+        var target = AppWindowPlacement.PrepareForTargetWorkArea(AppWindow, hwnd, workArea);
 
         // Draw the border OUTSIDE the region: expand the window outward by the border
-        // thickness so the captured content beneath stays unobscured by the outline.
-        var inset = Math.Max(1, (int)Math.Round(BorderThicknessDip * scale));
+        // thickness so the captured content beneath stays unobscured by the outline. Region
+        // geometry stays in exact physical pixels; only the DIP border thickness is converted.
+        var inset = AppWindowPlacement.DipToPixels(BorderThicknessDip, target.Scale);
 
         var rect = new RectInt32(
             regionInPhysicalPixels.X - inset,
@@ -115,12 +120,6 @@ public sealed partial class RegionIndicatorWindow : Window
         SetWindowDisplayAffinity(hwnd, WdaExcludeFromCapture);
     }
 
-    private static double GetScale(nint hwnd)
-    {
-        var dpi = GetDpiForWindow(hwnd);
-        return dpi <= 0 ? 1.0 : dpi / 96.0;
-    }
-
     // 32/64-bit-safe GetWindowLongPtr / SetWindowLongPtr wrappers. On 32-bit Windows the
     // *Ptr entry points do not exist, so fall back to the 32-bit GetWindowLong/SetWindowLong.
     private static nint GetWindowLongPtr(nint hwnd, int index) =>
@@ -144,9 +143,6 @@ public sealed partial class RegionIndicatorWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(nint hwnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowRgn(nint hWnd, nint hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);

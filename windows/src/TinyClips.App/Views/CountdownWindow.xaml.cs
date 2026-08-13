@@ -190,38 +190,21 @@ public sealed partial class CountdownWindow : Window
 
     private void CenterOnMonitor(MonitorInfo? monitor)
     {
-        var area = monitor is { WorkAreaWidth: > 0, WorkAreaHeight: > 0 }
-            ? new RectInt32(monitor.WorkAreaX, monitor.WorkAreaY, monitor.WorkAreaWidth, monitor.WorkAreaHeight)
-            : DisplayArea.Primary?.WorkArea;
-
         var hwnd = WindowNative.GetWindowHandle(this);
-        var scale = GetScale(hwnd);
-        var size = (int)Math.Round(SizeDip * scale);
-        AppWindow.Resize(new SizeInt32(size, size));
-
-        if (area is { } work)
-        {
-            var x = work.X + ((work.Width - size) / 2);
-            var y = work.Y + ((work.Height - size) / 2);
-            AppWindow.Move(new PointInt32(x, y));
-        }
+        var target = AppWindowPlacement.PrepareForTargetMonitor(AppWindow, hwnd, monitor);
+        var work = target.WorkArea;
+        var size = AppWindowPlacement.DipToPixels(SizeDip, target.Scale);
+        var x = work.X + ((work.Width - size) / 2);
+        var y = work.Y + ((work.Height - size) / 2);
+        AppWindow.MoveAndResize(AppWindowPlacement.ClampToWorkArea(work, x, y, size, size));
 
         // Clip the square window to a rounded square (matching the card) and keep it
         // out of recordings.
-        var radius = (int)Math.Round(CornerRadiusDip * scale);
+        var radius = AppWindowPlacement.DipToPixels(CornerRadiusDip, target.Scale);
         var region = CreateRoundRectRgn(0, 0, size + 1, size + 1, radius, radius);
         SetWindowRgn(hwnd, region, true);
         SetWindowDisplayAffinity(hwnd, WdaExcludeFromCapture);
     }
-
-    private static double GetScale(nint hwnd)
-    {
-        var dpi = GetDpiForWindow(hwnd);
-        return dpi <= 0 ? 1.0 : dpi / 96.0;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(nint hwnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

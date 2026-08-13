@@ -282,6 +282,11 @@ internal sealed class EditorController : IDisposable
         else
         {
             ArrowStyleDefault = style;
+            if (ActiveAnnotation is { Tool: EditTool.Arrow } active)
+            {
+                active.ArrowStyle = style;
+                AnnotationVisualInvalidated?.Invoke(this, active);
+            }
         }
     }
 

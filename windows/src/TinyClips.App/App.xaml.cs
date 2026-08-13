@@ -35,13 +35,15 @@ public partial class App : Application
     private const string GlyphCheckForUpdates = "\uE895";
     private const string GlyphFolder = "\uE8B7";
     private const string GlyphHistory = "\uE81C";
-    private const string GlyphLibrary = "\uEB9E";
+    private const string GlyphMediaGallery = "\uE7AA";
+    private const string GlyphBug = "\uEBE8";
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
     private SettingsWindow? _settingsWindow;
     private GuideWindow? _guideWindow;
     private ClipsManagerWindow? _clipsManagerWindow;
+    private QuickBugReportWindow? _quickBugReportWindow;
     private OnboardingWindow? _onboardingWindow;
     private ScreenshotEditorWindow? _editorWindow;
     private Window? _trimmerWindow;
@@ -63,7 +65,7 @@ public partial class App : Application
     private CaptureTile? _gifTile;
     private TrayPopupWindow? _trayPopup;
     private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
-    private const double TrayPopupWidth = 288;
+    private const double TrayPopupWidth = 344;
     private const double TrayPopupHeight = 242;
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
@@ -270,13 +272,16 @@ public partial class App : Application
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 2,
         };
-        footer.Children.Add(CreateFooterButton(GlyphLibrary, "Clips Library", new RelayCommand(OpenClipsManagerWindow), Dismiss));
+        footer.Children.Add(CreateFooterButton(GlyphMediaGallery, "Clips Library", new RelayCommand(OpenClipsManagerWindow), Dismiss));
+        footer.Children.Add(CreateFooterDivider());
         footer.Children.Add(CreateFooterButton("\uE713", "Settings", new RelayCommand(OpenSettingsWindow), Dismiss));
-        footer.Children.Add(CreateFooterButton("\uE897", "Guide", new RelayCommand(OpenGuideWindow), Dismiss));
 #if !TINYCLIPS_STORE_BUILD
         footer.Children.Add(CreateFooterButton(GlyphCheckForUpdates, "Check for updates", new AsyncRelayCommand(CheckForUpdatesFromTrayAsync), Dismiss));
 #endif
-        footer.Children.Add(CreateFooterButton("\uEA39", "File a Bug", new AsyncRelayCommand(() => OpenQuickBugReportFromTrayAsync(root.XamlRoot)), Dismiss));
+        footer.Children.Add(CreateFooterDivider());
+        footer.Children.Add(CreateFooterButton("\uE897", "Guide", new RelayCommand(OpenGuideWindow), Dismiss));
+        footer.Children.Add(CreateFooterButton(GlyphBug, "File a Bug", new RelayCommand(OpenQuickBugReportWindow), Dismiss));
+        footer.Children.Add(CreateFooterDivider());
         footer.Children.Add(CreateFooterButton("\uE7E8", "Exit", new RelayCommand(() => _ = ExitApplicationAsync()), Dismiss));
         root.Children.Add(footer);
 
@@ -443,6 +448,15 @@ public partial class App : Application
         button.Click += (_, _) => dismiss();
         return button;
     }
+
+    private static Border CreateFooterDivider() => new()
+    {
+        Width = 1,
+        Height = 20,
+        Margin = new Thickness(6, 0, 6, 0),
+        VerticalAlignment = VerticalAlignment.Center,
+        Background = ThemeBrush("DividerStrokeColorDefaultBrush"),
+    };
 
     private static Style? TextStyle(string key)
         => Application.Current.Resources.TryGetValue(key, out var value) ? value as Style : null;
@@ -2132,12 +2146,18 @@ public partial class App : Application
         }
     }
 
-    private Task OpenQuickBugReportFromTrayAsync(Microsoft.UI.Xaml.XamlRoot? xamlRoot)
-        => QuickBugReport.ShowQuickBugDialogAndOpenAsync(
-            xamlRoot,
-            QuickBugReport.GetAppVersion(),
-            QuickBugReport.GetDistributionChannel()
-        );
+    internal void OpenQuickBugReportWindow()
+    {
+        if (_quickBugReportWindow is null)
+        {
+            _quickBugReportWindow = new QuickBugReportWindow(
+                QuickBugReport.GetAppVersion(),
+                QuickBugReport.GetDistributionChannel());
+            _quickBugReportWindow.Closed += (_, _) => _quickBugReportWindow = null;
+        }
+
+        ActivateWindowToForeground(_quickBugReportWindow);
+    }
 
     private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
     {

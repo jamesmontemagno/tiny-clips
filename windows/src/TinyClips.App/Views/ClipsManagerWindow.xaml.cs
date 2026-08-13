@@ -1,8 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Runtime.Versioning;
+using System.Security.Cryptography;
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using TinyClips.Core.Models;
@@ -17,6 +21,7 @@ namespace TinyClips.App;
 /// <summary>
 /// View model for a single clip entry shown in the library grid or list.
 /// </summary>
+[SupportedOSPlatform("windows10.0.22000.0")]
 public sealed partial class ClipItemViewModel : ObservableObject
 {
     public required string Path { get; init; }
@@ -45,6 +50,24 @@ public sealed partial class ClipItemViewModel : ObservableObject
     public Visibility UploadedUrlAvailable => string.IsNullOrWhiteSpace(UploadedUrl)
         ? Visibility.Collapsed
         : Visibility.Visible;
+
+    public required string AutomationIdRoot { get; init; }
+    public string GridOpenAutomationId => $"{AutomationIdRoot}-Grid-Open";
+    public string GridCopyAutomationId => $"{AutomationIdRoot}-Grid-Copy";
+    public string GridMoreAutomationId => $"{AutomationIdRoot}-Grid-More";
+    public string GridRevealAutomationId => $"{AutomationIdRoot}-Grid-Reveal";
+    public string GridUploadAutomationId => $"{AutomationIdRoot}-Grid-Upload";
+    public string GridCopyUrlAutomationId => $"{AutomationIdRoot}-Grid-CopyUrl";
+    public string GridOpenUrlAutomationId => $"{AutomationIdRoot}-Grid-OpenUrl";
+    public string GridDeleteAutomationId => $"{AutomationIdRoot}-Grid-Delete";
+    public string ListOpenAutomationId => $"{AutomationIdRoot}-List-Open";
+    public string ListCopyAutomationId => $"{AutomationIdRoot}-List-Copy";
+    public string ListMoreAutomationId => $"{AutomationIdRoot}-List-More";
+    public string ListRevealAutomationId => $"{AutomationIdRoot}-List-Reveal";
+    public string ListUploadAutomationId => $"{AutomationIdRoot}-List-Upload";
+    public string ListCopyUrlAutomationId => $"{AutomationIdRoot}-List-CopyUrl";
+    public string ListOpenUrlAutomationId => $"{AutomationIdRoot}-List-OpenUrl";
+    public string ListDeleteAutomationId => $"{AutomationIdRoot}-List-Delete";
 
     public static async Task<ClipItemViewModel> FromAsync(ClipEntry entry, bool isUploadcareEnabled)
     {
@@ -86,22 +109,50 @@ public sealed partial class ClipItemViewModel : ObservableObject
             CapturedAt     = entry.CapturedAt,
             Thumbnail      = thumbnail,
             IsUploadcareEnabled = isUploadcareEnabled,
+            AutomationIdRoot = CreateAutomationIdRoot(entry.Path, entry.FileName),
         };
+    }
+
+    private static string CreateAutomationIdRoot(string path, string fileName)
+    {
+        const int maximumLabelLength = 40;
+
+        var label = new string(System.IO.Path.GetFileNameWithoutExtension(fileName)
+            .Select(character => char.IsAsciiLetterOrDigit(character) ? character : '-')
+            .ToArray())
+            .Trim('-');
+        if (label.Length == 0)
+        {
+            label = "Clip";
+        }
+        else if (label.Length > maximumLabelLength)
+        {
+            label = label[..maximumLabelLength].TrimEnd('-');
+        }
+
+        var normalizedPath = path
+            .Replace(System.IO.Path.AltDirectorySeparatorChar, System.IO.Path.DirectorySeparatorChar)
+            .ToUpperInvariant();
+        var pathHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath)));
+        return $"Clip-{label}-{pathHash}";
     }
 
     private static async Task<BitmapImage?> LoadThumbnailAsync(ClipEntry entry)
     {
+        const int thumbnailWidth = 260;
+        const int thumbnailHeight = 146;
+
         try
         {
             var file = await StorageFile.GetFileFromPathAsync(entry.Path);
-            var bitmap = new BitmapImage { DecodePixelWidth = 180 };
+            var bitmap = new BitmapImage { DecodePixelWidth = thumbnailWidth };
             if (entry.Type == CaptureType.Video)
             {
                 var clip = await MediaClip.CreateFromFileAsync(file);
                 var composition = new MediaComposition();
                 composition.Clips.Add(clip);
                 using var thumbnail = await composition.GetThumbnailAsync(
-                    TimeSpan.Zero, 180, 108, VideoFramePrecision.NearestFrame);
+                    TimeSpan.Zero, thumbnailWidth, thumbnailHeight, VideoFramePrecision.NearestFrame);
                 await bitmap.SetSourceAsync(thumbnail);
             }
             else
@@ -124,10 +175,12 @@ public sealed partial class ClipItemViewModel : ObservableObject
 /// A persistent media library window that lets users browse, filter, and act on all saved
 /// Tiny Clips captures without leaving the app.
 /// </summary>
+[SupportedOSPlatform("windows10.0.22000.0")]
 public sealed partial class ClipsManagerWindow : Window
 {
     private const string SettingsKeyViewMode = "clipsManagerViewMode";
     private const string SettingsKeyFilter   = "clipsManagerFilter";
+    private const string SettingsKeyDateFilter = "clipsManagerDateFilter";
     private const string SettingsKeySort     = "clipsManagerSort";
 
     private readonly IClipLibraryService _library;
@@ -138,6 +191,7 @@ public sealed partial class ClipsManagerWindow : Window
     private readonly ObservableCollection<ClipItemViewModel> _visibleClips = [];
     private IReadOnlyList<ClipItemViewModel> _allClips = [];
     private bool _isGridView = true;
+    private bool _isInitializing = true;
     private bool _suppressPersist;
 
     public ClipsManagerWindow()
@@ -148,10 +202,12 @@ public sealed partial class ClipsManagerWindow : Window
         _captureSettings = App.Services.GetRequiredService<ICaptureSettings>();
 
         InitializeComponent();
+        _isInitializing = false;
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppWindow.Resize(new SizeInt32(1100, 750));
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 1600, 820);
 
         ApplyTheme();
         RestorePersistedState();
@@ -215,6 +271,13 @@ public sealed partial class ClipsManagerWindow : Window
 
     private void UpdateContentVisibility()
     {
+        LibrarySummaryText.Text = _visibleClips.Count switch
+        {
+            0 => "No captures",
+            1 => "1 capture",
+            _ => $"{_visibleClips.Count} captures",
+        };
+
         if (_visibleClips.Count == 0)
         {
             EmptyState.Visibility   = Visibility.Visible;
@@ -246,8 +309,26 @@ public sealed partial class ClipsManagerWindow : Window
             filtered = filtered.Where(c => c.Type == CaptureType.Gif);
         }
 
+        var now = DateTimeOffset.Now;
+        var startOfToday = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, now.Offset);
+        if (DateToday.IsChecked == true)
+        {
+            filtered = filtered.Where(c => c.CapturedAt.ToLocalTime() >= startOfToday);
+        }
+        else if (DateWeek.IsChecked == true)
+        {
+            var daysSinceMonday = ((int)startOfToday.DayOfWeek + 6) % 7;
+            var startOfWeek = startOfToday.AddDays(-daysSinceMonday);
+            filtered = filtered.Where(c => c.CapturedAt.ToLocalTime() >= startOfWeek);
+        }
+        else if (DateMonth.IsChecked == true)
+        {
+            var startOfMonth = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, now.Offset);
+            filtered = filtered.Where(c => c.CapturedAt.ToLocalTime() >= startOfMonth);
+        }
+
         // Sort
-        var sorted = SortCombo.SelectedIndex == 1
+        var sorted = SortOldest.IsChecked == true
             ? filtered.OrderBy(c => c.CapturedAt)
             : filtered.OrderByDescending(c => c.CapturedAt);
 
@@ -257,6 +338,7 @@ public sealed partial class ClipsManagerWindow : Window
             _visibleClips.Add(item);
         }
 
+        UpdateFilterPresentation();
         UpdateContentVisibility();
     }
 
@@ -266,14 +348,24 @@ public sealed partial class ClipsManagerWindow : Window
 
     private void OnFilterChanged(object sender, RoutedEventArgs e)
     {
-        if (_suppressPersist) return;
+        if (_isInitializing || _suppressPersist) return;
         ApplyFilterAndSort();
         PersistState();
     }
 
-    private void OnSortChanged(object sender, SelectionChangedEventArgs e)
+    private void OnClearFiltersClicked(object sender, RoutedEventArgs e)
     {
-        if (_suppressPersist) return;
+        _suppressPersist = true;
+        try
+        {
+            FilterAll.IsChecked = true;
+            DateAll.IsChecked = true;
+        }
+        finally
+        {
+            _suppressPersist = false;
+        }
+
         ApplyFilterAndSort();
         PersistState();
     }
@@ -335,7 +427,7 @@ public sealed partial class ClipsManagerWindow : Window
 
     private async void OnUploadClicked(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: string path } button)
+        if (sender is not Control { Tag: string path } source)
         {
             return;
         }
@@ -352,7 +444,7 @@ public sealed partial class ClipsManagerWindow : Window
             return;
         }
 
-        button.IsEnabled = false;
+        source.IsEnabled = false;
         SetUploadStatus("Uploading capture...");
         try
         {
@@ -366,7 +458,7 @@ public sealed partial class ClipsManagerWindow : Window
         }
         finally
         {
-            button.IsEnabled = true;
+            source.IsEnabled = true;
         }
     }
 
@@ -473,12 +565,23 @@ public sealed partial class ClipsManagerWindow : Window
                 default:           FilterAll.IsChecked        = true; break;
             }
 
+            var dateFilter = _settings.Get(SettingsKeyDateFilter, "All");
+            switch (dateFilter)
+            {
+                case "Today": DateToday.IsChecked = true; break;
+                case "Week":  DateWeek.IsChecked  = true; break;
+                case "Month": DateMonth.IsChecked = true; break;
+                default:      DateAll.IsChecked   = true; break;
+            }
+
             var sort = _settings.Get(SettingsKeySort, 0);
-            SortCombo.SelectedIndex = Math.Clamp(sort, 0, 1);
+            SortOldest.IsChecked = sort == 1;
+            SortNewest.IsChecked = sort != 1;
         }
         finally
         {
             _suppressPersist = false;
+            UpdateFilterPresentation();
         }
     }
 
@@ -490,8 +593,32 @@ public sealed partial class ClipsManagerWindow : Window
                    : FilterVideo.IsChecked      == true ? "Video"
                    : FilterGif.IsChecked        == true ? "Gif"
                    : "All";
+        var dateFilter = DateToday.IsChecked == true ? "Today"
+                       : DateWeek.IsChecked  == true ? "Week"
+                       : DateMonth.IsChecked == true ? "Month"
+                       : "All";
         _settings.Set(SettingsKeyFilter, filter);
-        _settings.Set(SettingsKeySort, SortCombo.SelectedIndex);
+        _settings.Set(SettingsKeyDateFilter, dateFilter);
+        _settings.Set(SettingsKeySort, SortOldest.IsChecked == true ? 1 : 0);
+    }
+
+    private void UpdateFilterPresentation()
+    {
+        var typeLabel = FilterScreenshot.IsChecked == true ? "Screenshots"
+                      : FilterVideo.IsChecked      == true ? "Videos"
+                      : FilterGif.IsChecked        == true ? "GIFs"
+                      : "All clips";
+        var dateLabel = DateToday.IsChecked == true ? "Today"
+                      : DateWeek.IsChecked  == true ? "This week"
+                      : DateMonth.IsChecked == true ? "This month"
+                      : null;
+
+        FilterSummaryText.Text = dateLabel is null ? typeLabel : $"{typeLabel} · {dateLabel}";
+        var hasActiveFilters = FilterAll.IsChecked != true || DateAll.IsChecked != true;
+        ClearFiltersButton.Visibility = hasActiveFilters ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(
+            FilterButton,
+            $"Sort and filter clips. Current filter: {FilterSummaryText.Text}");
     }
 
     private void SetUploadStatus(string status)

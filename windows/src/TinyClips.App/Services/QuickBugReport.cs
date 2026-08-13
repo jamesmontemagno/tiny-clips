@@ -1,9 +1,5 @@
 using System;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace TinyClips.App;
 
@@ -65,73 +61,4 @@ internal static class QuickBugReport
         return components.Uri;
     }
 
-    public static async Task ShowQuickBugDialogAndOpenAsync(XamlRoot? xamlRoot, string version, string distribution)
-    {
-        var titleBox = new TextBox
-        {
-            PlaceholderText = "Bug title",
-            Header = "Title",
-            MinWidth = 420,
-        };
-        var happenedBox = new TextBox
-        {
-            PlaceholderText = "What happened?",
-            Header = "What happened?",
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 120,
-            MaxHeight = 220,
-        };
-
-        var info = new TextBlock
-        {
-            Text = $"App info will be auto-filled: Windows, v{version}, {distribution}, {RuntimeInformation.OSDescription}",
-            TextWrapping = TextWrapping.Wrap,
-            Style = Application.Current.Resources.TryGetValue("CaptionTextBlockStyle", out var value) ? value as Style : null,
-        };
-
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(titleBox);
-        panel.Children.Add(happenedBox);
-        panel.Children.Add(info);
-
-        var dialog = new ContentDialog
-        {
-            Title = "File a Bug",
-            Content = panel,
-            PrimaryButtonText = "File on GitHub",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-        };
-        if (xamlRoot is not null)
-        {
-            dialog.XamlRoot = xamlRoot;
-        }
-
-        void UpdateState()
-        {
-            dialog.IsPrimaryButtonEnabled =
-                !string.IsNullOrWhiteSpace(titleBox.Text) &&
-                !string.IsNullOrWhiteSpace(happenedBox.Text);
-        }
-
-        titleBox.TextChanged += (_, _) => UpdateState();
-        happenedBox.TextChanged += (_, _) => UpdateState();
-        UpdateState();
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
-        var bugUri = BuildQuickBugRequestUri(
-            titleBox.Text.Trim(),
-            happenedBox.Text.Trim(),
-            version,
-            version,
-            distribution
-        );
-        Process.Start(new ProcessStartInfo(bugUri.ToString()) { UseShellExecute = true });
-    }
 }

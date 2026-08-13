@@ -46,11 +46,6 @@
                     Icon="Setting"
                     Tag="General" />
                 <NavigationViewItem
-                    AutomationProperties.AutomationId="UploadcareNavigationItem"
-                    Content="Uploadcare"
-                    Icon="CloudUpload"
-                    Tag="Uploadcare" />
-                <NavigationViewItem
                     AutomationProperties.AutomationId="AnalyticsNavigationItem"
                     Content="Analytics"
                     Icon="CalendarWeek"
@@ -90,6 +85,14 @@
                     Content="Hotkeys"
                     Icon="Keyboard"
                     Tag="Hotkeys" />
+                <NavigationViewItem
+                    AutomationProperties.AutomationId="UploadcareNavigationItem"
+                    Content="Uploadcare"
+                    Tag="Uploadcare">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE898;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem
                     AutomationProperties.AutomationId="AboutNavigationItem"
                     Content="About"
