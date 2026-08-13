@@ -9,9 +9,9 @@ struct PanoramaCaptureLimits: Sendable {
     let noMovementTimeout: TimeInterval
 
     static let `default` = PanoramaCaptureLimits(
-        maxFrames: 120,
-        maxOutputHeight: 30_000,
-        maxMemoryBytes: 600_000_000,
+        maxFrames: 600,
+        maxOutputHeight: 50_000,
+        maxMemoryBytes: 1_500_000_000,
         noMovementTimeout: 8
     )
 }
@@ -32,6 +32,21 @@ enum PanoramaCaptureError: LocalizedError, Equatable {
         case .memoryLimit: return "Scrolling capture reached its memory limit."
         case .noFrames: return "No frames were captured."
         case .alignmentFailed: return "Could not align the scrolling frames."
+        }
+    }
+}
+
+/// Reason a capture stopped growing before the user asked it to.
+enum PanoramaCaptureLimitReason: Equatable {
+    case memory
+    case outputHeight
+    case frameCount
+
+    var message: String {
+        switch self {
+        case .memory: return "Memory limit reached, saving what was captured"
+        case .outputHeight: return "Maximum height reached, saving what was captured"
+        case .frameCount: return "Frame limit reached, saving what was captured"
         }
     }
 }
@@ -73,95 +88,142 @@ struct PanoramaFrame: Sendable {
     }
 }
 
-struct PanoramaStitcher {
+/// Stitches frames into the output buffer as they arrive so that peak memory tracks
+/// the size of the panorama instead of the number of captured frames.
+struct PanoramaAccumulator {
     struct Result {
         let image: CGImage
         let frameCount: Int
         let outputHeight: Int
+        let reachedLimit: Bool
     }
 
-    private struct Alignment {
+    struct Alignment {
         let shift: Int
         let score: Double
         let fixedBottomHeight: Int
     }
 
+    enum Outcome: Equatable {
+        case accepted
+        case skipped
+        case limitReached(PanoramaCaptureLimitReason)
+    }
+
     let limits: PanoramaCaptureLimits
 
-    func stitch(_ frames: [PanoramaFrame]) throws -> Result {
-        guard let first = frames.first else { throw PanoramaCaptureError.noFrames }
-        guard first.width > 0, first.height > 0 else { throw PanoramaCaptureError.noFrames }
+    private(set) var previousFrame: PanoramaFrame?
+    private(set) var acceptedFrameCount = 0
+    private(set) var limitReason: PanoramaCaptureLimitReason?
 
-        var acceptedFrames = [first]
-        var alignments: [Alignment] = []
-        var outputHeight = first.height
+    private var output: [UInt8] = []
+    private var committedRows = 0
+    private var heldBottomBand = 0
+    private var rejectedFrameCount = 0
 
-        for frame in frames.dropFirst() {
-            guard frame.width == first.width, frame.height == first.height else {
-                throw PanoramaCaptureError.alignmentFailed
+    init(limits: PanoramaCaptureLimits) {
+        self.limits = limits
+    }
+
+    var reachedLimit: Bool { limitReason != nil }
+
+    /// Height the panorama would have if the capture stopped right now.
+    var pendingOutputHeight: Int {
+        guard let previousFrame else { return 0 }
+        return committedRows == 0 ? previousFrame.height : committedRows + heldBottomBand
+    }
+
+    mutating func append(_ frame: PanoramaFrame) -> Outcome {
+        guard limitReason == nil else { return .skipped }
+
+        guard let previous = previousFrame else {
+            guard fits(outputHeight: frame.height, width: frame.width, frame: frame) else {
+                limitReason = .memory
+                return .limitReached(.memory)
             }
-            guard let alignment = estimateVerticalShift(previous: acceptedFrames.last!, current: frame) else {
-                continue
+            previousFrame = frame
+            acceptedFrameCount = 1
+            return .accepted
+        }
+
+        guard frame.width == previous.width, frame.height == previous.height else {
+            rejectedFrameCount += 1
+            return .skipped
+        }
+        guard let alignment = Self.estimateVerticalShift(previous: previous, current: frame) else {
+            rejectedFrameCount += 1
+            return .skipped
+        }
+
+        let height = frame.height
+        let isFirstCommit = committedRows == 0
+        let baseRows = isFirstCommit ? height - alignment.fixedBottomHeight : committedRows
+        let previousBand = isFirstCommit ? alignment.fixedBottomHeight : heldBottomBand
+        let appendCount = alignment.shift + previousBand - alignment.fixedBottomHeight
+        let sourceStartRow = height - previousBand - alignment.shift
+        guard appendCount > 0, sourceStartRow >= 0, baseRows >= 0 else {
+            rejectedFrameCount += 1
+            return .skipped
+        }
+
+        let prospectiveHeight = baseRows + appendCount + alignment.fixedBottomHeight
+        guard prospectiveHeight <= limits.maxOutputHeight else {
+            limitReason = .outputHeight
+            return .limitReached(.outputHeight)
+        }
+        guard fits(outputHeight: prospectiveHeight, width: frame.width, frame: frame) else {
+            limitReason = .memory
+            return .limitReached(.memory)
+        }
+
+        if isFirstCommit {
+            output.reserveCapacity(baseRows * frame.width * 4)
+            appendRows(from: previous, startRow: 0, rowCount: baseRows)
+            committedRows = baseRows
+        }
+        appendRows(from: frame, startRow: sourceStartRow, rowCount: appendCount)
+        committedRows += appendCount
+        heldBottomBand = alignment.fixedBottomHeight
+        previousFrame = frame
+        acceptedFrameCount += 1
+
+        if acceptedFrameCount >= limits.maxFrames {
+            limitReason = .frameCount
+            return .limitReached(.frameCount)
+        }
+        return .accepted
+    }
+
+    /// Flushes the held footer band and materializes the panorama image.
+    func finish() throws -> Result {
+        guard let last = previousFrame else { throw PanoramaCaptureError.noFrames }
+        guard committedRows > 0 else {
+            if let limitReason {
+                throw limitReason == .memory
+                    ? PanoramaCaptureError.memoryLimit
+                    : PanoramaCaptureError.outputTooLarge
             }
-            outputHeight += alignment.shift
-            guard outputHeight <= limits.maxOutputHeight else {
-                throw PanoramaCaptureError.outputTooLarge
-            }
-            acceptedFrames.append(frame)
-            alignments.append(alignment)
+            throw rejectedFrameCount > 0
+                ? PanoramaCaptureError.alignmentFailed
+                : PanoramaCaptureError.noMovement
         }
 
-        guard acceptedFrames.count > 1 else {
-            throw frames.count > 1 ? PanoramaCaptureError.alignmentFailed : PanoramaCaptureError.noMovement
+        var pixels = output
+        if heldBottomBand > 0 {
+            let bytesPerRow = last.width * 4
+            let start = (last.height - heldBottomBand) * bytesPerRow
+            pixels.append(contentsOf: last.pixels[start..<last.pixels.count])
         }
+        let outputHeight = committedRows + heldBottomBand
 
-        let frameBytes = frames.reduce(Int64(0)) { $0 + $1.byteCount }
-        let outputBytes = Int64(first.width) * Int64(outputHeight) * 4
-        // The final CGImage provider may copy the output Data, so budget two output buffers.
-        guard frameBytes + outputBytes * 2 <= limits.maxMemoryBytes else {
-            throw PanoramaCaptureError.memoryLimit
-        }
-
-        let fixedBottomHeight = alignments.map(\.fixedBottomHeight).max() ?? 0
-        var output = [UInt8](repeating: 0, count: Int(outputBytes))
-        copyRows(
-            from: first,
-            sourceStartRow: 0,
-            rowCount: first.height - fixedBottomHeight,
-            to: &output,
-            destinationStartRow: 0
-        )
-        var destinationRow = first.height - fixedBottomHeight
-        for (index, alignment) in alignments.enumerated() {
-            let frame = acceptedFrames[index + 1]
-            let rowCount = alignment.shift
-            copyRows(
-                from: frame,
-                sourceStartRow: frame.height - fixedBottomHeight - alignment.shift,
-                rowCount: rowCount,
-                to: &output,
-                destinationStartRow: destinationRow
-            )
-            destinationRow += rowCount
-        }
-        if fixedBottomHeight > 0, let last = acceptedFrames.last {
-            copyRows(
-                from: last,
-                sourceStartRow: last.height - fixedBottomHeight,
-                rowCount: fixedBottomHeight,
-                to: &output,
-                destinationStartRow: destinationRow
-            )
-        }
-
-        let data = Data(output) as CFData
+        let data = Data(pixels) as CFData
         guard let provider = CGDataProvider(data: data),
               let image = CGImage(
-                width: first.width,
+                width: last.width,
                 height: outputHeight,
                 bitsPerComponent: 8,
                 bitsPerPixel: 32,
-                bytesPerRow: first.width * 4,
+                bytesPerRow: last.width * 4,
                 space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                 provider: provider,
@@ -171,10 +233,28 @@ struct PanoramaStitcher {
               ) else {
             throw PanoramaCaptureError.alignmentFailed
         }
-        return Result(image: image, frameCount: acceptedFrames.count, outputHeight: outputHeight)
+        return Result(
+            image: image,
+            frameCount: acceptedFrameCount,
+            outputHeight: outputHeight,
+            reachedLimit: limitReason != nil
+        )
     }
 
-    func areMeaningfullyDifferent(_ first: PanoramaFrame, _ second: PanoramaFrame) -> Bool {
+    private mutating func appendRows(from frame: PanoramaFrame, startRow: Int, rowCount: Int) {
+        let bytesPerRow = frame.width * 4
+        let start = startRow * bytesPerRow
+        let end = start + rowCount * bytesPerRow
+        output.append(contentsOf: frame.pixels[start..<end])
+    }
+
+    /// Peak memory is the output buffer plus the copy made for the final image, plus one live frame.
+    private func fits(outputHeight: Int, width: Int, frame: PanoramaFrame) -> Bool {
+        let outputBytes = Int64(width) * Int64(outputHeight) * 4
+        return outputBytes * 2 + frame.byteCount <= limits.maxMemoryBytes
+    }
+
+    static func areMeaningfullyDifferent(_ first: PanoramaFrame, _ second: PanoramaFrame) -> Bool {
         guard first.width == second.width, first.height == second.height else { return true }
         let rowStep = max(1, first.height / 80)
         let columnStep = max(1, first.width / 80)
@@ -190,7 +270,7 @@ struct PanoramaStitcher {
         return samples == 0 || difference / Double(samples) > 2.5
     }
 
-    private func estimateVerticalShift(previous: PanoramaFrame, current: PanoramaFrame) -> Alignment? {
+    static func estimateVerticalShift(previous: PanoramaFrame, current: PanoramaFrame) -> Alignment? {
         let height = previous.height
         let width = previous.width
         let minimumShift = max(2, height / 40)
@@ -229,14 +309,10 @@ struct PanoramaStitcher {
             maximumHeight: bestShift / 2
         )
         guard bestShift + fixedBottomHeight <= height else { return nil }
-        return Alignment(
-            shift: bestShift,
-            score: bestScore,
-            fixedBottomHeight: fixedBottomHeight
-        )
+        return Alignment(shift: bestShift, score: bestScore, fixedBottomHeight: fixedBottomHeight)
     }
 
-    private func stationaryBottomBand(
+    private static func stationaryBottomBand(
         previous: PanoramaFrame,
         current: PanoramaFrame,
         maximumHeight: Int
@@ -260,47 +336,46 @@ struct PanoramaStitcher {
         return stationaryRows
     }
 
-    private func copyRows(
-        from frame: PanoramaFrame,
-        sourceStartRow: Int,
-        rowCount: Int,
-        to output: inout [UInt8],
-        destinationStartRow: Int
-    ) {
-        let bytesPerRow = frame.width * 4
-        let sourceStart = sourceStartRow * bytesPerRow
-        let sourceEnd = sourceStart + rowCount * bytesPerRow
-        let destinationStart = destinationStartRow * bytesPerRow
-        output.replaceSubrange(
-            destinationStart..<(destinationStart + rowCount * bytesPerRow),
-            with: frame.pixels[sourceStart..<sourceEnd]
-        )
-    }
-
-    private func luma(_ bytes: [UInt8], _ index: Int) -> Double {
+    private static func luma(_ bytes: [UInt8], _ index: Int) -> Double {
         (0.299 * Double(bytes[index]))
             + (0.587 * Double(bytes[index + 1]))
             + (0.114 * Double(bytes[index + 2]))
     }
 }
 
+/// Convenience wrapper that stitches an already-captured sequence of frames.
+struct PanoramaStitcher {
+    let limits: PanoramaCaptureLimits
+
+    func stitch(_ frames: [PanoramaFrame]) throws -> PanoramaAccumulator.Result {
+        var accumulator = PanoramaAccumulator(limits: limits)
+        for frame in frames {
+            if case .limitReached = accumulator.append(frame) { break }
+        }
+        return try accumulator.finish()
+    }
+}
+
 final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
     var onProgress: ((Int) -> Void)?
     var onFailure: ((Error) -> Void)?
+    /// Fired once when a guardrail stops growth; the caller should stop and keep what exists.
+    var onLimitReached: ((PanoramaCaptureLimitReason) -> Void)?
 
     private let limits: PanoramaCaptureLimits
     private let processingQueue = DispatchQueue(label: "com.tinyclips.scrolling-panorama")
     private let context = CIContext()
     private var stream: SCStream?
-    private var frames: [PanoramaFrame] = []
-    private var retainedFrameBytes: Int64 = 0
+    private var accumulator: PanoramaAccumulator
     private var lastFrameDate = Date()
     private var stopContinuation: CheckedContinuation<CGImage, Error>?
     private var didFinish = false
     private var didReportFailure = false
+    private var didReportLimit = false
 
     init(limits: PanoramaCaptureLimits = .default) {
         self.limits = limits
+        self.accumulator = PanoramaAccumulator(limits: limits)
     }
 
     func start(region: CaptureRegion) async throws {
@@ -373,8 +448,7 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
             self.stream = nil
             self.stopContinuation?.resume(throwing: PanoramaCaptureError.cancelled)
             self.stopContinuation = nil
-            self.frames.removeAll()
-            self.retainedFrameBytes = 0
+            self.accumulator = PanoramaAccumulator(limits: self.limits)
             Task {
                 try? await stream?.stopCapture()
             }
@@ -386,18 +460,18 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
         didFinish = true
         stream = nil
         do {
-            let image = try PanoramaStitcher(limits: limits).stitch(frames).image
+            let image = try accumulator.finish().image
             stopContinuation?.resume(returning: image)
         } catch {
             stopContinuation?.resume(throwing: error)
         }
         stopContinuation = nil
-        frames.removeAll()
-        retainedFrameBytes = 0
+        accumulator = PanoramaAccumulator(limits: limits)
     }
 
     private func process(_ sampleBuffer: CMSampleBuffer) {
         guard !didFinish,
+              !accumulator.reachedLimit,
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             return
         }
@@ -406,23 +480,21 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
               let frame = try? PanoramaFrame(image: image) else {
             return
         }
-        guard retainedFrameBytes + frame.byteCount <= limits.maxMemoryBytes / 2 else {
-            reportFailure(PanoramaCaptureError.memoryLimit)
-            return
-        }
-        if let previous = frames.last,
-           !PanoramaStitcher(limits: limits).areMeaningfullyDifferent(previous, frame) {
+        if let previous = accumulator.previousFrame,
+           !PanoramaAccumulator.areMeaningfullyDifferent(previous, frame) {
             if Date().timeIntervalSince(lastFrameDate) > limits.noMovementTimeout {
                 reportFailure(PanoramaCaptureError.noMovement)
             }
             return
         }
-        frames.append(frame)
-        retainedFrameBytes += frame.byteCount
-        lastFrameDate = Date()
-        onProgress?(frames.count)
-        if frames.count >= limits.maxFrames {
-            reportFailure(PanoramaCaptureError.outputTooLarge)
+        switch accumulator.append(frame) {
+        case .accepted:
+            lastFrameDate = Date()
+            onProgress?(accumulator.acceptedFrameCount)
+        case .skipped:
+            break
+        case .limitReached(let reason):
+            reportLimit(reason)
         }
     }
 
@@ -430,6 +502,12 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
         guard !didReportFailure else { return }
         didReportFailure = true
         onFailure?(error)
+    }
+
+    private func reportLimit(_ reason: PanoramaCaptureLimitReason) {
+        guard !didReportLimit else { return }
+        didReportLimit = true
+        onLimitReached?(reason)
     }
 }
 
