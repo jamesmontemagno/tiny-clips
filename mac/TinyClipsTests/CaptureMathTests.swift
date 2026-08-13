@@ -115,6 +115,57 @@ final class CaptureMathTests: XCTestCase {
         )
     }
 
+    func testPanoramaStitchesKnownVerticalShift() throws {
+        let first = panoramaFrame(globalStartRow: 0)
+        let second = panoramaFrame(globalStartRow: 20)
+
+        let result = try PanoramaStitcher(limits: panoramaLimits()).stitch([first, second])
+
+        XCTAssertEqual(result.frameCount, 2)
+        XCTAssertEqual(result.outputHeight, 120)
+    }
+
+    func testPanoramaRejectsFramesWithoutCredibleAlignment() {
+        let first = panoramaFrame(globalStartRow: 0)
+        let unrelated = PanoramaFrame(
+            width: 40,
+            height: 100,
+            pixels: [UInt8](repeating: 255, count: 40 * 100 * 4)
+        )
+
+        XCTAssertThrowsError(
+            try PanoramaStitcher(limits: panoramaLimits()).stitch([first, unrelated])
+        ) { error in
+            XCTAssertEqual(error as? PanoramaCaptureError, .alignmentFailed)
+        }
+    }
+
+    func testPanoramaSuppressesStationaryFooterCopies() throws {
+        let first = panoramaFrame(globalStartRow: 0, fixedFooterHeight: 5)
+        let second = panoramaFrame(globalStartRow: 20, fixedFooterHeight: 5)
+
+        let result = try PanoramaStitcher(limits: panoramaLimits()).stitch([first, second])
+
+        XCTAssertEqual(result.outputHeight, 120)
+        XCTAssertEqual(redValue(in: result.image, x: 0, y: 95), UInt8((95 * 7) % 251))
+        XCTAssertEqual(redValue(in: result.image, x: 0, y: 119), 32)
+    }
+
+    func testPanoramaEnforcesPeakMemoryBudget() {
+        let first = panoramaFrame(globalStartRow: 0)
+        let second = panoramaFrame(globalStartRow: 20)
+        let limits = PanoramaCaptureLimits(
+            maxFrames: 10,
+            maxOutputHeight: 1_000,
+            maxMemoryBytes: 50_000,
+            noMovementTimeout: 8
+        )
+
+        XCTAssertThrowsError(try PanoramaStitcher(limits: limits).stitch([first, second])) { error in
+            XCTAssertEqual(error as? PanoramaCaptureError, .memoryLimit)
+        }
+    }
+
     func testTimelineExcludesCompletedAndActivePauses() {
         let timeline = RecordingTimelineMath.timelineTime(
             now: CMTime(seconds: 20, preferredTimescale: 600),
@@ -139,5 +190,42 @@ final class CaptureMathTests: XCTestCase {
 
         XCTAssertEqual(accumulated.seconds, 6.5, accuracy: 0.0001)
         XCTAssertEqual(adjusted.seconds, 13.5, accuracy: 0.0001)
+    }
+
+    private func panoramaFrame(globalStartRow: Int, fixedFooterHeight: Int = 0) -> PanoramaFrame {
+        let width = 40
+        let height = 100
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let index = (y * width + x) * 4
+                let isFooter = fixedFooterHeight > 0 && y >= height - fixedFooterHeight
+                let value = isFooter
+                    ? UInt8(32)
+                    : UInt8(((globalStartRow + y) * 7 + x * 13) % 251)
+                pixels[index] = value
+                pixels[index + 1] = value
+                pixels[index + 2] = value
+                pixels[index + 3] = 255
+            }
+        }
+        return PanoramaFrame(width: width, height: height, pixels: pixels)
+    }
+
+    private func panoramaLimits() -> PanoramaCaptureLimits {
+        PanoramaCaptureLimits(
+            maxFrames: 10,
+            maxOutputHeight: 1_000,
+            maxMemoryBytes: 2_000_000,
+            noMovementTimeout: 8
+        )
+    }
+
+    private func redValue(in image: CGImage, x: Int, y: Int) -> UInt8? {
+        guard let data = image.dataProvider?.data,
+              let bytes = CFDataGetBytePtr(data) else {
+            return nil
+        }
+        return bytes[(y * image.width + x) * 4]
     }
 }
