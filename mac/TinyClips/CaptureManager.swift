@@ -596,6 +596,13 @@ class CaptureManager: ObservableObject {
         scrollingCapturePanel = panel
         panel.show(at: scrollingCapturePanelPosition)
 
+        dismissRegionIndicator()
+        if CaptureSettings.shared.showRegionIndicator {
+            let indicator = RegionIndicatorPanel(region: region)
+            indicator.show()
+            regionIndicatorPanel = indicator
+        }
+
         Task {
             do {
                 try await session.start(region: region)
@@ -648,6 +655,7 @@ class CaptureManager: ObservableObject {
         }
         scrollingCapturePanel?.dismiss()
         scrollingCapturePanel = nil
+        dismissRegionIndicator()
         scrollingCaptureSession = nil
         isStoppingScrollingCapture = false
         isScreenshotCaptureInProgress = false

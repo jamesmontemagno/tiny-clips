@@ -222,6 +222,29 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertLessThanOrEqual(outputHeight, PanoramaCaptureLimits.default.maxOutputHeight)
     }
 
+    func testPanoramaPrefersSmallestShiftOnRepeatingContent() throws {
+        // A page of repeating rows aliases at shift + N * period; picking a later
+        // alias duplicates rows that are already committed.
+        let first = repeatingPanoramaFrame(globalStartRow: 0, period: 30)
+        let second = repeatingPanoramaFrame(globalStartRow: 20, period: 30)
+
+        let result = try PanoramaStitcher(limits: panoramaLimits()).stitch([first, second])
+
+        XCTAssertEqual(result.frameCount, 2)
+        XCTAssertEqual(result.outputHeight, 120)
+    }
+
+    func testPanoramaAlignsSmallScrollSteps() throws {
+        // Slow scrolling advances only a few pixels per frame, which must not be
+        // rounded up to a larger shift.
+        let first = panoramaFrame(globalStartRow: 0)
+        let second = panoramaFrame(globalStartRow: 4)
+
+        let result = try PanoramaStitcher(limits: panoramaLimits()).stitch([first, second])
+
+        XCTAssertEqual(result.outputHeight, 104)
+    }
+
     func testTimelineExcludesCompletedAndActivePauses() {
         let timeline = RecordingTimelineMath.timelineTime(
             now: CMTime(seconds: 20, preferredTimescale: 600),
@@ -259,6 +282,55 @@ final class CaptureMathTests: XCTestCase {
                 let value = isFooter
                     ? UInt8(32)
                     : UInt8(((globalStartRow + y) * 7 + x * 13) % 251)
+                pixels[index] = value
+                pixels[index + 1] = value
+                pixels[index + 2] = value
+                pixels[index + 3] = 255
+            }
+        }
+        return PanoramaFrame(width: width, height: height, pixels: pixels)
+    }
+
+    func testPanoramaAlignsPeriodicContentAcrossShiftSizes() {
+        let width = 320
+        let height = 900
+        let period = 100
+        func makeFrame(globalStartRow: Int) -> PanoramaFrame {
+            var pixels = [UInt8](repeating: 255, count: width * height * 4)
+            for y in 0..<height {
+                let row = globalStartRow + y
+                let band = (row % period) < period / 2 ? 40 : 210
+                for x in 0..<width {
+                    let index = (y * width + x) * 4
+                    let value = UInt8(min(255, max(0, band + ((row % 7) * 3) + ((x % 11) * 2))))
+                    pixels[index] = value
+                    pixels[index + 1] = value
+                    pixels[index + 2] = value
+                    pixels[index + 3] = 255
+                }
+            }
+            return PanoramaFrame(width: width, height: height, pixels: pixels)
+        }
+
+        let base = makeFrame(globalStartRow: 0)
+        for trueShift in [6, 37, 120, 480] {
+            let alignment = PanoramaAccumulator.estimateVerticalShift(
+                previous: base,
+                current: makeFrame(globalStartRow: trueShift)
+            )
+            XCTAssertEqual(alignment?.shift, trueShift, "shift \(trueShift) misaligned")
+        }
+    }
+
+    private func repeatingPanoramaFrame(globalStartRow: Int, period: Int) -> PanoramaFrame {
+        let width = 40
+        let height = 100
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        for y in 0..<height {
+            let row = (globalStartRow + y) % period
+            for x in 0..<width {
+                let index = (y * width + x) * 4
+                let value = UInt8((row * 8 + x * 3) % 251)
                 pixels[index] = value
                 pixels[index + 1] = value
                 pixels[index + 2] = value
