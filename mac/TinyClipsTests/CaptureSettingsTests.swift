@@ -24,9 +24,11 @@ final class CaptureSettingsTests: XCTestCase {
     }
 
     func testHotKeyDefaultsAndRoundTripUseIsolatedDefaults() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+
         for action in HotKeyAction.allCases {
             XCTAssertEqual(
-                CaptureSettings.hotKeyBinding(for: action, defaults: defaults),
+                settings.hotKeyBinding(for: action),
                 HotKeyBinding.defaultBinding(for: action)
             )
 
@@ -34,10 +36,10 @@ final class CaptureSettingsTests: XCTestCase {
                 keyCode: kVK_ANSI_A + Int(action.rawValue),
                 carbonModifiers: Int(cmdKey | shiftKey)
             )
-            CaptureSettings.setHotKeyBinding(custom, for: action, defaults: defaults)
+            settings.setHotKeyBinding(custom, for: action)
 
             XCTAssertEqual(
-                CaptureSettings.hotKeyBinding(for: action, defaults: defaults),
+                settings.hotKeyBinding(for: action),
                 custom
             )
         }

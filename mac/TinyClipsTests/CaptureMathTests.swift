@@ -3,6 +3,10 @@ import XCTest
 @testable import TinyClips
 
 final class CaptureMathTests: XCTestCase {
+    func testHostedAppDetectsUnitTestRuntime() {
+        XCTAssertTrue(TinyClipsRuntime.isRunningUnitTests)
+    }
+
     func testCaptureRegionConvertsPointsToRetinaPixels() {
         let region = CaptureRegion(
             sourceRect: CGRect(x: 10, y: 20, width: 100.25, height: 50.75),
@@ -48,6 +52,42 @@ final class CaptureMathTests: XCTestCase {
             forWindowFrame: CGRect(x: 1300, y: 100, width: 500, height: 400),
             primaryDisplayHeight: 900,
             displays: displays
+        )
+
+        XCTAssertEqual(scale, 1)
+    }
+
+    func testWindowScaleUsesOverlapAreaForVerticallyStackedDisplays() {
+        let displays = [
+            CaptureDisplayGeometry(
+                frame: CGRect(x: 0, y: 0, width: 1000, height: 800),
+                scaleFactor: 2
+            ),
+            CaptureDisplayGeometry(
+                frame: CGRect(x: 0, y: 800, width: 1000, height: 800),
+                scaleFactor: 1
+            ),
+        ]
+
+        let scale = CaptureCoordinateMath.scaleFactor(
+            forWindowFrame: CGRect(x: 100, y: -500, width: 800, height: 600),
+            primaryDisplayHeight: 800,
+            displays: displays
+        )
+
+        XCTAssertEqual(scale, 1)
+    }
+
+    func testWindowScaleFallsBackWhenNoDisplayOverlaps() {
+        let scale = CaptureCoordinateMath.scaleFactor(
+            forWindowFrame: CGRect(x: 2000, y: 2000, width: 100, height: 100),
+            primaryDisplayHeight: 800,
+            displays: [
+                CaptureDisplayGeometry(
+                    frame: CGRect(x: 0, y: 0, width: 1000, height: 800),
+                    scaleFactor: 2
+                ),
+            ]
         )
 
         XCTAssertEqual(scale, 1)

@@ -28,11 +28,15 @@ enum CaptureCoordinateMath {
             primaryDisplayHeight: primaryDisplayHeight
         )
         return displays
-            .max {
-                $0.frame.intersection(appKitFrame).width <
-                    $1.frame.intersection(appKitFrame).width
-            }?
-            .scaleFactor ?? 1.0
+            .compactMap { display -> (geometry: CaptureDisplayGeometry, area: CGFloat)? in
+                let intersection = display.frame.intersection(appKitFrame)
+                guard !intersection.isNull, intersection.width > 0, intersection.height > 0 else {
+                    return nil
+                }
+                return (display, intersection.width * intersection.height)
+            }
+            .max { $0.area < $1.area }?
+            .geometry.scaleFactor ?? 1.0
     }
 
     static func capturePoint(
