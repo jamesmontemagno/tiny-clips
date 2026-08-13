@@ -8,70 +8,141 @@
     mc:Ignorable="d">
 
     <Grid
-        x:Name="ImageHost"
+        x:Name="ViewportRoot"
         Background="{ThemeResource SubtleFillColorTertiaryBrush}"
-        CornerRadius="{ThemeResource OverlayCornerRadius}"
-        SizeChanged="OnImageHostSizeChanged">
-        <Canvas x:Name="CanvasLayer" IsHitTestVisible="False">
-            <Border
-                x:Name="CanvasBackground"
-                Visibility="Collapsed" />
-            <Border x:Name="ImageCard">
-                <Border.Shadow>
-                    <ThemeShadow />
-                </Border.Shadow>
-                <Image
-                    x:Name="PreviewImage"
-                    Stretch="Fill" />
-            </Border>
-        </Canvas>
-        <Canvas
-            x:Name="OverlayCanvas"
-            AutomationProperties.HelpText="Select an annotation, drag inside it to move, or drag a corner handle to resize."
-            AutomationProperties.Name="Screenshot annotation canvas"
-            Background="Transparent"
-            DoubleTapped="OnOverlayDoubleTapped"
-            PointerCanceled="OnOverlayPointerCanceled"
-            PointerCaptureLost="OnOverlayPointerCaptureLost"
-            PointerMoved="OnPointerMoved"
-            PointerPressed="OnPointerPressed"
-            PointerReleased="OnPointerReleased">
-            <Rectangle
-                x:Name="SelectionRect"
-                Canvas.ZIndex="10000"
-                Fill="{ThemeResource AccentFillColorDefaultBrush}"
-                Opacity="0.25"
-                Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-                StrokeDashArray="4,2"
-                StrokeThickness="2"
-                Visibility="Collapsed" />
-            <Rectangle
-                x:Name="SelectionMarquee"
-                Canvas.ZIndex="10000"
-                IsHitTestVisible="False"
-                Stroke="DeepSkyBlue"
-                StrokeDashArray="4,2"
-                StrokeThickness="1.5"
-                Visibility="Collapsed" />
-            <Rectangle x:Name="TopLeftResizeHandle" Canvas.ZIndex="10001" Width="10" Height="10"
-                       Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
-                       Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
-            <Rectangle x:Name="TopRightResizeHandle" Canvas.ZIndex="10001" Width="10" Height="10"
-                       Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
-                       Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
-            <Rectangle x:Name="BottomLeftResizeHandle" Canvas.ZIndex="10001" Width="10" Height="10"
-                       Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
-                       Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
-            <Rectangle x:Name="BottomRightResizeHandle" Canvas.ZIndex="10001" Width="10" Height="10"
-                       Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
-                       Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
-            <Ellipse x:Name="StartEndpointHandle" Canvas.ZIndex="10001" Width="12" Height="12"
-                     Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
-                     Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
-            <Ellipse x:Name="EndEndpointHandle" Canvas.ZIndex="10001" Width="12" Height="12"
-                     Fill="{ThemeResource AccentFillColorDefaultBrush}" IsHitTestVisible="False"
-                     Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
-        </Canvas>
+        CornerRadius="{ThemeResource OverlayCornerRadius}">
+        <ScrollView
+            x:Name="ViewportScrollView"
+            AutomationProperties.Name="Screenshot zoom and pan viewport"
+            ContentOrientation="None"
+            HorizontalAnchorRatio="0.5"
+            HorizontalScrollBarVisibility="Auto"
+            MaxZoomFactor="4"
+            MinZoomFactor="0.25"
+            VerticalAnchorRatio="0.5"
+            VerticalScrollBarVisibility="Auto"
+            ViewChanged="OnViewportViewChanged"
+            ZoomMode="Enabled">
+            <!--  Keep image and overlay in one unzoomed coordinate space. ScrollView applies the
+                  same transform to both and pointer coordinates are resolved back into this space.  -->
+            <Grid
+                x:Name="ImageHost"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                SizeChanged="OnImageHostSizeChanged">
+                <Canvas x:Name="CanvasLayer" IsHitTestVisible="False">
+                    <Border
+                        x:Name="CanvasBackground"
+                        Visibility="Collapsed" />
+                    <Border x:Name="ImageCard">
+                        <Border.Shadow>
+                            <ThemeShadow />
+                        </Border.Shadow>
+                        <Image
+                            x:Name="PreviewImage"
+                            Stretch="Fill" />
+                    </Border>
+                </Canvas>
+                <Canvas
+                    x:Name="OverlayCanvas"
+                    AutomationProperties.HelpText="Select an annotation, drag inside it to move, drag a corner handle to resize, or hold Space and drag to pan."
+                    AutomationProperties.Name="Screenshot annotation canvas"
+                    Background="Transparent"
+                    DoubleTapped="OnOverlayDoubleTapped"
+                    IsTabStop="True"
+                    PointerCanceled="OnOverlayPointerCanceled"
+                    PointerCaptureLost="OnOverlayPointerCaptureLost"
+                    PointerMoved="OnPointerMoved"
+                    PointerPressed="OnPointerPressed"
+                    PointerReleased="OnPointerReleased">
+                    <Rectangle
+                        x:Name="SelectionRect"
+                        Canvas.ZIndex="10000"
+                        Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                        Opacity="0.25"
+                        Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                        StrokeDashArray="4,2"
+                        StrokeThickness="2"
+                        Visibility="Collapsed" />
+                    <Rectangle
+                        x:Name="SelectionMarquee"
+                        Canvas.ZIndex="10000"
+                        IsHitTestVisible="False"
+                        Stroke="DeepSkyBlue"
+                        StrokeDashArray="4,2"
+                        StrokeThickness="1.5"
+                        Visibility="Collapsed" />
+                    <Rectangle x:Name="TopLeftResizeHandle" Canvas.ZIndex="10001" Width="10" Height="10"
+                               Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
+                               Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
+                    <Rectangle x:Name="TopRightResizeHandle" Canvas.ZIndex="10001" Width="10" Height="10"
+                               Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
+                               Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
+                    <Rectangle x:Name="BottomLeftResizeHandle" Canvas.ZIndex="10001" Width="10" Height="10"
+                               Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
+                               Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
+                    <Rectangle x:Name="BottomRightResizeHandle" Canvas.ZIndex="10001" Width="10" Height="10"
+                               Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
+                               Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
+                    <Ellipse x:Name="StartEndpointHandle" Canvas.ZIndex="10001" Width="12" Height="12"
+                             Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
+                             Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
+                    <Ellipse x:Name="EndEndpointHandle" Canvas.ZIndex="10001" Width="12" Height="12"
+                             Fill="{ThemeResource AccentFillColorDefaultBrush}" IsHitTestVisible="False"
+                             Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
+                </Canvas>
+            </Grid>
+        </ScrollView>
+
+        <Border
+            Margin="12"
+            Padding="4"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource ControlCornerRadius}">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+                <Button
+                    AutomationProperties.Name="Zoom out"
+                    Click="OnZoomOut"
+                    ToolTipService.ToolTip="Zoom out (Ctrl+-)">
+                    <FontIcon Glyph="&#xE71F;" />
+                </Button>
+                <DropDownButton
+                    x:Name="ZoomPercentageButton"
+                    AutomationProperties.Name="Zoom percentage"
+                    Content="100%"
+                    ToolTipService.ToolTip="Choose zoom percentage">
+                    <DropDownButton.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="0.25" Text="25%" />
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="0.5" Text="50%" />
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="0.75" Text="75%" />
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="1" Text="100% (Fit)" />
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="1.25" Text="125%" />
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="1.5" Text="150%" />
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="2" Text="200%" />
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="3" Text="300%" />
+                            <MenuFlyoutItem Click="OnZoomPreset" Tag="4" Text="400%" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+                <Button
+                    AutomationProperties.Name="Zoom in"
+                    Click="OnZoomIn"
+                    ToolTipService.ToolTip="Zoom in (Ctrl++)">
+                    <FontIcon Glyph="&#xE710;" />
+                </Button>
+                <Button
+                    AutomationProperties.Name="Fit screenshot to viewport"
+                    Click="OnFit"
+                    Content="Fit"
+                    ToolTipService.ToolTip="Fit screenshot to viewport (Ctrl+0)" />
+            </StackPanel>
+        </Border>
+
         <TextBlock
             x:Name="HintText"
             Margin="0,0,0,12"

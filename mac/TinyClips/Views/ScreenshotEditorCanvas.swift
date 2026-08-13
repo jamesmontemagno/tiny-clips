@@ -6,14 +6,16 @@ import SwiftUI
 struct ScreenshotEditorCanvasView: View {
     @ObservedObject var viewModel: ScreenshotEditorViewModel
     let containerSize: CGSize
+    let zoomScale: CGFloat
+    let panOffset: CGSize
 
     var body: some View {
-        let exportLayout = viewModel.displayLayout(in: containerSize)
+        let exportLayout = viewModel.displayLayout(in: containerSize, zoomScale: zoomScale)
         let imageSize = exportLayout.imageRect.size
         let frameSize = exportLayout.frameSize
         let frameOrigin = CGPoint(
-            x: (containerSize.width - frameSize.width) / 2,
-            y: (containerSize.height - frameSize.height) / 2
+            x: (containerSize.width - frameSize.width) / 2 + panOffset.width,
+            y: (containerSize.height - frameSize.height) / 2 + panOffset.height
         )
         let origin = CGPoint(
             x: frameOrigin.x + exportLayout.imageRect.minX,
@@ -33,7 +35,10 @@ struct ScreenshotEditorCanvasView: View {
                     Rectangle()
                         .fill(viewModel.backgroundColor)
                         .frame(width: frameSize.width, height: frameSize.height)
-                        .position(x: containerSize.width / 2, y: containerSize.height / 2)
+                        .position(
+                            x: containerSize.width / 2 + panOffset.width,
+                            y: containerSize.height / 2 + panOffset.height
+                        )
                 } else if viewModel.backgroundStyle == .gradient {
                     Rectangle()
                         .fill(
@@ -44,14 +49,20 @@ struct ScreenshotEditorCanvasView: View {
                             )
                         )
                         .frame(width: frameSize.width, height: frameSize.height)
-                        .position(x: containerSize.width / 2, y: containerSize.height / 2)
+                        .position(
+                            x: containerSize.width / 2 + panOffset.width,
+                            y: containerSize.height / 2 + panOffset.height
+                        )
                 } else if viewModel.backgroundStyle == .wallpaper, let wallpaperImage = viewModel.wallpaperImage {
                     Image(nsImage: wallpaperImage)
                         .resizable()
                         .scaledToFill()
                         .frame(width: frameSize.width, height: frameSize.height)
                         .clipped()
-                        .position(x: containerSize.width / 2, y: containerSize.height / 2)
+                        .position(
+                            x: containerSize.width / 2 + panOffset.width,
+                            y: containerSize.height / 2 + panOffset.height
+                        )
                 }
 
                 ZStack(alignment: .topLeading) {
@@ -73,6 +84,7 @@ struct ScreenshotEditorCanvasView: View {
                             drawAnnotation(current, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage)
                         }
                     }
+
                     .allowsHitTesting(false)
 
                     // Text annotations
@@ -90,6 +102,7 @@ struct ScreenshotEditorCanvasView: View {
                             .position(x: scaledRect.midX, y: scaledRect.midY)
                             .allowsHitTesting(false)
                     }
+
                 }
                 .frame(width: imageSize.width, height: imageSize.height, alignment: .topLeading)
                 .clipShape(RoundedRectangle(cornerRadius: imageCornerRadius))

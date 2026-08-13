@@ -115,6 +115,33 @@ final class CaptureMathTests: XCTestCase {
         )
     }
 
+    func testScreenshotEditorZoomClampsAndStepsThroughPresets() {
+        XCTAssertEqual(ScreenshotEditorZoomMath.clamp(0.1), 0.25)
+        XCTAssertEqual(ScreenshotEditorZoomMath.clamp(8), 4)
+        XCTAssertEqual(ScreenshotEditorZoomMath.steppedScale(from: 1, direction: 1), 1.25)
+        XCTAssertEqual(ScreenshotEditorZoomMath.steppedScale(from: 1, direction: -1), 0.75)
+    }
+
+    func testScreenshotEditorZoomPreservesFocalPointAndClampsPan() {
+        let adjusted = ScreenshotEditorZoomMath.focalAdjustedPan(
+            .zero,
+            oldScale: 1,
+            newScale: 2,
+            focalPoint: CGPoint(x: 75, y: 25),
+            viewportSize: CGSize(width: 100, height: 100)
+        )
+        XCTAssertEqual(adjusted.width, -25)
+        XCTAssertEqual(adjusted.height, 25)
+
+        let clamped = ScreenshotEditorZoomMath.clampedPan(
+            CGSize(width: -80, height: 90),
+            contentSize: CGSize(width: 200, height: 160),
+            viewportSize: CGSize(width: 100, height: 100)
+        )
+        XCTAssertEqual(clamped.width, -50)
+        XCTAssertEqual(clamped.height, 30)
+    }
+
     func testPanoramaStitchesKnownVerticalShift() throws {
         let first = panoramaFrame(globalStartRow: 0)
         let second = panoramaFrame(globalStartRow: 20)

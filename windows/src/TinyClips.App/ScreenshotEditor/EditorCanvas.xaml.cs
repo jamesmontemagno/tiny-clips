@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
+using Windows.Devices.Input;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.UI;
@@ -21,6 +24,16 @@ namespace TinyClips.App.ScreenshotEditor;
 /// </summary>
 public sealed partial class EditorCanvas : UserControl
 {
+    private const float MinZoomFactor = 0.25f;
+    private const float MaxZoomFactor = 4.0f;
+    private static readonly float[] ZoomPresets = [0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f, 4.0f];
+    private static readonly InputSystemCursor MoveCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeAll);
+    private static readonly InputSystemCursor ArrowCursor = InputSystemCursor.Create(InputSystemCursorShape.Arrow);
+    private static readonly ScrollingZoomOptions ZoomOptions =
+        new(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore);
+    private static readonly ScrollingScrollOptions ScrollOptions =
+        new(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore);
+
     /// <summary>A retained visual for one annotation. The element type is fixed for the
     /// annotation's lifetime except for Arrow (shaft swaps Line/Path if the style changes between
     /// straight/curved) and Redact (placeholder Rectangle swaps to Image once a blurred preview is
@@ -61,6 +74,12 @@ public sealed partial class EditorCanvas : UserControl
     private double _resizeOriginalSizeScale;
     private Annotation? _endpointAnnotation;
     private bool _movingStartEndpoint;
+    private bool _spacePressed;
+    private bool _panning;
+    private float _zoomFactor = 1.0f;
+    private Point _panStart;
+    private double _panStartHorizontalOffset;
+    private double _panStartVerticalOffset;
 
     // Tracks whichever pointer currently has capture (crop drag, annotation move, or annotation
     // draw) so an interrupted interaction — e.g. a tool-change keyboard shortcut firing mid-drag —
@@ -75,6 +94,46 @@ public sealed partial class EditorCanvas : UserControl
     /// <summary>Raised when the crop-selection rectangle becomes big enough (or too small) to
     /// apply — the window uses this to enable/disable its "Apply crop" command.</summary>
     public event EventHandler<bool>? CropSelectionAvailabilityChanged;
+
+    public void ZoomIn()
+    {
+        foreach (var preset in ZoomPresets)
+        {
+            if (preset > _zoomFactor + 0.001f)
+            {
+                SetZoom(preset);
+                return;
+            }
+        }
+    }
+
+    public void ZoomOut()
+    {
+        for (var i = ZoomPresets.Length - 1; i >= 0; i--)
+        {
+            if (ZoomPresets[i] < _zoomFactor - 0.001f)
+            {
+                SetZoom(ZoomPresets[i]);
+                return;
+            }
+        }
+    }
+
+    public void Fit() => SetZoom(1.0f);
+
+    public void SetSpacePressed(bool pressed)
+    {
+        _spacePressed = pressed;
+        ProtectedCursor = pressed ? MoveCursor : ArrowCursor;
+        if (pressed)
+        {
+            OverlayCanvas.Focus(FocusState.Programmatic);
+        }
+        if (!pressed && _panning)
+        {
+            CancelLocalInteraction();
+        }
+    }
 
     /// <summary>Wires this control to the shared editor state. Called once by the window right
     /// after construction (mirrors the constructor-injected shared view model used by the Settings
@@ -168,6 +227,7 @@ public sealed partial class EditorCanvas : UserControl
         }
 
         _dragging = false;
+        _panning = false;
         _resizingAnnotation = null;
         _resizeHandle = null;
         _endpointAnnotation = null;
@@ -240,6 +300,43 @@ public sealed partial class EditorCanvas : UserControl
     {
         LayoutCanvas();
         RepositionAll();
+    }
+
+    private void OnViewportViewChanged(ScrollView sender, object args)
+    {
+        _zoomFactor = sender.ZoomFactor;
+        ZoomPercentageButton.Content = $"{Math.Round(sender.ZoomFactor * 100):0}%";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            ZoomPercentageButton,
+            $"Zoom percentage, {Math.Round(sender.ZoomFactor * 100):0}%");
+    }
+
+    private void OnZoomOut(object sender, RoutedEventArgs e) => ZoomOut();
+
+    private void OnZoomIn(object sender, RoutedEventArgs e) => ZoomIn();
+
+    private void OnFit(object sender, RoutedEventArgs e) => Fit();
+
+    private void OnZoomPreset(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string value }
+            && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var zoom))
+        {
+            SetZoom(zoom);
+        }
+    }
+
+    private void SetZoom(float zoom, Point? focalPoint = null)
+    {
+        var clamped = Math.Clamp(zoom, MinZoomFactor, MaxZoomFactor);
+        _zoomFactor = clamped;
+        var focal = focalPoint ?? new Point(
+            ViewportScrollView.ViewportWidth / 2.0,
+            ViewportScrollView.ViewportHeight / 2.0);
+        ViewportScrollView.ZoomTo(
+            clamped,
+            new Vector2((float)focal.X, (float)focal.Y),
+            ZoomOptions);
     }
 
     private (double Scale, double OffsetX, double OffsetY) HostLayout() =>
@@ -891,6 +988,25 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
+        OverlayCanvas.Focus(FocusState.Pointer);
+
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Touch)
+        {
+            return;
+        }
+
+        if (_spacePressed)
+        {
+            _panning = true;
+            _panStart = e.GetCurrentPoint(ViewportScrollView).Position;
+            _panStartHorizontalOffset = ViewportScrollView.HorizontalOffset;
+            _panStartVerticalOffset = ViewportScrollView.VerticalOffset;
+            OverlayCanvas.CapturePointer(e.Pointer);
+            _capturedPointer = e.Pointer;
+            e.Handled = true;
+            return;
+        }
+
         var p = e.GetCurrentPoint(OverlayCanvas).Position;
         var tool = _controller.Tool;
 
@@ -980,6 +1096,17 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
+        if (_panning)
+        {
+            var panningPoint = e.GetCurrentPoint(ViewportScrollView).Position;
+            ViewportScrollView.ScrollTo(
+                _panStartHorizontalOffset - (panningPoint.X - _panStart.X),
+                _panStartVerticalOffset - (panningPoint.Y - _panStart.Y),
+                ScrollOptions);
+            e.Handled = true;
+            return;
+        }
+
         var p = e.GetCurrentPoint(OverlayCanvas).Position;
         var tool = _controller.Tool;
 
@@ -1040,6 +1167,14 @@ public sealed partial class EditorCanvas : UserControl
         // this method already committed/settled the interaction) cleanup pass.
         _capturedPointer = null;
         OverlayCanvas.ReleasePointerCapture(e.Pointer);
+
+        if (_panning)
+        {
+            _panning = false;
+            e.Handled = true;
+            return;
+        }
+
         var tool = _controller.Tool;
 
         if (tool == EditTool.Crop && _dragging)

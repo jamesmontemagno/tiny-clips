@@ -2,6 +2,306 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
+    let isEnabled: Bool
+    let onZoom: (CGFloat, CGPoint) -> Void
+    let onPan: (CGSize) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isEnabled: isEnabled, onZoom: onZoom, onPan: onPan)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        context.coordinator.install(for: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.isEnabled = isEnabled
+        if !isEnabled {
+            context.coordinator.resetSpaceState()
+        }
+        context.coordinator.onZoom = onZoom
+        context.coordinator.onPan = onPan
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.uninstall()
+    }
+
+    final class Coordinator {
+        var isEnabled: Bool
+        var onZoom: (CGFloat, CGPoint) -> Void
+        var onPan: (CGSize) -> Void
+
+        private weak var monitoredView: NSView?
+        private var eventMonitor: Any?
+        private var resignActiveObserver: NSObjectProtocol?
+        private var isSpacePressed = false
+        private var isSpaceDragging = false
+
+        init(
+            isEnabled: Bool,
+            onZoom: @escaping (CGFloat, CGPoint) -> Void,
+            onPan: @escaping (CGSize) -> Void
+        ) {
+            self.isEnabled = isEnabled
+            self.onZoom = onZoom
+            self.onPan = onPan
+        }
+
+        func install(for view: NSView) {
+            monitoredView = view
+            eventMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.scrollWheel, .magnify, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            ) { [weak self] event in
+                self?.handle(event) ?? event
+            }
+            resignActiveObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.resetSpaceState()
+            }
+        }
+
+        func uninstall() {
+            if let eventMonitor {
+                NSEvent.removeMonitor(eventMonitor)
+            }
+            eventMonitor = nil
+            if let resignActiveObserver {
+                NotificationCenter.default.removeObserver(resignActiveObserver)
+            }
+            resignActiveObserver = nil
+            resetSpaceState()
+        }
+
+        func resetSpaceState() {
+            isSpacePressed = false
+            isSpaceDragging = false
+        }
+
+        private func handle(_ event: NSEvent) -> NSEvent? {
+            guard let view = monitoredView,
+                  event.window === view.window,
+                  isEnabled else {
+                return event
+            }
+
+            switch event.type {
+            case .keyDown where event.keyCode == 49:
+                guard pointerIsInside(view),
+                      !(view.window?.firstResponder is NSTextView) else {
+                    return event
+                }
+                isSpacePressed = true
+                return nil
+            case .keyUp where event.keyCode == 49:
+                guard isSpacePressed else { return event }
+                isSpacePressed = false
+                isSpaceDragging = false
+                return nil
+            case .leftMouseDown where isSpacePressed:
+                guard contains(event, in: view) else { return event }
+                isSpaceDragging = true
+                return nil
+            case .leftMouseDragged where isSpaceDragging:
+                onPan(CGSize(width: event.deltaX, height: event.deltaY))
+                return nil
+            case .leftMouseUp where isSpaceDragging:
+                isSpaceDragging = false
+                return nil
+            case .scrollWheel:
+                guard contains(event, in: view) else { return event }
+                if event.modifierFlags.contains(.command) {
+                    onZoom(exp(event.scrollingDeltaY * 0.015), localPoint(for: event, in: view))
+                } else {
+                    onPan(CGSize(width: event.scrollingDeltaX, height: -event.scrollingDeltaY))
+                }
+                return nil
+            case .magnify:
+                guard contains(event, in: view) else { return event }
+                onZoom(max(0.5, 1 + event.magnification), localPoint(for: event, in: view))
+                return nil
+            default:
+                return event
+            }
+        }
+
+        private func contains(_ event: NSEvent, in view: NSView) -> Bool {
+            view.bounds.contains(view.convert(event.locationInWindow, from: nil))
+        }
+
+        private func localPoint(for event: NSEvent, in view: NSView) -> CGPoint {
+            let point = view.convert(event.locationInWindow, from: nil)
+            return CGPoint(x: point.x, y: view.bounds.height - point.y)
+        }
+
+        private func pointerIsInside(_ view: NSView) -> Bool {
+            guard let window = view.window else { return false }
+            let pointInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+            return view.bounds.contains(view.convert(pointInWindow, from: nil))
+        }
+    }
+}
+
+struct ScreenshotEditorScrollBars: View {
+    let contentSize: CGSize
+    let viewportSize: CGSize
+    let panOffset: CGSize
+    let onSetHorizontalPan: (CGFloat) -> Void
+    let onSetVerticalPan: (CGFloat) -> Void
+
+    var body: some View {
+        ZStack {
+            if contentSize.width > viewportSize.width {
+                ZoomHorizontalScrollBar(
+                    contentWidth: contentSize.width,
+                    viewportWidth: viewportSize.width,
+                    pan: panOffset.width,
+                    onSetPan: onSetHorizontalPan
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 6)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+            }
+
+            if contentSize.height > viewportSize.height {
+                ZoomVerticalScrollBar(
+                    contentHeight: contentSize.height,
+                    viewportHeight: viewportSize.height,
+                    pan: panOffset.height,
+                    onSetPan: onSetVerticalPan
+                )
+                .padding(.trailing, 6)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+}
+
+private struct ZoomHorizontalScrollBar: View {
+    let contentWidth: CGFloat
+    let viewportWidth: CGFloat
+    let pan: CGFloat
+    let onSetPan: (CGFloat) -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let trackWidth = geometry.size.width
+            let thumbWidth = max(28, trackWidth * min(1, viewportWidth / contentWidth))
+            let travel = max(0, trackWidth - thumbWidth)
+            let maxPan = max(0, (contentWidth - viewportWidth) / 2)
+            let progress = maxPan > 0 ? (maxPan - pan) / (2 * maxPan) : 0
+
+            ZStack(alignment: .leading) {
+                Capsule().fill(.black.opacity(0.12))
+                Capsule()
+                    .fill(.secondary.opacity(0.55))
+                    .frame(width: thumbWidth)
+                    .offset(x: travel * progress)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let thumbPosition = min(travel, max(0, value.location.x - thumbWidth / 2))
+                        let newProgress = travel > 0 ? thumbPosition / travel : 0
+                        onSetPan(maxPan - newProgress * 2 * maxPan)
+                    }
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Horizontal canvas scroll")
+            .accessibilityValue("\(Int(progress * 100)) percent")
+            .focusable()
+            .onMoveCommand { direction in
+                switch direction {
+                case .left:
+                    onSetPan(min(maxPan, pan + 40))
+                case .right:
+                    onSetPan(max(-maxPan, pan - 40))
+                default:
+                    break
+                }
+            }
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment:
+                    onSetPan(max(-maxPan, pan - 40))
+                case .decrement:
+                    onSetPan(min(maxPan, pan + 40))
+                @unknown default:
+                    break
+                }
+            }
+        }
+        .frame(height: 8)
+    }
+}
+
+private struct ZoomVerticalScrollBar: View {
+    let contentHeight: CGFloat
+    let viewportHeight: CGFloat
+    let pan: CGFloat
+    let onSetPan: (CGFloat) -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let trackHeight = geometry.size.height
+            let thumbHeight = max(28, trackHeight * min(1, viewportHeight / contentHeight))
+            let travel = max(0, trackHeight - thumbHeight)
+            let maxPan = max(0, (contentHeight - viewportHeight) / 2)
+            let progress = maxPan > 0 ? (maxPan - pan) / (2 * maxPan) : 0
+
+            ZStack(alignment: .top) {
+                Capsule().fill(.black.opacity(0.12))
+                Capsule()
+                    .fill(.secondary.opacity(0.55))
+                    .frame(height: thumbHeight)
+                    .offset(y: travel * progress)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let thumbPosition = min(travel, max(0, value.location.y - thumbHeight / 2))
+                        let newProgress = travel > 0 ? thumbPosition / travel : 0
+                        onSetPan(maxPan - newProgress * 2 * maxPan)
+                    }
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Vertical canvas scroll")
+            .accessibilityValue("\(Int(progress * 100)) percent")
+            .focusable()
+            .onMoveCommand { direction in
+                switch direction {
+                case .up:
+                    onSetPan(min(maxPan, pan + 40))
+                case .down:
+                    onSetPan(max(-maxPan, pan - 40))
+                default:
+                    break
+                }
+            }
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment:
+                    onSetPan(max(-maxPan, pan - 40))
+                case .decrement:
+                    onSetPan(min(maxPan, pan + 40))
+                @unknown default:
+                    break
+                }
+            }
+        }
+        .frame(width: 8)
+    }
+}
+
 // MARK: - Editor View
 
 struct ScreenshotEditorView: View {
@@ -19,6 +319,9 @@ struct ScreenshotEditorView: View {
     @State private var showClearAnnotationsConfirmation = false
     @State private var currentSaveURL: URL
     @State private var lastSavedURL: URL?
+    @State private var zoomScale: CGFloat = 1
+    @State private var panOffset: CGSize = .zero
+    @State private var viewportSize: CGSize = .zero
 
     init(
         imageURL: URL,
@@ -184,7 +487,38 @@ struct ScreenshotEditorView: View {
         } detail: {
             VStack(spacing: 0) {
                 GeometryReader { geo in
-                    ScreenshotEditorCanvasView(viewModel: viewModel, containerSize: geo.size)
+                    ZStack {
+                        ScreenshotEditorCanvasView(
+                            viewModel: viewModel,
+                            containerSize: geo.size,
+                            zoomScale: zoomScale,
+                            panOffset: panOffset
+                        )
+
+                        ScreenshotEditorViewportEventMonitor(
+                            isEnabled: !viewModel.isEditingText,
+                            onZoom: { multiplier, focalPoint in
+                                setZoom(zoomScale * multiplier, focalPoint: focalPoint)
+                            },
+                            onPan: panCanvas
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .allowsHitTesting(false)
+
+                        ScreenshotEditorScrollBars(
+                            contentSize: zoomContentSize(in: geo.size),
+                            viewportSize: geo.size,
+                            panOffset: panOffset,
+                            onSetHorizontalPan: { panOffset.width = $0 },
+                            onSetVerticalPan: { panOffset.height = $0 }
+                        )
+                    }
+                    .onAppear {
+                        updateViewportSize(geo.size)
+                    }
+                    .onChange(of: geo.size) { _, newSize in
+                        updateViewportSize(newSize)
+                    }
                 }
                 .background(Color(nsColor: .windowBackgroundColor).opacity(0.5))
                 .clipped()
@@ -207,10 +541,15 @@ struct ScreenshotEditorView: View {
                 redo: viewModel.redo,
                 copy: viewModel.copyToClipboard,
                 clearAnnotations: { showClearAnnotationsConfirmation = true },
+                zoomIn: zoomIn,
+                zoomOut: zoomOut,
+                fitZoom: fitZoom,
                 canUndo: viewModel.canUndo,
                 canRedo: viewModel.canRedo,
                 hasAnnotations: viewModel.hasAnnotations,
-                isEditingText: viewModel.isEditingText
+                isEditingText: viewModel.isEditingText,
+                canZoomIn: !viewModel.isEditingText && zoomScale < ScreenshotEditorZoomMath.maximumScale,
+                canZoomOut: !viewModel.isEditingText && zoomScale > ScreenshotEditorZoomMath.minimumScale
             )
         )
         .onExitCommand {
@@ -291,6 +630,10 @@ struct ScreenshotEditorView: View {
                 }
             }
         }
+        .onChange(of: viewModel.canvasPadding) { _, _ in constrainPan() }
+        .onChange(of: viewModel.exportFramePreset) { _, _ in constrainPan() }
+        .onChange(of: viewModel.horizontalExportAlignment) { _, _ in constrainPan() }
+        .onChange(of: viewModel.verticalExportAlignment) { _, _ in constrainPan() }
         .disabled(isSaving)
         .overlay {
             if isSaving {
@@ -562,6 +905,53 @@ struct ScreenshotEditorView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Divider()
+                .frame(height: 18)
+
+            Button(action: zoomOut) {
+                Image(systemName: "minus.magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .disabled(zoomScale <= ScreenshotEditorZoomMath.minimumScale)
+            .help("Zoom Out (Command-minus)")
+            .accessibilityLabel("Zoom out")
+
+            Menu {
+                ForEach(ScreenshotEditorZoomMath.presets, id: \.self) { preset in
+                    Button {
+                        setZoom(preset)
+                    } label: {
+                        if abs(zoomScale - preset) < 0.001 {
+                            Label("\(Int(preset * 100))%", systemImage: "checkmark")
+                        } else {
+                            Text("\(Int(preset * 100))%")
+                        }
+                    }
+                }
+            } label: {
+                Text("\(Int((zoomScale * 100).rounded()))%")
+                    .monospacedDigit()
+                    .frame(minWidth: 42)
+            }
+            .menuStyle(.borderlessButton)
+            .accessibilityLabel("Canvas zoom")
+            .accessibilityValue("\(Int((zoomScale * 100).rounded())) percent")
+
+            Button(action: zoomIn) {
+                Image(systemName: "plus.magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .disabled(zoomScale >= ScreenshotEditorZoomMath.maximumScale)
+            .help("Zoom In (Command-plus)")
+            .accessibilityLabel("Zoom in")
+
+            Button(action: fitZoom) {
+                Label("Fit", systemImage: "arrow.down.right.and.arrow.up.left")
+            }
+            .controlSize(.small)
+            .help("Fit to Window (Command-0)")
+            .accessibilityLabel("Fit canvas to window")
+
             Spacer()
 
             Button {
@@ -626,6 +1016,69 @@ struct ScreenshotEditorView: View {
         }
         .frame(width: 260)
         .padding(14)
+    }
+
+    private func zoomIn() {
+        guard !viewModel.isEditingText else { return }
+        setZoom(ScreenshotEditorZoomMath.steppedScale(from: zoomScale, direction: 1))
+    }
+
+    private func zoomOut() {
+        guard !viewModel.isEditingText else { return }
+        setZoom(ScreenshotEditorZoomMath.steppedScale(from: zoomScale, direction: -1))
+    }
+
+    private func fitZoom() {
+        zoomScale = 1
+        panOffset = .zero
+    }
+
+    private func setZoom(_ requestedScale: CGFloat, focalPoint: CGPoint? = nil) {
+        let newScale = ScreenshotEditorZoomMath.clamp(requestedScale)
+        guard abs(newScale - zoomScale) > 0.0001 else { return }
+        let focalPoint = focalPoint ?? CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2)
+        let adjustedPan = ScreenshotEditorZoomMath.focalAdjustedPan(
+            panOffset,
+            oldScale: zoomScale,
+            newScale: newScale,
+            focalPoint: focalPoint,
+            viewportSize: viewportSize
+        )
+        zoomScale = newScale
+        panOffset = ScreenshotEditorZoomMath.clampedPan(
+            adjustedPan,
+            contentSize: zoomContentSize(in: viewportSize, scale: newScale),
+            viewportSize: viewportSize
+        )
+    }
+
+    private func panCanvas(by delta: CGSize) {
+        let proposed = CGSize(
+            width: panOffset.width + delta.width,
+            height: panOffset.height + delta.height
+        )
+        panOffset = ScreenshotEditorZoomMath.clampedPan(
+            proposed,
+            contentSize: zoomContentSize(in: viewportSize),
+            viewportSize: viewportSize
+        )
+    }
+
+    private func updateViewportSize(_ size: CGSize) {
+        viewportSize = size
+        constrainPan()
+    }
+
+    private func constrainPan() {
+        panOffset = ScreenshotEditorZoomMath.clampedPan(
+            panOffset,
+            contentSize: zoomContentSize(in: viewportSize),
+            viewportSize: viewportSize
+        )
+    }
+
+    private func zoomContentSize(in size: CGSize, scale: CGFloat? = nil) -> CGSize {
+        viewModel.displayLayout(in: size, zoomScale: scale ?? zoomScale).frameSize
     }
 
     private func saveCurrentImage() {
