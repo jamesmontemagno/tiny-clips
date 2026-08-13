@@ -10,6 +10,7 @@ own `CHANGELOG.md` at the repository root.
 - **Clearer Uploadcare setup** — Settings now explains that Uploadcare uses your own account and links directly to the existing account and API-key page.
 
 ### Added
+- **Screenshot editor zoom and pan** — The editor now opens fit-to-viewport and provides 25%–400% zoom controls, percentage presets, Ctrl++/Ctrl+-/Ctrl+0 shortcuts, pinch and Ctrl+wheel zooming, scrollbars, and Space-drag panning while keeping edits and exported pixels unchanged.
 - **Persisted default capture folders** — Tiny Clips now saves concrete Pictures/TinyClips and Videos/TinyClips values for every capture type, including existing settings and reset settings.
 - **Independent capture folders** — Settings → General now uses Pictures/TinyClips for screenshots and Videos/TinyClips for videos and GIFs by default. Turn off **Use defaults** to choose separate folders for screenshots, videos, and GIFs.
 - **Teleprompter transcript overlay** — Settings → Video → Teleprompter lets you paste a script, enable the teleprompter, tune the scroll speed (10–200 DIPs/s), and start or stop a speed-accurate preview. During video recordings a small semi-transparent black overlay auto-scrolls the transcript on screen. The overlay appears only after recording starts, pauses and resumes with recording, fails closed if Windows cannot exclude it from capture, and remembers a monitor-relative position across mixed-DPI display changes.

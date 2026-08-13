@@ -53,6 +53,8 @@ public sealed partial class ScreenshotEditorWindow : Window
         };
 
         RootGrid.KeyDown += OnRootKeyDown;
+        RootGrid.KeyUp += OnRootKeyUp;
+        Activated += OnActivated;
         Closed += OnClosed;
 
         _ = LoadAsync();
@@ -90,9 +92,37 @@ public sealed partial class ScreenshotEditorWindow : Window
             .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
             .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
+        if (ctrl && (e.Key == Windows.System.VirtualKey.Add || (int)e.Key == 187))
+        {
+            Canvas.ZoomIn();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && (e.Key == Windows.System.VirtualKey.Subtract || (int)e.Key == 189))
+        {
+            Canvas.ZoomOut();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && (e.Key == Windows.System.VirtualKey.Number0 || e.Key == Windows.System.VirtualKey.NumberPad0))
+        {
+            Canvas.Fit();
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl && e.Key == Windows.System.VirtualKey.Z)
         {
             OnUndo(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+
+        if (!ctrl && e.Key == Windows.System.VirtualKey.Space)
+        {
+            Canvas.SetSpacePressed(true);
             e.Handled = true;
             return;
         }
@@ -122,6 +152,23 @@ public sealed partial class ScreenshotEditorWindow : Window
         {
             _controller.SetTool(t);
             e.Handled = true;
+        }
+    }
+
+    private void OnRootKeyUp(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Space)
+        {
+            Canvas.SetSpacePressed(false);
+            e.Handled = true;
+        }
+    }
+
+    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            Canvas.SetSpacePressed(false);
         }
     }
 

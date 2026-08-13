@@ -166,7 +166,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    func displayLayout(in containerSize: CGSize) -> ExportFrameLayout {
+    func displayLayout(in containerSize: CGSize, zoomScale: CGFloat = 1) -> ExportFrameLayout {
         guard originalImage != nil, imagePixelSize.width > 0, imagePixelSize.height > 0 else {
             return ExportFrameLayout.make(
                 imageSize: .zero,
@@ -191,7 +191,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             1 / screenScale,
             maxFrameWidth / pixelLayout.frameSize.width,
             maxFrameHeight / pixelLayout.frameSize.height
-        )
+        ) * ScreenshotEditorZoomMath.clamp(zoomScale)
 
         return ExportFrameLayout.make(
             imageSize: CGSize(

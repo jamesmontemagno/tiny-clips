@@ -9,10 +9,15 @@ struct ScreenshotEditorCommandActions {
     let redo: () -> Void
     let copy: () -> Void
     let clearAnnotations: () -> Void
+    let zoomIn: () -> Void
+    let zoomOut: () -> Void
+    let fitZoom: () -> Void
     let canUndo: Bool
     let canRedo: Bool
     let hasAnnotations: Bool
     let isEditingText: Bool
+    let canZoomIn: Bool
+    let canZoomOut: Bool
 }
 
 private struct ScreenshotEditorCommandActionsKey: FocusedValueKey {
@@ -103,6 +108,26 @@ private struct ScreenshotEditorMenuCommands: Commands {
                 editor?.clearAnnotations()
             }
             .disabled(editor?.hasAnnotations != true)
+        }
+
+        CommandGroup(after: .toolbar) {
+            Button("Zoom In") {
+                editor?.zoomIn()
+            }
+            .disabled(editor?.canZoomIn != true)
+            .keyboardShortcut("+", modifiers: .command)
+
+            Button("Zoom Out") {
+                editor?.zoomOut()
+            }
+            .disabled(editor?.canZoomOut != true)
+            .keyboardShortcut("-", modifiers: .command)
+
+            Button("Fit to Window") {
+                editor?.fitZoom()
+            }
+            .disabled(editor == nil)
+            .keyboardShortcut("0", modifiers: .command)
         }
     }
 

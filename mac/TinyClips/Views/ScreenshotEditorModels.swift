@@ -278,6 +278,52 @@ struct ExportFrameLayout {
     }
 }
 
+enum ScreenshotEditorZoomMath {
+    static let minimumScale: CGFloat = 0.25
+    static let maximumScale: CGFloat = 4
+    static let presets: [CGFloat] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
+
+    static func clamp(_ scale: CGFloat) -> CGFloat {
+        min(maximumScale, max(minimumScale, scale))
+    }
+
+    static func steppedScale(from scale: CGFloat, direction: Int) -> CGFloat {
+        let current = clamp(scale)
+        if direction > 0 {
+            return presets.first(where: { $0 > current + 0.001 }) ?? maximumScale
+        }
+        return presets.reversed().first(where: { $0 < current - 0.001 }) ?? minimumScale
+    }
+
+    static func focalAdjustedPan(
+        _ pan: CGSize,
+        oldScale: CGFloat,
+        newScale: CGFloat,
+        focalPoint: CGPoint,
+        viewportSize: CGSize
+    ) -> CGSize {
+        guard oldScale > 0 else { return pan }
+        let ratio = newScale / oldScale
+        let focalOffset = CGPoint(
+            x: focalPoint.x - viewportSize.width / 2,
+            y: focalPoint.y - viewportSize.height / 2
+        )
+        return CGSize(
+            width: focalOffset.x - ((focalOffset.x - pan.width) * ratio),
+            height: focalOffset.y - ((focalOffset.y - pan.height) * ratio)
+        )
+    }
+
+    static func clampedPan(_ pan: CGSize, contentSize: CGSize, viewportSize: CGSize) -> CGSize {
+        let maxX = max(0, (contentSize.width - viewportSize.width) / 2)
+        let maxY = max(0, (contentSize.height - viewportSize.height) / 2)
+        return CGSize(
+            width: min(maxX, max(-maxX, pan.width)),
+            height: min(maxY, max(-maxY, pan.height))
+        )
+    }
+}
+
 struct ExportBackgroundPreset: Identifiable {
     let id: String
     let label: String
