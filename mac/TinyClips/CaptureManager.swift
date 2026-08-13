@@ -616,6 +616,7 @@ class CaptureManager: ObservableObject {
     ) {
         guard scrollingCaptureSession === session, !isStoppingScrollingCapture else { return }
         isStoppingScrollingCapture = true
+        scrollingCapturePanel?.markCompleted()
         Task {
             do {
                 let image = try await session.stop()

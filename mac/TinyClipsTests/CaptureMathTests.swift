@@ -157,7 +157,7 @@ final class CaptureMathTests: XCTestCase {
         let limits = PanoramaCaptureLimits(
             maxFrames: 10,
             maxOutputHeight: 1_000,
-            maxMemoryBytes: 50_000,
+            maxMemoryBytes: 70_000,
             noMovementTimeout: 8
         )
 
@@ -175,7 +175,7 @@ final class CaptureMathTests: XCTestCase {
         let limits = PanoramaCaptureLimits(
             maxFrames: 10,
             maxOutputHeight: 1_000,
-            maxMemoryBytes: 56_000,
+            maxMemoryBytes: 75_000,
             noMovementTimeout: 8
         )
 
@@ -206,7 +206,7 @@ final class CaptureMathTests: XCTestCase {
     }
 
     func testPanoramaMemoryUseDoesNotGrowWithFrameCount() {
-        // Peak memory tracks the stitched output plus a single live frame, so a
+        // Peak memory tracks the stitched output plus the retained and incoming frames, so a
         // long capture of a modest region must stay well inside the default budget.
         let width = 2_400
         let height = 1_800
@@ -216,7 +216,7 @@ final class CaptureMathTests: XCTestCase {
         let outputBytes = Int64(width) * Int64(outputHeight) * 4
 
         XCTAssertLessThanOrEqual(
-            outputBytes * 2 + frameBytes,
+            outputBytes * 2 + frameBytes * 2,
             PanoramaCaptureLimits.default.maxMemoryBytes
         )
         XCTAssertLessThanOrEqual(outputHeight, PanoramaCaptureLimits.default.maxOutputHeight)

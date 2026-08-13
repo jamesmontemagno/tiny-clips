@@ -195,7 +195,7 @@ struct PanoramaAccumulator {
     }
 
     /// Flushes the held footer band and materializes the panorama image.
-    func finish() throws -> Result {
+    mutating func finish() throws -> Result {
         guard let last = previousFrame else { throw PanoramaCaptureError.noFrames }
         guard committedRows > 0 else {
             if let limitReason {
@@ -209,6 +209,7 @@ struct PanoramaAccumulator {
         }
 
         var pixels = output
+        output = []
         if heldBottomBand > 0 {
             let bytesPerRow = last.width * 4
             let start = (last.height - heldBottomBand) * bytesPerRow
@@ -248,10 +249,10 @@ struct PanoramaAccumulator {
         output.append(contentsOf: frame.pixels[start..<end])
     }
 
-    /// Peak memory is the output buffer plus the copy made for the final image, plus one live frame.
+    /// Peak memory is the output buffer plus the copy made for the final image, plus the retained and incoming frames.
     private func fits(outputHeight: Int, width: Int, frame: PanoramaFrame) -> Bool {
         let outputBytes = Int64(width) * Int64(outputHeight) * 4
-        return outputBytes * 2 + frame.byteCount <= limits.maxMemoryBytes
+        return outputBytes * 2 + frame.byteCount * 2 <= limits.maxMemoryBytes
     }
 
     static func areMeaningfullyDifferent(_ first: PanoramaFrame, _ second: PanoramaFrame) -> Bool {
@@ -494,6 +495,7 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
         case .skipped:
             break
         case .limitReached(let reason):
+            onProgress?(accumulator.acceptedFrameCount)
             reportLimit(reason)
         }
     }

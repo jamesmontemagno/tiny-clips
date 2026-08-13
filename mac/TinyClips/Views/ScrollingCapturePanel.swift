@@ -5,6 +5,7 @@ import SwiftUI
 final class ScrollingCaptureState: ObservableObject {
     @Published var frameCount = 0
     @Published var statusMessage: String?
+    @Published var isFinishing = false
 }
 
 @MainActor
@@ -66,6 +67,13 @@ final class ScrollingCapturePanel: NSPanel {
         state.statusMessage = message
     }
 
+    func markCompleted() {
+        guard !didComplete else { return }
+        didComplete = true
+        state.isFinishing = true
+        removeMonitors()
+    }
+
     func dismiss() {
         removeMonitors()
         orderOut(nil)
@@ -73,12 +81,13 @@ final class ScrollingCapturePanel: NSPanel {
 
     private func finish(stop: Bool) {
         guard !didComplete else { return }
-        didComplete = true
-        removeMonitors()
-        orderOut(nil)
         if stop {
+            markCompleted()
             onStop()
         } else {
+            didComplete = true
+            removeMonitors()
+            orderOut(nil)
             onCancel()
         }
     }
@@ -129,6 +138,10 @@ private struct ScrollingCapturePanelView: View {
         state.frameCount == 1 ? "1 frame" : "\(state.frameCount) frames"
     }
 
+    private var statusText: String {
+        state.statusMessage ?? (state.isFinishing ? "Saving..." : "Scroll the page, then press Return")
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
@@ -160,13 +173,13 @@ private struct ScrollingCapturePanelView: View {
             .accessibilityLabel("Captured frames")
             .accessibilityValue(frameLabel)
 
-            Text(state.statusMessage ?? "Scroll the page, then press Return")
+            Text(statusText)
                 .font(.system(size: 12))
                 .foregroundStyle(state.statusMessage == nil ? .secondary : Color.orange)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(width: 260, alignment: .leading)
-                .accessibilityLabel(state.statusMessage ?? "Scroll the page, then press Return to finish.")
+                .accessibilityLabel(state.statusMessage ?? (state.isFinishing ? "Saving scrolling capture." : "Scroll the page, then press Return to finish."))
 
             Divider()
                 .frame(height: 20)
@@ -188,8 +201,10 @@ private struct ScrollingCapturePanelView: View {
             .buttonStyle(.plain)
             .help("Finish scrolling capture (Return)")
             .keyboardShortcut(.defaultAction)
+            .disabled(state.isFinishing)
+            .opacity(state.isFinishing ? 0.45 : 1)
             .accessibilityLabel("Finish scrolling capture")
-            .accessibilityHint("Stops scrolling capture and stitches the captured frames.")
+            .accessibilityHint(state.isFinishing ? "Saving captured frames." : "Stops scrolling capture and stitches the captured frames.")
 
             Button(action: onCancel) {
                 Image(systemName: "xmark")
@@ -202,8 +217,10 @@ private struct ScrollingCapturePanelView: View {
             .buttonStyle(.plain)
             .help("Cancel (Esc)")
             .keyboardShortcut(.cancelAction)
+            .disabled(state.isFinishing)
+            .opacity(state.isFinishing ? 0.45 : 1)
             .accessibilityLabel("Cancel scrolling capture")
-            .accessibilityHint("Discards the capture without saving.")
+            .accessibilityHint(state.isFinishing ? "Saving captured frames." : "Discards the capture without saving.")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -219,6 +236,6 @@ private struct ScrollingCapturePanelView: View {
         }
         .onAppear { isPulsing = true }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Scrolling capture in progress")
+        .accessibilityLabel(state.isFinishing ? "Scrolling capture saving" : "Scrolling capture in progress")
     }
 }
