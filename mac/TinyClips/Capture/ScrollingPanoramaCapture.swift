@@ -1,3 +1,4 @@
+import Accelerate
 import CoreImage
 import CoreMedia
 @preconcurrency import ScreenCaptureKit
@@ -55,6 +56,8 @@ struct PanoramaFrame: Sendable {
     let width: Int
     let height: Int
     let pixels: [UInt8]
+    /// Mean luma per row, used for fast and repeatable vertical alignment.
+    let rowLuma: [Float]
 
     var byteCount: Int64 {
         Int64(pixels.count)
@@ -79,12 +82,39 @@ struct PanoramaFrame: Sendable {
         }
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         self.pixels = pixels
+        self.rowLuma = Self.makeRowLuma(pixels: pixels, width: width, height: height)
     }
 
     init(width: Int, height: Int, pixels: [UInt8]) {
         self.width = width
         self.height = height
         self.pixels = pixels
+        self.rowLuma = Self.makeRowLuma(pixels: pixels, width: width, height: height)
+    }
+
+    private static func makeRowLuma(pixels: [UInt8], width: Int, height: Int) -> [Float] {
+        guard width > 0, height > 0, pixels.count >= width * height * 4 else { return [] }
+        let columnStep = max(1, width / 160)
+        var result = [Float](repeating: 0, count: height)
+        pixels.withUnsafeBufferPointer { buffer in
+            for y in 0..<height {
+                var total = 0
+                var samples = 0
+                var x = 0
+                let rowStart = y * width
+                while x < width {
+                    let index = (rowStart + x) * 4
+                    // Integer approximation of luma keeps this hot loop cheap.
+                    total += (77 * Int(buffer[index]))
+                        + (150 * Int(buffer[index + 1]))
+                        + (29 * Int(buffer[index + 2]))
+                    samples += 1
+                    x += columnStep
+                }
+                result[y] = samples > 0 ? Float(total) / Float(samples * 256) : 0
+            }
+        }
+        return result
     }
 }
 
@@ -273,44 +303,108 @@ struct PanoramaAccumulator {
 
     static func estimateVerticalShift(previous: PanoramaFrame, current: PanoramaFrame) -> Alignment? {
         let height = previous.height
-        let width = previous.width
-        let minimumShift = max(2, height / 40)
+        guard height > 8,
+              previous.rowLuma.count == height,
+              current.rowLuma.count == height else {
+            return nil
+        }
+        // Scrolling content is usually periodic (repeating rows, cards, table
+        // stripes), so the globally lowest score is often a later alias of the
+        // real shift. Overshooting duplicates rows that are already committed,
+        // so the smallest credible shift is always the right choice.
+        let ignoredTopBand = max(1, height / 20)
+        let ignoredBottomBand = max(1, height / 20)
+        let minimumShift = 2
         let maximumShift = max(minimumShift, height - height / 10)
-        let ignoredTopBand = max(1, height / 10)
-        let columnStep = max(1, width / 160)
-        var bestShift = 0
-        var bestScore = Double.greatestFiniteMagnitude
+        let minimumSamples = max(8, height / 8)
 
-        for shift in stride(from: minimumShift, through: maximumShift, by: max(1, height / 120)) {
-            let overlap = height - shift
-            let comparisonEnd = overlap - ignoredTopBand
-            guard comparisonEnd > ignoredTopBand else { continue }
-            var score = 0.0
-            var samples = 0
-            for y in stride(from: ignoredTopBand, to: comparisonEnd, by: max(1, overlap / 80)) {
-                for x in stride(from: 0, to: width, by: columnStep) {
-                    let previousIndex = ((y + shift) * width + x) * 4
-                    let currentIndex = (y * width + x) * 4
-                    score += abs(luma(previous.pixels, previousIndex) - luma(current.pixels, currentIndex))
-                    samples += 1
+        var scores = [Float](repeating: .greatestFiniteMagnitude, count: maximumShift + 1)
+        var bestScore = Float.greatestFiniteMagnitude
+        var differences = [Float](repeating: 0, count: height)
+        previous.rowLuma.withUnsafeBufferPointer { previousRows in
+            current.rowLuma.withUnsafeBufferPointer { currentRows in
+                guard let previousBase = previousRows.baseAddress,
+                      let currentBase = currentRows.baseAddress else { return }
+                differences.withUnsafeMutableBufferPointer { scratch in
+                    guard let scratchBase = scratch.baseAddress else { return }
+                    for shift in minimumShift...maximumShift {
+                        let comparisonEnd = height - ignoredBottomBand - shift
+                        let samples = comparisonEnd - ignoredTopBand
+                        guard samples >= minimumSamples else { continue }
+                        let count = vDSP_Length(samples)
+                        vDSP_vsub(
+                            currentBase + ignoredTopBand, 1,
+                            previousBase + ignoredTopBand + shift, 1,
+                            scratchBase, 1,
+                            count
+                        )
+                        var total: Float = 0
+                        vDSP_svemg(scratchBase, 1, &total, count)
+                        let score = total / Float(samples)
+                        scores[shift] = score
+                        if score < bestScore {
+                            bestScore = score
+                        }
+                    }
                 }
             }
-            guard samples > 0 else { continue }
-            let normalizedScore = score / Double(samples)
-            if normalizedScore < bestScore {
-                bestScore = normalizedScore
-                bestShift = shift
-            }
         }
+        guard bestScore < .greatestFiniteMagnitude else { return nil }
 
-        guard bestShift > 0, bestScore <= 18 else { return nil }
+        // Anything within this band of the best score is statistically the same
+        // match, so prefer the earliest one.
+        let acceptanceScore = max(bestScore * 1.6, bestScore + 0.5)
+        var candidate: Int?
+        var verificationAttempts = 0
+        for shift in minimumShift...maximumShift where scores[shift] <= acceptanceScore {
+            let isLocalMinimum = (shift == minimumShift || scores[shift] <= scores[shift - 1])
+                && (shift == maximumShift || scores[shift] <= scores[shift + 1])
+            guard isLocalMinimum else { continue }
+            if pixelAlignmentScore(previous: previous, current: current, shift: shift) <= 12 {
+                candidate = shift
+                break
+            }
+            verificationAttempts += 1
+            // Verification is the expensive part, so give up rather than scan a
+            // frame that is not a scroll of the previous one.
+            if verificationAttempts >= 6 { break }
+        }
+        guard let bestShift = candidate else { return nil }
+
         let fixedBottomHeight = stationaryBottomBand(
             previous: previous,
             current: current,
             maximumHeight: bestShift / 2
         )
         guard bestShift + fixedBottomHeight <= height else { return nil }
-        return Alignment(shift: bestShift, score: bestScore, fixedBottomHeight: fixedBottomHeight)
+        return Alignment(shift: bestShift, score: Double(scores[bestShift]), fixedBottomHeight: fixedBottomHeight)
+    }
+
+    /// Confirms a row-signature candidate against real pixels, which rejects
+    /// shifts where unrelated rows happen to share the same average brightness.
+    private static func pixelAlignmentScore(
+        previous: PanoramaFrame,
+        current: PanoramaFrame,
+        shift: Int
+    ) -> Double {
+        let height = previous.height
+        let width = previous.width
+        let ignoredTopBand = max(1, height / 20)
+        let comparisonEnd = height - max(1, height / 20) - shift
+        guard comparisonEnd > ignoredTopBand, width > 0 else { return .greatestFiniteMagnitude }
+        let columnStep = max(1, width / 160)
+        let rowStep = max(1, (comparisonEnd - ignoredTopBand) / 80)
+        var score = 0.0
+        var samples = 0
+        for y in stride(from: ignoredTopBand, to: comparisonEnd, by: rowStep) {
+            for x in stride(from: 0, to: width, by: columnStep) {
+                let previousIndex = ((y + shift) * width + x) * 4
+                let currentIndex = (y * width + x) * 4
+                score += abs(luma(previous.pixels, previousIndex) - luma(current.pixels, currentIndex))
+                samples += 1
+            }
+        }
+        return samples > 0 ? score / Double(samples) : .greatestFiniteMagnitude
     }
 
     private static func stationaryBottomBand(
