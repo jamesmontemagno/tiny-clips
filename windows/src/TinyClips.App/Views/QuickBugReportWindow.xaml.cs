@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Microsoft.UI.Xaml;
-using Windows.Graphics;
 
 namespace TinyClips.App;
 
@@ -18,7 +17,8 @@ public sealed partial class QuickBugReportWindow : Window
 
 		ExtendsContentIntoTitleBar = true;
 		SetTitleBar(AppTitleBar);
-		AppWindow.Resize(new SizeInt32(620, 640));
+		var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+		AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 620, 640);
 
 		AppInfoText.Text =
 			$"Automatically included: Windows, Tiny Clips v{version}, {distribution}, {System.Runtime.InteropServices.RuntimeInformation.OSDescription}";
