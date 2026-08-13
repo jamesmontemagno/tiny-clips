@@ -1,0 +1,164 @@
+name: Windows Store Publish
+
+on:
+  push:
+    tags:
+      - 'v*-windows'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Windows release tag (for example, v1.6.1-windows)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish the package after the protected-environment approval'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-store-publish
+  cancel-in-progress: false
+
+env:
+  APP_PROJECT: windows/src/TinyClips.App/TinyClips.App.csproj
+
+jobs:
+  package:
+    name: Package Microsoft Store upload
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set release version
+        shell: pwsh
+        run: |
+          $tag = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "${{ inputs.tag }}"
+          } else {
+            "${{ github.ref_name }}"
+          }
+
+          if ($tag -notmatch '^v(?<base>\d+\.\d+\.\d+)(?:\.(?<revision>\d+))?-windows$') {
+            throw "Windows release tags must look like v1.2.3-windows or v1.2.3.4-windows. Got '$tag'."
+          }
+
+          $revision = if ($Matches.revision) { $Matches.revision } else { "0" }
+          "PACKAGE_VERSION=$($Matches.base).$revision" >> $env:GITHUB_ENV
+
+      - name: Stamp Store package manifest version
+        shell: pwsh
+        run: |
+          $manifestPath = "windows/src/TinyClips.App/Package.Store.appxmanifest"
+          $content = Get-Content $manifestPath -Raw
+          $content = $content -creplace '(<Identity[\s\S]*?Version=")[^"]+(")', "`${1}$env:PACKAGE_VERSION`${2}"
+          Set-Content -Path $manifestPath -Value $content -Encoding utf8
+
+      - name: Build Store upload package
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path (Resolve-Path ".") "artifacts/store/"
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+
+          dotnet build $env:APP_PROJECT `
+            -c Release `
+            -p:Platform=x64 `
+            -p:TinyClipsStoreBuild=true `
+            -p:SelfContained=false `
+            -p:WindowsAppSDKSelfContained=false `
+            -p:EnableMsixTooling=true `
+            -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxPackageDir=$packageDir `
+            -p:AppxBundle=Always `
+            -p:AppxBundlePlatforms="x64|ARM64" `
+            -p:UapAppxPackageBuildMode=StoreUpload `
+            -p:AppxPackageSigningEnabled=false `
+            -p:AppxSymbolPackageEnabled=false `
+            -v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Microsoft Store package build failed." }
+
+          $upload = Get-ChildItem $packageDir -Recurse -Filter *.msixupload | Select-Object -First 1
+          if (-not $upload) {
+            throw "The Store build did not produce an .msixupload package."
+          }
+
+          Copy-Item $upload.FullName "artifacts/store/TinyClips-$env:PACKAGE_VERSION.msixupload" -Force
+
+      - name: Upload Store package
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-store-package
+          path: artifacts/store/TinyClips-*.msixupload
+          if-no-files-found: error
+
+  publish:
+    name: Submit to Microsoft Store
+    needs: package
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: windows-latest
+    environment: microsoft-store
+
+    steps:
+      - name: Download Store package
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-store-package
+          path: artifacts/store
+
+      - name: Validate publishing configuration
+        shell: pwsh
+        env:
+          STORE_PRODUCT_ID: ${{ vars.MICROSOFT_STORE_PRODUCT_ID }}
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          $requiredValues = @{
+            "MICROSOFT_STORE_PRODUCT_ID repository variable" = $env:STORE_PRODUCT_ID
+            "PARTNER_CENTER_TENANT_ID environment secret" = $env:PARTNER_CENTER_TENANT_ID
+            "PARTNER_CENTER_SELLER_ID environment secret" = $env:PARTNER_CENTER_SELLER_ID
+            "PARTNER_CENTER_CLIENT_ID environment secret" = $env:PARTNER_CENTER_CLIENT_ID
+            "PARTNER_CENTER_CLIENT_SECRET environment secret" = $env:PARTNER_CENTER_CLIENT_SECRET
+          }
+          $missing = $requiredValues.GetEnumerator() |
+            Where-Object { [string]::IsNullOrWhiteSpace($_.Value) } |
+            ForEach-Object Key
+
+          if ($missing) {
+            throw "Configure the following before enabling Store publication: $($missing -join ', ')."
+          }
+
+      - name: Setup Microsoft Store Developer CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.4
+
+      - name: Configure Microsoft Store Developer CLI
+        shell: pwsh
+        run: |
+          msstore reconfigure `
+            --tenantId "${{ secrets.PARTNER_CENTER_TENANT_ID }}" `
+            --sellerId "${{ secrets.PARTNER_CENTER_SELLER_ID }}" `
+            --clientId "${{ secrets.PARTNER_CENTER_CLIENT_ID }}" `
+            --clientSecret "${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}"
+
+      - name: Publish Store package
+        shell: pwsh
+        env:
+          STORE_PRODUCT_ID: ${{ vars.MICROSOFT_STORE_PRODUCT_ID }}
+        run: |
+          $upload = Get-ChildItem artifacts/store -Filter *.msixupload | Select-Object -First 1
+          if (-not $upload) {
+            throw "The downloaded Store package is missing."
+          }
+
+          msstore publish "." --inputFile $upload.FullName --appId $env:STORE_PRODUCT_ID

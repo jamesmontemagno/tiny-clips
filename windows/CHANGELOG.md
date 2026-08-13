@@ -5,6 +5,11 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Internal
+- **Microsoft Store release path** — Store builds now use the Partner Center-assigned package
+  identity, and a protected GitHub Actions workflow produces and submits the Store upload package.
+  The Windows Store listing pack documents the submission copy, screenshots, and compliance answers.
+
 ### Changed
 - **Refreshed Clips Library** — The wider media gallery wraps captures into a compact responsive three-column grid. Grid cards and list rows keep Open and Copy visible, with labeled More menus for Reveal, Delete, and Uploadcare actions. A macOS-inspired Sort & Filter flyout adds persisted type and date filters (Today, This week, and This month) without crowding the toolbar.
 - **Clearer Uploadcare setup** — Settings now explains that Uploadcare uses your own account and links directly to the existing account and API-key page.

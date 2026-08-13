@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 rescap">
+
+  <Identity
+    Name="23875RefractoredLLC.TinyClips"
+    Publisher="CN=995C4AD9-3B22-4B61-B30F-3EAB23CDAEAE"
+    Version="1.6.0.0" />
+
+  <Properties>
+    <DisplayName>Tiny Clips</DisplayName>
+    <PublisherDisplayName>Refractored LLC</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26226.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26226.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="Tiny Clips"
+        Description="Capture screenshots, video, and GIFs of any screen region."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" Square71x71Logo="Assets\SmallTile.png" Square310x310Logo="Assets\LargeTile.png"/>
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <uap5:Extension
+          Category="windows.startupTask"
+          Executable="TinyClips.App.exe"
+          EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask
+            TaskId="TinyClipsLaunchAtLogin"
+            Enabled="false"
+            DisplayName="Tiny Clips" />
+        </uap5:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="image">
+            <uap:DisplayName>Tiny Clips Image</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.png</uap:FileType>
+              <uap:FileType>.jpg</uap:FileType>
+              <uap:FileType>.jpeg</uap:FileType>
+              <uap:FileType>.webp</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <DeviceCapability Name="microphone" />
+    <DeviceCapability Name="webcam" />
+  </Capabilities>
+</Package>

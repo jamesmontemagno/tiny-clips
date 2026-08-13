@@ -38,6 +38,11 @@
     <DefineConstants>$(DefineConstants);TINYCLIPS_STORE_BUILD</DefineConstants>
   </PropertyGroup>
 
+  <ItemGroup Condition="'$(TinyClipsStoreBuild)' == 'true'">
+    <!-- Keep the Store-assigned identity separate from the direct/winget package identity. -->
+    <AppxManifest Include="Package.Store.appxmanifest" />
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
