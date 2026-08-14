@@ -142,6 +142,45 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(clamped.height, 30)
     }
 
+    func testExportFrameLayoutPlacesImageAlongAvailableAxis() {
+        let horizontalOrigins: [ExportHorizontalAlignment: CGPoint] = [
+            .leading: CGPoint(x: 10, y: 10),
+            .center: CGPoint(x: 35, y: 10),
+            .trailing: CGPoint(x: 60, y: 10),
+        ]
+        let verticalOrigins: [ExportVerticalAlignment: CGPoint] = [
+            .top: CGPoint(x: 10, y: 10),
+            .center: CGPoint(x: 10, y: 35),
+            .bottom: CGPoint(x: 10, y: 60),
+        ]
+
+        for horizontal in ExportHorizontalAlignment.allCases {
+            let layout = ExportFrameLayout.make(
+                imageSize: CGSize(width: 50, height: 100),
+                padding: 10,
+                preset: .square,
+                horizontalAlignment: horizontal,
+                verticalAlignment: .top
+            )
+
+            XCTAssertEqual(layout.frameSize, CGSize(width: 120, height: 120))
+            XCTAssertEqual(layout.imageRect.origin, horizontalOrigins[horizontal])
+        }
+
+        for vertical in ExportVerticalAlignment.allCases {
+            let layout = ExportFrameLayout.make(
+                imageSize: CGSize(width: 100, height: 50),
+                padding: 10,
+                preset: .square,
+                horizontalAlignment: .leading,
+                verticalAlignment: vertical
+            )
+
+            XCTAssertEqual(layout.frameSize, CGSize(width: 120, height: 120))
+            XCTAssertEqual(layout.imageRect.origin, verticalOrigins[vertical])
+        }
+    }
+
     func testPanoramaStitchesKnownVerticalShift() throws {
         let first = panoramaFrame(globalStartRow: 0)
         let second = panoramaFrame(globalStartRow: 20)
