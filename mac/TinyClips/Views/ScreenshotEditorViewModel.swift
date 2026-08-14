@@ -348,6 +348,11 @@ class ScreenshotEditorViewModel: ObservableObject {
         !annotations.isEmpty
     }
 
+    var canApplyCrop: Bool {
+        guard let cropRect else { return false }
+        return ScreenshotEditorCropMath.pixelRect(for: cropRect, imageSize: imagePixelSize) != nil
+    }
+
     var hasUnsavedChanges: Bool {
         if hasPendingChanges {
             return true
@@ -794,6 +799,43 @@ class ScreenshotEditorViewModel: ObservableObject {
         markDirty()
     }
 
+    @discardableResult
+    func applyCrop() -> Bool {
+        guard let selectedCropRect = cropRect,
+              let cropPixelRect = ScreenshotEditorCropMath.pixelRect(for: selectedCropRect, imageSize: imagePixelSize),
+              let flattenedCrop = renderFinalImage(
+                croppingTo: cropPixelRect,
+                includesExportDecorations: false
+              ) else {
+            return false
+        }
+
+        let croppedImage = NSImage(
+            size: NSSize(width: flattenedCrop.pixelsWide, height: flattenedCrop.pixelsHigh)
+        )
+        croppedImage.addRepresentation(flattenedCrop)
+        originalImage = croppedImage
+        imagePixelSize = CGSize(width: flattenedCrop.pixelsWide, height: flattenedCrop.pixelsHigh)
+
+        annotations.removeAll()
+        currentAnnotation = nil
+        selectedAnnotationIndex = nil
+        cropRect = nil
+        pencilPoints = []
+        nextNumberLabel = 1
+        selectedTool = .move
+        cancelTextAnnotation()
+
+        // Previous states reference the image before its pixels and coordinate space changed.
+        undoStack.removeAll()
+        redoStack.removeAll()
+        pendingDragHistoryState = nil
+        didChangePendingDrag = false
+        updateHistoryAvailability()
+        markDirty()
+        return true
+    }
+
     func copyToClipboard() {
         guard let output = buildOutputImage() else { return }
 
@@ -943,20 +985,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     // MARK: - Private
 
     private func exportBasePixelSize() -> CGSize {
-        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return .zero }
-
-        let cropPixelRect: CGRect
-        if let crop = cropRect {
-            cropPixelRect = CGRect(
-                x: crop.origin.x * imagePixelSize.width,
-                y: crop.origin.y * imagePixelSize.height,
-                width: crop.width * imagePixelSize.width,
-                height: crop.height * imagePixelSize.height
-            )
-        } else {
-            cropPixelRect = CGRect(origin: .zero, size: imagePixelSize)
-        }
-
+        guard let cropPixelRect = resolvedCropPixelRect(for: cropRect) else { return .zero }
         return exportLayout(for: cropPixelRect.size).frameSize
     }
 
@@ -1165,28 +1194,25 @@ class ScreenshotEditorViewModel: ObservableObject {
         return true
     }
 
-    private func renderFinalImage() -> NSBitmapImageRep? {
+    private func renderFinalImage(
+        croppingTo explicitCropPixelRect: CGRect? = nil,
+        includesExportDecorations: Bool = true
+    ) -> NSBitmapImageRep? {
         precondition(Thread.isMainThread, "Screenshot export rendering must run on the main thread.")
 
         guard let original = originalImage, imagePixelSize.width > 0 else { return nil }
 
-        let pixelW = imagePixelSize.width
         let pixelH = imagePixelSize.height
 
-        // Determine crop region in pixels
-        let cropPixelRect: CGRect
-        if let crop = cropRect {
-            cropPixelRect = CGRect(
-                x: crop.origin.x * pixelW,
-                y: crop.origin.y * pixelH,
-                width: crop.width * pixelW,
-                height: crop.height * pixelH
-            )
-        } else {
-            cropPixelRect = CGRect(origin: .zero, size: imagePixelSize)
+        guard let cropPixelRect = explicitCropPixelRect ?? resolvedCropPixelRect(for: cropRect) else {
+            return nil
         }
-
-        let layout = exportLayout(for: cropPixelRect.size)
+        let layout = includesExportDecorations
+            ? exportLayout(for: cropPixelRect.size)
+            : ExportFrameLayout(
+                frameSize: cropPixelRect.size,
+                imageRect: CGRect(origin: .zero, size: cropPixelRect.size)
+            )
         let outputW = Int(layout.frameSize.width)
         let outputH = Int(layout.frameSize.height)
         guard outputW > 0 && outputH > 0 else { return nil }
@@ -1212,7 +1238,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         NSGraphicsContext.current = nsContext
         defer { NSGraphicsContext.restoreGraphicsState() }
 
-        if backgroundStyle != .transparent {
+        if includesExportDecorations, backgroundStyle != .transparent {
             let fullRect = CGRect(x: 0, y: 0, width: outputW, height: outputH)
             if backgroundStyle == .solid {
                 context.setFillColor(NSColor(backgroundColor).cgColor)
@@ -1236,7 +1262,9 @@ class ScreenshotEditorViewModel: ObservableObject {
             width: layout.imageRect.width,
             height: layout.imageRect.height
         )
-        let imageCornerRadius = max(0, min(canvasCornerRadius, min(imageRect.width, imageRect.height) / 2))
+        let imageCornerRadius = includesExportDecorations
+            ? max(0, min(canvasCornerRadius, min(imageRect.width, imageRect.height) / 2))
+            : 0
         let imageClipPath = CGPath(
             roundedRect: imageRect,
             cornerWidth: imageCornerRadius,
@@ -1250,7 +1278,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         // window capture's transparent rounded corners transparent instead of filling
         // them with a solid shadow color, matching the live preview.
         context.saveGState()
-        if canvasShadowRadius > 0 {
+        if includesExportDecorations, canvasShadowRadius > 0 {
             context.setShadow(
                 offset: .zero,
                 blur: canvasShadowRadius,
@@ -1486,12 +1514,15 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     private var exportImageSize: CGSize {
-        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return .zero }
-        guard let crop = cropRect else { return imagePixelSize }
-        return CGSize(
-            width: crop.width * imagePixelSize.width,
-            height: crop.height * imagePixelSize.height
-        )
+        resolvedCropPixelRect(for: cropRect)?.size ?? .zero
+    }
+
+    private func resolvedCropPixelRect(for normalizedCrop: CGRect?) -> CGRect? {
+        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return nil }
+        guard let normalizedCrop else {
+            return CGRect(origin: .zero, size: imagePixelSize)
+        }
+        return ScreenshotEditorCropMath.pixelRect(for: normalizedCrop, imageSize: imagePixelSize)
     }
 
     private func exportLayout(for imageSize: CGSize) -> ExportFrameLayout {

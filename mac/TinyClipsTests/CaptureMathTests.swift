@@ -142,6 +142,30 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(clamped.height, 30)
     }
 
+    func testScreenshotEditorCropConvertsNormalizedRectToPixels() {
+        let crop = ScreenshotEditorCropMath.pixelRect(
+            for: CGRect(x: 0.125, y: 0.25, width: 0.5, height: 0.5),
+            imageSize: CGSize(width: 1_000, height: 800)
+        )
+
+        XCTAssertEqual(crop, CGRect(x: 125, y: 200, width: 500, height: 400))
+    }
+
+    func testScreenshotEditorCropClampsBoundsAndRejectsEmptySelections() {
+        let clamped = ScreenshotEditorCropMath.pixelRect(
+            for: CGRect(x: -0.2, y: 0.25, width: 0.5, height: 1),
+            imageSize: CGSize(width: 1_000, height: 800)
+        )
+
+        XCTAssertEqual(clamped, CGRect(x: 0, y: 200, width: 300, height: 600))
+        XCTAssertNil(
+            ScreenshotEditorCropMath.pixelRect(
+                for: CGRect(x: 0.25, y: 0.25, width: 0, height: 0.5),
+                imageSize: CGSize(width: 1_000, height: 800)
+            )
+        )
+    }
+
     func testExportFrameLayoutPlacesImageAlongAvailableAxis() {
         let horizontalOrigins: [ExportHorizontalAlignment: CGPoint] = [
             .leading: CGPoint(x: 10, y: 10),

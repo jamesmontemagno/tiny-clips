@@ -612,12 +612,14 @@ struct ScreenshotEditorView: View {
                 redo: viewModel.redo,
                 copy: viewModel.copyToClipboard,
                 clearAnnotations: { showClearAnnotationsConfirmation = true },
+                applyCrop: applyCrop,
                 zoomIn: zoomIn,
                 zoomOut: zoomOut,
                 fitZoom: fitZoom,
                 canUndo: viewModel.canUndo,
                 canRedo: viewModel.canRedo,
                 hasAnnotations: viewModel.hasAnnotations,
+                canApplyCrop: viewModel.canApplyCrop,
                 isEditingText: viewModel.isEditingText,
                 canZoomIn: !viewModel.isEditingText && zoomScale < ScreenshotEditorZoomMath.maximumScale,
                 canZoomOut: !viewModel.isEditingText && zoomScale > ScreenshotEditorZoomMath.minimumScale
@@ -644,6 +646,13 @@ struct ScreenshotEditorView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                Button(action: applyCrop) {
+                    Label("Apply Crop", systemImage: "crop")
+                }
+                .disabled(!viewModel.canApplyCrop)
+                .accessibilityHint("Crops the image to the selected area and flattens existing annotations.")
+                .help("Apply the selected crop.")
+
                 Button {
                     viewModel.undo()
                 } label: {
@@ -1076,6 +1085,11 @@ struct ScreenshotEditorView: View {
     private func zoomIn() {
         guard !viewModel.isEditingText else { return }
         setZoom(ScreenshotEditorZoomMath.steppedScale(from: zoomScale, direction: 1))
+    }
+
+    private func applyCrop() {
+        guard viewModel.applyCrop() else { return }
+        fitZoom()
     }
 
     private func zoomOut() {
