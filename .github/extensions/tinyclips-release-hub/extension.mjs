@@ -299,6 +299,20 @@ await joinSession({
                     handler: async (ctx) => performReleaseAction("run_release_workflow", ctx.input),
                 },
                 {
+                    name: "merge_release_metadata_pr",
+                    description: "Merge the generated macOS release metadata pull request after exact typed confirmation.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            tag: { type: "string", minLength: 1 },
+                            confirmation: { type: "string", minLength: 1 },
+                        },
+                        required: ["tag", "confirmation"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => performReleaseAction("merge_release_metadata_pr", ctx.input),
+                },
+                {
                     name: "submit_winget",
                     description: "Dispatch the manually gated winget submission for the latest published Windows release when winget is behind.",
                     inputSchema: {

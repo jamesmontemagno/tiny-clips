@@ -60,6 +60,10 @@ function releaseBranch(tag) {
     return `release/${tag}`;
 }
 
+function releaseMetadataBranch(tag) {
+    return `release-metadata/${tag}`;
+}
+
 function parseVersion(tag) {
     const match = tag.match(/^v(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?-(?:mac|windows)$/);
     return match ? match.slice(1).map((value) => Number(value ?? 0)) : [0, 0, 0, 0];
@@ -174,6 +178,18 @@ async function getWorkflow(workflow) {
 async function getReleasePullRequest(tag) {
     const result = await tryRun("gh", [
         "pr", "list", "--head", releaseBranch(tag), "--base", "main", "--state", "all",
+        "--json", "number,url,state,isDraft,mergeStateStatus,mergedAt,mergeCommit",
+        "--limit", "1",
+    ]);
+    if (!result.ok) {
+        return { available: false, pullRequest: null, error: result.error };
+    }
+    return { available: true, pullRequest: JSON.parse(result.output || "[]")[0] ?? null };
+}
+
+async function getReleaseMetadataPullRequest(tag) {
+    const result = await tryRun("gh", [
+        "pr", "list", "--head", releaseMetadataBranch(tag), "--base", "main", "--state", "all",
         "--json", "number,url,state,isDraft,mergeStateStatus,mergedAt,mergeCommit",
         "--limit", "1",
     ]);
@@ -437,6 +453,11 @@ function simulateReleaseAction(action, input) {
         assertConfirmation(input.confirmation, `MERGE ${input.tag}`);
         return { action, tag: input.tag, demo: true, output: `Simulated merge and tag publish for ${input.tag}.` };
     }
+    if (action === "merge_release_metadata_pr") {
+        assertTag("mac", input.tag);
+        assertConfirmation(input.confirmation, `MERGE METADATA ${input.tag}`);
+        return { action, tag: input.tag, demo: true, output: `Simulated metadata PR merge for ${input.tag}.` };
+    }
     if (action === "run_release_workflow") {
         assertTag(input.platform, input.tag);
         assertConfirmation(input.confirmation, `RUN ${input.tag}`);
@@ -661,6 +682,9 @@ export async function getReleaseSnapshot() {
             ? latestRelease?.tagName ?? null
             : null;
         const releasePullRequest = pendingTag ? await getReleasePullRequest(pendingTag) : null;
+        const releaseMetadataPullRequest = platform === "mac" && latestRemoteTag
+            ? await getReleaseMetadataPullRequest(latestRemoteTag)
+            : null;
         return {
             id: platform,
             label: platform === "mac" ? "macOS" : "Windows",
@@ -669,6 +693,7 @@ export async function getReleaseSnapshot() {
             remoteTags: remoteTagResult.tags.slice(0, 20),
             pendingTag,
             releasePullRequest,
+            releaseMetadataPullRequest,
             latestRelease,
             suggestedTag,
             appVersion: platform === "mac" ? macVersion : null,
@@ -899,6 +924,36 @@ export async function performReleaseAction(action, input) {
             pullRequest: { ...pullRequest, ...merged },
             output: output || `Merged release PR and pushed ${input.tag}.`,
             tracking: { platform, kind: "release" },
+        };
+    }
+
+    if (action === "merge_release_metadata_pr") {
+        assertTag("mac", input.tag);
+        assertConfirmation(input.confirmation, `MERGE METADATA ${input.tag}`);
+        const metadataPullRequest = await getReleaseMetadataPullRequest(input.tag);
+        if (!metadataPullRequest.available) {
+            throw new Error(`Could not inspect the metadata PR: ${metadataPullRequest.error}`);
+        }
+        const pullRequest = metadataPullRequest.pullRequest;
+        if (!pullRequest || pullRequest.state !== "OPEN") {
+            throw new Error(`No open release metadata PR was found for ${input.tag}.`);
+        }
+        if (pullRequest.isDraft) {
+            throw new Error(`Release metadata PR #${pullRequest.number} is still a draft.`);
+        }
+        await run("gh", ["pr", "merge", String(pullRequest.number), "--merge", "--delete-branch"]);
+        const merged = JSON.parse(await run("gh", [
+            "pr", "view", String(pullRequest.number),
+            "--json", "state,mergedAt,mergeCommit,url",
+        ]));
+        if (merged.state !== "MERGED") {
+            throw new Error(`Release metadata PR #${pullRequest.number} was not merged. Complete required checks and approvals, then try again.`);
+        }
+        return {
+            action,
+            tag: input.tag,
+            pullRequest: { ...pullRequest, ...merged },
+            output: `Merged release metadata PR #${pullRequest.number}.`,
         };
     }
 
