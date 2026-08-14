@@ -312,18 +312,18 @@ private struct ExportAlignmentGrid: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.fixed(30), spacing: 4), count: 3),
-                spacing: 4
-            ) {
+            VStack(spacing: 4) {
                 ForEach(ExportVerticalAlignment.allCases) { vertical in
-                    ForEach(ExportHorizontalAlignment.allCases) { horizontal in
-                        alignmentButton(horizontal: horizontal, vertical: vertical)
+                    HStack(spacing: 4) {
+                        ForEach(ExportHorizontalAlignment.allCases) { horizontal in
+                            alignmentButton(horizontal: horizontal, vertical: vertical)
+                        }
                     }
                 }
             }
             .padding(4)
             .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .fixedSize()
         }
         .accessibilityElement(children: .contain)
     }
