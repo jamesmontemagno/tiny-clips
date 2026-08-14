@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v1.6.0-mac - 2026-08-13
+
 ### Changed
 - The macOS screenshot editor now supports 25%–400% fit-relative zoom with accessible controls, percentage presets, Command shortcuts, focal-point pinch or Command-wheel zoom, scrollbars, trackpad panning, and Space-drag navigation without changing exported image pixels.
 - The macOS screenshot editor now uses a labeled 3×3 image-alignment grid with every export frame placement combination directly selectable.
