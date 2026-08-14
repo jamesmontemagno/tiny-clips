@@ -411,6 +411,9 @@ export function renderHtml({ instanceId, token }) {
       if (action === "run_release_workflow") {
         return ["Dispatching release workflow", "Requesting a GitHub Actions run for " + tag + "."];
       }
+      if (action === "merge_release_metadata_pr") {
+        return ["Merging metadata PR", "Merging the generated appcast and Homebrew metadata update."];
+      }
       if (action === "dispatch_workflow") {
         return ["Dispatching workflow", "Requesting a manual GitHub Actions run."];
       }
@@ -778,6 +781,9 @@ export function renderHtml({ instanceId, token }) {
       const releasePrExists = Boolean(releasePullRequest) || demo?.prCreated === true;
       const releasePrOpen = releasePullRequest?.state === "OPEN" || demo?.prCreated === true;
       const releasePrMerged = releasePullRequest?.state === "MERGED";
+      const metadataPullRequest = data.releaseMetadataPullRequest?.pullRequest;
+      const metadataPrOpen = metadataPullRequest?.state === "OPEN" || demo?.metadataPrCreated === true;
+      const metadataPrMerged = metadataPullRequest?.state === "MERGED" || demo?.metadataMerged === true;
       const readinessBadge = preparedLocally
         ? '<span class="badge good">' + (demo?.prepared ? "Prepared in demo" : "Prepared locally") + '</span>'
         : (demoMode
@@ -820,6 +826,22 @@ export function renderHtml({ instanceId, token }) {
           ? "The tag push starts this automatically; use this only to recover or re-run it."
           : "Push the prepared tag before manually dispatching this workflow.");
       const wingetSubmissionTag = demo?.published && !demo.wingetSubmitted ? demo.tag : data.wingetSubmissionTag;
+      const metadataStep = step(
+        5,
+        "Merge release metadata PR",
+        demoMode
+          ? (metadataPrMerged ? "Metadata PR merge simulated." : "Simulates merging the generated release metadata PR.")
+          : (metadataPrMerged
+            ? "The generated appcast and Homebrew metadata PR is merged."
+            : (metadataPrOpen
+              ? "Merges PR #" + (metadataPullRequest?.number || "for release metadata") + "."
+              : (tagPushed
+                ? "Waiting for the release workflow to create the appcast and Homebrew metadata PR."
+                : "Publish the release tag before metadata can be generated."))),
+        "merge_release_metadata_pr",
+        metadataPrMerged ? "Merged" : "Merge metadata PR",
+        !metadataPrOpen || metadataPrMerged,
+      );
       const wingetStep = platform === "windows"
         ? step(
           5,
@@ -831,7 +853,7 @@ export function renderHtml({ instanceId, token }) {
           wingetSubmissionTag ? "Submit " + wingetSubmissionTag : "Up to date",
           !wingetSubmissionTag,
         )
-        : step(5, "Publish update metadata", "Sparkle appcast and Homebrew cask update in the macOS workflow.", "view_workflow", "In workflow", true);
+        : metadataStep;
 
       dashboard.innerHTML =
         '<article class="panel"><div class="panel-head"><div><h2>' + escapeHtml(data.label) +
@@ -844,6 +866,8 @@ export function renderHtml({ instanceId, token }) {
           '" target="_blank" rel="noreferrer">Open tag</a>' : '') +
         (releasePullRequest?.url ? '<a class="action" href="' + escapeHtml(releasePullRequest.url) +
           '" target="_blank" rel="noreferrer">Open PR</a>' : '') +
+        (metadataPullRequest?.url ? '<a class="action" href="' + escapeHtml(metadataPullRequest.url) +
+          '" target="_blank" rel="noreferrer">Open metadata PR</a>' : '') +
         (actualReleasePublished ? '<a class="action" href="' + escapeHtml(repositoryUrl("/releases/tag/" + encodeURIComponent(version))) +
           '" target="_blank" rel="noreferrer">Open release</a>' : '') +
         '</div>' +
@@ -1010,6 +1034,9 @@ export function renderHtml({ instanceId, token }) {
       if (result.action === "run_release_workflow") {
         return "Dispatched the release workflow for " + result.tag + ".";
       }
+      if (result.action === "merge_release_metadata_pr") {
+        return "Merged the release metadata PR for " + result.tag + ".";
+      }
       if (result.action === "submit_winget") {
         return "Dispatched winget submission for " + result.tag + ".";
       }
@@ -1032,7 +1059,11 @@ export function renderHtml({ instanceId, token }) {
         progress.tag = result.tag;
         if (result.action === "create_release_pr") progress.prCreated = true;
         if (result.action === "merge_release_pr") progress.pushed = true;
-        if (result.action === "run_release_workflow") progress.published = true;
+        if (result.action === "run_release_workflow") {
+          progress.published = true;
+          if (targetPlatform === "mac") progress.metadataPrCreated = true;
+        }
+        if (result.action === "merge_release_metadata_pr") progress.metadataMerged = true;
         if (result.action === "submit_winget") progress.wingetSubmitted = true;
         demoProgress[targetPlatform] = progress;
       }
@@ -1084,6 +1115,9 @@ export function renderHtml({ instanceId, token }) {
       } else if (action === "run_release_workflow") {
         openConfirmation(action, { platform, tag }, "RUN " + tag,
           "This manually dispatches the platform release workflow.");
+      } else if (action === "merge_release_metadata_pr") {
+        openConfirmation(action, { tag }, "MERGE METADATA " + tag,
+          "This merges the generated appcast and Homebrew metadata pull request.");
       } else if (action === "submit_winget") {
         const demo = snapshot.settings?.demoMode ? demoProgress.windows : null;
         const wingetSubmissionTag = demo?.published && !demo.wingetSubmitted
@@ -1158,7 +1192,9 @@ export function renderHtml({ instanceId, token }) {
           setOperationProgress(
             result.action === "undo_prepare"
               ? "Preparation undone"
-              : (result.action === "dispatch_workflow" ? "Workflow dispatched" : "Release prepared"),
+              : (result.action === "dispatch_workflow"
+                ? "Workflow dispatched"
+                : (result.action === "merge_release_metadata_pr" ? "Metadata PR merged" : "Release prepared")),
             operationSuccessMessage(result),
             "success"
           );
