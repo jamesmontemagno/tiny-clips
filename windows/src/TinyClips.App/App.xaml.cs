@@ -67,6 +67,8 @@ public partial class App : Application
     private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
     private const double TrayPopupWidth = 344;
     private const double TrayPopupHeight = 242;
+    private const double TrayPopupFooterHeight = 48;
+    private const double TrayPopupFooterButtonSize = 32;
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -191,24 +193,23 @@ public partial class App : Application
         _trayPopup.ShowNearCursor(TrayPopupWidth, TrayPopupHeight);
     }
 
-    // PowerToys-style "quick access" popup: three large capture tiles across the top,
-    // a divider, then a row of small icon buttons (Settings / Guide / Exit) at the bottom.
+    // PowerToys-style "quick access" popup: capture actions on a layered acrylic content
+    // surface with a separate acrylic command bar along the bottom.
     private UIElement BuildTrayPopupContent(IHotKeyService hotKeys)
     {
         void Dismiss() => _trayPopup?.Hide();
 
-        var root = new StackPanel
+        var content = new StackPanel
         {
-            Width = TrayPopupWidth,
-            Padding = new Thickness(12),
-            Spacing = 10,
+            Padding = new Thickness(16),
+            Spacing = 8,
         };
 
-        root.Children.Add(new TextBlock
+        content.Children.Add(new TextBlock
         {
             Text = "Tiny Clips",
-            Margin = new Thickness(4, 2, 0, 0),
-            Style = TextStyle("BodyStrongTextBlockStyle"),
+            Margin = new Thickness(0, 0, 0, 2),
+            Style = ResourceStyle("BodyStrongTextBlockStyle"),
         });
 
         var tiles = new Grid { ColumnSpacing = 6 };
@@ -244,7 +245,7 @@ public partial class App : Application
         Grid.SetColumn(_gifTile.Button, 2);
         tiles.Children.Add(_gifTile.Button);
 
-        root.Children.Add(tiles);
+        content.Children.Add(tiles);
 
         var quickAccess = new Grid { ColumnSpacing = 6 };
         quickAccess.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -257,37 +258,91 @@ public partial class App : Application
         var recent = CreateRecentCapturesButton(Dismiss);
         Grid.SetColumn(recent, 1);
         quickAccess.Children.Add(recent);
-        root.Children.Add(quickAccess);
+        content.Children.Add(quickAccess);
 
-        root.Children.Add(new Border
+        var contentArea = new Border
         {
-            Height = 1,
-            Margin = new Thickness(0, 2, 0, 2),
-            Background = ThemeBrush("DividerStrokeColorDefaultBrush"),
-        });
+            Child = content,
+            Background = ThemeBrush("LayerOnAcrylicFillColorDefaultBrush"),
+            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+        };
 
-        var footer = new StackPanel
+        var footer = new Grid
+        {
+            Height = TrayPopupFooterHeight,
+            Padding = new Thickness(12, 0, 12, 0),
+        };
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var primaryFooterActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            Spacing = 8,
+        };
+        primaryFooterActions.Children.Add(CreateFooterButton(
+            GlyphMediaGallery,
+            "Clips Library",
+            "TrayClipsLibraryButton",
+            new RelayCommand(OpenClipsManagerWindow),
+            Dismiss));
+        footer.Children.Add(primaryFooterActions);
+
+        var secondaryFooterActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+            Spacing = 8,
         };
-        footer.Children.Add(CreateFooterButton(GlyphMediaGallery, "Clips Library", new RelayCommand(OpenClipsManagerWindow), Dismiss));
-        footer.Children.Add(CreateFooterDivider());
-        footer.Children.Add(CreateFooterButton("\uE713", "Settings", new RelayCommand(OpenSettingsWindow), Dismiss));
+        secondaryFooterActions.Children.Add(CreateFooterButton(
+            "\uE713",
+            "Settings",
+            "TraySettingsButton",
+            new RelayCommand(OpenSettingsWindow),
+            Dismiss));
 #if !TINYCLIPS_STORE_BUILD
-        footer.Children.Add(CreateFooterButton(GlyphCheckForUpdates, "Check for updates", new AsyncRelayCommand(CheckForUpdatesFromTrayAsync), Dismiss));
+        secondaryFooterActions.Children.Add(CreateFooterButton(
+            GlyphCheckForUpdates,
+            "Check for updates",
+            "TrayCheckForUpdatesButton",
+            new AsyncRelayCommand(CheckForUpdatesFromTrayAsync),
+            Dismiss));
 #endif
-        footer.Children.Add(CreateFooterDivider());
-        footer.Children.Add(CreateFooterButton("\uE897", "Guide", new RelayCommand(OpenGuideWindow), Dismiss));
-        footer.Children.Add(CreateFooterButton(GlyphBug, "File a Bug", new RelayCommand(OpenQuickBugReportWindow), Dismiss));
-        footer.Children.Add(CreateFooterDivider());
-        footer.Children.Add(CreateFooterButton("\uE7E8", "Exit", new RelayCommand(() => _ = ExitApplicationAsync()), Dismiss));
-        root.Children.Add(footer);
+        secondaryFooterActions.Children.Add(CreateFooterButton(
+            "\uE897",
+            "Guide",
+            "TrayGuideButton",
+            new RelayCommand(OpenGuideWindow),
+            Dismiss));
+        secondaryFooterActions.Children.Add(CreateFooterButton(
+            GlyphBug,
+            "File a Bug",
+            "TrayFileBugButton",
+            new RelayCommand(OpenQuickBugReportWindow),
+            Dismiss));
+        secondaryFooterActions.Children.Add(CreateFooterButton(
+            "\uE7E8",
+            "Exit",
+            "TrayExitButton",
+            new RelayCommand(() => _ = ExitApplicationAsync()),
+            Dismiss));
+        Grid.SetColumn(secondaryFooterActions, 1);
+        footer.Children.Add(secondaryFooterActions);
+
+        var layout = new Grid { Width = TrayPopupWidth };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TrayPopupFooterHeight) });
+        layout.Children.Add(contentArea);
+        Grid.SetRow(footer, 1);
+        layout.Children.Add(footer);
 
         return new Border
         {
-            Child = root,
+            Child = layout,
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
             BorderBrush = ThemeBrush("SurfaceStrokeColorDefaultBrush"),
@@ -430,35 +485,30 @@ public partial class App : Application
         return new CaptureTile { Button = button, Icon = icon, Label = label };
     }
 
-    private Button CreateFooterButton(string glyph, string tooltip, ICommand command, Action dismiss)
+    private Button CreateFooterButton(
+        string glyph,
+        string tooltip,
+        string automationId,
+        ICommand command,
+        Action dismiss)
     {
         var button = new Button
         {
             Content = new FontIcon { Glyph = glyph, FontFamily = FluentIconFont, FontSize = 16 },
-            Width = 40,
-            Height = 36,
-            Padding = new Thickness(0),
+            Width = TrayPopupFooterButtonSize,
+            Height = TrayPopupFooterButtonSize,
+            Padding = new Thickness(6),
             Command = command,
-            Background = new SolidColorBrush(Colors.Transparent),
-            BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(6),
+            Style = ResourceStyle("SubtleButtonStyle"),
         };
         ToolTipService.SetToolTip(button, tooltip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, automationId);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, tooltip);
         button.Click += (_, _) => dismiss();
         return button;
     }
 
-    private static Border CreateFooterDivider() => new()
-    {
-        Width = 1,
-        Height = 20,
-        Margin = new Thickness(6, 0, 6, 0),
-        VerticalAlignment = VerticalAlignment.Center,
-        Background = ThemeBrush("DividerStrokeColorDefaultBrush"),
-    };
-
-    private static Style? TextStyle(string key)
+    private static Style? ResourceStyle(string key)
         => Application.Current.Resources.TryGetValue(key, out var value) ? value as Style : null;
 
     private static Brush? ThemeBrush(string key)
