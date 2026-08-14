@@ -30,7 +30,7 @@ public partial class App : Application
     // Segoe Fluent Icons glyphs.
     private const string GlyphScreenshot = "\uE722";
     private const string GlyphVideo = "\uE714";
-    private const string GlyphGif = "\uE8B9";
+    private const string GlyphGif = "\uF4A9";
     private const string GlyphStop = "\uE71A";
     private const string GlyphCheckForUpdates = "\uE895";
     private const string GlyphFolder = "\uE8B7";
