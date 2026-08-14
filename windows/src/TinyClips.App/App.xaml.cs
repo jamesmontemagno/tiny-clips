@@ -322,7 +322,7 @@ public partial class App : Application
         footer.Children.Add(footerActions);
 
         var layout = new Grid { Width = TrayPopupWidth };
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TrayPopupFooterHeight) });
         layout.Children.Add(contentArea);
         Grid.SetRow(footer, 1);
