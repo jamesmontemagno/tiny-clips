@@ -256,8 +256,8 @@ await joinSession({
                     handler: async (ctx) => performReleaseAction("undo_prepare", ctx.input),
                 },
                 {
-                    name: "push_release",
-                    description: "Fast-forward main with the prepared release commit and push its tag after exact typed confirmation.",
+                    name: "create_release_pr",
+                    description: "Push a release branch and create a pull request for the prepared release commit after exact typed confirmation.",
                     inputSchema: {
                         type: "object",
                         properties: {
@@ -267,7 +267,21 @@ await joinSession({
                         required: ["tag", "confirmation"],
                         additionalProperties: false,
                     },
-                    handler: async (ctx) => performReleaseAction("push_release", ctx.input),
+                    handler: async (ctx) => performReleaseAction("create_release_pr", ctx.input),
+                },
+                {
+                    name: "merge_release_pr",
+                    description: "Merge the release pull request, retag its merge commit, and publish the tag after exact typed confirmation.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            tag: { type: "string", minLength: 1 },
+                            confirmation: { type: "string", minLength: 1 },
+                        },
+                        required: ["tag", "confirmation"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => performReleaseAction("merge_release_pr", ctx.input),
                 },
                 {
                     name: "run_release_workflow",

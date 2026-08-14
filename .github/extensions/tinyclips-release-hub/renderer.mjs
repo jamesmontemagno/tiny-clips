@@ -402,8 +402,11 @@ export function renderHtml({ instanceId, token }) {
       if (action === "undo_prepare") {
         return ["Undoing " + tag, "Deleting the local tag and restoring this session to origin/main."];
       }
-      if (action === "push_release") {
-        return ["Publishing " + tag, "Fast-forwarding main and pushing the release tag."];
+      if (action === "create_release_pr") {
+        return ["Creating release PR", "Pushing the release branch and opening a pull request."];
+      }
+      if (action === "merge_release_pr") {
+        return ["Merging release PR", "Merging the pull request, then publishing the release tag."];
       }
       if (action === "run_release_workflow") {
         return ["Dispatching release workflow", "Requesting a GitHub Actions run for " + tag + "."];
@@ -597,7 +600,7 @@ export function renderHtml({ instanceId, token }) {
     function renderSettingsDashboard() {
       const enabled = snapshot.settings?.demoMode === true;
       dashboard.innerHTML = '<article class="panel"><div class="panel-head"><div><h2>Settings</h2><div class="muted">Release Hub preferences are saved for this Copilot user.</div></div></div>' +
-        '<div class="settings-stack"><div class="setting-row"><div><div class="setting-title">Demo Mode</div><div class="muted">Simulate release preparation, Git pushes, release workflows, Winget submissions, and Actions dispatches without making external changes.</div></div>' +
+        '<div class="settings-stack"><div class="setting-row"><div><div class="setting-title">Demo Mode</div><div class="muted">Simulate release preparation, pull requests, release tag publication, workflows, Winget submissions, and Actions dispatches without making external changes.</div></div>' +
         '<label class="setting-toggle"><input id="demo-mode-toggle" type="checkbox" role="switch" aria-label="Enable Demo Mode"' +
         (enabled ? " checked" : "") + ' />' + (enabled ? "On" : "Off") + '</label></div>' +
         '<div class="setting-row"><div><div class="setting-title">Demo sequence</div><div class="muted">The simulated release sequence is kept only in this open Release Hub panel.</div></div>' +
@@ -770,7 +773,11 @@ export function renderHtml({ instanceId, token }) {
       const tagPushed = actualTagPushed || (demo?.tag === version && demo.pushed);
       const releasePublished = actualReleasePublished || (demo?.tag === version && demo.published);
       const canPrepareRelease = demoMode || snapshot.git.canPrepareRelease;
-      const canPushRelease = demoMode || snapshot.git.canPushRelease;
+      const canCreateReleasePr = demoMode || snapshot.git.canCreateReleasePr;
+      const releasePullRequest = data.releasePullRequest?.pullRequest;
+      const releasePrExists = Boolean(releasePullRequest) || demo?.prCreated === true;
+      const releasePrOpen = releasePullRequest?.state === "OPEN" || demo?.prCreated === true;
+      const releasePrMerged = releasePullRequest?.state === "MERGED";
       const readinessBadge = preparedLocally
         ? '<span class="badge good">' + (demo?.prepared ? "Prepared in demo" : "Prepared locally") + '</span>'
         : (demoMode
@@ -781,19 +788,32 @@ export function renderHtml({ instanceId, token }) {
             ? '<span class="badge good">Ready to prepare</span>'
             : '<span class="badge warn">Commit changes first</span>')));
       const prepareDetail = preparedLocally
-        ? "Prepared locally. Undo removes only this unpushed tag and its release commit."
+        ? "Prepared locally. Create a release PR to send the changelog commit for review."
         : (demoMode
           ? "Simulates the changelog commit and release tag without changing Git."
           : (!snapshot.git.atMainTip
           ? "Start from the latest origin/main with no additional commits."
           : "Moves Unreleased notes into a dated section, commits, and creates an annotated tag."));
-      const pushDetail = demoMode
-        ? (tagPushed ? "Push simulated. No branch or tag was sent to origin." : "Simulates publishing the prepared release tag.")
+      const createPrDetail = demoMode
+        ? (tagPushed ? "PR and tag publication simulated. No branch or tag was sent to origin." : "Simulates creating a release pull request.")
         : (tagPushed
-          ? "This tag is already on origin."
+          ? "The release PR was merged and the tag is on origin."
           : (preparedLocally
-            ? "Fast-forwards main with the release commit, then pushes the tag to start the workflow."
+            ? (releasePullRequest
+              ? "Release PR #" + releasePullRequest.number + " is " + releasePullRequest.state.toLowerCase() + "."
+              : "Pushes only a release branch and opens a PR into main.")
             : "Prepare the release tag first."));
+      const mergePrDetail = demoMode
+        ? (tagPushed ? "Merge and tag publication simulated." : "Simulates merging the release PR and publishing its tag.")
+        : (tagPushed
+          ? "The release tag is already on origin."
+          : (releasePrOpen
+            ? (releasePullRequest
+              ? "Merges PR #" + releasePullRequest.number + ", retags its merge commit, and pushes the tag."
+              : "Merges the simulated release PR and publishes its tag.")
+            : (releasePrMerged
+              ? "The PR is merged. Publish the tag on its merge commit."
+              : "Create and merge the release PR before publishing the tag.")));
       const workflowDetail = demoMode
         ? "Simulates the platform release workflow without dispatching GitHub Actions."
         : (tagPushed
@@ -802,7 +822,7 @@ export function renderHtml({ instanceId, token }) {
       const wingetSubmissionTag = demo?.published && !demo.wingetSubmitted ? demo.tag : data.wingetSubmissionTag;
       const wingetStep = platform === "windows"
         ? step(
-          4,
+          5,
           "Submit to winget",
           wingetSubmissionTag
             ? (demoMode ? "Simulates a Winget submission without dispatching a workflow." : "Winget is behind the latest published Windows release.")
@@ -811,7 +831,7 @@ export function renderHtml({ instanceId, token }) {
           wingetSubmissionTag ? "Submit " + wingetSubmissionTag : "Up to date",
           !wingetSubmissionTag,
         )
-        : step(4, "Publish update metadata", "Sparkle appcast and Homebrew cask update in the macOS workflow.", "view_workflow", "In workflow", true);
+        : step(5, "Publish update metadata", "Sparkle appcast and Homebrew cask update in the macOS workflow.", "view_workflow", "In workflow", true);
 
       dashboard.innerHTML =
         '<article class="panel"><div class="panel-head"><div><h2>' + escapeHtml(data.label) +
@@ -822,6 +842,8 @@ export function renderHtml({ instanceId, token }) {
         escapeHtml(version) + '" spellcheck="false" /><button class="action" data-action="generate_notes" type="button">Generate notes</button>' +
         (actualTagPushed ? '<a class="action" href="' + escapeHtml(repositoryUrl("/tree/" + encodeURIComponent(version))) +
           '" target="_blank" rel="noreferrer">Open tag</a>' : '') +
+        (releasePullRequest?.url ? '<a class="action" href="' + escapeHtml(releasePullRequest.url) +
+          '" target="_blank" rel="noreferrer">Open PR</a>' : '') +
         (actualReleasePublished ? '<a class="action" href="' + escapeHtml(repositoryUrl("/releases/tag/" + encodeURIComponent(version))) +
           '" target="_blank" rel="noreferrer">Open release</a>' : '') +
         '</div>' +
@@ -832,11 +854,12 @@ export function renderHtml({ instanceId, token }) {
           prepareDetail,
           preparedLocally ? "undo_prepare" : "prepare_release",
           tagPushed ? "Released" : (preparedLocally ? "Undo" : "Prepare"),
-          tagPushed || (!preparedLocally && !canPrepareRelease),
+          tagPushed || releasePrExists || (!preparedLocally && !canPrepareRelease),
           preparedLocally ? "danger" : "primary"
         ) +
-        step(2, "Push release tag", pushDetail, "push_release", tagPushed ? "Pushed" : "Push", !canPushRelease || !preparedLocally || tagPushed) +
-        step(3, "Run release workflow", workflowDetail, "run_release_workflow", "Re-run workflow", !tagPushed) +
+        step(2, "Create release PR", createPrDetail, "create_release_pr", tagPushed ? "Merged" : (releasePrExists ? "PR created" : "Create PR"), !canCreateReleasePr || !preparedLocally || releasePrExists || tagPushed) +
+        step(3, "Merge PR and publish tag", mergePrDetail, "merge_release_pr", tagPushed ? "Published" : "Merge and publish", !(releasePrOpen || releasePrMerged) || tagPushed) +
+        step(4, "Run release workflow", workflowDetail, "run_release_workflow", "Re-run workflow", !tagPushed) +
         wingetStep + '</div>' +
         '<div class="workflow"><div class="workflow-head"><h2>Automation status</h2>' +
         '<button class="action" data-action="toggle_history" type="button" aria-expanded="' +
@@ -973,13 +996,16 @@ export function renderHtml({ instanceId, token }) {
         return "Demo Mode simulated " + target + ". No GitHub or Git changes were made.";
       }
       if (result.action === "prepare_release") {
-        return "Prepared " + result.tag + " locally. Continue with Push release tag.";
+        return "Prepared " + result.tag + " locally. Create a release PR for review.";
       }
       if (result.action === "undo_prepare") {
         return "Undid local preparation for " + result.tag + ". The release is ready to prepare again.";
       }
-      if (result.action === "push_release") {
-        return "Pushed " + result.tag + ". The release workflow should start automatically.";
+      if (result.action === "create_release_pr") {
+        return "Created release PR #" + result.pullRequest.number + ". Merge it to publish the release tag.";
+      }
+      if (result.action === "merge_release_pr") {
+        return "Merged the release PR and pushed " + result.tag + ". The release workflow should start automatically.";
       }
       if (result.action === "run_release_workflow") {
         return "Dispatched the release workflow for " + result.tag + ".";
@@ -1004,7 +1030,8 @@ export function renderHtml({ instanceId, token }) {
       } else {
         const progress = demoProgress[targetPlatform] || { tag: result.tag, prepared: true };
         progress.tag = result.tag;
-        if (result.action === "push_release") progress.pushed = true;
+        if (result.action === "create_release_pr") progress.prCreated = true;
+        if (result.action === "merge_release_pr") progress.pushed = true;
         if (result.action === "run_release_workflow") progress.published = true;
         if (result.action === "submit_winget") progress.wingetSubmitted = true;
         demoProgress[targetPlatform] = progress;
@@ -1048,9 +1075,12 @@ export function renderHtml({ instanceId, token }) {
       } else if (action === "undo_prepare") {
         openConfirmation(action, { platform, tag }, "UNDO " + tag,
           "This deletes the unpushed local tag and permanently removes its single release commit from this session.");
-      } else if (action === "push_release") {
-        openConfirmation(action, { tag }, "PUSH " + tag,
-          "This fast-forwards main with the prepared release commit, then pushes the tag to start the release workflow.");
+      } else if (action === "create_release_pr") {
+        openConfirmation(action, { tag }, "CREATE PR " + tag,
+          "This pushes only a release branch and opens a pull request into main.");
+      } else if (action === "merge_release_pr") {
+        openConfirmation(action, { tag }, "MERGE " + tag,
+          "This merges the release PR, retags its merge commit, and pushes the release tag.");
       } else if (action === "run_release_workflow") {
         openConfirmation(action, { platform, tag }, "RUN " + tag,
           "This manually dispatches the platform release workflow.");
