@@ -95,7 +95,7 @@
 
                 <controls:SettingsCard
                     Header="Record GIF"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B9;}">
+                    HeaderIcon="{ui:FontIcon Glyph=&#xF4A9;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                     <Border
                         MinWidth="120"

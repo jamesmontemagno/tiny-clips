@@ -42,15 +42,21 @@
                         Visibility="Collapsed">
                         <StackPanel Spacing="8">
                             <TextBlock
+                                FontSize="12"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Text="Update through winget or download the latest GitHub release."
+                                TextAlignment="Right"
                                 TextWrapping="Wrap" />
                             <TextBlock
                                 x:Name="UpdateStatusText"
+                                FontSize="12"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Text="Check for updates to see whether a newer version is available."
+                                TextAlignment="Right"
                                 TextWrapping="Wrap" />
-                            <StackPanel Spacing="8">
+                            <StackPanel
+                                Orientation="Horizontal"
+                                Spacing="8">
                                 <Button
                                     x:Name="CheckForUpdatesButton"
                                     HorizontalAlignment="Left"
