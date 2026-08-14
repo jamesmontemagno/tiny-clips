@@ -273,65 +273,53 @@ public partial class App : Application
             Height = TrayPopupFooterHeight,
             Padding = new Thickness(12, 0, 12, 0),
         };
-        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var primaryFooterActions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center,
-            Spacing = 8,
-        };
-        primaryFooterActions.Children.Add(CreateFooterButton(
-            GlyphMediaGallery,
-            "Clips Library",
-            "TrayClipsLibraryButton",
-            new RelayCommand(OpenClipsManagerWindow),
-            Dismiss));
-        footer.Children.Add(primaryFooterActions);
-
-        var secondaryFooterActions = new StackPanel
+        var footerActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             Spacing = 8,
         };
-        secondaryFooterActions.Children.Add(CreateFooterButton(
+        footerActions.Children.Add(CreateFooterButton(
+            GlyphMediaGallery,
+            "Clips Library",
+            "TrayClipsLibraryButton",
+            new RelayCommand(OpenClipsManagerWindow),
+            Dismiss));
+        footerActions.Children.Add(CreateFooterButton(
             "\uE713",
             "Settings",
             "TraySettingsButton",
             new RelayCommand(OpenSettingsWindow),
             Dismiss));
 #if !TINYCLIPS_STORE_BUILD
-        secondaryFooterActions.Children.Add(CreateFooterButton(
+        footerActions.Children.Add(CreateFooterButton(
             GlyphCheckForUpdates,
             "Check for updates",
             "TrayCheckForUpdatesButton",
             new AsyncRelayCommand(CheckForUpdatesFromTrayAsync),
             Dismiss));
 #endif
-        secondaryFooterActions.Children.Add(CreateFooterButton(
+        footerActions.Children.Add(CreateFooterButton(
             "\uE897",
             "Guide",
             "TrayGuideButton",
             new RelayCommand(OpenGuideWindow),
             Dismiss));
-        secondaryFooterActions.Children.Add(CreateFooterButton(
+        footerActions.Children.Add(CreateFooterButton(
             GlyphBug,
             "File a Bug",
             "TrayFileBugButton",
             new RelayCommand(OpenQuickBugReportWindow),
             Dismiss));
-        secondaryFooterActions.Children.Add(CreateFooterButton(
+        footerActions.Children.Add(CreateFooterButton(
             "\uE7E8",
             "Exit",
             "TrayExitButton",
             new RelayCommand(() => _ = ExitApplicationAsync()),
             Dismiss));
-        Grid.SetColumn(secondaryFooterActions, 1);
-        footer.Children.Add(secondaryFooterActions);
+        footer.Children.Add(footerActions);
 
         var layout = new Grid { Width = TrayPopupWidth };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
