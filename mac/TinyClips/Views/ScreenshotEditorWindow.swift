@@ -305,8 +305,6 @@ private struct ZoomVerticalScrollBar: View {
 private struct ExportAlignmentGrid: View {
     @Binding var horizontalAlignment: ExportHorizontalAlignment
     @Binding var verticalAlignment: ExportVerticalAlignment
-    let isHorizontalAlignmentAvailable: Bool
-    let isVerticalAlignmentAvailable: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -324,6 +322,8 @@ private struct ExportAlignmentGrid: View {
                     }
                 }
             }
+            .padding(4)
+            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         }
         .accessibilityElement(children: .contain)
     }
@@ -333,30 +333,23 @@ private struct ExportAlignmentGrid: View {
         vertical: ExportVerticalAlignment
     ) -> some View {
         let isSelected = horizontalAlignment == horizontal && verticalAlignment == vertical
-        let isUnavailable = (!isHorizontalAlignmentAvailable && horizontal != horizontalAlignment)
-            || (!isVerticalAlignmentAvailable && vertical != verticalAlignment)
 
         return Button {
             horizontalAlignment = horizontal
             verticalAlignment = vertical
         } label: {
-            ZStack(alignment: previewAlignment(horizontal: horizontal, vertical: vertical)) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(.secondary.opacity(0.14))
-                    .frame(width: 20, height: 16)
-
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(isSelected ? Color.accentColor : .secondary)
-                    .frame(width: 9, height: 6)
-                    .padding(2)
-            }
+            RoundedRectangle(cornerRadius: 5)
+            .fill(isSelected ? Color.accentColor : .secondary.opacity(0.14))
             .frame(width: 30, height: 30)
-            .background(isSelected ? Color.accentColor.opacity(0.16) : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .overlay {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isSelected ? .white : .secondary)
+                    .frame(width: 10, height: 6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: previewAlignment(horizontal: horizontal, vertical: vertical))
+                    .padding(5)
+            }
         }
         .buttonStyle(.plain)
-        .disabled(isUnavailable)
         .help("\(vertical.label) \(horizontal.label)")
         .accessibilityLabel("\(vertical.label) \(horizontal.label) image alignment")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
@@ -917,9 +910,7 @@ struct ScreenshotEditorView: View {
 
             ExportAlignmentGrid(
                 horizontalAlignment: $viewModel.horizontalExportAlignment,
-                verticalAlignment: $viewModel.verticalExportAlignment,
-                isHorizontalAlignmentAvailable: viewModel.hasHorizontalExportFrameSpace,
-                isVerticalAlignmentAvailable: viewModel.hasVerticalExportFrameSpace
+                verticalAlignment: $viewModel.verticalExportAlignment
             )
 
             VStack(alignment: .leading, spacing: 4) {
