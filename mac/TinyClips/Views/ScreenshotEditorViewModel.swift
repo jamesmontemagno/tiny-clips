@@ -205,16 +205,6 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    var hasHorizontalExportFrameSpace: Bool {
-        let layout = exportLayout(for: exportImageSize)
-        return layout.frameSize.width > exportImageSize.width + max(0, canvasPadding) * 2
-    }
-
-    var hasVerticalExportFrameSpace: Bool {
-        let layout = exportLayout(for: exportImageSize)
-        return layout.frameSize.height > exportImageSize.height + max(0, canvasPadding) * 2
-    }
-
     /// Returns the text size for an image rendered at `renderedImageWidth`.
     ///
     /// Pass points for the SwiftUI preview and pixels for bitmap export so the
