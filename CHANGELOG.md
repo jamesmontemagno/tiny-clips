@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - The macOS screenshot editor now supports 25%–400% fit-relative zoom with accessible controls, percentage presets, Command shortcuts, focal-point pinch or Command-wheel zoom, scrollbars, trackpad panning, and Space-drag navigation without changing exported image pixels.
+- The macOS screenshot editor now uses a labeled 3×3 image-alignment grid for every export frame placement combination.
 - macOS now persists the concrete per-type capture folder defaults, so custom-folder settings are populated with Pictures/TinyClips or Movies/TinyClips before a folder is selected.
 - macOS capture folders now default to Pictures/TinyClips for screenshots and Movies/TinyClips for videos and GIFs. Turning off "Use default folders" reveals separate folders for screenshots, videos, and GIFs.
 - macOS teleprompter preview now starts only on demand with a reliable Start/Stop control, a speed slider that supports 0–100 pt/s in 1 pt/s increments with a larger interaction target, small/medium/large text-size and panel-height presets, and plain-text transcript file loading up to 1 MB.

@@ -302,6 +302,84 @@ private struct ZoomVerticalScrollBar: View {
     }
 }
 
+private struct ExportAlignmentGrid: View {
+    @Binding var horizontalAlignment: ExportHorizontalAlignment
+    @Binding var verticalAlignment: ExportVerticalAlignment
+    let isHorizontalAlignmentAvailable: Bool
+    let isVerticalAlignmentAvailable: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Image alignment")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.fixed(30), spacing: 4), count: 3),
+                spacing: 4
+            ) {
+                ForEach(ExportVerticalAlignment.allCases) { vertical in
+                    ForEach(ExportHorizontalAlignment.allCases) { horizontal in
+                        alignmentButton(horizontal: horizontal, vertical: vertical)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func alignmentButton(
+        horizontal: ExportHorizontalAlignment,
+        vertical: ExportVerticalAlignment
+    ) -> some View {
+        let isSelected = horizontalAlignment == horizontal && verticalAlignment == vertical
+        let isUnavailable = (!isHorizontalAlignmentAvailable && horizontal != horizontalAlignment)
+            || (!isVerticalAlignmentAvailable && vertical != verticalAlignment)
+
+        return Button {
+            horizontalAlignment = horizontal
+            verticalAlignment = vertical
+        } label: {
+            ZStack(alignment: previewAlignment(horizontal: horizontal, vertical: vertical)) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(.secondary.opacity(0.14))
+                    .frame(width: 20, height: 16)
+
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isSelected ? Color.accentColor : .secondary)
+                    .frame(width: 9, height: 6)
+                    .padding(2)
+            }
+            .frame(width: 30, height: 30)
+            .background(isSelected ? Color.accentColor.opacity(0.16) : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .disabled(isUnavailable)
+        .help("\(vertical.label) \(horizontal.label)")
+        .accessibilityLabel("\(vertical.label) \(horizontal.label) image alignment")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    private func previewAlignment(
+        horizontal: ExportHorizontalAlignment,
+        vertical: ExportVerticalAlignment
+    ) -> Alignment {
+        switch (horizontal, vertical) {
+        case (.leading, .top): return .topLeading
+        case (.center, .top): return .top
+        case (.trailing, .top): return .topTrailing
+        case (.leading, .center): return .leading
+        case (.center, .center): return .center
+        case (.trailing, .center): return .trailing
+        case (.leading, .bottom): return .bottomLeading
+        case (.center, .bottom): return .bottom
+        case (.trailing, .bottom): return .bottomTrailing
+        }
+    }
+}
+
 // MARK: - Editor View
 
 struct ScreenshotEditorView: View {
@@ -837,26 +915,12 @@ struct ScreenshotEditorView: View {
             }
             .accessibilityHint("Sets the export frame without stretching the screenshot.")
 
-            VStack(alignment: .leading, spacing: 8) {
-                Picker("Horizontal", selection: $viewModel.horizontalExportAlignment) {
-                    ForEach(ExportHorizontalAlignment.allCases) { alignment in
-                        Text(alignment.label).tag(alignment)
-                    }
-                }
-                .labelsHidden()
-                .disabled(!viewModel.hasHorizontalExportFrameSpace)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Picker("Vertical", selection: $viewModel.verticalExportAlignment) {
-                    ForEach(ExportVerticalAlignment.allCases) { alignment in
-                        Text(alignment.label).tag(alignment)
-                    }
-                }
-                .labelsHidden()
-                .disabled(!viewModel.hasVerticalExportFrameSpace)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .accessibilityElement(children: .contain)
+            ExportAlignmentGrid(
+                horizontalAlignment: $viewModel.horizontalExportAlignment,
+                verticalAlignment: $viewModel.verticalExportAlignment,
+                isHorizontalAlignmentAvailable: viewModel.hasHorizontalExportFrameSpace,
+                isVerticalAlignmentAvailable: viewModel.hasVerticalExportFrameSpace
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Image corners: \(Int(viewModel.canvasCornerRadius)) px")
