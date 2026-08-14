@@ -349,7 +349,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var canApplyCrop: Bool {
-        guard let cropRect else { return false }
+        guard !isEditingText, let cropRect else { return false }
         return ScreenshotEditorCropMath.pixelRect(for: cropRect, imageSize: imagePixelSize) != nil
     }
 
@@ -822,7 +822,6 @@ class ScreenshotEditorViewModel: ObservableObject {
         selectedAnnotationIndex = nil
         cropRect = nil
         pencilPoints = []
-        nextNumberLabel = 1
         selectedTool = .move
         cancelTextAnnotation()
 

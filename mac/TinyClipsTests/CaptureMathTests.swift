@@ -160,7 +160,7 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(clamped, CGRect(x: 0, y: 200, width: 300, height: 600))
         XCTAssertNil(
             ScreenshotEditorCropMath.pixelRect(
-                for: CGRect(x: 0.25, y: 0.25, width: 0, height: 0.5),
+                for: CGRect(x: 0.1255, y: 0.25, width: 0, height: 0.5),
                 imageSize: CGSize(width: 1_000, height: 800)
             )
         )
