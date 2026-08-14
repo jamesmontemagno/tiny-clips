@@ -340,13 +340,7 @@ public partial class App : Application
         Grid.SetRow(footer, 1);
         layout.Children.Add(footer);
 
-        return new Border
-        {
-            Child = layout,
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            BorderBrush = ThemeBrush("SurfaceStrokeColorDefaultBrush"),
-        };
+        return layout;
     }
 
     private ButtonBase CreateFolderButton(Action dismiss)
