@@ -56,6 +56,10 @@ function platformConfig(platform) {
     throw new Error(`Unsupported platform: ${platform}`);
 }
 
+function releaseBranch(tag) {
+    return `release/${tag}`;
+}
+
 function parseVersion(tag) {
     const match = tag.match(/^v(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?-(?:mac|windows)$/);
     return match ? match.slice(1).map((value) => Number(value ?? 0)) : [0, 0, 0, 0];
@@ -165,6 +169,18 @@ async function getWorkflow(workflow) {
     }
     const runs = JSON.parse(result.output || "[]");
     return { available: true, run: runs[0] ?? null, runs };
+}
+
+async function getReleasePullRequest(tag) {
+    const result = await tryRun("gh", [
+        "pr", "list", "--head", releaseBranch(tag), "--base", "main", "--state", "all",
+        "--json", "number,url,state,isDraft,mergeStateStatus,mergedAt,mergeCommit",
+        "--limit", "1",
+    ]);
+    if (!result.ok) {
+        return { available: false, pullRequest: null, error: result.error };
+    }
+    return { available: true, pullRequest: JSON.parse(result.output || "[]")[0] ?? null };
 }
 
 async function getActionsSnapshot() {
@@ -403,11 +419,23 @@ function simulateReleaseAction(action, input) {
         assertConfirmation(input.confirmation, `UNDO ${input.tag}`);
         return { action, tag: input.tag, demo: true, output: `Simulated undo for ${input.tag}.` };
     }
-    if (action === "push_release") {
+    if (action === "create_release_pr") {
         const platform = input.tag.endsWith("-mac") ? "mac" : "windows";
         assertTag(platform, input.tag);
-        assertConfirmation(input.confirmation, `PUSH ${input.tag}`);
-        return { action, tag: input.tag, demo: true, output: `Simulated push for ${input.tag}.` };
+        assertConfirmation(input.confirmation, `CREATE PR ${input.tag}`);
+        return {
+            action,
+            tag: input.tag,
+            demo: true,
+            pullRequest: { number: 1, url: "https://github.com/example/tiny-clips/pull/1" },
+            output: `Simulated release PR for ${input.tag}.`,
+        };
+    }
+    if (action === "merge_release_pr") {
+        const platform = input.tag.endsWith("-mac") ? "mac" : "windows";
+        assertTag(platform, input.tag);
+        assertConfirmation(input.confirmation, `MERGE ${input.tag}`);
+        return { action, tag: input.tag, demo: true, output: `Simulated merge and tag publish for ${input.tag}.` };
     }
     if (action === "run_release_workflow") {
         assertTag(input.platform, input.tag);
@@ -632,6 +660,7 @@ export async function getReleaseSnapshot() {
             (wingetStatus === "missing" || wingetStatus === "behind")
             ? latestRelease?.tagName ?? null
             : null;
+        const releasePullRequest = pendingTag ? await getReleasePullRequest(pendingTag) : null;
         return {
             id: platform,
             label: platform === "mac" ? "macOS" : "Windows",
@@ -639,6 +668,7 @@ export async function getReleaseSnapshot() {
             latestRemoteTag,
             remoteTags: remoteTagResult.tags.slice(0, 20),
             pendingTag,
+            releasePullRequest,
             latestRelease,
             suggestedTag,
             appVersion: platform === "mac" ? macVersion : null,
@@ -666,7 +696,7 @@ export async function getReleaseSnapshot() {
             aheadOfMain: Number(aheadOfMain),
             behindMain: Number(behindMain),
             canPrepareRelease: status.length === 0 && head === originMain,
-            canPushRelease: status.length === 0 && Number(behindMain) === 0 && Number(aheadOfMain) <= 1,
+            canCreateReleasePr: status.length === 0 && Number(behindMain) === 0 && Number(aheadOfMain) <= 1,
         },
         githubAvailable: releases.available,
         githubError: releases.error ?? null,
@@ -728,6 +758,13 @@ export async function performReleaseAction(action, input) {
         assertConfirmation(input.confirmation, `UNDO ${input.tag}`);
         await run("git", ["fetch", "--quiet", "origin", "main"]);
         const config = platformConfig(input.platform);
+        const releasePullRequest = await getReleasePullRequest(input.tag);
+        if (!releasePullRequest.available) {
+            throw new Error(`Could not inspect release PRs: ${releasePullRequest.error}`);
+        }
+        if (releasePullRequest.pullRequest) {
+            throw new Error(`Cannot undo ${input.tag} after release PR #${releasePullRequest.pullRequest.number} exists.`);
+        }
         const [head, originMain, status, aheadOfMain, behindMain, tagCommit, tagType, subject, changedFiles, remoteTag] =
             await Promise.all([
                 run("git", ["rev-parse", "HEAD"]),
@@ -765,38 +802,102 @@ export async function performReleaseAction(action, input) {
         return { action, tag: input.tag, output };
     }
 
-    if (action === "push_release") {
+    if (action === "create_release_pr") {
         const platform = input.tag.endsWith("-mac") ? "mac" : "windows";
         assertTag(platform, input.tag);
-        assertConfirmation(input.confirmation, `PUSH ${input.tag}`);
+        assertConfirmation(input.confirmation, `CREATE PR ${input.tag}`);
         await run("git", ["fetch", "--quiet", "origin", "main"]);
-        const [head, originMain, status, aheadOfMain, behindMain, tagCommit] = await Promise.all([
+        const [head, originMain, status, aheadOfMain, behindMain, tagCommit, branch] = await Promise.all([
             run("git", ["rev-parse", "HEAD"]),
             run("git", ["rev-parse", "origin/main"]),
             run("git", ["status", "--porcelain"]),
             run("git", ["rev-list", "--count", "origin/main..HEAD"]),
             run("git", ["rev-list", "--count", "HEAD..origin/main"]),
             run("git", ["rev-list", "-n", "1", input.tag]),
+            run("git", ["branch", "--show-current"]),
         ]);
         if (status) {
-            throw new Error("Release push requires a clean working tree.");
+            throw new Error("Creating a release PR requires a clean working tree.");
         }
         if (tagCommit !== head) {
             throw new Error(`Tag ${input.tag} does not point at the current release commit.`);
         }
-        if (Number(behindMain) !== 0 || Number(aheadOfMain) > 1) {
-            throw new Error("Release push requires at most one release commit ahead of the latest origin/main.");
+        if (Number(behindMain) !== 0 || Number(aheadOfMain) !== 1) {
+            throw new Error("Creating a release PR requires exactly one release commit ahead of the latest origin/main.");
         }
-        if (Number(aheadOfMain) === 1) {
-            await run("git", ["push", "origin", "HEAD:refs/heads/main"]);
-        } else if (head !== originMain) {
-            throw new Error("Current release commit does not match origin/main.");
+        const branchName = releaseBranch(input.tag);
+        if (branch === "main") {
+            await run("git", ["switch", "-c", branchName]);
+        } else if (branch !== branchName) {
+            throw new Error(`Release preparation must be on main or ${branchName}; current branch is ${branch}.`);
         }
-        const output = await run("git", ["push", "origin", input.tag]);
+        await run("git", ["push", "--set-upstream", "origin", branchName]);
+        const existing = await getReleasePullRequest(input.tag);
+        if (!existing.available) {
+            throw new Error(`Could not inspect release PRs: ${existing.error}`);
+        }
+        if (!existing.pullRequest) {
+            await run("gh", [
+            "pr", "create", "--base", "main", "--head", branchName,
+            "--title", `Release ${input.tag}`,
+            "--body", `Prepares the ${input.tag} release changelog and tag.`,
+            ]);
+        }
+        const pullRequest = existing.pullRequest ?? (await getReleasePullRequest(input.tag)).pullRequest;
+        if (!pullRequest) {
+            throw new Error(`Release PR for ${input.tag} was created but could not be retrieved.`);
+        }
         return {
             action,
             tag: input.tag,
-            output: output || `Pushed ${input.tag}.`,
+            pullRequest,
+            output: pullRequest.url ? `Created ${pullRequest.url}.` : `Created a release PR for ${input.tag}.`,
+        };
+    }
+
+    if (action === "merge_release_pr") {
+        const platform = input.tag.endsWith("-mac") ? "mac" : "windows";
+        assertTag(platform, input.tag);
+        assertConfirmation(input.confirmation, `MERGE ${input.tag}`);
+        const releasePullRequest = await getReleasePullRequest(input.tag);
+        if (!releasePullRequest.available) {
+            throw new Error(`Could not inspect release PRs: ${releasePullRequest.error}`);
+        }
+        const pullRequest = releasePullRequest.pullRequest;
+        if (!pullRequest || !["OPEN", "MERGED"].includes(pullRequest.state)) {
+            throw new Error(`No open or merged release PR was found for ${input.tag}.`);
+        }
+        if (pullRequest.state === "OPEN" && pullRequest.isDraft) {
+            throw new Error(`Release PR #${pullRequest.number} is still a draft.`);
+        }
+        if (pullRequest.state === "OPEN") {
+            await run("gh", ["pr", "merge", String(pullRequest.number), "--merge", "--delete-branch"]);
+        }
+        const merged = JSON.parse(await run("gh", [
+            "pr", "view", String(pullRequest.number),
+            "--json", "state,mergedAt,mergeCommit,url",
+        ]));
+        if (merged.state !== "MERGED" || !merged.mergeCommit?.oid) {
+            throw new Error(`Release PR #${pullRequest.number} was not merged. Complete required checks and approvals, then try again.`);
+        }
+        const remoteTag = await run("git", ["ls-remote", "--tags", "origin", `refs/tags/${input.tag}`]);
+        if (remoteTag) {
+            throw new Error(`Tag ${input.tag} already exists on origin.`);
+        }
+        const tagMessage = await run("git", ["for-each-ref", "--format=%(contents)", `refs/tags/${input.tag}`]);
+        if (!tagMessage) {
+            throw new Error(`Local annotated tag ${input.tag} is required before publishing the release.`);
+        }
+        await run("git", ["tag", "-d", input.tag]);
+        await run("git", ["tag", "-a", input.tag, merged.mergeCommit.oid, "-m", tagMessage]);
+        const output = await run("git", ["push", "origin", input.tag]);
+        await run("git", ["switch", "main"]);
+        await run("git", ["pull", "--ff-only", "origin", "main"]);
+        return {
+            action,
+            tag: input.tag,
+            pullRequest: { ...pullRequest, ...merged },
+            output: output || `Merged release PR and pushed ${input.tag}.`,
             tracking: { platform, kind: "release" },
         };
     }
