@@ -9,12 +9,14 @@ struct ScreenshotEditorCommandActions {
     let redo: () -> Void
     let copy: () -> Void
     let clearAnnotations: () -> Void
+    let applyCrop: () -> Void
     let zoomIn: () -> Void
     let zoomOut: () -> Void
     let fitZoom: () -> Void
     let canUndo: Bool
     let canRedo: Bool
     let hasAnnotations: Bool
+    let canApplyCrop: Bool
     let isEditingText: Bool
     let canZoomIn: Bool
     let canZoomOut: Bool
@@ -111,6 +113,13 @@ private struct ScreenshotEditorMenuCommands: Commands {
         }
 
         CommandGroup(after: .toolbar) {
+            Button("Apply Crop") {
+                editor?.applyCrop()
+            }
+            .disabled(editor?.canApplyCrop != true)
+
+            Divider()
+
             Button("Zoom In") {
                 editor?.zoomIn()
             }
