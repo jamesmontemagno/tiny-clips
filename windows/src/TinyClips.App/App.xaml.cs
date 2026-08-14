@@ -202,7 +202,7 @@ public partial class App : Application
         var content = new StackPanel
         {
             Padding = new Thickness(16),
-            Spacing = 8,
+            Spacing = 12,
         };
 
         content.Children.Add(new TextBlock
