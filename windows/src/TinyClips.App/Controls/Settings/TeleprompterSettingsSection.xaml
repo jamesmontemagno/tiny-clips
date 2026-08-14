@@ -3,38 +3,32 @@
     x:Class="TinyClips.App.Settings.Sections.TeleprompterSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
-        <TextBlock
-            Margin="4,8,0,4"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Text="Teleprompter" />
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="8">
+            <TextBlock
+                Margin="4,8,0,4"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                Text="Teleprompter" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Teleprompter overlay" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Show an auto-scrolling transcript overlay while recording video. The overlay is never captured."
-                        TextWrapping="Wrap" />
-                </StackPanel>
+            <controls:SettingsCard
+                Description="Show an auto-scrolling transcript overlay while recording video. The overlay is never captured."
+                Header="Teleprompter overlay"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE8F1;}">
                 <ToggleSwitch
-                    Grid.Column="1"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="TeleprompterEnabledToggle"
                     AutomationProperties.Name="Enable teleprompter overlay"
                     IsOn="{x:Bind ViewModel.TeleprompterEnabled, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            </controls:SettingsCard>
 
         <Border Style="{StaticResource SettingCardStyle}">
             <StackPanel Spacing="8">
@@ -84,57 +78,58 @@
             </StackPanel>
         </Border>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="8">
-                <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Preview" />
+            <Border Style="{StaticResource SettingCardStyle}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Preview" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.TeleprompterScrollSpeedDisplay, Mode=OneWay}" />
+                    </Grid>
+                    <Border
+                        Height="140"
+                        Padding="16,12"
+                        AutomationProperties.HelpText="Shows how quickly the transcript will move during a recording."
+                        AutomationProperties.Name="Teleprompter scroll speed preview"
+                        Background="#99000000"
+                        CornerRadius="{StaticResource OverlayCornerRadius}">
+                        <ScrollViewer
+                            x:Name="PreviewScroller"
+                            HorizontalScrollBarVisibility="Disabled"
+                            HorizontalScrollMode="Disabled"
+                            IsHitTestVisible="False"
+                            SizeChanged="OnPreviewSizeChanged"
+                            VerticalScrollBarVisibility="Hidden"
+                            VerticalScrollMode="Disabled"
+                            ZoomMode="Disabled">
+                            <TextBlock
+                                x:Name="PreviewText"
+                                FontSize="24"
+                                Foreground="#FFFFFFFF"
+                                TextWrapping="Wrap" />
+                        </ScrollViewer>
+                    </Border>
+                    <Button
+                        x:Name="PreviewToggleButton"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="TeleprompterPreviewToggleButton"
+                        AutomationProperties.Name="Start teleprompter preview"
+                        Click="OnPreviewToggleClicked"
+                        Content="Start Preview"
+                        IsEnabled="{x:Bind ViewModel.TeleprompterEnabled, Mode=OneWay}" />
                     <TextBlock
-                        Grid.Column="1"
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind ViewModel.TeleprompterScrollSpeedDisplay, Mode=OneWay}" />
-                </Grid>
-                <Border
-                    Height="140"
-                    Padding="16,12"
-                    AutomationProperties.HelpText="Shows how quickly the transcript will move during a recording."
-                    AutomationProperties.Name="Teleprompter scroll speed preview"
-                    Background="#99000000"
-                    CornerRadius="{StaticResource OverlayCornerRadius}">
-                    <ScrollViewer
-                        x:Name="PreviewScroller"
-                        HorizontalScrollBarVisibility="Disabled"
-                        HorizontalScrollMode="Disabled"
-                        IsHitTestVisible="False"
-                        SizeChanged="OnPreviewSizeChanged"
-                        VerticalScrollBarVisibility="Hidden"
-                        VerticalScrollMode="Disabled"
-                        ZoomMode="Disabled">
-                        <TextBlock
-                            x:Name="PreviewText"
-                            FontSize="24"
-                            Foreground="#FFFFFFFF"
-                            TextWrapping="Wrap" />
-                    </ScrollViewer>
-                </Border>
-                <Button
-                    x:Name="PreviewToggleButton"
-                    HorizontalAlignment="Left"
-                    AutomationProperties.AutomationId="TeleprompterPreviewToggleButton"
-                    AutomationProperties.Name="Start teleprompter preview"
-                    Click="OnPreviewToggleClicked"
-                    Content="Start Preview"
-                    IsEnabled="{x:Bind ViewModel.TeleprompterEnabled, Mode=OneWay}" />
-                <TextBlock
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Start the preview to test the same scroll speed used by the recording overlay."
-                    TextWrapping="Wrap" />
-            </StackPanel>
-        </Border>
-    </StackPanel>
+                        Text="Start the preview to test the same scroll speed used by the recording overlay."
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Border>
 </UserControl>

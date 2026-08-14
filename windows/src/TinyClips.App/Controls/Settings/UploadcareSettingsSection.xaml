@@ -3,23 +3,23 @@
     x:Class="TinyClips.App.Settings.Sections.UploadcareSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
-        <TextBlock
-            Margin="4,8,0,4"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Text="Uploadcare" />
-
-        <TextBlock
-            Margin="4,4,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Cloud uploads" />
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="4">
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="4">
+            <StackPanel
+                Margin="4,8,4,12"
+                Spacing="2">
+                <TextBlock
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Uploadcare" />
                 <TextBlock
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}"
@@ -31,136 +31,103 @@
                     AutomationProperties.AutomationId="UploadcareApiKeysLink"
                     AutomationProperties.Name="Create an Uploadcare account or find API keys"
                     Content="Create an account or find your API keys"
+                    FontSize="12"
                     NavigateUri="https://app.uploadcare.com/projects/-/api-keys/" />
             </StackPanel>
-        </Border>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Enable Uploadcare" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Upload saved captures to your Uploadcare project." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="UploadcareEnabledToggle"
-                    AutomationProperties.Name="Enable Uploadcare uploads"
-                    IsOn="{x:Bind ViewModel.UploadcareEnabled, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Upload saved captures to your Uploadcare project."
+                    Header="Enable Uploadcare"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE898;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="UploadcareEnabledToggle"
+                        AutomationProperties.Name="Enable Uploadcare uploads"
+                        IsOn="{x:Bind ViewModel.UploadcareEnabled, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="8">
-                <StackPanel>
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Public key" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Required for uploads. This key is saved with your non-secret Tiny Clips settings." />
-                </StackPanel>
-                <TextBox
-                    AutomationProperties.AutomationId="UploadcarePublicKeyTextBox"
-                    AutomationProperties.Name="Uploadcare public key"
-                    PlaceholderText="demopublickey"
-                    Text="{x:Bind ViewModel.UploadcarePublicKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <controls:SettingsCard
+                    Description="Required for uploads. This key is saved with your non-secret Tiny Clips settings."
+                    Header="Public key"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8D7;}">
+                    <TextBox
+                        MinWidth="240"
+                        MaxWidth="420"
+                        AutomationProperties.AutomationId="UploadcarePublicKeyTextBox"
+                        AutomationProperties.Name="Uploadcare public key"
+                        PlaceholderText="demopublickey"
+                        Text="{x:Bind ViewModel.UploadcarePublicKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Secret key (optional)"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE72E;}">
+                    <controls:SettingsCard.Description>
+                        <StackPanel>
+                            <TextBlock
+                                Text="Used only to sign Uploadcare requests. It is stored in Windows Credential Locker, never in Tiny Clips settings."
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Margin="0,4,0,0"
+                                Text="{x:Bind ViewModel.UploadcareSecretKeyStatus, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </controls:SettingsCard.Description>
+                    <Grid
+                        MinWidth="320"
+                        MaxWidth="520"
+                        ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <PasswordBox
+                            x:Name="SecretKeyBox"
+                            AutomationProperties.AutomationId="UploadcareSecretKeyPasswordBox"
+                            AutomationProperties.Name="Uploadcare secret key"
+                            PasswordRevealMode="Peek"
+                            PlaceholderText="Enter a new secret key" />
+                        <Button
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="SaveUploadcareSecretKeyButton"
+                            Click="OnSaveSecretKey"
+                            Content="Save securely" />
+                        <Button
+                            Grid.Column="2"
+                            AutomationProperties.AutomationId="ClearUploadcareSecretKeyButton"
+                            Click="OnClearSecretKey"
+                            Content="Clear" />
+                    </Grid>
+                </controls:SettingsCard>
             </StackPanel>
-        </Border>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="8">
-                <StackPanel>
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Secret key (optional)" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Used only to sign Uploadcare requests. It is stored in Windows Credential Locker, never in Tiny Clips settings." />
-                    <TextBlock
-                        Margin="0,4,0,0"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind ViewModel.UploadcareSecretKeyStatus, Mode=OneWay}" />
-                </StackPanel>
-                <Grid ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <PasswordBox
-                        x:Name="SecretKeyBox"
-                        AutomationProperties.AutomationId="UploadcareSecretKeyPasswordBox"
-                        AutomationProperties.Name="Uploadcare secret key"
-                        PasswordRevealMode="Peek"
-                        PlaceholderText="Enter a new secret key" />
-                    <Button
-                        Grid.Column="1"
-                        AutomationProperties.AutomationId="SaveUploadcareSecretKeyButton"
-                        Click="OnSaveSecretKey"
-                        Content="Save securely" />
-                    <Button
-                        Grid.Column="2"
-                        AutomationProperties.AutomationId="ClearUploadcareSecretKeyButton"
-                        Click="OnClearSecretKey"
-                        Content="Clear" />
-                </Grid>
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="After saving a capture" />
+
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Upload after Tiny Clips successfully finishes saving a screenshot, video, or GIF."
+                    Header="Upload automatically"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE898;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="UploadcareAutoUploadToggle"
+                        AutomationProperties.Name="Upload automatically after saving"
+                        IsOn="{x:Bind ViewModel.UploadcareAutoUpload, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="Copy the Uploadcare delivery URL when an automatic upload succeeds."
+                    Header="Copy uploaded URL"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="UploadcareCopyUrlToggle"
+                        AutomationProperties.Name="Copy uploaded URL"
+                        IsOn="{x:Bind ViewModel.UploadcareCopyUrl, Mode=TwoWay}" />
+                </controls:SettingsCard>
             </StackPanel>
-        </Border>
-
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="After saving a capture" />
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Upload automatically" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Upload after Tiny Clips successfully finishes saving a screenshot, video, or GIF." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="UploadcareAutoUploadToggle"
-                    AutomationProperties.Name="Upload automatically after saving"
-                    IsOn="{x:Bind ViewModel.UploadcareAutoUpload, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Copy uploaded URL" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Copy the Uploadcare delivery URL when an automatic upload succeeds." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="UploadcareCopyUrlToggle"
-                    AutomationProperties.Name="Copy uploaded URL"
-                    IsOn="{x:Bind ViewModel.UploadcareCopyUrl, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-    </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>

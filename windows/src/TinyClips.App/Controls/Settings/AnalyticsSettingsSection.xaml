@@ -3,13 +3,19 @@
     x:Class="TinyClips.App.Settings.Sections.AnalyticsSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:TinyClips.App"
     xmlns:sections="using:TinyClips.App.Settings.Sections"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="8">
         <TextBlock
             Margin="4,8,0,4"
             Style="{StaticResource SubtitleTextBlockStyle}"
@@ -375,31 +381,30 @@
             Style="{StaticResource BodyStrongTextBlockStyle}"
             Text="Share" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="8">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button
-                        x:Name="CopyAnalyticsSummaryButton"
-                        AutomationProperties.AutomationId="CopyAnalyticsSummaryButton"
-                        Click="OnCopyAnalyticsSummary"
-                        Content="Copy Summary" />
-                    <Button
-                        AutomationProperties.AutomationId="ShareAnalyticsSummaryButton"
-                        AutomationProperties.Name="Share analytics summary"
-                        Click="OnShareAnalyticsSummary"
-                        Content="Share" />
-                </StackPanel>
-                <TextBlock
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Copy or share a quick text summary of your capture activity for the selected range." />
+        <controls:SettingsCard
+            Description="Copy or share a quick text summary of your capture activity for the selected range."
+            Header="Share analytics"
+            HeaderIcon="{ui:FontIcon Glyph=&#xE72D;}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="CopyAnalyticsSummaryButton"
+                    AutomationProperties.AutomationId="CopyAnalyticsSummaryButton"
+                    Click="OnCopyAnalyticsSummary"
+                    Content="Copy summary" />
+                <Button
+                    AutomationProperties.AutomationId="ShareAnalyticsSummaryButton"
+                    AutomationProperties.Name="Share analytics summary"
+                    Click="OnShareAnalyticsSummary"
+                    Content="Share" />
             </StackPanel>
-        </Border>
+        </controls:SettingsCard>
 
-        <Button
+        <HyperlinkButton
+            Margin="0,8,4,0"
             HorizontalAlignment="Left"
             AutomationProperties.AutomationId="ResetAnalyticsButton"
             Click="OnResetAnalytics"
             Content="Reset capture analytics…" />
-    </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>

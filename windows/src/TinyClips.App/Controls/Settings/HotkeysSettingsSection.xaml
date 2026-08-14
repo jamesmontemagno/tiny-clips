@@ -3,44 +3,41 @@
     x:Class="TinyClips.App.Settings.Sections.HotkeysSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
-        <TextBlock
-            Margin="4,8,0,4"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Text="Keyboard shortcuts" />
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="8">
+            <TextBlock
+                Margin="4,8,0,4"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                Text="Keyboard shortcuts" />
 
-        <InfoBar
-            AutomationProperties.AutomationId="HotKeyInstructionsInfoBar"
-            IsClosable="False"
-            IsOpen="True"
-            Message="Choose Edit, press a shortcut with Ctrl, Alt, Shift, or Win, then choose Save."
-            Severity="Informational" />
+            <InfoBar
+                AutomationProperties.AutomationId="HotKeyInstructionsInfoBar"
+                IsClosable="False"
+                IsOpen="True"
+                Message="Choose Edit, press a shortcut with Ctrl, Alt, Shift, or Win, then choose Save."
+                Severity="Informational" />
 
-        <InfoBar
-            x:Name="HotKeyStatusInfoBar"
-            AutomationProperties.AutomationId="HotKeyStatusInfoBar"
-            AutomationProperties.LiveSetting="Polite"
-            IsOpen="False" />
+            <InfoBar
+                x:Name="HotKeyStatusInfoBar"
+                AutomationProperties.AutomationId="HotKeyStatusInfoBar"
+                AutomationProperties.LiveSetting="Polite"
+                IsOpen="False" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="12">
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                        Text="Screenshot" />
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Header="Screenshot"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
                     <Border
-                        Grid.Column="1"
                         MinWidth="120"
                         Padding="10,4"
                         VerticalAlignment="Center"
@@ -52,33 +49,25 @@
                             Text="{x:Bind ViewModel.ScreenshotHotKeyDisplay, Mode=OneWay}" />
                     </Border>
                     <Button
-                        Grid.Column="2"
                         AutomationProperties.AutomationId="EditScreenshotHotKeyButton"
                         AutomationProperties.Name="Edit screenshot shortcut"
                         Click="OnEditHotKey"
                         Content="Edit"
                         Tag="Screenshot" />
                     <Button
-                        Grid.Column="3"
                         AutomationProperties.AutomationId="ResetScreenshotHotKeyButton"
                         AutomationProperties.Name="Reset screenshot shortcut"
                         Click="OnResetHotKey"
                         Content="Reset"
                         Tag="Screenshot" />
-                </Grid>
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                        Text="Record video" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Record video"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
                     <Border
-                        Grid.Column="1"
                         MinWidth="120"
                         Padding="10,4"
                         VerticalAlignment="Center"
@@ -90,33 +79,25 @@
                             Text="{x:Bind ViewModel.VideoHotKeyDisplay, Mode=OneWay}" />
                     </Border>
                     <Button
-                        Grid.Column="2"
                         AutomationProperties.AutomationId="EditVideoHotKeyButton"
                         AutomationProperties.Name="Edit record video shortcut"
                         Click="OnEditHotKey"
                         Content="Edit"
                         Tag="Video" />
                     <Button
-                        Grid.Column="3"
                         AutomationProperties.AutomationId="ResetVideoHotKeyButton"
                         AutomationProperties.Name="Reset record video shortcut"
                         Click="OnResetHotKey"
                         Content="Reset"
                         Tag="Video" />
-                </Grid>
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                        Text="Record GIF" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Record GIF"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B9;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
                     <Border
-                        Grid.Column="1"
                         MinWidth="120"
                         Padding="10,4"
                         VerticalAlignment="Center"
@@ -128,21 +109,20 @@
                             Text="{x:Bind ViewModel.GifHotKeyDisplay, Mode=OneWay}" />
                     </Border>
                     <Button
-                        Grid.Column="2"
                         AutomationProperties.AutomationId="EditGifHotKeyButton"
                         AutomationProperties.Name="Edit record GIF shortcut"
                         Click="OnEditHotKey"
                         Content="Edit"
                         Tag="Gif" />
                     <Button
-                        Grid.Column="3"
                         AutomationProperties.AutomationId="ResetGifHotKeyButton"
                         AutomationProperties.Name="Reset record GIF shortcut"
                         Click="OnResetHotKey"
                         Content="Reset"
                         Tag="Gif" />
-                </Grid>
+                    </StackPanel>
+                </controls:SettingsCard>
             </StackPanel>
-        </Border>
-    </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>

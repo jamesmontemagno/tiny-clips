@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.Settings;
@@ -41,6 +42,7 @@ public sealed partial class SettingsWindow : Window
 
         InitializeComponent();
 
+        Activated += OnActivatedSetIcon;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
@@ -49,11 +51,37 @@ public sealed partial class SettingsWindow : Window
         SettingsNavigation.SelectedItem = GeneralNavigationItem;
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var scale = AppWindowPlacement.GetScaleForWindow(hwnd);
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = AppWindowPlacement.DipToPixels(480, scale);
+            presenter.PreferredMinimumHeight = AppWindowPlacement.DipToPixels(640, scale);
+        }
+
         AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 1200, 860);
 
         ApplyTheme();
         ViewModel.ThemeChanged += ApplyTheme;
         Closed += OnClosed;
+    }
+
+    private void OnActivatedSetIcon(object sender, WindowActivatedEventArgs args)
+    {
+        AppWindow.SetIcon(@"Assets\AppIcon.ico");
+        Activated -= OnActivatedSetIcon;
+    }
+
+    private void OnSettingsNavigationDisplayModeChanged(
+        NavigationView sender,
+        NavigationViewDisplayModeChangedEventArgs args)
+    {
+        AppTitleBar.IsPaneToggleButtonVisible =
+            args.DisplayMode is NavigationViewDisplayMode.Compact or NavigationViewDisplayMode.Minimal;
+    }
+
+    private void OnTitleBarPaneToggleRequested(TitleBar sender, object args)
+    {
+        SettingsNavigation.IsPaneOpen = !SettingsNavigation.IsPaneOpen;
     }
 
     private void OnClosed(object sender, WindowEventArgs args)
@@ -109,7 +137,6 @@ public sealed partial class SettingsWindow : Window
             SettingsSectionKind.Video => new VideoSettingsSection(ViewModel),
             SettingsSectionKind.Gif => new GifSettingsSection(ViewModel),
             SettingsSectionKind.MouseClicks => new MouseClicksSettingsSection(ViewModel),
-            SettingsSectionKind.Branding => new BrandingSettingsSection(ViewModel),
             SettingsSectionKind.Teleprompter => new TeleprompterSettingsSection(ViewModel),
             SettingsSectionKind.Hotkeys => new HotkeysSettingsSection(ViewModel),
             SettingsSectionKind.About => new AboutSettingsSection(ViewModel),

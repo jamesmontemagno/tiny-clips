@@ -18,25 +18,26 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid
+        <TitleBar
             x:Name="AppTitleBar"
             Grid.Row="0"
-            Height="48"
-            Padding="16,0">
-            <TextBlock
-                VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Tiny Clips Settings" />
-        </Grid>
+            IsPaneToggleButtonVisible="False"
+            PaneToggleRequested="OnTitleBarPaneToggleRequested"
+            Title="Tiny Clips Settings">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
 
         <NavigationView
             x:Name="SettingsNavigation"
             Grid.Row="1"
             AutomationProperties.AutomationId="SettingsNavigationView"
+            DisplayModeChanged="OnSettingsNavigationDisplayModeChanged"
             IsBackButtonVisible="Collapsed"
+            IsPaneToggleButtonVisible="False"
             IsSettingsVisible="False"
             OpenPaneLength="240"
-            PaneDisplayMode="Left"
             SelectionChanged="OnSettingsNavigationSelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem
@@ -76,11 +77,6 @@
                     Icon="TouchPointer"
                     Tag="MouseClicks" />
                 <NavigationViewItem
-                    AutomationProperties.AutomationId="BrandingNavigationItem"
-                    Content="Branding"
-                    Icon="Flag"
-                    Tag="Branding" />
-                <NavigationViewItem
                     AutomationProperties.AutomationId="HotkeysNavigationItem"
                     Content="Hotkeys"
                     Icon="Keyboard"
@@ -93,16 +89,20 @@
                         <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE898;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
                 <NavigationViewItem
                     AutomationProperties.AutomationId="AboutNavigationItem"
                     Content="About"
                     Icon="Help"
                     Tag="About" />
-            </NavigationView.MenuItems>
+            </NavigationView.FooterMenuItems>
 
-            <ScrollViewer Padding="0,0,0,24">
+            <ScrollViewer
+                Padding="0,0,0,24"
+                HorizontalContentAlignment="Stretch"
+                HorizontalScrollBarVisibility="Disabled">
                 <Grid
-                    MaxWidth="760"
                     Margin="24,8,24,0"
                     HorizontalAlignment="Stretch">
                     <ContentControl
