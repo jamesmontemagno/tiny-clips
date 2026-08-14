@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - macOS Video and GIF settings now let you disable the default behavior that keeps the display awake while recording.
 
 ### Fixed
+- Fixed macOS screenshot editor crops to apply immediately and rebase the annotation canvas, so annotations added after cropping retain their intended position and size. Applying a crop now flattens existing annotations into the image, matching Windows.
 - Fixed macOS scrolling capture stitching duplicated rows of content by aligning frames with per-row signatures at single-pixel resolution and preferring the smallest matching scroll distance, which also handles slow scrolls and repeating layouts such as card lists.
 - Fixed the macOS scrolling capture not showing the red region outline while it records.
 - Fixed macOS scrolling capture running out of memory on modest regions by stitching frames incrementally, and guardrails now stop and save the panorama captured so far instead of discarding it.
