@@ -24,7 +24,11 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class SettingsWindow : Window
 {
+    private const int MinimumWidthDip = 480;
+    private const int MinimumHeightDip = 640;
+
     private readonly Dictionary<SettingsSectionKind, UserControl> _sectionCache = new();
+    private XamlRoot? _xamlRoot;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -51,15 +55,11 @@ public sealed partial class SettingsWindow : Window
         SettingsNavigation.SelectedItem = GeneralNavigationItem;
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var scale = AppWindowPlacement.GetScaleForWindow(hwnd);
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.PreferredMinimumWidth = AppWindowPlacement.DipToPixels(480, scale);
-            presenter.PreferredMinimumHeight = AppWindowPlacement.DipToPixels(640, scale);
-        }
+        UpdatePreferredMinimumSize(AppWindowPlacement.GetScaleForWindow(hwnd));
 
         AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 1200, 860);
 
+        RootGrid.Loaded += OnRootGridLoaded;
         ApplyTheme();
         ViewModel.ThemeChanged += ApplyTheme;
         Closed += OnClosed;
@@ -69,6 +69,33 @@ public sealed partial class SettingsWindow : Window
     {
         AppWindow.SetIcon(@"Assets\AppIcon.ico");
         Activated -= OnActivatedSetIcon;
+    }
+
+    private void OnRootGridLoaded(object sender, RoutedEventArgs args)
+    {
+        RootGrid.Loaded -= OnRootGridLoaded;
+        _xamlRoot = RootGrid.XamlRoot;
+        if (_xamlRoot is null)
+        {
+            return;
+        }
+
+        _xamlRoot.Changed += OnXamlRootChanged;
+        UpdatePreferredMinimumSize(_xamlRoot.RasterizationScale);
+    }
+
+    private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
+    {
+        UpdatePreferredMinimumSize(sender.RasterizationScale);
+    }
+
+    private void UpdatePreferredMinimumSize(double scale)
+    {
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = AppWindowPlacement.DipToPixels(MinimumWidthDip, scale);
+            presenter.PreferredMinimumHeight = AppWindowPlacement.DipToPixels(MinimumHeightDip, scale);
+        }
     }
 
     private void OnSettingsNavigationDisplayModeChanged(
@@ -86,6 +113,13 @@ public sealed partial class SettingsWindow : Window
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        RootGrid.Loaded -= OnRootGridLoaded;
+        if (_xamlRoot is not null)
+        {
+            _xamlRoot.Changed -= OnXamlRootChanged;
+            _xamlRoot = null;
+        }
+
         ViewModel.ThemeChanged -= ApplyTheme;
         Closed -= OnClosed;
 
