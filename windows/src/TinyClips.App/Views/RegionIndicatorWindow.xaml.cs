@@ -22,7 +22,6 @@ public sealed partial class RegionIndicatorWindow : Window
     private const int GwlExStyle = -20;
     private const long WsExLayered = 0x00080000;
     private const long WsExTransparent = 0x00000020;
-    private const uint WdaExcludeFromCapture = 0x11;
     private const int RgnDiff = 4;
 
     private bool _closed;
@@ -117,7 +116,7 @@ public sealed partial class RegionIndicatorWindow : Window
         var newStyle = (nint)(exStyle | WsExLayered | WsExTransparent);
         SetWindowLongPtr(hwnd, GwlExStyle, newStyle);
 
-        SetWindowDisplayAffinity(hwnd, WdaExcludeFromCapture);
+        OverlayWindowHelpers.ExcludeFromCapture(hwnd);
     }
 
     // 32/64-bit-safe GetWindowLongPtr / SetWindowLongPtr wrappers. On 32-bit Windows the
@@ -139,10 +138,6 @@ public sealed partial class RegionIndicatorWindow : Window
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
     private static extern int SetWindowLong32(nint hwnd, int index, int value);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowRgn(nint hWnd, nint hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);

@@ -18,16 +18,17 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid
+        <!--  Native WinUI TitleBar: icon, drag region, and DWM chrome.  -->
+        <TitleBar
             x:Name="AppTitleBar"
             Grid.Row="0"
-            Height="48"
-            Padding="16,0">
-            <TextBlock
-                VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Guide" />
-        </Grid>
+            AutomationProperties.AutomationId="GuideTitleBar"
+            IsPaneToggleButtonVisible="False"
+            Title="Tiny Clips Guide">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
 
         <ScrollViewer Grid.Row="1" Padding="0,0,0,24">
             <StackPanel
@@ -39,7 +40,7 @@
                 <TextBlock
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource BodyTextBlockStyle}"
-                    Text="Tiny Clips lives in your system tray. Click the tray icon any time to take a screenshot, record video, or capture a GIF." />
+                    Text="Tiny Clips lives in your system tray. Click the tray icon any time to capture a screenshot, video, GIF, or text from your screen." />
 
                 <!--  Capture modes  -->
                 <TextBlock
@@ -51,16 +52,20 @@
                     <StackPanel Spacing="12">
                         <local:GuideRow
                             Glyph="&#xE722;"
-                            Subtitle="Capture a region, a single window, or a full screen as a PNG or JPEG."
+                            Subtitle="Save a region, window, or full screen as PNG or JPEG, then annotate or crop in the built-in editor."
                             Title="Screenshot" />
                         <local:GuideRow
                             Glyph="&#xE714;"
-                            Subtitle="Record your screen to an MP4 video with a configurable frame rate."
+                            Subtitle="Record your screen to MP4 with optional microphone audio and a webcam overlay."
                             Title="Video" />
                         <local:GuideRow
                             Glyph="&#xE786;"
-                            Subtitle="Record a short, looping animated GIF, perfect for sharing."
+                            Subtitle="Record a short animated GIF with a configurable frame rate, maximum width, and click highlights."
                             Title="GIF" />
+                        <local:GuideRow
+                            Glyph="&#xE8D2;"
+                            Subtitle="Select a screen region; Windows OCR extracts the text and copies it straight to the clipboard."
+                            Title="Recognize Text" />
                     </StackPanel>
                 </Border>
 
@@ -84,6 +89,10 @@
                             Glyph="&#xE737;"
                             Subtitle="Press W to capture a specific application window."
                             Title="Window" />
+                        <local:GuideRow
+                            Glyph="&#xE8D2;"
+                            Subtitle="Press T to select a region and copy its recognized text to the clipboard."
+                            Title="Recognize Text" />
                     </StackPanel>
                 </Border>
 
@@ -160,6 +169,25 @@
                             <TextBlock
                                 VerticalAlignment="Center"
                                 Style="{StaticResource BodyStrongTextBlockStyle}"
+                                Text="Recognize text" />
+                            <Border
+                                Grid.Column="1"
+                                Padding="10,4"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                                <TextBlock
+                                    x:Name="OcrShortcut"
+                                    FontFamily="Consolas" />
+                            </Border>
+                        </Grid>
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                 Text="Stop recording" />
                             <Border
                                 Grid.Column="1"
@@ -173,6 +201,91 @@
                         </Grid>
                     </StackPanel>
                 </Border>
+
+                <!--  Screenshot editor  -->
+                <TextBlock
+                    Margin="4,16,0,4"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Screenshot editor" />
+
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <StackPanel Spacing="12">
+                        <local:GuideRow
+                            Glyph="&#xE70F;"
+                            Subtitle="Add rectangles, ellipses, arrows, lines, free-hand drawing, text labels, and numbered badges. Drag handles to reposition or resize any annotation after it is placed."
+                            Title="Annotations" />
+                        <local:GuideRow
+                            Glyph="&#xED1A;"
+                            Subtitle="Permanently obscure sensitive content with the Redact tool, or trim the canvas to any size with Crop. Undo steps back through every change."
+                            Title="Redact and crop" />
+                    </StackPanel>
+                </Border>
+
+                <!--  Recording extras  -->
+                <TextBlock
+                    Margin="4,16,0,4"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Recording extras" />
+
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <StackPanel Spacing="12">
+                        <local:GuideRow
+                            Glyph="&#xE8B8;"
+                            Subtitle="Overlay a live webcam feed during video recording. Configure shape, corner placement, and size in Settings → Video."
+                            Title="Webcam overlay" />
+                        <local:GuideRow
+                            Glyph="&#xE720;"
+                            Subtitle="Record system audio, microphone audio, or both. Choose your microphone in Settings → Video."
+                            Title="System and microphone audio" />
+                        <local:GuideRow
+                            Glyph="&#xE916;"
+                            Subtitle="Add a countdown before recording starts, cap the recording length, and keep the display awake for the full session — all in Settings → Video."
+                            Title="Countdown and time limit" />
+                        <local:GuideRow
+                            Glyph="&#xE8A5;"
+                            Subtitle="Enable a scrolling text overlay to read from a script while recording. Configure transcript and speed in Settings → Teleprompter."
+                            Title="Teleprompter" />
+                    </StackPanel>
+                </Border>
+
+                <!--  Tray quick access  -->
+                <TextBlock
+                    Margin="4,16,0,4"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Tray quick access" />
+
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <StackPanel Spacing="12">
+                        <local:GuideRow
+                            Glyph="&#xE7AA;"
+                            Subtitle="Left- or right-click the tray icon to open the quick access popup. Screenshot, Video, and GIF tiles each show the current shortcut. Use Capture Text for instant OCR."
+                            Title="Quick access popup" />
+                        <local:GuideRow
+                            Glyph="&#xE81C;"
+                            Subtitle="Open your most recent captures or browse save folders by capture type directly from the popup, without opening the full library."
+                            Title="Recent captures and folders" />
+                    </StackPanel>
+                </Border>
+
+                <!--  Clips Library  -->
+                <TextBlock
+                    Margin="4,16,0,4"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Clips Library" />
+
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <StackPanel Spacing="12">
+                        <local:GuideRow
+                            Glyph="&#xEB9F;"
+                            Subtitle="Browse all your screenshots, videos, and GIFs in a responsive grid. Open, copy, reveal in Explorer, or delete any capture from the library."
+                            Title="Browse and manage captures" />
+                        <local:GuideRow
+                            Glyph="&#xE71C;"
+                            Subtitle="Filter by capture type and date range (Today, This week, This month) using the Sort &amp; filter flyout in the library toolbar."
+                            Title="Sort and filter" />
+                    </StackPanel>
+                </Border>
+
             </StackPanel>
         </ScrollViewer>
     </Grid>

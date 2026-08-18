@@ -19,27 +19,17 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!--  Title bar  -->
-        <Grid
+        <!--  Title bar (native WinUI TitleBar; subtitle updated in code via AppTitleBar.Subtitle)  -->
+        <TitleBar
             x:Name="AppTitleBar"
             Grid.Row="0"
-            Height="56"
-            Padding="20,0">
-            <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
-                <FontIcon
-                    FontFamily="Segoe Fluent Icons"
-                    FontSize="16"
-                    Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                    Glyph="&#xEB9F;" />
-                <TextBlock
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="Your captures" />
-                <TextBlock
-                    x:Name="LibrarySummaryText"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Style="{StaticResource CaptionTextBlockStyle}" />
-            </StackPanel>
-        </Grid>
+            AutomationProperties.AutomationId="ClipsManagerTitleBar"
+            IsPaneToggleButtonVisible="False"
+            Title="Tiny Clips — Library">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
 
         <!--  Library toolbar  -->
         <Grid

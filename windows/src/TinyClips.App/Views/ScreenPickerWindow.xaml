@@ -59,6 +59,7 @@
                 <Button
                     HorizontalAlignment="Right"
                     AutomationProperties.AutomationId="ScreenPickerCancel"
+                    AutomationProperties.Name="Cancel screen capture"
                     Click="OnCancel"
                     Content="Cancel" />
             </StackPanel>

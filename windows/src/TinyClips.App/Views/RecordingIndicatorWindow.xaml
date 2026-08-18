@@ -5,12 +5,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Window.SystemBackdrop>
-        <MicaBackdrop />
+        <DesktopAcrylicBackdrop />
     </Window.SystemBackdrop>
 
     <Grid
         x:Name="RootGrid"
         Background="Transparent"
+        PointerCanceled="OnPointerCaptureEnded"
+        PointerCaptureLost="OnPointerCaptureEnded"
         PointerMoved="OnPointerMoved"
         PointerPressed="OnPointerPressed"
         PointerReleased="OnPointerReleased">
@@ -18,7 +20,7 @@
             Padding="12,8"
             Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-            BorderThickness="0"
+            BorderThickness="1"
             CornerRadius="{StaticResource OverlayCornerRadius}">
             <Border.Shadow>
                 <ThemeShadow />

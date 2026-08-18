@@ -19,16 +19,17 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid
+        <!--  Native WinUI TitleBar: icon, title, drag region, and DWM chrome.  -->
+        <TitleBar
             x:Name="AppTitleBar"
             Grid.Row="0"
-            Height="48"
-            Padding="16,0">
-            <TextBlock
-                VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Edit screenshot" />
-        </Grid>
+            AutomationProperties.AutomationId="ScreenshotEditorTitleBar"
+            IsPaneToggleButtonVisible="False"
+            Title="Edit Screenshot">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
 
         <!--  Output actions  -->
         <Border

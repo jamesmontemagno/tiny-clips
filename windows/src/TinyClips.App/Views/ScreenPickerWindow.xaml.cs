@@ -65,7 +65,9 @@ public sealed partial class ScreenPickerWindow : Window
         }
 
         _layoutApplied = true;
-        ApplyRoundedRegion(_windowWidth, _windowHeight, _windowScale);
+        OverlayWindowHelpers.ApplyRoundedRegion(
+            WinRT.Interop.WindowNative.GetWindowHandle(this),
+            _windowWidth, _windowHeight, _windowScale, CornerRadiusDip);
     }
 
     private void ConfigurePresenter()
@@ -79,7 +81,8 @@ public sealed partial class ScreenPickerWindow : Window
 
     private void CenterOnPrimaryDisplay(int width, int height)
     {
-        var scale = GetScale();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var scale = AppWindowPlacement.GetScaleForWindow(hwnd);
         var w = (int)Math.Round(width * scale);
         var h = (int)Math.Round(height * scale);
 
@@ -95,30 +98,6 @@ public sealed partial class ScreenPickerWindow : Window
         _windowHeight = h;
         _windowScale = scale;
     }
-
-    private void ApplyRoundedRegion(int width, int height, double scale)
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var radius = (int)Math.Round(CornerRadiusDip * scale);
-        var region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius, radius);
-        SetWindowRgn(hwnd, region, true);
-    }
-
-    private double GetScale()
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dpi = GetDpiForWindow(hwnd);
-        return dpi <= 0 ? 1.0 : dpi / 96.0;
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(nint hwnd);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-    private static extern int SetWindowRgn(nint hWnd, nint hRgn, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool bRedraw);
-
-    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
-    private static extern nint CreateRoundRectRgn(int x1, int y1, int x2, int y2, int cx, int cy);
 
     private void Complete(MonitorInfo? monitor)
     {

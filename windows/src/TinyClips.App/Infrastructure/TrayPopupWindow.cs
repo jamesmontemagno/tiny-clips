@@ -30,6 +30,7 @@ internal sealed class TrayPopupWindow : Window
         Content = content;
 
         Activated += OnActivated;
+        Closed += OnClosed;
         _appWindow.Hide();
     }
 
@@ -39,6 +40,13 @@ internal sealed class TrayPopupWindow : Window
         {
             _appWindow.Hide();
         }
+    }
+
+    private void OnClosed(object sender, WindowEventArgs e)
+    {
+        // Unsubscribe so a stale Activated notification cannot reach a closed _appWindow.
+        Activated -= OnActivated;
+        Closed -= OnClosed;
     }
 
     public bool IsOpen => _appWindow.IsVisible;

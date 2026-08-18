@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Windowing;
@@ -21,15 +20,10 @@ public sealed partial class RecordingIndicatorWindow : Window
     private const int TopOffsetDip = 24;
     private const int RegionOutsideOffsetDip = 12;
 
-    private const uint WdaExcludeFromCapture = 0x11;
-
     private bool _finishRequested;
     private string _stopHintText = "Stop from tray";
     private bool _closed;
-
-    private bool _dragging;
-    private POINT _dragCursorStart;
-    private PointInt32 _dragWindowStart;
+    private readonly FloatingWindowDragger _dragger;
 
     public RecordingIndicatorWindow(string stopHint)
     {
@@ -41,6 +35,7 @@ public sealed partial class RecordingIndicatorWindow : Window
         HotKeyText.Text = _stopHintText;
 
         ConfigurePresenter();
+        _dragger = new FloatingWindowDragger(AppWindow);
         Closed += OnClosed;
     }
 
@@ -68,7 +63,7 @@ public sealed partial class RecordingIndicatorWindow : Window
         // Exclude the floating panel from screen capture so it never appears in the
         // recorded video/GIF.
         var hwnd = WindowNative.GetWindowHandle(this);
-        SetWindowDisplayAffinity(hwnd, WdaExcludeFromCapture);
+        OverlayWindowHelpers.ExcludeFromCapture(hwnd);
     }
 
     public void UpdateElapsed(TimeSpan elapsed)
@@ -211,48 +206,14 @@ public sealed partial class RecordingIndicatorWindow : Window
 
     // Drag-anywhere support: pressing the Stop button is handled by the Button itself
     // (it marks the pointer event handled), so dragging only begins on the panel surface.
-    // Anchored to absolute cursor position to avoid feedback jitter as the window moves.
-    private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is not UIElement element)
-        {
-            return;
-        }
+    // Delegates to FloatingWindowDragger which anchors movement to absolute cursor position.
+    private void OnPointerPressed(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerPressed(sender, e);
 
-        GetCursorPos(out _dragCursorStart);
-        _dragWindowStart = AppWindow.Position;
-        _dragging = element.CapturePointer(e.Pointer);
-    }
+    private void OnPointerMoved(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerMoved(sender, e);
 
-    private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_dragging)
-        {
-            return;
-        }
+    private void OnPointerReleased(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerReleased(sender, e);
 
-        GetCursorPos(out var current);
-        var dx = current.X - _dragCursorStart.X;
-        var dy = current.Y - _dragCursorStart.Y;
-
-        if (dx == 0 && dy == 0)
-        {
-            return;
-        }
-
-        AppWindow.Move(new PointInt32(_dragWindowStart.X + dx, _dragWindowStart.Y + dy));
-    }
-
-    private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is not UIElement element)
-        {
-            return;
-        }
-
-        _dragging = false;
-        element.ReleasePointerCapture(e.Pointer);
-    }
+    private void OnPointerCaptureEnded(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerCaptureEnded(sender, e);
 
     private void ConfigurePresenter()
     {
@@ -309,17 +270,4 @@ public sealed partial class RecordingIndicatorWindow : Window
         MicrophoneMuteChanged = null;
     }
 
-    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool GetCursorPos(out POINT lpPoint);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
 }

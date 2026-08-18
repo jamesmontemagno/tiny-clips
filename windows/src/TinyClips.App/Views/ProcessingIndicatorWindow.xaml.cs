@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using TinyClips.Core.Capture;
@@ -19,8 +18,6 @@ public sealed partial class ProcessingIndicatorWindow : Window
     private const int WidthDip = 220;
     private const int HeightDip = 64;
     private const int TopOffsetDip = 24;
-
-    private const uint WdaExcludeFromCapture = 0x11;
 
     private bool _closed;
 
@@ -48,7 +45,7 @@ public sealed partial class ProcessingIndicatorWindow : Window
 
         // Keep the panel out of any concurrent capture.
         var hwnd = WindowNative.GetWindowHandle(this);
-        SetWindowDisplayAffinity(hwnd, WdaExcludeFromCapture);
+        OverlayWindowHelpers.ExcludeFromCapture(hwnd);
     }
 
     public void ClosePanel()
@@ -96,7 +93,4 @@ public sealed partial class ProcessingIndicatorWindow : Window
         _closed = true;
     }
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
 }

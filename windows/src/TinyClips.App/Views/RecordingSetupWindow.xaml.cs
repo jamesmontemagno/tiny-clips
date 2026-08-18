@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -44,7 +43,6 @@ public sealed partial class RecordingSetupWindow : Window
 {
     private const int TopOffsetDip = 24;
     private const int RegionOutsideOffsetDip = 12;
-    private const uint WdaExcludeFromCapture = 0x11;
 
     private readonly TaskCompletionSource<RecordingSetupResult?> _result = new();
     private readonly CaptureType _captureType;
@@ -63,9 +61,7 @@ public sealed partial class RecordingSetupWindow : Window
     private bool _microphonePermissionPending;
     private bool _webcamPermissionPending;
 
-    private bool _dragging;
-    private POINT _dragCursorStart;
-    private PointInt32 _dragWindowStart;
+    private readonly FloatingWindowDragger _dragger;
 
     private RecordingSetupWindow(
         CaptureType captureType,
@@ -99,6 +95,7 @@ public sealed partial class RecordingSetupWindow : Window
             settings.WebcamCornerRadius);
 
         ConfigurePresenter();
+        _dragger = new FloatingWindowDragger(AppWindow);
         ConfigureForCaptureType();
         UpdateMouseClicksVisual();
         UpdateStartButtonEnabled();
@@ -209,7 +206,7 @@ public sealed partial class RecordingSetupWindow : Window
         RootGrid.Focus(FocusState.Programmatic);
 
         var hwnd = WindowNative.GetWindowHandle(this);
-        SetWindowDisplayAffinity(hwnd, WdaExcludeFromCapture);
+        OverlayWindowHelpers.ExcludeFromCapture(hwnd);
     }
 
     private void PositionNearMonitorWorkArea(MonitorInfo? monitor, PixelRect? regionInVirtualDesktop)
@@ -576,58 +573,14 @@ public sealed partial class RecordingSetupWindow : Window
         AutomationProperties.SetName(MouseClicksToggle, $"Mouse click visuals {state}");
     }
 
-    private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is not UIElement element)
-        {
-            return;
-        }
+    // Drag-anywhere support: interactive controls mark pointer events handled; dragging
+    // only begins on the setup panel background.
+    // Delegates to FloatingWindowDragger which anchors movement to absolute cursor position.
+    private void OnPointerPressed(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerPressed(sender, e);
 
-        GetCursorPos(out _dragCursorStart);
-        _dragWindowStart = AppWindow.Position;
-        _dragging = element.CapturePointer(e.Pointer);
-    }
+    private void OnPointerMoved(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerMoved(sender, e);
 
-    private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_dragging)
-        {
-            return;
-        }
+    private void OnPointerReleased(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerReleased(sender, e);
 
-        GetCursorPos(out var current);
-        var dx = current.X - _dragCursorStart.X;
-        var dy = current.Y - _dragCursorStart.Y;
-        if (dx == 0 && dy == 0)
-        {
-            return;
-        }
-
-        AppWindow.Move(new PointInt32(_dragWindowStart.X + dx, _dragWindowStart.Y + dy));
-    }
-
-    private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is not UIElement element)
-        {
-            return;
-        }
-
-        _dragging = false;
-        element.ReleasePointerCapture(e.Pointer);
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern bool GetCursorPos(out POINT lpPoint);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
+    private void OnPointerCaptureEnded(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerCaptureEnded(sender, e);
 }

@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
@@ -21,7 +20,6 @@ public sealed partial class CountdownWindow : Window
 {
     private const int SizeDip = 132;
     private const int CornerRadiusDip = 8;
-    private const uint WdaExcludeFromCapture = 0x11;
 
     private readonly DispatcherQueueTimer _timer;
     private readonly TaskCompletionSource<bool> _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -200,19 +198,8 @@ public sealed partial class CountdownWindow : Window
 
         // Clip the square window to a rounded square (matching the card) and keep it
         // out of recordings.
-        var radius = AppWindowPlacement.DipToPixels(CornerRadiusDip, target.Scale);
-        var region = CreateRoundRectRgn(0, 0, size + 1, size + 1, radius, radius);
-        SetWindowRgn(hwnd, region, true);
-        SetWindowDisplayAffinity(hwnd, WdaExcludeFromCapture);
+        OverlayWindowHelpers.ApplyRoundedRegion(hwnd, size, size, target.Scale, CornerRadiusDip);
+        OverlayWindowHelpers.ExcludeFromCapture(hwnd);
     }
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern int SetWindowRgn(nint hWnd, nint hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);
-
-    [DllImport("gdi32.dll")]
-    private static extern nint CreateRoundRectRgn(int x1, int y1, int x2, int y2, int cx, int cy);
 }

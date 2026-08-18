@@ -16,8 +16,6 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class WebcamPreviewWindow : Window
 {
-    private const uint WdaExcludeFromCapture = 0x11;
-
     private readonly IWebcamCaptureService _capture;
     private readonly RectInt32 _captureBounds;
     private readonly int _margin;
@@ -54,7 +52,7 @@ public sealed partial class WebcamPreviewWindow : Window
 
     public void Show()
     {
-        if (!SetWindowDisplayAffinity(WindowNative.GetWindowHandle(this), WdaExcludeFromCapture))
+        if (!OverlayWindowHelpers.ExcludeFromCapture(WindowNative.GetWindowHandle(this)))
         {
             ClosePanel();
             return;
@@ -278,8 +276,4 @@ public sealed partial class WebcamPreviewWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(nint hwnd, out RECT rect);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowDisplayAffinity(nint hwnd, uint affinity);
 }

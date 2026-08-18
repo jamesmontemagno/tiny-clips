@@ -11,7 +11,9 @@
     <Grid x:Name="RootGrid" Background="Transparent">
         <Border
             Padding="24"
-           BorderThickness="0"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+            BorderThickness="1"
             CornerRadius="8">
             <Grid RowSpacing="16">
                 <Grid.RowDefinitions>
@@ -58,6 +60,7 @@
                     Grid.Row="2"
                     HorizontalAlignment="Right"
                     AutomationProperties.AutomationId="WindowPickerCancel"
+                    AutomationProperties.Name="Cancel window capture"
                     Click="OnCancel"
                     Content="Cancel" />
             </Grid>
