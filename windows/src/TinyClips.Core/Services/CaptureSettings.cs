@@ -169,6 +169,12 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("videoFrameRate", value);
     }
 
+    public bool KeepDisplayAwakeWhileRecording
+    {
+        get => _settings.Get("keepDisplayAwakeWhileRecording", true);
+        set => _settings.Set("keepDisplayAwakeWhileRecording", value);
+    }
+
     public bool ShowMouseClickVisualsInVideo
     {
         get => _settings.Get("showMouseClickVisualsInVideo", false);
@@ -687,6 +693,7 @@ public sealed class CaptureSettings : ICaptureSettings
         GifFrameRate = 10.0;
         GifMaxWidth = 640;
         VideoFrameRate = 30;
+        KeepDisplayAwakeWhileRecording = true;
         ShowMouseClickVisualsInVideo = false;
         ShowMouseClickVisualsInGif = false;
         GifMouseClicksUseVideoSettings = false;

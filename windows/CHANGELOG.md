@@ -10,6 +10,9 @@ own `CHANGELOG.md` at the repository root.
   to recognize text in a screen region and copy it to the clipboard without saving an image.
   Large regions are automatically downscaled to fit the OCR engine's supported image size, and the
   capture picker's countdown timer is honored before recognition runs.
+- **Display sleep prevention** — Video and GIF recordings can now keep the display awake for
+  the duration of the recording, controlled by Settings → Video → Keep display awake while
+  recording and enabled by default.
 
 ### Changed
 - **Native Settings title bar** — Settings now uses the WinUI `TitleBar` control, keeps the

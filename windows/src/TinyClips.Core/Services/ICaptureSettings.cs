@@ -21,6 +21,7 @@ public interface ICaptureSettings
     double GifFrameRate { get; set; }
     int GifMaxWidth { get; set; }
     int VideoFrameRate { get; set; }
+    bool KeepDisplayAwakeWhileRecording { get; set; }
     bool ShowMouseClickVisualsInVideo { get; set; }
     bool ShowMouseClickVisualsInGif { get; set; }
     bool GifMouseClicksUseVideoSettings { get; set; }

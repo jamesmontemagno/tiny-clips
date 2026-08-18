@@ -372,6 +372,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private double _videoFrameRate;
 
     [ObservableProperty]
+    private bool _keepDisplayAwakeWhileRecording;
+
+    [ObservableProperty]
     private bool _recordAudio;
 
     [ObservableProperty]
@@ -739,6 +742,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ShowScreenshotCapturePickerAfterCapture = _settings.ShowScreenshotCapturePickerAfterCapture;
 
             VideoFrameRate = _settings.VideoFrameRate;
+            KeepDisplayAwakeWhileRecording = _settings.KeepDisplayAwakeWhileRecording;
             RecordAudio = _settings.RecordAudio;
             RecordMicrophone = _settings.RecordMicrophone;
 
@@ -1114,6 +1118,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnVideoFrameRateChanged(double value) => Persist(() => _settings.VideoFrameRate = (int)Math.Round(value));
+
+    partial void OnKeepDisplayAwakeWhileRecordingChanged(bool value) =>
+        Persist(() => _settings.KeepDisplayAwakeWhileRecording = value);
 
     partial void OnRecordAudioChanged(bool value) => Persist(() => _settings.RecordAudio = value);
 
