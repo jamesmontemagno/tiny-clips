@@ -5,6 +5,11 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- **Layered acrylic tray flyout** — The system-tray quick-access window now uses a PowerToys-style
+  layered acrylic content surface with a distinct bottom command bar and compact 32-DIP Fluent
+  action buttons, while retaining the existing Tiny Clips popup dimensions and actions.
+
 ## [v1.7.0-windows] - 2026-08-13
 
 ### Internal
