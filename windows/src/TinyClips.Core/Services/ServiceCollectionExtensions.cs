@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMonitorService, MonitorService>();
         services.AddSingleton<IScreenCaptureService, ScreenCaptureService>();
         services.AddSingleton<IScreenshotService, ScreenshotService>();
+        services.AddSingleton<IOcrService, OcrService>();
         services.AddSingleton<IVideoRecordingService, VideoRecordingService>();
         services.AddSingleton<IGifRecordingService, GifRecordingService>();
         return services;

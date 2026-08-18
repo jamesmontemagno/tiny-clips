@@ -30,9 +30,9 @@ public sealed partial class GuideWindow : Window
         };
 
         var hotKeys = App.Services.GetRequiredService<IHotKeyService>();
-        ScreenshotShortcut.Text = hotKeys.GetBinding(CaptureType.Screenshot).DisplayString;
-        VideoShortcut.Text = hotKeys.GetBinding(CaptureType.Video).DisplayString;
-        GifShortcut.Text = hotKeys.GetBinding(CaptureType.Gif).DisplayString;
+        ScreenshotShortcut.Text = hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString;
+        VideoShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
+        GifShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
         StopRecordingShortcut.Text = hotKeys.StopRecordingDisplayString;
     }
 }

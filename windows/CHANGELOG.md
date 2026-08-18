@@ -5,6 +5,10 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **OCR region capture** — Select **Recognize Text** in the capture picker or press `Ctrl+Shift+T`
+  to recognize text in a screen region and copy it to the clipboard without saving an image.
+
 ### Changed
 - **Native Settings title bar** — Settings now uses the WinUI `TitleBar` control, keeps the
   navigation pane toggle in the title bar only when the adaptive navigation pane is collapsed,

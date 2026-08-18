@@ -610,30 +610,32 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _mostActiveHourLabel = "No captures yet.";
 
-    public string ScreenshotHotKeyDisplay => _hotKeys.GetBinding(CaptureType.Screenshot).DisplayString;
+    public string ScreenshotHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString;
 
-    public string VideoHotKeyDisplay => _hotKeys.GetBinding(CaptureType.Video).DisplayString;
+    public string VideoHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
 
-    public string GifHotKeyDisplay => _hotKeys.GetBinding(CaptureType.Gif).DisplayString;
+    public string GifHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
 
-    public HotKeyDefinition GetHotKey(CaptureType type) => _hotKeys.GetBinding(type);
+    public string OcrHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString;
 
-    public HotKeyDefinition GetDefaultHotKey(CaptureType type) => _hotKeys.DefaultFor(type);
+    public HotKeyDefinition GetHotKey(HotKeyAction action) => _hotKeys.GetBinding(action);
 
-    public HotKeyValidationResult ValidateHotKey(CaptureType type, HotKeyDefinition binding)
-        => _hotKeys.ValidateBinding(type, binding);
+    public HotKeyDefinition GetDefaultHotKey(HotKeyAction action) => _hotKeys.DefaultFor(action);
 
-    /// <summary>Persists a new global shortcut for the given capture type and refreshes the display.</summary>
-    public void SetHotKey(CaptureType type, HotKeyModifiers modifiers, uint virtualKey)
+    public HotKeyValidationResult ValidateHotKey(HotKeyAction action, HotKeyDefinition binding)
+        => _hotKeys.ValidateBinding(action, binding);
+
+    /// <summary>Persists a new global shortcut for the given action and refreshes the display.</summary>
+    public void SetHotKey(HotKeyAction action, HotKeyModifiers modifiers, uint virtualKey)
     {
-        _hotKeys.SetBinding(type, new HotKeyDefinition(modifiers, virtualKey));
+        _hotKeys.SetBinding(action, new HotKeyDefinition(modifiers, virtualKey));
         RaiseHotKeyDisplays();
     }
 
-    /// <summary>Restores the default shortcut for the given capture type.</summary>
-    public void ResetHotKey(CaptureType type)
+    /// <summary>Restores the default shortcut for the given action.</summary>
+    public void ResetHotKey(HotKeyAction action)
     {
-        _hotKeys.SetBinding(type, _hotKeys.DefaultFor(type));
+        _hotKeys.SetBinding(action, _hotKeys.DefaultFor(action));
         RaiseHotKeyDisplays();
     }
 
@@ -642,6 +644,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(ScreenshotHotKeyDisplay));
         OnPropertyChanged(nameof(VideoHotKeyDisplay));
         OnPropertyChanged(nameof(GifHotKeyDisplay));
+        OnPropertyChanged(nameof(OcrHotKeyDisplay));
     }
 
     /// <summary>

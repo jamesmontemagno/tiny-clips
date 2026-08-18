@@ -86,6 +86,8 @@ public interface ICaptureSettings
     int VideoHotKeyModifiers { get; set; }
     int GifHotKeyCode { get; set; }
     int GifHotKeyModifiers { get; set; }
+    int OcrHotKeyCode { get; set; }
+    int OcrHotKeyModifiers { get; set; }
 
     ImageFormat ImageFormat { get; set; }
     bool ShouldCopyToClipboard(CaptureType type);

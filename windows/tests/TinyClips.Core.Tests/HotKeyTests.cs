@@ -10,9 +10,10 @@ public sealed class HotKeyTests
     {
         var service = CreateService();
 
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.DefaultFor(CaptureType.Screenshot));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36), service.DefaultFor(CaptureType.Video));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37), service.DefaultFor(CaptureType.Gif));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.DefaultFor(HotKeyAction.Screenshot));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36), service.DefaultFor(HotKeyAction.RecordVideo));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37), service.DefaultFor(HotKeyAction.RecordGif));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54), service.DefaultFor(HotKeyAction.RecognizeText));
     }
 
     [Theory]
@@ -33,9 +34,10 @@ public sealed class HotKeyTests
     {
         var service = CreateService();
 
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.GetBinding(CaptureType.Screenshot));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36), service.GetBinding(CaptureType.Video));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37), service.GetBinding(CaptureType.Gif));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.GetBinding(HotKeyAction.Screenshot));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36), service.GetBinding(HotKeyAction.RecordVideo));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37), service.GetBinding(HotKeyAction.RecordGif));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54), service.GetBinding(HotKeyAction.RecognizeText));
     }
 
     [Fact]
@@ -43,9 +45,9 @@ public sealed class HotKeyTests
     {
         var service = CreateService();
 
-        service.SetBinding(CaptureType.Screenshot, new HotKeyDefinition(HotKeyModifiers.Alt | HotKeyModifiers.Control, 0x42));
+        service.SetBinding(HotKeyAction.RecognizeText, new HotKeyDefinition(HotKeyModifiers.Alt | HotKeyModifiers.Control, 0x42));
 
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Alt | HotKeyModifiers.Control, 0x42), service.GetBinding(CaptureType.Screenshot));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Alt | HotKeyModifiers.Control, 0x42), service.GetBinding(HotKeyAction.RecognizeText));
     }
 
     [Theory]
@@ -60,7 +62,7 @@ public sealed class HotKeyTests
         var service = CreateService();
 
         var result = service.ValidateBinding(
-            CaptureType.Screenshot,
+            HotKeyAction.Screenshot,
             new HotKeyDefinition(modifiers, virtualKey));
 
         Assert.Equal(expectedError, result.Error);
@@ -70,12 +72,12 @@ public sealed class HotKeyTests
     public void ValidateBinding_RejectsAnotherCaptureBinding()
     {
         var service = CreateService();
-        var videoBinding = service.GetBinding(CaptureType.Video);
+        var videoBinding = service.GetBinding(HotKeyAction.RecordVideo);
 
-        var result = service.ValidateBinding(CaptureType.Screenshot, videoBinding);
+        var result = service.ValidateBinding(HotKeyAction.Screenshot, videoBinding);
 
         Assert.Equal(HotKeyValidationError.DuplicateBinding, result.Error);
-        Assert.Equal(CaptureType.Video, result.ConflictingCaptureType);
+        Assert.Equal(HotKeyAction.RecordVideo, result.ConflictingAction);
     }
 
     [Fact]
@@ -83,7 +85,7 @@ public sealed class HotKeyTests
     {
         var service = CreateService();
 
-        var result = service.ValidateBinding(CaptureType.Gif, service.GetStopBinding());
+        var result = service.ValidateBinding(HotKeyAction.RecordGif, service.GetStopBinding());
 
         Assert.Equal(HotKeyValidationError.StopRecordingConflict, result.Error);
     }
@@ -94,11 +96,17 @@ public sealed class HotKeyTests
         var service = CreateService();
 
         Assert.True(service.ValidateBinding(
-            CaptureType.Screenshot,
-            service.GetBinding(CaptureType.Screenshot)).IsValid);
+            HotKeyAction.Screenshot,
+            service.GetBinding(HotKeyAction.Screenshot)).IsValid);
         Assert.True(service.ValidateBinding(
-            CaptureType.Screenshot,
+            HotKeyAction.Screenshot,
             new HotKeyDefinition(HotKeyModifiers.Alt, 0x41)).IsValid);
+
+        Assert.Equal(
+            HotKeyValidationError.DuplicateBinding,
+            service.ValidateBinding(
+                HotKeyAction.RecognizeText,
+                service.GetBinding(HotKeyAction.Screenshot)).Error);
     }
 
     private static IHotKeyService CreateService()
