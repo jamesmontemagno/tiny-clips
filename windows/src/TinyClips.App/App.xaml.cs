@@ -550,24 +550,6 @@ public partial class App : Application
                 return;
             }
 
-            if (isTextRecognition)
-            {
-                captureFlowCts.Token.ThrowIfCancellationRequested();
-                var text = await Services.GetRequiredService<IOcrService>()
-                    .RecognizeAsync(selection.Target, selection.Region, captureFlowCts.Token);
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    ShowTextRecognitionNotification("No text recognized");
-                }
-                else
-                {
-                    await ClipboardService.CopyTextAsync(text);
-                    ShowTextRecognitionNotification("Text copied to clipboard");
-                }
-
-                return;
-            }
-
             RecordingSetupResult? recordingSetup = null;
             if (type is CaptureType.Video or CaptureType.Gif)
             {
@@ -612,6 +594,30 @@ public partial class App : Application
 
             switch (type)
             {
+                case CaptureType.Screenshot when isTextRecognition:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var text = await Services.GetRequiredService<IOcrService>()
+                            .RecognizeAsync(selection.Target, selection.Region, captureFlowCts.Token);
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            ShowTextRecognitionNotification("No text recognized");
+                        }
+                        else
+                        {
+                            await ClipboardService.CopyTextAsync(text);
+                            ShowTextRecognitionNotification("Text copied to clipboard");
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"Text recognition failed: {ex}");
+                        ShowTextRecognitionNotification("Couldn't recognize text");
+                    }
+
+                    break;
+
                 case CaptureType.Screenshot:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     var screenshots = Services.GetRequiredService<IScreenshotService>();
