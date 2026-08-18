@@ -20,7 +20,7 @@ struct CaptureRegion: Sendable {
             sourceRect: CGRect(x: 0, y: 0, width: screen.frame.width, height: screen.frame.height),
             displayID: displayID,
             scaleFactor: screen.backingScaleFactor
-        )
+        ).pixelAligned()
     }
 
     var pixelWidth: Int {
@@ -29,6 +29,29 @@ struct CaptureRegion: Sendable {
 
     var pixelHeight: Int {
         max(1, Int((sourceRect.height * scaleFactor).rounded()))
+    }
+
+    /// Returns a copy whose `sourceRect` sits on whole device-pixel boundaries. Idempotent.
+    func pixelAligned() -> CaptureRegion {
+        CaptureRegion(
+            sourceRect: CaptureCoordinateMath.pixelAlignedRect(sourceRect, scaleFactor: scaleFactor),
+            displayID: displayID,
+            scaleFactor: scaleFactor
+        )
+    }
+
+    func withScaleFactor(_ newScaleFactor: CGFloat) -> CaptureRegion {
+        guard newScaleFactor > 0, newScaleFactor != scaleFactor else { return self }
+        return CaptureRegion(sourceRect: sourceRect, displayID: displayID, scaleFactor: newScaleFactor)
+    }
+
+    /// Adopts the filter's point-to-pixel ratio, then snaps to that pixel grid.
+    ///
+    /// `NSScreen.backingScaleFactor` describes the render framebuffer, while `pointPixelScale` is what
+    /// ScreenCaptureKit will actually hand back. They agree on every display mode measured so far, so
+    /// this is defensive rather than a fix for a known case.
+    func resolvingPixelScale(from filter: SCContentFilter) -> CaptureRegion {
+        withScaleFactor(CGFloat(filter.pointPixelScale)).pixelAligned()
     }
 
     func makeStreamConfig() -> SCStreamConfiguration {
@@ -68,9 +91,12 @@ struct CaptureTarget {
     }
 
     func prepare(alwaysExcluding windows: [SCWindow] = []) async throws -> PreparedCaptureTarget {
-        PreparedCaptureTarget(
-            filter: try await region.makeFilter(alwaysExcluding: windows),
+        let filter = try await region.makeFilter(alwaysExcluding: windows)
+        let region = self.region.resolvingPixelScale(from: filter)
+        return PreparedCaptureTarget(
+            filter: filter,
             config: region.makeStreamConfig(),
+            region: region,
             pixelWidth: region.pixelWidth,
             pixelHeight: region.pixelHeight
         )
@@ -80,6 +106,9 @@ struct CaptureTarget {
 struct PreparedCaptureTarget {
     let filter: SCContentFilter
     let config: SCStreamConfiguration
+    /// Geometry the stream is actually sized from; downstream coordinate mapping must use this, not
+    /// the provisional `CaptureTarget.region`.
+    let region: CaptureRegion
     let pixelWidth: Int
     let pixelHeight: Int
 }
@@ -110,6 +139,7 @@ enum CaptureType: String {
 
 enum CaptureError: LocalizedError {
     case displayNotFound
+    case regionCropFailed
     case saveFailed
     case noFrames
     case permissionDenied
@@ -124,6 +154,7 @@ enum CaptureError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .displayNotFound: return "Could not find the selected display."
+        case .regionCropFailed: return "Could not crop the selected region from the capture."
         case .saveFailed: return "Failed to save the capture."
         case .noFrames: return "No frames were captured."
         case .permissionDenied: return "Screen recording permission is required."

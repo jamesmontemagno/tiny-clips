@@ -39,6 +39,43 @@ enum CaptureCoordinateMath {
             .geometry.scaleFactor ?? 1.0
     }
 
+    /// Snaps a point-space rect onto whole device-pixel boundaries.
+    ///
+    /// Region selections come from raw mouse coordinates, so the rect is almost always fractional in
+    /// point space, which produces off-by-one output dimensions and a size readout that disagrees with
+    /// the saved file. This is about predictable geometry, not sharpness.
+    static func pixelAlignedRect(_ rect: CGRect, scaleFactor: CGFloat) -> CGRect {
+        guard scaleFactor > 0, rect.width.isFinite, rect.height.isFinite else { return rect }
+
+        let minX = (rect.minX * scaleFactor).rounded()
+        let minY = (rect.minY * scaleFactor).rounded()
+        let maxX = max(minX + 1, (rect.maxX * scaleFactor).rounded())
+        let maxY = max(minY + 1, (rect.maxY * scaleFactor).rounded())
+
+        return CGRect(
+            x: minX / scaleFactor,
+            y: minY / scaleFactor,
+            width: (maxX - minX) / scaleFactor,
+            height: (maxY - minY) / scaleFactor
+        )
+    }
+
+    /// Pixel rect to crop out of a full-display capture, clamped to the captured image.
+    static func cropPixelRect(
+        forSourceRect sourceRect: CGRect,
+        contentOrigin: CGPoint,
+        scaleFactor: CGFloat,
+        imagePixelSize: CGSize
+    ) -> CGRect {
+        let rect = CGRect(
+            x: ((sourceRect.minX - contentOrigin.x) * scaleFactor).rounded(),
+            y: ((sourceRect.minY - contentOrigin.y) * scaleFactor).rounded(),
+            width: max(1, (sourceRect.width * scaleFactor).rounded()),
+            height: max(1, (sourceRect.height * scaleFactor).rounded())
+        )
+        return rect.intersection(CGRect(origin: .zero, size: imagePixelSize))
+    }
+
     static func capturePoint(
         for globalPoint: CGPoint,
         screenFrame: CGRect,
@@ -71,16 +108,36 @@ struct ScreenshotCapture {
         return try saveImage(image, to: outputURL)
     }
 
+    /// Captures the whole display natively and crops, because `SCStreamConfiguration.sourceRect`
+    /// resamples the frame even when the rect is pixel-aligned and the buffer size matches exactly.
+    /// Measured against a lossless crop of the same frame it loses ~5% gradient energy and leaves
+    /// only ~86% of pixels identical. `CGImage.cropping(to:)` is a pure pixel copy.
     static func captureImage(region: CaptureRegion) async throws -> CGImage {
         let filter = try await region.makeFilter()
+        let region = region.resolvingPixelScale(from: filter)
+        let scaleFactor = region.scaleFactor
+        let contentRect = filter.contentRect
+
         let config = SCStreamConfiguration()
-        config.sourceRect = region.sourceRect
-        config.width = region.pixelWidth
-        config.height = region.pixelHeight
+        config.sourceRect = CGRect(origin: .zero, size: contentRect.size)
+        config.width = max(1, Int((contentRect.width * scaleFactor).rounded()))
+        config.height = max(1, Int((contentRect.height * scaleFactor).rounded()))
         config.scalesToFit = false
         config.showsCursor = false
 
-        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        let fullImage = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+
+        let cropRect = CaptureCoordinateMath.cropPixelRect(
+            forSourceRect: region.sourceRect,
+            contentOrigin: contentRect.origin,
+            scaleFactor: scaleFactor,
+            imagePixelSize: CGSize(width: fullImage.width, height: fullImage.height)
+        )
+        // Never fall back to the full image: that would silently save (or OCR) the whole desktop.
+        guard !cropRect.isNull, let cropped = fullImage.cropping(to: cropRect) else {
+            throw CaptureError.regionCropFailed
+        }
+        return cropped
     }
 
     static func captureWindow(_ window: SCWindow) async throws -> URL {
@@ -91,10 +148,16 @@ struct ScreenshotCapture {
     static func captureWindow(_ window: SCWindow, outputURL: URL) async throws -> URL {
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let config = SCStreamConfiguration()
-        let scaleFactor = scaleFactorForWindow(window)
-        config.sourceRect = CGRect(origin: .zero, size: window.frame.size)
-        config.width = max(1, Int(window.frame.width * scaleFactor))
-        config.height = max(1, Int(window.frame.height * scaleFactor))
+        let scaleFactor = filter.pointPixelScale > 0
+            ? CGFloat(filter.pointPixelScale)
+            : scaleFactorForWindow(window)
+        let sourceRect = CaptureCoordinateMath.pixelAlignedRect(
+            CGRect(origin: .zero, size: window.frame.size),
+            scaleFactor: scaleFactor
+        )
+        config.sourceRect = sourceRect
+        config.width = max(1, Int((sourceRect.width * scaleFactor).rounded()))
+        config.height = max(1, Int((sourceRect.height * scaleFactor).rounded()))
         config.scalesToFit = false
         config.showsCursor = false
 

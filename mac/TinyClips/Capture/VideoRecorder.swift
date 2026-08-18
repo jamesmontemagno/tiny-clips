@@ -499,6 +499,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var outputURL: URL?
     private var recordingStartedAtUptime: TimeInterval?
     private var didReportStreamFailure = false
+    private(set) var resolvedRegion: CaptureRegion?
     /// Presentation timestamp (host-clock based) of the first screen frame written.
     /// Used to align the separately-recorded webcam track to the audio timeline.
     private(set) var firstScreenSampleTime: CMTime?
@@ -547,6 +548,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         let preparedTarget = try await target.prepare(alwaysExcluding: alwaysExcludedWindows)
         let filter = preparedTarget.filter
         let config = preparedTarget.config
+        resolvedRegion = preparedTarget.region
 
         let settings = CaptureSettings.shared
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(settings.videoFrameRate))

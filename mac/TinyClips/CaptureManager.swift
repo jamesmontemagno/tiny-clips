@@ -966,6 +966,7 @@ class CaptureManager: ObservableObject {
                           self.videoRecorder === recorder else {
                         return
                     }
+                    self.adoptResolvedRecordingRegion(recorder.resolvedRegion)
                     if CaptureSettings.shared.preventDisplaySleepWhileRecording {
                         try self.idleSleepAssertion.begin()
                     }
@@ -1119,6 +1120,7 @@ class CaptureManager: ObservableObject {
                           self.gifWriter === writer else {
                         return
                     }
+                    self.adoptResolvedRecordingRegion(writer.resolvedRegion)
                     if CaptureSettings.shared.preventDisplaySleepWhileRecording {
                         try self.idleSleepAssertion.begin()
                     }
@@ -2396,7 +2398,7 @@ class CaptureManager: ObservableObject {
             sourceRect: CGRect(x: localX, y: localY, width: clippedWindowRect.width, height: clippedWindowRect.height),
             displayID: displayID,
             scaleFactor: screen.backingScaleFactor
-        )
+        ).pixelAligned()
     }
 
     private func appKitRect(fromSCFrame scFrame: CGRect, screens: [NSScreen]) -> CGRect {
@@ -2447,6 +2449,15 @@ class CaptureManager: ObservableObject {
     private func screenUnderMouseCursor() -> NSScreen? {
         let mouseLocation = NSEvent.mouseLocation
         return NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })
+    }
+
+    /// Replaces the provisional region with the geometry the stream was actually configured from.
+    private func adoptResolvedRecordingRegion(_ region: CaptureRegion?) {
+        guard let region else { return }
+        activeRecordingRegion = region
+        if activeMouseClickRegion != nil {
+            activeMouseClickRegion = region
+        }
     }
 
     private func startMouseClickMonitoringIfNeeded(for type: CaptureType, region: CaptureRegion) {
