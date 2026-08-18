@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- Fixed macOS region screenshots looking slightly soft on Retina displays. Region selections are now snapped to whole device pixels before capture, so ScreenCaptureKit no longer resamples the frame across a fractional-pixel crop. Window screenshots and the region size readout use the same pixel-exact math.
+
 ## v1.6.0-mac - 2026-08-13
 
 ### Changed

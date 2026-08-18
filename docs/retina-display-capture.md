@@ -62,8 +62,19 @@ struct CaptureRegion: Sendable {
 
 **Key invariants:**
 - `sourceRect` is always in point coordinates — never multiply by scale factor.
+- `sourceRect` is always **snapped to whole device pixels** via `pixelAligned()` before capture (see below).
 - `pixelWidth` / `pixelHeight` are derived computed properties using consistent `.rounded()` rounding.
 - `scaleFactor` comes from the `NSScreen` where the region was selected.
+
+### Pixel alignment
+
+Region selections come from raw mouse coordinates, so `sourceRect` is almost always fractional in point space. On a 2× display a `minX` of `412.3 pt` lands at pixel `824.6` — a 0.6-pixel crop offset. ScreenCaptureKit resolves that offset by resampling the entire frame, which softens the whole capture. A fractional *size* causes the same problem from the other direction: `100.25 pt → 201 px` implies an effective scale of 2.005 rather than 2.0.
+
+Window screenshots never hit this because their `sourceRect` origin is hardcoded to `(0, 0)`, which is why they looked sharp while region captures did not.
+
+`CaptureCoordinateMath.pixelAlignedRect(_:scaleFactor:)` converts the rect into pixel space, rounds all four edges to integers, and converts back to points. `CaptureRegion.pixelAligned()` wraps it and is idempotent, a no-op on 1× displays with integral rects, and clamps to a minimum of one device pixel. It is applied at every region creation site (`RegionSelector`, `CaptureRegion.fullScreen`, `CaptureManager.captureRegion(for:)`), defensively inside `ScreenshotCapture.captureImage(region:)`, and to the window-capture `sourceRect`.
+
+The resulting invariant is that `sourceRect.origin × scaleFactor` and `sourceRect.size × scaleFactor` are always exact integers, so the point→pixel mapping is a pure integral scale with no interpolation.
 
 ### How regions are created
 
@@ -93,9 +104,13 @@ With `scalesToFit = true`, we observed `SCScreenshotManager` rasterizing the reg
 Window screenshots use `SCContentFilter(desktopIndependentWindow:)` which captures the window's own backing store. The scale factor is determined by finding which screen most overlaps the window:
 
 ```swift
-config.sourceRect = CGRect(origin: .zero, size: window.frame.size)  // points
-config.width = Int(window.frame.width * scaleFactor)                // pixels
-config.height = Int(window.frame.height * scaleFactor)              // pixels
+let sourceRect = CaptureCoordinateMath.pixelAlignedRect(
+    CGRect(origin: .zero, size: window.frame.size),
+    scaleFactor: scaleFactor
+)
+config.sourceRect = sourceRect                                          // points
+config.width  = Int((sourceRect.width * scaleFactor).rounded())         // pixels
+config.height = Int((sourceRect.height * scaleFactor).rounded())        // pixels
 config.scalesToFit = false
 ```
 

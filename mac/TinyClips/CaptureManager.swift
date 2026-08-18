@@ -2396,7 +2396,7 @@ class CaptureManager: ObservableObject {
             sourceRect: CGRect(x: localX, y: localY, width: clippedWindowRect.width, height: clippedWindowRect.height),
             displayID: displayID,
             scaleFactor: screen.backingScaleFactor
-        )
+        ).pixelAligned()
     }
 
     private func appKitRect(fromSCFrame scFrame: CGRect, screens: [NSScreen]) -> CGRect {

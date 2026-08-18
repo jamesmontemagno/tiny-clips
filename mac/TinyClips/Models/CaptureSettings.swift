@@ -20,7 +20,7 @@ struct CaptureRegion: Sendable {
             sourceRect: CGRect(x: 0, y: 0, width: screen.frame.width, height: screen.frame.height),
             displayID: displayID,
             scaleFactor: screen.backingScaleFactor
-        )
+        ).pixelAligned()
     }
 
     var pixelWidth: Int {
@@ -29,6 +29,15 @@ struct CaptureRegion: Sendable {
 
     var pixelHeight: Int {
         max(1, Int((sourceRect.height * scaleFactor).rounded()))
+    }
+
+    /// Returns a copy whose `sourceRect` sits on whole device-pixel boundaries. Idempotent.
+    func pixelAligned() -> CaptureRegion {
+        CaptureRegion(
+            sourceRect: CaptureCoordinateMath.pixelAlignedRect(sourceRect, scaleFactor: scaleFactor),
+            displayID: displayID,
+            scaleFactor: scaleFactor
+        )
     }
 
     func makeStreamConfig() -> SCStreamConfiguration {

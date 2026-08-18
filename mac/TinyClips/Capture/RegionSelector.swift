@@ -163,13 +163,14 @@ private class RegionSelectionView: NSView {
     }
 
     private func drawDimensionsLabel(for rect: NSRect) {
-        let width = Int(abs(rect.width))
-        let height = Int(abs(rect.height))
-        guard width > 0, height > 0 else { return }
+        guard rect.width >= 1, rect.height >= 1 else { return }
 
         let scale = window?.screen?.backingScaleFactor ?? 1
-        let pixelWidth = Int((CGFloat(width) * scale).rounded())
-        let pixelHeight = Int((CGFloat(height) * scale).rounded())
+        let aligned = CaptureCoordinateMath.pixelAlignedRect(rect, scaleFactor: scale)
+        let pixelWidth = max(1, Int((aligned.width * scale).rounded()))
+        let pixelHeight = max(1, Int((aligned.height * scale).rounded()))
+        let width = Int(aligned.width.rounded())
+        let height = Int(aligned.height.rounded())
         let text: String
         if pixelWidth != width || pixelHeight != height {
             text = "\(width) × \(height) pt · \(pixelWidth) × \(pixelHeight) px"
@@ -235,7 +236,7 @@ private class RegionSelectionView: NSView {
             sourceRect: sourceRect,
             displayID: displayID,
             scaleFactor: screen.backingScaleFactor
-        )
+        ).pixelAligned()
         onComplete?(region)
     }
 

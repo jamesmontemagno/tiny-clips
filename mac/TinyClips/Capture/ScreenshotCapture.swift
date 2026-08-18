@@ -39,6 +39,27 @@ enum CaptureCoordinateMath {
             .geometry.scaleFactor ?? 1.0
     }
 
+    /// Snaps a point-space rect onto whole device-pixel boundaries.
+    ///
+    /// ScreenCaptureKit resamples the whole frame when a crop lands on a fractional pixel or when the
+    /// requested buffer size implies a non-integral scale, which softens the capture. Region selections
+    /// come from raw mouse coordinates, so they are almost always fractional.
+    static func pixelAlignedRect(_ rect: CGRect, scaleFactor: CGFloat) -> CGRect {
+        guard scaleFactor > 0, rect.width.isFinite, rect.height.isFinite else { return rect }
+
+        let minX = (rect.minX * scaleFactor).rounded()
+        let minY = (rect.minY * scaleFactor).rounded()
+        let maxX = max(minX + 1, (rect.maxX * scaleFactor).rounded())
+        let maxY = max(minY + 1, (rect.maxY * scaleFactor).rounded())
+
+        return CGRect(
+            x: minX / scaleFactor,
+            y: minY / scaleFactor,
+            width: (maxX - minX) / scaleFactor,
+            height: (maxY - minY) / scaleFactor
+        )
+    }
+
     static func capturePoint(
         for globalPoint: CGPoint,
         screenFrame: CGRect,
@@ -72,6 +93,7 @@ struct ScreenshotCapture {
     }
 
     static func captureImage(region: CaptureRegion) async throws -> CGImage {
+        let region = region.pixelAligned()
         let filter = try await region.makeFilter()
         let config = SCStreamConfiguration()
         config.sourceRect = region.sourceRect
@@ -92,9 +114,13 @@ struct ScreenshotCapture {
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let config = SCStreamConfiguration()
         let scaleFactor = scaleFactorForWindow(window)
-        config.sourceRect = CGRect(origin: .zero, size: window.frame.size)
-        config.width = max(1, Int(window.frame.width * scaleFactor))
-        config.height = max(1, Int(window.frame.height * scaleFactor))
+        let sourceRect = CaptureCoordinateMath.pixelAlignedRect(
+            CGRect(origin: .zero, size: window.frame.size),
+            scaleFactor: scaleFactor
+        )
+        config.sourceRect = sourceRect
+        config.width = max(1, Int((sourceRect.width * scaleFactor).rounded()))
+        config.height = max(1, Int((sourceRect.height * scaleFactor).rounded()))
         config.scalesToFit = false
         config.showsCursor = false
 

@@ -36,6 +36,68 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(region.pixelHeight, 1)
     }
 
+    func testPixelAlignedRectSnapsFractionalOriginAndSizeToDevicePixels() {
+        let aligned = CaptureCoordinateMath.pixelAlignedRect(
+            CGRect(x: 412.3, y: 100.6, width: 100.25, height: 50.75),
+            scaleFactor: 2
+        )
+
+        // 824.6 -> 825, 1025.1 -> 1025, so origin 412.5 pt and width 100.0 pt.
+        XCTAssertEqual(aligned.minX, 412.5)
+        XCTAssertEqual(aligned.minY, 100.5)
+        XCTAssertEqual(aligned.width, 100)
+        XCTAssertEqual(aligned.height, 51)
+    }
+
+    func testPixelAlignedRectProducesExactIntegralPixelScale() {
+        let region = CaptureRegion(
+            sourceRect: CGRect(x: 412.3, y: 100.6, width: 100.25, height: 50.75),
+            displayID: 7,
+            scaleFactor: 2
+        ).pixelAligned()
+
+        XCTAssertEqual(region.sourceRect.minX * 2, (region.sourceRect.minX * 2).rounded())
+        XCTAssertEqual(region.sourceRect.minY * 2, (region.sourceRect.minY * 2).rounded())
+        XCTAssertEqual(CGFloat(region.pixelWidth), region.sourceRect.width * 2)
+        XCTAssertEqual(CGFloat(region.pixelHeight), region.sourceRect.height * 2)
+    }
+
+    func testPixelAlignedIsIdempotent() {
+        let region = CaptureRegion(
+            sourceRect: CGRect(x: 12.7, y: 33.1, width: 199.4, height: 88.9),
+            displayID: 3,
+            scaleFactor: 2
+        ).pixelAligned()
+
+        XCTAssertEqual(region.pixelAligned().sourceRect, region.sourceRect)
+    }
+
+    func testPixelAlignedIsNoOpOnNonRetinaIntegralRect() {
+        let sourceRect = CGRect(x: 10, y: 20, width: 300, height: 200)
+        let region = CaptureRegion(sourceRect: sourceRect, displayID: 1, scaleFactor: 1)
+
+        XCTAssertEqual(region.pixelAligned().sourceRect, sourceRect)
+    }
+
+    func testPixelAlignedKeepsAtLeastOneDevicePixel() {
+        let region = CaptureRegion(
+            sourceRect: CGRect(x: 5.1, y: 5.1, width: 0, height: 0),
+            displayID: 1,
+            scaleFactor: 2
+        ).pixelAligned()
+
+        XCTAssertEqual(region.pixelWidth, 1)
+        XCTAssertEqual(region.pixelHeight, 1)
+        XCTAssertEqual(region.sourceRect.width, 0.5)
+        XCTAssertEqual(region.sourceRect.height, 0.5)
+    }
+
+    func testPixelAlignedRectIgnoresInvalidScaleFactor() {
+        let sourceRect = CGRect(x: 1.5, y: 2.5, width: 10.5, height: 20.5)
+
+        XCTAssertEqual(CaptureCoordinateMath.pixelAlignedRect(sourceRect, scaleFactor: 0), sourceRect)
+    }
+
     func testWindowFrameConversionChoosesMostOverlappingDisplayScale() {
         let displays = [
             CaptureDisplayGeometry(
