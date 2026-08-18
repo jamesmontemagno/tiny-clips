@@ -8,6 +8,8 @@ own `CHANGELOG.md` at the repository root.
 ### Added
 - **OCR region capture** — Select **Recognize Text** in the capture picker or press `Ctrl+Shift+T`
   to recognize text in a screen region and copy it to the clipboard without saving an image.
+  Large regions are automatically downscaled to fit the OCR engine's supported image size, and the
+  capture picker's countdown timer is honored before recognition runs.
 
 ### Changed
 - **Native Settings title bar** — Settings now uses the WinUI `TitleBar` control, keeps the

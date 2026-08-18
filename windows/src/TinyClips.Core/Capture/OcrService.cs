@@ -33,7 +33,7 @@ public sealed class OcrService : IOcrService
             frame.Height,
             BitmapAlphaMode.Premultiplied);
 
-        using var recognizable = await FitToMaxDimensionAsync(bitmap, engine.MaxImageDimension, cancellationToken)
+        using var recognizable = await FitToMaxDimensionAsync(bitmap, OcrEngine.MaxImageDimension, cancellationToken)
             .ConfigureAwait(false);
 
         var result = await engine.RecognizeAsync(recognizable).AsTask(cancellationToken).ConfigureAwait(false);
