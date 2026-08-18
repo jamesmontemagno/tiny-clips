@@ -27,6 +27,7 @@ public sealed class CaptureSettingsTests
             settingsService.Get("gifSaveDirectory", string.Empty));
         Assert.Equal(10.0, settings.GifFrameRate);
         Assert.Equal(30, settings.VideoFrameRate);
+        Assert.True(settings.KeepDisplayAwakeWhileRecording);
         Assert.Equal(100, settings.ScreenshotScale);
         Assert.Equal("TinyClips {date} at {time}", settings.FileNameTemplate);
         Assert.True(settings.ShowTrimmer);
@@ -110,6 +111,7 @@ public sealed class CaptureSettingsTests
         settings.GifSaveDirectory = @"C:\Captures\Gifs";
         settings.GifFrameRate = 24.5;
         settings.VideoFrameRate = 60;
+        settings.KeepDisplayAwakeWhileRecording = false;
         settings.FileNameTemplate = "Custom {date}";
         settings.MultiMonitorCaptureMode = MultiMonitorCaptureMode.UnderCursor;
         settings.WebcamEnabled = true;
@@ -130,6 +132,7 @@ public sealed class CaptureSettingsTests
         Assert.Equal(@"C:\Captures\Gifs", settings.GifSaveDirectory);
         Assert.Equal(24.5, settings.GifFrameRate);
         Assert.Equal(60, settings.VideoFrameRate);
+        Assert.False(settings.KeepDisplayAwakeWhileRecording);
         Assert.Equal("Custom {date}", settings.FileNameTemplate);
         Assert.Equal(MultiMonitorCaptureMode.UnderCursor, settings.MultiMonitorCaptureMode);
         Assert.True(settings.WebcamEnabled);
@@ -308,6 +311,7 @@ public sealed class CaptureSettingsTests
         settings.FileNameTemplate = "Changed";
         settings.CopyScreenshotToClipboard = false;
         settings.GifFrameRate = 99;
+        settings.KeepDisplayAwakeWhileRecording = false;
         analytics.RecordCapture(CaptureType.Screenshot);
         analytics.RecordCapture(CaptureType.Video);
 
@@ -316,6 +320,7 @@ public sealed class CaptureSettingsTests
         Assert.Equal("TinyClips {date} at {time}", settings.FileNameTemplate);
         Assert.True(settings.CopyScreenshotToClipboard);
         Assert.Equal(10.0, settings.GifFrameRate);
+        Assert.True(settings.KeepDisplayAwakeWhileRecording);
         Assert.Equal(string.Empty, settingsService.Get("captureAnalyticsHistoryV1", string.Empty));
 
         // Regression check: recording after reset must not resurrect the cleared history by

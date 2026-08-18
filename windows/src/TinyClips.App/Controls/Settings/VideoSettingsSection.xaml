@@ -193,6 +193,16 @@
 
             <StackPanel Spacing="2">
                 <controls:SettingsCard
+                    Description="Prevent the display from dimming or sleeping during video and GIF recordings."
+                    Header="Keep display awake while recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7F4;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="KeepDisplayAwakeToggle"
+                        AutomationProperties.Name="Keep display awake while recording"
+                        IsOn="{x:Bind ViewModel.KeepDisplayAwakeWhileRecording, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
                     Description="Choose Region, Screen, or Window before recording."
                     Header="Show capture picker before recording"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">

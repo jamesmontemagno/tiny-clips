@@ -83,6 +83,7 @@ public partial class App : Application
             .AddTinyClipsCore()
             .AddSingleton<IUploadcareCredentialStore, WindowsCredentialStore>()
             .AddSingleton<IMediaDevicePermissionService, MediaDevicePermissionService>()
+            .AddSingleton<IDisplaySleepAssertion, WindowsDisplaySleepAssertion>()
             .BuildServiceProvider();
 
         ApplyTheme();
@@ -617,6 +618,7 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Video, selection);
                     }
+                    AcquireDisplaySleepAssertionIfEnabled();
                     await Services.GetRequiredService<IVideoRecordingService>()
                         .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture(CaptureType.Video);
@@ -633,6 +635,7 @@ public partial class App : Application
                     {
                         ShowRecordingIndicator(CaptureType.Gif, selection);
                     }
+                    AcquireDisplaySleepAssertionIfEnabled();
                     await Services.GetRequiredService<IGifRecordingService>()
                         .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
                     ActivateRecordingIndicatorForStartedCapture(CaptureType.Gif);
@@ -647,6 +650,10 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
+            if (!IsAnyRecordingActive())
+            {
+                ReleaseDisplaySleepAssertion();
+            }
             UpdateRecordingState();
         }
         catch (Exception ex)
@@ -658,6 +665,10 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
+            if (!IsAnyRecordingActive())
+            {
+                ReleaseDisplaySleepAssertion();
+            }
             HideRecordingIndicatorIfNotRecording();
         }
         finally
@@ -1031,6 +1042,7 @@ public partial class App : Application
             HideRecordingIndicator();
             HideProcessingIndicator();
             CloseRecordingRegionIndicator();
+            ReleaseDisplaySleepAssertion();
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             var wasPickerInitiated = _activeRecordingWasPickerInitiated;
@@ -1113,6 +1125,10 @@ public partial class App : Application
             UpdateRecordingState();
             CloseRecordingRegionIndicatorIfNotRecording();
             HideRecordingIndicatorIfNotRecording();
+            if (!IsAnyRecordingActive())
+            {
+                ReleaseDisplaySleepAssertion();
+            }
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
@@ -1206,11 +1222,13 @@ public partial class App : Application
             if (type == CaptureType.Video)
             {
                 var settings = Services.GetRequiredService<ICaptureSettings>();
+                AcquireDisplaySleepAssertionIfEnabled();
                 await Services.GetRequiredService<IVideoRecordingService>()
                     .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes);
             }
             else
             {
+                AcquireDisplaySleepAssertionIfEnabled();
                 await Services.GetRequiredService<IGifRecordingService>().StartAsync(selection.Target, selection.Region);
             }
 
@@ -1226,6 +1244,10 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
+            if (!IsAnyRecordingActive())
+            {
+                ReleaseDisplaySleepAssertion();
+            }
             UpdateRecordingState();
         }
     }
@@ -1262,6 +1284,10 @@ public partial class App : Application
             HideRecordingIndicator();
             CloseRecordingRegionIndicator();
             UpdateRecordingState();
+            if (!IsAnyRecordingActive())
+            {
+                ReleaseDisplaySleepAssertion();
+            }
             if (clearActiveSelection)
             {
                 _activeRecordingSelection = null;
@@ -1506,6 +1532,35 @@ public partial class App : Application
         var window = _recordingIndicator;
         _recordingIndicator = null;
         window?.ClosePanel();
+    }
+
+    private void AcquireDisplaySleepAssertionIfEnabled()
+    {
+        if (!Services.GetRequiredService<ICaptureSettings>().KeepDisplayAwakeWhileRecording)
+        {
+            return;
+        }
+
+        try
+        {
+            Services.GetRequiredService<IDisplaySleepAssertion>().Acquire();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to acquire display sleep assertion: {ex}");
+        }
+    }
+
+    private static void ReleaseDisplaySleepAssertion()
+    {
+        try
+        {
+            Services.GetRequiredService<IDisplaySleepAssertion>().Release();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to release display sleep assertion: {ex}");
+        }
     }
 
     private void HideWebcamPreview()
@@ -2268,6 +2323,7 @@ public partial class App : Application
 
         HideRecordingIndicator();
         CloseRecordingRegionIndicator();
+        ReleaseDisplaySleepAssertion();
         _hotKeyManager?.Dispose();
         _hotKeyManager = null;
         _taskbarIcon?.Dispose();
