@@ -4,9 +4,6 @@ namespace TinyClips.Core.Services;
 
 public sealed class HotKeyService : IHotKeyService
 {
-    private static readonly HotKeyDefinition StopRecordingBinding =
-        new(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53);
-
     private readonly ICaptureSettings _settings;
 
     public HotKeyService(ICaptureSettings settings)
@@ -52,7 +49,7 @@ public sealed class HotKeyService : IHotKeyService
         }
     }
 
-    public HotKeyDefinition GetStopBinding() => StopRecordingBinding;
+    public HotKeyDefinition GetStopBinding() => GetBinding(HotKeyAction.StopRecording);
 
     public string StopRecordingDisplayString => GetStopBinding().DisplayString;
 
@@ -62,6 +59,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecordVideo => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36),
         HotKeyAction.RecordGif => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37),
         HotKeyAction.RecognizeText => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54),
+        HotKeyAction.StopRecording => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53),
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
@@ -92,6 +90,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecordVideo => _settings.VideoHotKeyModifiers,
         HotKeyAction.RecordGif => _settings.GifHotKeyModifiers,
         HotKeyAction.RecognizeText => _settings.OcrHotKeyModifiers,
+        HotKeyAction.StopRecording => 0,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
@@ -101,6 +100,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecordVideo => (uint)_settings.VideoHotKeyCode,
         HotKeyAction.RecordGif => (uint)_settings.GifHotKeyCode,
         HotKeyAction.RecognizeText => (uint)_settings.OcrHotKeyCode,
+        HotKeyAction.StopRecording => 0,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 }

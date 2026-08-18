@@ -14,6 +14,7 @@ public sealed class HotKeyTests
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36), service.DefaultFor(HotKeyAction.RecordVideo));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37), service.DefaultFor(HotKeyAction.RecordGif));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54), service.DefaultFor(HotKeyAction.RecognizeText));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53), service.DefaultFor(HotKeyAction.StopRecording));
     }
 
     [Theory]
@@ -38,6 +39,7 @@ public sealed class HotKeyTests
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36), service.GetBinding(HotKeyAction.RecordVideo));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37), service.GetBinding(HotKeyAction.RecordGif));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54), service.GetBinding(HotKeyAction.RecognizeText));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53), service.GetBinding(HotKeyAction.StopRecording));
     }
 
     [Fact]
@@ -88,6 +90,23 @@ public sealed class HotKeyTests
         var result = service.ValidateBinding(HotKeyAction.RecordGif, service.GetStopBinding());
 
         Assert.Equal(HotKeyValidationError.StopRecordingConflict, result.Error);
+    }
+
+    [Fact]
+    public void GetStopBinding_MatchesStopRecordingAction()
+    {
+        var service = CreateService();
+
+        Assert.Equal(service.GetBinding(HotKeyAction.StopRecording), service.GetStopBinding());
+    }
+
+    [Fact]
+    public void SetBinding_ThrowsForStopRecording()
+    {
+        var service = CreateService();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.SetBinding(HotKeyAction.StopRecording, new HotKeyDefinition(HotKeyModifiers.Alt, 0x41)));
     }
 
     [Fact]
