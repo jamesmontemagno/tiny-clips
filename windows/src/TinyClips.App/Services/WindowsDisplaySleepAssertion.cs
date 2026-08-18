@@ -34,10 +34,9 @@ public sealed class WindowsDisplaySleepAssertion : IDisplaySleepAssertion
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to release display sleep assertion: {ex}");
+            return;
         }
-        finally
-        {
-            _active = false;
-        }
+
+        _active = false;
     }
 }

@@ -650,7 +650,10 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
-            ReleaseDisplaySleepAssertion();
+            if (!IsAnyRecordingActive())
+            {
+                ReleaseDisplaySleepAssertion();
+            }
             UpdateRecordingState();
         }
         catch (Exception ex)
@@ -662,7 +665,10 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
-            ReleaseDisplaySleepAssertion();
+            if (!IsAnyRecordingActive())
+            {
+                ReleaseDisplaySleepAssertion();
+            }
             HideRecordingIndicatorIfNotRecording();
         }
         finally
@@ -1238,7 +1244,10 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
-            ReleaseDisplaySleepAssertion();
+            if (!IsAnyRecordingActive())
+            {
+                ReleaseDisplaySleepAssertion();
+            }
             UpdateRecordingState();
         }
     }
