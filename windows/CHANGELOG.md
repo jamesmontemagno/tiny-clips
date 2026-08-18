@@ -5,6 +5,11 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Display sleep prevention** — Video and GIF recordings can now keep the display awake for
+  the duration of the recording, controlled by Settings → Video → Keep display awake while
+  recording and enabled by default.
+
 ### Changed
 - **Native Settings title bar** — Settings now uses the WinUI `TitleBar` control, keeps the
   navigation pane toggle in the title bar only when the adaptive navigation pane is collapsed,

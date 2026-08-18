@@ -29,6 +29,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IScreenshotService, ScreenshotService>();
         services.AddSingleton<IVideoRecordingService, VideoRecordingService>();
         services.AddSingleton<IGifRecordingService, GifRecordingService>();
+        services.AddSingleton<IDisplaySleepAssertion, NoOpDisplaySleepAssertion>();
         return services;
     }
 }
