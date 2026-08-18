@@ -78,6 +78,18 @@
                     </StackPanel>
                 </Button>
 
+                <Button
+                    x:Name="RecognizeTextButton"
+                    AutomationProperties.AutomationId="RecognizeTextButton"
+                    AutomationProperties.Name="Recognize text and copy it to the clipboard"
+                    Click="OnRecognizeText"
+                    ToolTipService.ToolTip="Recognize text in a region (T)">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8D2;" />
+                        <TextBlock Text="Recognize Text" />
+                    </StackPanel>
+                </Button>
+
                 <Rectangle
                     Width="1"
                     Height="22"

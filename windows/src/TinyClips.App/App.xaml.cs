@@ -222,7 +222,7 @@ public partial class App : Application
         var screenshot = CreateCaptureTile(
             "Screenshot",
             GlyphScreenshot,
-            hotKeys.GetBinding(CaptureType.Screenshot).DisplayString,
+            hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString,
             new AsyncRelayCommand(CaptureScreenshotAsync),
             Dismiss);
         Grid.SetColumn(screenshot.Button, 0);
@@ -231,7 +231,7 @@ public partial class App : Application
         _videoTile = CreateCaptureTile(
             "Video",
             GlyphVideo,
-            hotKeys.GetBinding(CaptureType.Video).DisplayString,
+            hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString,
             new AsyncRelayCommand(ToggleVideoAsync),
             Dismiss);
         Grid.SetColumn(_videoTile.Button, 1);
@@ -240,7 +240,7 @@ public partial class App : Application
         _gifTile = CreateCaptureTile(
             "GIF",
             GlyphGif,
-            hotKeys.GetBinding(CaptureType.Gif).DisplayString,
+            hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString,
             new AsyncRelayCommand(ToggleGifAsync),
             Dismiss);
         Grid.SetColumn(_gifTile.Button, 2);
@@ -499,11 +499,16 @@ public partial class App : Application
 
     private Task CaptureScreenshotAsync() => BeginCaptureAsync(CaptureType.Screenshot);
 
+    private Task RecognizeTextAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.RecognizeText);
+
     /// <summary>
     /// Shows the capture picker bar (Region / Screen / Window + countdown), resolves the
     /// chosen target, runs the countdown, then performs the capture or starts recording.
     /// </summary>
-    private async Task BeginCaptureAsync(CaptureType type, bool abortIfRecording = false)
+    private async Task BeginCaptureAsync(
+        CaptureType type,
+        CapturePickerMode? forcedMode = null,
+        bool abortIfRecording = false)
     {
         if (_captureFlowCts is not null)
         {
@@ -525,12 +530,11 @@ public partial class App : Application
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var (cdEnabled, cdDuration) = GetCountdown(settings, type);
-            var wasPickerInitiated = settings.ShouldShowCapturePicker(type);
-
+            var wasPickerInitiated = forcedMode is null && settings.ShouldShowCapturePicker(type);
             var pick = wasPickerInitiated
                 ? await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
                 : new CapturePickerResult(
-                    CapturePickerMode.Region,
+                    forcedMode ?? CapturePickerMode.Region,
                     cdEnabled,
                     cdDuration,
                     settings.VideoRecordingTimeLimitMinutes);
@@ -539,7 +543,9 @@ public partial class App : Application
                 return;
             }
 
-            var resolved = await ResolveTargetAsync(pick.Mode);
+            var isTextRecognition = pick.Mode == CapturePickerMode.RecognizeText;
+            var resolved = await ResolveTargetAsync(
+                isTextRecognition ? CapturePickerMode.Region : pick.Mode);
             if (resolved is not { } selection)
             {
                 return;
@@ -589,6 +595,30 @@ public partial class App : Application
 
             switch (type)
             {
+                case CaptureType.Screenshot when isTextRecognition:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var text = await Services.GetRequiredService<IOcrService>()
+                            .RecognizeAsync(selection.Target, selection.Region, captureFlowCts.Token);
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            ShowTextRecognitionNotification("No text recognized");
+                        }
+                        else
+                        {
+                            await ClipboardService.CopyTextAsync(text);
+                            ShowTextRecognitionNotification("Text copied to clipboard");
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"Text recognition failed: {ex}");
+                        ShowTextRecognitionNotification("Couldn't recognize text");
+                    }
+
+                    break;
+
                 case CaptureType.Screenshot:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     var screenshots = Services.GetRequiredService<IScreenshotService>();
@@ -757,6 +787,7 @@ public partial class App : Application
         switch (mode)
         {
             case CapturePickerMode.Region:
+            case CapturePickerMode.RecognizeText:
             {
                 var all = monitors.GetMonitors();
                 if (all.Count == 0)
@@ -1699,7 +1730,7 @@ public partial class App : Application
             var recording = video.IsRecording;
             _videoTile.Label.Text = recording ? "Stop" : "Video";
             _videoTile.Icon.Glyph = recording ? GlyphStop : GlyphVideo;
-            var accel = recording ? hotKeys.StopRecordingDisplayString : hotKeys.GetBinding(CaptureType.Video).DisplayString;
+            var accel = recording ? hotKeys.StopRecordingDisplayString : hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
             var label = recording ? "Stop recording" : "Record video";
             ToolTipService.SetToolTip(_videoTile.Button, string.IsNullOrEmpty(accel) ? label : $"{label} ({accel})");
             _videoTile.Button.IsEnabled = !gif.IsRecording;
@@ -1710,7 +1741,7 @@ public partial class App : Application
             var recording = gif.IsRecording;
             _gifTile.Label.Text = recording ? "Stop" : "GIF";
             _gifTile.Icon.Glyph = recording ? GlyphStop : GlyphGif;
-            var accel = recording ? hotKeys.StopRecordingDisplayString : hotKeys.GetBinding(CaptureType.Gif).DisplayString;
+            var accel = recording ? hotKeys.StopRecordingDisplayString : hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
             var label = recording ? "Stop recording" : "Record GIF";
             ToolTipService.SetToolTip(_gifTile.Button, string.IsNullOrEmpty(accel) ? label : $"{label} ({accel})");
             _gifTile.Button.IsEnabled = !video.IsRecording;
@@ -1767,6 +1798,20 @@ public partial class App : Application
     private void ShowSaveToast(string path)
     {
         ShowSaveNotification(path);
+    }
+
+    private static void ShowTextRecognitionNotification(string message)
+    {
+        try
+        {
+            EnsureNotificationsRegistered();
+            AppNotificationManager.Default.Show(
+                new AppNotificationBuilder().AddText(message).BuildNotification());
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show text recognition notification: {ex}");
+        }
     }
 
     /// <summary>
@@ -2056,26 +2101,33 @@ public partial class App : Application
             var hotKeys = Services.GetRequiredService<IHotKeyService>();
             var manager = new GlobalHotKeyManager(_dispatcher);
 
-            var screenshot = hotKeys.GetBinding(CaptureType.Screenshot);
+            var screenshot = hotKeys.GetBinding(HotKeyAction.Screenshot);
             manager.Add(
                 $"Screenshot ({screenshot.DisplayString})",
                 screenshot.ModifiersValue,
                 screenshot.VirtualKey,
                 () => _ = CaptureScreenshotAsync());
 
-            var videoBinding = hotKeys.GetBinding(CaptureType.Video);
+            var videoBinding = hotKeys.GetBinding(HotKeyAction.RecordVideo);
             manager.Add(
                 $"Record video ({videoBinding.DisplayString})",
                 videoBinding.ModifiersValue,
                 videoBinding.VirtualKey,
                 () => _ = ToggleVideoAsync());
 
-            var gifBinding = hotKeys.GetBinding(CaptureType.Gif);
+            var gifBinding = hotKeys.GetBinding(HotKeyAction.RecordGif);
             manager.Add(
                 $"Record GIF ({gifBinding.DisplayString})",
                 gifBinding.ModifiersValue,
                 gifBinding.VirtualKey,
                 () => _ = ToggleGifAsync());
+
+            var ocrBinding = hotKeys.GetBinding(HotKeyAction.RecognizeText);
+            manager.Add(
+                $"Recognize text ({ocrBinding.DisplayString})",
+                ocrBinding.ModifiersValue,
+                ocrBinding.VirtualKey,
+                () => _ = RecognizeTextAsync());
 
             var stopBinding = hotKeys.GetStopBinding();
             manager.Add(
