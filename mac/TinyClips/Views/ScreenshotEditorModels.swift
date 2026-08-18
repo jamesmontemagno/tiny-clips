@@ -324,6 +324,30 @@ enum ScreenshotEditorZoomMath {
     }
 }
 
+enum ScreenshotEditorCropMath {
+    static func pixelRect(for normalizedRect: CGRect, imageSize: CGSize) -> CGRect? {
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+
+        let left = max(0, min(imageSize.width, normalizedRect.minX * imageSize.width))
+        let top = max(0, min(imageSize.height, normalizedRect.minY * imageSize.height))
+        let right = max(0, min(imageSize.width, normalizedRect.maxX * imageSize.width))
+        let bottom = max(0, min(imageSize.height, normalizedRect.maxY * imageSize.height))
+        let width = abs(right - left)
+        let height = abs(bottom - top)
+        guard width > 0, height > 0 else { return nil }
+
+        let rect = CGRect(
+            x: min(left, right),
+            y: min(top, bottom),
+            width: width,
+            height: height
+        ).integral
+
+        guard rect.width >= 1, rect.height >= 1 else { return nil }
+        return rect
+    }
+}
+
 struct ExportBackgroundPreset: Identifiable {
     let id: String
     let label: String

@@ -11,7 +11,7 @@
   <Identity
     Name="Refractored.TinyClips"
     Publisher="CN=Refractored LLC, O=Refractored LLC, L=Seattle, S=Washington, C=US"
-    Version="1.6.0.0" />
+    Version="1.8.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="D90CE0D4-542A-47D3-89A4-CF82BF4E244B" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
