@@ -162,15 +162,37 @@ private class RegionSelectionView: NSView {
         }
     }
 
+    /// Builds the exact region `mouseUp` would emit, so the drag readout can never disagree with the
+    /// saved capture. Alignment must happen after the Y-flip: rounding both edges away from zero in
+    /// view space can shift a half-pixel edge the other way.
+    private func captureRegion(for viewRect: NSRect) -> CaptureRegion? {
+        guard let window, let screen = window.screen,
+              let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+        else { return nil }
+
+        let screenRect = window.convertToScreen(convert(viewRect, to: nil))
+        let sourceRect = CGRect(
+            x: screenRect.minX - screen.frame.minX,
+            y: screen.frame.maxY - screenRect.maxY,
+            width: screenRect.width,
+            height: screenRect.height
+        )
+
+        return CaptureRegion(
+            sourceRect: sourceRect,
+            displayID: displayID,
+            scaleFactor: screen.backingScaleFactor
+        ).pixelAligned()
+    }
+
     private func drawDimensionsLabel(for rect: NSRect) {
         guard rect.width >= 1, rect.height >= 1 else { return }
+        guard let region = captureRegion(for: rect) else { return }
 
-        let scale = window?.screen?.backingScaleFactor ?? 1
-        let aligned = CaptureCoordinateMath.pixelAlignedRect(rect, scaleFactor: scale)
-        let pixelWidth = max(1, Int((aligned.width * scale).rounded()))
-        let pixelHeight = max(1, Int((aligned.height * scale).rounded()))
-        let width = Int(aligned.width.rounded())
-        let height = Int(aligned.height.rounded())
+        let width = Int(region.sourceRect.width.rounded())
+        let height = Int(region.sourceRect.height.rounded())
+        let pixelWidth = region.pixelWidth
+        let pixelHeight = region.pixelHeight
         let text: String
         if pixelWidth != width || pixelHeight != height {
             text = "\(width) × \(height) pt · \(pixelWidth) × \(pixelHeight) px"
@@ -220,23 +242,7 @@ private class RegionSelectionView: NSView {
             return
         }
 
-        guard let window = self.window, let screen = window.screen else { return }
-
-        // Convert view coordinates → window coordinates → screen coordinates
-        let windowRect = convert(selectionRect, to: nil)
-        let screenRect = window.convertToScreen(windowRect)
-
-        // Convert to display-local coordinates (origin at top-left, Y-down)
-        let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as! CGDirectDisplayID
-        let localX = screenRect.minX - screen.frame.minX
-        let localY = screen.frame.maxY - screenRect.maxY
-        let sourceRect = CGRect(x: localX, y: localY, width: screenRect.width, height: screenRect.height)
-
-        let region = CaptureRegion(
-            sourceRect: sourceRect,
-            displayID: displayID,
-            scaleFactor: screen.backingScaleFactor
-        ).pixelAligned()
+        guard let region = captureRegion(for: selectionRect) else { return }
         onComplete?(region)
     }
 

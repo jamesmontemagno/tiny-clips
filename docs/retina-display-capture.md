@@ -81,7 +81,7 @@ Measured on a 2× display, capturing an identical 800 × 602 px region four ways
 
 The `sourceRect` path loses roughly 5% of gradient energy and changes ~14% of pixels. `scalesToFit` makes no difference at all — both variants produced identical images. This is the actual cause of soft region screenshots.
 
-Window screenshots were unaffected because `SCContentFilter(desktopIndependentWindow:)` re-renders the window's own layer tree into the requested buffer instead of resampling the composited display.
+Window screenshots were unaffected because `SCContentFilter(desktopIndependentWindow:)` re-renders the window's own layer tree into the requested buffer instead of resampling the composited display. They still get pixel-aligned dimensions so the output size is predictable, but sharpness was never the issue there.
 
 So `ScreenshotCapture.captureImage(region:)` captures the **entire display** at native resolution and then crops with `CGImage.cropping(to:)`, which is a pure pixel copy. The extra cost is one full-display buffer (~21 MB at 2880 × 1800) held briefly, which is fine for a one-shot screenshot. Video and GIF still use `sourceRect` because per-frame full-display capture would be far too expensive.
 
@@ -121,16 +121,20 @@ The resulting invariant is that `sourceRect.origin × scaleFactor` and `sourceRe
 
 ```
 User selects 150×200 pt region on 2× display
-→ sourceRect = (x, y, 150, 200) in points
-→ pixelWidth = 300, pixelHeight = 400
-→ SCStreamConfiguration: sourceRect=(x,y,150,200), width=300, height=400, scalesToFit=false
-→ SCScreenshotManager.captureImage() → CGImage(300×400)
+→ sourceRect = (x, y, 150, 200) in points, snapped to whole device pixels
+→ scaleFactor resolved from SCContentFilter.pointPixelScale
+→ SCStreamConfiguration: sourceRect = the full display, width/height = full display in pixels,
+  scalesToFit = false
+→ SCScreenshotManager.captureImage() → CGImage(2880×1800)
+→ CaptureCoordinateMath.cropPixelRect(...) → CGImage.cropping(to:) → CGImage(300×400)
 → Saved as PNG/JPEG at 72 DPI (standard)
 ```
 
+The crop rect is clamped to the captured image. If it ends up empty — the display geometry changed between selection and capture — `captureImage(region:)` throws `CaptureError.regionCropFailed` rather than falling back to the full frame, which would otherwise save or OCR the entire desktop.
+
 ### Why `scalesToFit = false` for screenshots
 
-With `scalesToFit = true`, we observed `SCScreenshotManager` rasterizing the region at 1× resolution and then upscaling to fill the output buffer. The resulting image was blurry — every logical pixel was doubled rather than capturing the native backing-store pixels. Setting `false` tells the framework to pull pixels directly from the display's backing store at native resolution.
+Because the request now covers the whole display, `scalesToFit` should be a no-op — but `true` still invites a resample when the buffer size and source disagree by a rounding step. `false` tells the framework to pull pixels directly from the display's backing store at native resolution. (For the old `sourceRect` crop path, `scalesToFit` made no measurable difference at all; both settings produced byte-identical, equally soft output.)
 
 ### Window screenshots
 

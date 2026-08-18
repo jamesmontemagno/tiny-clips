@@ -47,9 +47,9 @@ struct CaptureRegion: Sendable {
 
     /// Adopts the filter's point-to-pixel ratio, then snaps to that pixel grid.
     ///
-    /// `NSScreen.backingScaleFactor` is only a guess: on scaled Retina modes it reports 2.0 while
-    /// ScreenCaptureKit hands back a different native ratio. Requesting a buffer that disagrees makes
-    /// ScreenCaptureKit rescale the whole frame, which is what softened region captures.
+    /// `NSScreen.backingScaleFactor` describes the render framebuffer, while `pointPixelScale` is what
+    /// ScreenCaptureKit will actually hand back. They agree on every display mode measured so far, so
+    /// this is defensive rather than a fix for a known case.
     func resolvingPixelScale(from filter: SCContentFilter) -> CaptureRegion {
         withScaleFactor(CGFloat(filter.pointPixelScale)).pixelAligned()
     }
@@ -96,6 +96,7 @@ struct CaptureTarget {
         return PreparedCaptureTarget(
             filter: filter,
             config: region.makeStreamConfig(),
+            region: region,
             pixelWidth: region.pixelWidth,
             pixelHeight: region.pixelHeight
         )
@@ -105,6 +106,9 @@ struct CaptureTarget {
 struct PreparedCaptureTarget {
     let filter: SCContentFilter
     let config: SCStreamConfiguration
+    /// Geometry the stream is actually sized from; downstream coordinate mapping must use this, not
+    /// the provisional `CaptureTarget.region`.
+    let region: CaptureRegion
     let pixelWidth: Int
     let pixelHeight: Int
 }
@@ -135,6 +139,7 @@ enum CaptureType: String {
 
 enum CaptureError: LocalizedError {
     case displayNotFound
+    case regionCropFailed
     case saveFailed
     case noFrames
     case permissionDenied
@@ -149,6 +154,7 @@ enum CaptureError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .displayNotFound: return "Could not find the selected display."
+        case .regionCropFailed: return "Could not crop the selected region from the capture."
         case .saveFailed: return "Failed to save the capture."
         case .noFrames: return "No frames were captured."
         case .permissionDenied: return "Screen recording permission is required."

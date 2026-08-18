@@ -41,9 +41,9 @@ enum CaptureCoordinateMath {
 
     /// Snaps a point-space rect onto whole device-pixel boundaries.
     ///
-    /// ScreenCaptureKit resamples the whole frame when a crop lands on a fractional pixel or when the
-    /// requested buffer size implies a non-integral scale, which softens the capture. Region selections
-    /// come from raw mouse coordinates, so they are almost always fractional.
+    /// Region selections come from raw mouse coordinates, so the rect is almost always fractional in
+    /// point space, which produces off-by-one output dimensions and a size readout that disagrees with
+    /// the saved file. This is about predictable geometry, not sharpness.
     static func pixelAlignedRect(_ rect: CGRect, scaleFactor: CGFloat) -> CGRect {
         guard scaleFactor > 0, rect.width.isFinite, rect.height.isFinite else { return rect }
 
@@ -133,8 +133,9 @@ struct ScreenshotCapture {
             scaleFactor: scaleFactor,
             imagePixelSize: CGSize(width: fullImage.width, height: fullImage.height)
         )
+        // Never fall back to the full image: that would silently save (or OCR) the whole desktop.
         guard !cropRect.isNull, let cropped = fullImage.cropping(to: cropRect) else {
-            return fullImage
+            throw CaptureError.regionCropFailed
         }
         return cropped
     }
