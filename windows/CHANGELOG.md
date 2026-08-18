@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Tray Capture Text** — A compact action beside **Clips Library** starts region text recognition
+  and copies the result to the clipboard.
 - **OCR region capture** — Select **Recognize Text** in the capture picker or press `Ctrl+Shift+T`
   to recognize text in a screen region and copy it to the clipboard without saving an image.
   Large regions are automatically downscaled to fit the OCR engine's supported image size, and the
@@ -15,11 +17,18 @@ own `CHANGELOG.md` at the repository root.
   recording and enabled by default.
 
 ### Changed
+- **Updated Guide window** — The guide now covers OCR, configurable shortcuts, screenshot editing,
+  recording options, tray quick access, and Clips Library management.
+- **Guide tray icon** — The Guide action now uses a document icon instead of a help question mark.
 - **Native Settings title bar** — Settings now uses the WinUI `TitleBar` control, keeps the
   navigation pane toggle in the title bar only when the adaptive navigation pane is collapsed,
   places About at the bottom of the navigation pane, and enforces DPI-aware minimum window
   dimensions. The native `AppWindow` icon is also set on activation so the Tiny Clips icon appears
   in taskbar thumbnails and Alt+Tab previews.
+- **Native Clips Library title bar** — The Clips Library window now uses the WinUI `TitleBar`
+  control with the app icon and a live capture-count subtitle. DPI-aware minimum window dimensions
+  (480 × 520 DIP) are enforced and updated automatically when the window is moved between monitors
+  with different scale factors.
 - **Native Screenshot settings cards** — The Screenshot page now uses Community Toolkit
   `SettingsCard` and `SettingsExpander` controls with Fluent icons and the Gallery-style centered,
   constrained settings layout. Image format now starts expanded with icon-free nested JPEG quality
@@ -57,6 +66,14 @@ own `CHANGELOG.md` at the repository root.
 - **Teleprompter overlay settings card** — Teleprompter enablement now uses an icon-led Toolkit
   settings card and the shared Gallery-width layout, while the transcript, speed, and preview
   controls retain their custom presentation.
+- **Native editor and trimmer title bars** — The Screenshot Editor, Video Trimmer, and GIF
+  Trimmer windows now use the WinUI `TitleBar` control with the app icon instead of a custom
+  drawn title bar. DPI-aware minimum window dimensions are enforced and updated automatically
+  when a window moves between monitors with different scale factors.
+- **Native Guide, bug-report, and onboarding title bars** — The Guide, File a Bug, and Welcome
+  windows now use the WinUI `TitleBar` control with the app icon. DPI-aware minimum window
+  dimensions are enforced and updated automatically when a window moves between monitors with
+  different scale factors (Guide 460 × 400 DIP; File a Bug 480 × 500 DIP; Welcome 480 × 520 DIP).
 
 ### Internal
 - Added the Community Toolkit Settings Controls package as the foundation for migrating Settings
@@ -64,6 +81,16 @@ own `CHANGELOG.md` at the repository root.
 - **Layered acrylic tray flyout** — The system-tray quick-access window now uses a PowerToys-style
   layered acrylic content surface with a distinct bottom command bar and compact 32-DIP Fluent
   action buttons, while retaining the existing Tiny Clips popup dimensions and actions.
+- **Window consistency and accessibility** — Secondary windows now honor app themes and
+  high-contrast resources, while recording indicators and capture pickers use consistent surfaces
+  and accessible control names.
+- **Shared overlay infrastructure** — Capture-exclusion (`WDA_EXCLUDEFROMCAPTURE`) and
+  rounded-region (`SetWindowRgn`/`CreateRoundRectRgn`, with correct HRGN ownership on failure)
+  are consolidated into `OverlayWindowHelpers`; drag-anywhere behavior is consolidated into
+  `FloatingWindowDragger`. These helpers are consumed by the borderless capture pickers,
+  countdown, recording/processing indicators, recording-setup, teleprompter, webcam preview,
+  and region-indicator windows, removing duplicated P/Invoke declarations and structs. The
+  `TrayPopupWindow` now unsubscribes its `Activated` handler on closure.
 
 ## [v1.7.0-windows] - 2026-08-13
 

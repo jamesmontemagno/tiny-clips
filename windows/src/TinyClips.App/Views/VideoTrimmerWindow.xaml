@@ -20,16 +20,17 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid
+        <!--  Native WinUI TitleBar: icon, title, drag region, and DWM chrome.  -->
+        <TitleBar
             x:Name="AppTitleBar"
             Grid.Row="0"
-            Height="48"
-            Padding="16,0">
-            <TextBlock
-                VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Trim video" />
-        </Grid>
+            AutomationProperties.AutomationId="VideoTrimmerTitleBar"
+            IsPaneToggleButtonVisible="False"
+            Title="Trim Video">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
 
         <!--  Preview  -->
         <Grid

@@ -22,6 +22,13 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class VideoTrimmerWindow : Window
 {
+    // Minimum dimensions chosen to keep the trim bar, playback controls, and footer legible.
+    // Width 640 DIP: trim bar needs at least ~400px; footer has SpeedCombo (96) + RemoveAudio
+    //   checkbox + three buttons (~300px) + spacing/padding, totalling ~540 + 100 margins.
+    // Height 520 DIP: TitleBar (~48) + preview floor (~200) + trim section (~180) + footer (~92).
+    private const int MinimumWidthDip  = 640;
+    private const int MinimumHeightDip = 520;
+
     private readonly string _filePath;
     private TimeSpan _duration = TimeSpan.Zero;
     private double _startSeconds;
@@ -32,6 +39,8 @@ public sealed partial class VideoTrimmerWindow : Window
 
     // Step a 1/30s "frame" since the recorded fps isn't exposed by the WinRT clip API.
     private static readonly TimeSpan FrameStep = TimeSpan.FromSeconds(1.0 / 30.0);
+
+    private readonly WindowChromeController _chromeController;
 
     public VideoTrimmerWindow(string filePath)
     {
@@ -45,6 +54,11 @@ public sealed partial class VideoTrimmerWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindowPlacement.CenterInCurrentWorkAreaAtHalfSize(AppWindow);
+
+        // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
+        // scale tracking, and cleanup of all three on Closed. The Closed subscription is
+        // additive; both the controller's cleanup and the existing OnWindowClosed handler run.
+        _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
 
         var settings = App.Services.GetRequiredService<ICaptureSettings>();
         RootGrid.RequestedTheme = settings.Theme switch

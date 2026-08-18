@@ -22,6 +22,14 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class GifTrimmerWindow : Window
 {
+    // Minimum dimensions chosen to keep the trim bar, frame stepper, and footer legible.
+    // Width 560 DIP: trim bar needs at least ~360px; footer has PlayToggle + SpeedCombo (96) +
+    //   three action buttons (~300px) + spacing/padding, totalling ~480 + 80 margins.
+    // Height 480 DIP: TitleBar (~48) + preview floor (~160) + trim section (~160) + footer (~92)
+    //   + margins (~20). GIF frames are often smaller than video so the floor is set lower.
+    private const int MinimumWidthDip  = 560;
+    private const int MinimumHeightDip = 480;
+
     private readonly string _filePath;
     private readonly List<SoftwareBitmap> _frames = new();
     private readonly List<ushort> _delays = new();
@@ -32,6 +40,8 @@ public sealed partial class GifTrimmerWindow : Window
     private bool _ready;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _playTimer;
     private int _playIndex;
+
+    private readonly WindowChromeController _chromeController;
 
     public GifTrimmerWindow(string filePath)
     {
@@ -45,6 +55,11 @@ public sealed partial class GifTrimmerWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindowPlacement.CenterInCurrentWorkAreaAtHalfSize(AppWindow);
+
+        // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
+        // scale tracking, and cleanup of all three on Closed. The Closed subscription is
+        // additive; both the controller's cleanup and the existing OnWindowClosed handler run.
+        _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
 
         var settings = App.Services.GetRequiredService<ICaptureSettings>();
         RootGrid.RequestedTheme = settings.Theme switch

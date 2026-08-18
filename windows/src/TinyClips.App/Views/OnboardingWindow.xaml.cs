@@ -2,7 +2,6 @@ using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Graphics;
@@ -17,8 +16,14 @@ public sealed partial class OnboardingWindow : Window
 {
     private const int LastStep = 2;
 
+    // 480×520 DIP: step 2 (the densest step) holds an 88-DIP illustration, title, body,
+    // shortcut card, and navigation footer; 520 keeps all content in-frame at 100% DPI.
+    private const int MinimumWidthDip  = 480;
+    private const int MinimumHeightDip = 520;
+
     private readonly ICaptureSettings _settings;
     private int _step;
+    private readonly WindowChromeController _chromeController;
 
     public OnboardingWindow()
     {
@@ -30,6 +35,11 @@ public sealed partial class OnboardingWindow : Window
         SetTitleBar(AppTitleBar);
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 720, 640);
+
+        // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
+        // scale tracking, and cleanup of all three on Closed. The window's own Close() calls
+        // are not lifecycle subscriptions, so no additive handler is needed.
+        _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
 
         RootGrid.RequestedTheme = _settings.Theme switch
         {
@@ -85,10 +95,10 @@ public sealed partial class OnboardingWindow : Window
         SkipButton.Visibility = _step >= LastStep ? Visibility.Collapsed : Visibility.Visible;
         NextButton.Content = _step >= LastStep ? "Get started" : "Next";
 
-        var active = (SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"];
-        var inactive = (SolidColorBrush)Application.Current.Resources["ControlStrongFillColorDefaultBrush"];
-        Dot0.Fill = _step == 0 ? active : inactive;
-        Dot1.Fill = _step == 1 ? active : inactive;
-        Dot2.Fill = _step == 2 ? active : inactive;
+        var active = (Style)RootGrid.Resources["DotActiveStyle"];
+        var inactive = (Style)RootGrid.Resources["DotInactiveStyle"];
+        Dot0.Style = _step == 0 ? active : inactive;
+        Dot1.Style = _step == 1 ? active : inactive;
+        Dot2.Style = _step == 2 ? active : inactive;
     }
 }

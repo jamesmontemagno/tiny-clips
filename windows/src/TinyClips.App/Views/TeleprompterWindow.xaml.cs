@@ -22,8 +22,6 @@ public sealed partial class TeleprompterWindow : Window
     private const int HeightDip = 140;
     private const int TopOffsetDip = 24;
 
-    private const uint WdaExcludeFromCapture = 0x11;
-
     // The capture-exclusion style makes the window read back as fully transparent to XAML
     // hit-testing; a ~1% alpha background keeps the panel draggable without showing a fill.
     private static readonly SolidColorBrush SizingSurfaceBrush = new(Microsoft.UI.ColorHelper.FromArgb(1, 0, 0, 0));
@@ -68,7 +66,7 @@ public sealed partial class TeleprompterWindow : Window
     public bool TryShow()
     {
         var hwnd = WindowNative.GetWindowHandle(this);
-        if (!SetWindowDisplayAffinity(hwnd, WdaExcludeFromCapture))
+        if (!OverlayWindowHelpers.ExcludeFromCapture(hwnd))
         {
             var error = Marshal.GetLastWin32Error();
             Debug.WriteLine($"Teleprompter capture exclusion failed (Win32 error {error}); overlay will remain hidden.");
@@ -293,8 +291,4 @@ public sealed partial class TeleprompterWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT lpPoint);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
 }

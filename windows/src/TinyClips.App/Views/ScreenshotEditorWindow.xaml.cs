@@ -21,8 +21,16 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class ScreenshotEditorWindow : Window
 {
+    // Minimum dimensions chosen to keep the tool rail + inspector + a usable canvas visible.
+    // Width 760 DIP: tool rail (~52) + inspector (~200) + canvas floor (~300) + margins (~208).
+    // The CommandBar will gracefully overflow AppBarButtons into its "More" menu below this width.
+    // Height 520 DIP: TitleBar (~48) + CommandBar row (~60) + canvas floor (~300) + padding (~112).
+    private const int MinimumWidthDip  = 760;
+    private const int MinimumHeightDip = 520;
+
     private readonly string _filePath;
     private readonly EditorController _controller;
+    private readonly WindowChromeController _chromeController;
     private string _activeSavePath;
 
     public ScreenshotEditorWindow(string filePath)
@@ -43,6 +51,11 @@ public sealed partial class ScreenshotEditorWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindowPlacement.CenterInCurrentWorkAreaAtHalfSize(AppWindow);
+
+        // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
+        // scale tracking, and cleanup of all three on Closed. The Closed subscription here is
+        // additive; both this controller's cleanup and the existing OnClosed handler below run.
+        _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
 
         var settings = App.Services.GetRequiredService<ICaptureSettings>();
         RootGrid.RequestedTheme = settings.Theme switch

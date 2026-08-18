@@ -42,9 +42,7 @@ public sealed partial class CapturePickerWindow : Window
     private int _windowHeight;
     private double _windowScale = 1.0;
 
-    private bool _dragging;
-    private POINT _dragCursorStart;
-    private PointInt32 _dragWindowStart;
+    private readonly FloatingWindowDragger _dragger;
 
     private CapturePickerWindow(CaptureType captureType, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes)
     {
@@ -81,6 +79,8 @@ public sealed partial class CapturePickerWindow : Window
             LimitButton.Visibility = Visibility.Collapsed;
         }
 
+        _dragger = new FloatingWindowDragger(AppWindow);
+
         ConfigurePresenter();
         PositionNearTopOfPrimaryDisplay();
 
@@ -102,7 +102,9 @@ public sealed partial class CapturePickerWindow : Window
             return;
         }
         Activated -= OnActivated;
-        ApplyRoundedRegion(_windowWidth, _windowHeight, _windowScale);
+        OverlayWindowHelpers.ApplyRoundedRegion(
+            WinRT.Interop.WindowNative.GetWindowHandle(this),
+            _windowWidth, _windowHeight, _windowScale, CornerRadiusDip);
         RootGrid.Focus(FocusState.Programmatic);
     }
 
@@ -110,7 +112,7 @@ public sealed partial class CapturePickerWindow : Window
     {
         RootGrid.UpdateLayout();
         RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var scale = GetScale();
+        var scale = AppWindowPlacement.GetScaleForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var width = (int)Math.Ceiling(RootGrid.DesiredSize.Width * scale);
         var height = (int)Math.Ceiling(RootGrid.DesiredSize.Height * scale);
         width = Math.Max(width, (int)(360 * scale));
@@ -127,14 +129,6 @@ public sealed partial class CapturePickerWindow : Window
         _windowWidth = width;
         _windowHeight = height;
         _windowScale = scale;
-    }
-
-    private void ApplyRoundedRegion(int width, int height, double scale)
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var radius = (int)Math.Round(CornerRadiusDip * scale);
-        var region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius, radius);
-        SetWindowRgn(hwnd, region, true);
     }
 
     private void BuildTimerFlyout()
@@ -212,75 +206,12 @@ public sealed partial class CapturePickerWindow : Window
 
     // Drag-anywhere support: the R / S / W / timer / cancel buttons handle their own
     // pointer events (marking them handled), so a drag only starts on the bar background.
-    // Window movement is anchored to absolute cursor position (not element-relative,
-    // which feeds back and jitters as the window moves under the pointer).
-    private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is not UIElement element)
-        {
-            return;
-        }
+    // Delegates to FloatingWindowDragger which anchors movement to absolute cursor position.
+    private void OnPointerPressed(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerPressed(sender, e);
 
-        GetCursorPos(out _dragCursorStart);
-        _dragWindowStart = AppWindow.Position;
-        _dragging = element.CapturePointer(e.Pointer);
-    }
+    private void OnPointerMoved(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerMoved(sender, e);
 
-    private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_dragging)
-        {
-            return;
-        }
-
-        GetCursorPos(out var current);
-        var dx = current.X - _dragCursorStart.X;
-        var dy = current.Y - _dragCursorStart.Y;
-
-        if (dx == 0 && dy == 0)
-        {
-            return;
-        }
-
-        AppWindow.Move(new PointInt32(_dragWindowStart.X + dx, _dragWindowStart.Y + dy));
-    }
-
-    private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is not UIElement element)
-        {
-            return;
-        }
-
-        _dragging = false;
-        element.ReleasePointerCapture(e.Pointer);
-    }
-
-    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool GetCursorPos(out POINT lpPoint);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(nint hwnd);
-
-    private double GetScale()
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dpi = GetDpiForWindow(hwnd);
-        return dpi <= 0 ? 1.0 : dpi / 96.0;
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-    private static extern int SetWindowRgn(nint hWnd, nint hRgn, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool bRedraw);
-
-    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
-    private static extern nint CreateRoundRectRgn(int x1, int y1, int x2, int y2, int cx, int cy);
+    private void OnPointerReleased(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerReleased(sender, e);
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {

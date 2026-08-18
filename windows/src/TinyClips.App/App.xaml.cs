@@ -35,8 +35,12 @@ public partial class App : Application
     private const string GlyphCheckForUpdates = "\uE895";
     private const string GlyphFolder = "\uE8B7";
     private const string GlyphHistory = "\uE81C";
+    private const string GlyphDocument = "\uE8A5";
     private const string GlyphMediaGallery = "\uE7AA";
+    private const string GlyphTextRecognition = "\uE8D2";
     private const string GlyphBug = "\uEBE8";
+    private const string GlyphSettings = "\uE713";
+    private const string GlyphExit = "\uE7E8";
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
@@ -288,22 +292,21 @@ public partial class App : Application
             "TrayClipsLibraryButton",
             new RelayCommand(OpenClipsManagerWindow),
             Dismiss));
+
         footerActions.Children.Add(CreateFooterButton(
-            "\uE713",
+            GlyphTextRecognition,
+            $"Capture Text ({hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString})",
+            "TrayCaptureTextButton",
+            new AsyncRelayCommand(RecognizeTextAsync),
+            Dismiss));
+        footerActions.Children.Add(CreateFooterButton(
+            GlyphSettings,
             "Settings",
             "TraySettingsButton",
             new RelayCommand(OpenSettingsWindow),
             Dismiss));
-#if !TINYCLIPS_STORE_BUILD
         footerActions.Children.Add(CreateFooterButton(
-            GlyphCheckForUpdates,
-            "Check for updates",
-            "TrayCheckForUpdatesButton",
-            new AsyncRelayCommand(CheckForUpdatesFromTrayAsync),
-            Dismiss));
-#endif
-        footerActions.Children.Add(CreateFooterButton(
-            "\uE897",
+            GlyphDocument,
             "Guide",
             "TrayGuideButton",
             new RelayCommand(OpenGuideWindow),
@@ -315,7 +318,7 @@ public partial class App : Application
             new RelayCommand(OpenQuickBugReportWindow),
             Dismiss));
         footerActions.Children.Add(CreateFooterButton(
-            "\uE7E8",
+            GlyphExit,
             "Exit",
             "TrayExitButton",
             new RelayCommand(() => _ = ExitApplicationAsync()),
@@ -367,7 +370,7 @@ public partial class App : Application
         var flyout = new MenuFlyout();
         var button = new DropDownButton
         {
-            Content = QuickAccessContent(GlyphHistory, captures.Count == 0 ? "No recent captures" : $"Recent ({captures.Count})"),
+            Content = QuickAccessContent(GlyphHistory, captures.Count == 0 ? "No captures" : $"Recent ({captures.Count})"),
             Flyout = flyout,
             IsEnabled = captures.Count > 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,

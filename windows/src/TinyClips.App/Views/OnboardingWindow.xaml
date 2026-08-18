@@ -13,22 +13,37 @@
     </Window.SystemBackdrop>
 
     <Grid x:Name="RootGrid">
+        <Grid.Resources>
+            <!--  Step-indicator dot styles — Fill is resolved from the element's live theme context,
+                  which is safe in High Contrast and all other themes.  -->
+            <Style
+                x:Key="DotActiveStyle"
+                TargetType="Ellipse">
+                <Setter Property="Fill" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+            </Style>
+            <Style
+                x:Key="DotInactiveStyle"
+                TargetType="Ellipse">
+                <Setter Property="Fill" Value="{ThemeResource ControlStrongFillColorDefaultBrush}" />
+            </Style>
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid
+        <!--  Native WinUI TitleBar: icon, drag region, and DWM chrome.  -->
+        <TitleBar
             x:Name="AppTitleBar"
             Grid.Row="0"
-            Height="48"
-            Padding="16,0">
-            <TextBlock
-                VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Welcome" />
-        </Grid>
+            AutomationProperties.AutomationId="OnboardingTitleBar"
+            IsPaneToggleButtonVisible="False"
+            Title="Welcome to Tiny Clips">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
 
         <!--  Steps  -->
         <Grid Grid.Row="1" Padding="48,16">
@@ -201,17 +216,17 @@
                     x:Name="Dot0"
                     Width="8"
                     Height="8"
-                    Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+                    Style="{StaticResource DotActiveStyle}" />
                 <Ellipse
                     x:Name="Dot1"
                     Width="8"
                     Height="8"
-                    Fill="{ThemeResource ControlStrongFillColorDefaultBrush}" />
+                    Style="{StaticResource DotInactiveStyle}" />
                 <Ellipse
                     x:Name="Dot2"
                     Width="8"
                     Height="8"
-                    Fill="{ThemeResource ControlStrongFillColorDefaultBrush}" />
+                    Style="{StaticResource DotInactiveStyle}" />
             </StackPanel>
 
             <Button

@@ -178,15 +178,24 @@ public sealed partial class ClipItemViewModel : ObservableObject
 [SupportedOSPlatform("windows10.0.22000.0")]
 public sealed partial class ClipsManagerWindow : Window
 {
-    private const string SettingsKeyViewMode = "clipsManagerViewMode";
-    private const string SettingsKeyFilter   = "clipsManagerFilter";
+    // Minimum dimensions chosen to fit the toolbar (filter, toggle, refresh buttons with 20 px
+    // side padding) and at least one full grid-card row (ItemHeight = 256 DIP + chrome).
+    // Width 480 DIP: toolbar minimum ~380 DIP + buffer; grid card 332+padding fits in one column.
+    // Height 520 DIP: TitleBar ~48 + toolbar ~60 + one grid card 256 + bottom padding 20 = ~384;
+    // 520 provides comfortable headroom while matching the SettingsWindow width floor.
+    private const int MinimumWidthDip  = 480;
+    private const int MinimumHeightDip = 520;
+
+    private const string SettingsKeyViewMode   = "clipsManagerViewMode";
+    private const string SettingsKeyFilter     = "clipsManagerFilter";
     private const string SettingsKeyDateFilter = "clipsManagerDateFilter";
-    private const string SettingsKeySort     = "clipsManagerSort";
+    private const string SettingsKeySort       = "clipsManagerSort";
 
     private readonly IClipLibraryService _library;
     private readonly IUploadcareUploadService _uploadcare;
     private readonly ISettingsService _settings;
     private readonly ICaptureSettings _captureSettings;
+    private readonly WindowChromeController _chromeController;
 
     private readonly ObservableCollection<ClipItemViewModel> _visibleClips = [];
     private IReadOnlyList<ClipItemViewModel> _allClips = [];
@@ -196,9 +205,9 @@ public sealed partial class ClipsManagerWindow : Window
 
     public ClipsManagerWindow()
     {
-        _library  = App.Services.GetRequiredService<IClipLibraryService>();
-        _uploadcare = App.Services.GetRequiredService<IUploadcareUploadService>();
-        _settings = App.Services.GetRequiredService<ISettingsService>();
+        _library       = App.Services.GetRequiredService<IClipLibraryService>();
+        _uploadcare    = App.Services.GetRequiredService<IUploadcareUploadService>();
+        _settings      = App.Services.GetRequiredService<ISettingsService>();
         _captureSettings = App.Services.GetRequiredService<ICaptureSettings>();
 
         InitializeComponent();
@@ -209,13 +218,28 @@ public sealed partial class ClipsManagerWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 1600, 820);
 
+        // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
+        // scale tracking, and cleanup of all three on Closed.
+        _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
+
         ApplyTheme();
         RestorePersistedState();
 
         ClipsGridView.ItemsSource = _visibleClips;
         ClipsListView.ItemsSource = _visibleClips;
 
+        // OnFirstActivated loads clips after the window is visible; it self-unsubscribes.
         Activated += OnFirstActivated;
+        Closed += OnClosed;
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        // Ensure OnFirstActivated is unsubscribed even if the window is closed before its
+        // first activation (the normal self-unsubscribe in OnFirstActivated handles the common
+        // path; this is belt-and-suspenders for the early-close edge case).
+        Activated -= OnFirstActivated;
+        Closed -= OnClosed;
     }
 
     private void ApplyTheme()
@@ -271,7 +295,7 @@ public sealed partial class ClipsManagerWindow : Window
 
     private void UpdateContentVisibility()
     {
-        LibrarySummaryText.Text = _visibleClips.Count switch
+        AppTitleBar.Subtitle = _visibleClips.Count switch
         {
             0 => "No captures",
             1 => "1 capture",
