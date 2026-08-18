@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
-- Fixed macOS region screenshots looking slightly soft on Retina displays. Region selections are now snapped to whole device pixels before capture, so ScreenCaptureKit no longer resamples the frame across a fractional-pixel crop. Window screenshots and the region size readout use the same pixel-exact math.
+- Fixed macOS region screenshots being slightly soft. ScreenCaptureKit resamples the frame when cropping via `sourceRect`, even when the crop is pixel-aligned, so region screenshots now capture the display at native resolution and crop losslessly instead. This also applies to Copy Text from Region.
+- Fixed macOS region selections being cropped on fractional pixel boundaries, so saved dimensions now match the size shown while dragging. Window screenshots and capture buffers are also sized from ScreenCaptureKit's own point-to-pixel ratio rather than `NSScreen.backingScaleFactor`.
 
 ## v1.6.0-mac - 2026-08-13
 

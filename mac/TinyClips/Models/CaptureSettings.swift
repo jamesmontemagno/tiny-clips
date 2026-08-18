@@ -40,6 +40,20 @@ struct CaptureRegion: Sendable {
         )
     }
 
+    func withScaleFactor(_ newScaleFactor: CGFloat) -> CaptureRegion {
+        guard newScaleFactor > 0, newScaleFactor != scaleFactor else { return self }
+        return CaptureRegion(sourceRect: sourceRect, displayID: displayID, scaleFactor: newScaleFactor)
+    }
+
+    /// Adopts the filter's point-to-pixel ratio, then snaps to that pixel grid.
+    ///
+    /// `NSScreen.backingScaleFactor` is only a guess: on scaled Retina modes it reports 2.0 while
+    /// ScreenCaptureKit hands back a different native ratio. Requesting a buffer that disagrees makes
+    /// ScreenCaptureKit rescale the whole frame, which is what softened region captures.
+    func resolvingPixelScale(from filter: SCContentFilter) -> CaptureRegion {
+        withScaleFactor(CGFloat(filter.pointPixelScale)).pixelAligned()
+    }
+
     func makeStreamConfig() -> SCStreamConfiguration {
         let config = SCStreamConfiguration()
         config.sourceRect = sourceRect
@@ -77,8 +91,10 @@ struct CaptureTarget {
     }
 
     func prepare(alwaysExcluding windows: [SCWindow] = []) async throws -> PreparedCaptureTarget {
-        PreparedCaptureTarget(
-            filter: try await region.makeFilter(alwaysExcluding: windows),
+        let filter = try await region.makeFilter(alwaysExcluding: windows)
+        let region = self.region.resolvingPixelScale(from: filter)
+        return PreparedCaptureTarget(
+            filter: filter,
             config: region.makeStreamConfig(),
             pixelWidth: region.pixelWidth,
             pixelHeight: region.pixelHeight

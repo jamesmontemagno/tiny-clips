@@ -62,19 +62,52 @@ struct CaptureRegion: Sendable {
 
 **Key invariants:**
 - `sourceRect` is always in point coordinates — never multiply by scale factor.
-- `sourceRect` is always **snapped to whole device pixels** via `pixelAligned()` before capture (see below).
+- `scaleFactor` starts as the `NSScreen.backingScaleFactor` where the region was selected, but is **provisional** — it is replaced by ScreenCaptureKit's authoritative value at capture time (see below).
+- `sourceRect` is always **snapped to whole device pixels** via `pixelAligned()` before capture.
 - `pixelWidth` / `pixelHeight` are derived computed properties using consistent `.rounded()` rounding.
-- `scaleFactor` comes from the `NSScreen` where the region was selected.
+
+### `sourceRect` cropping resamples — capture full, then crop
+
+**`SCStreamConfiguration.sourceRect` is not a lossless crop.** Even with a perfectly pixel-aligned rect, a buffer size that exactly matches `size × pointPixelScale`, and `scalesToFit = false`, ScreenCaptureKit still runs the frame through a resampling transform.
+
+Measured on a 2× display, capturing an identical 800 × 602 px region four ways (reproducible byte-for-byte across runs):
+
+| Path | Sharpness (mean gradient) | Match vs. truth |
+|------|--------------------------|-----------------|
+| Fractional `sourceRect`, rounded buffer | 5.031 | size mismatch |
+| Pixel-aligned `sourceRect` | 4.992 | 86.2% pixels identical |
+| Pixel-aligned, `scalesToFit = true` | 4.992 | 86.2% pixels identical |
+| **Full-display capture + `CGImage.cropping(to:)`** | **5.242** | ground truth |
+
+The `sourceRect` path loses roughly 5% of gradient energy and changes ~14% of pixels. `scalesToFit` makes no difference at all — both variants produced identical images. This is the actual cause of soft region screenshots.
+
+Window screenshots were unaffected because `SCContentFilter(desktopIndependentWindow:)` re-renders the window's own layer tree into the requested buffer instead of resampling the composited display.
+
+So `ScreenshotCapture.captureImage(region:)` captures the **entire display** at native resolution and then crops with `CGImage.cropping(to:)`, which is a pure pixel copy. The extra cost is one full-display buffer (~21 MB at 2880 × 1800) held briefly, which is fine for a one-shot screenshot. Video and GIF still use `sourceRect` because per-frame full-display capture would be far too expensive.
+
+### `pointPixelScale`, not `backingScaleFactor`
+
+`NSScreen.backingScaleFactor` describes the render framebuffer; `SCContentFilter.pointPixelScale` is what ScreenCaptureKit will actually hand back. `CaptureRegion.resolvingPixelScale(from:)` adopts the filter's value and re-snaps to that grid, so the buffer request can never disagree with the source. On a normal Retina display the two agree and the call is a no-op.
+
+Note that macOS's own `screencapture` (⇧⌘4) and ScreenCaptureKit can disagree on output size for **scaled** display modes. Example from a MacBook Air with a 2560 × 1600 panel:
+
+| Value | Result |
+|-------|--------|
+| Physical panel | 2560 × 1600 px |
+| `NSScreen.frame` | 1440 × 900 pt |
+| `pointPixelScale` / `backingScaleFactor` | 2.0 (they agree) |
+| ScreenCaptureKit output | 2880 × 1800 px (the framebuffer) |
+| Built-in `screencapture` output | 2560 × 1600 px (the panel) |
+
+macOS renders the UI at 2× into a 2880 × 1800 framebuffer, then the display engine scales that down to the 2560 × 1600 panel. TinyClips captures the framebuffer, so its screenshots are *larger and carry more detail* than the built-in tool's. This size difference is expected and is not a quality problem.
 
 ### Pixel alignment
 
-Region selections come from raw mouse coordinates, so `sourceRect` is almost always fractional in point space. On a 2× display a `minX` of `412.3 pt` lands at pixel `824.6` — a 0.6-pixel crop offset. ScreenCaptureKit resolves that offset by resampling the entire frame, which softens the whole capture. A fractional *size* causes the same problem from the other direction: `100.25 pt → 201 px` implies an effective scale of 2.005 rather than 2.0.
+Region selections come from raw mouse coordinates, so `sourceRect` is almost always fractional in point space. A `minX` of `412.3 pt` on a 2× display lands at pixel `824.6`, and a fractional size such as `100.25 pt → 201 px` implies an effective scale of 2.005 rather than 2.0. That produced off-by-one output dimensions and a size readout that disagreed with the saved file.
 
-Window screenshots never hit this because their `sourceRect` origin is hardcoded to `(0, 0)`, which is why they looked sharp while region captures did not.
+`CaptureCoordinateMath.pixelAlignedRect(_:scaleFactor:)` converts the rect into pixel space, rounds all four edges to integers, and converts back to points. `CaptureRegion.pixelAligned()` wraps it and is idempotent, a no-op on 1× displays with integral rects, and clamps to a minimum of one device pixel. It is applied at every region creation site (`RegionSelector`, `CaptureRegion.fullScreen`, `CaptureManager.captureRegion(for:)`) and again after the scale is resolved at capture time.
 
-`CaptureCoordinateMath.pixelAlignedRect(_:scaleFactor:)` converts the rect into pixel space, rounds all four edges to integers, and converts back to points. `CaptureRegion.pixelAligned()` wraps it and is idempotent, a no-op on 1× displays with integral rects, and clamps to a minimum of one device pixel. It is applied at every region creation site (`RegionSelector`, `CaptureRegion.fullScreen`, `CaptureManager.captureRegion(for:)`), defensively inside `ScreenshotCapture.captureImage(region:)`, and to the window-capture `sourceRect`.
-
-The resulting invariant is that `sourceRect.origin × scaleFactor` and `sourceRect.size × scaleFactor` are always exact integers, so the point→pixel mapping is a pure integral scale with no interpolation.
+The resulting invariant is that `sourceRect.origin × scaleFactor` and `sourceRect.size × scaleFactor` are always exact integers, so region dimensions are predictable and the crop lands on whole pixels.
 
 ### How regions are created
 

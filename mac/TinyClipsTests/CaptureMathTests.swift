@@ -98,6 +98,71 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(CaptureCoordinateMath.pixelAlignedRect(sourceRect, scaleFactor: 0), sourceRect)
     }
 
+    func testWithScaleFactorReplacesScaleAndIgnoresInvalidValues() {
+        let region = CaptureRegion(
+            sourceRect: CGRect(x: 0, y: 0, width: 100, height: 50),
+            displayID: 4,
+            scaleFactor: 2
+        )
+
+        let rescaled = region.withScaleFactor(16.0 / 9.0)
+        XCTAssertEqual(rescaled.scaleFactor, 16.0 / 9.0)
+        XCTAssertEqual(rescaled.sourceRect, region.sourceRect)
+        XCTAssertEqual(rescaled.displayID, 4)
+
+        XCTAssertEqual(region.withScaleFactor(0).scaleFactor, 2)
+        XCTAssertEqual(region.withScaleFactor(-1).scaleFactor, 2)
+    }
+
+    func testNonIntegralScaleStillProducesExactPixelMapping() {
+        // Scaled Retina modes report a point/pixel ratio that is not 2.0.
+        let scale = 2560.0 / 1440.0
+        let region = CaptureRegion(
+            sourceRect: CGRect(x: 412.3, y: 100.6, width: 100.25, height: 50.75),
+            displayID: 9,
+            scaleFactor: 2
+        ).withScaleFactor(scale).pixelAligned()
+
+        XCTAssertEqual(region.scaleFactor, scale)
+        XCTAssertEqual(region.sourceRect.minX * scale, (region.sourceRect.minX * scale).rounded(), accuracy: 1e-9)
+        XCTAssertEqual(CGFloat(region.pixelWidth), region.sourceRect.width * scale, accuracy: 1e-9)
+        XCTAssertEqual(CGFloat(region.pixelHeight), region.sourceRect.height * scale, accuracy: 1e-9)
+    }
+
+    func testCropPixelRectMapsRegionIntoFullDisplayCapture() {
+        let crop = CaptureCoordinateMath.cropPixelRect(
+            forSourceRect: CGRect(x: 300.5, y: 200.5, width: 400, height: 301),
+            contentOrigin: .zero,
+            scaleFactor: 2,
+            imagePixelSize: CGSize(width: 2880, height: 1800)
+        )
+
+        XCTAssertEqual(crop, CGRect(x: 601, y: 401, width: 800, height: 602))
+    }
+
+    func testCropPixelRectOffsetsByContentOriginAndClampsToImage() {
+        let crop = CaptureCoordinateMath.cropPixelRect(
+            forSourceRect: CGRect(x: 110, y: 60, width: 100, height: 100),
+            contentOrigin: CGPoint(x: 10, y: 10),
+            scaleFactor: 2,
+            imagePixelSize: CGSize(width: 300, height: 200)
+        )
+
+        // Origin-relative pixel rect is (200, 100, 200, 200); the image is only 200 tall.
+        XCTAssertEqual(crop, CGRect(x: 200, y: 100, width: 100, height: 100))
+    }
+
+    func testCropPixelRectIsNullWhenRegionFallsOutsideCapture() {
+        let crop = CaptureCoordinateMath.cropPixelRect(
+            forSourceRect: CGRect(x: 5000, y: 5000, width: 100, height: 100),
+            contentOrigin: .zero,
+            scaleFactor: 2,
+            imagePixelSize: CGSize(width: 2880, height: 1800)
+        )
+
+        XCTAssertTrue(crop.isNull)
+    }
+
     func testWindowFrameConversionChoosesMostOverlappingDisplayScale() {
         let displays = [
             CaptureDisplayGeometry(
