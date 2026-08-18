@@ -122,6 +122,36 @@
                         Tag="Gif" />
                     </StackPanel>
                 </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Recognize text"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8D2;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border
+                        MinWidth="120"
+                        Padding="10,4"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            FontFamily="Consolas"
+                            Text="{x:Bind ViewModel.OcrHotKeyDisplay, Mode=OneWay}" />
+                    </Border>
+                    <Button
+                        AutomationProperties.AutomationId="EditOcrHotKeyButton"
+                        AutomationProperties.Name="Edit recognize text shortcut"
+                        Click="OnEditHotKey"
+                        Content="Edit"
+                        Tag="RecognizeText" />
+                    <Button
+                        AutomationProperties.AutomationId="ResetOcrHotKeyButton"
+                        AutomationProperties.Name="Reset recognize text shortcut"
+                        Click="OnResetHotKey"
+                        Content="Reset"
+                        Tag="RecognizeText" />
+                    </StackPanel>
+                </controls:SettingsCard>
             </StackPanel>
         </StackPanel>
     </Border>

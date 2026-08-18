@@ -14,9 +14,9 @@ public static class HotKeyValidator
     ];
 
     public static HotKeyValidationResult Validate(
-        CaptureType targetType,
+        HotKeyAction targetAction,
         HotKeyDefinition candidate,
-        IEnumerable<KeyValuePair<CaptureType, HotKeyDefinition>> captureBindings,
+        IEnumerable<KeyValuePair<HotKeyAction, HotKeyDefinition>> bindings,
         HotKeyDefinition stopRecordingBinding)
     {
         if (candidate.Modifiers == HotKeyModifiers.None)
@@ -34,9 +34,9 @@ public static class HotKeyValidator
             return new HotKeyValidationResult(HotKeyValidationError.ModifierKeyNotAllowed);
         }
 
-        foreach (var binding in captureBindings)
+        foreach (var binding in bindings)
         {
-            if (binding.Key != targetType && binding.Value == candidate)
+            if (binding.Key != targetAction && binding.Value == candidate)
             {
                 return new HotKeyValidationResult(
                     HotKeyValidationError.DuplicateBinding,

@@ -592,6 +592,18 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("gifHotKeyModifiers", value);
     }
 
+    public int OcrHotKeyCode
+    {
+        get => _settings.Get("ocrHotKeyCode", 84);
+        set => _settings.Set("ocrHotKeyCode", value);
+    }
+
+    public int OcrHotKeyModifiers
+    {
+        get => _settings.Get("ocrHotKeyModifiers", 6);
+        set => _settings.Set("ocrHotKeyModifiers", value);
+    }
+
     public ImageFormat ImageFormat
     {
         get => string.Equals(ScreenshotFormat, "png", StringComparison.OrdinalIgnoreCase) ? Models.ImageFormat.Png : Models.ImageFormat.Jpeg;
@@ -747,6 +759,8 @@ public sealed class CaptureSettings : ICaptureSettings
         VideoHotKeyModifiers = 6;
         GifHotKeyCode = 55;
         GifHotKeyModifiers = 6;
+        OcrHotKeyCode = 84;
+        OcrHotKeyModifiers = 6;
         _analytics?.Clear();
     }
 

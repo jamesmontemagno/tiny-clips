@@ -4,9 +4,6 @@ namespace TinyClips.Core.Services;
 
 public sealed class HotKeyService : IHotKeyService
 {
-    private static readonly HotKeyDefinition StopRecordingBinding =
-        new(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53);
-
     private readonly ICaptureSettings _settings;
 
     public HotKeyService(ICaptureSettings settings)
@@ -14,83 +11,96 @@ public sealed class HotKeyService : IHotKeyService
         _settings = settings;
     }
 
-    public HotKeyDefinition GetBinding(CaptureType type)
+    public HotKeyDefinition GetBinding(HotKeyAction action)
     {
-        var modifiers = GetStoredModifiers(type);
-        var virtualKey = GetStoredVirtualKey(type);
+        var modifiers = GetStoredModifiers(action);
+        var virtualKey = GetStoredVirtualKey(action);
 
         if (modifiers == 0 && virtualKey == 0)
         {
-            return DefaultFor(type);
+            return DefaultFor(action);
         }
 
         return new HotKeyDefinition((HotKeyModifiers)modifiers, virtualKey);
     }
 
-    public void SetBinding(CaptureType type, HotKeyDefinition binding)
+    public void SetBinding(HotKeyAction action, HotKeyDefinition binding)
     {
-        switch (type)
+        switch (action)
         {
-            case CaptureType.Screenshot:
+            case HotKeyAction.Screenshot:
                 _settings.ScreenshotHotKeyModifiers = (int)binding.Modifiers;
                 _settings.ScreenshotHotKeyCode = (int)binding.VirtualKey;
                 break;
-            case CaptureType.Video:
+            case HotKeyAction.RecordVideo:
                 _settings.VideoHotKeyModifiers = (int)binding.Modifiers;
                 _settings.VideoHotKeyCode = (int)binding.VirtualKey;
                 break;
-            case CaptureType.Gif:
+            case HotKeyAction.RecordGif:
                 _settings.GifHotKeyModifiers = (int)binding.Modifiers;
                 _settings.GifHotKeyCode = (int)binding.VirtualKey;
                 break;
+            case HotKeyAction.RecognizeText:
+                _settings.OcrHotKeyModifiers = (int)binding.Modifiers;
+                _settings.OcrHotKeyCode = (int)binding.VirtualKey;
+                break;
             default:
-                throw new ArgumentOutOfRangeException(nameof(type), type, null);
+                throw new ArgumentOutOfRangeException(nameof(action), action, null);
         }
     }
 
-    public HotKeyDefinition GetStopBinding() => StopRecordingBinding;
+    public HotKeyDefinition GetStopBinding() => GetBinding(HotKeyAction.StopRecording);
 
     public string StopRecordingDisplayString => GetStopBinding().DisplayString;
 
-    public HotKeyDefinition DefaultFor(CaptureType type) => type switch
+    public HotKeyDefinition DefaultFor(HotKeyAction action) => action switch
     {
-        CaptureType.Screenshot => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35),
-        CaptureType.Video => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36),
-        CaptureType.Gif => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37),
-        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null),
+        HotKeyAction.Screenshot => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35),
+        HotKeyAction.RecordVideo => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36),
+        HotKeyAction.RecordGif => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37),
+        HotKeyAction.RecognizeText => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54),
+        HotKeyAction.StopRecording => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53),
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
-    public HotKeyValidationResult ValidateBinding(CaptureType type, HotKeyDefinition binding)
+    public HotKeyValidationResult ValidateBinding(HotKeyAction action, HotKeyDefinition binding)
     {
-        var captureBindings = new[]
+        var bindings = new[]
         {
-            new KeyValuePair<CaptureType, HotKeyDefinition>(
-                CaptureType.Screenshot,
-                GetBinding(CaptureType.Screenshot)),
-            new KeyValuePair<CaptureType, HotKeyDefinition>(
-                CaptureType.Video,
-                GetBinding(CaptureType.Video)),
-            new KeyValuePair<CaptureType, HotKeyDefinition>(
-                CaptureType.Gif,
-                GetBinding(CaptureType.Gif)),
+            new KeyValuePair<HotKeyAction, HotKeyDefinition>(
+                HotKeyAction.Screenshot,
+                GetBinding(HotKeyAction.Screenshot)),
+            new KeyValuePair<HotKeyAction, HotKeyDefinition>(
+                HotKeyAction.RecordVideo,
+                GetBinding(HotKeyAction.RecordVideo)),
+            new KeyValuePair<HotKeyAction, HotKeyDefinition>(
+                HotKeyAction.RecordGif,
+                GetBinding(HotKeyAction.RecordGif)),
+            new KeyValuePair<HotKeyAction, HotKeyDefinition>(
+                HotKeyAction.RecognizeText,
+                GetBinding(HotKeyAction.RecognizeText)),
         };
 
-        return HotKeyValidator.Validate(type, binding, captureBindings, GetStopBinding());
+        return HotKeyValidator.Validate(action, binding, bindings, GetStopBinding());
     }
 
-    private int GetStoredModifiers(CaptureType type) => type switch
+    private int GetStoredModifiers(HotKeyAction action) => action switch
     {
-        CaptureType.Screenshot => _settings.ScreenshotHotKeyModifiers,
-        CaptureType.Video => _settings.VideoHotKeyModifiers,
-        CaptureType.Gif => _settings.GifHotKeyModifiers,
-        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null),
+        HotKeyAction.Screenshot => _settings.ScreenshotHotKeyModifiers,
+        HotKeyAction.RecordVideo => _settings.VideoHotKeyModifiers,
+        HotKeyAction.RecordGif => _settings.GifHotKeyModifiers,
+        HotKeyAction.RecognizeText => _settings.OcrHotKeyModifiers,
+        HotKeyAction.StopRecording => 0,
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
-    private uint GetStoredVirtualKey(CaptureType type) => type switch
+    private uint GetStoredVirtualKey(HotKeyAction action) => action switch
     {
-        CaptureType.Screenshot => (uint)_settings.ScreenshotHotKeyCode,
-        CaptureType.Video => (uint)_settings.VideoHotKeyCode,
-        CaptureType.Gif => (uint)_settings.GifHotKeyCode,
-        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null),
+        HotKeyAction.Screenshot => (uint)_settings.ScreenshotHotKeyCode,
+        HotKeyAction.RecordVideo => (uint)_settings.VideoHotKeyCode,
+        HotKeyAction.RecordGif => (uint)_settings.GifHotKeyCode,
+        HotKeyAction.RecognizeText => (uint)_settings.OcrHotKeyCode,
+        HotKeyAction.StopRecording => 0,
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 }

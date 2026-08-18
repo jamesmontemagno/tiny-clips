@@ -16,6 +16,7 @@ public enum CapturePickerMode
     Region,
     Screen,
     Window,
+    RecognizeText,
 }
 
 /// <summary>The user's choice from the capture picker bar.</summary>
@@ -205,6 +206,8 @@ public sealed partial class CapturePickerWindow : Window
 
     private void OnWindow(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.Window);
 
+    private void OnRecognizeText(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.RecognizeText);
+
     private void OnCancel(object sender, RoutedEventArgs e) => Complete(null);
 
     // Drag-anywhere support: the R / S / W / timer / cancel buttons handle their own
@@ -294,6 +297,9 @@ public sealed partial class CapturePickerWindow : Window
                 break;
             case VirtualKey.W:
                 Complete(CapturePickerMode.Window);
+                break;
+            case VirtualKey.T:
+                Complete(CapturePickerMode.RecognizeText);
                 break;
         }
     }
