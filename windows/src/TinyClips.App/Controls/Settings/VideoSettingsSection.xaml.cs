@@ -77,16 +77,10 @@ public sealed partial class VideoSettingsSection : UserControl, ISettingsSection
         ViewModel.RecordMicrophone = isAllowed;
     }
 
-    private async void OnEnableWebcamToggled(object sender, RoutedEventArgs e)
+    private async void OnEnableWebcamChecked(object sender, RoutedEventArgs e)
     {
-        if (_suppressMediaToggleEvents || sender is not ToggleSwitch toggle)
+        if (_suppressMediaToggleEvents || sender is not CheckBox checkBox)
         {
-            return;
-        }
-
-        if (!toggle.IsOn)
-        {
-            ViewModel.WebcamEnabled = false;
             return;
         }
 
@@ -95,17 +89,38 @@ public sealed partial class VideoSettingsSection : UserControl, ISettingsSection
             return;
         }
 
-        toggle.IsEnabled = false;
+        checkBox.IsEnabled = false;
         var isAllowed = await _mediaPermissions.RequestCameraAccessAsync();
         if (_closed)
         {
             return;
         }
 
-        toggle.IsEnabled = true;
+        checkBox.IsEnabled = true;
 
-        SetMediaToggleState(toggle, isAllowed);
+        SetMediaCheckBoxState(checkBox, isAllowed);
         ViewModel.WebcamEnabled = isAllowed;
+    }
+
+    private void OnEnableWebcamUnchecked(object sender, RoutedEventArgs e)
+    {
+        if (!_suppressMediaToggleEvents)
+        {
+            ViewModel.WebcamEnabled = false;
+        }
+    }
+
+    private void SetMediaCheckBoxState(CheckBox checkBox, bool isChecked)
+    {
+        _suppressMediaToggleEvents = true;
+        try
+        {
+            checkBox.IsChecked = isChecked;
+        }
+        finally
+        {
+            _suppressMediaToggleEvents = false;
+        }
     }
 
     private void SetMediaToggleState(ToggleSwitch toggle, bool isOn)

@@ -3,121 +3,122 @@
     x:Class="TinyClips.App.Settings.Sections.AboutSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
-        <TextBlock
-            Margin="4,8,0,4"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Text="About" />
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="4">
+            <TextBlock
+                Margin="4,8,0,4"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                Text="About" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="4">
-                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Tiny Clips for Windows" />
+            <controls:SettingsExpander
+                Header="Tiny Clips for Windows"
+                IsExpanded="True">
+                <controls:SettingsExpander.HeaderIcon>
+                    <BitmapIcon ShowAsMonochrome="False" UriSource="/Assets/AppIcon.ico" />
+                </controls:SettingsExpander.HeaderIcon>
+                <controls:SettingsExpander.Description>
+                    <TextBlock
+                        x:Name="AboutCopyrightText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="© Refractored LLC" />
+                </controls:SettingsExpander.Description>
                 <TextBlock
                     x:Name="AboutVersionText"
-                    Style="{StaticResource CaptionTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    IsTextSelectionEnabled="True"
                     Text="Version" />
-                <TextBlock
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="A fast, beautiful screen capture app for screenshots, video, and GIFs." />
-            </StackPanel>
-        </Border>
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard
+                        x:Name="DirectBuildUpdatesCard"
+                        Header="Updates (Direct build)"
+                        Visibility="Collapsed">
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Update through winget or download the latest GitHub release."
+                                TextAlignment="Right"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                x:Name="UpdateStatusText"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Check for updates to see whether a newer version is available."
+                                TextAlignment="Right"
+                                TextWrapping="Wrap" />
+                            <StackPanel
+                                Orientation="Horizontal"
+                                Spacing="8">
+                                <Button
+                                    x:Name="CheckForUpdatesButton"
+                                    HorizontalAlignment="Left"
+                                    Content="Check for updates"
+                                    Click="OnCheckForUpdatesClicked" />
+                                <Button
+                                    x:Name="CopyWingetCommandButton"
+                                    HorizontalAlignment="Left"
+                                    Visibility="Collapsed"
+                                    Content="Copy winget command"
+                                    Click="OnCopyWingetCommandClicked" />
+                                <Button
+                                    x:Name="OpenLatestReleaseButton"
+                                    HorizontalAlignment="Left"
+                                    Visibility="Collapsed"
+                                    Content="Open latest release"
+                                    Click="OnOpenLatestReleaseClicked" />
+                            </StackPanel>
+                        </StackPanel>
+                    </controls:SettingsCard>
 
-        <Border
-            x:Name="DirectBuildUpdatesCard"
-            Visibility="Collapsed"
-            Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="8">
-                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Updates (Direct build)" />
-                <TextBlock
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="This build updates through winget (`winget upgrade Refractored.TinyClips`) or by downloading the latest GitHub release." />
-                <TextBlock
-                    x:Name="UpdateStatusText"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Check for updates to see whether a newer version is available." />
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button
-                        x:Name="CheckForUpdatesButton"
-                        Content="Check for updates"
-                        Click="OnCheckForUpdatesClicked" />
-                    <Button
-                        x:Name="CopyWingetCommandButton"
-                        Visibility="Collapsed"
-                        Content="Copy winget command"
-                        Click="OnCopyWingetCommandClicked" />
-                    <Button
-                        x:Name="OpenLatestReleaseButton"
-                        Visibility="Collapsed"
-                        Content="Open latest release"
-                        Click="OnOpenLatestReleaseClicked" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
+                    <controls:SettingsCard
+                        x:Name="StoreBuildUpdatesCard"
+                        Description="Updates are installed automatically through Microsoft Store."
+                        Header="Updates (Microsoft Store build)"
+                        Visibility="Collapsed" />
 
-        <Border
-            x:Name="StoreBuildUpdatesCard"
-            Visibility="Collapsed"
-            Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="4">
-                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Updates (Microsoft Store build)" />
-                <TextBlock
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="This build is updated by Microsoft Store auto-update; direct/winget update UI is intentionally hidden." />
-            </StackPanel>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Source code" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="View the project, open an issue or feature request, and contribute on GitHub." />
-                </StackPanel>
-                <StackPanel
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Right"
-                    Spacing="4">
-                    <HyperlinkButton
+                    <controls:SettingsCard
                         AutomationProperties.AutomationId="AboutRepoLink"
                         AutomationProperties.Name="Open the Tiny Clips GitHub repository"
-                        Content="GitHub repository"
-                        NavigateUri="https://github.com/jamesmontemagno/tiny-clips" />
-                    <Button
+                        Click="OnOpenRepositoryClicked"
+                        Header="GitHub repository"
+                        IsClickEnabled="True">
+                        <controls:SettingsCard.ActionIcon>
+                            <FontIcon Glyph="&#xE8A7;" />
+                        </controls:SettingsCard.ActionIcon>
+                    </controls:SettingsCard>
+
+                    <controls:SettingsCard
                         x:Name="AboutFileBugButton"
                         AutomationProperties.AutomationId="AboutFileBugButton"
                         AutomationProperties.Name="Open quick bug report form"
                         Click="OnFileBugClick"
-                        Content="File a bug…" />
-                    <HyperlinkButton
-                        x:Name="AboutDetailedIssueLink"
+                        Header="File a bug"
+                        IsClickEnabled="True">
+                        <controls:SettingsCard.ActionIcon>
+                            <FontIcon Glyph="&#xE8A7;" />
+                        </controls:SettingsCard.ActionIcon>
+                    </controls:SettingsCard>
+
+                    <controls:SettingsCard
                         AutomationProperties.AutomationId="AboutDetailedIssueLink"
                         AutomationProperties.Name="Open detailed issue template on GitHub"
-                        Content="Open detailed issue template" />
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <TextBlock
-            x:Name="AboutCopyrightText"
-            Margin="4,4,0,0"
-            Style="{StaticResource CaptionTextBlockStyle}"
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            Text="© Refractored LLC" />
-    </StackPanel>
+                        Click="OnOpenDetailedIssueClicked"
+                        Header="Open detailed issue template"
+                        IsClickEnabled="True">
+                        <controls:SettingsCard.ActionIcon>
+                            <FontIcon Glyph="&#xE8A7;" />
+                        </controls:SettingsCard.ActionIcon>
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+        </StackPanel>
+    </Border>
 </UserControl>

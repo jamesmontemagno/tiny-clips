@@ -12,9 +12,11 @@ namespace TinyClips.App.Settings.Sections;
 public sealed partial class AboutSettingsSection : UserControl
 {
     private const string WingetUpgradeCommand = "winget upgrade Refractored.TinyClips";
+    private static readonly Uri RepositoryUri = new("https://github.com/jamesmontemagno/tiny-clips");
 
     private readonly IDisposable _realizationScope;
     private readonly IAppUpdateService _updateService;
+    private Uri? _detailedIssueUri;
     private Uri? _latestReleaseUri;
     private string _appVersion = "1.0.0";
 
@@ -46,7 +48,7 @@ public sealed partial class AboutSettingsSection : UserControl
     {
         _appVersion = QuickBugReport.GetAppVersion();
         AboutVersionText.Text = $"Version {_appVersion}";
-        AboutDetailedIssueLink.NavigateUri = QuickBugReport.BuildDetailedIssueRequestUri(_appVersion);
+        _detailedIssueUri = QuickBugReport.BuildDetailedIssueRequestUri(_appVersion);
         AboutCopyrightText.Text = $"© {DateTime.Now.Year} Refractored LLC";
     }
 
@@ -142,6 +144,34 @@ public sealed partial class AboutSettingsSection : UserControl
     private async void OnFileBugClick(object sender, RoutedEventArgs e)
     {
         await OpenQuickBugReportAsync();
+    }
+
+    private void OnOpenRepositoryClicked(object sender, RoutedEventArgs e)
+    {
+        OpenExternalUri(RepositoryUri);
+    }
+
+    private void OnOpenDetailedIssueClicked(object sender, RoutedEventArgs e)
+    {
+        if (_detailedIssueUri is not null)
+        {
+            OpenExternalUri(_detailedIssueUri);
+        }
+    }
+
+    private static void OpenExternalUri(Uri target)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(target.ToString())
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Open external URI failed: {ex}");
+        }
     }
 
     private static Task OpenQuickBugReportAsync()

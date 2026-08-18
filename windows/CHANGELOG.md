@@ -6,6 +6,52 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Changed
+- **Native Settings title bar** — Settings now uses the WinUI `TitleBar` control, keeps the
+  navigation pane toggle in the title bar only when the adaptive navigation pane is collapsed,
+  places About at the bottom of the navigation pane, and enforces DPI-aware minimum window
+  dimensions. The native `AppWindow` icon is also set on activation so the Tiny Clips icon appears
+  in taskbar thumbnails and Alt+Tab previews.
+- **Native Screenshot settings cards** — The Screenshot page now uses Community Toolkit
+  `SettingsCard` and `SettingsExpander` controls with Fluent icons and the Gallery-style centered,
+  constrained settings layout. Image format now starts expanded with icon-free nested JPEG quality
+  and scale controls, while capture picker options are grouped with the other capture behavior
+  settings.
+- **Native Video settings cards** — The Video page now uses the same Gallery-width Toolkit layout
+  with Fluent icons, expanded microphone and webcam groups, and compact icon-free nested cards.
+  Microphone recording is controlled from its expander header, while the nested webcam enablement
+  row uses a single-label checkbox and the webcam device selector sits in the expander header.
+  Capture-picker, countdown, trimmer, and clipboard cards are ordered to follow the recording flow.
+- **Gallery-style About page** — About now uses one expanded app-identity `SettingsExpander` for
+  version, update information, repository access, and issue-reporting actions, with open-in-browser
+  icons on external actions.
+- **Native GIF settings cards** — GIF now uses the Gallery-width Toolkit layout with an expanded,
+  icon-free nested quality group and recording actions ordered from setup through post-recording.
+- **Native Mouse clicks settings cards** — Video and GIF click highlights now use expanded Toolkit
+  settings groups with icon-free nested style cards. GIF starts with a single-label option to reuse
+  video styling, which disables the GIF-specific cards, and redundant standalone hex fields were
+  removed while retaining the color-preview dropdowns.
+- **Native General settings cards** — General now uses the Gallery-width Toolkit layout throughout.
+  Save locations are grouped in an expanded, header-only expander with the default-location option
+  first, followed by Screenshot, Video, and GIF folder cards that show each path as the description
+  and collapse while default folders are enabled. The branding overlay setting now lives under
+  Capture behavior, and its otherwise-empty standalone navigation page has been removed.
+- **Responsive Analytics layout** — Analytics now uses the same centered 1064-DIP maximum content
+  width as the other Settings pages without changing its custom dashboard controls. Its Share
+  actions now use a Toolkit settings card, while Analytics and General reset actions use compact
+  left-aligned hyperlink buttons with additional separation from the preceding cards.
+- **Native Uploadcare settings cards** — Uploadcare now uses the shared Gallery-width layout. Its
+  account guidance and compact API-key link are integrated with the page title, while enablement,
+  keys, automatic uploads, and copied URLs use icon-led Toolkit settings cards.
+- **Native Hotkeys settings cards** — Screenshot, video, and GIF shortcuts now use separate
+  icon-led Toolkit cards in the shared Gallery-width layout while preserving the existing shortcut
+  recorder, conflict validation, status feedback, and reset actions.
+- **Teleprompter overlay settings card** — Teleprompter enablement now uses an icon-led Toolkit
+  settings card and the shared Gallery-width layout, while the transcript, speed, and preview
+  controls retain their custom presentation.
+
+### Internal
+- Added the Community Toolkit Settings Controls package as the foundation for migrating Settings
+  pages to native `SettingsCard` and `SettingsExpander` layouts.
 - **Layered acrylic tray flyout** — The system-tray quick-access window now uses a PowerToys-style
   layered acrylic content surface with a distinct bottom command bar and compact 32-DIP Fluent
   action buttons, while retaining the existing Tiny Clips popup dimensions and actions.

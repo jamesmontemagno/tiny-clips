@@ -3,196 +3,128 @@
     x:Class="TinyClips.App.Settings.Sections.ScreenshotSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
-        <TextBlock
-            Margin="4,8,0,4"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Text="Screenshot" />
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="4">
+            <TextBlock
+                Margin="4,8,0,4"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                Text="Screenshot" />
 
-        <TextBlock
-            Margin="4,4,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Image &amp; quality" />
+            <TextBlock
+                Margin="4,4,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Image &amp; quality" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Image format" />
-                </StackPanel>
-                <ComboBox
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ScreenshotFormatComboBox"
-                    AutomationProperties.Name="Screenshot image format"
-                    SelectedIndex="{x:Bind ViewModel.ScreenshotFormatIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="PNG" />
-                    <ComboBoxItem Content="JPEG" />
-                </ComboBox>
-            </Grid>
-        </Border>
+            <StackPanel Spacing="2">
+                <controls:SettingsExpander
+                    Header="Image format"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B9;}"
+                    IsExpanded="True">
+                    <ComboBox
+                        AutomationProperties.AutomationId="ScreenshotFormatComboBox"
+                        AutomationProperties.Name="Screenshot image format"
+                        SelectedIndex="{x:Bind ViewModel.ScreenshotFormatIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="PNG" />
+                        <ComboBoxItem Content="JPEG" />
+                    </ComboBox>
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard
+                            Description="Only used when the image format is JPEG."
+                            Header="JPEG quality">
+                            <Slider
+                                Width="220"
+                                AutomationProperties.AutomationId="JpegQualitySlider"
+                                AutomationProperties.Name="JPEG quality"
+                                Maximum="1.0"
+                                Minimum="0.1"
+                                StepFrequency="0.05"
+                                Value="{x:Bind ViewModel.JpegQuality, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            Description="Resize saved screenshots as a percentage of full resolution."
+                            Header="Scale">
+                            <Slider
+                                Width="220"
+                                AutomationProperties.AutomationId="ScreenshotScaleSlider"
+                                AutomationProperties.Name="Screenshot scale percentage"
+                                Maximum="100"
+                                Minimum="25"
+                                StepFrequency="5"
+                                TickFrequency="25"
+                                Value="{x:Bind ViewModel.ScreenshotScale, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+            </StackPanel>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker before screenshot" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Choose Region, Screen, or Window before capturing." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowScreenshotCapturePickerToggle"
-                    AutomationProperties.Name="Show capture picker before screenshot"
-                    IsOn="{x:Bind ViewModel.ShowScreenshotCapturePicker, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Capture behavior" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker after screenshot" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Start another screenshot with the same picker after saving." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowScreenshotCapturePickerAfterCaptureToggle"
-                    AutomationProperties.Name="Show capture picker after screenshot"
-                    IsEnabled="{x:Bind ViewModel.ScreenshotCapturePickerAfterCaptureEnabled, Mode=OneWay}"
-                    IsOn="{x:Bind ViewModel.ShowScreenshotCapturePickerAfterCapture, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Scale" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Resize saved screenshots as a percentage of full resolution." />
-                </StackPanel>
-                <Slider
-                    Grid.Column="1"
-                    Width="220"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ScreenshotScaleSlider"
-                    AutomationProperties.Name="Screenshot scale percentage"
-                    Maximum="100"
-                    Minimum="25"
-                    StepFrequency="5"
-                    TickFrequency="25"
-                    Value="{x:Bind ViewModel.ScreenshotScale, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="JPEG quality" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Only used when the image format is JPEG." />
-                </StackPanel>
-                <Slider
-                    Grid.Column="1"
-                    Width="220"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="JpegQualitySlider"
-                    AutomationProperties.Name="JPEG quality"
-                    Maximum="1.0"
-                    Minimum="0.1"
-                    StepFrequency="0.05"
-                    Value="{x:Bind ViewModel.JpegQuality, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Capture behavior" />
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Countdown before capture" />
-                </StackPanel>
-                <StackPanel
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal"
-                    Spacing="12">
-                    <NumberBox
-                        Width="120"
-                        AutomationProperties.AutomationId="ScreenshotCountdownDurationNumberBox"
-                        AutomationProperties.Name="Screenshot countdown seconds"
-                        IsEnabled="{x:Bind ViewModel.ScreenshotCountdownEnabled, Mode=OneWay}"
-                        Maximum="10"
-                        Minimum="1"
-                        SpinButtonPlacementMode="Inline"
-                        Value="{x:Bind ViewModel.ScreenshotCountdownDuration, Mode=TwoWay}" />
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Choose Region, Screen, or Window before capturing."
+                    Header="Show capture picker before screenshot"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
                     <ToggleSwitch
-                        AutomationProperties.AutomationId="ScreenshotCountdownToggle"
-                        AutomationProperties.Name="Enable screenshot countdown"
-                        IsOn="{x:Bind ViewModel.ScreenshotCountdownEnabled, Mode=TwoWay}" />
-                </StackPanel>
-            </Grid>
-        </Border>
+                        AutomationProperties.AutomationId="ShowScreenshotCapturePickerToggle"
+                        AutomationProperties.Name="Show capture picker before screenshot"
+                        IsOn="{x:Bind ViewModel.ShowScreenshotCapturePicker, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Open editor after capture" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Review, crop, and copy each screenshot before saving." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowScreenshotEditorToggle"
-                    AutomationProperties.Name="Open editor after capture"
-                    IsOn="{x:Bind ViewModel.ShowScreenshotEditor, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-    </StackPanel>
+                <controls:SettingsCard
+                    Description="Start another screenshot with the same picker after saving."
+                    Header="Show capture picker after screenshot"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowScreenshotCapturePickerAfterCaptureToggle"
+                        AutomationProperties.Name="Show capture picker after screenshot"
+                        IsEnabled="{x:Bind ViewModel.ScreenshotCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.ShowScreenshotCapturePickerAfterCapture, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Countdown before capture"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE823;}">
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="12">
+                        <NumberBox
+                            Width="120"
+                            AutomationProperties.AutomationId="ScreenshotCountdownDurationNumberBox"
+                            AutomationProperties.Name="Screenshot countdown seconds"
+                            IsEnabled="{x:Bind ViewModel.ScreenshotCountdownEnabled, Mode=OneWay}"
+                            Maximum="10"
+                            Minimum="1"
+                            SpinButtonPlacementMode="Inline"
+                            Value="{x:Bind ViewModel.ScreenshotCountdownDuration, Mode=TwoWay}" />
+                        <ToggleSwitch
+                            AutomationProperties.AutomationId="ScreenshotCountdownToggle"
+                            AutomationProperties.Name="Enable screenshot countdown"
+                            IsOn="{x:Bind ViewModel.ScreenshotCountdownEnabled, Mode=TwoWay}" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="Review, crop, and copy each screenshot before saving."
+                    Header="Open editor after capture"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowScreenshotEditorToggle"
+                        AutomationProperties.Name="Open editor after capture"
+                        IsOn="{x:Bind ViewModel.ShowScreenshotEditor, Mode=TwoWay}" />
+                </controls:SettingsCard>
+            </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>

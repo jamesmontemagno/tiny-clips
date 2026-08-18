@@ -3,452 +3,272 @@
     x:Class="TinyClips.App.Settings.Sections.VideoSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:TinyClips.App.Settings.Sections"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
-        <TextBlock
-            Margin="4,8,0,4"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Text="Video" />
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="4">
+            <TextBlock
+                Margin="4,8,0,4"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                Text="Video" />
 
-        <TextBlock
-            Margin="4,4,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Video quality" />
+            <TextBlock
+                Margin="4,4,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Video quality" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Frame rate" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Frames per second for recorded video." />
-                </StackPanel>
+            <controls:SettingsCard
+                Description="Frames per second for recorded video."
+                Header="Frame rate"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
                 <NumberBox
-                    Grid.Column="1"
                     Width="120"
-                    VerticalAlignment="Center"
                     AutomationProperties.AutomationId="VideoFrameRateNumberBox"
                     AutomationProperties.Name="Video frame rate"
                     Maximum="60"
                     Minimum="10"
                     SpinButtonPlacementMode="Inline"
                     Value="{x:Bind ViewModel.VideoFrameRate, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker before recording" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Choose Region, Screen, or Window before recording." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowVideoCapturePickerToggle"
-                    AutomationProperties.Name="Show capture picker before recording"
-                    IsOn="{x:Bind ViewModel.ShowVideoCapturePicker, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Audio" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker after recording" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Start another recording with the same picker after saving." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowVideoCapturePickerAfterCaptureToggle"
-                    AutomationProperties.Name="Show capture picker after recording"
-                    IsEnabled="{x:Bind ViewModel.VideoCapturePickerAfterCaptureEnabled, Mode=OneWay}"
-                    IsOn="{x:Bind ViewModel.ShowVideoCapturePickerAfterCapture, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Header="Record system audio"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE767;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="RecordAudioToggle"
+                        AutomationProperties.Name="Record system audio"
+                        IsOn="{x:Bind ViewModel.RecordAudio, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Audio" />
+                <controls:SettingsExpander
+                    Header="Microphone"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE720;}"
+                    IsExpanded="True">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="RecordMicrophoneToggle"
+                        AutomationProperties.Name="Record microphone"
+                        IsOn="{x:Bind ViewModel.RecordMicrophone, Mode=OneWay}"
+                        Toggled="OnRecordMicrophoneToggled" />
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Microphone device used for recording">
+                            <Grid MinWidth="220">
+                                <StackPanel
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    Visibility="{x:Bind ViewModel.MicrophoneLoadingVisibility, Mode=OneWay}">
+                                    <ProgressRing Width="20" Height="20" IsActive="True" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="Loading microphones..." />
+                                </StackPanel>
+                                <ComboBox
+                                    AutomationProperties.AutomationId="MicrophoneDeviceCombo"
+                                    AutomationProperties.Name="Microphone device"
+                                    DisplayMemberPath="Name"
+                                    IsEnabled="{x:Bind ViewModel.MicrophoneSelectorEnabled, Mode=OneWay}"
+                                    ItemsSource="{x:Bind ViewModel.Microphones, Mode=OneWay}"
+                                    SelectedItem="{x:Bind ViewModel.SelectedMicrophone, Mode=TwoWay}"
+                                    Visibility="{x:Bind ViewModel.MicrophoneSelectorVisibility, Mode=OneWay}" />
+                            </Grid>
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+            </StackPanel>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Record system audio" />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="RecordAudioToggle"
-                    AutomationProperties.Name="Record system audio"
-                    IsOn="{x:Bind ViewModel.RecordAudio, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            <InfoBar
+                IsOpen="{x:Bind local:VideoSettingsSection.HasError(ViewModel.MediaDevicesLoadError), Mode=OneWay}"
+                Message="{x:Bind ViewModel.MediaDevicesLoadError, Mode=OneWay}"
+                Severity="Warning"
+                IsClosable="False" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Record microphone" />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="RecordMicrophoneToggle"
-                    AutomationProperties.Name="Record microphone"
-                    IsOn="{x:Bind ViewModel.RecordMicrophone, Mode=OneWay}"
-                    Toggled="OnRecordMicrophoneToggled" />
-            </Grid>
-        </Border>
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Webcam overlay" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Microphone device" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Choose which input is recorded when &quot;Record microphone&quot; is on." />
-                </StackPanel>
-                <StackPanel
-                    Grid.Column="1"
-                    MinWidth="220"
-                    Orientation="Horizontal"
-                    Spacing="8"
-                    VerticalAlignment="Center"
-                    Visibility="{x:Bind ViewModel.MicrophoneLoadingVisibility, Mode=OneWay}">
-                    <ProgressRing Width="20" Height="20" IsActive="True" />
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Loading microphones..." />
-                </StackPanel>
-                <ComboBox
-                    Grid.Column="1"
-                    MinWidth="220"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="MicrophoneDeviceCombo"
-                    AutomationProperties.Name="Microphone device"
-                    DisplayMemberPath="Name"
-                    IsEnabled="{x:Bind ViewModel.MicrophoneSelectorEnabled, Mode=OneWay}"
-                    ItemsSource="{x:Bind ViewModel.Microphones, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedMicrophone, Mode=TwoWay}"
-                    Visibility="{x:Bind ViewModel.MicrophoneSelectorVisibility, Mode=OneWay}" />
-            </Grid>
-        </Border>
+            <controls:SettingsExpander
+                Header="Webcam overlay"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE722;}"
+                IsExpanded="True">
+                <Grid MinWidth="220">
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="{x:Bind ViewModel.WebcamLoadingVisibility, Mode=OneWay}">
+                        <ProgressRing Width="20" Height="20" IsActive="True" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Loading webcams..." />
+                    </StackPanel>
+                    <ComboBox
+                        MinWidth="220"
+                        AutomationProperties.AutomationId="WebcamDeviceCombo"
+                        AutomationProperties.Name="Webcam device"
+                        DisplayMemberPath="Name"
+                        IsEnabled="{x:Bind ViewModel.WebcamDeviceSelectorEnabled, Mode=OneWay}"
+                        ItemsSource="{x:Bind ViewModel.Webcams, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.SelectedWebcam, Mode=TwoWay}"
+                        Visibility="{x:Bind ViewModel.WebcamSelectorVisibility, Mode=OneWay}" />
+                </Grid>
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard ContentAlignment="Left">
+                        <CheckBox
+                            AutomationProperties.AutomationId="EnableWebcamToggle"
+                            AutomationProperties.Name="Enable webcam by default"
+                            Checked="OnEnableWebcamChecked"
+                            Content="Enable webcam by default"
+                            IsChecked="{x:Bind ViewModel.WebcamEnabled, Mode=OneWay}"
+                            Unchecked="OnEnableWebcamUnchecked" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Webcam shape">
+                        <ComboBox
+                            MinWidth="220"
+                            AutomationProperties.AutomationId="WebcamShapeCombo"
+                            AutomationProperties.Name="Webcam shape"
+                            SelectedIndex="{x:Bind ViewModel.WebcamShapeIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="Rectangle" />
+                            <ComboBoxItem Content="Rounded rectangle" />
+                            <ComboBoxItem Content="Circle" />
+                        </ComboBox>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Webcam corner">
+                        <ComboBox
+                            MinWidth="220"
+                            AutomationProperties.AutomationId="WebcamCornerPositionCombo"
+                            AutomationProperties.Name="Webcam corner"
+                            SelectedIndex="{x:Bind ViewModel.WebcamCornerPositionIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="Top left" />
+                            <ComboBoxItem Content="Top right" />
+                            <ComboBoxItem Content="Bottom left" />
+                            <ComboBoxItem Content="Bottom right" />
+                        </ComboBox>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Webcam size">
+                        <ComboBox
+                            MinWidth="220"
+                            AutomationProperties.AutomationId="WebcamSizePresetCombo"
+                            AutomationProperties.Name="Webcam size"
+                            SelectedIndex="{x:Bind ViewModel.WebcamSizePresetIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="Small" />
+                            <ComboBoxItem Content="Medium" />
+                            <ComboBoxItem Content="Large" />
+                        </ComboBox>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Rounded corner value (-1 uses the default)">
+                        <NumberBox
+                            Width="120"
+                            AutomationProperties.AutomationId="WebcamCornerRadiusNumberBox"
+                            AutomationProperties.Name="Webcam rounded corner value"
+                            IsEnabled="{x:Bind ViewModel.WebcamCornerRadiusEnabled, Mode=OneWay}"
+                            Maximum="200"
+                            Minimum="-1"
+                            SpinButtonPlacementMode="Inline"
+                            Value="{x:Bind ViewModel.WebcamCornerRadius, Mode=TwoWay}" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
 
-        <InfoBar
-            IsOpen="{x:Bind local:VideoSettingsSection.HasError(ViewModel.MediaDevicesLoadError), Mode=OneWay}"
-            Message="{x:Bind ViewModel.MediaDevicesLoadError, Mode=OneWay}"
-            Severity="Warning"
-            IsClosable="False" />
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Recording &amp; output" />
 
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Webcam overlay" />
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Choose Region, Screen, or Window before recording."
+                    Header="Show capture picker before recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowVideoCapturePickerToggle"
+                        AutomationProperties.Name="Show capture picker before recording"
+                        IsOn="{x:Bind ViewModel.ShowVideoCapturePicker, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Enable webcam by default" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Start video recordings with the webcam overlay enabled. Device and layout options can be configured below." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="EnableWebcamToggle"
-                    AutomationProperties.Name="Enable webcam by default"
-                    IsOn="{x:Bind ViewModel.WebcamEnabled, Mode=OneWay}"
-                    Toggled="OnEnableWebcamToggled" />
-            </Grid>
-        </Border>
+                <controls:SettingsCard
+                    Header="Countdown before recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE823;}">
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="12">
+                        <NumberBox
+                            Width="120"
+                            AutomationProperties.AutomationId="VideoCountdownDurationNumberBox"
+                            AutomationProperties.Name="Video countdown seconds"
+                            IsEnabled="{x:Bind ViewModel.VideoCountdownEnabled, Mode=OneWay}"
+                            Maximum="10"
+                            Minimum="1"
+                            SpinButtonPlacementMode="Inline"
+                            Value="{x:Bind ViewModel.VideoCountdownDuration, Mode=TwoWay}" />
+                        <ToggleSwitch
+                            AutomationProperties.AutomationId="VideoCountdownToggle"
+                            AutomationProperties.Name="Enable video countdown"
+                            IsOn="{x:Bind ViewModel.VideoCountdownEnabled, Mode=TwoWay}" />
+                    </StackPanel>
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Webcam device" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Choose which camera to use for the overlay." />
-                </StackPanel>
-                <StackPanel
-                    Grid.Column="1"
-                    MinWidth="220"
-                    Orientation="Horizontal"
-                    Spacing="8"
-                    VerticalAlignment="Center"
-                    Visibility="{x:Bind ViewModel.WebcamLoadingVisibility, Mode=OneWay}">
-                    <ProgressRing Width="20" Height="20" IsActive="True" />
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Loading webcams..." />
-                </StackPanel>
-                <ComboBox
-                    Grid.Column="1"
-                    MinWidth="220"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="WebcamDeviceCombo"
-                    AutomationProperties.Name="Webcam device"
-                    DisplayMemberPath="Name"
-                    IsEnabled="{x:Bind ViewModel.WebcamDeviceSelectorEnabled, Mode=OneWay}"
-                    ItemsSource="{x:Bind ViewModel.Webcams, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedWebcam, Mode=TwoWay}"
-                    Visibility="{x:Bind ViewModel.WebcamSelectorVisibility, Mode=OneWay}" />
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Webcam shape" />
-                </StackPanel>
-                <ComboBox
-                    Grid.Column="1"
-                    MinWidth="220"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="WebcamShapeCombo"
-                    AutomationProperties.Name="Webcam shape"
-                    SelectedIndex="{x:Bind ViewModel.WebcamShapeIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="Rectangle" />
-                    <ComboBoxItem Content="Rounded rectangle" />
-                    <ComboBoxItem Content="Circle" />
-                </ComboBox>
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Webcam corner" />
-                </StackPanel>
-                <ComboBox
-                    Grid.Column="1"
-                    MinWidth="220"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="WebcamCornerPositionCombo"
-                    AutomationProperties.Name="Webcam corner"
-                    SelectedIndex="{x:Bind ViewModel.WebcamCornerPositionIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="Top left" />
-                    <ComboBoxItem Content="Top right" />
-                    <ComboBoxItem Content="Bottom left" />
-                    <ComboBoxItem Content="Bottom right" />
-                </ComboBox>
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Webcam size" />
-                </StackPanel>
-                <ComboBox
-                    Grid.Column="1"
-                    MinWidth="220"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="WebcamSizePresetCombo"
-                    AutomationProperties.Name="Webcam size"
-                    SelectedIndex="{x:Bind ViewModel.WebcamSizePresetIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="Small" />
-                    <ComboBoxItem Content="Medium" />
-                    <ComboBoxItem Content="Large" />
-                </ComboBox>
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Rounded corner value" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Applies to rounded rectangle shape only (-1 uses the default)." />
-                </StackPanel>
-                <NumberBox
-                    Grid.Column="1"
-                    Width="120"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="WebcamCornerRadiusNumberBox"
-                    AutomationProperties.Name="Webcam rounded corner value"
-                    IsEnabled="{x:Bind ViewModel.WebcamCornerRadiusEnabled, Mode=OneWay}"
-                    Maximum="200"
-                    Minimum="-1"
-                    SpinButtonPlacementMode="Inline"
-                    Value="{x:Bind ViewModel.WebcamCornerRadius, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Recording &amp; output" />
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Recording time limit" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Stop recording automatically after this many minutes (0 = no limit)." />
-                </StackPanel>
-                <NumberBox
-                    Grid.Column="1"
-                    Width="120"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="VideoTimeLimitNumberBox"
-                    AutomationProperties.Name="Video recording time limit in minutes"
-                    Maximum="180"
-                    Minimum="0"
-                    SpinButtonPlacementMode="Inline"
-                    Value="{x:Bind ViewModel.VideoRecordingTimeLimitMinutes, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Countdown before recording" />
-                </StackPanel>
-                <StackPanel
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal"
-                    Spacing="12">
+                <controls:SettingsCard
+                    Description="Stop recording automatically after this many minutes (0 = no limit)."
+                    Header="Recording time limit"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE823;}">
                     <NumberBox
                         Width="120"
-                        AutomationProperties.AutomationId="VideoCountdownDurationNumberBox"
-                        AutomationProperties.Name="Video countdown seconds"
-                        IsEnabled="{x:Bind ViewModel.VideoCountdownEnabled, Mode=OneWay}"
-                        Maximum="10"
-                        Minimum="1"
+                        AutomationProperties.AutomationId="VideoTimeLimitNumberBox"
+                        AutomationProperties.Name="Video recording time limit in minutes"
+                        Maximum="180"
+                        Minimum="0"
                         SpinButtonPlacementMode="Inline"
-                        Value="{x:Bind ViewModel.VideoCountdownDuration, Mode=TwoWay}" />
+                        Value="{x:Bind ViewModel.VideoRecordingTimeLimitMinutes, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="Review and trim the start and end before saving."
+                    Header="Open trimmer after recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
                     <ToggleSwitch
-                        AutomationProperties.AutomationId="VideoCountdownToggle"
-                        AutomationProperties.Name="Enable video countdown"
-                        IsOn="{x:Bind ViewModel.VideoCountdownEnabled, Mode=TwoWay}" />
-                </StackPanel>
-            </Grid>
-        </Border>
+                        AutomationProperties.AutomationId="ShowVideoTrimmerToggle"
+                        AutomationProperties.Name="Open video trimmer after recording"
+                        IsOn="{x:Bind ViewModel.ShowTrimmer, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Open trimmer after recording" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Review and trim the start and end before saving." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowVideoTrimmerToggle"
-                    AutomationProperties.Name="Open video trimmer after recording"
-                    IsOn="{x:Bind ViewModel.ShowTrimmer, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+                <controls:SettingsCard
+                    Description="Copy the recorded MP4 file so it can be pasted into chats and editors."
+                    Header="Copy video to the clipboard"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="CopyVideoToggle"
+                        AutomationProperties.Name="Copy video to the clipboard"
+                        IsOn="{x:Bind ViewModel.CopyVideoToClipboard, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Copy video to the clipboard" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Copy the recorded MP4 file so it can be pasted into chats and editors." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="CopyVideoToggle"
-                    AutomationProperties.Name="Copy video to the clipboard"
-                    IsOn="{x:Bind ViewModel.CopyVideoToClipboard, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-    </StackPanel>
+                <controls:SettingsCard
+                    Description="Start another recording with the same picker after saving."
+                    Header="Show capture picker after recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowVideoCapturePickerAfterCaptureToggle"
+                        AutomationProperties.Name="Show capture picker after recording"
+                        IsEnabled="{x:Bind ViewModel.VideoCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.ShowVideoCapturePickerAfterCapture, Mode=TwoWay}" />
+                </controls:SettingsCard>
+            </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>

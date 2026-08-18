@@ -3,37 +3,32 @@
     x:Class="TinyClips.App.Settings.Sections.GeneralSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
-        <TextBlock
-            Margin="4,8,0,4"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Text="General" />
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="4">
+            <TextBlock
+                Margin="4,8,0,4"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                Text="General" />
 
-        <TextBlock
-            Margin="4,4,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Appearance" />
+            <TextBlock
+                Margin="4,4,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Appearance" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Theme" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Choose how Tiny Clips windows are themed." />
-                </StackPanel>
+            <controls:SettingsCard
+                Description="Choose how Tiny Clips windows are themed."
+                Header="Theme"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE771;}">
                 <ComboBox
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
                     AutomationProperties.AutomationId="ThemeComboBox"
                     AutomationProperties.Name="Application theme"
                     SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}">
@@ -41,277 +36,197 @@
                     <ComboBoxItem Content="Light" />
                     <ComboBoxItem Content="Dark" />
                 </ComboBox>
-            </Grid>
-        </Border>
+            </controls:SettingsCard>
 
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Files &amp; saving" />
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Files &amp; saving" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="8">
-                <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Save locations" />
-                        <TextBlock
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{x:Bind ViewModel.SaveLocationModeDisplay, Mode=OneWay}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
+            <StackPanel Spacing="2">
+                <controls:SettingsExpander
+                    Header="Save locations"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B7;}"
+                    IsExpanded="True">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard ContentAlignment="Left">
+                            <CheckBox
+                                AutomationProperties.AutomationId="UseDefaultSaveDirectoriesToggle"
+                                AutomationProperties.Name="Use default capture folders"
+                                Content="Use default save locations"
+                                IsChecked="{x:Bind ViewModel.UseDefaultSaveDirectories, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            Description="{x:Bind ViewModel.ScreenshotSaveLocationDisplay, Mode=OneWay}"
+                            Header="Screenshots"
+                            Visibility="{x:Bind ViewModel.CustomSaveLocationsVisibility, Mode=OneWay}">
+                            <Button
+                                AutomationProperties.AutomationId="BrowseScreenshotSaveDirectoryButton"
+                                AutomationProperties.Name="Choose screenshots folder"
+                                Click="OnBrowseScreenshotSaveDirectory"
+                                Content="Choose&#x2026;" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            Description="{x:Bind ViewModel.VideoSaveLocationDisplay, Mode=OneWay}"
+                            Header="Videos"
+                            Visibility="{x:Bind ViewModel.CustomSaveLocationsVisibility, Mode=OneWay}">
+                            <Button
+                                AutomationProperties.AutomationId="BrowseVideoSaveDirectoryButton"
+                                AutomationProperties.Name="Choose videos folder"
+                                Click="OnBrowseVideoSaveDirectory"
+                                Content="Choose&#x2026;" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            Description="{x:Bind ViewModel.GifSaveLocationDisplay, Mode=OneWay}"
+                            Header="GIFs"
+                            Visibility="{x:Bind ViewModel.CustomSaveLocationsVisibility, Mode=OneWay}">
+                            <Button
+                                AutomationProperties.AutomationId="BrowseGifSaveDirectoryButton"
+                                AutomationProperties.Name="Choose GIFs folder"
+                                Click="OnBrowseGifSaveDirectory"
+                                Content="Choose&#x2026;" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+
+                <controls:SettingsCard
+                    Description="Tokens: {date} {time}"
+                    Header="File name template"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8AC;}">
+                    <TextBox
+                        Width="240"
+                        AutomationProperties.AutomationId="FileNameTemplateTextBox"
+                        AutomationProperties.Name="File name template"
+                        Text="{x:Bind ViewModel.FileNameTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Reveal in File Explorer after capture"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE838;}">
                     <ToggleSwitch
-                        Grid.Column="1"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="UseDefaultSaveDirectoriesToggle"
-                        AutomationProperties.Name="Use default capture folders"
-                        Header="Use defaults"
-                        IsOn="{x:Bind ViewModel.UseDefaultSaveDirectories, Mode=TwoWay}" />
-                </Grid>
-                <StackPanel
-                    Spacing="8"
-                    Visibility="{x:Bind ViewModel.CustomSaveLocationsVisibility, Mode=OneWay}">
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{x:Bind ViewModel.ScreenshotSaveLocationDisplay, Mode=OneWay}"
-                            TextTrimming="CharacterEllipsis" />
-                        <Button
-                            Grid.Column="1"
-                            AutomationProperties.AutomationId="BrowseScreenshotSaveDirectoryButton"
-                            AutomationProperties.Name="Choose screenshots folder"
-                            Click="OnBrowseScreenshotSaveDirectory"
-                            Content="Choose&#x2026;" />
-                    </Grid>
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{x:Bind ViewModel.VideoSaveLocationDisplay, Mode=OneWay}"
-                            TextTrimming="CharacterEllipsis" />
-                        <Button
-                            Grid.Column="1"
-                            AutomationProperties.AutomationId="BrowseVideoSaveDirectoryButton"
-                            AutomationProperties.Name="Choose videos folder"
-                            Click="OnBrowseVideoSaveDirectory"
-                            Content="Choose&#x2026;" />
-                    </Grid>
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{x:Bind ViewModel.GifSaveLocationDisplay, Mode=OneWay}"
-                            TextTrimming="CharacterEllipsis" />
-                        <Button
-                            Grid.Column="1"
-                            AutomationProperties.AutomationId="BrowseGifSaveDirectoryButton"
-                            AutomationProperties.Name="Choose GIFs folder"
-                            Click="OnBrowseGifSaveDirectory"
-                            Content="Choose&#x2026;" />
-                    </Grid>
-                </StackPanel>
+                        AutomationProperties.AutomationId="ShowInExplorerToggle"
+                        AutomationProperties.Name="Reveal in File Explorer after capture"
+                        IsOn="{x:Bind ViewModel.ShowInExplorer, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Show a notification after saving"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7F4;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowSaveNotificationsToggle"
+                        AutomationProperties.Name="Show a notification after saving"
+                        IsOn="{x:Bind ViewModel.ShowSaveNotifications, Mode=TwoWay}" />
+                </controls:SettingsCard>
             </StackPanel>
-        </Border>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="File name template" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Tokens: {date} {time}" />
-                </StackPanel>
-                <TextBox
-                    Grid.Column="1"
-                    Width="240"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="FileNameTemplateTextBox"
-                    AutomationProperties.Name="File name template"
-                    Text="{x:Bind ViewModel.FileNameTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            </Grid>
-        </Border>
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Startup" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Reveal in File Explorer after capture" />
-                </StackPanel>
+            <controls:SettingsCard
+                Header="Launch at login"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE7E8;}">
+                <controls:SettingsCard.Description>
+                    <StackPanel>
+                        <TextBlock Text="Start Tiny Clips when I sign in to Windows." TextWrapping="Wrap" />
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                            Text="{x:Bind ViewModel.LaunchAtLoginNote, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.LaunchAtLoginNoteVisibility, Mode=OneWay}" />
+                    </StackPanel>
+                </controls:SettingsCard.Description>
                 <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowInExplorerToggle"
-                    AutomationProperties.Name="Reveal in File Explorer after capture"
-                    IsOn="{x:Bind ViewModel.ShowInExplorer, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show a notification after saving" />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowSaveNotificationsToggle"
-                    AutomationProperties.Name="Show a notification after saving"
-                    IsOn="{x:Bind ViewModel.ShowSaveNotifications, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Startup" />
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Launch at login" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Start Tiny Clips when I sign in to Windows." />
-                    <TextBlock
-                        Margin="0,4,0,0"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                        TextWrapping="Wrap"
-                        Visibility="{x:Bind ViewModel.LaunchAtLoginNoteVisibility, Mode=OneWay}"
-                        Text="{x:Bind ViewModel.LaunchAtLoginNote, Mode=OneWay}" />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
                     AutomationProperties.AutomationId="LaunchAtLoginToggle"
                     AutomationProperties.Name="Launch at login"
                     IsEnabled="{x:Bind ViewModel.LaunchAtLoginToggleEnabled, Mode=OneWay}"
                     IsOn="{x:Bind ViewModel.LaunchAtLogin, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            </controls:SettingsCard>
 
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Capture behavior" />
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Capture behavior" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Copy screenshots to the clipboard" />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="CopyScreenshotToggle"
-                    AutomationProperties.Name="Copy screenshots to the clipboard"
-                    IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Header="Copy screenshots to the clipboard"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="CopyScreenshotToggle"
+                        AutomationProperties.Name="Copy screenshots to the clipboard"
+                        IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Multi-monitor capture mode" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Choose how Screen and Region decide which display to target." />
-                </StackPanel>
-                <ComboBox
-                    Grid.Column="1"
-                    Width="240"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="MultiMonitorCaptureModeComboBox"
-                    AutomationProperties.Name="Multi-monitor capture mode"
-                    SelectedIndex="{x:Bind ViewModel.MultiMonitorCaptureModeIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="Show picker" />
-                    <ComboBoxItem Content="Capture monitor under cursor" />
-                    <ComboBoxItem Content="Always use main display" />
-                </ComboBox>
-            </Grid>
-        </Border>
+                <controls:SettingsCard
+                    Description="Add a small Tiny Clips watermark to the corner of captures."
+                    Header="Branding overlay"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7C1;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowBrandingOverlayToggle"
+                        AutomationProperties.Name="Show branding overlay"
+                        IsOn="{x:Bind ViewModel.ShowBrandingOverlay, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Advanced" />
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <StackPanel Spacing="12">
-                <StackPanel>
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Temporary files" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Temporary diagnostics are stored separately from your saved captures." />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind ViewModel.TempFolderSummary, Mode=OneWay}" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button
-                        AutomationProperties.AutomationId="OpenTempFolderButton"
-                        AutomationProperties.Name="Open Tiny Clips temporary files folder"
-                        Click="OnOpenTempFolder"
-                        Content="Open Temp Folder" />
-                    <Button
-                        AutomationProperties.AutomationId="PurgeTempFilesButton"
-                        AutomationProperties.Name="Purge Tiny Clips temporary files"
-                        Click="OnPurgeTempFiles"
-                        Content="Purge Temp Files Now&#x2026;" />
-                </StackPanel>
+                <controls:SettingsCard
+                    Description="Choose how Screen and Region decide which display to target."
+                    Header="Multi-monitor capture mode"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7F8;}">
+                    <ComboBox
+                        Width="240"
+                        AutomationProperties.AutomationId="MultiMonitorCaptureModeComboBox"
+                        AutomationProperties.Name="Multi-monitor capture mode"
+                        SelectedIndex="{x:Bind ViewModel.MultiMonitorCaptureModeIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="Show picker" />
+                        <ComboBoxItem Content="Capture monitor under cursor" />
+                        <ComboBoxItem Content="Always use main display" />
+                    </ComboBox>
+                </controls:SettingsCard>
             </StackPanel>
-        </Border>
 
-        <Button
-            HorizontalAlignment="Left"
-            AutomationProperties.AutomationId="ResetAllSettingsButton"
-            AutomationProperties.Name="Reset all settings to defaults"
-            Click="OnResetAllSettings"
-            Content="Reset All Settings to Defaults&#x2026;" />
-    </StackPanel>
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Advanced" />
+
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Header="Temporary files"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE74D;}">
+                    <controls:SettingsCard.Description>
+                        <StackPanel>
+                            <TextBlock
+                                Text="Temporary diagnostics are stored separately from your saved captures."
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Text="{x:Bind ViewModel.TempFolderSummary, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </controls:SettingsCard.Description>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            AutomationProperties.AutomationId="OpenTempFolderButton"
+                            AutomationProperties.Name="Open Tiny Clips temporary files folder"
+                            Click="OnOpenTempFolder"
+                            Content="Open folder" />
+                        <Button
+                            AutomationProperties.AutomationId="PurgeTempFilesButton"
+                            AutomationProperties.Name="Purge Tiny Clips temporary files"
+                            Click="OnPurgeTempFiles"
+                            Content="Purge now&#x2026;" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <HyperlinkButton
+                    Margin="0,8,4,0"
+                    HorizontalAlignment="Left"
+                    AutomationProperties.AutomationId="ResetAllSettingsButton"
+                    AutomationProperties.Name="Reset all settings to defaults"
+                    Click="OnResetAllSettings"
+                    Content="Reset all settings to defaults&#x2026;" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>

@@ -180,11 +180,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public string ScreenshotSaveLocationDisplay => $"Screenshots: {ResolveSaveLocation(CaptureType.Screenshot)}";
+    public string ScreenshotSaveLocationDisplay => ResolveSaveLocation(CaptureType.Screenshot);
 
-    public string VideoSaveLocationDisplay => $"Videos: {ResolveSaveLocation(CaptureType.Video)}";
+    public string VideoSaveLocationDisplay => ResolveSaveLocation(CaptureType.Video);
 
-    public string GifSaveLocationDisplay => $"GIFs: {ResolveSaveLocation(CaptureType.Gif)}";
+    public string GifSaveLocationDisplay => ResolveSaveLocation(CaptureType.Gif);
 
     public string SaveLocationModeDisplay => UseDefaultSaveDirectories
         ? "Screenshots save to Pictures/TinyClips; videos and GIFs save to Videos/TinyClips."

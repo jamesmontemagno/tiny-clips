@@ -3,192 +3,124 @@
     x:Class="TinyClips.App.Settings.Sections.GifSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
-        <TextBlock
-            Margin="4,8,0,4"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Text="GIF" />
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="4">
+            <TextBlock
+                Margin="4,8,0,4"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                Text="GIF" />
 
-        <TextBlock
-            Margin="4,4,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="GIF quality" />
+            <TextBlock
+                Margin="4,4,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="GIF quality" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Frame rate" />
-                </StackPanel>
-                <NumberBox
-                    Grid.Column="1"
-                    Width="120"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="GifFrameRateNumberBox"
-                    AutomationProperties.Name="GIF frame rate"
-                    Maximum="50"
-                    Minimum="5"
-                    SpinButtonPlacementMode="Inline"
-                    Value="{x:Bind ViewModel.GifFrameRate, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            <controls:SettingsExpander
+                Header="GIF quality"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE8B9;}"
+                IsExpanded="True">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard Header="Frame rate">
+                        <NumberBox
+                            Width="120"
+                            AutomationProperties.AutomationId="GifFrameRateNumberBox"
+                            AutomationProperties.Name="GIF frame rate"
+                            Maximum="50"
+                            Minimum="5"
+                            SpinButtonPlacementMode="Inline"
+                            Value="{x:Bind ViewModel.GifFrameRate, Mode=TwoWay}" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Maximum width in pixels">
+                        <NumberBox
+                            Width="120"
+                            AutomationProperties.AutomationId="GifMaxWidthNumberBox"
+                            AutomationProperties.Name="GIF maximum width"
+                            Maximum="1920"
+                            Minimum="240"
+                            SpinButtonPlacementMode="Inline"
+                            Value="{x:Bind ViewModel.GifMaxWidth, Mode=TwoWay}" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker before recording" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Choose Region, Screen, or Window before recording." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowGifCapturePickerToggle"
-                    AutomationProperties.Name="Show capture picker before GIF recording"
-                    IsOn="{x:Bind ViewModel.ShowGifCapturePicker, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Recording &amp; output" />
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Show capture picker after recording" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Start another GIF recording with the same picker after saving." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowGifCapturePickerAfterCaptureToggle"
-                    AutomationProperties.Name="Show capture picker after GIF recording"
-                    IsEnabled="{x:Bind ViewModel.GifCapturePickerAfterCaptureEnabled, Mode=OneWay}"
-                    IsOn="{x:Bind ViewModel.ShowGifCapturePickerAfterCapture, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Maximum width" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="GIF frames are scaled down to at most this width (pixels)." />
-                </StackPanel>
-                <NumberBox
-                    Grid.Column="1"
-                    Width="120"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="GifMaxWidthNumberBox"
-                    AutomationProperties.Name="GIF maximum width"
-                    Maximum="1920"
-                    Minimum="240"
-                    SpinButtonPlacementMode="Inline"
-                    Value="{x:Bind ViewModel.GifMaxWidth, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-
-        <TextBlock
-            Margin="4,16,0,0"
-            Style="{StaticResource BodyStrongTextBlockStyle}"
-            Text="Recording &amp; output" />
-
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Countdown before recording" />
-                </StackPanel>
-                <StackPanel
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal"
-                    Spacing="12">
-                    <NumberBox
-                        Width="120"
-                        AutomationProperties.AutomationId="GifCountdownDurationNumberBox"
-                        AutomationProperties.Name="GIF countdown seconds"
-                        IsEnabled="{x:Bind ViewModel.GifCountdownEnabled, Mode=OneWay}"
-                        Maximum="10"
-                        Minimum="1"
-                        SpinButtonPlacementMode="Inline"
-                        Value="{x:Bind ViewModel.GifCountdownDuration, Mode=TwoWay}" />
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Choose Region, Screen, or Window before recording."
+                    Header="Show capture picker before recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
                     <ToggleSwitch
-                        AutomationProperties.AutomationId="GifCountdownToggle"
-                        AutomationProperties.Name="Enable GIF countdown"
-                        IsOn="{x:Bind ViewModel.GifCountdownEnabled, Mode=TwoWay}" />
-                </StackPanel>
-            </Grid>
-        </Border>
+                        AutomationProperties.AutomationId="ShowGifCapturePickerToggle"
+                        AutomationProperties.Name="Show capture picker before GIF recording"
+                        IsOn="{x:Bind ViewModel.ShowGifCapturePicker, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Open trimmer after recording" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Drop frames from the start and end before saving." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="ShowGifTrimmerToggle"
-                    AutomationProperties.Name="Open GIF trimmer after recording"
-                    IsOn="{x:Bind ViewModel.ShowGifTrimmer, Mode=TwoWay}" />
-            </Grid>
-        </Border>
+                <controls:SettingsCard
+                    Header="Countdown before recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE823;}">
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="12">
+                        <NumberBox
+                            Width="120"
+                            AutomationProperties.AutomationId="GifCountdownDurationNumberBox"
+                            AutomationProperties.Name="GIF countdown seconds"
+                            IsEnabled="{x:Bind ViewModel.GifCountdownEnabled, Mode=OneWay}"
+                            Maximum="10"
+                            Minimum="1"
+                            SpinButtonPlacementMode="Inline"
+                            Value="{x:Bind ViewModel.GifCountdownDuration, Mode=TwoWay}" />
+                        <ToggleSwitch
+                            AutomationProperties.AutomationId="GifCountdownToggle"
+                            AutomationProperties.Name="Enable GIF countdown"
+                            IsOn="{x:Bind ViewModel.GifCountdownEnabled, Mode=TwoWay}" />
+                    </StackPanel>
+                </controls:SettingsCard>
 
-        <Border Style="{StaticResource SettingCardStyle}">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Copy GIF to the clipboard" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Copy the recorded GIF file so it can be pasted into chats and editors." />
-                </StackPanel>
-                <ToggleSwitch
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="CopyGifToggle"
-                    AutomationProperties.Name="Copy GIF to the clipboard"
-                    IsOn="{x:Bind ViewModel.CopyGifToClipboard, Mode=TwoWay}" />
-            </Grid>
-        </Border>
-    </StackPanel>
+                <controls:SettingsCard
+                    Description="Drop frames from the start and end before saving."
+                    Header="Open trimmer after recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowGifTrimmerToggle"
+                        AutomationProperties.Name="Open GIF trimmer after recording"
+                        IsOn="{x:Bind ViewModel.ShowGifTrimmer, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="Copy the recorded GIF file so it can be pasted into chats and editors."
+                    Header="Copy GIF to the clipboard"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="CopyGifToggle"
+                        AutomationProperties.Name="Copy GIF to the clipboard"
+                        IsOn="{x:Bind ViewModel.CopyGifToClipboard, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="Start another GIF recording with the same picker after saving."
+                    Header="Show capture picker after recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowGifCapturePickerAfterCaptureToggle"
+                        AutomationProperties.Name="Show capture picker after GIF recording"
+                        IsEnabled="{x:Bind ViewModel.GifCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.ShowGifCapturePickerAfterCapture, Mode=TwoWay}" />
+                </controls:SettingsCard>
+            </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>
