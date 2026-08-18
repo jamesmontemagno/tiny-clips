@@ -13,9 +13,10 @@ namespace TinyClips.App;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Wire the three public methods to <see cref="UIElement.PointerPressed"/>,
-/// <see cref="UIElement.PointerMoved"/>, and <see cref="UIElement.PointerReleased"/> on
-/// the drag surface.  Buttons and other interactive controls should mark their own pointer
+/// Wire the public methods to <see cref="UIElement.PointerPressed"/>,
+/// <see cref="UIElement.PointerMoved"/>, <see cref="UIElement.PointerReleased"/>,
+/// <see cref="UIElement.PointerCanceled"/>, and <see cref="UIElement.PointerCaptureLost"/>
+/// on the drag surface. Buttons and other interactive controls should mark their own pointer
 /// events handled so a drag is only initiated on the bar background.
 /// </para>
 /// <para>
@@ -93,6 +94,14 @@ internal sealed class FloatingWindowDragger
 
         _dragging = false;
         element.ReleasePointerCapture(e.Pointer);
+    }
+
+    /// <summary>
+    /// Clears drag state when WinUI cancels the interaction or ends pointer capture.
+    /// </summary>
+    public void OnPointerCaptureEnded(object sender, PointerRoutedEventArgs e)
+    {
+        _dragging = false;
     }
 
     [StructLayout(LayoutKind.Sequential)]

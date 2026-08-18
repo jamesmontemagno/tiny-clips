@@ -13,6 +13,8 @@
         x:Name="RootGrid"
         Background="Transparent"
         KeyDown="OnKeyDown"
+        PointerCanceled="OnPointerCaptureEnded"
+        PointerCaptureLost="OnPointerCaptureEnded"
         PointerMoved="OnPointerMoved"
         PointerPressed="OnPointerPressed"
         PointerReleased="OnPointerReleased">

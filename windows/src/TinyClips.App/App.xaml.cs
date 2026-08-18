@@ -299,6 +299,14 @@ public partial class App : Application
             "TrayCaptureTextButton",
             new AsyncRelayCommand(RecognizeTextAsync),
             Dismiss));
+#if !TINYCLIPS_STORE_BUILD
+        footerActions.Children.Add(CreateFooterButton(
+            GlyphCheckForUpdates,
+            "Check for updates",
+            "TrayCheckForUpdatesButton",
+            new AsyncRelayCommand(CheckForUpdatesFromTrayAsync),
+            Dismiss));
+#endif
         footerActions.Children.Add(CreateFooterButton(
             GlyphSettings,
             "Settings",

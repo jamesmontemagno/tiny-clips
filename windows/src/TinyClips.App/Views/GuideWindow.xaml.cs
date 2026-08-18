@@ -11,8 +11,8 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class GuideWindow : Window
 {
-    // 460×400 DIP: scrollable content; guide opens at 720×860 so the minimum is deliberately
-    // narrow — text wraps, the MaxWidth=720 inner panel simply centres when the window is wider.
+    // 460 x 400 DIP: scrollable content; guide opens at 720 x 860 so the minimum is deliberately
+    // narrow; text wraps, and the MaxWidth=720 inner panel simply centers when the window is wider.
     private const int MinimumWidthDip  = 460;
     private const int MinimumHeightDip = 400;
 

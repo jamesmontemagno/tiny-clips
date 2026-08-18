@@ -277,7 +277,7 @@
                     <StackPanel Spacing="12">
                         <local:GuideRow
                             Glyph="&#xEB9F;"
-                            Subtitle="Browse all your screenshots, videos, and GIFs in a responsive three-column grid. Open, copy, reveal in Explorer, or delete any capture from the library."
+                            Subtitle="Browse all your screenshots, videos, and GIFs in a responsive grid. Open, copy, reveal in Explorer, or delete any capture from the library."
                             Title="Browse and manage captures" />
                         <local:GuideRow
                             Glyph="&#xE71C;"

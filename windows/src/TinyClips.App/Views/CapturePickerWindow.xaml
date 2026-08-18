@@ -11,6 +11,8 @@
     <Grid
         x:Name="RootGrid"
         Background="Transparent"
+        PointerCanceled="OnPointerCaptureEnded"
+        PointerCaptureLost="OnPointerCaptureEnded"
         PointerMoved="OnPointerMoved"
         PointerPressed="OnPointerPressed"
         PointerReleased="OnPointerReleased">

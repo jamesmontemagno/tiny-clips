@@ -213,6 +213,8 @@ public sealed partial class CapturePickerWindow : Window
 
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerReleased(sender, e);
 
+    private void OnPointerCaptureEnded(object sender, PointerRoutedEventArgs e) => _dragger.OnPointerCaptureEnded(sender, e);
+
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
         switch (e.Key)
