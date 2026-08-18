@@ -12,7 +12,7 @@ public enum HotKeyValidationError
 
 public readonly record struct HotKeyValidationResult(
     HotKeyValidationError Error,
-    CaptureType? ConflictingCaptureType = null)
+    HotKeyAction? ConflictingAction = null)
 {
     public bool IsValid => Error == HotKeyValidationError.None;
 

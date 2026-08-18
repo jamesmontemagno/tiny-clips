@@ -28,18 +28,19 @@ public sealed partial class HotkeysSettingsSection : UserControl
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
     }
 
-    private static CaptureType TypeFromTag(object? tag) => (tag as string) switch
+    private static HotKeyAction ActionFromTag(object? tag) => (tag as string) switch
     {
-        "Video" => CaptureType.Video,
-        "Gif" => CaptureType.Gif,
-        _ => CaptureType.Screenshot,
+        "Video" => HotKeyAction.RecordVideo,
+        "Gif" => HotKeyAction.RecordGif,
+        "RecognizeText" => HotKeyAction.RecognizeText,
+        _ => HotKeyAction.Screenshot,
     };
 
     private async void OnEditHotKey(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement element)
         {
-            await RecordShortcutAsync(TypeFromTag(element.Tag));
+            await RecordShortcutAsync(ActionFromTag(element.Tag));
         }
     }
 
@@ -50,19 +51,19 @@ public sealed partial class HotkeysSettingsSection : UserControl
             return;
         }
 
-        var type = TypeFromTag(element.Tag);
-        var defaultBinding = ViewModel.GetDefaultHotKey(type);
-        var validation = ViewModel.ValidateHotKey(type, defaultBinding);
+        var action = ActionFromTag(element.Tag);
+        var defaultBinding = ViewModel.GetDefaultHotKey(action);
+        var validation = ViewModel.ValidateHotKey(action, defaultBinding);
         if (!validation.IsValid)
         {
             ShowSectionStatus(ValidationMessage(validation), InfoBarSeverity.Error);
             return;
         }
 
-        if (TryApplyCandidate(type, defaultBinding, out var errorMessage))
+        if (TryApplyCandidate(action, defaultBinding, out var errorMessage))
         {
             ShowSectionStatus(
-                $"{ActionName(type)} shortcut reset to {defaultBinding.DisplayString}.",
+                $"{ActionName(action)} shortcut reset to {defaultBinding.DisplayString}.",
                 InfoBarSeverity.Success);
         }
         else
@@ -71,7 +72,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
         }
     }
 
-    private async Task RecordShortcutAsync(CaptureType type)
+    private async Task RecordShortcutAsync(HotKeyAction action)
     {
         var instructions = new TextBlock
         {
@@ -88,7 +89,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
             Text = "Press a shortcut",
         };
         AutomationProperties.SetAutomationId(recorder, "HotKeyRecorderTextBox");
-        AutomationProperties.SetName(recorder, $"New {ActionName(type)} shortcut");
+        AutomationProperties.SetName(recorder, $"New {ActionName(action)} shortcut");
         AutomationProperties.SetHelpText(
             recorder,
             "Press Ctrl, Alt, Shift, or Win together with one non-modifier key.");
@@ -113,7 +114,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
 
         var dialog = new ContentDialog
         {
-            Title = $"Set {ActionName(type)} shortcut",
+            Title = $"Set {ActionName(action)} shortcut",
             Content = content,
             PrimaryButtonText = "Save",
             CloseButtonText = "Cancel",
@@ -156,7 +157,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
 
             var proposed = new HotKeyDefinition(modifiers, (uint)args.Key);
             recorder.Text = proposed.DisplayString;
-            var validation = ViewModel.ValidateHotKey(type, proposed);
+            var validation = ViewModel.ValidateHotKey(action, proposed);
             if (!validation.IsValid)
             {
                 candidate = null;
@@ -185,7 +186,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
                 return;
             }
 
-            if (!TryApplyCandidate(type, proposed, out var errorMessage))
+            if (!TryApplyCandidate(action, proposed, out var errorMessage))
             {
                 args.Cancel = true;
                 SetRecorderStatus(errorMessage, InfoBarSeverity.Error);
@@ -194,7 +195,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
             }
 
             ShowSectionStatus(
-                $"{ActionName(type)} shortcut changed to {proposed.DisplayString}.",
+                $"{ActionName(action)} shortcut changed to {proposed.DisplayString}.",
                 InfoBarSeverity.Success);
         }
 
@@ -249,16 +250,16 @@ public sealed partial class HotkeysSettingsSection : UserControl
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
     private bool TryApplyCandidate(
-        CaptureType type,
+        HotKeyAction action,
         HotKeyDefinition candidate,
         out string errorMessage)
     {
-        var previous = ViewModel.GetHotKey(type);
-        ViewModel.SetHotKey(type, candidate.Modifiers, candidate.VirtualKey);
+        var previous = ViewModel.GetHotKey(action);
+        ViewModel.SetHotKey(action, candidate.Modifiers, candidate.VirtualKey);
 
         if (App.Current is not App app)
         {
-            ViewModel.SetHotKey(type, previous.Modifiers, previous.VirtualKey);
+            ViewModel.SetHotKey(action, previous.Modifiers, previous.VirtualKey);
             errorMessage = "TinyClips could not access the global hotkey service. The previous shortcut was restored.";
             return false;
         }
@@ -270,7 +271,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
             return true;
         }
 
-        ViewModel.SetHotKey(type, previous.Modifiers, previous.VirtualKey);
+        ViewModel.SetHotKey(action, previous.Modifiers, previous.VirtualKey);
         var rollbackResult = app.ReapplyGlobalHotKeys();
 
         var rejectedNames = string.Join(", ", applyResult.Failures.Select(failure => failure.Name));
@@ -306,7 +307,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
         HotKeyValidationError.KeyRequired or HotKeyValidationError.ModifierKeyNotAllowed =>
             "Include one non-modifier key with the modifier.",
         HotKeyValidationError.DuplicateBinding =>
-            $"That shortcut is already assigned to {ActionName(result.ConflictingCaptureType!.Value)}.",
+            $"That shortcut is already assigned to {ActionName(result.ConflictingAction!.Value)}.",
         HotKeyValidationError.StopRecordingConflict =>
             "That shortcut is reserved for Stop recording (Ctrl+Shift+S). Choose a different combination.",
         _ => string.Empty,
@@ -338,10 +339,11 @@ public sealed partial class HotkeysSettingsSection : UserControl
         return tokens.Count == 0 ? "Press a shortcut" : $"{string.Join("+", tokens)}+…";
     }
 
-    private static string ActionName(CaptureType type) => type switch
+    private static string ActionName(HotKeyAction action) => action switch
     {
-        CaptureType.Video => "Record video",
-        CaptureType.Gif => "Record GIF",
+        HotKeyAction.RecordVideo => "Record video",
+        HotKeyAction.RecordGif => "Record GIF",
+        HotKeyAction.RecognizeText => "Recognize text",
         _ => "Screenshot",
     };
 }
