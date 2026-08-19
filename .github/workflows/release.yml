@@ -467,6 +467,7 @@ jobs:
       - name: Create release metadata pull request
         uses: peter-evans/create-pull-request@v7
         with:
+          base: main
           commit-message: "Update release metadata for ${{ env.RELEASE_TAG }}"
           branch: release-metadata/${{ env.RELEASE_TAG }}
           delete-branch: true
