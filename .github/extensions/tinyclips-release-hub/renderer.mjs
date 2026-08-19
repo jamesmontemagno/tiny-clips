@@ -193,7 +193,9 @@ export function renderHtml({ instanceId, token }) {
     }
     dialog::backdrop { background: var(--hub-backdrop); }
     dialog h2 { margin: 0 0 8px; }
-    .confirm-code { display: block; margin: 10px 0; padding: 9px; }
+    .confirm-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+    .confirm-code { display: block; flex: 1; min-width: 0; padding: 9px; }
+    .copy-confirmation { flex-shrink: 0; }
     .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
     .toast {
       position: fixed; right: 20px; bottom: 20px; max-width: min(520px, calc(100vw - 40px));
@@ -263,7 +265,10 @@ export function renderHtml({ instanceId, token }) {
   <dialog id="confirm-dialog" aria-labelledby="confirm-title">
     <h2 id="confirm-title">Confirm release operation</h2>
     <p id="confirm-description" class="muted"></p>
-    <span class="confirm-code" id="confirm-code"></span>
+    <div class="confirm-row">
+      <span class="confirm-code" id="confirm-code"></span>
+      <button class="action copy-confirmation" id="confirm-copy" type="button" aria-label="Copy verification text">Copy</button>
+    </div>
     <input id="confirm-input" autocomplete="off" aria-label="Type confirmation text" />
     <div class="dialog-actions">
       <button class="action" id="confirm-cancel" type="button">Cancel</button>
@@ -291,6 +296,7 @@ export function renderHtml({ instanceId, token }) {
     const dashboard = document.getElementById("dashboard");
     const dialog = document.getElementById("confirm-dialog");
     const confirmInput = document.getElementById("confirm-input");
+    const confirmCopy = document.getElementById("confirm-copy");
     const operationProgress = document.getElementById("operation-progress");
     const operationTitle = document.getElementById("operation-title");
     const operationDetail = document.getElementById("operation-detail");
@@ -376,6 +382,29 @@ export function renderHtml({ instanceId, token }) {
       toast.style.borderColor = isError ? "var(--true-color-red, #ff7b72)" : "var(--hub-border)";
       window.clearTimeout(showToast.timer);
       showToast.timer = window.setTimeout(() => { toast.style.display = "none"; }, 7000);
+    }
+
+    async function copyVerificationText() {
+      const text = document.getElementById("confirm-code")?.textContent?.trim();
+      if (!text) return;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textArea = document.createElement("textarea");
+          textArea.value = text;
+          textArea.setAttribute("readonly", "");
+          textArea.style.position = "fixed";
+          textArea.style.opacity = "0";
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textArea);
+        }
+        showToast("Verification text copied.");
+      } catch (error) {
+        showToast("Could not copy verification text.", true);
+      }
     }
 
     function setOperationProgress(title, detail, state = "running", url = null) {
@@ -1164,6 +1193,7 @@ export function renderHtml({ instanceId, token }) {
       });
     });
     document.getElementById("refresh").addEventListener("click", refresh);
+    confirmCopy.addEventListener("click", copyVerificationText);
     document.getElementById("confirm-cancel").addEventListener("click", () => dialog.close());
     document.getElementById("confirm-run").addEventListener("click", async () => {
       if (!pendingAction || confirmInput.value !== pendingAction.phrase) {
