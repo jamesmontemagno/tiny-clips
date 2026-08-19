@@ -14,6 +14,40 @@ final class HotKeyBindingTests: XCTestCase {
             HotKeyBinding.defaultBinding(for: .copyTextFromRegion),
             HotKeyBinding(keyCode: 28, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
         )
+        XCTAssertEqual(
+            HotKeyBinding.defaultBinding(for: .screenshotRegion),
+            HotKeyBinding(keyCode: 18, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+        )
+        XCTAssertEqual(
+            HotKeyBinding.defaultBinding(for: .screenshotWindow),
+            HotKeyBinding(keyCode: 19, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+        )
+    }
+
+    func testDirectScreenshotActionsHaveDisplayNamesAndUniqueDefaults() {
+        XCTAssertEqual(HotKeyAction.screenshotRegion.displayName, "Screenshot Region")
+        XCTAssertEqual(HotKeyAction.screenshotWindow.displayName, "Screenshot Window")
+
+        let defaults = Dictionary(
+            uniqueKeysWithValues: HotKeyAction.allCases.map {
+                ($0, HotKeyBinding.defaultBinding(for: $0))
+            }
+        )
+        XCTAssertEqual(Set(defaults.values).count, HotKeyAction.allCases.count)
+        XCTAssertNil(
+            HotKeyBinding.validationError(
+                for: HotKeyBinding.defaultBinding(for: .screenshotRegion),
+                action: .screenshotRegion,
+                bindings: defaults
+            )
+        )
+        XCTAssertNil(
+            HotKeyBinding.validationError(
+                for: HotKeyBinding.defaultBinding(for: .screenshotWindow),
+                action: .screenshotWindow,
+                bindings: defaults
+            )
+        )
     }
 
     func testCarbonAndSwiftUIModifierConversions() {
@@ -58,6 +92,15 @@ final class HotKeyBindingTests: XCTestCase {
                 action: .screenshot,
                 bindings: [.recordVideo: duplicate]
             )?.contains("Record Video") == true
+        )
+
+        let regionDuplicate = HotKeyBinding.defaultBinding(for: .screenshotRegion)
+        XCTAssertTrue(
+            HotKeyBinding.validationError(
+                for: regionDuplicate,
+                action: .screenshotWindow,
+                bindings: [.screenshotRegion: regionDuplicate]
+            )?.contains("Screenshot Region") == true
         )
     }
 

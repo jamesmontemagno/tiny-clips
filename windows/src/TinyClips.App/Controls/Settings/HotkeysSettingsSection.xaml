@@ -64,6 +64,66 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Header="Screenshot region"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border
+                        MinWidth="120"
+                        Padding="10,4"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            FontFamily="Consolas"
+                            Text="{x:Bind ViewModel.ScreenshotRegionHotKeyDisplay, Mode=OneWay}" />
+                    </Border>
+                    <Button
+                        AutomationProperties.AutomationId="EditScreenshotRegionHotKeyButton"
+                        AutomationProperties.Name="Edit screenshot region shortcut"
+                        Click="OnEditHotKey"
+                        Content="Edit"
+                        Tag="ScreenshotRegion" />
+                    <Button
+                        AutomationProperties.AutomationId="ResetScreenshotRegionHotKeyButton"
+                        AutomationProperties.Name="Reset screenshot region shortcut"
+                        Click="OnResetHotKey"
+                        Content="Reset"
+                        Tag="ScreenshotRegion" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Screenshot window"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xEF20;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border
+                        MinWidth="120"
+                        Padding="10,4"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            FontFamily="Consolas"
+                            Text="{x:Bind ViewModel.ScreenshotWindowHotKeyDisplay, Mode=OneWay}" />
+                    </Border>
+                    <Button
+                        AutomationProperties.AutomationId="EditScreenshotWindowHotKeyButton"
+                        AutomationProperties.Name="Edit screenshot window shortcut"
+                        Click="OnEditHotKey"
+                        Content="Edit"
+                        Tag="ScreenshotWindow" />
+                    <Button
+                        AutomationProperties.AutomationId="ResetScreenshotWindowHotKeyButton"
+                        AutomationProperties.Name="Reset screenshot window shortcut"
+                        Click="OnResetHotKey"
+                        Content="Reset"
+                        Tag="ScreenshotWindow" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
                     Header="Record video"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">

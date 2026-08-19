@@ -55,6 +55,20 @@ private struct GuideWindowView: View {
         ).displayString
     }
 
+    private var screenshotRegionShortcut: String {
+        HotKeyBinding(
+            keyCode: settings.screenshotRegionHotKeyCode,
+            carbonModifiers: settings.screenshotRegionHotKeyModifiers
+        ).displayString
+    }
+
+    private var screenshotWindowShortcut: String {
+        HotKeyBinding(
+            keyCode: settings.screenshotWindowHotKeyCode,
+            carbonModifiers: settings.screenshotWindowHotKeyModifiers
+        ).displayString
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
@@ -114,6 +128,8 @@ private struct GuideWindowView: View {
                         .foregroundStyle(.secondary)
 
                     shortcutRow(title: "Screenshot", keys: screenshotShortcut)
+                    shortcutRow(title: "Screenshot Region (no picker)", keys: screenshotRegionShortcut)
+                    shortcutRow(title: "Screenshot Window (no picker)", keys: screenshotWindowShortcut)
                     shortcutRow(title: "Record Video", keys: videoShortcut)
                     shortcutRow(title: "Record GIF", keys: gifShortcut)
                     shortcutRow(title: "Picker: Region", keys: "R")

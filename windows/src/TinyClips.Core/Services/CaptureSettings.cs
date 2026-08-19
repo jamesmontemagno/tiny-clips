@@ -610,6 +610,30 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("ocrHotKeyModifiers", value);
     }
 
+    public int ScreenshotRegionHotKeyCode
+    {
+        get => _settings.Get("screenshotRegionHotKeyCode", 0);
+        set => _settings.Set("screenshotRegionHotKeyCode", value);
+    }
+
+    public int ScreenshotRegionHotKeyModifiers
+    {
+        get => _settings.Get("screenshotRegionHotKeyModifiers", 0);
+        set => _settings.Set("screenshotRegionHotKeyModifiers", value);
+    }
+
+    public int ScreenshotWindowHotKeyCode
+    {
+        get => _settings.Get("screenshotWindowHotKeyCode", 0);
+        set => _settings.Set("screenshotWindowHotKeyCode", value);
+    }
+
+    public int ScreenshotWindowHotKeyModifiers
+    {
+        get => _settings.Get("screenshotWindowHotKeyModifiers", 0);
+        set => _settings.Set("screenshotWindowHotKeyModifiers", value);
+    }
+
     public ImageFormat ImageFormat
     {
         get => string.Equals(ScreenshotFormat, "png", StringComparison.OrdinalIgnoreCase) ? Models.ImageFormat.Png : Models.ImageFormat.Jpeg;
@@ -768,6 +792,10 @@ public sealed class CaptureSettings : ICaptureSettings
         GifHotKeyModifiers = 6;
         OcrHotKeyCode = 84;
         OcrHotKeyModifiers = 6;
+        ScreenshotRegionHotKeyCode = 0;
+        ScreenshotRegionHotKeyModifiers = 0;
+        ScreenshotWindowHotKeyCode = 0;
+        ScreenshotWindowHotKeyModifiers = 0;
         _analytics?.Clear();
     }
 

@@ -334,6 +334,10 @@ class CaptureManager: ObservableObject {
                         self.startGifRecording()
                     case .copyTextFromRegion:
                         self.copyTextFromRegion()
+                    case .screenshotRegion:
+                        self.takeScreenshotInMode(.region)
+                    case .screenshotWindow:
+                        self.takeScreenshotInMode(.window)
                     }
                 }
             )
@@ -376,6 +380,29 @@ class CaptureManager: ObservableObject {
                     cursorScreen: cursorScreen
                 )
             }
+        }
+    }
+
+    /// Takes a screenshot in the given mode without showing the capture picker.
+    /// Used by the dedicated region/window screenshot hotkeys.
+    func takeScreenshotInMode(_ mode: CapturePickerMode) {
+        guard !isCaptureActionInProgress else { return }
+
+        isCapturePreparationInProgress = true
+        let cursorScreen = screenUnderMouseCursor()
+        Task {
+            defer { isCapturePreparationInProgress = false }
+            guard await prepareForNewCaptureRequest() else { return }
+            guard await PermissionManager.shared.checkPermission() else { return }
+            guard !isOCRInFlight else { return }
+            let settings = CaptureSettings.shared
+            await performScreenshotCapture(
+                mode: mode,
+                countdownEnabled: settings.screenshotCountdownEnabled,
+                countdownDuration: settings.screenshotCountdownDuration,
+                shouldReturnToPicker: false,
+                cursorScreen: cursorScreen
+            )
         }
     }
 

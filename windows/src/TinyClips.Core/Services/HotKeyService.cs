@@ -44,6 +44,14 @@ public sealed class HotKeyService : IHotKeyService
                 _settings.OcrHotKeyModifiers = (int)binding.Modifiers;
                 _settings.OcrHotKeyCode = (int)binding.VirtualKey;
                 break;
+            case HotKeyAction.ScreenshotRegion:
+                _settings.ScreenshotRegionHotKeyModifiers = (int)binding.Modifiers;
+                _settings.ScreenshotRegionHotKeyCode = (int)binding.VirtualKey;
+                break;
+            case HotKeyAction.ScreenshotWindow:
+                _settings.ScreenshotWindowHotKeyModifiers = (int)binding.Modifiers;
+                _settings.ScreenshotWindowHotKeyCode = (int)binding.VirtualKey;
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(action), action, null);
         }
@@ -59,27 +67,30 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecordVideo => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36),
         HotKeyAction.RecordGif => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37),
         HotKeyAction.RecognizeText => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54),
+        HotKeyAction.ScreenshotRegion => new HotKeyDefinition(HotKeyModifiers.None, 0),
+        HotKeyAction.ScreenshotWindow => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.StopRecording => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53),
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
     public HotKeyValidationResult ValidateBinding(HotKeyAction action, HotKeyDefinition binding)
     {
-        var bindings = new[]
+        var actions = new[]
         {
-            new KeyValuePair<HotKeyAction, HotKeyDefinition>(
-                HotKeyAction.Screenshot,
-                GetBinding(HotKeyAction.Screenshot)),
-            new KeyValuePair<HotKeyAction, HotKeyDefinition>(
-                HotKeyAction.RecordVideo,
-                GetBinding(HotKeyAction.RecordVideo)),
-            new KeyValuePair<HotKeyAction, HotKeyDefinition>(
-                HotKeyAction.RecordGif,
-                GetBinding(HotKeyAction.RecordGif)),
-            new KeyValuePair<HotKeyAction, HotKeyDefinition>(
-                HotKeyAction.RecognizeText,
-                GetBinding(HotKeyAction.RecognizeText)),
+            HotKeyAction.Screenshot,
+            HotKeyAction.RecordVideo,
+            HotKeyAction.RecordGif,
+            HotKeyAction.RecognizeText,
+            HotKeyAction.ScreenshotRegion,
+            HotKeyAction.ScreenshotWindow,
         };
+
+        // Skip the unbound sentinel (no modifiers, no key) so two unbound actions are not
+        // reported as conflicting with each other.
+        var bindings = actions
+            .Select(a => new KeyValuePair<HotKeyAction, HotKeyDefinition>(a, GetBinding(a)))
+            .Where(pair => pair.Value.Modifiers != HotKeyModifiers.None || pair.Value.VirtualKey != 0)
+            .ToArray();
 
         return HotKeyValidator.Validate(action, binding, bindings, GetStopBinding());
     }
@@ -90,6 +101,8 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecordVideo => _settings.VideoHotKeyModifiers,
         HotKeyAction.RecordGif => _settings.GifHotKeyModifiers,
         HotKeyAction.RecognizeText => _settings.OcrHotKeyModifiers,
+        HotKeyAction.ScreenshotRegion => _settings.ScreenshotRegionHotKeyModifiers,
+        HotKeyAction.ScreenshotWindow => _settings.ScreenshotWindowHotKeyModifiers,
         HotKeyAction.StopRecording => 0,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
@@ -100,6 +113,8 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecordVideo => (uint)_settings.VideoHotKeyCode,
         HotKeyAction.RecordGif => (uint)_settings.GifHotKeyCode,
         HotKeyAction.RecognizeText => (uint)_settings.OcrHotKeyCode,
+        HotKeyAction.ScreenshotRegion => (uint)_settings.ScreenshotRegionHotKeyCode,
+        HotKeyAction.ScreenshotWindow => (uint)_settings.ScreenshotWindowHotKeyCode,
         HotKeyAction.StopRecording => 0,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };

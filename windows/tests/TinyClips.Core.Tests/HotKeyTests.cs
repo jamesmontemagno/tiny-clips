@@ -128,6 +128,56 @@ public sealed class HotKeyTests
                 service.GetBinding(HotKeyAction.Screenshot)).Error);
     }
 
+    [Fact]
+    public void GetBinding_OnFreshSettings_LeavesNewScreenshotActionsUnbound()
+    {
+        var service = CreateService();
+
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.ScreenshotRegion));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.ScreenshotWindow));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.GetBinding(HotKeyAction.ScreenshotRegion));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.GetBinding(HotKeyAction.ScreenshotWindow));
+    }
+
+    [Fact]
+    public void SetBinding_And_GetBinding_RoundTripScreenshotRegionChord()
+    {
+        var service = CreateService();
+
+        service.SetBinding(HotKeyAction.ScreenshotRegion, new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x34));
+
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x34), service.GetBinding(HotKeyAction.ScreenshotRegion));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.GetBinding(HotKeyAction.Screenshot));
+        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.GetBinding(HotKeyAction.ScreenshotWindow));
+    }
+
+    [Fact]
+    public void ValidateBinding_DetectsConflictWithNewScreenshotActions()
+    {
+        var service = CreateService();
+        var chord = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x34);
+        service.SetBinding(HotKeyAction.ScreenshotRegion, chord);
+
+        var result = service.ValidateBinding(HotKeyAction.ScreenshotWindow, chord);
+
+        Assert.Equal(HotKeyValidationError.DuplicateBinding, result.Error);
+        Assert.Equal(HotKeyAction.ScreenshotRegion, result.ConflictingAction);
+    }
+
+    [Fact]
+    public void ValidateBinding_UnboundActionsDoNotConflictWithEachOther()
+    {
+        var service = CreateService();
+
+        // Both ScreenshotRegion and ScreenshotWindow are unbound on fresh settings; a valid
+        // unused chord must not be flagged as a duplicate of the other unbound action.
+        var result = service.ValidateBinding(
+            HotKeyAction.ScreenshotRegion,
+            new HotKeyDefinition(HotKeyModifiers.Alt, 0x41));
+
+        Assert.True(result.IsValid);
+    }
+
     private static IHotKeyService CreateService()
     {
         var settings = new CaptureSettings(new TestSettingsService());

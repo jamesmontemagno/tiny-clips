@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- macOS adds dedicated Screenshot Region (⌃⌥⌘1) and Screenshot Window (⌃⌥⌘2) global hotkeys that skip the capture picker and go straight to region or window selection, similar to macOS's built-in ⇧⌘4 shortcuts. Rebind or clear them anytime in Settings > Shortcuts.
+
 ## v1.6.1-mac - 2026-08-18
 
 ### Fixed

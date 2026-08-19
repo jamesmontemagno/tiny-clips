@@ -96,6 +96,10 @@ public interface ICaptureSettings
     int GifHotKeyModifiers { get; set; }
     int OcrHotKeyCode { get; set; }
     int OcrHotKeyModifiers { get; set; }
+    int ScreenshotRegionHotKeyCode { get; set; }
+    int ScreenshotRegionHotKeyModifiers { get; set; }
+    int ScreenshotWindowHotKeyCode { get; set; }
+    int ScreenshotWindowHotKeyModifiers { get; set; }
 
     ImageFormat ImageFormat { get; set; }
     bool ShouldCopyToClipboard(CaptureType type);
