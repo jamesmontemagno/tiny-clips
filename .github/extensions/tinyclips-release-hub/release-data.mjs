@@ -896,7 +896,7 @@ export async function performReleaseAction(action, input) {
             throw new Error(`Release PR #${pullRequest.number} is still a draft.`);
         }
         if (pullRequest.state === "OPEN") {
-            await run("gh", ["pr", "merge", String(pullRequest.number), "--merge", "--delete-branch"]);
+            await run("gh", ["pr", "merge", String(pullRequest.number), "--merge", "--auto", "--delete-branch"]);
         }
         const merged = JSON.parse(await run("gh", [
             "pr", "view", String(pullRequest.number),
@@ -941,7 +941,7 @@ export async function performReleaseAction(action, input) {
         if (pullRequest.isDraft) {
             throw new Error(`Release metadata PR #${pullRequest.number} is still a draft.`);
         }
-        await run("gh", ["pr", "merge", String(pullRequest.number), "--merge", "--delete-branch"]);
+        await run("gh", ["pr", "merge", String(pullRequest.number), "--merge", "--auto", "--delete-branch"]);
         const merged = JSON.parse(await run("gh", [
             "pr", "view", String(pullRequest.number),
             "--json", "state,mergedAt,mergeCommit,url",
