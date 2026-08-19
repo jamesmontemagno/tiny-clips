@@ -36,7 +36,7 @@ jobs:
           xcode-version: '26.2'
 
       - name: Cache DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.xcodeproj/project.pbxproj') }}
@@ -465,7 +465,7 @@ jobs:
           sed -i '' "s/sha256 \".*\"/sha256 \"$RELEASE_SHA\"/" Casks/tiny-clips.rb
 
       - name: Create release metadata pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           base: main
           commit-message: "Update release metadata for ${{ env.RELEASE_TAG }}"
