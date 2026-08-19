@@ -96,11 +96,14 @@ if [[ -n "$INPUT_VERSION" ]]; then
     VERSION="$INPUT_VERSION"
 else
     if [[ "$PLATFORM" == "mac" ]]; then
-        if [[ ! "$APP_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            echo "❌ mac app version must be X.Y in Info.plist, got: $APP_VERSION" >&2
+        if [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            VERSION="v${APP_VERSION}.0-mac"
+        elif [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="v${APP_VERSION}-mac"
+        else
+            echo "❌ mac app version must be X.Y or X.Y.Z in Info.plist, got: $APP_VERSION" >&2
             exit 1
         fi
-        VERSION="v${APP_VERSION}.0-mac"
     else
         LATEST_WINDOWS_TAG="$(git tag --list 'v*-windows' --sort=-creatordate | head -n 1)"
         if [[ -z "$LATEST_WINDOWS_TAG" ]]; then
@@ -118,17 +121,27 @@ else
 fi
 
 if [[ "$PLATFORM" == "mac" ]]; then
-    if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-mac)?$ ]]; then
+    if [[ ! "$VERSION" =~ ^v[0-9]+(\.[0-9]+){2,3}(-mac)?$ ]]; then
         echo "❌ Invalid mac version format: $VERSION" >&2
-        echo "Expected: vX.Y.Z or vX.Y.Z-mac" >&2
+        echo "Expected: vX.Y.Z[-mac], vX.Y.Z.W[-mac]" >&2
         exit 1
     fi
     if [[ ! "$VERSION" =~ -mac$ ]]; then
         VERSION="${VERSION}-mac"
     fi
-    if [[ -n "$APP_VERSION" && ! "$VERSION" =~ ^v${APP_VERSION}\.[0-9]+-mac$ ]]; then
-        echo "❌ mac tag version ($VERSION) does not align with Info.plist version ($APP_VERSION)." >&2
-        exit 1
+    if [[ -z "$INPUT_VERSION" && -n "$APP_VERSION" ]]; then
+        if [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            EXPECTED_VERSION="v${APP_VERSION}.0-mac"
+        elif [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            EXPECTED_VERSION="v${APP_VERSION}-mac"
+        else
+            echo "❌ mac app version must be X.Y or X.Y.Z in Info.plist, got: $APP_VERSION" >&2
+            exit 1
+        fi
+        if [[ "$VERSION" != "$EXPECTED_VERSION" ]]; then
+            echo "❌ mac tag version ($VERSION) does not align with Info.plist version ($APP_VERSION)." >&2
+            exit 1
+        fi
     fi
     RELEASE_HEADING="## ${VERSION} - ${TODAY}"
     SECTION_HEADER_PREFIX="### "

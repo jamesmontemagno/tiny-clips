@@ -118,22 +118,36 @@ if ($Platform -eq "mac") {
     $unreleasedLine = "## Unreleased"
     $infoPlistPath = Join-Path $repoRoot "mac\TinyClips\Info.plist"
     $appVersion = Get-PlistValue -Path $infoPlistPath -KeyName "CFBundleShortVersionString"
+    $userProvidedVersion = $PSBoundParameters.ContainsKey('Version')
 
     if (-not $Version) {
-        if ($appVersion -notmatch '^[0-9]+\.[0-9]+$') {
-            throw "mac app version must be X.Y in Info.plist, got: $appVersion"
+        if ($appVersion -match '^[0-9]+\.[0-9]+$') {
+            $Version = "v$appVersion.0-mac"
+        } elseif ($appVersion -match '^[0-9]+\.[0-9]+\.[0-9]+$') {
+            $Version = "v$appVersion-mac"
+        } else {
+            throw "mac app version must be X.Y or X.Y.Z in Info.plist, got: $appVersion"
         }
-        $Version = "v$appVersion.0-mac"
     }
 
-    if ($Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-mac)?$') {
-        throw "Invalid mac version format: $Version (expected vX.Y.Z or vX.Y.Z-mac)"
+    if ($Version -notmatch '^v[0-9]+(\.[0-9]+){2,3}(-mac)?$') {
+        throw "Invalid mac version format: $Version (expected vX.Y.Z[-mac], vX.Y.Z.W[-mac])"
     }
     if ($Version -notmatch '-mac$') {
         $Version = "$Version-mac"
     }
-    if ($Version -notmatch "^v$([regex]::Escape($appVersion))\.[0-9]+-mac$") {
-        throw "mac tag version ($Version) does not align with Info.plist version ($appVersion)."
+    if (-not $userProvidedVersion) {
+        if ($appVersion -match '^[0-9]+\.[0-9]+$') {
+            $expectedVersion = "v$appVersion.0-mac"
+        } elseif ($appVersion -match '^[0-9]+\.[0-9]+\.[0-9]+$') {
+            $expectedVersion = "v$appVersion-mac"
+        } else {
+            throw "mac app version must be X.Y or X.Y.Z in Info.plist, got: $appVersion"
+        }
+
+        if ($Version -ne $expectedVersion) {
+            throw "mac tag version ($Version) does not align with Info.plist version ($appVersion)."
+        }
     }
 } else {
     $changelogPath = Join-Path $repoRoot "windows\CHANGELOG.md"

@@ -36,7 +36,7 @@ On Windows, use PowerShell:
 powershell -ExecutionPolicy Bypass -File .github/skills/tag-new-release/tag-new-release.ps1 -Platform windows -Version v1.0.9-windows
 ```
 
-If `--version` is omitted:
+If `--version` is provided, that exact tag value is used for the release. If `--version` is omitted:
 - macOS defaults to `v<Info.plist CFBundleShortVersionString>.0-mac` (for example, `v1.5.0-mac`)
 - Windows defaults to incrementing patch from the latest `v*-windows` tag.
 
@@ -46,7 +46,7 @@ When asked to tag a new release:
 
 1. **Check existing tags** - Inspect recent git tags for the selected platform.
 2. **Determine release version**:
-   - macOS: Validate against `mac/TinyClips/Info.plist` `CFBundleShortVersionString`
+   - macOS: If the user provides a tag version, use it as the source of truth; otherwise validate it against `mac/TinyClips/Info.plist` `CFBundleShortVersionString`
    - Windows: Use provided tag or infer by incrementing the latest `-windows` patch tag
 3. **Read platform changelog**:
    - macOS: root `CHANGELOG.md`
@@ -83,7 +83,8 @@ The tag message should include cleanly formatted release notes from the selected
 - Do not create a release tag from a dirty working directory.
 - Do not overwrite an existing tag.
 - Do not push tags without explicit user approval.
-- If the requested version conflicts with app version or existing tags, stop and ask the user how to proceed.
+- If the requested version conflicts with existing tags, stop and ask the user how to proceed.
+- When the version is provided explicitly by the user, honor that value even if it differs from the app's current `Info.plist` version.
 
 ## Files included
 
