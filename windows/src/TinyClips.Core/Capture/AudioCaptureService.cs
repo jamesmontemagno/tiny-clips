@@ -20,6 +20,7 @@ public sealed class AudioCaptureService : IDisposable
     private readonly bool _captureSystem;
     private readonly bool _captureMic;
     private readonly string? _micDeviceId;
+    private readonly bool _limitMicrophone;
     private readonly object _gate = new();
     private readonly List<TimelineAlignedWaveProvider> _buffers = new();
 
@@ -32,11 +33,17 @@ public sealed class AudioCaptureService : IDisposable
     private int _systemMuted;
     private int _microphoneMuted;
 
-    public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId)
+    /// <param name="limitMicrophone">
+    /// When true, a soft-knee limiter (<see cref="SoftKneeLimiterSampleProvider"/>) is applied to
+    /// the microphone source before mixing so hot input rounds off instead of hard-clipping.
+    /// System/loopback audio is never limited.
+    /// </param>
+    public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId, bool limitMicrophone = true)
     {
         _captureSystem = captureSystem;
         _captureMic = captureMic;
         _micDeviceId = micDeviceId;
+        _limitMicrophone = limitMicrophone;
     }
 
     /// <summary>True once at least one requested source started successfully.</summary>
@@ -117,8 +124,14 @@ public sealed class AudioCaptureService : IDisposable
                 }
             };
 
+            ISampleProvider source = ToStereo48k(buffer.ToSampleProvider());
+            if (!isLoopback && _limitMicrophone)
+            {
+                source = new SoftKneeLimiterSampleProvider(source);
+            }
+
             var provider = new MuteableSampleProvider(
-                ToStereo48k(buffer.ToSampleProvider()),
+                source,
                 () => isLoopback
                     ? Volatile.Read(ref _systemMuted) != 0
                     : Volatile.Read(ref _microphoneMuted) != 0);
@@ -145,7 +158,7 @@ public sealed class AudioCaptureService : IDisposable
             }
 
             IsActive = true;
-            WebcamDiagnostics.Log($"Audio source '{sourceName}' started: {capture.WaveFormat.SampleRate}Hz {capture.WaveFormat.Channels}ch {capture.WaveFormat.BitsPerSample}bit {capture.WaveFormat.Encoding}.");
+            WebcamDiagnostics.Log($"Audio source '{sourceName}' started: {capture.WaveFormat.SampleRate}Hz {capture.WaveFormat.Channels}ch {capture.WaveFormat.BitsPerSample}bit {capture.WaveFormat.Encoding}{(!isLoopback ? $" limiter={(_limitMicrophone ? "on" : "off")}" : string.Empty)}.");
         }
         catch (Exception ex)
         {

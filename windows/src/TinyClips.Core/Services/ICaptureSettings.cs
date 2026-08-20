@@ -39,6 +39,8 @@ public interface ICaptureSettings
     bool RecordAudio { get; set; }
     bool RecordMicrophone { get; set; }
     string SelectedMicrophoneId { get; set; }
+    /// <summary>Apply a soft-knee limiter to microphone audio so hot input rounds off instead of clipping. Default true.</summary>
+    bool MicrophoneLimiterEnabled { get; set; }
     bool WebcamEnabled { get; set; }
     string SelectedWebcamId { get; set; }
     WebcamShape WebcamShape { get; set; }
