@@ -58,7 +58,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
 
         // An unbound default (no modifiers, no key) means "clear the shortcut"; it is always
         // valid and intentionally fails the modifier/key requirements, so skip validation.
-        var isUnboundDefault = defaultBinding.Modifiers == HotKeyModifiers.None && defaultBinding.VirtualKey == 0;
+        var isUnboundDefault = defaultBinding.IsUnbound;
         if (!isUnboundDefault)
         {
             var validation = ViewModel.ValidateHotKey(action, defaultBinding);

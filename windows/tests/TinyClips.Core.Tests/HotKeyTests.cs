@@ -137,6 +137,9 @@ public sealed class HotKeyTests
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.ScreenshotWindow));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.GetBinding(HotKeyAction.ScreenshotRegion));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.GetBinding(HotKeyAction.ScreenshotWindow));
+        Assert.True(service.GetBinding(HotKeyAction.ScreenshotRegion).IsUnbound);
+        Assert.Equal("Not set", service.GetBinding(HotKeyAction.ScreenshotRegion).DisplayString);
+        Assert.False(service.GetBinding(HotKeyAction.Screenshot).IsUnbound);
     }
 
     [Fact]

@@ -4,7 +4,13 @@ public readonly record struct HotKeyDefinition(HotKeyModifiers Modifiers, uint V
 {
     public int ModifiersValue => (int)Modifiers;
 
-    public string DisplayString => FormatModifiers(Modifiers) + FormatVirtualKey(VirtualKey);
+    /// <summary>
+    /// True when no modifiers and no key are set; used for optional actions that are not
+    /// assigned a global shortcut (nothing is registered for them).
+    /// </summary>
+    public bool IsUnbound => Modifiers == HotKeyModifiers.None && VirtualKey == 0;
+
+    public string DisplayString => IsUnbound ? "Not set" : FormatModifiers(Modifiers) + FormatVirtualKey(VirtualKey);
 
     private static string FormatModifiers(HotKeyModifiers modifiers)
     {

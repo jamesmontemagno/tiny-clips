@@ -2312,7 +2312,7 @@ public partial class App : Application
                 () => _ = CaptureScreenshotAsync());
 
             var screenshotRegion = hotKeys.GetBinding(HotKeyAction.ScreenshotRegion);
-            if (screenshotRegion.Modifiers != HotKeyModifiers.None && screenshotRegion.VirtualKey != 0)
+            if (!screenshotRegion.IsUnbound)
             {
                 manager.Add(
                     $"Screenshot region ({screenshotRegion.DisplayString})",
@@ -2322,7 +2322,7 @@ public partial class App : Application
             }
 
             var screenshotWindow = hotKeys.GetBinding(HotKeyAction.ScreenshotWindow);
-            if (screenshotWindow.Modifiers != HotKeyModifiers.None && screenshotWindow.VirtualKey != 0)
+            if (!screenshotWindow.IsUnbound)
             {
                 manager.Add(
                     $"Screenshot window ({screenshotWindow.DisplayString})",

@@ -89,7 +89,7 @@ public sealed class HotKeyService : IHotKeyService
         // reported as conflicting with each other.
         var bindings = actions
             .Select(a => new KeyValuePair<HotKeyAction, HotKeyDefinition>(a, GetBinding(a)))
-            .Where(pair => pair.Value.Modifiers != HotKeyModifiers.None || pair.Value.VirtualKey != 0)
+            .Where(pair => !pair.Value.IsUnbound)
             .ToArray();
 
         return HotKeyValidator.Validate(action, binding, bindings, GetStopBinding());
