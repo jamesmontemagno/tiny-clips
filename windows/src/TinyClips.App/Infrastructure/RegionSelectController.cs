@@ -14,12 +14,14 @@ public static class RegionSelectController
     /// <summary>
     /// Starts capturing a frozen frame of each monitor. Kick this off as early as possible (e.g.
     /// while the capture picker is still showing) so the overlay can appear without waiting.
-    /// Failures resolve to null entries rather than faulting.
+    /// One task per monitor is returned (never aggregated) so each overlay can reveal as soon as
+    /// its own frame arrives rather than waiting for the slowest monitor. Failures resolve to
+    /// null rather than faulting.
     /// </summary>
-    public static Task<CapturedFrame?[]> CaptureBackdropsAsync(IReadOnlyList<MonitorInfo> monitors)
+    public static IReadOnlyList<Task<CapturedFrame?>> CaptureBackdropsAsync(IReadOnlyList<MonitorInfo> monitors)
     {
         var capture = App.Services.GetRequiredService<IScreenCaptureService>();
-        var tasks = monitors.Select(async monitor =>
+        return monitors.Select(async monitor =>
         {
             try
             {
@@ -31,7 +33,6 @@ public static class RegionSelectController
                 return null;
             }
         }).ToArray();
-        return Task.WhenAll(tasks);
     }
 
     public static Task<RegionSelectResult?> RunAsync(IReadOnlyList<MonitorInfo> monitors) =>
@@ -45,14 +46,18 @@ public static class RegionSelectController
     /// </summary>
     public static async Task<RegionSelectResult?> RunAsync(
         IReadOnlyList<MonitorInfo> monitors,
-        Task<CapturedFrame?[]>? backdrops)
+        IReadOnlyList<Task<CapturedFrame?>>? backdrops)
     {
         if (monitors.Count == 0)
         {
             return null;
         }
 
-        backdrops ??= CaptureBackdropsAsync(monitors);
+        if (backdrops is null || backdrops.Count != monitors.Count)
+        {
+            backdrops = CaptureBackdropsAsync(monitors);
+        }
+
         CaptureFlowTrace.Mark("region: overlay windows creating");
 
         var completion = new TaskCompletionSource<RegionSelectResult?>(
@@ -77,11 +82,7 @@ public static class RegionSelectController
 
         for (var i = 0; i < monitors.Count; i++)
         {
-            var index = i;
-            var backdropTask = backdrops.ContinueWith(
-                t => t.IsCompletedSuccessfully ? t.Result[index] : null,
-                TaskScheduler.Default);
-            windows.Add(new RegionSelectWindow(monitors[i], backdropTask, Complete));
+            windows.Add(new RegionSelectWindow(monitors[i], backdrops[i], Complete));
         }
 
         foreach (var window in windows)

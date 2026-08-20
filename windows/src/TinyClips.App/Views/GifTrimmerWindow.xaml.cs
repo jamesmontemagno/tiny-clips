@@ -34,7 +34,7 @@ public sealed partial class GifTrimmerWindow : Window
     private readonly string _filePath;
     private readonly List<SoftwareBitmap?> _frames = new();
     private readonly List<ushort> _delays = new();
-    private Task _decodeTask = Task.CompletedTask;
+    private readonly Task _decodeTask;
     private readonly System.Threading.CancellationTokenSource _decodeCts = new();
     private int _start;
     private int _end;
@@ -73,26 +73,31 @@ public sealed partial class GifTrimmerWindow : Window
         };
 
         Closed += OnWindowClosed;
-        _ = LoadAsync();
+        _decodeTask = LoadAsync(_decodeCts.Token);
     }
 
-    private async Task LoadAsync()
+    /// <summary>
+    /// Owns the GIF stream for the whole load: the first frame is decoded up front so the window
+    /// is usable immediately, then the remaining frames stream in. The stream is disposed in one
+    /// place regardless of where the load fails or is cancelled, and cleanup awaits this task.
+    /// </summary>
+    private async Task LoadAsync(System.Threading.CancellationToken cancellationToken)
     {
+        IRandomAccessStream? stream = null;
         try
         {
             var file = await StorageFile.GetFileFromPathAsync(_filePath);
-            var stream = await file.OpenAsync(FileAccessMode.Read);
+            stream = await file.OpenAsync(FileAccessMode.Read);
             var decoder = await BitmapDecoder.CreateAsync(BitmapDecoder.GifDecoderId, stream);
             var frameCount = (int)decoder.FrameCount;
-            if (frameCount == 0)
+            if (frameCount == 0 || cancellationToken.IsCancellationRequested)
             {
-                stream.Dispose();
                 return;
             }
 
             // Decode only the first frame up front so the window is usable immediately; the
-            // remaining frames stream in on a background task (a 30 s GIF is ~900 frames, which
-            // previously blocked the window on several seconds of serial decoding).
+            // remaining frames stream in below (a 30 s GIF is ~900 frames, which previously
+            // blocked the window on several seconds of serial decoding).
             for (var i = 0; i < frameCount; i++)
             {
                 _frames.Add(null);
@@ -100,6 +105,10 @@ public sealed partial class GifTrimmerWindow : Window
             }
 
             await DecodeFrameAsync(decoder, 0);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
 
             _start = 0;
             _end = frameCount - 1;
@@ -113,30 +122,6 @@ public sealed partial class GifTrimmerWindow : Window
             SetCurrent(0);
             CaptureFlowTrace.Mark("gif trimmer: first frame visible");
 
-            _decodeTask = DecodeRemainingFramesAsync(decoder, stream, frameCount, _decodeCts.Token);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"GIF trimmer load failed: {ex}");
-        }
-    }
-
-    private async Task DecodeFrameAsync(BitmapDecoder decoder, int index)
-    {
-        var frame = await decoder.GetFrameAsync((uint)index);
-        var bitmap = await frame.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-        _frames[index] = bitmap;
-        _delays[index] = await ReadDelayAsync(frame);
-    }
-
-    private async Task DecodeRemainingFramesAsync(
-        BitmapDecoder decoder,
-        IRandomAccessStream stream,
-        int frameCount,
-        System.Threading.CancellationToken cancellationToken)
-    {
-        try
-        {
             for (var i = 1; i < frameCount && !cancellationToken.IsCancellationRequested; i++)
             {
                 await DecodeFrameAsync(decoder, i);
@@ -151,12 +136,20 @@ public sealed partial class GifTrimmerWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"GIF trimmer background decode failed: {ex}");
+            System.Diagnostics.Debug.WriteLine($"GIF trimmer load failed: {ex}");
         }
         finally
         {
-            stream.Dispose();
+            stream?.Dispose();
         }
+    }
+
+    private async Task DecodeFrameAsync(BitmapDecoder decoder, int index)
+    {
+        var frame = await decoder.GetFrameAsync((uint)index);
+        var bitmap = await frame.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        _frames[index] = bitmap;
+        _delays[index] = await ReadDelayAsync(frame);
     }
 
     private static async Task<ushort> ReadDelayAsync(BitmapFrame frame)

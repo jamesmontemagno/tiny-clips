@@ -530,7 +530,7 @@ public partial class App : Application
 
         var captureFlowCts = new CancellationTokenSource();
         _captureFlowCts = captureFlowCts;
-        Task<CapturedFrame?[]>? earlyBackdrops = null;
+        IReadOnlyList<Task<CapturedFrame?>>? earlyBackdrops = null;
         IReadOnlyList<MonitorInfo>? earlyBackdropMonitors = null;
         long earlyBackdropStarted = 0;
         try
@@ -770,7 +770,7 @@ public partial class App : Application
     // A backdrop captured while the picker was showing; refreshed if older than this on use.
     private static readonly TimeSpan EarlyBackdropMaxAge = TimeSpan.FromMilliseconds(600);
 
-    private sealed record EarlyBackdrop(IReadOnlyList<MonitorInfo> Monitors, Task<CapturedFrame?[]> Frames, long StartedTimestamp)
+    private sealed record EarlyBackdrop(IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<Task<CapturedFrame?>> Frames, long StartedTimestamp)
     {
         public bool IsFreshFor(IReadOnlyList<MonitorInfo> monitors) =>
             Stopwatch.GetElapsedTime(StartedTimestamp) <= EarlyBackdropMaxAge

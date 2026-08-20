@@ -76,14 +76,24 @@ internal static partial class WgcInterop
 
             var d3d = CreateD3D11Device()
                 ?? throw new InvalidOperationException("Failed to create a Direct3D 11 device.");
+
+            // The device is shared across concurrent WGC sessions whose frame-pool callbacks run
+            // on different threads, so multithread protection on the immediate context is
+            // required — not best-effort. Without it, sharing would be unsafe; fail instead.
             try
             {
-                using var multithread = d3d.QueryInterfaceOrNull<ID3D11Multithread>();
-                multithread?.SetMultithreadProtected(true);
+                using var multithread = d3d.QueryInterfaceOrNull<ID3D11Multithread>()
+                    ?? throw new NotSupportedException("ID3D11Multithread is not available on this device.");
+                multithread.SetMultithreadProtected(true);
+                if (!multithread.GetMultithreadProtected())
+                {
+                    throw new NotSupportedException("Failed to enable multithread protection on the Direct3D 11 device.");
+                }
             }
             catch
             {
-                // Best-effort; consumers also serialize their own context use.
+                d3d.Dispose();
+                throw;
             }
 
             var winrt = CreateDirect3DDevice(d3d);

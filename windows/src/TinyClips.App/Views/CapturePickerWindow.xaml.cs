@@ -141,21 +141,24 @@ public sealed partial class CapturePickerWindow : Window
 
     private void PositionNearTopOfPrimaryDisplay()
     {
+        // The pooled window may still sit on a previous primary monitor while hidden. Move it to
+        // the target work area first so the DPI transition happens before measuring.
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var work = DisplayArea.Primary?.WorkArea
+            ?? DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var target = AppWindowPlacement.PrepareForTargetWorkArea(AppWindow, hwnd, work);
+        var scale = target.Scale;
+
         RootGrid.UpdateLayout();
         RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var scale = AppWindowPlacement.GetScaleForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var width = (int)Math.Ceiling(RootGrid.DesiredSize.Width * scale);
         var height = (int)Math.Ceiling(RootGrid.DesiredSize.Height * scale);
         width = Math.Max(width, (int)(360 * scale));
         height = Math.Max(height, (int)(64 * scale));
 
-        AppWindow.Resize(new SizeInt32(width, height));
-        if (DisplayArea.Primary?.WorkArea is { } work)
-        {
-            var x = work.X + ((work.Width - width) / 2);
-            var y = work.Y + (int)(72 * scale);
-            AppWindow.Move(new PointInt32(x, y));
-        }
+        var x = work.X + ((work.Width - width) / 2);
+        var y = work.Y + (int)(72 * scale);
+        AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
 
         _windowWidth = width;
         _windowHeight = height;
