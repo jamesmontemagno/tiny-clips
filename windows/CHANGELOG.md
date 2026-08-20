@@ -15,6 +15,8 @@ own `CHANGELOG.md` at the repository root.
   selection* (off by default). Off saves the frozen frame shown behind the region overlay
   instantly (Snipping Tool behavior, no second capture); on re-captures the live screen after the
   overlay closes, which reflects changes made while selecting.
+- **Teleprompter transcript file import** — Settings → Teleprompter can now load a `.txt`, `.md`,
+  or `.csv` file up to 1 MB to replace the recording transcript.
 - **Tray Capture Text** — A compact action beside **Clips Library** starts region text recognition
   and copies the result to the clipboard.
 - **OCR region capture** — Select **Recognize Text** in the capture picker or press `Ctrl+Shift+T`
