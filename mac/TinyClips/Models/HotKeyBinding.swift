@@ -32,7 +32,7 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
 
 /// Represents a global keyboard shortcut as a Carbon keyCode + modifiers bitmask.
 /// Provides display string and SwiftUI `KeyboardShortcut` conversion helpers.
-struct HotKeyBinding: Equatable {
+struct HotKeyBinding: Hashable {
     let keyCode: Int
     let carbonModifiers: Int
 
