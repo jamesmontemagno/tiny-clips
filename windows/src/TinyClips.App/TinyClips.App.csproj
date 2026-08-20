@@ -103,6 +103,12 @@
 
   <!-- Publish Properties -->
   <PropertyGroup>
+    <!--
+      ReadyToRun pre-compiles IL so the first capture after launch doesn't pay JIT cost for every
+      overlay window type. Applies to `dotnet publish`; the MSIX `dotnet build` path in CI is
+      framework-dependent and unaffected.
+    -->
+    <PublishReadyToRun Condition="'$(PublishReadyToRun)' == '' and '$(Configuration)' == 'Release'">True</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">False</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug' and ('$(SelfContained)' == 'true' or '$(PublishSelfContained)' == 'true')">True</PublishTrimmed>

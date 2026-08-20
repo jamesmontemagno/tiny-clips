@@ -14,10 +14,14 @@ namespace TinyClips.Core.Capture;
 /// </summary>
 public sealed partial class ScreenCaptureService : IScreenCaptureService
 {
-    // Number of frames to observe before grabbing one, so the capture-start
-    // transition / border flash isn't what we encode.
-    private const int SettleFrames = 2;
+    // Window targets can show a brief capture-start transition on the first frame; monitor
+    // targets (border disabled via IsBorderRequired=false) are clean on the first frame, so
+    // waiting for a second one would only add a vsync of latency.
+    private const int SettleFramesForWindow = 2;
+    private const int SettleFramesForMonitor = 1;
     private const int CaptureTimeoutMs = 4000;
+
+    public void WarmUp() => WgcInterop.WarmUpSharedDevice();
 
     public Task<CapturedFrame> CaptureMonitorAsync(
         nint hMonitor,
@@ -37,18 +41,14 @@ public sealed partial class ScreenCaptureService : IScreenCaptureService
             throw new NotSupportedException("Windows.Graphics.Capture is not supported on this device.");
         }
 
-        ID3D11Device? d3dDevice = null;
-        IDirect3DDevice? device = null;
         Direct3D11CaptureFramePool? framePool = null;
         GraphicsCaptureSession? session = null;
         ID3D11Texture2D? stagingTexture = null;
+        var settleFrames = target.IsWindow ? SettleFramesForWindow : SettleFramesForMonitor;
 
         try
         {
-            d3dDevice = WgcInterop.CreateD3D11Device()
-                ?? throw new InvalidOperationException("Failed to create a Direct3D 11 device.");
-            device = WgcInterop.CreateDirect3DDevice(d3dDevice)
-                ?? throw new InvalidOperationException("Failed to create the WinRT IDirect3DDevice.");
+            var (d3dDevice, device) = WgcInterop.GetSharedDevice();
 
             var item = target.CreateItem()
                 ?? throw new InvalidOperationException("Failed to create a GraphicsCaptureItem for the target.");
@@ -112,7 +112,7 @@ public sealed partial class ScreenCaptureService : IScreenCaptureService
                         context.CopyResource(stagingTexture, frameTexture);
                         frameCount++;
 
-                        if (frameCount >= SettleFrames)
+                        if (frameCount >= settleFrames)
                         {
                             tcs.TrySetResult(true);
                         }
@@ -162,8 +162,7 @@ public sealed partial class ScreenCaptureService : IScreenCaptureService
             session?.Dispose();
             framePool?.Dispose();
             stagingTexture?.Dispose();
-            device?.Dispose();
-            d3dDevice?.Dispose();
+            // The D3D device pair is process-shared (see WgcInterop.GetSharedDevice); do not dispose.
         }
     }
 
@@ -189,12 +188,26 @@ public sealed partial class ScreenCaptureService : IScreenCaptureService
             var pixels = new byte[width * height * 4];
             var src = (byte*)mapped.DataPointer;
             int srcPitch = (int)mapped.RowPitch;
+            int rowBytes = width * 4;
 
-            for (int row = 0; row < height; row++)
+            fixed (byte* dst = pixels)
             {
-                int srcOffset = ((y + row) * srcPitch) + (x * 4);
-                int dstOffset = row * width * 4;
-                Marshal.Copy(new nint(src + srcOffset), pixels, dstOffset, width * 4);
+                if (x == 0 && srcPitch == rowBytes)
+                {
+                    // Tightly packed source: one contiguous copy.
+                    Buffer.MemoryCopy(src + ((long)y * srcPitch), dst, pixels.Length, (long)height * rowBytes);
+                }
+                else
+                {
+                    for (int row = 0; row < height; row++)
+                    {
+                        Buffer.MemoryCopy(
+                            src + ((long)(y + row) * srcPitch) + (x * 4),
+                            dst + ((long)row * rowBytes),
+                            rowBytes,
+                            rowBytes);
+                    }
+                }
             }
 
             return new CapturedFrame(pixels, width, height);

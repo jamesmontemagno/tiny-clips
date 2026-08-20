@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Foundation;
 using Windows.Graphics;
+using Windows.Graphics.Imaging;
 using Windows.System;
 using TinyClips.Core.Capture;
 using WinRT.Interop;
@@ -25,22 +26,22 @@ public sealed partial class RegionSelectWindow : Window
     private const uint LwaAlpha = 0x00000002;
 
     private readonly MonitorInfo _monitor;
-    private readonly CapturedFrame? _backdropFrame;
+    private readonly Task<CapturedFrame?> _backdropTask;
     private readonly Action<RegionSelectResult?> _onComplete;
     private readonly nint _hwnd;
+    private CapturedFrame? _backdropFrame;
     private Point _start;
     private bool _dragging;
     private bool _completed;
     private bool _closedByController;
     private bool _rootLoaded;
     private bool _backdropReady;
-    private bool _revealQueued;
     private bool _revealed;
 
-    internal RegionSelectWindow(MonitorInfo monitor, CapturedFrame? backdropFrame, Action<RegionSelectResult?> onComplete)
+    internal RegionSelectWindow(MonitorInfo monitor, Task<CapturedFrame?> backdropTask, Action<RegionSelectResult?> onComplete)
     {
         _monitor = monitor;
-        _backdropFrame = backdropFrame;
+        _backdropTask = backdropTask;
         _onComplete = onComplete;
 
         InitializeComponent();
@@ -48,19 +49,15 @@ public sealed partial class RegionSelectWindow : Window
         ConfigurePresenter();
         _hwnd = WindowNative.GetWindowHandle(this);
         SetWindowAlpha(_hwnd, 0);
+        // Keep the overlay itself out of any capture that runs while it is (or was just) visible.
+        OverlayWindowHelpers.ExcludeFromCapture(_hwnd);
         AppWindow.Move(new PointInt32(monitor.X, monitor.Y));
         AppWindow.Resize(new SizeInt32(monitor.Width, monitor.Height));
 
-        if (_backdropFrame is not null)
-        {
-            Backdrop.ImageOpened += OnBackdropReady;
-            Backdrop.ImageFailed += OnBackdropReady;
-        }
-
-        ShowBackdrop();
         RootGrid.Loaded += OnRootGridLoaded;
         Activated += OnActivated;
         Closed += OnClosed;
+        _ = ShowBackdropWhenReadyAsync();
     }
 
     /// <summary>Shows the overlay on the given monitor and resolves with the chosen region.</summary>
@@ -76,75 +73,84 @@ public sealed partial class RegionSelectWindow : Window
         RootGrid.Focus(FocusState.Programmatic);
     }
 
-    private async void OnRootGridLoaded(object sender, RoutedEventArgs e)
+    private void OnRootGridLoaded(object sender, RoutedEventArgs e)
     {
         RootGrid.Loaded -= OnRootGridLoaded;
         _rootLoaded = true;
-        TryQueueReveal();
-
-        await Task.Delay(250);
-        _backdropReady = true;
-        TryQueueReveal();
-    }
-
-    private void OnBackdropReady(object sender, RoutedEventArgs e)
-    {
-        Backdrop.ImageOpened -= OnBackdropReady;
-        Backdrop.ImageFailed -= OnBackdropReady;
-        _backdropReady = true;
-        TryQueueReveal();
-    }
-
-    private async void TryQueueReveal()
-    {
-        if (_revealQueued || !_rootLoaded || !_backdropReady)
-        {
-            return;
-        }
-
-        _revealQueued = true;
-        await Task.Delay(50);
-        RevealWindow();
-    }
-
-    private void RevealWindow()
-    {
-        if (_revealed || _completed || _closedByController)
-        {
-            return;
-        }
-
-        _revealed = true;
-        SetWindowAlpha(_hwnd, 255);
+        TryReveal();
     }
 
     /// <summary>
     /// Paints the pre-captured monitor snapshot behind the dim overlay so the user sees a true
-    /// view of the screen, with only the area outside the selection darkened.
+    /// view of the screen, with only the area outside the selection darkened. The pixel upload
+    /// happens off the UI thread; only the (async) source assignment runs here.
     /// </summary>
-    private void ShowBackdrop()
+    private async Task ShowBackdropWhenReadyAsync()
     {
-        if (_backdropFrame is null)
-        {
-            _backdropReady = true;
-            return;
-        }
-
         try
         {
-            var bitmap = new WriteableBitmap(_backdropFrame.Width, _backdropFrame.Height);
-            using (var stream = bitmap.PixelBuffer.AsStream())
+            var frame = await _backdropTask;
+            if (_completed || _closedByController)
             {
-                stream.Write(_backdropFrame.BgraPixels, 0, _backdropFrame.BgraPixels.Length);
+                return;
             }
 
-            bitmap.Invalidate();
-            Backdrop.Source = bitmap;
+            _backdropFrame = frame;
+            if (frame is null)
+            {
+                _backdropReady = true;
+                TryReveal();
+                return;
+            }
+
+            CaptureFlowTrace.Mark($"region: backdrop frame available ({frame.Width}x{frame.Height})");
+            var softwareBitmap = await Task.Run(() => SoftwareBitmap.CreateCopyFromBuffer(
+                frame.BgraPixels.AsBuffer(),
+                BitmapPixelFormat.Bgra8,
+                frame.Width,
+                frame.Height,
+                BitmapAlphaMode.Premultiplied));
+            if (_completed || _closedByController)
+            {
+                softwareBitmap.Dispose();
+                return;
+            }
+
+            var source = new SoftwareBitmapSource();
+            await source.SetBitmapAsync(softwareBitmap);
+            softwareBitmap.Dispose();
+            Backdrop.Source = source;
+            CaptureFlowTrace.Mark("region: backdrop source set");
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Region backdrop paint failed: {ex}");
         }
+
+        _backdropReady = true;
+        TryReveal();
+    }
+
+    private void TryReveal()
+    {
+        if (_revealed || !_rootLoaded || !_backdropReady)
+        {
+            return;
+        }
+
+        _revealed = true;
+        // Let the backdrop source commit to the visual tree before lifting the alpha, otherwise
+        // the first presented frame can be the bare dim without the screen snapshot behind it.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_completed || _closedByController)
+            {
+                return;
+            }
+
+            SetWindowAlpha(_hwnd, 255);
+            CaptureFlowTrace.Mark("region: overlay revealed");
+        });
     }
 
     private void OnOverlaySizeChanged(object sender, SizeChangedEventArgs e)
@@ -283,7 +289,7 @@ public sealed partial class RegionSelectWindow : Window
         _dragging = false;
         RootGrid.ReleasePointerCaptures();
         _onComplete(region is { } selected
-            ? new RegionSelectResult(_monitor.HMonitor, selected)
+            ? new RegionSelectResult(_monitor.HMonitor, selected, _backdropFrame)
             : null);
         Close();
     }

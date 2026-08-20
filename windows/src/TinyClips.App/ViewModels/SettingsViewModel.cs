@@ -359,6 +359,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _showScreenshotEditor;
 
     [ObservableProperty]
+    private bool _screenshotUsesLiveCapture;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ScreenshotCapturePickerAfterCaptureEnabled))]
     private bool _showScreenshotCapturePicker;
 
@@ -738,6 +741,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ScreenshotCountdownEnabled = _settings.ScreenshotCountdownEnabled;
             ScreenshotCountdownDuration = _settings.ScreenshotCountdownDuration;
             ShowScreenshotEditor = _settings.ShowScreenshotEditor;
+            ScreenshotUsesLiveCapture = _settings.ScreenshotUsesLiveCapture;
             ShowScreenshotCapturePicker = _settings.ShowScreenshotCapturePicker;
             ShowScreenshotCapturePickerAfterCapture = _settings.ShowScreenshotCapturePickerAfterCapture;
 
@@ -1095,6 +1099,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         Persist(() => _settings.ScreenshotCountdownDuration = (int)Math.Round(value));
 
     partial void OnShowScreenshotEditorChanged(bool value) => Persist(() => _settings.ShowScreenshotEditor = value);
+
+    partial void OnScreenshotUsesLiveCaptureChanged(bool value) => Persist(() => _settings.ScreenshotUsesLiveCapture = value);
 
     partial void OnShowScreenshotCapturePickerChanged(bool value) =>
         Persist(() =>

@@ -46,6 +46,13 @@ public interface ICaptureSettings
     WebcamCornerPosition WebcamCornerPosition { get; set; }
     double? WebcamCornerRadius { get; set; }
     bool ShowScreenshotEditor { get; set; }
+
+    /// <summary>
+    /// When true, a region screenshot re-captures the screen after the selection overlay closes
+    /// (reflects changes made while selecting, slower). When false (default), the frozen frame
+    /// shown behind the overlay is cropped and saved directly — no second capture.
+    /// </summary>
+    bool ScreenshotUsesLiveCapture { get; set; }
     bool ShowGifTrimmer { get; set; }
     bool SaveImmediatelyScreenshot { get; set; }
     bool SaveImmediatelyVideo { get; set; }

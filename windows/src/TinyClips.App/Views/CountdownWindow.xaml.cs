@@ -49,6 +49,7 @@ public sealed partial class CountdownWindow : Window
     {
         var window = new CountdownWindow(seconds);
         window.Activate();
+        CaptureFlowTrace.Mark("countdown: window shown");
 
         // Resize/position and clip the window to a rounded square only AFTER it has been
         // shown. Applying SetWindowRgn before the first present leaves the surface blank,
@@ -74,23 +75,21 @@ public sealed partial class CountdownWindow : Window
             _timer.Stop();
             _timer.Tick -= OnTick;
 
-            // Hide immediately so the window is gone from the very first recorded frame,
-            // then give the compositor a beat before signalling completion.
-            await AnimateFadeAsync(RootBorder, 0, 140);
-            if (_isCancelled)
-            {
-                return;
-            }
-
-            AppWindow.Hide();
-            await Task.Delay(80);
+            // The card is excluded from capture (WDA_EXCLUDEFROMCAPTURE), so it can never land in
+            // the recording; signal completion immediately and let the fade-out run concurrently
+            // with recording start instead of adding ~220 ms of dead time after "1".
             if (_isCancelled)
             {
                 return;
             }
 
             _completed.TrySetResult(true);
-            Close();
+            CaptureFlowTrace.Mark("countdown: reached zero");
+            await AnimateFadeAsync(RootBorder, 0, 140);
+            if (!_isCancelled)
+            {
+                Close();
+            }
             return;
         }
 

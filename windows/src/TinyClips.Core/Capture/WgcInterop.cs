@@ -45,6 +45,73 @@ internal static partial class WgcInterop
         int GetInterface(in Guid iid, out nint ppvObject);
     }
 
+    private static readonly object SharedDeviceGate = new();
+    private static ID3D11Device? _sharedD3DDevice;
+    private static IDirect3DDevice? _sharedDirect3DDevice;
+
+    /// <summary>
+    /// Returns a process-wide shared Direct3D 11 device pair for WGC capture. Creating a D3D11
+    /// device costs tens of milliseconds (driver load, adapter enumeration), and the capture flow
+    /// used to do it three or four times per capture (one per monitor backdrop, one for the
+    /// screenshot, one for the recorder). The shared device is multithread-protected so the
+    /// immediate context can be used from the WGC frame-pool threads of concurrent sessions, and it
+    /// is recreated transparently if the GPU reports device removal. Callers must not dispose it.
+    /// </summary>
+    internal static (ID3D11Device D3D, IDirect3DDevice WinRT) GetSharedDevice()
+    {
+        lock (SharedDeviceGate)
+        {
+            if (_sharedD3DDevice is not null && _sharedDirect3DDevice is not null)
+            {
+                if (_sharedD3DDevice.DeviceRemovedReason.Success)
+                {
+                    return (_sharedD3DDevice, _sharedDirect3DDevice);
+                }
+
+                _sharedDirect3DDevice.Dispose();
+                _sharedD3DDevice.Dispose();
+                _sharedDirect3DDevice = null;
+                _sharedD3DDevice = null;
+            }
+
+            var d3d = CreateD3D11Device()
+                ?? throw new InvalidOperationException("Failed to create a Direct3D 11 device.");
+            try
+            {
+                using var multithread = d3d.QueryInterfaceOrNull<ID3D11Multithread>();
+                multithread?.SetMultithreadProtected(true);
+            }
+            catch
+            {
+                // Best-effort; consumers also serialize their own context use.
+            }
+
+            var winrt = CreateDirect3DDevice(d3d);
+            if (winrt is null)
+            {
+                d3d.Dispose();
+                throw new InvalidOperationException("Failed to create the WinRT IDirect3DDevice.");
+            }
+
+            _sharedD3DDevice = d3d;
+            _sharedDirect3DDevice = winrt;
+            return (d3d, winrt);
+        }
+    }
+
+    /// <summary>Creates the shared device ahead of time (e.g. at app launch) so the first capture doesn't pay for it.</summary>
+    internal static void WarmUpSharedDevice()
+    {
+        try
+        {
+            _ = GetSharedDevice();
+        }
+        catch
+        {
+            // Warm-up is opportunistic; the real capture path surfaces errors.
+        }
+    }
+
     internal static ID3D11Device? CreateD3D11Device()
     {
         var featureLevels = new[]

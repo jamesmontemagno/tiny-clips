@@ -74,10 +74,9 @@ internal sealed class ContinuousCaptureSession : IDisposable
             throw new NotSupportedException("Windows.Graphics.Capture is not supported on this device.");
         }
 
-        _d3dDevice = WgcInterop.CreateD3D11Device()
-            ?? throw new InvalidOperationException("Failed to create a Direct3D 11 device.");
-        _device = WgcInterop.CreateDirect3DDevice(_d3dDevice)
-            ?? throw new InvalidOperationException("Failed to create the WinRT IDirect3DDevice.");
+        var (d3dDevice, device) = WgcInterop.GetSharedDevice();
+        _d3dDevice = d3dDevice;
+        _device = device;
         _context = _d3dDevice.ImmediateContext;
 
         var item = _target.CreateItem()
@@ -282,12 +281,25 @@ internal sealed class ContinuousCaptureSession : IDisposable
             var pixels = new byte[width * height * 4];
             var src = (byte*)mapped.DataPointer;
             int srcPitch = (int)mapped.RowPitch;
+            int rowBytes = width * 4;
 
-            for (int row = 0; row < height; row++)
+            fixed (byte* dst = pixels)
             {
-                int srcOffset = ((y + row) * srcPitch) + (x * 4);
-                int dstOffset = row * width * 4;
-                Marshal.Copy(new nint(src + srcOffset), pixels, dstOffset, width * 4);
+                if (x == 0 && srcPitch == rowBytes)
+                {
+                    Buffer.MemoryCopy(src + ((long)y * srcPitch), dst, pixels.Length, (long)height * rowBytes);
+                }
+                else
+                {
+                    for (int row = 0; row < height; row++)
+                    {
+                        Buffer.MemoryCopy(
+                            src + ((long)(y + row) * srcPitch) + (x * 4),
+                            dst + ((long)row * rowBytes),
+                            rowBytes,
+                            rowBytes);
+                    }
+                }
             }
 
             return new CapturedFrame(pixels, width, height);
@@ -325,9 +337,8 @@ internal sealed class ContinuousCaptureSession : IDisposable
             _framePool = null;
             _stagingTexture?.Dispose();
             _stagingTexture = null;
-            _device?.Dispose();
+            // The device pair is process-shared (WgcInterop.GetSharedDevice); only drop our references.
             _device = null;
-            _d3dDevice?.Dispose();
             _d3dDevice = null;
             _context = null;
             _latestPixels = null;

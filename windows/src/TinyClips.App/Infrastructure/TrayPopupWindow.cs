@@ -29,6 +29,10 @@ internal sealed class TrayPopupWindow : Window
         SystemBackdrop = new DesktopAcrylicBackdrop();
         Content = content;
 
+        // Never let the tray popup land in a screenshot/backdrop captured right after a click,
+        // which lets the capture flow start immediately instead of waiting for it to dismiss.
+        OverlayWindowHelpers.ExcludeFromCapture(_hwnd);
+
         Activated += OnActivated;
         Closed += OnClosed;
         _appWindow.Hide();

@@ -323,6 +323,12 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("showScreenshotEditor", value);
     }
 
+    public bool ScreenshotUsesLiveCapture
+    {
+        get => _settings.Get("screenshotUsesLiveCapture", false);
+        set => _settings.Set("screenshotUsesLiveCapture", value);
+    }
+
     public bool ShowGifTrimmer
     {
         get => _settings.Get("showGifTrimmer", true);
@@ -718,6 +724,7 @@ public sealed class CaptureSettings : ICaptureSettings
         WebcamCornerPosition = WebcamCornerPosition.BottomRight;
         WebcamCornerRadius = null;
         ShowScreenshotEditor = true;
+        ScreenshotUsesLiveCapture = false;
         ShowGifTrimmer = true;
         SaveImmediatelyScreenshot = true;
         SaveImmediatelyVideo = true;

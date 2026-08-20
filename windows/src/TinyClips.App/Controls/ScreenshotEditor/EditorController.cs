@@ -174,6 +174,15 @@ internal sealed class EditorController : IDisposable
         var decoder = await BitmapDecoder.CreateAsync(stream);
         var bitmap = await decoder.GetSoftwareBitmapAsync(
             BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        await SetBitmapFromCaptureAsync(bitmap);
+    }
+
+    /// <summary>
+    /// Loads a freshly captured bitmap (already BGRA8 premultiplied) as the document, resetting
+    /// annotations — the in-memory equivalent of <see cref="LoadAsync"/>.
+    /// </summary>
+    public async Task SetBitmapFromCaptureAsync(SoftwareBitmap bitmap)
+    {
         await SetBitmapAsync(bitmap);
         _annotations.Clear();
         _counterValue = 1;
