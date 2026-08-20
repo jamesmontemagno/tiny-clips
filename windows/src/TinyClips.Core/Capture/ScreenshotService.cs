@@ -49,15 +49,22 @@ public sealed class ScreenshotService : IScreenshotService
         var frame = await _capture
             .CaptureAsync(captureTarget, region, includeCursor: false, cancellationToken)
             .ConfigureAwait(false);
+        CaptureFlowTrace.Mark("screenshot: frame captured");
 
+        return await SaveFrameAsync(frame, applyBranding: true, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<string> SaveFrameAsync(CapturedFrame frame, bool applyBranding = true, CancellationToken cancellationToken = default)
+    {
         var path = _storage.GenerateFilePath(CaptureType.Screenshot);
 
-        if (_settings.ShowBrandingOverlay)
+        if (applyBranding && _settings.ShowBrandingOverlay)
         {
             new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
         }
 
         var encoded = await EncodeAsync(frame).ConfigureAwait(false);
+        CaptureFlowTrace.Mark("screenshot: encoded");
 
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
@@ -66,6 +73,7 @@ public sealed class ScreenshotService : IScreenshotService
         }
 
         await File.WriteAllBytesAsync(path, encoded, cancellationToken).ConfigureAwait(false);
+        CaptureFlowTrace.Mark("screenshot: written to disk");
         _analytics.RecordCapture(CaptureType.Screenshot);
         return path;
     }

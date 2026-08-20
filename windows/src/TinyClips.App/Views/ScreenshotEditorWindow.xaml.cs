@@ -1,9 +1,11 @@
 using System;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using TinyClips.App.ScreenshotEditor;
+using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Graphics.Imaging;
@@ -28,15 +30,34 @@ public sealed partial class ScreenshotEditorWindow : Window
     private const int MinimumWidthDip  = 760;
     private const int MinimumHeightDip = 520;
 
-    private readonly string _filePath;
+    private string _filePath;
     private readonly EditorController _controller;
     private readonly WindowChromeController _chromeController;
     private string _activeSavePath;
+    private readonly CapturedFrame? _initialFrame;
+    private readonly Task<string>? _pendingSave;
 
     public ScreenshotEditorWindow(string filePath)
+        : this(filePath, initialFrame: null, pendingSave: null)
+    {
+    }
+
+    /// <summary>
+    /// Opens the editor straight from captured pixels while the file is still being encoded and
+    /// written by <paramref name="pendingSave"/>. The editor becomes file-backed (Save, Reset,
+    /// Open folder) as soon as that task yields the final path.
+    /// </summary>
+    public ScreenshotEditorWindow(CapturedFrame frame, Task<string> pendingSave)
+        : this(string.Empty, frame, pendingSave)
+    {
+    }
+
+    private ScreenshotEditorWindow(string filePath, CapturedFrame? initialFrame, Task<string>? pendingSave)
     {
         _filePath = filePath;
         _activeSavePath = filePath;
+        _initialFrame = initialFrame;
+        _pendingSave = pendingSave;
 
         InitializeComponent();
 
@@ -87,7 +108,26 @@ public sealed partial class ScreenshotEditorWindow : Window
     {
         try
         {
+            if (_initialFrame is { } frame)
+            {
+                // Fast path: show the captured pixels immediately; the file is still being written.
+                var bitmap = await Task.Run(() => SoftwareBitmap.CreateCopyFromBuffer(
+                    frame.BgraPixels.AsBuffer(),
+                    BitmapPixelFormat.Bgra8,
+                    frame.Width,
+                    frame.Height,
+                    BitmapAlphaMode.Premultiplied));
+                await _controller.SetBitmapFromCaptureAsync(bitmap);
+                CaptureFlowTrace.Mark("editor: image visible (from memory)");
+                if (string.IsNullOrEmpty(_filePath))
+                {
+                    _ = BindToPendingSaveAsync();
+                }
+                return;
+            }
+
             await _controller.LoadAsync(_filePath);
+            CaptureFlowTrace.Mark("editor: image visible (from file)");
         }
         catch (Exception ex)
         {
@@ -95,6 +135,51 @@ public sealed partial class ScreenshotEditorWindow : Window
             App.ShowImageLoadFailureNotification(System.IO.Path.GetFileName(_filePath));
             Close();
         }
+    }
+
+    private async Task BindToPendingSaveAsync()
+    {
+        if (_pendingSave is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var path = await _pendingSave;
+            _filePath = path;
+            _activeSavePath = path;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Background screenshot save failed: {ex}");
+            App.ShowSaveFailureNotification("the screenshot capture");
+        }
+    }
+
+    /// <summary>Save/Open-folder need the file path; wait for the background save when it's still running.</summary>
+    private async Task<bool> EnsureFileBackingAsync()
+    {
+        if (!string.IsNullOrEmpty(_activeSavePath))
+        {
+            return true;
+        }
+
+        if (_pendingSave is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            await _pendingSave;
+        }
+        catch
+        {
+            // Already reported by BindToPendingSaveAsync.
+        }
+
+        return !string.IsNullOrEmpty(_activeSavePath);
     }
 
     // -- Keyboard shortcuts -------------------------------------------------------------------
@@ -229,15 +314,23 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private async void OnSave(object sender, RoutedEventArgs e)
     {
+        if (!await EnsureFileBackingAsync())
+        {
+            return;
+        }
+
         await SaveToPathAsync(_activeSavePath, updateActiveSavePath: true);
     }
 
     private async void OnSaveCopy(object sender, RoutedEventArgs e)
     {
+        await EnsureFileBackingAsync();
         var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary };
         picker.FileTypeChoices.Add("PNG image", new[] { ".png" });
         picker.FileTypeChoices.Add("JPEG image", new[] { ".jpg" });
-        picker.SuggestedFileName = System.IO.Path.GetFileNameWithoutExtension(_activeSavePath) + " (edited)";
+        picker.SuggestedFileName = (string.IsNullOrEmpty(_activeSavePath)
+            ? "Screenshot"
+            : System.IO.Path.GetFileNameWithoutExtension(_activeSavePath)) + " (edited)";
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
@@ -270,8 +363,13 @@ public sealed partial class ScreenshotEditorWindow : Window
         return saved;
     }
 
-    private void OnOpenSaveFolder(object sender, RoutedEventArgs e)
+    private async void OnOpenSaveFolder(object sender, RoutedEventArgs e)
     {
+        if (!await EnsureFileBackingAsync())
+        {
+            return;
+        }
+
         var folder = System.IO.Path.GetDirectoryName(_activeSavePath);
         if (string.IsNullOrWhiteSpace(folder))
         {

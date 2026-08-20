@@ -6,6 +6,15 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Capture flow latency instrumentation** — `CaptureFlowTrace` records elapsed/delta timings at
+  every transition of the capture flow (picker, region overlay, backdrop, countdown, recorder
+  start/stop, editor/trimmer). Output goes to the debugger always, and to
+  `%LOCALAPPDATA%\TinyClips\Temp\capture-flow-trace.log` in Debug builds or when the
+  `TINYCLIPS_CAPTURE_TRACE` environment variable is set, so lag can be measured in packaged builds.
+- **Screenshot source setting** — Settings → Screenshot → *Re-capture screen after region
+  selection* (off by default). Off saves the frozen frame shown behind the region overlay
+  instantly (Snipping Tool behavior, no second capture); on re-captures the live screen after the
+  overlay closes, which reflects changes made while selecting.
 - **Teleprompter transcript file import** — Settings → Teleprompter can now load a `.txt`, `.md`,
   or `.csv` file up to 1 MB to replace the recording transcript.
 - **Tray Capture Text** — A compact action beside **Clips Library** starts region text recognition
@@ -19,6 +28,38 @@ own `CHANGELOG.md` at the repository root.
   recording and enabled by default.
 
 ### Changed
+- **Much snappier capture flow** — A performance pass over every transition between hotkey/tray,
+  picker, region overlay, countdown, recorder, and editor/trimmer:
+  - The 150 ms "wait for the tray menu" pause before every capture is gone; the tray popup,
+    capture picker, and region overlay are excluded from capture (`WDA_EXCLUDEFROMCAPTURE`) so
+    capturing can start immediately.
+  - The region overlay's frozen screen backdrop is captured *while the picker bar is still
+    showing* and handed to the overlay, which is created immediately and reveals itself as soon as
+    the frame is painted (event-driven) instead of after fixed 250 ms + 50 ms delays. The backdrop
+    upload uses `SoftwareBitmapSource` off the UI thread instead of a `WriteableBitmap` copy.
+  - One process-wide shared Direct3D 11 device (multithread-protected, recreated on device
+    removal) replaces the 3–4 devices previously created per capture; single-frame monitor
+    captures settle after one frame instead of two; pixel readback uses a single contiguous copy
+    when the pitch allows.
+  - Region screenshots are cropped from the already-captured backdrop instead of performing a
+    second WGC capture (unless a countdown ran or the new *Re-capture* setting is on).
+  - The screenshot editor opens directly from the in-memory frame while PNG/JPEG encoding, the
+    disk write, and the clipboard copy run in the background; Save / Save a copy / Open folder
+    wait for the file if it is still being written. (When a screenshot downscale is configured the
+    editor stays file-backed so its pixels match the saved file.)
+  - Video/GIF recorders gain `PrepareAsync`: the capture session, H.264 transcoder, webcam, and
+    audio devices are pre-warmed during the countdown so recording starts the instant it reaches
+    zero; `StartAsync` reuses the prepared pipeline when the target/region match and the pipeline
+    is discarded cleanly if the flow is cancelled.
+  - The countdown signals completion as soon as it reaches zero (its card is already excluded from
+    capture) instead of waiting 140 ms fade + 80 ms before recording starts.
+  - The capture picker bar is now a single pooled window that is hidden/shown between captures
+    instead of being created and destroyed (with its acrylic backdrop) on every hotkey press.
+  - The GIF trimmer shows its first frame immediately and decodes the remaining frames in the
+    background (previously it decoded every frame serially before the window became usable).
+  - Picker re-open after a capture no longer stacks two 150 ms delays.
+  - Release builds publish with ReadyToRun so first-use of each overlay window type doesn't pay JIT
+    cost.
 - **Updated Guide window** — The guide now covers OCR, configurable shortcuts, screenshot editing,
   recording options, tray quick access, and Clips Library management.
 - **Guide tray icon** — The Guide action now uses a document icon instead of a help question mark.

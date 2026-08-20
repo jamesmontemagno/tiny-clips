@@ -346,6 +346,23 @@ public sealed class CaptureSettingsTests
     }
 
     [Fact]
+    public void ScreenshotUsesLiveCapture_DefaultsFalse_RoundTrips_AndResetRestoresDefault()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.False(settings.ScreenshotUsesLiveCapture);
+
+        settings.ScreenshotUsesLiveCapture = true;
+        Assert.True(settings.ScreenshotUsesLiveCapture);
+        Assert.True(settingsService.Get("screenshotUsesLiveCapture", false));
+
+        settings.ResetToDefaults();
+        Assert.False(settings.ScreenshotUsesLiveCapture);
+        Assert.False(settingsService.Get("screenshotUsesLiveCapture", true));
+    }
+
+    [Fact]
     public void TeleprompterSettings_RoundTripThroughPersistedKeys()
     {
         var settingsService = new TestSettingsService();

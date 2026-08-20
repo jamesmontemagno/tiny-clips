@@ -22,4 +22,11 @@ public interface IScreenshotService
     /// it. Returns the saved file path.
     /// </summary>
     Task<string> CaptureTargetAsync(CaptureTarget target, PixelRect? region = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Encodes an already-captured frame per the user's screenshot settings (branding overlay,
+    /// PNG/JPEG, scale, quality) and saves it. Used when the region-select overlay's frozen
+    /// backdrop is the screenshot source, so no second capture is needed. Returns the saved path.
+    /// </summary>
+    Task<string> SaveFrameAsync(CapturedFrame frame, bool applyBranding = true, CancellationToken cancellationToken = default);
 }

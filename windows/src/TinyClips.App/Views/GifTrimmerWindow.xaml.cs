@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
+using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Foundation;
@@ -31,8 +32,10 @@ public sealed partial class GifTrimmerWindow : Window
     private const int MinimumHeightDip = 480;
 
     private readonly string _filePath;
-    private readonly List<SoftwareBitmap> _frames = new();
+    private readonly List<SoftwareBitmap?> _frames = new();
     private readonly List<ushort> _delays = new();
+    private readonly Task _decodeTask;
+    private readonly System.Threading.CancellationTokenSource _decodeCts = new();
     private int _start;
     private int _end;
     private int _current;
@@ -70,33 +73,45 @@ public sealed partial class GifTrimmerWindow : Window
         };
 
         Closed += OnWindowClosed;
-        _ = LoadAsync();
+        _decodeTask = LoadAsync(_decodeCts.Token);
     }
 
-    private async Task LoadAsync()
+    /// <summary>
+    /// Owns the GIF stream for the whole load: the first frame is decoded up front so the window
+    /// is usable immediately, then the remaining frames stream in. The stream is disposed in one
+    /// place regardless of where the load fails or is cancelled, and cleanup awaits this task.
+    /// </summary>
+    private async Task LoadAsync(System.Threading.CancellationToken cancellationToken)
     {
+        IRandomAccessStream? stream = null;
         try
         {
             var file = await StorageFile.GetFileFromPathAsync(_filePath);
-            using var stream = await file.OpenAsync(FileAccessMode.Read);
+            stream = await file.OpenAsync(FileAccessMode.Read);
             var decoder = await BitmapDecoder.CreateAsync(BitmapDecoder.GifDecoderId, stream);
-
-            for (uint i = 0; i < decoder.FrameCount; i++)
+            var frameCount = (int)decoder.FrameCount;
+            if (frameCount == 0 || cancellationToken.IsCancellationRequested)
             {
-                var frame = await decoder.GetFrameAsync(i);
-                var bitmap = await frame.GetSoftwareBitmapAsync(
-                    BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-                _frames.Add(bitmap);
-                _delays.Add(await ReadDelayAsync(frame));
+                return;
             }
 
-            if (_frames.Count == 0)
+            // Decode only the first frame up front so the window is usable immediately; the
+            // remaining frames stream in below (a 30 s GIF is ~900 frames, which previously
+            // blocked the window on several seconds of serial decoding).
+            for (var i = 0; i < frameCount; i++)
+            {
+                _frames.Add(null);
+                _delays.Add(10);
+            }
+
+            await DecodeFrameAsync(decoder, 0);
+            if (cancellationToken.IsCancellationRequested)
             {
                 return;
             }
 
             _start = 0;
-            _end = _frames.Count - 1;
+            _end = frameCount - 1;
             _current = 0;
 
             _ready = true;
@@ -105,11 +120,36 @@ public sealed partial class GifTrimmerWindow : Window
             TrimBar.KeyboardStep = LastFrame == 0 ? 1 : 1.0 / LastFrame;
             UpdateLabels();
             SetCurrent(0);
+            CaptureFlowTrace.Mark("gif trimmer: first frame visible");
+
+            for (var i = 1; i < frameCount && !cancellationToken.IsCancellationRequested; i++)
+            {
+                await DecodeFrameAsync(decoder, i);
+                if (i == _current)
+                {
+                    // The user scrubbed ahead of the decoder; paint the frame now that it exists.
+                    _ = ShowFrameAsync(i);
+                }
+            }
+
+            CaptureFlowTrace.Mark("gif trimmer: all frames decoded");
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"GIF trimmer load failed: {ex}");
         }
+        finally
+        {
+            stream?.Dispose();
+        }
+    }
+
+    private async Task DecodeFrameAsync(BitmapDecoder decoder, int index)
+    {
+        var frame = await decoder.GetFrameAsync((uint)index);
+        var bitmap = await frame.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        _frames[index] = bitmap;
+        _delays[index] = await ReadDelayAsync(frame);
     }
 
     private static async Task<ushort> ReadDelayAsync(BitmapFrame frame)
@@ -232,13 +272,14 @@ public sealed partial class GifTrimmerWindow : Window
 
     private async Task ShowFrameAsync(int index)
     {
-        if (index < 0 || index >= _frames.Count)
+        if (index < 0 || index >= _frames.Count || _frames[index] is not { } frame)
         {
+            // Not decoded yet; DecodeRemainingFramesAsync repaints once it arrives.
             return;
         }
 
         var source = new SoftwareBitmapSource();
-        await source.SetBitmapAsync(_frames[index]);
+        await source.SetBitmapAsync(frame);
         PreviewImage.Source = source;
     }
 
@@ -366,6 +407,16 @@ public sealed partial class GifTrimmerWindow : Window
 
         try
         {
+            if (_frames[_current] is null)
+            {
+                await _decodeTask;
+            }
+
+            if (_frames[_current] is not { } frameToExport)
+            {
+                return;
+            }
+
             var storage = App.Services.GetRequiredService<IClipStorageService>();
             outputPath = storage.GenerateFilePath(CaptureType.Screenshot, ".png", "(frame)");
             var folder = await StorageFolder.GetFolderFromPathAsync(System.IO.Path.GetDirectoryName(outputPath)!);
@@ -375,7 +426,7 @@ public sealed partial class GifTrimmerWindow : Window
             using (var stream = await file.OpenAsync(FileAccessMode.ReadWrite))
             {
                 var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
-                encoder.SetSoftwareBitmap(_frames[_current]);
+                encoder.SetSoftwareBitmap(frameToExport);
                 await encoder.FlushAsync();
             }
 
@@ -407,6 +458,9 @@ public sealed partial class GifTrimmerWindow : Window
 
         try
         {
+            // Frames still decoding in the background must land before re-encoding.
+            await _decodeTask;
+
             var storage = App.Services.GetRequiredService<IClipStorageService>();
             outputPath = storage.GenerateFilePath(CaptureType.Gif, ".gif", " (trimmed)");
             var folder = await StorageFolder.GetFolderFromPathAsync(System.IO.Path.GetDirectoryName(outputPath)!);
@@ -426,7 +480,12 @@ public sealed partial class GifTrimmerWindow : Window
 
                 for (var i = _start; i <= _end; i++)
                 {
-                    encoder.SetSoftwareBitmap(_frames[i]);
+                    if (_frames[i] is not { } frame)
+                    {
+                        throw new InvalidOperationException($"GIF frame {i} failed to decode.");
+                    }
+
+                    encoder.SetSoftwareBitmap(frame);
 
                     var delayProps = new BitmapPropertySet
                     {
@@ -482,12 +541,28 @@ public sealed partial class GifTrimmerWindow : Window
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
         _playTimer?.Stop();
+        _decodeCts.Cancel();
+        _ = DisposeFramesWhenDecodeSettlesAsync();
+    }
+
+    private async Task DisposeFramesWhenDecodeSettlesAsync()
+    {
+        try
+        {
+            await _decodeTask;
+        }
+        catch
+        {
+            // Decode failures are already logged; we only need it to be finished before disposing.
+        }
+
         foreach (var frame in _frames)
         {
-            frame.Dispose();
+            frame?.Dispose();
         }
 
         _frames.Clear();
+        _decodeCts.Dispose();
     }
 
     /// <summary>Raised once when the window closes. Carries the trimmed file path, or null if untrimmed.</summary>

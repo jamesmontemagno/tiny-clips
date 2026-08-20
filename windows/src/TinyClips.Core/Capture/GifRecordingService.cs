@@ -29,6 +29,8 @@ public sealed class GifRecordingService : IGifRecordingService
     private double _fps;
     private int _stopping;
     private int _discardRequested;
+    private CaptureTarget? _preparedTarget;
+    private PixelRect? _preparedRegion;
 
     private MouseClickMonitor? _clickMonitor;
     private MouseClickOverlayStyle _clickStyle;
@@ -54,6 +56,47 @@ public sealed class GifRecordingService : IGifRecordingService
 
     public event EventHandler<string?>? RecordingCompleted;
 
+    public async Task PrepareAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (IsRecording)
+            {
+                throw new InvalidOperationException("A GIF recording is already in progress.");
+            }
+
+            var captureTarget = ResolveTarget(target);
+            if (_preparedTarget is { } existing && Matches(existing, _preparedRegion, captureTarget, region))
+            {
+                return;
+            }
+
+            DiscardPreparedCore();
+            PrepareCore(captureTarget, region);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task DiscardPreparedAsync()
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (!IsRecording)
+            {
+                DiscardPreparedCore();
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task StartAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -64,28 +107,72 @@ public sealed class GifRecordingService : IGifRecordingService
                 throw new InvalidOperationException("A GIF recording is already in progress.");
             }
 
+            var captureTarget = ResolveTarget(target);
+            if (_preparedTarget is null || !Matches(_preparedTarget, _preparedRegion, captureTarget, region))
+            {
+                DiscardPreparedCore();
+                PrepareCore(captureTarget, region);
+            }
+            else
+            {
+                CaptureFlowTrace.Mark("gif: using pre-warmed capture session");
+            }
+
             Interlocked.Exchange(ref _discardRequested, 0);
-
-            var captureTarget = target ?? CaptureTarget.Monitor(
-                (_monitors.GetPrimaryMonitor()
-                    ?? throw new InvalidOperationException("No monitor was found to record.")).HMonitor);
-
-            _fps = Math.Clamp(_settings.GifFrameRate, 1, 50);
             _frames = new List<CapturedFrame>();
-
-            _capture = new ContinuousCaptureSession(captureTarget, region, (int)Math.Round(_fps), includeCursor: true);
-            _capture.FrameReady += OnFrameReady;
-            _capture.Start();
-            _capture.BeginEmitting();
+            _preparedTarget = null;
+            _preparedRegion = null;
 
             StartMouseClickOverlay(captureTarget, region);
             _branding = _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
 
+            _capture!.BeginEmitting();
             IsRecording = true;
+            CaptureFlowTrace.Mark("gif: recording started (emitting)");
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    private CaptureTarget ResolveTarget(CaptureTarget? target) => target ?? CaptureTarget.Monitor(
+        (_monitors.GetPrimaryMonitor()
+            ?? throw new InvalidOperationException("No monitor was found to record.")).HMonitor);
+
+    private static bool Matches(CaptureTarget a, PixelRect? aRegion, CaptureTarget b, PixelRect? bRegion) =>
+        a.HMonitor == b.HMonitor && a.Hwnd == b.Hwnd && aRegion == bRegion;
+
+    private void PrepareCore(CaptureTarget captureTarget, PixelRect? region)
+    {
+        _fps = Math.Clamp(_settings.GifFrameRate, 1, 50);
+        _capture = new ContinuousCaptureSession(captureTarget, region, (int)Math.Round(_fps), includeCursor: true);
+        _capture.FrameReady += OnFrameReady;
+        try
+        {
+            _capture.Start();
+        }
+        catch
+        {
+            _capture.Dispose();
+            _capture = null;
+            throw;
+        }
+
+        _preparedTarget = captureTarget;
+        _preparedRegion = region;
+        CaptureFlowTrace.Mark("gif: capture session started");
+    }
+
+    private void DiscardPreparedCore()
+    {
+        _preparedTarget = null;
+        _preparedRegion = null;
+        if (!IsRecording && _capture is not null)
+        {
+            _capture.FrameReady -= OnFrameReady;
+            _capture.Dispose();
+            _capture = null;
         }
     }
 
@@ -204,6 +291,7 @@ public sealed class GifRecordingService : IGifRecordingService
             if (!IsRecording)
             {
                 IsPaused = false;
+                DiscardPreparedCore();
                 if (ConsumeDiscardRequested(discard))
                 {
                     lock (_frameLock)
