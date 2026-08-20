@@ -243,14 +243,14 @@ public sealed partial class SettingsWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-        var file = await picker.PickSingleFileAsync();
-        if (file is null)
-        {
-            return;
-        }
-
         try
         {
+            var file = await picker.PickSingleFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
             var properties = await file.GetBasicPropertiesAsync();
             if (properties.Size > MaximumTranscriptSizeInBytes)
             {
