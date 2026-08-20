@@ -32,7 +32,23 @@
 
         <Border Style="{StaticResource SettingCardStyle}">
             <StackPanel Spacing="8">
-                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Transcript" />
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="Transcript" />
+                    <Button
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="LoadTeleprompterTranscriptButton"
+                        AutomationProperties.Name="Load teleprompter transcript from text file"
+                        Click="OnLoadTranscriptClicked"
+                        Content="Load Text File..."
+                        IsEnabled="{x:Bind ViewModel.TeleprompterEnabled, Mode=OneWay}" />
+                </Grid>
                 <TextBox
                     MinHeight="160"
                     AcceptsReturn="True"
@@ -45,7 +61,7 @@
                 <TextBlock
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Shown for video recordings only — never for GIFs or screenshots. The overlay stays hidden while this is empty."
+                    Text="Paste or type a script, or load a plain-text file up to 1 MB. Shown for video recordings only — never for GIFs or screenshots."
                     TextWrapping="Wrap" />
             </StackPanel>
         </Border>

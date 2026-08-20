@@ -23,6 +23,9 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
 
     public SettingsViewModel ViewModel { get; }
 
+    /// <summary>Raised when the user requests to load a transcript file.</summary>
+    public event EventHandler? LoadTranscriptRequested;
+
     public TeleprompterSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel;
@@ -109,6 +112,11 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
         UpdatePreviewButton();
         PreviewScroller.ChangeView(null, 0, null, disableAnimation: true);
         StartPreviewIfPossible();
+    }
+
+    private void OnLoadTranscriptClicked(object sender, RoutedEventArgs e)
+    {
+        LoadTranscriptRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnPreviewTick(object? sender, object e)
