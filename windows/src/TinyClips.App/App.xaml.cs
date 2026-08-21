@@ -76,6 +76,7 @@ public partial class App : Application
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
+    private bool _isInStartupPhase = true;
     private static bool _notificationsRegistered;
 
     public static IServiceProvider Services { get; private set; } = null!;
@@ -108,6 +109,7 @@ public partial class App : Application
 #if !TINYCLIPS_STORE_BUILD
         _ = RunStartupUpdateCheckAsync();
 #endif
+        EndStartupPhaseAfterFirstDispatcherPass();
     }
 
     private static void RunStartupStep(string name, Action step)
@@ -119,28 +121,54 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Startup step '{name}' failed: {ex}");
+            CrashDiagnostics.Log($"Startup step '{name}'", ex, handled: true);
+        }
+    }
+
+    /// <summary>
+    /// Keeps <see cref="_isInStartupPhase"/> set until the queued work that launch scheduled on the
+    /// UI thread (window activation, tray icon creation callbacks, first layout) has drained, so
+    /// startup-time framework exceptions are treated as recoverable while later ones are not.
+    /// </summary>
+    private void EndStartupPhaseAfterFirstDispatcherPass()
+    {
+        var dispatcher = _dispatcher;
+        if (dispatcher is null ||
+            !dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () => _isInStartupPhase = false))
+        {
+            _isInStartupPhase = false;
         }
     }
 
     private void RegisterGlobalExceptionHandlers()
     {
         // A XAML-thread exception that reaches the framework terminates the process with a stowed
-        // exception (0xC000027B). Log and swallow so a non-fatal UI hiccup never produces a crash
-        // exit code for a tray app that has no main window to tear down.
+        // exception (0xC000027B). During launch we log and swallow so a non-fatal startup hiccup
+        // cannot produce a crash exit code for a tray app that has no main window to tear down.
+        // After launch the handler only records diagnostics: continuing past an arbitrary
+        // mid-operation failure could leave app state partially mutated, so we let it terminate.
         UnhandledException += (_, e) =>
         {
-            Debug.WriteLine($"Unhandled XAML exception: {e.Exception}");
-            e.Handled = true;
+            var handled = _isInStartupPhase && !_isExiting;
+            Debug.WriteLine($"Unhandled XAML exception (startup={_isInStartupPhase}): {e.Exception}");
+            CrashDiagnostics.Log("Application.UnhandledException", e.Exception, handled);
+            e.Handled = handled;
         };
 
+        // Unobserved task faults are raised from the finalizer thread and would otherwise be
+        // silently dropped (or, with ThrowUnobservedTaskExceptions, crash the process); record them.
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
             Debug.WriteLine($"Unobserved task exception: {e.Exception}");
+            CrashDiagnostics.Log("TaskScheduler.UnobservedTaskException", e.Exception, handled: true);
             e.SetObserved();
         };
 
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
             Debug.WriteLine($"Unhandled AppDomain exception (terminating={e.IsTerminating}): {e.ExceptionObject}");
+            CrashDiagnostics.Log("AppDomain.UnhandledException", e.ExceptionObject, handled: false);
+        };
     }
 
     /// <summary>
@@ -234,6 +262,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to create automation announcer: {ex}");
+            CrashDiagnostics.Log("AutomationNotificationAnnouncer", ex, handled: true);
         }
 
         return _automationNotificationAnnouncer;
