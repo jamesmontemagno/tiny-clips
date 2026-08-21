@@ -140,6 +140,21 @@ own `CHANGELOG.md` at the repository root.
   and region-indicator windows, removing duplicated P/Invoke declarations and structs. The
   `TrayPopupWindow` now unsubscribes its `Activated` handler on closure.
 
+### Fixed
+- **Hardened tray-first startup** — Launch no longer eagerly creates the off-screen UI Automation
+  announcement window; it is created lazily on the first Narrator announcement and degrades to a
+  log line if window creation fails. Hotkey registration, onboarding, and file activation are
+  each guarded so a failure in one step cannot abort launch. A framework (XAML-thread) exception
+  raised *during launch* — until the work launch queued on the UI thread has drained — is now
+  logged and marked handled instead of terminating the process with a stowed-exception crash
+  (`0xC000027B`), the failure mode reported by winget's `Validation-Executable-Error` check.
+  Exceptions after launch are still fatal so mid-operation failures cannot leave the app running
+  in a partially mutated state.
+- **Persistent crash diagnostics** — Unhandled XAML, AppDomain, and unobserved task exceptions
+  (plus guarded startup-step failures) are appended to `%LOCALAPPDATA%\TinyClips\Logs\crash.log`
+  (capped at 512 KB, rolled to `crash.previous.log`) so packaged-app failures can be diagnosed
+  without a debugger. The Logs folder is separate from the Temp folder purged by Settings.
+
 ## [v1.7.0-windows] - 2026-08-13
 
 ### Internal
