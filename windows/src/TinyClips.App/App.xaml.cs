@@ -76,6 +76,7 @@ public partial class App : Application
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
+    private bool _isInStartupPhase = true;
     private static bool _notificationsRegistered;
 
     public static IServiceProvider Services { get; private set; } = null!;
@@ -83,6 +84,7 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        RegisterGlobalExceptionHandlers();
         Services = new ServiceCollection()
             .AddTinyClipsCore()
             .AddSingleton<IUploadcareCredentialStore, WindowsCredentialStore>()
@@ -97,17 +99,79 @@ public partial class App : Application
     {
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
+        // The tray icon and hotkeys are the app; everything else is best-effort so that an
+        // optional startup step failing (e.g. on a locked-down validation VM) cannot crash launch.
         WireRecordingEvents();
         CreateTrayIcon();
-        CreateAutomationNotificationAnnouncer();
-        RegisterGlobalHotKeys();
-        ShowOnboardingIfNeeded();
-        HandleFileActivation();
+        RunStartupStep(nameof(RegisterGlobalHotKeys), () => RegisterGlobalHotKeys());
+        RunStartupStep(nameof(ShowOnboardingIfNeeded), ShowOnboardingIfNeeded);
+        RunStartupStep(nameof(HandleFileActivation), HandleFileActivation);
         // Create the shared D3D capture device off the UI thread so the first capture is instant.
-        _ = Task.Run(() => Services.GetRequiredService<IScreenCaptureService>().WarmUp());
+        _ = Task.Run(() => RunStartupStep("ScreenCaptureWarmUp", () =>
+            Services.GetRequiredService<IScreenCaptureService>().WarmUp()));
 #if !TINYCLIPS_STORE_BUILD
         _ = RunStartupUpdateCheckAsync();
 #endif
+        EndStartupPhaseAfterFirstDispatcherPass();
+    }
+
+    private static void RunStartupStep(string name, Action step)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Startup step '{name}' failed: {ex}");
+            CrashDiagnostics.Log($"Startup step '{name}'", ex, handled: true);
+        }
+    }
+
+    /// <summary>
+    /// Keeps <see cref="_isInStartupPhase"/> set until the queued work that launch scheduled on the
+    /// UI thread (window activation, tray icon creation callbacks, first layout) has drained, so
+    /// startup-time framework exceptions are treated as recoverable while later ones are not.
+    /// </summary>
+    private void EndStartupPhaseAfterFirstDispatcherPass()
+    {
+        var dispatcher = _dispatcher;
+        if (dispatcher is null ||
+            !dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () => _isInStartupPhase = false))
+        {
+            _isInStartupPhase = false;
+        }
+    }
+
+    private void RegisterGlobalExceptionHandlers()
+    {
+        // A XAML-thread exception that reaches the framework terminates the process with a stowed
+        // exception (0xC000027B). During launch we log and swallow so a non-fatal startup hiccup
+        // cannot produce a crash exit code for a tray app that has no main window to tear down.
+        // After launch the handler only records diagnostics: continuing past an arbitrary
+        // mid-operation failure could leave app state partially mutated, so we let it terminate.
+        UnhandledException += (_, e) =>
+        {
+            var handled = _isInStartupPhase && !_isExiting;
+            Debug.WriteLine($"Unhandled XAML exception (startup={_isInStartupPhase}): {e.Exception}");
+            CrashDiagnostics.Log("Application.UnhandledException", e.Exception, handled);
+            e.Handled = handled;
+        };
+
+        // Unobserved task faults are raised from the finalizer thread and would otherwise be
+        // silently dropped (or, with ThrowUnobservedTaskExceptions, crash the process); record them.
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Debug.WriteLine($"Unobserved task exception: {e.Exception}");
+            CrashDiagnostics.Log("TaskScheduler.UnobservedTaskException", e.Exception, handled: true);
+            e.SetObserved();
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            Debug.WriteLine($"Unhandled AppDomain exception (terminating={e.IsTerminating}): {e.ExceptionObject}");
+            CrashDiagnostics.Log("AppDomain.UnhandledException", e.ExceptionObject, handled: false);
+        };
     }
 
     /// <summary>
@@ -183,9 +247,28 @@ public partial class App : Application
         UpdateRecordingState();
     }
 
-    private void CreateAutomationNotificationAnnouncer()
+    /// <summary>
+    /// Lazily creates the off-screen UI Automation anchor window. Creation is deferred to the first
+    /// announcement so tray-first launch creates no XAML window, and failures degrade to a log line.
+    /// </summary>
+    private AutomationNotificationAnnouncer? GetOrCreateAutomationNotificationAnnouncer()
     {
-        _automationNotificationAnnouncer ??= new AutomationNotificationAnnouncer();
+        if (_automationNotificationAnnouncer is not null || _isExiting)
+        {
+            return _automationNotificationAnnouncer;
+        }
+
+        try
+        {
+            _automationNotificationAnnouncer = new AutomationNotificationAnnouncer();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to create automation announcer: {ex}");
+            CrashDiagnostics.Log("AutomationNotificationAnnouncer", ex, handled: true);
+        }
+
+        return _automationNotificationAnnouncer;
     }
 
     private void ShowTrayPopup()
@@ -2245,12 +2328,6 @@ public partial class App : Application
         string message,
         string activityId)
     {
-        if (_automationNotificationAnnouncer is null)
-        {
-            Debug.WriteLine($"Automation announcement unavailable: {message}");
-            return;
-        }
-
         var dispatcher = _dispatcher;
         if (dispatcher is null)
         {
@@ -2260,14 +2337,36 @@ public partial class App : Application
 
         if (dispatcher.HasThreadAccess)
         {
-            _automationNotificationAnnouncer.Announce(kind, processing, message, activityId);
+            AnnounceOnUiThread(kind, processing, message, activityId);
             return;
         }
 
-        if (!dispatcher.TryEnqueue(() =>
-                _automationNotificationAnnouncer?.Announce(kind, processing, message, activityId)))
+        if (!dispatcher.TryEnqueue(() => AnnounceOnUiThread(kind, processing, message, activityId)))
         {
             Debug.WriteLine($"Automation announcement dispatch failed: {message}");
+        }
+    }
+
+    private void AnnounceOnUiThread(
+        AutomationNotificationKind kind,
+        AutomationNotificationProcessing processing,
+        string message,
+        string activityId)
+    {
+        var announcer = GetOrCreateAutomationNotificationAnnouncer();
+        if (announcer is null)
+        {
+            Debug.WriteLine($"Automation announcement unavailable: {message}");
+            return;
+        }
+
+        try
+        {
+            announcer.Announce(kind, processing, message, activityId);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Automation announcement failed: {ex}");
         }
     }
 
