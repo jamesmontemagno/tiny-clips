@@ -293,6 +293,49 @@ final class CaptureMathTests: XCTestCase {
         )
     }
 
+    func testExportFrameLayoutSnapsToWholePixels() {
+        // Fractional padding and preset ratios must not produce fractional frame
+        // sizes or image origins: sub-pixel slivers at the canvas edge render as
+        // white hairlines in formats without alpha (e.g. JPEG).
+        let cases: [(padding: CGFloat, preset: ExportFramePreset, h: ExportHorizontalAlignment, v: ExportVerticalAlignment)] = [
+            (10.4, .square, .center, .center),
+            (12.75, .landscapeSixteenByNine, .trailing, .bottom),
+            (7.2, .portraitNineBySixteen, .leading, .top),
+            (0.5, .original, .center, .center),
+        ]
+
+        for testCase in cases {
+            let imageSize = CGSize(width: 503, height: 331)
+            let layout = ExportFrameLayout.make(
+                imageSize: imageSize,
+                padding: testCase.padding,
+                preset: testCase.preset,
+                horizontalAlignment: testCase.h,
+                verticalAlignment: testCase.v
+            )
+
+            XCTAssertEqual(
+                layout.frameSize.width.rounded(), layout.frameSize.width,
+                "frame width must be integral for padding \(testCase.padding)"
+            )
+            XCTAssertEqual(
+                layout.frameSize.height.rounded(), layout.frameSize.height,
+                "frame height must be integral for padding \(testCase.padding)"
+            )
+            XCTAssertEqual(
+                layout.imageRect.minX.rounded(), layout.imageRect.minX,
+                "image origin x must be integral"
+            )
+            XCTAssertEqual(
+                layout.imageRect.minY.rounded(), layout.imageRect.minY,
+                "image origin y must be integral"
+            )
+            // The image must sit fully inside the frame.
+            XCTAssertTrue(layout.frameSize.width >= layout.imageRect.maxX)
+            XCTAssertTrue(layout.frameSize.height >= layout.imageRect.maxY)
+        }
+    }
+
     func testExportFrameLayoutPlacesImageAlongAvailableAxis() {
         let horizontalOrigins: [ExportHorizontalAlignment: CGPoint] = [
             .leading: CGPoint(x: 10, y: 10),

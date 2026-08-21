@@ -249,7 +249,11 @@ struct ExportFrameLayout {
         horizontalAlignment: ExportHorizontalAlignment,
         verticalAlignment: ExportVerticalAlignment
     ) -> Self {
-        let safePadding = max(0, padding)
+        // Snap the layout to whole pixels: fractional frame sizes or image origins
+        // leave sub-pixel slivers at the canvas edges. Those slivers are invisible
+        // in alpha formats but render as white hairlines when exported to JPEG
+        // (which flattens transparency onto white).
+        let safePadding = max(0, padding).rounded(.up)
         let baseSize = CGSize(
             width: imageSize.width + (safePadding * 2),
             height: imageSize.height + (safePadding * 2)
@@ -263,18 +267,32 @@ struct ExportFrameLayout {
                 frameSize.height = ceil(baseSize.width / targetRatio)
             }
         }
+        frameSize.width = frameSize.width.rounded(.up)
+        frameSize.height = frameSize.height.rounded(.up)
 
         let extraHorizontalSpace = max(0, frameSize.width - baseSize.width)
         let extraVerticalSpace = max(0, frameSize.height - baseSize.height)
+        let originX = (safePadding + (extraHorizontalSpace * horizontalAlignment.placementFactor))
+            .rounded()
+            .clamped(to: 0...max(0, frameSize.width - imageSize.width))
+        let originY = (safePadding + (extraVerticalSpace * verticalAlignment.placementFactor))
+            .rounded()
+            .clamped(to: 0...max(0, frameSize.height - imageSize.height))
         return Self(
             frameSize: frameSize,
             imageRect: CGRect(
-                x: safePadding + (extraHorizontalSpace * horizontalAlignment.placementFactor),
-                y: safePadding + (extraVerticalSpace * verticalAlignment.placementFactor),
+                x: originX,
+                y: originY,
                 width: imageSize.width,
                 height: imageSize.height
             )
         )
+    }
+}
+
+private extension CGFloat {
+    func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
+        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
 
