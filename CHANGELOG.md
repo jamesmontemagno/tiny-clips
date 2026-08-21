@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- Fixed macOS screenshot editor exports showing a light hairline around the screenshot card when centered in a preset frame (for example 16:9 or 9:16) with an odd amount of leftover space. The card origin could land on a half pixel, anti-aliasing its edge; on a transparent background exported as JPEG that edge flattened to a visible line. Export layouts are now snapped to whole pixels while the live preview keeps fractional geometry.
+
 ## v1.6.1-mac - 2026-08-18
 
 ### Fixed

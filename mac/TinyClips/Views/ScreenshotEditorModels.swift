@@ -247,7 +247,8 @@ struct ExportFrameLayout {
         padding: CGFloat,
         preset: ExportFramePreset,
         horizontalAlignment: ExportHorizontalAlignment,
-        verticalAlignment: ExportVerticalAlignment
+        verticalAlignment: ExportVerticalAlignment,
+        snapsToPixels: Bool = false
     ) -> Self {
         let safePadding = max(0, padding)
         let baseSize = CGSize(
@@ -264,17 +265,39 @@ struct ExportFrameLayout {
             }
         }
 
-        let extraHorizontalSpace = max(0, frameSize.width - baseSize.width)
-        let extraVerticalSpace = max(0, frameSize.height - baseSize.height)
+        var originX = safePadding + (max(0, frameSize.width - baseSize.width) * horizontalAlignment.placementFactor)
+        var originY = safePadding + (max(0, frameSize.height - baseSize.height) * verticalAlignment.placementFactor)
+
+        if snapsToPixels {
+            // Snap to whole pixels for bitmap export. Centering the card inside an odd
+            // amount of leftover preset space lands its origin on a half pixel, and
+            // Core Graphics then anti-aliases the card edge across two columns/rows
+            // at 50% alpha. On a transparent background exported as JPEG that edge
+            // flattens to a light hairline around the screenshot. The display-space
+            // preview path keeps fractional geometry so it scales proportionally.
+            frameSize.width = frameSize.width.rounded(.up)
+            frameSize.height = frameSize.height.rounded(.up)
+            originX = originX.rounded()
+                .clamped(to: 0...Swift.max(0, frameSize.width - imageSize.width))
+            originY = originY.rounded()
+                .clamped(to: 0...Swift.max(0, frameSize.height - imageSize.height))
+        }
+
         return Self(
             frameSize: frameSize,
             imageRect: CGRect(
-                x: safePadding + (extraHorizontalSpace * horizontalAlignment.placementFactor),
-                y: safePadding + (extraVerticalSpace * verticalAlignment.placementFactor),
+                x: originX,
+                y: originY,
                 width: imageSize.width,
                 height: imageSize.height
             )
         )
+    }
+}
+
+private extension CGFloat {
+    func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
+        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
 
