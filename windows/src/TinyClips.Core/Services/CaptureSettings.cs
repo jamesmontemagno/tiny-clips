@@ -277,6 +277,12 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("selectedMicrophoneID", value);
     }
 
+    public bool MicrophoneLimiterEnabled
+    {
+        get => _settings.Get("microphoneLimiterEnabled", true);
+        set => _settings.Set("microphoneLimiterEnabled", value);
+    }
+
     public bool WebcamEnabled
     {
         get => _settings.Get("webcamEnabled", false);
@@ -321,6 +327,12 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         get => _settings.Get("showScreenshotEditor", true);
         set => _settings.Set("showScreenshotEditor", value);
+    }
+
+    public bool ScreenshotUsesLiveCapture
+    {
+        get => _settings.Get("screenshotUsesLiveCapture", false);
+        set => _settings.Set("screenshotUsesLiveCapture", value);
     }
 
     public bool ShowGifTrimmer
@@ -711,6 +723,7 @@ public sealed class CaptureSettings : ICaptureSettings
         RecordAudio = false;
         RecordMicrophone = false;
         SelectedMicrophoneId = string.Empty;
+        MicrophoneLimiterEnabled = true;
         WebcamEnabled = false;
         SelectedWebcamId = string.Empty;
         WebcamShape = WebcamShape.Circle;
@@ -718,6 +731,7 @@ public sealed class CaptureSettings : ICaptureSettings
         WebcamCornerPosition = WebcamCornerPosition.BottomRight;
         WebcamCornerRadius = null;
         ShowScreenshotEditor = true;
+        ScreenshotUsesLiveCapture = false;
         ShowGifTrimmer = true;
         SaveImmediatelyScreenshot = true;
         SaveImmediatelyVideo = true;

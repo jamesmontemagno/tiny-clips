@@ -359,6 +359,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _showScreenshotEditor;
 
     [ObservableProperty]
+    private bool _screenshotUsesLiveCapture;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ScreenshotCapturePickerAfterCaptureEnabled))]
     private bool _showScreenshotCapturePicker;
 
@@ -380,6 +383,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MicrophoneSelectorEnabled))]
     private bool _recordMicrophone;
+
+    /// <summary>Soft-knee limiter on the microphone path so hot input rounds off instead of clipping.</summary>
+    [ObservableProperty]
+    private bool _microphoneLimiterEnabled = true;
 
     /// <summary>Microphone devices for the picker (first entry is the system default).</summary>
     public System.Collections.ObjectModel.ObservableCollection<AudioInputDevice> Microphones { get; } = new();
@@ -738,6 +745,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ScreenshotCountdownEnabled = _settings.ScreenshotCountdownEnabled;
             ScreenshotCountdownDuration = _settings.ScreenshotCountdownDuration;
             ShowScreenshotEditor = _settings.ShowScreenshotEditor;
+            ScreenshotUsesLiveCapture = _settings.ScreenshotUsesLiveCapture;
             ShowScreenshotCapturePicker = _settings.ShowScreenshotCapturePicker;
             ShowScreenshotCapturePickerAfterCapture = _settings.ShowScreenshotCapturePickerAfterCapture;
 
@@ -745,6 +753,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             KeepDisplayAwakeWhileRecording = _settings.KeepDisplayAwakeWhileRecording;
             RecordAudio = _settings.RecordAudio;
             RecordMicrophone = _settings.RecordMicrophone;
+            MicrophoneLimiterEnabled = _settings.MicrophoneLimiterEnabled;
 
             _savedMicrophoneId = _settings.SelectedMicrophoneId ?? string.Empty;
             WebcamEnabled = _settings.WebcamEnabled;
@@ -1096,6 +1105,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnShowScreenshotEditorChanged(bool value) => Persist(() => _settings.ShowScreenshotEditor = value);
 
+    partial void OnScreenshotUsesLiveCaptureChanged(bool value) => Persist(() => _settings.ScreenshotUsesLiveCapture = value);
+
     partial void OnShowScreenshotCapturePickerChanged(bool value) =>
         Persist(() =>
         {
@@ -1125,6 +1136,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnRecordAudioChanged(bool value) => Persist(() => _settings.RecordAudio = value);
 
     partial void OnRecordMicrophoneChanged(bool value) => Persist(() => _settings.RecordMicrophone = value);
+
+    partial void OnMicrophoneLimiterEnabledChanged(bool value) => Persist(() => _settings.MicrophoneLimiterEnabled = value);
 
     partial void OnSelectedMicrophoneChanged(AudioInputDevice? value) =>
         Persist(() => _settings.SelectedMicrophoneId = value?.Id ?? string.Empty);

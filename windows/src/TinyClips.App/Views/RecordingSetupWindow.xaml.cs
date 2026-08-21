@@ -119,6 +119,7 @@ public sealed partial class RecordingSetupWindow : Window
             webcamDevices,
             mediaPermissions);
         window.ShowNear(monitor, regionInVirtualDesktop);
+        CaptureFlowTrace.Mark("setup: panel shown");
         if (captureType == CaptureType.Video)
         {
             _ = window.LoadMicrophonesAsync();

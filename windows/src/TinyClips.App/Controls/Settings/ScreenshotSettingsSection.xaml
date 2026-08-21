@@ -124,6 +124,16 @@
                         AutomationProperties.Name="Open editor after capture"
                         IsOn="{x:Bind ViewModel.ShowScreenshotEditor, Mode=TwoWay}" />
                 </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="Off (recommended): the frozen frame shown while you select is saved instantly. On: re-capture the live screen after selecting, which reflects changes made during selection but is slower."
+                    Header="Re-capture screen after region selection"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE72C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ScreenshotLiveCaptureToggle"
+                        AutomationProperties.Name="Re-capture screen after region selection"
+                        IsOn="{x:Bind ViewModel.ScreenshotUsesLiveCapture, Mode=TwoWay}" />
+                </controls:SettingsCard>
             </StackPanel>
         </StackPanel>
     </Border>

@@ -39,6 +39,8 @@ public interface ICaptureSettings
     bool RecordAudio { get; set; }
     bool RecordMicrophone { get; set; }
     string SelectedMicrophoneId { get; set; }
+    /// <summary>Apply a soft-knee limiter to microphone audio so hot input rounds off instead of clipping. Default true.</summary>
+    bool MicrophoneLimiterEnabled { get; set; }
     bool WebcamEnabled { get; set; }
     string SelectedWebcamId { get; set; }
     WebcamShape WebcamShape { get; set; }
@@ -46,6 +48,13 @@ public interface ICaptureSettings
     WebcamCornerPosition WebcamCornerPosition { get; set; }
     double? WebcamCornerRadius { get; set; }
     bool ShowScreenshotEditor { get; set; }
+
+    /// <summary>
+    /// When true, a region screenshot re-captures the screen after the selection overlay closes
+    /// (reflects changes made while selecting, slower). When false (default), the frozen frame
+    /// shown behind the overlay is cropped and saved directly — no second capture.
+    /// </summary>
+    bool ScreenshotUsesLiveCapture { get; set; }
     bool ShowGifTrimmer { get; set; }
     bool SaveImmediatelyScreenshot { get; set; }
     bool SaveImmediatelyVideo { get; set; }

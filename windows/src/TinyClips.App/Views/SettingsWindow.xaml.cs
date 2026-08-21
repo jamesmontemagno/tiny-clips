@@ -26,6 +26,7 @@ public sealed partial class SettingsWindow : Window
 {
     private const int MinimumWidthDip = 480;
     private const int MinimumHeightDip = 640;
+    private const ulong MaximumTranscriptSizeInBytes = 1_000_000;
 
     private readonly Dictionary<SettingsSectionKind, UserControl> _sectionCache = new();
     private XamlRoot? _xamlRoot;
@@ -171,7 +172,7 @@ public sealed partial class SettingsWindow : Window
             SettingsSectionKind.Video => new VideoSettingsSection(ViewModel),
             SettingsSectionKind.Gif => new GifSettingsSection(ViewModel),
             SettingsSectionKind.MouseClicks => new MouseClicksSettingsSection(ViewModel),
-            SettingsSectionKind.Teleprompter => new TeleprompterSettingsSection(ViewModel),
+            SettingsSectionKind.Teleprompter => CreateTeleprompterSection(),
             SettingsSectionKind.Hotkeys => new HotkeysSettingsSection(ViewModel),
             SettingsSectionKind.About => new AboutSettingsSection(ViewModel),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, message: null),
@@ -185,6 +186,13 @@ public sealed partial class SettingsWindow : Window
     {
         var section = new GeneralSettingsSection(ViewModel);
         section.BrowseSaveDirectoryRequested += OnBrowseSaveDirectoryRequested;
+        return section;
+    }
+
+    private TeleprompterSettingsSection CreateTeleprompterSection()
+    {
+        var section = new TeleprompterSettingsSection(ViewModel);
+        section.LoadTranscriptRequested += OnLoadTranscriptRequested;
         return section;
     }
 
@@ -220,5 +228,56 @@ public sealed partial class SettingsWindow : Window
                     break;
             }
         }
+    }
+
+    private async void OnLoadTranscriptRequested(object? sender, EventArgs e)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+        };
+        picker.FileTypeFilter.Add(".txt");
+        picker.FileTypeFilter.Add(".md");
+        picker.FileTypeFilter.Add(".csv");
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        try
+        {
+            var file = await picker.PickSingleFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            var properties = await file.GetBasicPropertiesAsync();
+            if (properties.Size > MaximumTranscriptSizeInBytes)
+            {
+                await ShowTranscriptLoadErrorAsync("The selected transcript is larger than 1 MB.");
+                return;
+            }
+
+            ViewModel.TeleprompterTranscript = await FileIO.ReadTextAsync(file);
+        }
+        catch (Exception)
+        {
+            await ShowTranscriptLoadErrorAsync(
+                "The selected file could not be loaded. Choose a plain-text file that is 1 MB or smaller.");
+        }
+    }
+
+    private async Task ShowTranscriptLoadErrorAsync(string message)
+    {
+        var dialog = new ContentDialog
+        {
+            CloseButtonText = "Close",
+            Content = message,
+            DefaultButton = ContentDialogButton.Close,
+            Title = "Unable to load transcript",
+            XamlRoot = RootGrid.XamlRoot,
+        };
+
+        await dialog.ShowAsync();
     }
 }

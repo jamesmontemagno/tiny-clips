@@ -106,6 +106,9 @@ public partial class App : Application
         RunStartupStep(nameof(RegisterGlobalHotKeys), () => RegisterGlobalHotKeys());
         RunStartupStep(nameof(ShowOnboardingIfNeeded), ShowOnboardingIfNeeded);
         RunStartupStep(nameof(HandleFileActivation), HandleFileActivation);
+        // Create the shared D3D capture device off the UI thread so the first capture is instant.
+        _ = Task.Run(() => RunStartupStep("ScreenCaptureWarmUp", () =>
+            Services.GetRequiredService<IScreenCaptureService>().WarmUp()));
 #if !TINYCLIPS_STORE_BUILD
         _ = RunStartupUpdateCheckAsync();
 #endif
@@ -610,10 +613,17 @@ public partial class App : Application
 
         var captureFlowCts = new CancellationTokenSource();
         _captureFlowCts = captureFlowCts;
+        IReadOnlyList<Task<CapturedFrame?>>? earlyBackdrops = null;
+        IReadOnlyList<MonitorInfo>? earlyBackdropMonitors = null;
+        long earlyBackdropStarted = 0;
         try
         {
-            // Give the tray menu a moment to dismiss so it isn't part of the capture.
-            await Task.Delay(150);
+            CaptureFlowTrace.Begin(type.ToString().ToLowerInvariant() + (forcedMode is null ? string.Empty : $"/{forcedMode}"));
+
+            // The tray popup and picker are excluded from capture (WDA_EXCLUDEFROMCAPTURE), so
+            // there is no longer any need to pause for the menu to dismiss before capturing.
+            // Warm the shared D3D capture device in the background so the first capture is fast.
+            Services.GetRequiredService<IScreenCaptureService>().WarmUp();
 
             // For an auto-reopened picker, bail out if a recording started during the delay.
             if (abortIfRecording && (_isExiting || IsAnyRecordingActive()))
@@ -624,6 +634,19 @@ public partial class App : Application
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var (cdEnabled, cdDuration) = GetCountdown(settings, type);
             var wasPickerInitiated = forcedMode is null && settings.ShouldShowCapturePicker(type);
+            if (wasPickerInitiated)
+            {
+                // Start grabbing the region-overlay backdrop while the user reads the picker bar,
+                // so choosing "Region" shows the overlay immediately. If the user dawdles the
+                // frame is refreshed on selection (see ResolveTargetAsync) so it never goes stale.
+                earlyBackdropMonitors = ResolveBackdropMonitors(settings);
+                if (earlyBackdropMonitors.Count > 0)
+                {
+                    earlyBackdropStarted = Stopwatch.GetTimestamp();
+                    earlyBackdrops = RegionSelectController.CaptureBackdropsAsync(earlyBackdropMonitors);
+                }
+            }
+
             var pick = wasPickerInitiated
                 ? await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
                 : new CapturePickerResult(
@@ -631,23 +654,31 @@ public partial class App : Application
                     cdEnabled,
                     cdDuration,
                     settings.VideoRecordingTimeLimitMinutes);
+            CaptureFlowTrace.Mark($"picker: result {(pick is null ? "cancelled" : pick.Mode.ToString())}");
             if (pick is null)
             {
                 return;
             }
 
             var isTextRecognition = pick.Mode == CapturePickerMode.RecognizeText;
+            var earlyBackdrop = earlyBackdrops is null
+                ? null
+                : new EarlyBackdrop(earlyBackdropMonitors!, earlyBackdrops, earlyBackdropStarted);
             var resolved = await ResolveTargetAsync(
-                isTextRecognition ? CapturePickerMode.Region : pick.Mode);
+                isTextRecognition ? CapturePickerMode.Region : pick.Mode,
+                earlyBackdrop);
+            CaptureFlowTrace.Mark($"target: {(resolved is null ? "cancelled" : "resolved")}");
             if (resolved is not { } selection)
             {
                 return;
             }
 
             RecordingSetupResult? recordingSetup = null;
+            Task? recorderPrepare = null;
             if (type is CaptureType.Video or CaptureType.Gif)
             {
                 recordingSetup = await ShowRecordingSetupAsync(type, selection, settings);
+                CaptureFlowTrace.Mark($"setup: {(recordingSetup is null ? "cancelled" : "confirmed")}");
                 if (recordingSetup is null)
                 {
                     CloseRecordingRegionIndicator();
@@ -655,6 +686,10 @@ public partial class App : Application
                 }
 
                 ApplyRecordingSetup(type, recordingSetup, settings);
+
+                // Pre-warm the whole recording pipeline (capture session, encoder, webcam, audio)
+                // while the countdown runs so the recording starts the instant it hits zero.
+                recorderPrepare = PrepareRecorderAsync(type, selection, captureFlowCts.Token);
             }
 
             var showDisabledStopDuringCountdown = type is CaptureType.Video or CaptureType.Gif
@@ -666,7 +701,8 @@ public partial class App : Application
             }
 
             RegionIndicatorWindow? regionIndicator = null;
-            if (pick.CountdownEnabled && pick.CountdownDuration > 0)
+            var countdownRan = pick.CountdownEnabled && pick.CountdownDuration > 0;
+            if (countdownRan)
             {
                 try
                 {
@@ -714,26 +750,13 @@ public partial class App : Application
 
                 case CaptureType.Screenshot:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
-                    var screenshots = Services.GetRequiredService<IScreenshotService>();
-                    var path = await screenshots.CaptureTargetAsync(selection.Target, selection.Region);
-                    Services.GetRequiredService<IRecentCaptureService>().Record(path, CaptureType.Screenshot);
-                    await CopyToClipboardAsync(path, CaptureType.Screenshot);
-                    if (settings.ShowScreenshotEditor)
-                    {
-                        OpenScreenshotEditor(path, reopenPickerAfterClose: wasPickerInitiated);
-                    }
-                    else
-                    {
-                        RevealInExplorer(path);
-                        ShowSaveToast(path);
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
-                    }
+                    await CaptureScreenshotAndPresentAsync(selection, settings, countdownRan, wasPickerInitiated, captureFlowCts.Token);
                     break;
 
                 case CaptureType.Video:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
-                    _activeRecordingSelection = selection;
+                    _activeRecordingSelection = selection with { Backdrop = null };
                     _activeRecordingType = CaptureType.Video;
                     _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
@@ -742,15 +765,17 @@ public partial class App : Application
                         ShowRecordingIndicator(CaptureType.Video, selection);
                     }
                     AcquireDisplaySleepAssertionIfEnabled();
+                    await AwaitRecorderPrepareAsync(recorderPrepare);
                     await Services.GetRequiredService<IVideoRecordingService>()
                         .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
+                    CaptureFlowTrace.Mark("video: StartAsync returned");
                     ActivateRecordingIndicatorForStartedCapture(CaptureType.Video);
                     UpdateRecordingState();
                     break;
 
                 case CaptureType.Gif:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
-                    _activeRecordingSelection = selection;
+                    _activeRecordingSelection = selection with { Backdrop = null };
                     _activeRecordingType = CaptureType.Gif;
                     _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
@@ -759,8 +784,10 @@ public partial class App : Application
                         ShowRecordingIndicator(CaptureType.Gif, selection);
                     }
                     AcquireDisplaySleepAssertionIfEnabled();
+                    await AwaitRecorderPrepareAsync(recorderPrepare);
                     await Services.GetRequiredService<IGifRecordingService>()
                         .StartAsync(selection.Target, selection.Region, captureFlowCts.Token);
+                    CaptureFlowTrace.Mark("gif: StartAsync returned");
                     ActivateRecordingIndicatorForStartedCapture(CaptureType.Gif);
                     UpdateRecordingState();
                     break;
@@ -768,6 +795,8 @@ public partial class App : Application
         }
         catch (OperationCanceledException)
         {
+            CaptureFlowTrace.Mark("flow cancelled");
+            _ = DiscardPreparedRecordersAsync();
             CloseRecordingRegionIndicator();
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
@@ -782,6 +811,8 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Capture failed: {ex}");
+            CaptureFlowTrace.Mark($"flow failed: {ex.GetType().Name}");
+            _ = DiscardPreparedRecordersAsync();
             ShowSaveFailureNotification(CaptureOutputDescription(type));
             UpdateRecordingState();
             CloseRecordingRegionIndicator();
@@ -803,6 +834,158 @@ public partial class App : Application
 
             captureFlowCts.Dispose();
         }
+    }
+
+    /// <summary>Monitor(s) the region overlay will cover, mirroring <see cref="ResolveTargetAsync"/>.</summary>
+    private static IReadOnlyList<MonitorInfo> ResolveBackdropMonitors(ICaptureSettings settings)
+    {
+        var monitors = Services.GetRequiredService<IMonitorService>();
+        var all = monitors.GetMonitors();
+        if (all.Count == 0)
+        {
+            return all;
+        }
+
+        var preferred = ResolvePreferredMonitor(monitors, settings.MultiMonitorCaptureMode);
+        return preferred is { } single ? new[] { single } : all;
+    }
+
+    // A backdrop captured while the picker was showing; refreshed if older than this on use.
+    private static readonly TimeSpan EarlyBackdropMaxAge = TimeSpan.FromMilliseconds(600);
+
+    private sealed record EarlyBackdrop(IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<Task<CapturedFrame?>> Frames, long StartedTimestamp)
+    {
+        public bool IsFreshFor(IReadOnlyList<MonitorInfo> monitors) =>
+            Stopwatch.GetElapsedTime(StartedTimestamp) <= EarlyBackdropMaxAge
+            && monitors.Count == Monitors.Count
+            && monitors.Zip(Monitors).All(pair => pair.First.HMonitor == pair.Second.HMonitor);
+    }
+
+    private Task PrepareRecorderAsync(CaptureType type, TargetSelection selection, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return type == CaptureType.Video
+                ? Services.GetRequiredService<IVideoRecordingService>().PrepareAsync(selection.Target, selection.Region, cancellationToken)
+                : Services.GetRequiredService<IGifRecordingService>().PrepareAsync(selection.Target, selection.Region, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Task.FromException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Waits for a background pre-warm to settle. Failures are swallowed here: StartAsync will
+    /// rebuild the pipeline itself and surface any real error through the normal path.
+    /// </summary>
+    private static async Task AwaitRecorderPrepareAsync(Task? prepare)
+    {
+        if (prepare is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await prepare;
+            CaptureFlowTrace.Mark("recorder: pre-warm complete");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Recorder pre-warm failed (will retry in StartAsync): {ex}");
+            CaptureFlowTrace.Mark("recorder: pre-warm failed");
+        }
+    }
+
+    private static async Task DiscardPreparedRecordersAsync()
+    {
+        try
+        {
+            await Services.GetRequiredService<IVideoRecordingService>().DiscardPreparedAsync();
+            await Services.GetRequiredService<IGifRecordingService>().DiscardPreparedAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Discarding prepared recorder failed: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// Produces the screenshot and gets it in front of the user as fast as possible. When the
+    /// region overlay's frozen backdrop is usable (no countdown, live re-capture not requested)
+    /// the screenshot is a crop of that frame: no second capture. The editor is opened from the
+    /// in-memory frame while encoding/saving/clipboard run concurrently, so the window appears
+    /// before the PNG hits disk.
+    /// </summary>
+    private async Task CaptureScreenshotAndPresentAsync(
+        TargetSelection selection,
+        ICaptureSettings settings,
+        bool countdownRan,
+        bool wasPickerInitiated,
+        CancellationToken cancellationToken)
+    {
+        var screenshots = Services.GetRequiredService<IScreenshotService>();
+        CapturedFrame frame;
+        if (selection.Backdrop is { } backdrop && !countdownRan && !settings.ScreenshotUsesLiveCapture)
+        {
+            frame = selection.Region is { } region ? backdrop.Crop(region) : backdrop;
+            CaptureFlowTrace.Mark("screenshot: cropped from frozen backdrop");
+        }
+        else
+        {
+            frame = await Services.GetRequiredService<IScreenCaptureService>()
+                .CaptureAsync(selection.Target, selection.Region, includeCursor: false, cancellationToken);
+            CaptureFlowTrace.Mark("screenshot: live frame captured");
+        }
+
+        if (settings.ShowBrandingOverlay)
+        {
+            // Brand once, up front, so the in-memory editor preview matches the saved file.
+            new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
+        }
+
+        var saveTask = SaveScreenshotFrameAsync(screenshots, frame, alreadyBranded: true);
+        if (settings.ShowScreenshotEditor)
+        {
+            // With a downscale configured, the saved file's dimensions differ from the frame; keep
+            // the editor file-backed so Save/Reset/Copy operate on the same pixels as the file.
+            var scaleApplied = settings.ScreenshotScale is > 0 and < 100;
+            if (!scaleApplied)
+            {
+                OpenScreenshotEditor(frame, saveTask, reopenPickerAfterClose: wasPickerInitiated);
+                CaptureFlowTrace.Mark("screenshot: editor opened from memory");
+                try
+                {
+                    await saveTask;
+                }
+                catch (Exception ex)
+                {
+                    // The editor already reports the failure via BindToPendingSaveAsync.
+                    Debug.WriteLine($"Background screenshot save failed: {ex}");
+                }
+                return;
+            }
+
+            var savedPath = await saveTask;
+            OpenScreenshotEditor(savedPath, reopenPickerAfterClose: wasPickerInitiated);
+            CaptureFlowTrace.Mark("screenshot: editor opened from file (scaled)");
+            return;
+        }
+
+        var path = await saveTask;
+        RevealInExplorer(path);
+        ShowSaveToast(path);
+        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
+    }
+
+    private async Task<string> SaveScreenshotFrameAsync(IScreenshotService screenshots, CapturedFrame frame, bool alreadyBranded)
+    {
+        var path = await screenshots.SaveFrameAsync(frame, applyBranding: !alreadyBranded);
+        Services.GetRequiredService<IRecentCaptureService>().Record(path, CaptureType.Screenshot);
+        await CopyToClipboardAsync(path, CaptureType.Screenshot);
+        CaptureFlowTrace.Mark("screenshot: saved + clipboard");
+        return path;
     }
 
     private async Task<RecordingSetupResult?> ShowRecordingSetupAsync(CaptureType type, TargetSelection selection, ICaptureSettings settings)
@@ -872,7 +1055,7 @@ public partial class App : Application
         settings.WebcamCornerRadius = setup.WebcamCornerRadius;
     }
 
-    private async Task<TargetSelection?> ResolveTargetAsync(CapturePickerMode mode)
+    private async Task<TargetSelection?> ResolveTargetAsync(CapturePickerMode mode, EarlyBackdrop? earlyBackdrop = null)
     {
         var monitors = Services.GetRequiredService<IMonitorService>();
         var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -889,23 +1072,24 @@ public partial class App : Application
                 }
 
                 var preferredMonitor = ResolvePreferredMonitor(monitors, settings.MultiMonitorCaptureMode);
-                if (preferredMonitor is { } single)
-                {
-                    var region = await RegionSelectWindow.RunAsync(single);
-                    return region is { } singleRegion
-                        ? new TargetSelection(CaptureTarget.Monitor(single.HMonitor), singleRegion, single)
-                        : null;
-                }
+                var overlayMonitors = preferredMonitor is { } single ? new[] { single } : all;
 
-                var result = await RegionSelectController.RunAsync(all);
+                // Reuse the backdrop grabbed while the picker was up if it is still fresh;
+                // otherwise the controller captures a new one (in parallel with window creation).
+                var backdrops = earlyBackdrop is { } early && early.IsFreshFor(overlayMonitors)
+                    ? early.Frames
+                    : null;
+                CaptureFlowTrace.Mark(backdrops is null ? "region: capturing fresh backdrop" : "region: reusing early backdrop");
+
+                var result = await RegionSelectController.RunAsync(overlayMonitors, backdrops);
                 if (result is not { } selection)
                 {
                     return null;
                 }
 
-                var selectedMonitor = all.FirstOrDefault(m => m.HMonitor == selection.HMonitor)
+                var selectedMonitor = overlayMonitors.FirstOrDefault(m => m.HMonitor == selection.HMonitor)
                     ?? monitors.GetPrimaryMonitor();
-                return new TargetSelection(CaptureTarget.Monitor(selection.HMonitor), selection.Region, selectedMonitor);
+                return new TargetSelection(CaptureTarget.Monitor(selection.HMonitor), selection.Region, selectedMonitor, selection.Backdrop);
             }
 
             case CapturePickerMode.Screen:
@@ -1002,7 +1186,7 @@ public partial class App : Application
         return monitors.FirstOrDefault(m => m.HMonitor == hMonitor) ?? monitorService.GetPrimaryMonitor();
     }
 
-    private readonly record struct TargetSelection(CaptureTarget Target, PixelRect? Region, MonitorInfo? Monitor);
+    private readonly record struct TargetSelection(CaptureTarget Target, PixelRect? Region, MonitorInfo? Monitor, CapturedFrame? Backdrop = null);
 
     private async Task ToggleVideoAsync()
     {
@@ -1162,6 +1346,7 @@ public partial class App : Application
     {
         _dispatcher?.TryEnqueue(async () =>
         {
+            CaptureFlowTrace.Mark("recording: completed event on UI thread");
             UpdateRecordingState();
             HideRecordingIndicator();
             HideProcessingIndicator();
@@ -1214,16 +1399,20 @@ public partial class App : Application
             if (video.IsRecording)
             {
                 stoppedType = CaptureType.Video;
+                CaptureFlowTrace.Begin("stop-video");
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Video, _activeRecordingSelection);
                 await video.StopAsync();
+                CaptureFlowTrace.Mark("video: StopAsync returned");
             }
             else if (gif.IsRecording)
             {
                 stoppedType = CaptureType.Gif;
+                CaptureFlowTrace.Begin("stop-gif");
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Gif, _activeRecordingSelection);
                 await gif.StopAsync();
+                CaptureFlowTrace.Mark("gif: StopAsync returned");
             }
             else
             {
@@ -2408,6 +2597,17 @@ public partial class App : Application
     }
 
     private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
+        => OpenScreenshotEditorCore(() => new ScreenshotEditorWindow(path), path, reopenPickerAfterClose);
+
+    /// <summary>
+    /// Opens the editor directly from the captured pixels while <paramref name="saveTask"/>
+    /// encodes and writes the file in the background. The editor binds to the final path once
+    /// the save completes so Save/Save-a-copy work exactly as before.
+    /// </summary>
+    private void OpenScreenshotEditor(CapturedFrame frame, Task<string> saveTask, bool reopenPickerAfterClose)
+        => OpenScreenshotEditorCore(() => new ScreenshotEditorWindow(frame, saveTask), null, reopenPickerAfterClose);
+
+    private void OpenScreenshotEditorCore(Func<ScreenshotEditorWindow> create, string? fallbackPath, bool reopenPickerAfterClose)
     {
         try
         {
@@ -2415,7 +2615,7 @@ public partial class App : Application
             _editorWindow = null;
             oldWindow?.Close();
 
-            var window = new ScreenshotEditorWindow(path);
+            var window = create();
             _editorWindow = window;
             window.Closed += (_, _) =>
             {
@@ -2433,8 +2633,11 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"OpenScreenshotEditor failed: {ex}");
-            RevealInExplorer(path);
-            ShowSaveToast(path);
+            if (fallbackPath is not null)
+            {
+                RevealInExplorer(fallbackPath);
+                ShowSaveToast(fallbackPath);
+            }
             if (reopenPickerAfterClose)
             {
                 ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
@@ -2497,6 +2700,7 @@ public partial class App : Application
         _onboardingWindow?.Close();
         _editorWindow?.Close();
         _trimmerWindow?.Close();
+        CapturePickerWindow.ReleasePooled();
         Application.Current.Exit();
         // No persistent host window keeps the process alive, so force termination
         // to guarantee the user can always quit from the tray menu.
@@ -2516,7 +2720,8 @@ public partial class App : Application
 
     private async Task ReopenPickerAfterCaptureAsync(CaptureType type)
     {
-        await Task.Delay(150);
+        // Yield one dispatcher turn so the previous flow's windows finish closing.
+        await Task.Yield();
         if (_isExiting || IsAnyRecordingActive())
         {
             return;

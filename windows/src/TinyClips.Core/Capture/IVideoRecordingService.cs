@@ -38,6 +38,18 @@ public interface IVideoRecordingService
     /// </summary>
     Task StartAsync(CaptureTarget? target = null, PixelRect? region = null, double? timeLimitMinutesOverride = null, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Pre-warms the recording pipeline (capture session, webcam, audio devices, encoder) for the
+    /// given target without starting the recorded timeline. A following <see cref="StartAsync"/>
+    /// with the same target/region begins emitting immediately instead of paying for setup. Call
+    /// during the countdown or setup panel. Discard with <see cref="DiscardPreparedAsync"/> if
+    /// the recording is cancelled before it starts.
+    /// </summary>
+    Task PrepareAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Tears down a pipeline prepared by <see cref="PrepareAsync"/> that will not be started.</summary>
+    Task DiscardPreparedAsync();
+
     /// <summary>Stops recording, finalizes the MP4 and returns the saved path (or null if nothing recorded).</summary>
     Task<string?> StopAsync();
 

@@ -42,6 +42,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private Timer? _limitTimer;
     private int _stopping;
     private int _discardRequested;
+    private PreparedPipeline? _prepared;
 
     private MouseClickMonitor? _clickMonitor;
     private MouseClickOverlayStyle _clickStyle;
@@ -96,7 +97,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     public event EventHandler<string>? WebcamCaptureFailed;
 
-    public async Task StartAsync(CaptureTarget? target = null, PixelRect? region = null, double? timeLimitMinutesOverride = null, CancellationToken cancellationToken = default)
+    public async Task PrepareAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -106,124 +107,20 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 throw new InvalidOperationException("A recording is already in progress.");
             }
 
-            Interlocked.Exchange(ref _discardRequested, 0);
+            var captureTarget = ResolveTarget(target);
+            if (_prepared is { } existing)
+            {
+                if (existing.Matches(captureTarget, region))
+                {
+                    return;
+                }
 
-            var captureTarget = target ?? CaptureTarget.Monitor(
-                (_monitors.GetPrimaryMonitor()
-                    ?? throw new InvalidOperationException("No monitor was found to record.")).HMonitor);
-
-            var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
-            _frameDuration = TimeSpan.FromSeconds(1.0 / fps);
+                await CleanupFailedStartAsync().ConfigureAwait(false);
+            }
 
             try
             {
-                _channel = Channel.CreateBounded<TimestampedFrame>(new BoundedChannelOptions(fps * 4)
-                {
-                    FullMode = BoundedChannelFullMode.DropWrite,
-                    SingleReader = true,
-                    SingleWriter = true,
-                });
-
-                _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true);
-                _capture.FrameReady += OnFrameReady;
-                _capture.Start();
-
-                StartMouseClickOverlay(captureTarget, region);
-                _branding = _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
-                await StartWebcamOverlayAsync(cancellationToken).ConfigureAwait(false);
-
-                var width = _capture.OutputWidth;
-                var height = _capture.OutputHeight;
-
-                _outputPath = _storage.GenerateFilePath(CaptureType.Video);
-                var directory = Path.GetDirectoryName(_outputPath);
-                if (!string.IsNullOrEmpty(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                _fileStream = new FileStream(_outputPath, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
-                var randomAccessStream = _fileStream.AsRandomAccessStream();
-
-                _audioEnding = false;
-                _audioFramesRead = 0;
-                _audioSamplesRequested = 0;
-                _audioNonSilentChunks = 0;
-                _loggedFirstAudioChunk = false;
-                StartAudioCapture();
-
-                var includeAudio = _hasAudio;
-                var profile = CreateEncodingProfile(width, height, fps, includeAudio);
-                var mediaStreamSource = CreateMediaStreamSource(width, height, fps);
-
-                var transcoder = new MediaTranscoder { HardwareAccelerationEnabled = true };
-                PrepareTranscodeResult prepare;
-                var usedFallbackProfile = false;
-                try
-                {
-                    prepare = await PrepareTranscodeAsync(
-                        transcoder,
-                        mediaStreamSource,
-                        randomAccessStream,
-                        profile,
-                        cancellationToken).ConfigureAwait(false);
-                }
-                catch (COMException ex) when (ex.HResult == MfTransformTypeNotSet)
-                {
-                    prepare = await RetryPrepareWithBaselineAsync(
-                        randomAccessStream,
-                        width,
-                        height,
-                        fps,
-                        includeAudio,
-                        cancellationToken,
-                        ex).ConfigureAwait(false);
-                    usedFallbackProfile = true;
-                }
-
-                if (!prepare.CanTranscode && !usedFallbackProfile)
-                {
-                    prepare = await RetryPrepareWithBaselineAsync(
-                        randomAccessStream,
-                        width,
-                        height,
-                        fps,
-                        includeAudio,
-                        cancellationToken,
-                        null).ConfigureAwait(false);
-                }
-
-                if (!prepare.CanTranscode)
-                {
-                    throw new InvalidOperationException($"Cannot encode video: {prepare.FailureReason}.");
-                }
-
-                // The encoder is now ready to consume frames. Wait briefly for the first webcam
-                // frame, then give screen, webcam, loopback, and microphone one shared QPC origin.
-                // Audio packets retain their source timestamp offsets rather than being flattened
-                // by independent buffers. This anchors the recorded timeline to the real start
-                // moment — without it, the capture clock,
-                // encoder prep and camera warm-up were baked in as several seconds of dead pre-roll
-                // (frozen screen, no webcam) at the front of every clip, and that pre-roll saturated
-                // the bounded frame channel so real frames near the end were dropped.
-                await WaitForFirstWebcamFrameAsync(cancellationToken).ConfigureAwait(false);
-                _recordingTimeline = RecordingTimeline.StartNow();
-                _webcamPlacements = new WebcamPlacementTimeline(_settings.WebcamCornerPosition);
-                _audio?.BeginTimeline(_recordingTimeline);
-                _capture.BeginEmitting(_recordingTimeline);
-
-                _transcodeTask = prepare.TranscodeAsync().AsTask();
-                IsRecording = true;
-
-                var limitMinutes = timeLimitMinutesOverride ?? _settings.VideoRecordingTimeLimitMinutes;
-                if (limitMinutes > 0)
-                {
-                    _limitTimer = new Timer(
-                        _ => _ = StopAsync(),
-                        null,
-                        TimeSpan.FromMinutes(limitMinutes),
-                        Timeout.InfiniteTimeSpan);
-                }
+                await PrepareCoreAsync(captureTarget, region, cancellationToken).ConfigureAwait(false);
             }
             catch
             {
@@ -235,6 +132,206 @@ public sealed class VideoRecordingService : IVideoRecordingService
         {
             _gate.Release();
         }
+    }
+
+    public async Task DiscardPreparedAsync()
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (!IsRecording && _prepared is not null)
+            {
+                await CleanupFailedStartAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task StartAsync(CaptureTarget? target = null, PixelRect? region = null, double? timeLimitMinutesOverride = null, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (IsRecording)
+            {
+                throw new InvalidOperationException("A recording is already in progress.");
+            }
+
+            var captureTarget = ResolveTarget(target);
+            try
+            {
+                if (_prepared is null || !_prepared.Matches(captureTarget, region))
+                {
+                    if (_prepared is not null)
+                    {
+                        await CleanupFailedStartAsync().ConfigureAwait(false);
+                    }
+
+                    await PrepareCoreAsync(captureTarget, region, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    CaptureFlowTrace.Mark("video: using pre-warmed pipeline");
+                }
+
+                await BeginPreparedAsync(timeLimitMinutesOverride, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await CleanupFailedStartAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private CaptureTarget ResolveTarget(CaptureTarget? target) => target ?? CaptureTarget.Monitor(
+        (_monitors.GetPrimaryMonitor()
+            ?? throw new InvalidOperationException("No monitor was found to record.")).HMonitor);
+
+    /// <summary>
+    /// Builds the whole pipeline up to "encoder ready": capture session (capturing but not
+    /// emitting), webcam, audio devices, output file and a prepared transcoder. Safe to run during
+    /// the countdown because nothing is written to the timeline until <see cref="BeginPreparedAsync"/>.
+    /// </summary>
+    private async Task PrepareCoreAsync(CaptureTarget captureTarget, PixelRect? region, CancellationToken cancellationToken)
+    {
+        Interlocked.Exchange(ref _discardRequested, 0);
+
+        var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
+        _frameDuration = TimeSpan.FromSeconds(1.0 / fps);
+
+        _channel = Channel.CreateBounded<TimestampedFrame>(new BoundedChannelOptions(fps * 4)
+        {
+            FullMode = BoundedChannelFullMode.DropWrite,
+            SingleReader = true,
+            SingleWriter = true,
+        });
+
+        _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true);
+        _capture.FrameReady += OnFrameReady;
+        _capture.Start();
+        CaptureFlowTrace.Mark("video: capture session started");
+
+        StartMouseClickOverlay(captureTarget, region);
+        _branding = _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
+        await StartWebcamOverlayAsync(cancellationToken).ConfigureAwait(false);
+        CaptureFlowTrace.Mark("video: webcam overlay started");
+
+        var width = _capture.OutputWidth;
+        var height = _capture.OutputHeight;
+
+        _outputPath = _storage.GenerateFilePath(CaptureType.Video);
+        var directory = Path.GetDirectoryName(_outputPath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        _fileStream = new FileStream(_outputPath, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+        var randomAccessStream = _fileStream.AsRandomAccessStream();
+
+        _audioEnding = false;
+        _audioFramesRead = 0;
+        _audioSamplesRequested = 0;
+        _audioNonSilentChunks = 0;
+        _loggedFirstAudioChunk = false;
+        StartAudioCapture();
+        CaptureFlowTrace.Mark("video: audio capture started");
+
+        var includeAudio = _hasAudio;
+        var profile = CreateEncodingProfile(width, height, fps, includeAudio);
+        var mediaStreamSource = CreateMediaStreamSource(width, height, fps);
+
+        var transcoder = new MediaTranscoder { HardwareAccelerationEnabled = true };
+        PrepareTranscodeResult prepare;
+        var usedFallbackProfile = false;
+        try
+        {
+            prepare = await PrepareTranscodeAsync(
+                transcoder,
+                mediaStreamSource,
+                randomAccessStream,
+                profile,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (COMException ex) when (ex.HResult == MfTransformTypeNotSet)
+        {
+            prepare = await RetryPrepareWithBaselineAsync(
+                randomAccessStream,
+                width,
+                height,
+                fps,
+                includeAudio,
+                cancellationToken,
+                ex).ConfigureAwait(false);
+            usedFallbackProfile = true;
+        }
+
+        if (!prepare.CanTranscode && !usedFallbackProfile)
+        {
+            prepare = await RetryPrepareWithBaselineAsync(
+                randomAccessStream,
+                width,
+                height,
+                fps,
+                includeAudio,
+                cancellationToken,
+                null).ConfigureAwait(false);
+        }
+
+        if (!prepare.CanTranscode)
+        {
+            throw new InvalidOperationException($"Cannot encode video: {prepare.FailureReason}.");
+        }
+
+        CaptureFlowTrace.Mark("video: transcoder prepared");
+        _prepared = new PreparedPipeline(captureTarget, region, prepare);
+    }
+
+    private async Task BeginPreparedAsync(double? timeLimitMinutesOverride, CancellationToken cancellationToken)
+    {
+        var prepared = _prepared ?? throw new InvalidOperationException("Pipeline has not been prepared.");
+        _prepared = null;
+
+        // The encoder is ready to consume frames. Wait briefly for the first webcam frame, then
+        // give screen, webcam, loopback, and microphone one shared QPC origin. Audio packets retain
+        // their source timestamp offsets rather than being flattened by independent buffers. This
+        // anchors the recorded timeline to the real start moment — without it, the capture clock,
+        // encoder prep and camera warm-up were baked in as several seconds of dead pre-roll
+        // (frozen screen, no webcam) at the front of every clip, and that pre-roll saturated the
+        // bounded frame channel so real frames near the end were dropped.
+        await WaitForFirstWebcamFrameAsync(cancellationToken).ConfigureAwait(false);
+        _recordingTimeline = RecordingTimeline.StartNow();
+        _webcamPlacements = new WebcamPlacementTimeline(_settings.WebcamCornerPosition);
+        _audio?.BeginTimeline(_recordingTimeline);
+        _capture!.BeginEmitting(_recordingTimeline);
+
+        _transcodeTask = prepared.Transcode.TranscodeAsync().AsTask();
+        IsRecording = true;
+        CaptureFlowTrace.Mark("video: recording started (emitting)");
+
+        var limitMinutes = timeLimitMinutesOverride ?? _settings.VideoRecordingTimeLimitMinutes;
+        if (limitMinutes > 0)
+        {
+            _limitTimer = new Timer(
+                _ => _ = StopAsync(),
+                null,
+                TimeSpan.FromMinutes(limitMinutes),
+                Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private sealed record PreparedPipeline(CaptureTarget Target, PixelRect? Region, PrepareTranscodeResult Transcode)
+    {
+        public bool Matches(CaptureTarget target, PixelRect? region) =>
+            Target.HMonitor == target.HMonitor && Target.Hwnd == target.Hwnd && Region == region;
     }
 
     private void OnFrameReady(CapturedFrame frame, TimeSpan pts)
@@ -458,6 +555,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     private async Task CleanupFailedStartAsync()
     {
+        _prepared = null;
         DetachMediaStreamSource();
         _limitTimer?.Dispose();
         _limitTimer = null;
@@ -784,7 +882,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
     {
         var wantSystem = _settings.RecordAudio;
         var wantMic = _settings.RecordMicrophone;
-        WebcamDiagnostics.Log($"StartAudioCapture: RecordAudio={wantSystem} RecordMicrophone={wantMic} micDeviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedMicrophoneId) ? "(default)" : _settings.SelectedMicrophoneId)}'");
+        var limitMic = _settings.MicrophoneLimiterEnabled;
+        WebcamDiagnostics.Log($"StartAudioCapture: RecordAudio={wantSystem} RecordMicrophone={wantMic} MicrophoneLimiter={limitMic} micDeviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedMicrophoneId) ? "(default)" : _settings.SelectedMicrophoneId)}'");
         if (!wantSystem && !wantMic)
         {
             WebcamDiagnostics.Log("StartAudioCapture: no audio sources requested; recording will have no audio track.");
@@ -793,7 +892,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         try
         {
-            var audio = new AudioCaptureService(wantSystem, wantMic, _settings.SelectedMicrophoneId);
+            var audio = new AudioCaptureService(wantSystem, wantMic, _settings.SelectedMicrophoneId, limitMic);
             if (audio.TryStart())
             {
                 _audio = audio;
@@ -917,6 +1016,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
             if (!IsRecording)
             {
                 IsPaused = false;
+
+                if (_prepared is not null)
+                {
+                    // A pre-warmed pipeline that never started (e.g. countdown cancelled).
+                    await CleanupFailedStartAsync().ConfigureAwait(false);
+                    return null;
+                }
 
                 if (ConsumeDiscardRequested(discard))
                 {

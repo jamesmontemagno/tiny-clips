@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using Windows.Graphics;
 using Windows.System;
@@ -33,24 +34,55 @@ public sealed partial class CapturePickerWindow : Window
     private static readonly int[] LimitOptions = { 0, 1, 2, 5, 10, 15, 30 };
     private const int CornerRadiusDip = 8;
 
-    private readonly TaskCompletionSource<CapturePickerResult?> _result = new();
+    // A single hidden instance is kept alive between captures: creating a WinUI window with an
+    // acrylic backdrop costs 100-250 ms, which used to be paid on every hotkey press.
+    private static CapturePickerWindow? _pooled;
+
+    private TaskCompletionSource<CapturePickerResult?> _result = new();
     private bool _countdownEnabled;
     private int _countdownDuration;
     private double _videoTimeLimitMinutes;
     private bool _completed;
+    private bool _isShowing;
+    private bool _pendingRegionApply;
     private int _windowWidth;
     private int _windowHeight;
     private double _windowScale = 1.0;
 
     private readonly FloatingWindowDragger _dragger;
 
-    private CapturePickerWindow(CaptureType captureType, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes)
+    private CapturePickerWindow()
     {
         InitializeComponent();
 
+        BuildTimerFlyout();
+        BuildLimitFlyout();
+
+        _dragger = new FloatingWindowDragger(AppWindow);
+
+        ConfigurePresenter();
+        OverlayWindowHelpers.ExcludeFromCapture(WinRT.Interop.WindowNative.GetWindowHandle(this));
+
+        RootGrid.KeyDown += OnKeyDown;
+        Activated += OnActivated;
+        Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_pooled, this))
+            {
+                _pooled = null;
+            }
+
+            Complete(null);
+        };
+    }
+
+    private void Configure(CaptureType captureType, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes)
+    {
         _countdownEnabled = countdownEnabled;
         _countdownDuration = countdownDuration <= 0 ? 3 : countdownDuration;
         _videoTimeLimitMinutes = videoTimeLimitMinutes < 0 ? 0 : videoTimeLimitMinutes;
+        _completed = false;
+        _result = new TaskCompletionSource<CapturePickerResult?>();
 
         ModeIcon.Glyph = captureType switch
         {
@@ -65,33 +97,27 @@ public sealed partial class CapturePickerWindow : Window
             _ => "Screenshot",
         };
 
-        BuildTimerFlyout();
         UpdateTimerLabel();
-
-        if (captureType == CaptureType.Video)
-        {
-            LimitButton.Visibility = Visibility.Visible;
-            BuildLimitFlyout();
-            UpdateLimitLabel();
-        }
-        else
-        {
-            LimitButton.Visibility = Visibility.Collapsed;
-        }
-
-        _dragger = new FloatingWindowDragger(AppWindow);
-
-        ConfigurePresenter();
-        PositionNearTopOfPrimaryDisplay();
-
-        RootGrid.KeyDown += OnKeyDown;
-        Activated += OnActivated;
+        LimitButton.Visibility = captureType == CaptureType.Video ? Visibility.Visible : Visibility.Collapsed;
+        UpdateLimitLabel();
     }
 
     public static Task<CapturePickerResult?> RunAsync(CaptureType captureType, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes = 0)
     {
-        var window = new CapturePickerWindow(captureType, countdownEnabled, countdownDuration, videoTimeLimitMinutes);
+        var window = _pooled;
+        if (window is null || window._isShowing)
+        {
+            window = new CapturePickerWindow();
+            _pooled ??= window;
+        }
+
+        window.Configure(captureType, countdownEnabled, countdownDuration, videoTimeLimitMinutes);
+        window.PositionNearTopOfPrimaryDisplay();
+        window._isShowing = true;
+        window._pendingRegionApply = true;
+        window.AppWindow.Show();
         window.Activate();
+        CaptureFlowTrace.Mark("picker: activated");
         return window._result.Task;
     }
 
@@ -101,30 +127,38 @@ public sealed partial class CapturePickerWindow : Window
         {
             return;
         }
-        Activated -= OnActivated;
-        OverlayWindowHelpers.ApplyRoundedRegion(
-            WinRT.Interop.WindowNative.GetWindowHandle(this),
-            _windowWidth, _windowHeight, _windowScale, CornerRadiusDip);
+
+        if (_pendingRegionApply)
+        {
+            _pendingRegionApply = false;
+            OverlayWindowHelpers.ApplyRoundedRegion(
+                WinRT.Interop.WindowNative.GetWindowHandle(this),
+                _windowWidth, _windowHeight, _windowScale, CornerRadiusDip);
+        }
+
         RootGrid.Focus(FocusState.Programmatic);
     }
 
     private void PositionNearTopOfPrimaryDisplay()
     {
+        // The pooled window may still sit on a previous primary monitor while hidden. Move it to
+        // the target work area first so the DPI transition happens before measuring.
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var work = DisplayArea.Primary?.WorkArea
+            ?? DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var target = AppWindowPlacement.PrepareForTargetWorkArea(AppWindow, hwnd, work);
+        var scale = target.Scale;
+
         RootGrid.UpdateLayout();
         RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var scale = AppWindowPlacement.GetScaleForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var width = (int)Math.Ceiling(RootGrid.DesiredSize.Width * scale);
         var height = (int)Math.Ceiling(RootGrid.DesiredSize.Height * scale);
         width = Math.Max(width, (int)(360 * scale));
         height = Math.Max(height, (int)(64 * scale));
 
-        AppWindow.Resize(new SizeInt32(width, height));
-        if (DisplayArea.Primary?.WorkArea is { } work)
-        {
-            var x = work.X + ((work.Width - width) / 2);
-            var y = work.Y + (int)(72 * scale);
-            AppWindow.Move(new PointInt32(x, y));
-        }
+        var x = work.X + ((work.Width - width) / 2);
+        var y = work.Y + (int)(72 * scale);
+        AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
 
         _windowWidth = width;
         _windowHeight = height;
@@ -245,7 +279,31 @@ public sealed partial class CapturePickerWindow : Window
         }
 
         _completed = true;
+        _isShowing = false;
         _result.TrySetResult(mode is { } m ? new CapturePickerResult(m, _countdownEnabled, _countdownDuration, _videoTimeLimitMinutes) : null);
+
+        // Hide rather than close so the next capture reuses this window instantly.
+        if (ReferenceEquals(_pooled, this))
+        {
+            try
+            {
+                AppWindow.Hide();
+                return;
+            }
+            catch
+            {
+                _pooled = null;
+            }
+        }
+
         Close();
+    }
+
+    /// <summary>Closes the cached instance (e.g. on app exit).</summary>
+    internal static void ReleasePooled()
+    {
+        var pooled = _pooled;
+        _pooled = null;
+        pooled?.Close();
     }
 }

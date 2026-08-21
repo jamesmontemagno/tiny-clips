@@ -21,6 +21,15 @@ public interface IGifRecordingService
     /// </summary>
     Task StartAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Pre-warms the capture session for the given target without starting the recording, so a
+    /// following <see cref="StartAsync"/> with the same target/region begins immediately.
+    /// </summary>
+    Task PrepareAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Tears down a pipeline prepared by <see cref="PrepareAsync"/> that will not be started.</summary>
+    Task DiscardPreparedAsync();
+
     /// <summary>Stops recording, encodes the GIF and returns the saved path (or null if nothing recorded).</summary>
     Task<string?> StopAsync();
 
