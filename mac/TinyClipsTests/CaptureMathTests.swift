@@ -337,6 +337,55 @@ final class CaptureMathTests: XCTestCase {
         }
     }
 
+    func testExportFrameLayoutSnapsCenteredImageOriginToWholePixels() {
+        // Padding comes from a `step: 2` slider and the crop rect is `.integral`, so
+        // the only fractional value the export path can produce is a centered origin
+        // when the preset leaves an odd amount of extra space (e.g. 101 / 2 = 50.5).
+        let imageSize = CGSize(width: 503, height: 331)
+
+        // Extra horizontal space is 624 - 523 = 101 (odd).
+        let landscape = ExportFrameLayout.make(
+            imageSize: imageSize,
+            padding: 10,
+            preset: .landscapeSixteenByNine,
+            horizontalAlignment: .center,
+            verticalAlignment: .center,
+            snapsToPixels: true
+        )
+        XCTAssertEqual(landscape.frameSize, CGSize(width: 624, height: 351))
+        XCTAssertEqual(landscape.imageRect.origin, CGPoint(x: 61, y: 10))
+
+        // Extra vertical space is 930 - 351 = 579 (odd).
+        let portrait = ExportFrameLayout.make(
+            imageSize: imageSize,
+            padding: 10,
+            preset: .portraitNineBySixteen,
+            horizontalAlignment: .center,
+            verticalAlignment: .center,
+            snapsToPixels: true
+        )
+        XCTAssertEqual(portrait.frameSize, CGSize(width: 523, height: 930))
+        XCTAssertEqual(portrait.imageRect.origin, CGPoint(x: 10, y: 300))
+
+        // Even leftover space (523 - 351 = 172) is unchanged by the snap.
+        let square = ExportFrameLayout.make(
+            imageSize: imageSize,
+            padding: 10,
+            preset: .square,
+            horizontalAlignment: .center,
+            verticalAlignment: .center,
+            snapsToPixels: true
+        )
+        XCTAssertEqual(square.frameSize, CGSize(width: 523, height: 523))
+        XCTAssertEqual(square.imageRect.origin, CGPoint(x: 10, y: 96))
+
+        for layout in [landscape, portrait, square] {
+            XCTAssertEqual(layout.imageRect.size, imageSize)
+            XCTAssertLessThanOrEqual(layout.imageRect.maxX, layout.frameSize.width)
+            XCTAssertLessThanOrEqual(layout.imageRect.maxY, layout.frameSize.height)
+        }
+    }
+
     func testExportFrameLayoutKeepsFractionalGeometryForDisplay() {
         // The display-space preview path keeps fractional geometry so preview
         // padding and scaling stay proportional to point-scaled sizes.

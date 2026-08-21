@@ -269,10 +269,11 @@ struct ExportFrameLayout {
         var originY = safePadding + (max(0, frameSize.height - baseSize.height) * verticalAlignment.placementFactor)
 
         if snapsToPixels {
-            // Snap to whole pixels so bitmap exports never contain sub-pixel
-            // slivers at the canvas edges. Those slivers are invisible in alpha
-            // formats but render as white hairlines when exported to JPEG
-            // (which flattens transparency onto white). The display-space
+            // Snap to whole pixels for bitmap export. Centering the card inside an odd
+            // amount of leftover preset space lands its origin on a half pixel, and
+            // Core Graphics then anti-aliases the card edge across two columns/rows
+            // at 50% alpha. On a transparent background exported as JPEG that edge
+            // flattens to a light hairline around the screenshot. The display-space
             // preview path keeps fractional geometry so it scales proportionally.
             frameSize.width = frameSize.width.rounded(.up)
             frameSize.height = frameSize.height.rounded(.up)
