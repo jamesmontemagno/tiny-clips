@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- Fixed macOS screenshot editor exports showing white hairline borders around padded screenshots in JPEG format. Fractional export frame sizes and image origins left sub-pixel slivers at the canvas edges, which flattened to white when JPEG encoding discarded transparency. Export layouts are now snapped to whole pixels.
+
 ## v1.6.1-mac - 2026-08-18
 
 ### Fixed
