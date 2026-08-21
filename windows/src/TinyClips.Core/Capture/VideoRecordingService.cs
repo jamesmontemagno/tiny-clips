@@ -882,7 +882,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
     {
         var wantSystem = _settings.RecordAudio;
         var wantMic = _settings.RecordMicrophone;
-        WebcamDiagnostics.Log($"StartAudioCapture: RecordAudio={wantSystem} RecordMicrophone={wantMic} micDeviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedMicrophoneId) ? "(default)" : _settings.SelectedMicrophoneId)}'");
+        var limitMic = _settings.MicrophoneLimiterEnabled;
+        WebcamDiagnostics.Log($"StartAudioCapture: RecordAudio={wantSystem} RecordMicrophone={wantMic} MicrophoneLimiter={limitMic} micDeviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedMicrophoneId) ? "(default)" : _settings.SelectedMicrophoneId)}'");
         if (!wantSystem && !wantMic)
         {
             WebcamDiagnostics.Log("StartAudioCapture: no audio sources requested; recording will have no audio track.");
@@ -891,7 +892,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         try
         {
-            var audio = new AudioCaptureService(wantSystem, wantMic, _settings.SelectedMicrophoneId);
+            var audio = new AudioCaptureService(wantSystem, wantMic, _settings.SelectedMicrophoneId, limitMic);
             if (audio.TryStart())
             {
                 _audio = audio;

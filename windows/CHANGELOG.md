@@ -6,6 +6,11 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Microphone soft-knee limiter** — Video recordings now run microphone audio through a
+  per-sample soft-knee limiter (knee at 0.98 FS, `atan` roll-off toward full scale) before mixing
+  so hot microphones round off instead of hard-clipping. On by default; toggle with Settings →
+  Video → Audio → Microphone → *Limit microphone peaks*. Matches the macOS 1.6.0 limiter curve,
+  never alters sample count or timing (A/V sync unchanged), and leaves system audio untouched.
 - **Capture flow latency instrumentation** — `CaptureFlowTrace` records elapsed/delta timings at
   every transition of the capture flow (picker, region overlay, backdrop, countdown, recorder
   start/stop, editor/trimmer). Output goes to the debugger always, and to

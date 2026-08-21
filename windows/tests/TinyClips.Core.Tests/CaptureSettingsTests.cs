@@ -31,6 +31,7 @@ public sealed class CaptureSettingsTests
         Assert.Equal(100, settings.ScreenshotScale);
         Assert.Equal("TinyClips {date} at {time}", settings.FileNameTemplate);
         Assert.True(settings.ShowTrimmer);
+        Assert.True(settings.MicrophoneLimiterEnabled);
         Assert.False(settings.WebcamEnabled);
         Assert.Equal(string.Empty, settings.SelectedWebcamId);
         Assert.Equal(WebcamShape.Circle, settings.WebcamShape);
@@ -97,6 +98,22 @@ public sealed class CaptureSettingsTests
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Screenshot));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Video));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Gif));
+    }
+
+    [Fact]
+    public void MicrophoneLimiterEnabled_RoundTripsAndResetsToTrue()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        settings.MicrophoneLimiterEnabled = false;
+
+        Assert.False(settings.MicrophoneLimiterEnabled);
+        Assert.False(settingsService.Get("microphoneLimiterEnabled", true));
+
+        settings.ResetToDefaults();
+
+        Assert.True(settings.MicrophoneLimiterEnabled);
     }
 
     [Fact]
