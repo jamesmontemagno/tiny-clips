@@ -384,6 +384,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(MicrophoneSelectorEnabled))]
     private bool _recordMicrophone;
 
+    /// <summary>Soft-knee limiter on the microphone path so hot input rounds off instead of clipping.</summary>
+    [ObservableProperty]
+    private bool _microphoneLimiterEnabled = true;
+
     /// <summary>Microphone devices for the picker (first entry is the system default).</summary>
     public System.Collections.ObjectModel.ObservableCollection<AudioInputDevice> Microphones { get; } = new();
 
@@ -749,6 +753,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             KeepDisplayAwakeWhileRecording = _settings.KeepDisplayAwakeWhileRecording;
             RecordAudio = _settings.RecordAudio;
             RecordMicrophone = _settings.RecordMicrophone;
+            MicrophoneLimiterEnabled = _settings.MicrophoneLimiterEnabled;
 
             _savedMicrophoneId = _settings.SelectedMicrophoneId ?? string.Empty;
             WebcamEnabled = _settings.WebcamEnabled;
@@ -1131,6 +1136,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnRecordAudioChanged(bool value) => Persist(() => _settings.RecordAudio = value);
 
     partial void OnRecordMicrophoneChanged(bool value) => Persist(() => _settings.RecordMicrophone = value);
+
+    partial void OnMicrophoneLimiterEnabledChanged(bool value) => Persist(() => _settings.MicrophoneLimiterEnabled = value);
 
     partial void OnSelectedMicrophoneChanged(AudioInputDevice? value) =>
         Persist(() => _settings.SelectedMicrophoneId = value?.Id ?? string.Empty);
