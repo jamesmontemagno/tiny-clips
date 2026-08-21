@@ -38,7 +38,7 @@ public sealed class AudioCaptureService : IDisposable
     /// the microphone source before mixing so hot input rounds off instead of hard-clipping.
     /// System/loopback audio is never limited.
     /// </param>
-    public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId, bool limitMicrophone = true)
+    public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId, bool limitMicrophone)
     {
         _captureSystem = captureSystem;
         _captureMic = captureMic;

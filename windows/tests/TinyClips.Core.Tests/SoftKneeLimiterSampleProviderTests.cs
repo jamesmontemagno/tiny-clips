@@ -105,24 +105,15 @@ public sealed class SoftKneeLimiterSampleProviderTests
     }
 
     [Fact]
-    public void Limit_SpanOverload_WritesToDestinationAndLeavesSourceUntouched()
+    public void LimitInPlace_LimitsOnlyHotSamples()
     {
-        var source = new[] { 0.5f, 1.5f, -1.5f };
-        var destination = new float[3];
+        var samples = new[] { 0.5f, 1.5f, -1.5f };
 
-        SoftKneeLimiterSampleProvider.Limit(source, destination);
+        SoftKneeLimiterSampleProvider.LimitInPlace(samples);
 
-        Assert.Equal(new[] { 0.5f, 1.5f, -1.5f }, source);
-        Assert.Equal(0.5f, destination[0]);
-        Assert.InRange(destination[1], 0.98f, 1f);
-        Assert.InRange(destination[2], -1f, -0.98f);
-    }
-
-    [Fact]
-    public void Limit_SpanOverload_ShortDestination_Throws()
-    {
-        Assert.Throws<ArgumentException>(() =>
-            SoftKneeLimiterSampleProvider.Limit(new float[4], new float[2]));
+        Assert.Equal(0.5f, samples[0]);
+        Assert.InRange(samples[1], 0.98f, 1f);
+        Assert.InRange(samples[2], -1f, -0.98f);
     }
 
     private sealed class ArraySampleProvider : ISampleProvider

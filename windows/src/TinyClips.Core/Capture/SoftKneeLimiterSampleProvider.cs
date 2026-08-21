@@ -1,4 +1,3 @@
-using System.Buffers;
 using NAudio.Wave;
 
 namespace TinyClips.Core.Capture;
@@ -8,8 +7,7 @@ namespace TinyClips.Core.Capture;
 /// through untouched; anything hotter is compressed along an <c>atan</c> curve that approaches
 /// full scale asymptotically, so a hot microphone rounds off instead of hard-clipping. Mirrors
 /// the macOS <c>VideoRecorder.softKneeLimitedSample</c> curve. Sample count and timing are
-/// never altered, so A/V sync is unaffected. If processing ever throws, the untouched source
-/// samples are returned as-is rather than dropping audio.
+/// never altered, so A/V sync is unaffected.
 /// </summary>
 public sealed class SoftKneeLimiterSampleProvider : ISampleProvider
 {
@@ -37,51 +35,30 @@ public sealed class SoftKneeLimiterSampleProvider : ISampleProvider
             return read;
         }
 
-        // Transform into a pooled scratch buffer and copy back only on success so a failure
-        // forwards the untouched source samples rather than a partially-limited mix.
-        var scratch = ArrayPool<float>.Shared.Rent(read);
         try
         {
-            var source = buffer.AsSpan(offset, read);
-            var destination = scratch.AsSpan(0, read);
-            Limit(source, destination);
-            destination.CopyTo(source);
+            LimitInPlace(buffer.AsSpan(offset, read));
         }
         catch (Exception ex)
         {
-            // Never drop audio: the original samples are still in the buffer, so they flow
-            // through unlimited.
+            // Limit() is pure arithmetic and cannot fail mid-buffer, so any samples already in
+            // the buffer are either untouched or fully limited; never drop audio either way.
             if (!_loggedFailure)
             {
                 _loggedFailure = true;
                 WebcamDiagnostics.Log($"Microphone limiter failed; passing audio through unlimited: {ex.GetType().Name}: {ex.Message}");
             }
         }
-        finally
-        {
-            ArrayPool<float>.Shared.Return(scratch);
-        }
 
         return read;
     }
 
     /// <summary>Applies <see cref="Limit(float)"/> to every sample in <paramref name="samples"/>.</summary>
-    public static void LimitInPlace(Span<float> samples) => Limit(samples, samples);
-
-    /// <summary>
-    /// Writes the limited form of each sample in <paramref name="source"/> to the matching index
-    /// of <paramref name="destination"/>. The spans may alias.
-    /// </summary>
-    public static void Limit(ReadOnlySpan<float> source, Span<float> destination)
+    public static void LimitInPlace(Span<float> samples)
     {
-        if (destination.Length < source.Length)
+        for (var i = 0; i < samples.Length; i++)
         {
-            throw new ArgumentException("Destination is shorter than source.", nameof(destination));
-        }
-
-        for (var i = 0; i < source.Length; i++)
-        {
-            destination[i] = Limit(source[i]);
+            samples[i] = Limit(samples[i]);
         }
     }
 
