@@ -295,8 +295,8 @@ final class CaptureMathTests: XCTestCase {
 
     func testExportFrameLayoutSnapsToWholePixels() {
         // Fractional padding and preset ratios must not produce fractional frame
-        // sizes or image origins: sub-pixel slivers at the canvas edge render as
-        // white hairlines in formats without alpha (e.g. JPEG).
+        // sizes or image origins when snapping to pixels: sub-pixel slivers at the
+        // canvas edge render as white hairlines in formats without alpha (e.g. JPEG).
         let cases: [(padding: CGFloat, preset: ExportFramePreset, h: ExportHorizontalAlignment, v: ExportVerticalAlignment)] = [
             (10.4, .square, .center, .center),
             (12.75, .landscapeSixteenByNine, .trailing, .bottom),
@@ -311,7 +311,8 @@ final class CaptureMathTests: XCTestCase {
                 padding: testCase.padding,
                 preset: testCase.preset,
                 horizontalAlignment: testCase.h,
-                verticalAlignment: testCase.v
+                verticalAlignment: testCase.v,
+                snapsToPixels: true
             )
 
             XCTAssertEqual(
@@ -334,6 +335,23 @@ final class CaptureMathTests: XCTestCase {
             XCTAssertTrue(layout.frameSize.width >= layout.imageRect.maxX)
             XCTAssertTrue(layout.frameSize.height >= layout.imageRect.maxY)
         }
+    }
+
+    func testExportFrameLayoutKeepsFractionalGeometryForDisplay() {
+        // The display-space preview path keeps fractional geometry so preview
+        // padding and scaling stay proportional to point-scaled sizes.
+        let layout = ExportFrameLayout.make(
+            imageSize: CGSize(width: 503.5, height: 331.25),
+            padding: 10.4,
+            preset: .original,
+            horizontalAlignment: .center,
+            verticalAlignment: .center
+        )
+
+        XCTAssertEqual(layout.frameSize.width, 524.3, accuracy: 0.001)
+        XCTAssertEqual(layout.frameSize.height, 352.05, accuracy: 0.001)
+        XCTAssertEqual(layout.imageRect.minX, 10.4, accuracy: 0.001)
+        XCTAssertEqual(layout.imageRect.minY, 10.4, accuracy: 0.001)
     }
 
     func testExportFrameLayoutPlacesImageAlongAvailableAxis() {

@@ -247,13 +247,10 @@ struct ExportFrameLayout {
         padding: CGFloat,
         preset: ExportFramePreset,
         horizontalAlignment: ExportHorizontalAlignment,
-        verticalAlignment: ExportVerticalAlignment
+        verticalAlignment: ExportVerticalAlignment,
+        snapsToPixels: Bool = false
     ) -> Self {
-        // Snap the layout to whole pixels: fractional frame sizes or image origins
-        // leave sub-pixel slivers at the canvas edges. Those slivers are invisible
-        // in alpha formats but render as white hairlines when exported to JPEG
-        // (which flattens transparency onto white).
-        let safePadding = max(0, padding).rounded(.up)
+        let safePadding = max(0, padding)
         let baseSize = CGSize(
             width: imageSize.width + (safePadding * 2),
             height: imageSize.height + (safePadding * 2)
@@ -267,17 +264,24 @@ struct ExportFrameLayout {
                 frameSize.height = ceil(baseSize.width / targetRatio)
             }
         }
-        frameSize.width = frameSize.width.rounded(.up)
-        frameSize.height = frameSize.height.rounded(.up)
 
-        let extraHorizontalSpace = max(0, frameSize.width - baseSize.width)
-        let extraVerticalSpace = max(0, frameSize.height - baseSize.height)
-        let originX = (safePadding + (extraHorizontalSpace * horizontalAlignment.placementFactor))
-            .rounded()
-            .clamped(to: 0...max(0, frameSize.width - imageSize.width))
-        let originY = (safePadding + (extraVerticalSpace * verticalAlignment.placementFactor))
-            .rounded()
-            .clamped(to: 0...max(0, frameSize.height - imageSize.height))
+        var originX = safePadding + (max(0, frameSize.width - baseSize.width) * horizontalAlignment.placementFactor)
+        var originY = safePadding + (max(0, frameSize.height - baseSize.height) * verticalAlignment.placementFactor)
+
+        if snapsToPixels {
+            // Snap to whole pixels so bitmap exports never contain sub-pixel
+            // slivers at the canvas edges. Those slivers are invisible in alpha
+            // formats but render as white hairlines when exported to JPEG
+            // (which flattens transparency onto white). The display-space
+            // preview path keeps fractional geometry so it scales proportionally.
+            frameSize.width = frameSize.width.rounded(.up)
+            frameSize.height = frameSize.height.rounded(.up)
+            originX = originX.rounded()
+                .clamped(to: 0...Swift.max(0, frameSize.width - imageSize.width))
+            originY = originY.rounded()
+                .clamped(to: 0...Swift.max(0, frameSize.height - imageSize.height))
+        }
+
         return Self(
             frameSize: frameSize,
             imageRect: CGRect(
