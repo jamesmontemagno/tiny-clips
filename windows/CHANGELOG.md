@@ -92,6 +92,16 @@ own `CHANGELOG.md` at the repository root.
   and region-indicator windows, removing duplicated P/Invoke declarations and structs. The
   `TrayPopupWindow` now unsubscribes its `Activated` handler on closure.
 
+### Fixed
+- **Hardened tray-first startup** — Launch no longer eagerly creates the off-screen UI Automation
+  announcement window; it is created lazily on the first Narrator announcement and degrades to a
+  log line if window creation fails. Hotkey registration, onboarding, and file activation are
+  each guarded so a failure in one step cannot abort launch, and the app now installs
+  `Application.UnhandledException`, `TaskScheduler.UnobservedTaskException`, and AppDomain
+  handlers so a non-fatal UI exception is logged instead of terminating the process with a
+  stowed-exception crash (`0xC000027B`) — the failure mode reported by winget's
+  `Validation-Executable-Error` check.
+
 ## [v1.7.0-windows] - 2026-08-13
 
 ### Internal
