@@ -81,6 +81,18 @@
                 </Button>
 
                 <Button
+                    x:Name="ScrollButton"
+                    AutomationProperties.AutomationId="CaptureScrollButton"
+                    AutomationProperties.Name="Scrolling capture"
+                    Click="OnScrolling"
+                    ToolTipService.ToolTip="Scrolling capture: stitch a scrolled region into one tall image (P)">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8A1;" />
+                        <TextBlock Text="Scroll" />
+                    </StackPanel>
+                </Button>
+
+                <Button
                     x:Name="RecognizeTextButton"
                     AutomationProperties.AutomationId="RecognizeTextButton"
                     AutomationProperties.Name="Recognize text and copy it to the clipboard"

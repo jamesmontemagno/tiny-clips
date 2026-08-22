@@ -57,6 +57,13 @@ public partial class App : Application
     private WebcamPreviewWindow? _webcamPreview;
     private ProcessingIndicatorWindow? _processingIndicator;
     private RegionIndicatorWindow? _recordingRegionIndicator;
+    private ScrollingCaptureWindow? _scrollingPanel;
+    private RegionIndicatorWindow? _scrollingRegionIndicator;
+    private bool _scrollingWasPickerInitiated;
+    private bool _scrollingStopping;
+    private Action<int>? _scrollingProgressHandler;
+    private Action<PanoramaCaptureLimitReason>? _scrollingLimitHandler;
+    private Action<Exception>? _scrollingFailedHandler;
     private CancellationTokenSource? _captureFlowCts;
     private DispatcherTimer? _recordingTimer;
     private DateTime _recordingStartedUtc;
@@ -606,7 +613,7 @@ public partial class App : Application
         CapturePickerMode? forcedMode = null,
         bool abortIfRecording = false)
     {
-        if (_captureFlowCts is not null)
+        if (_captureFlowCts is not null || _scrollingPanel is not null)
         {
             return;
         }
@@ -661,11 +668,12 @@ public partial class App : Application
             }
 
             var isTextRecognition = pick.Mode == CapturePickerMode.RecognizeText;
+            var isScrolling = type == CaptureType.Screenshot && pick.Mode == CapturePickerMode.Scrolling;
             var earlyBackdrop = earlyBackdrops is null
                 ? null
                 : new EarlyBackdrop(earlyBackdropMonitors!, earlyBackdrops, earlyBackdropStarted);
             var resolved = await ResolveTargetAsync(
-                isTextRecognition ? CapturePickerMode.Region : pick.Mode,
+                isTextRecognition || isScrolling ? CapturePickerMode.Region : pick.Mode,
                 earlyBackdrop);
             CaptureFlowTrace.Mark($"target: {(resolved is null ? "cancelled" : "resolved")}");
             if (resolved is not { } selection)
@@ -701,7 +709,8 @@ public partial class App : Application
             }
 
             RegionIndicatorWindow? regionIndicator = null;
-            var countdownRan = pick.CountdownEnabled && pick.CountdownDuration > 0;
+            // Scrolling capture has no countdown: the user controls timing by scrolling.
+            var countdownRan = pick.CountdownEnabled && pick.CountdownDuration > 0 && !isScrolling;
             if (countdownRan)
             {
                 try
@@ -746,6 +755,11 @@ public partial class App : Application
                         ShowTextRecognitionNotification("Couldn't recognize text");
                     }
 
+                    break;
+
+                case CaptureType.Screenshot when isScrolling:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
+                    await StartScrollingCaptureAsync(selection, settings, wasPickerInitiated, captureFlowCts.Token);
                     break;
 
                 case CaptureType.Screenshot:
@@ -925,7 +939,6 @@ public partial class App : Application
         bool wasPickerInitiated,
         CancellationToken cancellationToken)
     {
-        var screenshots = Services.GetRequiredService<IScreenshotService>();
         CapturedFrame frame;
         if (selection.Backdrop is { } backdrop && !countdownRan && !settings.ScreenshotUsesLiveCapture)
         {
@@ -945,7 +958,22 @@ public partial class App : Application
             new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
         }
 
-        var saveTask = SaveScreenshotFrameAsync(screenshots, frame, alreadyBranded: true);
+        await PresentScreenshotFrameAsync(frame, settings, wasPickerInitiated, alreadyBranded: true);
+    }
+
+    /// <summary>
+    /// Shared post-capture path for screenshots and scrolling captures: save (and copy to the
+    /// clipboard) in the background, then open the editor from memory or from the saved file, or
+    /// reveal + toast when the editor is disabled.
+    /// </summary>
+    private async Task PresentScreenshotFrameAsync(
+        CapturedFrame frame,
+        ICaptureSettings settings,
+        bool wasPickerInitiated,
+        bool alreadyBranded)
+    {
+        var screenshots = Services.GetRequiredService<IScreenshotService>();
+        var saveTask = SaveScreenshotFrameAsync(screenshots, frame, alreadyBranded);
         if (settings.ShowScreenshotEditor)
         {
             // With a downscale configured, the saved file's dimensions differ from the frame; keep
@@ -986,6 +1014,242 @@ public partial class App : Application
         await CopyToClipboardAsync(path, CaptureType.Screenshot);
         CaptureFlowTrace.Mark("screenshot: saved + clipboard");
         return path;
+    }
+
+    // -- Scrolling (panorama) capture --------------------------------------------------------
+
+    /// <summary>
+    /// Starts a scrolling capture of the selected region and shows the floating Done/Cancel
+    /// panel. Returns as soon as capture is streaming; the panel's callbacks drive stop/cancel.
+    /// </summary>
+    private async Task StartScrollingCaptureAsync(
+        TargetSelection selection,
+        ICaptureSettings settings,
+        bool wasPickerInitiated,
+        CancellationToken cancellationToken)
+    {
+        var service = Services.GetRequiredService<IScrollingCaptureService>();
+        if (service.IsActive || _scrollingPanel is not null)
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // The editor renders through Win2D/XAML textures, which cap at 16 384 px; only let the
+        // panorama grow past that when it will be saved straight to disk.
+        var limits = settings.ShowScreenshotEditor
+            ? PanoramaCaptureLimits.ForEditor
+            : PanoramaCaptureLimits.Default;
+
+        var panel = new ScrollingCaptureWindow();
+        _scrollingPanel = panel;
+        _scrollingWasPickerInitiated = wasPickerInitiated;
+        _scrollingStopping = false;
+        panel.StopRequested = () => _ = StopScrollingCaptureAsync();
+        panel.CancelRequested = CancelScrollingCapture;
+
+        _scrollingProgressHandler = count => _dispatcher?.TryEnqueue(() =>
+        {
+            if (ReferenceEquals(_scrollingPanel, panel))
+            {
+                panel.UpdateFrameCount(count);
+            }
+        });
+        _scrollingLimitHandler = reason => _dispatcher?.TryEnqueue(() =>
+        {
+            if (!ReferenceEquals(_scrollingPanel, panel))
+            {
+                return;
+            }
+
+            var message = reason.ToMessage();
+            panel.ShowStatus(message);
+            Announce(
+                AutomationNotificationKind.Other,
+                AutomationNotificationProcessing.ImportantMostRecent,
+                message,
+                "ScrollingCaptureLimit");
+            _ = StopScrollingCaptureAsync();
+        });
+        _scrollingFailedHandler = error => _dispatcher?.TryEnqueue(() =>
+        {
+            if (!ReferenceEquals(_scrollingPanel, panel))
+            {
+                return;
+            }
+
+            service.Cancel();
+            FinishScrollingCapture(error);
+        });
+        service.Progress += _scrollingProgressHandler;
+        service.LimitReached += _scrollingLimitHandler;
+        service.Failed += _scrollingFailedHandler;
+
+        if (settings.ShowRegionIndicator)
+        {
+            _scrollingRegionIndicator = ShowRegionIndicator(selection);
+        }
+
+        var monitor = selection.Monitor ?? ResolveMonitorForTarget(selection.Target);
+        PixelRect? regionInVirtualDesktop = selection.Region is { } region
+            ? ToVirtualDesktopRegion(selection.Target, region)
+            : null;
+        panel.ShowNear(monitor, regionInVirtualDesktop);
+        Announce(
+            AutomationNotificationKind.Other,
+            AutomationNotificationProcessing.MostRecent,
+            "Scrolling capture started. Scroll the page, then press Enter to finish.",
+            "ScrollingCaptureStarted");
+
+        try
+        {
+            await service.StartAsync(selection.Target, selection.Region, limits, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            FinishScrollingCapture(ex);
+            if (ex is OperationCanceledException)
+            {
+                throw;
+            }
+        }
+    }
+
+    private async Task StopScrollingCaptureAsync()
+    {
+        if (_scrollingStopping || _scrollingPanel is not { } panel)
+        {
+            return;
+        }
+
+        _scrollingStopping = true;
+        panel.MarkFinishing();
+        CaptureFlowTrace.Mark("scrolling: stop requested");
+
+        var service = Services.GetRequiredService<IScrollingCaptureService>();
+        CapturedFrame frame;
+        try
+        {
+            frame = await service.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            FinishScrollingCapture(ex);
+            return;
+        }
+
+        var wasPickerInitiated = _scrollingWasPickerInitiated;
+        FinishScrollingCapture(null);
+
+        var settings = Services.GetRequiredService<ICaptureSettings>();
+        try
+        {
+            if (settings.ShowBrandingOverlay)
+            {
+                new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
+            }
+
+            await PresentScreenshotFrameAsync(frame, settings, wasPickerInitiated, alreadyBranded: true);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Scrolling capture save failed: {ex}");
+            ShowSaveFailureNotification("the scrolling capture");
+            ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
+        }
+    }
+
+    private void CancelScrollingCapture()
+    {
+        if (_scrollingPanel is null)
+        {
+            return;
+        }
+
+        Services.GetRequiredService<IScrollingCaptureService>().Cancel();
+        FinishScrollingCapture(new PanoramaCaptureException(PanoramaCaptureError.Cancelled));
+    }
+
+    /// <summary>
+    /// Tears down the scrolling panel, region indicator and service subscriptions. With an
+    /// <paramref name="error"/>, reports it (unless it is a cancellation) and reopens the picker
+    /// if configured; on success the caller presents the stitched image instead.
+    /// </summary>
+    private void FinishScrollingCapture(Exception? error)
+    {
+        var service = Services.GetRequiredService<IScrollingCaptureService>();
+        if (_scrollingProgressHandler is { } progress)
+        {
+            service.Progress -= progress;
+        }
+
+        if (_scrollingLimitHandler is { } limit)
+        {
+            service.LimitReached -= limit;
+        }
+
+        if (_scrollingFailedHandler is { } failed)
+        {
+            service.Failed -= failed;
+        }
+
+        _scrollingProgressHandler = null;
+        _scrollingLimitHandler = null;
+        _scrollingFailedHandler = null;
+
+        var panel = _scrollingPanel;
+        _scrollingPanel = null;
+        panel?.ClosePanel();
+
+        var indicator = _scrollingRegionIndicator;
+        _scrollingRegionIndicator = null;
+        indicator?.ClosePanel();
+
+        var wasPickerInitiated = _scrollingWasPickerInitiated;
+        _scrollingWasPickerInitiated = false;
+        _scrollingStopping = false;
+
+        if (error is null)
+        {
+            return;
+        }
+
+        if (error is PanoramaCaptureException { IsCancellation: true } || error is OperationCanceledException)
+        {
+            CaptureFlowTrace.Mark("scrolling: cancelled");
+        }
+        else
+        {
+            Debug.WriteLine($"Scrolling capture failed: {error}");
+            CaptureFlowTrace.Mark($"scrolling: failed ({error.GetType().Name})");
+            ShowScrollingCaptureFailureNotification(error.Message);
+        }
+
+        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
+    }
+
+    private void ShowScrollingCaptureFailureNotification(string details)
+    {
+        Announce(
+            AutomationNotificationKind.ActionAborted,
+            AutomationNotificationProcessing.ImportantMostRecent,
+            $"Scrolling capture failed. {details}",
+            "ScrollingCaptureFailed");
+
+        try
+        {
+            EnsureNotificationsRegistered();
+            AppNotificationManager.Default.Show(
+                new AppNotificationBuilder()
+                    .AddText("Scrolling capture failed")
+                    .AddText(details)
+                    .BuildNotification());
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show scrolling capture notification: {ex}");
+        }
     }
 
     private async Task<RecordingSetupResult?> ShowRecordingSetupAsync(CaptureType type, TargetSelection selection, ICaptureSettings settings)
@@ -2668,6 +2932,12 @@ public partial class App : Application
         _isExiting = true;
         try
         {
+            Services.GetRequiredService<IScrollingCaptureService>().Cancel();
+            _scrollingPanel?.ClosePanel();
+            _scrollingPanel = null;
+            _scrollingRegionIndicator?.ClosePanel();
+            _scrollingRegionIndicator = null;
+
             var video = Services.GetRequiredService<IVideoRecordingService>();
             var gif = Services.GetRequiredService<IGifRecordingService>();
             if (video.IsRecording)

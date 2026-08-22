@@ -18,6 +18,8 @@ public enum CapturePickerMode
     Screen,
     Window,
     RecognizeText,
+    /// <summary>Screenshot only: select a region, scroll, and stitch the frames into one tall image.</summary>
+    Scrolling,
 }
 
 /// <summary>The user's choice from the capture picker bar.</summary>
@@ -99,8 +101,11 @@ public sealed partial class CapturePickerWindow : Window
 
         UpdateTimerLabel();
         LimitButton.Visibility = captureType == CaptureType.Video ? Visibility.Visible : Visibility.Collapsed;
+        ScrollButton.Visibility = captureType == CaptureType.Screenshot ? Visibility.Visible : Visibility.Collapsed;
         UpdateLimitLabel();
     }
+
+    private bool IsScrollingAvailable => ScrollButton.Visibility == Visibility.Visible;
 
     public static Task<CapturePickerResult?> RunAsync(CaptureType captureType, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes = 0)
     {
@@ -236,6 +241,8 @@ public sealed partial class CapturePickerWindow : Window
 
     private void OnRecognizeText(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.RecognizeText);
 
+    private void OnScrolling(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.Scrolling);
+
     private void OnCancel(object sender, RoutedEventArgs e) => Complete(null);
 
     // Drag-anywhere support: the R / S / W / timer / cancel buttons handle their own
@@ -267,6 +274,9 @@ public sealed partial class CapturePickerWindow : Window
                 break;
             case VirtualKey.T:
                 Complete(CapturePickerMode.RecognizeText);
+                break;
+            case VirtualKey.P when IsScrollingAvailable:
+                Complete(CapturePickerMode.Scrolling);
                 break;
         }
     }
