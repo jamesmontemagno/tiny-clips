@@ -100,7 +100,7 @@
                     ToolTipService.ToolTip="Recognize text in a region (T)">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8D2;" />
-                        <TextBlock Text="Recognize Text" />
+                        <TextBlock Text="Text" />
                     </StackPanel>
                 </Button>
 
