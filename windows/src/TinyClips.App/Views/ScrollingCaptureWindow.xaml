@@ -80,7 +80,7 @@
                         MinWidth="72"
                         VerticalAlignment="Center"
                         AutomationProperties.LiveSetting="Polite"
-                        AutomationProperties.Name="Captured frames"
+                        AutomationProperties.Name="Captured frames: 0 frames"
                         Style="{StaticResource BodyStrongTextBlockStyle}"
                         Text="0 frames" />
                 </StackPanel>

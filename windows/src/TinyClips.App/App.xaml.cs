@@ -964,17 +964,18 @@ public partial class App : Application
     /// <summary>
     /// Shared post-capture path for screenshots and scrolling captures: save (and copy to the
     /// clipboard) in the background, then open the editor from memory or from the saved file, or
-    /// reveal + toast when the editor is disabled.
+    /// reveal + toast when the editor is disabled (or <paramref name="allowEditor"/> is false).
     /// </summary>
     private async Task PresentScreenshotFrameAsync(
         CapturedFrame frame,
         ICaptureSettings settings,
         bool wasPickerInitiated,
-        bool alreadyBranded)
+        bool alreadyBranded,
+        bool allowEditor = true)
     {
         var screenshots = Services.GetRequiredService<IScreenshotService>();
         var saveTask = SaveScreenshotFrameAsync(screenshots, frame, alreadyBranded);
-        if (settings.ShowScreenshotEditor)
+        if (settings.ShowScreenshotEditor && allowEditor)
         {
             // With a downscale configured, the saved file's dimensions differ from the frame; keep
             // the editor file-backed so Save/Reset/Copy operate on the same pixels as the file.
@@ -1150,7 +1151,11 @@ public partial class App : Application
                 new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
             }
 
-            await PresentScreenshotFrameAsync(frame, settings, wasPickerInitiated, alreadyBranded: true);
+            // The editor setting is re-read here; if it was toggled on mid-capture the image may
+            // exceed the Win2D/XAML texture cap, so fall back to a direct save in that case.
+            var fitsEditor = frame.Width <= PanoramaCaptureLimits.EditorMaxOutputHeight
+                && frame.Height <= PanoramaCaptureLimits.EditorMaxOutputHeight;
+            await PresentScreenshotFrameAsync(frame, settings, wasPickerInitiated, alreadyBranded: true, allowEditor: fitsEditor);
         }
         catch (Exception ex)
         {

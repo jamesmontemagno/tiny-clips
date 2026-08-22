@@ -46,14 +46,16 @@ public sealed class PanoramaStitcherTests
     [Fact]
     public void RejectsFramesWithoutCredibleAlignment()
     {
-        var first = PanoramaFrameAt(globalStartRow: 0);
+        var accumulator = new PanoramaAccumulator(TestLimits());
+        accumulator.Append(PanoramaFrameAt(globalStartRow: 0));
         var unrelatedPixels = new byte[40 * 100 * 4];
         Array.Fill(unrelatedPixels, (byte)255);
-        var unrelated = new PanoramaFrame(unrelatedPixels, 40, 100);
 
-        var ex = Assert.Throws<PanoramaCaptureException>(
-            () => new PanoramaStitcher(TestLimits()).Stitch(new[] { first, unrelated }));
-        Assert.Equal(PanoramaCaptureError.AlignmentFailed, ex.Error);
+        var outcome = accumulator.Append(new PanoramaFrame(unrelatedPixels, 40, 100));
+
+        Assert.Equal(PanoramaAppendStatus.Skipped, outcome.Status);
+        Assert.Equal(1, accumulator.AcceptedFrameCount);
+        Assert.Null(PanoramaAccumulator.EstimateVerticalShift(accumulator.PreviousFrame!, new PanoramaFrame(unrelatedPixels, 40, 100)));
     }
 
     [Fact]
@@ -70,15 +72,66 @@ public sealed class PanoramaStitcherTests
     }
 
     [Fact]
+    public void SuppressesTallFooterOnSlowScroll()
+    {
+        // A 5 px sticky footer with a 4 px scroll step: the footer is taller than the step and
+        // must still be held back rather than partially appended on every frame.
+        var frames = new[]
+        {
+            PanoramaFrameAt(globalStartRow: 0, fixedFooterHeight: 5),
+            PanoramaFrameAt(globalStartRow: 4, fixedFooterHeight: 5),
+            PanoramaFrameAt(globalStartRow: 8, fixedFooterHeight: 5),
+        };
+
+        var result = new PanoramaStitcher(TestLimits()).Stitch(frames);
+
+        // 95 content rows per frame + 2 x 4 scrolled rows + one footer copy.
+        Assert.Equal(108, result.OutputHeight);
+        for (var y = 0; y < 103; y += 3)
+        {
+            Assert.Equal(ExpectedValue(y, x: 0), RedValue(result.Image, x: 0, y: y));
+        }
+
+        for (var y = 103; y < 108; y++)
+        {
+            Assert.Equal((byte)32, RedValue(result.Image, x: 0, y: y));
+        }
+    }
+
+    [Fact]
     public void EnforcesPeakMemoryBudget()
     {
+        // 40x100 frames are 16 000 bytes. Frame 1 needs 16 000 (buffer) + 16 000 (copy) + 32 000
+        // (two frames) = 64 000; stitching frame 2 needs 70 400, so a 70 000 budget keeps frame 1 only.
         var first = PanoramaFrameAt(globalStartRow: 0);
         var second = PanoramaFrameAt(globalStartRow: 20);
         var limits = TestLimits() with { MaxMemoryBytes = 70_000 };
 
-        var ex = Assert.Throws<PanoramaCaptureException>(
-            () => new PanoramaStitcher(limits).Stitch(new[] { first, second }));
-        Assert.Equal(PanoramaCaptureError.MemoryLimit, ex.Error);
+        var result = new PanoramaStitcher(limits).Stitch(new[] { first, second });
+
+        Assert.True(result.ReachedLimit);
+        Assert.Equal(1, result.FrameCount);
+        Assert.Equal(100, result.OutputHeight);
+    }
+
+    [Fact]
+    public void MemoryBudgetAccountsForBufferOverAllocation()
+    {
+        // Stitching frame 3 grows the buffer from 19 200 to 33 600 bytes (1.5x the 22 400 logical
+        // size). The naive "2x logical + 2 frames" estimate is 76 800 and would pass an 80 000
+        // budget, but the real peak (33 600 + 22 400 + 32 000 = 88 000) must be what is enforced.
+        var frames = new[]
+        {
+            PanoramaFrameAt(globalStartRow: 0),
+            PanoramaFrameAt(globalStartRow: 20),
+            PanoramaFrameAt(globalStartRow: 40),
+        };
+        var limits = TestLimits() with { MaxMemoryBytes = 80_000 };
+
+        var result = new PanoramaStitcher(limits).Stitch(frames);
+
+        Assert.True(result.ReachedLimit);
+        Assert.Equal(2, result.FrameCount);
     }
 
     [Fact]
@@ -90,7 +143,8 @@ public sealed class PanoramaStitcherTests
             PanoramaFrameAt(globalStartRow: 20),
             PanoramaFrameAt(globalStartRow: 40),
         };
-        var limits = TestLimits() with { MaxMemoryBytes = 75_000 };
+        // Frame 2 peaks at 70 400 bytes, frame 3 at 88 000 (see MemoryBudgetAccountsForBufferOverAllocation).
+        var limits = TestLimits() with { MaxMemoryBytes = 82_000 };
 
         var result = new PanoramaStitcher(limits).Stitch(frames);
 
@@ -141,7 +195,8 @@ public sealed class PanoramaStitcherTests
         const int outputHeight = height + (shiftPerFrame * 150);
         const long outputBytes = (long)width * outputHeight * 4;
 
-        Assert.True((outputBytes * 2) + (frameBytes * 2) <= PanoramaCaptureLimits.Default.MaxMemoryBytes);
+        // Buffer capacity can reach 1.5x the logical size; plus the final copy and two frames.
+        Assert.True((outputBytes * 2.5) + (frameBytes * 2) <= PanoramaCaptureLimits.Default.MaxMemoryBytes);
         Assert.True(outputHeight <= PanoramaCaptureLimits.Default.MaxOutputHeight);
     }
 
@@ -248,13 +303,34 @@ public sealed class PanoramaStitcherTests
     }
 
     [Fact]
-    public void Finish_WithSingleFrame_ReportsNoMovement()
+    public void Finish_WithSingleFrame_ReturnsThatFrame()
+    {
+        // Stopping must always produce an image from whatever was captured, even before any scroll.
+        var accumulator = new PanoramaAccumulator(TestLimits());
+        var only = PanoramaFrameAt(globalStartRow: 0);
+        accumulator.Append(only);
+
+        var result = accumulator.Finish();
+
+        Assert.Equal(1, result.FrameCount);
+        Assert.Equal(100, result.OutputHeight);
+        Assert.Same(only.BgraPixels, result.Image.BgraPixels);
+        Assert.False(result.ReachedLimit);
+    }
+
+    [Fact]
+    public void Finish_WithOnlyUnalignableFrames_ReturnsFirstFrame()
     {
         var accumulator = new PanoramaAccumulator(TestLimits());
         accumulator.Append(PanoramaFrameAt(globalStartRow: 0));
+        var unrelatedPixels = new byte[40 * 100 * 4];
+        Array.Fill(unrelatedPixels, (byte)255);
+        accumulator.Append(new PanoramaFrame(unrelatedPixels, 40, 100));
 
-        var ex = Assert.Throws<PanoramaCaptureException>(() => accumulator.Finish());
-        Assert.Equal(PanoramaCaptureError.NoMovement, ex.Error);
+        var result = accumulator.Finish();
+
+        Assert.Equal(1, result.FrameCount);
+        Assert.Equal(ExpectedValue(50, x: 0), RedValue(result.Image, x: 0, y: 50));
     }
 
     [Fact]

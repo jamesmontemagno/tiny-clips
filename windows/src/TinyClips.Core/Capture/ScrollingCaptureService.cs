@@ -7,21 +7,15 @@ namespace TinyClips.Core.Capture;
 /// WGC-backed <see cref="IScrollingCaptureService"/>. Frames arrive on the WGC thread only when
 /// the screen changes; they are throttled to ~12 fps and handed to a single consumer task that
 /// owns the <see cref="PanoramaAccumulator"/>, so stitching never blocks frame delivery.
+/// All per-capture state lives in a <see cref="Session"/> so a stop or cancel can never be
+/// confused with a later capture.
 /// </summary>
 public sealed class ScrollingCaptureService : IScrollingCaptureService, IDisposable
 {
     private static readonly TimeSpan MinFrameInterval = TimeSpan.FromSeconds(1.0 / 12);
 
     private readonly object _gate = new();
-
-    private ContinuousCaptureSession? _session;
-    private PanoramaAccumulator? _accumulator;
-    private Channel<CapturedFrame>? _channel;
-    private Task? _consumer;
-    private long _lastEnqueuedTimestamp;
-    private volatile bool _finished = true;
-    private bool _reportedLimit;
-    private bool _reportedFailure;
+    private Session? _current;
 
     public bool IsActive
     {
@@ -29,7 +23,7 @@ public sealed class ScrollingCaptureService : IScrollingCaptureService, IDisposa
         {
             lock (_gate)
             {
-                return _session is not null;
+                return _current is not null;
             }
         }
     }
@@ -44,46 +38,16 @@ public sealed class ScrollingCaptureService : IScrollingCaptureService, IDisposa
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ContinuousCaptureSession session;
         lock (_gate)
         {
-            if (_session is not null)
+            if (_current is not null)
             {
                 throw new InvalidOperationException("A scrolling capture is already active.");
             }
 
-            _accumulator = new PanoramaAccumulator(limits);
-            _channel = Channel.CreateBounded<CapturedFrame>(new BoundedChannelOptions(4)
-            {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true,
-                SingleWriter = false,
-            });
-            _finished = false;
-            _reportedLimit = false;
-            _reportedFailure = false;
-            _lastEnqueuedTimestamp = 0;
-
-            session = new ContinuousCaptureSession(target, region, targetFps: 12, includeCursor: false);
-            session.FrameArrived += OnFrameArrived;
-            try
-            {
-                session.Start();
-            }
-            catch
-            {
-                session.FrameArrived -= OnFrameArrived;
-                session.Dispose();
-                _channel = null;
-                _accumulator = null;
-                _finished = true;
-                throw;
-            }
-
-            _session = session;
-            var reader = _channel.Reader;
-            var accumulator = _accumulator;
-            _consumer = Task.Run(() => ConsumeAsync(reader, accumulator), CancellationToken.None);
+            var session = new Session(this, target, region, limits);
+            session.Start();
+            _current = session;
         }
 
         CaptureFlowTrace.Mark("scrolling: capture started");
@@ -92,158 +56,248 @@ public sealed class ScrollingCaptureService : IScrollingCaptureService, IDisposa
 
     public async Task<CapturedFrame> StopAsync()
     {
-        PanoramaAccumulator accumulator;
-        Task? consumer;
+        Session session;
         lock (_gate)
         {
-            if (_session is null || _accumulator is null)
-            {
-                throw new PanoramaCaptureException(PanoramaCaptureError.Cancelled);
-            }
-
-            accumulator = _accumulator;
-            consumer = _consumer;
-            TearDownSessionLocked();
+            session = _current ?? throw new PanoramaCaptureException(PanoramaCaptureError.Cancelled);
+            _current = null;
         }
 
-        if (consumer is not null)
-        {
-            await consumer.ConfigureAwait(false);
-        }
-
-        var result = accumulator.Finish();
+        // Stop WGC, then let the consumer drain every frame that already arrived before finishing.
+        var result = await session.StopAndStitchAsync().ConfigureAwait(false);
         CaptureFlowTrace.Mark($"scrolling: stitched {result.FrameCount} frames -> {result.Image.Width}x{result.OutputHeight}");
         return result.Image;
     }
 
     public void Cancel()
     {
+        Session? session;
         lock (_gate)
         {
-            if (_session is null)
-            {
-                return;
-            }
-
-            TearDownSessionLocked();
+            session = _current;
+            _current = null;
         }
 
+        if (session is null)
+        {
+            return;
+        }
+
+        session.Cancel();
         CaptureFlowTrace.Mark("scrolling: cancelled");
     }
 
     public void Dispose() => Cancel();
 
-    /// <summary>Stops WGC, completes the frame channel and clears all per-session state. Caller holds <see cref="_gate"/>.</summary>
-    private void TearDownSessionLocked()
+    private void RaiseProgress(Session session, int count)
     {
-        _finished = true;
-        if (_session is { } session)
+        if (IsCurrent(session))
         {
-            session.FrameArrived -= OnFrameArrived;
+            Progress?.Invoke(count);
+        }
+    }
+
+    private void RaiseLimit(Session session, PanoramaCaptureLimitReason reason)
+    {
+        if (IsCurrent(session))
+        {
+            LimitReached?.Invoke(reason);
+        }
+    }
+
+    private void RaiseFailed(Session session, Exception error)
+    {
+        if (IsCurrent(session))
+        {
+            Failed?.Invoke(error);
+        }
+    }
+
+    private bool IsCurrent(Session session)
+    {
+        lock (_gate)
+        {
+            return ReferenceEquals(_current, session);
+        }
+    }
+
+    /// <summary>One scrolling capture: WGC session, frame channel, consumer task and accumulator.</summary>
+    private sealed class Session
+    {
+        private readonly ScrollingCaptureService _owner;
+        private readonly ContinuousCaptureSession _capture;
+        private readonly PanoramaAccumulator _accumulator;
+        private readonly Channel<CapturedFrame> _channel;
+        private readonly CancellationTokenSource _cancellation = new();
+        private Task _consumer = Task.CompletedTask;
+        private long _lastEnqueuedTimestamp;
+        private int _stopped;
+        private bool _reportedLimit;
+        private bool _reportedFailure;
+
+        public Session(ScrollingCaptureService owner, CaptureTarget target, PixelRect? region, PanoramaCaptureLimits limits)
+        {
+            _owner = owner;
+            _accumulator = new PanoramaAccumulator(limits);
+            _channel = Channel.CreateBounded<CapturedFrame>(new BoundedChannelOptions(4)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = false,
+            });
+            _capture = new ContinuousCaptureSession(target, region, targetFps: 12, includeCursor: false);
+        }
+
+        public void Start()
+        {
+            _capture.FrameArrived += OnFrameArrived;
             try
             {
-                session.Stop();
-                session.Dispose();
+                _capture.Start();
+            }
+            catch
+            {
+                _capture.FrameArrived -= OnFrameArrived;
+                _capture.Dispose();
+                _cancellation.Dispose();
+                throw;
+            }
+
+            _consumer = Task.Run(ConsumeAsync, CancellationToken.None);
+        }
+
+        /// <summary>Stops WGC, drains every queued frame into the accumulator, and materializes the panorama.</summary>
+        public async Task<PanoramaResult> StopAndStitchAsync()
+        {
+            StopCapture();
+            await _consumer.ConfigureAwait(false);
+            try
+            {
+                return _accumulator.Finish();
+            }
+            finally
+            {
+                _cancellation.Dispose();
+            }
+        }
+
+        /// <summary>Stops WGC and abandons queued frames. The consumer exits on its own; no events are raised afterwards.</summary>
+        public void Cancel()
+        {
+            _cancellation.Cancel();
+            StopCapture();
+            _consumer.ContinueWith(_ => _cancellation.Dispose(), TaskScheduler.Default);
+        }
+
+        private void StopCapture()
+        {
+            if (Interlocked.Exchange(ref _stopped, 1) != 0)
+            {
+                return;
+            }
+
+            _capture.FrameArrived -= OnFrameArrived;
+            try
+            {
+                _capture.Stop();
+                _capture.Dispose();
             }
             catch
             {
                 // Best-effort teardown.
             }
+
+            _channel.Writer.TryComplete();
         }
 
-        _session = null;
-        _channel?.Writer.TryComplete();
-        _channel = null;
-        _accumulator = null;
-        _consumer = null;
-    }
-
-    private void OnFrameArrived(CapturedFrame frame)
-    {
-        if (_finished)
+        private void OnFrameArrived(CapturedFrame frame)
         {
-            return;
-        }
-
-        // WGC can deliver at the display refresh rate; ~12 fps is plenty for stitching.
-        var now = Stopwatch.GetTimestamp();
-        var last = Interlocked.Read(ref _lastEnqueuedTimestamp);
-        if (last != 0 && Stopwatch.GetElapsedTime(last, now) < MinFrameInterval)
-        {
-            return;
-        }
-
-        if (Interlocked.CompareExchange(ref _lastEnqueuedTimestamp, now, last) != last)
-        {
-            return;
-        }
-
-        _channel?.Writer.TryWrite(frame);
-    }
-
-    private async Task ConsumeAsync(ChannelReader<CapturedFrame> reader, PanoramaAccumulator accumulator)
-    {
-        await foreach (var captured in reader.ReadAllAsync().ConfigureAwait(false))
-        {
-            if (_finished || accumulator.ReachedLimit)
+            if (Volatile.Read(ref _stopped) != 0)
             {
-                continue;
+                return;
             }
 
-            try
+            // WGC can deliver at the display refresh rate; ~12 fps is plenty for stitching.
+            var now = Stopwatch.GetTimestamp();
+            var last = Interlocked.Read(ref _lastEnqueuedTimestamp);
+            if (last != 0 && Stopwatch.GetElapsedTime(last, now) < MinFrameInterval)
             {
-                Process(accumulator, captured);
+                return;
             }
-            catch (Exception ex)
+
+            if (Interlocked.CompareExchange(ref _lastEnqueuedTimestamp, now, last) != last)
             {
-                ReportFailure(ex);
+                return;
+            }
+
+            _channel.Writer.TryWrite(frame);
+        }
+
+        private async Task ConsumeAsync()
+        {
+            var token = _cancellation.Token;
+            await foreach (var captured in _channel.Reader.ReadAllAsync().ConfigureAwait(false))
+            {
+                if (token.IsCancellationRequested || _accumulator.ReachedLimit)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    Process(captured);
+                }
+                catch (Exception ex)
+                {
+                    ReportFailure(ex);
+                }
             }
         }
-    }
 
-    private void Process(PanoramaAccumulator accumulator, CapturedFrame captured)
-    {
-        var frame = new PanoramaFrame(captured);
-        if (accumulator.PreviousFrame is { } previous && !PanoramaAccumulator.AreMeaningfullyDifferent(previous, frame))
+        private void Process(CapturedFrame captured)
         {
-            // The region repainted (caret blink, spinner) without scrolling. Never give up here:
-            // the user may simply be pausing, and Done/Cancel remain available at all times.
-            return;
+            var frame = new PanoramaFrame(captured);
+            if (_accumulator.PreviousFrame is { } previous && !PanoramaAccumulator.AreMeaningfullyDifferent(previous, frame))
+            {
+                // The region repainted (caret blink, spinner) without scrolling. Never give up
+                // here: the user may simply be pausing, and Done/Cancel remain available.
+                return;
+            }
+
+            var outcome = _accumulator.Append(frame);
+            switch (outcome.Status)
+            {
+                case PanoramaAppendStatus.Accepted:
+                    _owner.RaiseProgress(this, _accumulator.AcceptedFrameCount);
+                    break;
+
+                case PanoramaAppendStatus.LimitReached:
+                    _owner.RaiseProgress(this, _accumulator.AcceptedFrameCount);
+                    ReportLimit(outcome.LimitReason ?? PanoramaCaptureLimitReason.Memory);
+                    break;
+            }
         }
 
-        var outcome = accumulator.Append(frame);
-        switch (outcome.Status)
+        private void ReportFailure(Exception error)
         {
-            case PanoramaAppendStatus.Accepted:
-                Progress?.Invoke(accumulator.AcceptedFrameCount);
-                break;
+            if (_reportedFailure)
+            {
+                return;
+            }
 
-            case PanoramaAppendStatus.LimitReached:
-                Progress?.Invoke(accumulator.AcceptedFrameCount);
-                ReportLimit(outcome.LimitReason ?? PanoramaCaptureLimitReason.Memory);
-                break;
-        }
-    }
-
-    private void ReportFailure(Exception error)
-    {
-        if (_reportedFailure)
-        {
-            return;
+            _reportedFailure = true;
+            _owner.RaiseFailed(this, error);
         }
 
-        _reportedFailure = true;
-        Failed?.Invoke(error);
-    }
-
-    private void ReportLimit(PanoramaCaptureLimitReason reason)
-    {
-        if (_reportedLimit)
+        private void ReportLimit(PanoramaCaptureLimitReason reason)
         {
-            return;
-        }
+            if (_reportedLimit)
+            {
+                return;
+            }
 
-        _reportedLimit = true;
-        LimitReached?.Invoke(reason);
+            _reportedLimit = true;
+            _owner.RaiseLimit(this, reason);
+        }
     }
 }

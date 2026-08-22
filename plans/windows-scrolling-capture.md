@@ -145,6 +145,7 @@ Manual: long web page at normal speed (seamless); page with sticky header + foot
 
 1. **Max output height (adaptive cap)**: Win2D/XAML textures cap at 16 384 px, which affects the editor's preview *and* Save/Export. When `ShowScreenshotEditor` is on, the capture auto-stops at 16 384 px ("Maximum height reached, saving what was captured") so the editor can open it; when the editor is off (direct save) the mac default of 50 000 px applies.
 2. **Picker entry**: inline "Scroll" button after Window, `P` key, screenshot mode only.
-3. **No-movement timeout**: none. A live test showed a blinking caret inside the region trips a repaint-without-scroll timeout while the user lines up Done; the capture stays open until Done/Cancel or a size/frame/memory limit. (`NoMovement` is still reported when Done is pressed after a single frame.)
+3. **No-movement timeout**: none. A live test showed a blinking caret inside the region trips a repaint-without-scroll timeout while the user lines up Done; the capture stays open until Done/Cancel or a size/frame/memory limit. Done always yields an image — a single frame is returned as-is when nothing scrolled.
+6. **Review follow-ups (PR #293)**: per-capture session state so Stop drains every queued frame; memory guard accounts for actual buffer capacity (growth capped at 1.5x, first stitch reserved exactly); sticky-footer detection is independent of the scroll step (bounded to height/4, growth per frame bounded by the step) so tall footers survive slow scrolls; results taller than the texture cap bypass the editor even if the setting changed mid-capture; Alt+F4 on the panel cancels.
 4. **Hotkey**: none (mac parity; avoids ZoomIt chords).
 5. **Scope**: single PR.

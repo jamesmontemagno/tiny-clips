@@ -34,7 +34,6 @@ public sealed class PanoramaAccumulator
     private long _outputLength;
     private int _committedRows;
     private int _heldBottomBand;
-    private int _rejectedFrameCount;
 
     public PanoramaAccumulator(PanoramaCaptureLimits limits)
     {
@@ -87,29 +86,32 @@ public sealed class PanoramaAccumulator
 
         if (frame.Width != previous.Width || frame.Height != previous.Height)
         {
-            _rejectedFrameCount++;
             return PanoramaAppendOutcome.Skipped;
         }
 
         if (EstimateVerticalShift(previous, frame) is not { } alignment)
         {
-            _rejectedFrameCount++;
             return PanoramaAppendOutcome.Skipped;
         }
 
         var height = frame.Height;
         var isFirstCommit = _committedRows == 0;
-        var baseRows = isFirstCommit ? height - alignment.FixedBottomHeight : _committedRows;
         var previousBand = isFirstCommit ? alignment.FixedBottomHeight : _heldBottomBand;
-        var appendCount = alignment.Shift + previousBand - alignment.FixedBottomHeight;
+        // The stationary band is detected independently of the scroll step, so a footer taller
+        // than the step is still fully suppressed. It can only grow by the rows that scrolled in
+        // since the last frame, which keeps every committed row accounted for exactly once.
+        var fixedBottomHeight = isFirstCommit
+            ? alignment.FixedBottomHeight
+            : Math.Min(alignment.FixedBottomHeight, alignment.Shift + previousBand);
+        var baseRows = isFirstCommit ? height - fixedBottomHeight : _committedRows;
+        var appendCount = alignment.Shift + previousBand - fixedBottomHeight;
         var sourceStartRow = height - previousBand - alignment.Shift;
-        if (appendCount <= 0 || sourceStartRow < 0 || baseRows < 0)
+        if (appendCount < 0 || sourceStartRow < 0 || baseRows <= 0)
         {
-            _rejectedFrameCount++;
             return PanoramaAppendOutcome.Skipped;
         }
 
-        var prospectiveHeight = baseRows + appendCount + alignment.FixedBottomHeight;
+        var prospectiveHeight = baseRows + appendCount + fixedBottomHeight;
         if (prospectiveHeight > Limits.MaxOutputHeight)
         {
             LimitReason = PanoramaCaptureLimitReason.OutputHeight;
@@ -124,14 +126,15 @@ public sealed class PanoramaAccumulator
 
         if (isFirstCommit)
         {
-            EnsureCapacity((long)baseRows * frame.Width * 4);
+            // Reserve the whole first stitch at once so the actual capacity matches what Fits predicted.
+            EnsureCapacity((long)(baseRows + appendCount) * frame.Width * 4);
             AppendRows(previous, 0, baseRows);
             _committedRows = baseRows;
         }
 
         AppendRows(frame, sourceStartRow, appendCount);
         _committedRows += appendCount;
-        _heldBottomBand = alignment.FixedBottomHeight;
+        _heldBottomBand = fixedBottomHeight;
         PreviousFrame = frame;
         AcceptedFrameCount++;
 
@@ -144,7 +147,11 @@ public sealed class PanoramaAccumulator
         return PanoramaAppendOutcome.Accepted;
     }
 
-    /// <summary>Flushes the held footer band and materializes the panorama image.</summary>
+    /// <summary>
+    /// Flushes the held footer band and materializes the panorama image. Stopping always yields
+    /// an image when at least one frame was accepted: a single frame (nothing scrolled yet) is
+    /// returned as-is.
+    /// </summary>
     public PanoramaResult Finish()
     {
         if (PreviousFrame is not { } last)
@@ -154,16 +161,9 @@ public sealed class PanoramaAccumulator
 
         if (_committedRows == 0)
         {
-            if (LimitReason is { } reason)
-            {
-                throw new PanoramaCaptureException(reason == PanoramaCaptureLimitReason.Memory
-                    ? PanoramaCaptureError.MemoryLimit
-                    : PanoramaCaptureError.OutputTooLarge);
-            }
-
-            throw new PanoramaCaptureException(_rejectedFrameCount > 0
-                ? PanoramaCaptureError.AlignmentFailed
-                : PanoramaCaptureError.NoMovement);
+            // Nothing was stitched yet (no scroll, or a limit hit on the very first commit): the
+            // single retained frame is still a usable screenshot.
+            return new PanoramaResult(last.ToCapturedFrame(), AcceptedFrameCount, last.Height, ReachedLimit);
         }
 
         var bytesPerRow = last.Width * 4;
@@ -202,17 +202,28 @@ public sealed class PanoramaAccumulator
             return;
         }
 
-        var newCapacity = Math.Max(required, Math.Min(_output.LongLength * 2, Array.MaxLength));
-        var grown = new byte[newCapacity];
+        var grown = new byte[GrownCapacity(_output.LongLength, required)];
         Buffer.BlockCopy(_output, 0, grown, 0, (int)_outputLength);
         _output = grown;
     }
 
-    /// <summary>Peak memory is the output buffer plus the copy made for the final image, plus the retained and incoming frames.</summary>
+    /// <summary>Amortized growth: double, but never beyond 1.5x the required size, so over-allocation stays bounded and predictable for <see cref="Fits"/>.</summary>
+    private static long GrownCapacity(long current, long required)
+        => Math.Max(required, Math.Min(current * 2, Math.Min(required + (required / 2), Array.MaxLength)));
+
+    /// <summary>Capacity the output buffer will actually hold after growing to fit <paramref name="requiredBytes"/>.</summary>
+    private long PredictedCapacity(long requiredBytes)
+        => requiredBytes <= _output.LongLength ? _output.LongLength : GrownCapacity(_output.LongLength, requiredBytes);
+
+    /// <summary>
+    /// Peak memory is the (possibly over-allocated) output buffer plus the exact-size copy made for
+    /// the final image, plus the retained and incoming frames.
+    /// </summary>
     private bool Fits(int outputHeight, int width, PanoramaFrame frame)
     {
         var outputBytes = (long)width * outputHeight * 4;
-        return (outputBytes * 2) + (frame.ByteCount * 2) <= Limits.MaxMemoryBytes;
+        var bufferBytes = PredictedCapacity(outputBytes);
+        return bufferBytes + outputBytes + (frame.ByteCount * 2) <= Limits.MaxMemoryBytes;
     }
 
     /// <summary>
@@ -332,7 +343,9 @@ public sealed class PanoramaAccumulator
             return null;
         }
 
-        var fixedBottomHeight = StationaryBottomBand(previous, current, bestShift / 2);
+        // Sticky footers are detected independently of the scroll step (bounded to a quarter of
+        // the frame) so slow scrolls under a tall footer still suppress it completely.
+        var fixedBottomHeight = StationaryBottomBand(previous, current, previous.Height / 4);
         if (bestShift + fixedBottomHeight > height)
         {
             return null;

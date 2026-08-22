@@ -61,6 +61,8 @@ public sealed partial class ScrollingCaptureWindow : Window
     {
         var label = count == 1 ? "1 frame" : $"{count} frames";
         FrameCountText.Text = label;
+        // The live region announces its name, so keep it in sync with the visible label.
+        AutomationProperties.SetName(FrameCountText, $"Captured frames: {label}");
     }
 
     public void ShowStatus(string message)
@@ -160,9 +162,22 @@ public sealed partial class ScrollingCaptureWindow : Window
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        if (_closed)
+        {
+            return;
+        }
+
+        // An external close (Alt+F4, shell) must not leave the capture running headless.
         _closed = true;
+        var cancel = CancelRequested;
         StopRequested = null;
         CancelRequested = null;
+        RememberPosition();
+        if (!_completed)
+        {
+            _completed = true;
+            cancel?.Invoke();
+        }
     }
 
     private void RememberPosition()
