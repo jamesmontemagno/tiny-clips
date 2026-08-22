@@ -52,6 +52,14 @@ internal sealed class ContinuousCaptureSession : IDisposable
     /// <summary>Raised at the target frame rate: tightly-packed BGRA8 + relative PTS.</summary>
     public event Action<CapturedFrame, TimeSpan>? FrameReady;
 
+    /// <summary>
+    /// Raised whenever WGC delivers a new frame (i.e. only when the screen content changes),
+    /// independent of <see cref="BeginEmitting"/>. Consumers that only care about change —
+    /// such as the scrolling capture — subscribe here and never start the steady-rate pump.
+    /// Raised on the WGC frame-pool thread; handlers must return quickly.
+    /// </summary>
+    public event Action<CapturedFrame>? FrameArrived;
+
     /// <summary>Output width in pixels (region width, or full monitor width), rounded down to even.</summary>
     public int OutputWidth { get; private set; }
 
@@ -163,6 +171,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
                 return;
             }
 
+            CapturedFrame captured;
             lock (_sync)
             {
                 if (!_running || _context is null || _d3dDevice is null)
@@ -192,11 +201,15 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
                 _context.CopyResource(_stagingTexture, frameTexture);
 
-                var captured = ReadStaging((int)desc.Width, (int)desc.Height);
+                captured = ReadStaging((int)desc.Width, (int)desc.Height);
                 _latestPixels = captured.BgraPixels;
                 _latestWidth = captured.Width;
                 _latestHeight = captured.Height;
             }
+
+            // The pump clones _latestPixels before emitting, so handing the same buffer to
+            // FrameArrived subscribers is safe as long as they treat it as read-only.
+            FrameArrived?.Invoke(captured);
         }
         catch
         {

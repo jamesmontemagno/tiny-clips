@@ -6,6 +6,13 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Scrolling capture** — The Screenshot picker gains a **Scroll** action (`P`). Select a region,
+  scroll the page normally, and press **Done** (Enter) on the floating panel to stitch every frame
+  into one tall image that flows into the usual save / editor / clipboard path; **Cancel** (Esc)
+  discards. Frames are aligned with the same row-signature algorithm as macOS 1.6.0 (sticky
+  headers and footers are not repeated), and guardrails stop growth automatically at 600 frames,
+  a ~1.2 GB memory budget, or the maximum height (16 384 px when the editor is enabled, 50 000 px
+  for direct save), saving what was captured so far. Mirrors the macOS scrolling capture.
 - **Microphone soft-knee limiter** — Video recordings now run microphone audio through a
   per-sample soft-knee limiter (knee at 0.98 FS, `atan` roll-off toward full scale) before mixing
   so hot microphones round off instead of hard-clipping. On by default; toggle with Settings →
