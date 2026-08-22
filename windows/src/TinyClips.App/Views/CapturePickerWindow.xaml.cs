@@ -101,11 +101,15 @@ public sealed partial class CapturePickerWindow : Window
 
         UpdateTimerLabel();
         LimitButton.Visibility = captureType == CaptureType.Video ? Visibility.Visible : Visibility.Collapsed;
-        ScrollButton.Visibility = captureType == CaptureType.Screenshot ? Visibility.Visible : Visibility.Collapsed;
+        var isScreenshot = captureType == CaptureType.Screenshot;
+        ScrollButton.Visibility = isScreenshot ? Visibility.Visible : Visibility.Collapsed;
+        RecognizeTextButton.Visibility = isScreenshot ? Visibility.Visible : Visibility.Collapsed;
         UpdateLimitLabel();
     }
 
     private bool IsScrollingAvailable => ScrollButton.Visibility == Visibility.Visible;
+
+    private bool IsRecognizeTextAvailable => RecognizeTextButton.Visibility == Visibility.Visible;
 
     public static Task<CapturePickerResult?> RunAsync(CaptureType captureType, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes = 0)
     {
@@ -272,7 +276,7 @@ public sealed partial class CapturePickerWindow : Window
             case VirtualKey.W:
                 Complete(CapturePickerMode.Window);
                 break;
-            case VirtualKey.T:
+            case VirtualKey.T when IsRecognizeTextAvailable:
                 Complete(CapturePickerMode.RecognizeText);
                 break;
             case VirtualKey.P when IsScrollingAvailable:
