@@ -283,6 +283,14 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("microphoneLimiterEnabled", value);
     }
 
+    public const int MaxAudioOffsetMilliseconds = 500;
+
+    public int AudioOffsetMilliseconds
+    {
+        get => Math.Clamp(_settings.Get("audioOffsetMilliseconds", 0), -MaxAudioOffsetMilliseconds, MaxAudioOffsetMilliseconds);
+        set => _settings.Set("audioOffsetMilliseconds", Math.Clamp(value, -MaxAudioOffsetMilliseconds, MaxAudioOffsetMilliseconds));
+    }
+
     public bool WebcamEnabled
     {
         get => _settings.Get("webcamEnabled", false);
@@ -724,6 +732,7 @@ public sealed class CaptureSettings : ICaptureSettings
         RecordMicrophone = false;
         SelectedMicrophoneId = string.Empty;
         MicrophoneLimiterEnabled = true;
+        AudioOffsetMilliseconds = 0;
         WebcamEnabled = false;
         SelectedWebcamId = string.Empty;
         WebcamShape = WebcamShape.Circle;

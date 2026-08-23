@@ -21,8 +21,15 @@ public sealed class AudioCaptureService : IDisposable
     private readonly bool _captureMic;
     private readonly string? _micDeviceId;
     private readonly bool _limitMicrophone;
+    private readonly TimeSpan _userOffset;
     private readonly object _gate = new();
     private readonly List<TimelineAlignedWaveProvider> _buffers = new();
+
+    // Resampled sources (e.g. 44.1 kHz microphones) feed a WDL resampler that pulls a little more
+    // source audio than the 48 kHz frames it produces. Keep this much extra buffered before
+    // declaring frames "available" so the resampler never reads past captured data (which would
+    // splice in zeros and crackle).
+    private static readonly TimeSpan ResamplerReadMargin = TimeSpan.FromMilliseconds(20);
 
     private TimestampedWasapiCapture? _loopback;
     private TimestampedWasapiCapture? _mic;
@@ -38,12 +45,16 @@ public sealed class AudioCaptureService : IDisposable
     /// the microphone source before mixing so hot input rounds off instead of hard-clipping.
     /// System/loopback audio is never limited.
     /// </param>
-    public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId, bool limitMicrophone)
+    /// <param name="userOffset">
+    /// Manual A/V correction applied to every source. Positive delays audio relative to video.
+    /// </param>
+    public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId, bool limitMicrophone, TimeSpan userOffset = default)
     {
         _captureSystem = captureSystem;
         _captureMic = captureMic;
         _micDeviceId = micDeviceId;
         _limitMicrophone = limitMicrophone;
+        _userOffset = userOffset;
     }
 
     /// <summary>True once at least one requested source started successfully.</summary>
@@ -111,15 +122,18 @@ public sealed class AudioCaptureService : IDisposable
         {
             var capture = CreateCapture(isLoopback);
 
-            var buffer = new TimelineAlignedWaveProvider(capture.WaveFormat);
+            var buffer = new TimelineAlignedWaveProvider(capture.WaveFormat, sourceName)
+            {
+                UserOffset = _userOffset,
+            };
 
-            capture.DataAvailable += (data, count, sourceTimestamp) =>
+            capture.DataAvailable += (data, count, sourceTimestamp, discontinuity) =>
             {
                 lock (_gate)
                 {
                     if (!_disposed && !_paused)
                     {
-                        buffer.AddSamples(data, count, sourceTimestamp);
+                        buffer.AddSamples(data, count, sourceTimestamp, discontinuity);
                     }
                 }
             };
@@ -218,7 +232,7 @@ public sealed class AudioCaptureService : IDisposable
     /// active sources (the minimum, since the mixer advances every source in lockstep). Used to
     /// pace the muxer to real capture progress so audio is never padded ahead of real time
     /// (which would race the audio track ~1s ahead) nor read from an empty buffer (which splices
-    /// in silence and crackles).
+    /// in silence and crackles). Audio captured before a pause remains available while paused.
     /// </summary>
     public int AvailableFrames
     {
@@ -226,7 +240,7 @@ public sealed class AudioCaptureService : IDisposable
         {
             lock (_gate)
             {
-                if (_disposed || _paused || _buffers.Count == 0)
+                if (_disposed || _buffers.Count == 0)
                 {
                     return 0;
                 }
@@ -235,13 +249,18 @@ public sealed class AudioCaptureService : IDisposable
                 foreach (var buffer in _buffers)
                 {
                     var buffered = buffer.BufferedDuration;
+                    if (buffer.WaveFormat.SampleRate != SampleRate)
+                    {
+                        buffered -= ResamplerReadMargin;
+                    }
+
                     if (buffered < min)
                     {
                         min = buffered;
                     }
                 }
 
-                if (min == TimeSpan.MaxValue)
+                if (min == TimeSpan.MaxValue || min <= TimeSpan.Zero)
                 {
                     return 0;
                 }
@@ -251,15 +270,30 @@ public sealed class AudioCaptureService : IDisposable
         }
     }
 
+    /// <summary>Snapshot of per-source sync bookkeeping for diagnostics.</summary>
+    internal IReadOnlyList<TimelineAlignedWaveProvider.SyncStats> GetSyncStats()
+    {
+        lock (_gate)
+        {
+            return _buffers.Select(b => b.GetStats()).ToList();
+        }
+    }
+
+    /// <summary>Packets the WASAPI drivers flagged as following lost data, across both sources.</summary>
+    public long DriverDiscontinuityCount =>
+        (_loopback?.DiscontinuityCount ?? 0) + (_mic?.DiscontinuityCount ?? 0);
+
     /// <summary>
     /// Reads up to <paramref name="frameCount"/> frames (samples per channel) of mixed audio
-    /// as interleaved 16-bit stereo PCM. Returns a silence-padded full buffer while active.
+    /// as interleaved 16-bit stereo PCM. Returns a silence-padded full buffer while active, so
+    /// the only <c>null</c> result is after disposal. (Pausing does not block reads: audio that
+    /// was captured before the pause still has to reach the muxer.)
     /// </summary>
     public byte[]? ReadChunk(int frameCount)
     {
         lock (_gate)
         {
-            if (_disposed || _paused || _output is null)
+            if (_disposed || _output is null || frameCount <= 0)
             {
                 return null;
             }
@@ -296,7 +330,7 @@ public sealed class AudioCaptureService : IDisposable
 
             foreach (var buffer in _buffers)
             {
-                buffer.BeginTimeline(timeline.Origin);
+                buffer.BeginTimeline(timeline);
             }
         }
     }

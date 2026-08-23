@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
@@ -388,6 +389,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _microphoneLimiterEnabled = true;
 
+    /// <summary>Manual A/V offset in ms; positive delays audio, negative plays it earlier.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AudioOffsetIsNonZero))]
+    private double _audioOffsetMilliseconds;
+
+    public bool AudioOffsetIsNonZero => Math.Abs(AudioOffsetMilliseconds) >= 0.5;
+
+    [RelayCommand]
+    private void ResetAudioOffset() => AudioOffsetMilliseconds = 0;
+
     /// <summary>Microphone devices for the picker (first entry is the system default).</summary>
     public System.Collections.ObjectModel.ObservableCollection<AudioInputDevice> Microphones { get; } = new();
 
@@ -754,6 +765,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             RecordAudio = _settings.RecordAudio;
             RecordMicrophone = _settings.RecordMicrophone;
             MicrophoneLimiterEnabled = _settings.MicrophoneLimiterEnabled;
+            AudioOffsetMilliseconds = _settings.AudioOffsetMilliseconds;
 
             _savedMicrophoneId = _settings.SelectedMicrophoneId ?? string.Empty;
             WebcamEnabled = _settings.WebcamEnabled;
@@ -1138,6 +1150,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnRecordMicrophoneChanged(bool value) => Persist(() => _settings.RecordMicrophone = value);
 
     partial void OnMicrophoneLimiterEnabledChanged(bool value) => Persist(() => _settings.MicrophoneLimiterEnabled = value);
+
+    partial void OnAudioOffsetMillisecondsChanged(double value)
+    {
+        // NumberBox reports NaN when its text is cleared; treat that as "no offset".
+        if (double.IsNaN(value))
+        {
+            AudioOffsetMilliseconds = 0;
+            return;
+        }
+
+        Persist(() => _settings.AudioOffsetMilliseconds = (int)Math.Round(value));
+    }
 
     partial void OnSelectedMicrophoneChanged(AudioInputDevice? value) =>
         Persist(() => _settings.SelectedMicrophoneId = value?.Id ?? string.Empty);

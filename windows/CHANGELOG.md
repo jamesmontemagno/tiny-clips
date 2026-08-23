@@ -6,6 +6,16 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Audio offset setting** — Settings → Video → Audio → *Audio offset* (−500 … +500 ms, default
+  0) shifts all recorded audio relative to the video. Positive delays audio, negative plays it
+  earlier — the fix for Bluetooth headsets and some USB microphones whose real latency WASAPI
+  does not report. Applied at capture time on the shared recording timeline; a reset button
+  returns to 0.
+- **End-of-recording sync report** — every video recording now writes a `Sync report:` block to
+  `webcam-diagnostics.log`: encoder path, elapsed/paused time, last video PTS, frames emitted and
+  dropped to encoder back-pressure, audio PTS and the audio−video end delta, starved chunks,
+  driver discontinuities, and per-source correction/pad/trim/underrun totals. Lets A/V sync be
+  verified from the log without a listen test (see `docs/audio-video-sync.md`).
 - **Scrolling capture** — The Screenshot picker gains a **Scroll** action (`P`). Select a region,
   scroll the page normally, and press **Done** (Enter) on the floating panel to stitch every frame
   into one tall image that flows into the usual save / editor / clipboard path; **Cancel** (Esc)
@@ -148,6 +158,35 @@ own `CHANGELOG.md` at the repository root.
   `TrayPopupWindow` now unsubscribes its `Activated` handler on closure.
 
 ### Fixed
+- **Pausing a recording for more than 2 seconds no longer silences the rest of the clip** — while
+  paused the audio muxer had no captured frames to hand over, hit its 2 s wait cap and returned a
+  `null` sample, which `MediaStreamSource` treats as end-of-stream for the audio track. The muxer
+  now waits through pauses without a cap, only ends the audio stream at a real stop, and fills a
+  genuinely starved request (no audio device activity for 2 s) with silence instead of ending
+  the track.
+- **Pause/resume no longer shifts audio earlier than video** — pausing used to discard audio that
+  had been captured but not yet muxed, and resuming appended the next packet contiguously, so every
+  pause moved the remainder of the audio track earlier by the discarded amount. Captured audio is
+  now retained through the pause and the resumed packet is placed on the paused-adjusted timeline.
+  The screen pump also keeps its last frame through a pause so video resumes immediately on a
+  static desktop.
+- **Audio can no longer drift or jump out of sync over a recording** — audio was appended
+  contiguously forever after the first packet, so a WASAPI buffer overrun (dropped packet), a
+  microphone whose clock runs fast or slow against the system clock, or two sources at slightly
+  different rates would silently slide the audio track relative to the video for the rest of the
+  recording. `TimelineAlignedWaveProvider` now tracks each source's expected position on the shared
+  timeline and, only when the deviation exceeds a 30 ms tolerance (or the driver flags
+  `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY`), inserts silence or trims once to snap back. Ordinary
+  per-packet jitter stays far below the tolerance, so the earlier crackle fix is preserved. Zero
+  padding the muxer consumes during an underrun now also counts toward the source's timeline
+  position so the following packet cannot land late behind it.
+- **Audio track now ends where the video does** — stopping a recording ended the audio stream
+  immediately, discarding up to a few hundred milliseconds of already-captured audio. The recorder
+  now stops the devices, drains the remaining captured audio into the muxer (bounded to 500 ms),
+  and only then ends the stream.
+- **Resampled microphones (e.g. 44.1 kHz) no longer crackle at the read edge** — the muxer's
+  back-pressure gate now keeps a 20 ms margin for sources that go through the resampler, so the
+  resampler's lookahead never reads past captured data.
 - **Hardened tray-first startup** — Launch no longer eagerly creates the off-screen UI Automation
   announcement window; it is created lazily on the first Narrator announcement and degrades to a
   log line if window creation fails. Hotkey registration, onboarding, and file activation are
