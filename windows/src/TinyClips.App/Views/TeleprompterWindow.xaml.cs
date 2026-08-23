@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TinyClips.Core.Capture;
+using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Graphics;
 using WinRT.Interop;
@@ -19,8 +20,10 @@ namespace TinyClips.App;
 public sealed partial class TeleprompterWindow : Window
 {
     private const int WidthDip = 600;
-    private const int HeightDip = 140;
     private const int TopOffsetDip = 24;
+
+    /// <summary>Current panel height preset, in DIPs (Settings → Teleprompter → Panel height).</summary>
+    private int HeightDip => (int)Math.Round(_settings.TeleprompterPanelHeight.PanelHeight());
 
     // The capture-exclusion style makes the window read back as fully transparent to XAML
     // hit-testing; a ~1% alpha background keeps the panel draggable without showing a fill.
@@ -50,6 +53,7 @@ public sealed partial class TeleprompterWindow : Window
         _settings = settings;
         _monitorService = monitorService;
         TranscriptText.Text = settings.TeleprompterTranscript;
+        TranscriptText.FontSize = settings.TeleprompterFontSize.FontSize();
         _scrollSpeedDipPerSecond = Math.Max(1.0, settings.TeleprompterScrollSpeed);
 
         RootGrid.Background = SizingSurfaceBrush;
@@ -100,6 +104,49 @@ public sealed partial class TeleprompterWindow : Window
         _closed = true;
         _scrollTimer.Stop();
         Close();
+    }
+
+    /// <summary>
+    /// Re-reads the text-size and panel-height presets from settings and applies them to the live
+    /// overlay, keeping the panel's top-left position and the current scroll offset so a change
+    /// made mid-recording is reflected without restarting.
+    /// </summary>
+    public void ApplyDisplaySettings()
+    {
+        if (_closed)
+        {
+            return;
+        }
+
+        TranscriptText.FontSize = _settings.TeleprompterFontSize.FontSize();
+
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var scale = AppWindowPlacement.GetScaleForWindow(hwnd);
+        var height = AppWindowPlacement.DipToPixels(HeightDip, scale);
+        if (AppWindow.Size.Height != height)
+        {
+            AppWindow.Resize(new SizeInt32(AppWindow.Size.Width, height));
+        }
+
+        // ExtentHeight/ViewportHeight still reflect the previous font and window size until layout
+        // has run, so defer the clamp/restart to a low-priority pass after the resize and
+        // re-measure have been processed. Otherwise a font-only change that turns fitting text
+        // into overflowing text would be evaluated against the stale extent and never start.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_closed)
+            {
+                return;
+            }
+
+            var maxOffset = Math.Max(0, Scroller.ExtentHeight - Scroller.ViewportHeight);
+            if (Scroller.VerticalOffset > maxOffset)
+            {
+                Scroller.ChangeView(null, maxOffset, null, disableAnimation: true);
+            }
+
+            StartScrollingIfPossible();
+        });
     }
 
     private void OnSizeChanged(object sender, WindowSizeChangedEventArgs args)

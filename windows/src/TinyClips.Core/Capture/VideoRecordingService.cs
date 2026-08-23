@@ -63,9 +63,19 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private long _audioFramesRead;
     private long _audioSamplesRequested;
     private long _audioNonSilentChunks;
+    private long _audioStarvedChunks;
+    private long _videoFramesDropped;
+    private long _drainFramesServed;
     private bool _loggedFirstAudioChunk;
     private volatile bool _audioEnding;
+    private volatile bool _audioDraining;
     private RecordingTimeline? _recordingTimeline;
+    private string _encoderPath = "unknown";
+    private TimeSpan _activeUserOffset;
+
+    // Remaining captured audio handed to the muxer after Stop before the track is ended. Bounds the
+    // tail so a source that somehow keeps producing cannot hold the transcode open.
+    private const int MaxDrainFrames = AudioCaptureService.SampleRate / 2;
 
     public VideoRecordingService(
         IMonitorService monitors,
@@ -207,12 +217,16 @@ public sealed class VideoRecordingService : IVideoRecordingService
         var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
         _frameDuration = TimeSpan.FromSeconds(1.0 / fps);
 
-        _channel = Channel.CreateBounded<TimestampedFrame>(new BoundedChannelOptions(fps * 4)
-        {
-            FullMode = BoundedChannelFullMode.DropWrite,
-            SingleReader = true,
-            SingleWriter = true,
-        });
+        // DropWrite makes TryWrite report success even when the item is discarded, so drops are
+        // counted through the item-dropped callback rather than the TryWrite result.
+        _channel = Channel.CreateBounded<TimestampedFrame>(
+            new BoundedChannelOptions(fps * 4)
+            {
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true,
+                SingleWriter = true,
+            },
+            _ => Interlocked.Increment(ref _videoFramesDropped));
 
         _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true);
         _capture.FrameReady += OnFrameReady;
@@ -238,9 +252,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
         var randomAccessStream = _fileStream.AsRandomAccessStream();
 
         _audioEnding = false;
+        _audioDraining = false;
         _audioFramesRead = 0;
         _audioSamplesRequested = 0;
         _audioNonSilentChunks = 0;
+        _audioStarvedChunks = 0;
+        _drainFramesServed = 0;
+        Interlocked.Exchange(ref _videoFramesDropped, 0);
         _loggedFirstAudioChunk = false;
         StartAudioCapture();
         CaptureFlowTrace.Mark("video: audio capture started");
@@ -284,6 +302,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 includeAudio,
                 cancellationToken,
                 null).ConfigureAwait(false);
+            usedFallbackProfile = true;
         }
 
         if (!prepare.CanTranscode)
@@ -291,6 +310,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             throw new InvalidOperationException($"Cannot encode video: {prepare.FailureReason}.");
         }
 
+        _encoderPath = usedFallbackProfile ? "software H.264 Baseline (fallback)" : "H.264 High (hardware-accelerated)";
         CaptureFlowTrace.Mark("video: transcoder prepared");
         _prepared = new PreparedPipeline(captureTarget, region, prepare);
     }
@@ -369,6 +389,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
             Interlocked.Increment(ref _webcamOverlayNullFrames);
         }
 
+        // Encoder back-pressure: the frame is dropped (counted by the channel's item-dropped
+        // callback) but PTS stays wall-clock, so the video simply has a lower effective frame rate
+        // here and never slides against audio.
         _channel?.Writer.TryWrite(new TimestampedFrame(CreateBottomUpVideoBuffer(frame), pts));
     }
 
@@ -793,22 +816,36 @@ public sealed class VideoRecordingService : IVideoRecordingService
             // the transcoder drains audio far faster than real time and the whole audio track
             // races ~1s ahead of the video. Gating on captured-frame availability (not the wall
             // clock) keeps audio locked to real capture progress AND never reads an empty buffer,
-            // so there is no silence-splicing crackle. A generous cap prevents a stalled capture
-            // from hanging the transcode pull.
+            // so there is no silence-splicing crackle.
+            //
+            // While paused there is no cap on the wait: no new audio arrives by design, and ending
+            // the wait would hand the muxer a sample it must not have (or, worse, end the track).
+            // When not paused, a generous cap prevents a stalled device from hanging the transcode;
+            // the starved chunk is then filled with silence rather than ending the stream.
             var audio = _audio;
             var waited = 0;
+            var starved = false;
             const int maxWaitMs = 2000;
             const int pollMs = 4;
-            while (audio is not null &&
-                   !_audioEnding &&
-                   audio.AvailableFrames < frameCount &&
-                   waited < maxWaitMs)
+            while (audio is not null && !_audioEnding && !_audioDraining && audio.AvailableFrames < frameCount)
             {
+                if (IsPaused)
+                {
+                    await Task.Delay(pollMs).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (waited >= maxWaitMs)
+                {
+                    starved = true;
+                    break;
+                }
+
                 await Task.Delay(pollMs).ConfigureAwait(false);
                 waited += pollMs;
             }
 
-            FillAudioRequest(args, frameCount);
+            FillAudioRequest(args, frameCount, starved);
         }
         catch
         {
@@ -820,7 +857,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
     }
 
-    private void FillAudioRequest(MediaStreamSourceSampleRequestedEventArgs args, int frameCount)
+    private void FillAudioRequest(MediaStreamSourceSampleRequestedEventArgs args, int frameCount, bool starved)
     {
         var audio = _audio;
         if (audio is null || _audioEnding)
@@ -830,11 +867,44 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
+        if (_audioDraining)
+        {
+            // Devices are stopped; serve whatever was captured before Stop so the audio track
+            // reaches the same point as the video, then end the stream.
+            var remaining = Math.Min(audio.AvailableFrames, (int)Math.Max(0, MaxDrainFrames - _drainFramesServed));
+            if (remaining <= 0)
+            {
+                _audioEnding = true;
+                args.Request.Sample = null;
+                return;
+            }
+
+            frameCount = Math.Min(frameCount, remaining);
+            _drainFramesServed += frameCount;
+        }
+
         var data = audio.ReadChunk(frameCount);
         if (data is null || data.Length == 0)
         {
-            args.Request.Sample = null;
-            return;
+            if (_audioDraining)
+            {
+                _audioEnding = true;
+                args.Request.Sample = null;
+                return;
+            }
+
+            // The mixer should always return a full (silence-padded) chunk; if it somehow did not,
+            // substitute silence rather than ending the track mid-recording.
+            data = new byte[frameCount * AudioCaptureService.Channels * (AudioCaptureService.BitsPerSample / 8)];
+        }
+
+        if (starved)
+        {
+            _audioStarvedChunks++;
+            if (_audioStarvedChunks == 1 || _audioStarvedChunks % 50 == 0)
+            {
+                WebcamDiagnostics.Log($"Audio muxer starved: no captured audio for 2 s; filled chunk with silence (starvedChunks={_audioStarvedChunks}).");
+            }
         }
 
         var producedFrames = data.Length / (AudioCaptureService.Channels * (AudioCaptureService.BitsPerSample / 8));
@@ -882,7 +952,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
     {
         var wantSystem = _settings.RecordAudio;
         var wantMic = _settings.RecordMicrophone;
-        WebcamDiagnostics.Log($"StartAudioCapture: RecordAudio={wantSystem} RecordMicrophone={wantMic} micDeviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedMicrophoneId) ? "(default)" : _settings.SelectedMicrophoneId)}'");
+        var limitMic = _settings.MicrophoneLimiterEnabled;
+        var userOffset = TimeSpan.FromMilliseconds(_settings.AudioOffsetMilliseconds);
+        _activeUserOffset = userOffset;
+        WebcamDiagnostics.Log($"StartAudioCapture: RecordAudio={wantSystem} RecordMicrophone={wantMic} MicrophoneLimiter={limitMic} audioOffsetMs={userOffset.TotalMilliseconds:F0} micDeviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedMicrophoneId) ? "(default)" : _settings.SelectedMicrophoneId)}'");
         if (!wantSystem && !wantMic)
         {
             WebcamDiagnostics.Log("StartAudioCapture: no audio sources requested; recording will have no audio track.");
@@ -891,7 +964,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         try
         {
-            var audio = new AudioCaptureService(wantSystem, wantMic, _settings.SelectedMicrophoneId);
+            var audio = new AudioCaptureService(wantSystem, wantMic, _settings.SelectedMicrophoneId, limitMic, userOffset);
             if (audio.TryStart())
             {
                 _audio = audio;
@@ -918,6 +991,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private void DisposeAudio()
     {
         _audioEnding = true;
+        _audioDraining = false;
         _audio?.Dispose();
         _audio = null;
         _hasAudio = false;
@@ -1044,12 +1118,12 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
             await StopWebcamOverlayAsync().ConfigureAwait(false);
 
-            // Signal audio end-of-stream and stop the device before draining the encoder,
-            // otherwise the continuous silence source would prevent EOS.
-            _audioEnding = true;
+            // Stop the audio devices first, then let the muxer drain the audio already captured
+            // (so the track ends where the video does) before it ends the stream. Only then stop
+            // new video frames and let the encoder drain what's buffered.
             _audio?.Stop();
+            _audioDraining = true;
 
-            // Stop new frames, then let the encoder drain what's buffered.
             _capture?.Stop();
             _channel?.Writer.TryComplete();
 
@@ -1064,6 +1138,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
                     // Surface nothing here; the file may still be partially valid.
                 }
             }
+
+            LogSyncReport();
 
             _capture?.Dispose();
             _capture = null;
@@ -1103,6 +1179,52 @@ public sealed class VideoRecordingService : IVideoRecordingService
             WebcamDiagnostics.EndRecording();
             Interlocked.Exchange(ref _stopping, 0);
             _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// One-shot end-of-recording summary so A/V sync can be verified from the diagnostics log
+    /// without a listen test. Healthy: |delta| well under 30 ms, zero corrections, no starvation.
+    /// </summary>
+    private void LogSyncReport()
+    {
+        try
+        {
+            var timeline = _recordingTimeline;
+            var videoPts = _capture?.LastEmittedPts ?? TimeSpan.MinValue;
+            var videoEmitted = _capture?.EmittedFrameCount ?? 0;
+            var videoDropped = Interlocked.Read(ref _videoFramesDropped);
+            var elapsed = timeline?.Elapsed ?? TimeSpan.Zero;
+            var pauses = timeline?.PauseCount ?? 0;
+            var paused = timeline?.PausedDuration ?? TimeSpan.Zero;
+
+            WebcamDiagnostics.Log($"Sync report: encoder='{_encoderPath}' elapsed={elapsed.TotalSeconds:F3}s pauses={pauses} pausedTotal={paused.TotalSeconds:F3}s.");
+            WebcamDiagnostics.Log($"Sync report: video lastPts={(videoPts == TimeSpan.MinValue ? "none" : $"{videoPts.TotalSeconds:F3}s")} framesEmitted={videoEmitted} framesDroppedByEncoderBackpressure={videoDropped}.");
+
+            if (!_hasAudio || _audio is null)
+            {
+                WebcamDiagnostics.Log("Sync report: no audio track.");
+                return;
+            }
+
+            var audioPts = TimeSpan.FromSeconds(_audioFramesRead / (double)AudioCaptureService.SampleRate);
+
+            // The audio cursor is an end position, so compare it with the END of the last video
+            // sample (its PTS plus one frame), not its start. A non-zero user offset deliberately
+            // shifts the audio endpoint by that amount, so grade the offset-compensated delta.
+            var videoEnd = videoPts == TimeSpan.MinValue ? TimeSpan.MinValue : videoPts + _frameDuration;
+            var rawDelta = videoEnd == TimeSpan.MinValue ? TimeSpan.Zero : audioPts - videoEnd;
+            var delta = rawDelta - _activeUserOffset;
+            WebcamDiagnostics.Log($"Sync report: audio pts={audioPts.TotalSeconds:F3}s chunks={_audioSamplesRequested} nonSilent={_audioNonSilentChunks} starvedChunks={_audioStarvedChunks} drainedFrames={_drainFramesServed} userOffsetMs={_activeUserOffset.TotalMilliseconds:F0} driverDiscontinuities={_audio.DriverDiscontinuityCount}.");
+            WebcamDiagnostics.Log($"Sync report: audio-video end delta={delta.TotalMilliseconds:F1}ms offset-compensated (raw={rawDelta.TotalMilliseconds:F1}ms vs videoEnd={(videoEnd == TimeSpan.MinValue ? "none" : $"{videoEnd.TotalSeconds:F3}s")}; audio {(delta >= TimeSpan.Zero ? "longer" : "shorter")}; |delta| < 30 ms is healthy).");
+            foreach (var stats in _audio.GetSyncStats())
+            {
+                WebcamDiagnostics.Log($"Sync report: {stats}");
+            }
+        }
+        catch (Exception ex)
+        {
+            WebcamDiagnostics.Log($"Sync report failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

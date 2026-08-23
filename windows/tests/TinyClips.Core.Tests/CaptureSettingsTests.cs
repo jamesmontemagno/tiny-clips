@@ -31,6 +31,8 @@ public sealed class CaptureSettingsTests
         Assert.Equal(100, settings.ScreenshotScale);
         Assert.Equal("TinyClips {date} at {time}", settings.FileNameTemplate);
         Assert.True(settings.ShowTrimmer);
+        Assert.True(settings.MicrophoneLimiterEnabled);
+        Assert.Equal(0, settings.AudioOffsetMilliseconds);
         Assert.False(settings.WebcamEnabled);
         Assert.Equal(string.Empty, settings.SelectedWebcamId);
         Assert.Equal(WebcamShape.Circle, settings.WebcamShape);
@@ -97,6 +99,110 @@ public sealed class CaptureSettingsTests
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Screenshot));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Video));
         Assert.False(settings.ShouldShowCapturePickerAfterCapture(CaptureType.Gif));
+    }
+
+    [Fact]
+    public void MicrophoneLimiterEnabled_RoundTripsAndResetsToTrue()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        settings.MicrophoneLimiterEnabled = false;
+
+        Assert.False(settings.MicrophoneLimiterEnabled);
+        Assert.False(settingsService.Get("microphoneLimiterEnabled", true));
+
+        settings.ResetToDefaults();
+
+        Assert.True(settings.MicrophoneLimiterEnabled);
+    }
+
+    [Fact]
+    public void AudioOffsetMilliseconds_RoundTripsAndResetsToZero()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        settings.AudioOffsetMilliseconds = -150;
+
+        Assert.Equal(-150, settings.AudioOffsetMilliseconds);
+        Assert.Equal(-150, settingsService.Get("audioOffsetMilliseconds", 0));
+
+        settings.ResetToDefaults();
+
+        Assert.Equal(0, settings.AudioOffsetMilliseconds);
+    }
+
+    [Theory]
+    [InlineData(600, 500)]
+    [InlineData(500, 500)]
+    [InlineData(-500, -500)]
+    [InlineData(-9999, -500)]
+    public void AudioOffsetMilliseconds_ClampsToSupportedRange(int requested, int expected)
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        settings.AudioOffsetMilliseconds = requested;
+
+        Assert.Equal(expected, settings.AudioOffsetMilliseconds);
+        Assert.Equal(expected, settingsService.Get("audioOffsetMilliseconds", 0));
+    }
+
+    [Fact]
+    public void AudioOffsetMilliseconds_ClampsOutOfRangeStoredValueOnRead()
+    {
+        // A value written by an older/newer build or edited by hand must never leak outside the range.
+        var settingsService = new TestSettingsService();
+        settingsService.Set("audioOffsetMilliseconds", 2000);
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.Equal(CaptureSettings.MaxAudioOffsetMilliseconds, settings.AudioOffsetMilliseconds);
+    }
+
+    [Fact]
+    public void TeleprompterDisplaySizes_DefaultToMediumAndRoundTrip()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterFontSize);
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterPanelHeight);
+
+        settings.TeleprompterFontSize = TeleprompterDisplaySize.Large;
+        settings.TeleprompterPanelHeight = TeleprompterDisplaySize.Small;
+
+        Assert.Equal(TeleprompterDisplaySize.Large, settings.TeleprompterFontSize);
+        Assert.Equal(TeleprompterDisplaySize.Small, settings.TeleprompterPanelHeight);
+        // Persisted as the same lowercase tokens the macOS app uses.
+        Assert.Equal("large", settingsService.Get("teleprompterFontSize", string.Empty));
+        Assert.Equal("small", settingsService.Get("teleprompterPanelHeight", string.Empty));
+
+        settings.ResetToDefaults();
+
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterFontSize);
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterPanelHeight);
+    }
+
+    [Fact]
+    public void TeleprompterDisplaySizes_UnknownPersistedValueFallsBackToMedium()
+    {
+        var settingsService = new TestSettingsService();
+        settingsService.Set("teleprompterFontSize", "gigantic");
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterFontSize);
+    }
+
+    [Theory]
+    [InlineData(TeleprompterDisplaySize.Small, 20, 120)]
+    [InlineData(TeleprompterDisplaySize.Medium, 24, 140)]
+    [InlineData(TeleprompterDisplaySize.Large, 30, 220)]
+    public void TeleprompterDisplaySize_PresetsMatchMacParity(TeleprompterDisplaySize size, double fontSize, double panelHeight)
+    {
+        Assert.Equal(fontSize, size.FontSize());
+        Assert.Equal(panelHeight, size.PanelHeight());
+        Assert.Equal(panelHeight - TeleprompterDisplaySizeExtensions.PanelVerticalPaddingDip, size.ViewportHeight());
     }
 
     [Fact]

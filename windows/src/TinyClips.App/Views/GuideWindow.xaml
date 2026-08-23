@@ -90,6 +90,10 @@
                             Subtitle="Press W to capture a specific application window."
                             Title="Window" />
                         <local:GuideRow
+                            Glyph="&#xE8A1;"
+                            Subtitle="Press P (screenshots only) to select a region, scroll the page, then press Done to stitch the frames into one tall image."
+                            Title="Scroll" />
+                        <local:GuideRow
                             Glyph="&#xE8D2;"
                             Subtitle="Press T to select a region and copy its recognized text to the clipboard."
                             Title="Recognize Text" />

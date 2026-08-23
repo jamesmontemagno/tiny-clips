@@ -5,7 +5,43 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- **Screenshot editor image alignment is now a 3×3 placement grid** — the Background section's
+  separate Horizontal / Vertical alignment combo boxes are replaced by a single labeled 3×3 grid
+  of toggle cells, so any export-frame placement (e.g. bottom-right) is one click and every
+  combination is visible at once. The selected cell is highlighted; arrow keys move between cells
+  and each cell has a Narrator name ("Top-left image alignment", …). The grid is disabled when the
+  frame is Original (no free space on either axis). Export alignment logic is unchanged. Mirrors
+  the macOS 1.6.0 editor. Closes #296.
+
 ### Added
+- **Teleprompter text size and panel height presets** — Settings → Teleprompter gains **Text
+  size** and **Panel height** pickers (Small / Medium / Large), matching the macOS 1.6.0 presets
+  (20/24/30 DIP text; 120/140/220 DIP panel). Both persist, drive the live recording overlay
+  immediately — including while a recording is in progress — and are reflected in the Settings
+  scroll preview. Keyboard/Narrator accessible. Closes #295.
+- **Audio offset setting** — Settings → Video → Audio → *Audio offset* (−500 … +500 ms, default
+  0) shifts all recorded audio relative to the video. Positive delays audio, negative plays it
+  earlier — the fix for Bluetooth headsets and some USB microphones whose real latency WASAPI
+  does not report. Applied at capture time on the shared recording timeline; a reset button
+  returns to 0.
+- **End-of-recording sync report** — every video recording now writes a `Sync report:` block to
+  `webcam-diagnostics.log`: encoder path, elapsed/paused time, last video PTS, frames emitted and
+  dropped to encoder back-pressure, audio PTS and the audio−video end delta, starved chunks,
+  driver discontinuities, and per-source correction/pad/trim/underrun totals. Lets A/V sync be
+  verified from the log without a listen test (see `docs/audio-video-sync.md`).
+- **Scrolling capture** — The Screenshot picker gains a **Scroll** action (`P`). Select a region,
+  scroll the page normally, and press **Done** (Enter) on the floating panel to stitch every frame
+  into one tall image that flows into the usual save / editor / clipboard path; **Cancel** (Esc)
+  discards. Frames are aligned with the same row-signature algorithm as macOS 1.6.0 (sticky
+  headers and footers are not repeated), and guardrails stop growth automatically at 600 frames,
+  a ~1.2 GB memory budget, or the maximum height (16 384 px when the editor is enabled, 50 000 px
+  for direct save), saving what was captured so far. Mirrors the macOS scrolling capture.
+- **Microphone soft-knee limiter** — Video recordings now run microphone audio through a
+  per-sample soft-knee limiter (knee at 0.98 FS, `atan` roll-off toward full scale) before mixing
+  so hot microphones round off instead of hard-clipping. On by default; toggle with Settings →
+  Video → Audio → Microphone → *Limit microphone peaks*. Matches the macOS 1.6.0 limiter curve,
+  never alters sample count or timing (A/V sync unchanged), and leaves system audio untouched.
 - **Capture flow latency instrumentation** — `CaptureFlowTrace` records elapsed/delta timings at
   every transition of the capture flow (picker, region overlay, backdrop, countdown, recorder
   start/stop, editor/trimmer). Output goes to the debugger always, and to
@@ -138,6 +174,50 @@ own `CHANGELOG.md` at the repository root.
   countdown, recording/processing indicators, recording-setup, teleprompter, webcam preview,
   and region-indicator windows, removing duplicated P/Invoke declarations and structs. The
   `TrayPopupWindow` now unsubscribes its `Activated` handler on closure.
+
+### Fixed
+- **Pausing a recording for more than 2 seconds no longer silences the rest of the clip** — while
+  paused the audio muxer had no captured frames to hand over, hit its 2 s wait cap and returned a
+  `null` sample, which `MediaStreamSource` treats as end-of-stream for the audio track. The muxer
+  now waits through pauses without a cap, only ends the audio stream at a real stop, and fills a
+  genuinely starved request (no audio device activity for 2 s) with silence instead of ending
+  the track.
+- **Pause/resume no longer shifts audio earlier than video** — pausing used to discard audio that
+  had been captured but not yet muxed, and resuming appended the next packet contiguously, so every
+  pause moved the remainder of the audio track earlier by the discarded amount. Captured audio is
+  now retained through the pause and the resumed packet is placed on the paused-adjusted timeline.
+  The screen pump also keeps its last frame through a pause so video resumes immediately on a
+  static desktop.
+- **Audio can no longer drift or jump out of sync over a recording** — audio was appended
+  contiguously forever after the first packet, so a WASAPI buffer overrun (dropped packet), a
+  microphone whose clock runs fast or slow against the system clock, or two sources at slightly
+  different rates would silently slide the audio track relative to the video for the rest of the
+  recording. `TimelineAlignedWaveProvider` now tracks each source's expected position on the shared
+  timeline and, only when the deviation exceeds a 30 ms tolerance (or the driver flags
+  `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY`), inserts silence or trims once to snap back. Ordinary
+  per-packet jitter stays far below the tolerance, so the earlier crackle fix is preserved. Zero
+  padding the muxer consumes during an underrun now also counts toward the source's timeline
+  position so the following packet cannot land late behind it.
+- **Audio track now ends where the video does** — stopping a recording ended the audio stream
+  immediately, discarding up to a few hundred milliseconds of already-captured audio. The recorder
+  now stops the devices, drains the remaining captured audio into the muxer (bounded to 500 ms),
+  and only then ends the stream.
+- **Resampled microphones (e.g. 44.1 kHz) no longer crackle at the read edge** — the muxer's
+  back-pressure gate now keeps a 20 ms margin for sources that go through the resampler, so the
+  resampler's lookahead never reads past captured data.
+- **Hardened tray-first startup** — Launch no longer eagerly creates the off-screen UI Automation
+  announcement window; it is created lazily on the first Narrator announcement and degrades to a
+  log line if window creation fails. Hotkey registration, onboarding, and file activation are
+  each guarded so a failure in one step cannot abort launch. A framework (XAML-thread) exception
+  raised *during launch* — until the work launch queued on the UI thread has drained — is now
+  logged and marked handled instead of terminating the process with a stowed-exception crash
+  (`0xC000027B`), the failure mode reported by winget's `Validation-Executable-Error` check.
+  Exceptions after launch are still fatal so mid-operation failures cannot leave the app running
+  in a partially mutated state.
+- **Persistent crash diagnostics** — Unhandled XAML, AppDomain, and unobserved task exceptions
+  (plus guarded startup-step failures) are appended to `%LOCALAPPDATA%\TinyClips\Logs\crash.log`
+  (capped at 512 KB, rolled to `crash.previous.log`) so packaged-app failures can be diagnosed
+  without a debugger. The Logs folder is separate from the Temp folder purged by Settings.
 
 ## [v1.7.0-windows] - 2026-08-13
 

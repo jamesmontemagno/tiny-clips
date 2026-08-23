@@ -18,6 +18,11 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   mirroring the macOS picker. Video/GIF captures then show a pre-record setup panel before countdown.
 - **Screenshot** (PNG/JPEG, scale, quality) — full screen, a specific window, or a drag-selected **region**.
   The region selector shows a live snapshot of the screen and dims only outside the selection.
+- **Scrolling capture** — pick **Scroll** (P) in the Screenshot picker, select a region, then scroll
+  the page; a floating panel shows the frame count with **Done** (Enter) to stitch everything into
+  one tall image and **Cancel** (Esc) to discard. Sticky headers/footers are suppressed and memory
+  use is bounded (the capture stops and saves automatically when a limit is reached). Enter/Esc
+  apply while the panel has focus; use its buttons after clicking into the page.
 - **Video recording** → hardware-accelerated **H.264 MP4** (configurable frame rate, audio sources,
   microphone device, mouse-click visuals, and time limit before each recording).
 - **GIF recording** → animated GIF (frame rate, max-width downscale, infinite loop).
@@ -96,7 +101,8 @@ For coordinate/DPI behaviour across mixed-DPI monitors, see
 [`docs/dpi-and-coordinates.md`](docs/dpi-and-coordinates.md).
 
 For how the screen, webcam, microphone, and system audio are kept in sync (shared timeline,
-WASAPI capture, and audio back-pressure), see [`docs/audio-video-sync.md`](docs/audio-video-sync.md).
+WASAPI capture, drift/discontinuity correction, audio back-pressure, the *Audio offset* setting, and
+the end-of-recording sync report), see [`docs/audio-video-sync.md`](docs/audio-video-sync.md).
 
 ## CI
 

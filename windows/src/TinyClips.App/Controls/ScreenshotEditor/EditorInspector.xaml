@@ -245,26 +245,63 @@
                             <ComboBoxItem Content="3:4" />
                             <ComboBoxItem Content="9:16" />
                         </ComboBox>
-                        <ComboBox
-                            x:Name="HorizontalAlignmentCombo"
-                            AutomationProperties.AutomationId="EditorHorizontalAlignmentCombo"
-                            AutomationProperties.Name="Horizontal image alignment"
-                            Header="Horizontal alignment"
-                            SelectionChanged="OnHorizontalAlignmentChanged">
-                            <ComboBoxItem Content="Left" />
-                            <ComboBoxItem Content="Center" />
-                            <ComboBoxItem Content="Right" />
-                        </ComboBox>
-                        <ComboBox
-                            x:Name="VerticalAlignmentCombo"
-                            AutomationProperties.AutomationId="EditorVerticalAlignmentCombo"
-                            AutomationProperties.Name="Vertical image alignment"
-                            Header="Vertical alignment"
-                            SelectionChanged="OnVerticalAlignmentChanged">
-                            <ComboBoxItem Content="Top" />
-                            <ComboBoxItem Content="Center" />
-                            <ComboBoxItem Content="Bottom" />
-                        </ComboBox>
+                        <StackPanel Spacing="6">
+                            <TextBlock
+                                x:Name="AlignmentHeader"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Image alignment" />
+                            <!--
+                                3×3 placement grid: one tap sets both axes. Each cell is a ToggleButton
+                                whose checked state mirrors the controller's H+V alignment; arrow keys
+                                move between cells, Space/Enter selects.
+                            -->
+                            <Grid
+                                x:Name="AlignmentGrid"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Image alignment"
+                                ColumnSpacing="4"
+                                RowSpacing="4"
+                                XYFocusKeyboardNavigation="Enabled">
+                                <Grid.Resources>
+                                    <Style x:Key="AlignmentCellStyle" TargetType="ToggleButton">
+                                        <Setter Property="Width" Value="40" />
+                                        <Setter Property="Height" Value="32" />
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="MinWidth" Value="0" />
+                                        <Setter Property="MinHeight" Value="0" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                                    </Style>
+                                    <!--  A glyph (not a shape) so the dot inherits the cell's state foreground.  -->
+                                    <Style x:Key="AlignmentDotStyle" TargetType="TextBlock">
+                                        <Setter Property="Text" Value="&#x25CF;" />
+                                        <Setter Property="FontSize" Value="10" />
+                                        <Setter Property="IsTextSelectionEnabled" Value="False" />
+                                    </Style>
+                                </Grid.Resources>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <ToggleButton Grid.Row="0" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopLeft" AutomationProperties.Name="Top-left image alignment" ToolTipService.ToolTip="Top left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                                <ToggleButton Grid.Row="0" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopCenter" AutomationProperties.Name="Top-center image alignment" ToolTipService.ToolTip="Top center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                                <ToggleButton Grid.Row="0" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopRight" AutomationProperties.Name="Top-right image alignment" ToolTipService.ToolTip="Top right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                                <ToggleButton Grid.Row="1" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignMiddleLeft" AutomationProperties.Name="Middle-left image alignment" ToolTipService.ToolTip="Middle left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                                <ToggleButton Grid.Row="1" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignCenter" AutomationProperties.Name="Center image alignment" ToolTipService.ToolTip="Center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                                <ToggleButton Grid.Row="1" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignMiddleRight" AutomationProperties.Name="Middle-right image alignment" ToolTipService.ToolTip="Middle right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                                <ToggleButton Grid.Row="2" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomLeft" AutomationProperties.Name="Bottom-left image alignment" ToolTipService.ToolTip="Bottom left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                                <ToggleButton Grid.Row="2" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomCenter" AutomationProperties.Name="Bottom-center image alignment" ToolTipService.ToolTip="Bottom center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                                <ToggleButton Grid.Row="2" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomRight" AutomationProperties.Name="Bottom-right image alignment" ToolTipService.ToolTip="Bottom right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            </Grid>
+                        </StackPanel>
                         <Slider
                             x:Name="CornerSlider"
                             AutomationProperties.AutomationId="EditorCornerSlider"

@@ -1530,7 +1530,8 @@ class ScreenshotEditorViewModel: ObservableObject {
             padding: canvasPadding,
             preset: exportFramePreset,
             horizontalAlignment: horizontalExportAlignment,
-            verticalAlignment: verticalExportAlignment
+            verticalAlignment: verticalExportAlignment,
+            snapsToPixels: true
         )
     }
 

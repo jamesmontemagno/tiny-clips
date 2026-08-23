@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
@@ -384,6 +385,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(MicrophoneSelectorEnabled))]
     private bool _recordMicrophone;
 
+    /// <summary>Soft-knee limiter on the microphone path so hot input rounds off instead of clipping.</summary>
+    [ObservableProperty]
+    private bool _microphoneLimiterEnabled = true;
+
+    /// <summary>Manual A/V offset in ms; positive delays audio, negative plays it earlier.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AudioOffsetIsNonZero))]
+    private double _audioOffsetMilliseconds;
+
+    public bool AudioOffsetIsNonZero => Math.Abs(AudioOffsetMilliseconds) >= 0.5;
+
+    [RelayCommand]
+    private void ResetAudioOffset() => AudioOffsetMilliseconds = 0;
+
     /// <summary>Microphone devices for the picker (first entry is the system default).</summary>
     public System.Collections.ObjectModel.ObservableCollection<AudioInputDevice> Microphones { get; } = new();
 
@@ -554,6 +569,30 @@ public sealed partial class SettingsViewModel : ObservableObject
     private double _teleprompterScrollSpeed = 50;
 
     public string TeleprompterScrollSpeedDisplay => $"{TeleprompterScrollSpeed:N0} DIPs/s";
+
+    /// <summary>0 = Small, 1 = Medium, 2 = Large (matches <see cref="TeleprompterDisplaySize"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TeleprompterPreviewFontSize))]
+    private int _teleprompterFontSizeIndex = (int)TeleprompterDisplaySize.Medium;
+
+    /// <summary>0 = Small, 1 = Medium, 2 = Large (matches <see cref="TeleprompterDisplaySize"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TeleprompterPreviewPanelHeight))]
+    private int _teleprompterPanelHeightIndex = (int)TeleprompterDisplaySize.Medium;
+
+    public double TeleprompterPreviewFontSize => ToTeleprompterDisplaySize(TeleprompterFontSizeIndex).FontSize();
+
+    public double TeleprompterPreviewPanelHeight => ToTeleprompterDisplaySize(TeleprompterPanelHeightIndex).PanelHeight();
+
+    /// <summary>Raised when the overlay text size or panel height preset changes, so a live overlay can re-apply it.</summary>
+    public event Action? TeleprompterDisplayChanged;
+
+    private static TeleprompterDisplaySize ToTeleprompterDisplaySize(int index) => index switch
+    {
+        0 => TeleprompterDisplaySize.Small,
+        2 => TeleprompterDisplaySize.Large,
+        _ => TeleprompterDisplaySize.Medium,
+    };
 
     // Analytics
     public System.Collections.ObjectModel.ObservableCollection<CaptureAnalyticsDayViewModel> AnalyticsDays { get; } = new();
@@ -755,6 +794,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             KeepDisplayAwakeWhileRecording = _settings.KeepDisplayAwakeWhileRecording;
             RecordAudio = _settings.RecordAudio;
             RecordMicrophone = _settings.RecordMicrophone;
+            MicrophoneLimiterEnabled = _settings.MicrophoneLimiterEnabled;
+            AudioOffsetMilliseconds = _settings.AudioOffsetMilliseconds;
 
             _savedMicrophoneId = _settings.SelectedMicrophoneId ?? string.Empty;
             WebcamEnabled = _settings.WebcamEnabled;
@@ -809,6 +850,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             TeleprompterEnabled = _settings.TeleprompterEnabled;
             TeleprompterTranscript = _settings.TeleprompterTranscript;
             TeleprompterScrollSpeed = Math.Clamp(_settings.TeleprompterScrollSpeed, 10.0, 200.0);
+            TeleprompterFontSizeIndex = (int)_settings.TeleprompterFontSize;
+            TeleprompterPanelHeightIndex = (int)_settings.TeleprompterPanelHeight;
         }
         finally
         {
@@ -1138,6 +1181,20 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnRecordMicrophoneChanged(bool value) => Persist(() => _settings.RecordMicrophone = value);
 
+    partial void OnMicrophoneLimiterEnabledChanged(bool value) => Persist(() => _settings.MicrophoneLimiterEnabled = value);
+
+    partial void OnAudioOffsetMillisecondsChanged(double value)
+    {
+        // NumberBox reports NaN when its text is cleared; treat that as "no offset".
+        if (double.IsNaN(value))
+        {
+            AudioOffsetMilliseconds = 0;
+            return;
+        }
+
+        Persist(() => _settings.AudioOffsetMilliseconds = (int)Math.Round(value));
+    }
+
     partial void OnSelectedMicrophoneChanged(AudioInputDevice? value) =>
         Persist(() => _settings.SelectedMicrophoneId = value?.Id ?? string.Empty);
 
@@ -1288,6 +1345,18 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnTeleprompterScrollSpeedChanged(double value) => Persist(() => _settings.TeleprompterScrollSpeed = value);
 
+    partial void OnTeleprompterFontSizeIndexChanged(int value) => Persist(() =>
+    {
+        _settings.TeleprompterFontSize = ToTeleprompterDisplaySize(value);
+        TeleprompterDisplayChanged?.Invoke();
+    });
+
+    partial void OnTeleprompterPanelHeightIndexChanged(int value) => Persist(() =>
+    {
+        _settings.TeleprompterPanelHeight = ToTeleprompterDisplaySize(value);
+        TeleprompterDisplayChanged?.Invoke();
+    });
+
     partial void OnAnalyticsRangeIndexChanged(int value)
     {
         if (_loading)
@@ -1327,6 +1396,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.ResetToDefaults();
         Load();
         ThemeChanged?.Invoke();
+        // Load() runs under the _loading guard, so the per-property persistence callbacks (and
+        // their live notifications) are suppressed; tell an active overlay explicitly.
+        TeleprompterDisplayChanged?.Invoke();
     }
 
     public void ResetAnalytics()

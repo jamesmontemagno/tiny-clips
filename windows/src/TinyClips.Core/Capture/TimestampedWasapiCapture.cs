@@ -55,7 +55,19 @@ internal sealed class TimestampedWasapiCapture : IDisposable
     /// </summary>
     public TimeSpan CaptureLatency { get; private set; }
 
-    public event Action<byte[], int, TimeSpan>? DataAvailable;
+    /// <summary>
+    /// Raised per WASAPI packet with (data, byteCount, qpcTimestamp, discontinuity). The
+    /// discontinuity flag mirrors <c>AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY</c>: the driver lost
+    /// data before this packet, so consumers must re-derive the packet's position rather than
+    /// append it contiguously.
+    /// </summary>
+    public event Action<byte[], int, TimeSpan, bool>? DataAvailable;
+
+    /// <summary>Count of packets the driver flagged as following a data gap.</summary>
+    public long DiscontinuityCount => Interlocked.Read(ref _discontinuityCount);
+
+    private long _discontinuityCount;
+    private TimeSpan _expectedNextTimestamp = TimeSpan.MinValue;
 
     public void Start()
     {
@@ -199,7 +211,30 @@ internal sealed class TimestampedWasapiCapture : IDisposable
                     ? TimeSpan.FromTicks(qpcPosition)
                     : Stopwatch.GetElapsedTime(0, Stopwatch.GetTimestamp()) -
                         TimeSpan.FromSeconds(framesAvailable / (double)WaveFormat.SampleRate);
-                DataAvailable?.Invoke(data, byteCount, sourceTimestamp);
+
+                var discontinuity = (flags & AudioClientBufferFlags.DataDiscontinuity) != 0;
+                var packetDuration = TimeSpan.FromSeconds(framesAvailable / (double)WaveFormat.SampleRate);
+                if (discontinuity)
+                {
+                    Interlocked.Increment(ref _discontinuityCount);
+                    var gap = _expectedNextTimestamp == TimeSpan.MinValue
+                        ? TimeSpan.Zero
+                        : sourceTimestamp - _expectedNextTimestamp;
+                    WebcamDiagnostics.Log($"Audio packet discontinuity ({(_isLoopback ? "loopback" : "microphone")}): packet#{packetCount} gapMs={gap.TotalMilliseconds:F1}.");
+                }
+                else if (_expectedNextTimestamp != TimeSpan.MinValue)
+                {
+                    // Purely diagnostic: a large timestamp jump without the driver flag still points
+                    // at lost data. The timeline provider corrects it; this just leaves evidence.
+                    var jump = sourceTimestamp - _expectedNextTimestamp;
+                    if (jump.Duration() > TimelineAlignedWaveProvider.DriftTolerance)
+                    {
+                        WebcamDiagnostics.Log($"Audio packet timestamp jump ({(_isLoopback ? "loopback" : "microphone")}): packet#{packetCount} jumpMs={jump.TotalMilliseconds:F1} (no driver flag).");
+                    }
+                }
+
+                _expectedNextTimestamp = sourceTimestamp + packetDuration;
+                DataAvailable?.Invoke(data, byteCount, sourceTimestamp, discontinuity);
             }
             finally
             {

@@ -11,6 +11,7 @@ internal sealed class RecordingTimeline
     private readonly object _gate = new();
     private TimeSpan _pausedDuration;
     private TimeSpan? _pauseStartedAt;
+    private int _pauseCount;
 
     private RecordingTimeline(TimeSpan origin)
     {
@@ -36,11 +37,45 @@ internal sealed class RecordingTimeline
         }
     }
 
+    /// <summary>Number of completed or in-progress pauses.</summary>
+    public int PauseCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _pauseCount;
+            }
+        }
+    }
+
+    /// <summary>Total time excluded from the timeline so far (including an in-progress pause).</summary>
+    public TimeSpan PausedDuration
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var paused = _pausedDuration;
+                if (_pauseStartedAt is { } pausedAt)
+                {
+                    paused += GetSystemRelativeTime() - pausedAt;
+                }
+
+                return paused;
+            }
+        }
+    }
+
     public void Pause()
     {
         lock (_gate)
         {
-            _pauseStartedAt ??= GetSystemRelativeTime();
+            if (_pauseStartedAt is null)
+            {
+                _pauseStartedAt = GetSystemRelativeTime();
+                _pauseCount++;
+            }
         }
     }
 

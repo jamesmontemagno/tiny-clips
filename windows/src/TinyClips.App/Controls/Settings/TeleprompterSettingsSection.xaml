@@ -94,6 +94,38 @@
             </StackPanel>
         </Border>
 
+            <controls:SettingsCard
+                Description="Size of the transcript text in the overlay."
+                Header="Text size"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE8D2;}">
+                <ComboBox
+                    MinWidth="160"
+                    AutomationProperties.AutomationId="TeleprompterFontSizeCombo"
+                    AutomationProperties.Name="Teleprompter text size"
+                    IsEnabled="{x:Bind ViewModel.TeleprompterEnabled, Mode=OneWay}"
+                    SelectedIndex="{x:Bind ViewModel.TeleprompterFontSizeIndex, Mode=TwoWay}">
+                    <ComboBoxItem Content="Small" />
+                    <ComboBoxItem Content="Medium" />
+                    <ComboBoxItem Content="Large" />
+                </ComboBox>
+            </controls:SettingsCard>
+
+            <controls:SettingsCard
+                Description="How tall the overlay panel is, which controls how many lines are visible at once."
+                Header="Panel height"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE745;}">
+                <ComboBox
+                    MinWidth="160"
+                    AutomationProperties.AutomationId="TeleprompterPanelHeightCombo"
+                    AutomationProperties.Name="Teleprompter panel height"
+                    IsEnabled="{x:Bind ViewModel.TeleprompterEnabled, Mode=OneWay}"
+                    SelectedIndex="{x:Bind ViewModel.TeleprompterPanelHeightIndex, Mode=TwoWay}">
+                    <ComboBoxItem Content="Small" />
+                    <ComboBoxItem Content="Medium" />
+                    <ComboBoxItem Content="Large" />
+                </ComboBox>
+            </controls:SettingsCard>
+
             <Border Style="{StaticResource SettingCardStyle}">
                 <StackPanel Spacing="8">
                     <Grid ColumnSpacing="16">
@@ -109,9 +141,9 @@
                             Text="{x:Bind ViewModel.TeleprompterScrollSpeedDisplay, Mode=OneWay}" />
                     </Grid>
                     <Border
-                        Height="140"
+                        Height="{x:Bind ViewModel.TeleprompterPreviewPanelHeight, Mode=OneWay}"
                         Padding="16,12"
-                        AutomationProperties.HelpText="Shows how quickly the transcript will move during a recording."
+                        AutomationProperties.HelpText="Shows how quickly the transcript will move during a recording, at the selected text size and panel height."
                         AutomationProperties.Name="Teleprompter scroll speed preview"
                         Background="#99000000"
                         CornerRadius="{StaticResource OverlayCornerRadius}">
@@ -126,7 +158,7 @@
                             ZoomMode="Disabled">
                             <TextBlock
                                 x:Name="PreviewText"
-                                FontSize="24"
+                                FontSize="{x:Bind ViewModel.TeleprompterPreviewFontSize, Mode=OneWay}"
                                 Foreground="#FFFFFFFF"
                                 TextWrapping="Wrap" />
                         </ScrollViewer>

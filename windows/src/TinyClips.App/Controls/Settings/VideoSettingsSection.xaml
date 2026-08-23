@@ -87,8 +87,44 @@
                                     Visibility="{x:Bind ViewModel.MicrophoneSelectorVisibility, Mode=OneWay}" />
                             </Grid>
                         </controls:SettingsCard>
+                        <controls:SettingsCard ContentAlignment="Left">
+                            <CheckBox
+                                AutomationProperties.AutomationId="MicrophoneLimiterToggle"
+                                AutomationProperties.Name="Limit microphone peaks"
+                                Content="Limit microphone peaks"
+                                IsChecked="{x:Bind ViewModel.MicrophoneLimiterEnabled, Mode=TwoWay}"
+                                IsEnabled="{x:Bind ViewModel.RecordMicrophone, Mode=OneWay}"
+                                ToolTipService.ToolTip="Softly rounds off loud microphone peaks so hot input doesn't distort. Does not affect timing or system audio." />
+                        </controls:SettingsCard>
                     </controls:SettingsExpander.Items>
                 </controls:SettingsExpander>
+
+                <controls:SettingsCard
+                    Description="Fine-tune audio timing if recorded sound lands early or late. Positive delays audio; negative plays it earlier (try negative for Bluetooth headsets). 0 is right for most setups."
+                    Header="Audio offset"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xEC4A;}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <NumberBox
+                            Width="140"
+                            AutomationProperties.AutomationId="AudioOffsetNumberBox"
+                            AutomationProperties.Name="Audio offset in milliseconds"
+                            LargeChange="50"
+                            Maximum="500"
+                            Minimum="-500"
+                            SmallChange="10"
+                            SpinButtonPlacementMode="Inline"
+                            ToolTipService.ToolTip="Milliseconds, -500 to +500"
+                            Value="{x:Bind ViewModel.AudioOffsetMilliseconds, Mode=TwoWay}" />
+                        <Button
+                            AutomationProperties.AutomationId="AudioOffsetResetButton"
+                            AutomationProperties.Name="Reset audio offset to zero"
+                            Command="{x:Bind ViewModel.ResetAudioOffsetCommand}"
+                            IsEnabled="{x:Bind ViewModel.AudioOffsetIsNonZero, Mode=OneWay}"
+                            ToolTipService.ToolTip="Reset to 0 ms">
+                            <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                        </Button>
+                    </StackPanel>
+                </controls:SettingsCard>
             </StackPanel>
 
             <InfoBar
