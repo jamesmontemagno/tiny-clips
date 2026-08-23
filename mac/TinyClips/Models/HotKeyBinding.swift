@@ -7,6 +7,8 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
     case recordVideo = 2
     case recordGif = 3
     case copyTextFromRegion = 4
+    case screenshotRegion = 5
+    case screenshotWindow = 6
 
     var displayName: String {
         switch self {
@@ -18,6 +20,10 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
             return "Record GIF"
         case .copyTextFromRegion:
             return "Copy Text from Region"
+        case .screenshotRegion:
+            return "Screenshot Region"
+        case .screenshotWindow:
+            return "Screenshot Window"
         }
     }
 }
@@ -26,7 +32,7 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
 
 /// Represents a global keyboard shortcut as a Carbon keyCode + modifiers bitmask.
 /// Provides display string and SwiftUI `KeyboardShortcut` conversion helpers.
-struct HotKeyBinding: Equatable {
+struct HotKeyBinding: Hashable {
     let keyCode: Int
     let carbonModifiers: Int
 
@@ -49,6 +55,10 @@ struct HotKeyBinding: Equatable {
             return HotKeyBinding(keyCode: 26, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘7
         case .copyTextFromRegion:
             return HotKeyBinding(keyCode: 28, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘8
+        case .screenshotRegion:
+            return HotKeyBinding(keyCode: 18, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘1
+        case .screenshotWindow:
+            return HotKeyBinding(keyCode: 19, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘2
         }
     }
 

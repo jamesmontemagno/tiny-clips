@@ -8,7 +8,7 @@ struct ShortcutsSettingsSection: View {
 
     var body: some View {
         Section("Global Keyboard Shortcuts") {
-            Text("These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required.")
+            Text("These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required. Screenshot Region and Screenshot Window skip the capture picker and go straight to selection.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

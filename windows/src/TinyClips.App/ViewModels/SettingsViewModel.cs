@@ -663,6 +663,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string OcrHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString;
 
+    public string ScreenshotRegionHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.ScreenshotRegion).DisplayString;
+
+    public string ScreenshotWindowHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.ScreenshotWindow).DisplayString;
+
     public HotKeyDefinition GetHotKey(HotKeyAction action) => _hotKeys.GetBinding(action);
 
     public HotKeyDefinition GetDefaultHotKey(HotKeyAction action) => _hotKeys.DefaultFor(action);
@@ -690,6 +694,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(VideoHotKeyDisplay));
         OnPropertyChanged(nameof(GifHotKeyDisplay));
         OnPropertyChanged(nameof(OcrHotKeyDisplay));
+        OnPropertyChanged(nameof(ScreenshotRegionHotKeyDisplay));
+        OnPropertyChanged(nameof(ScreenshotWindowHotKeyDisplay));
     }
 
     /// <summary>

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- macOS adds dedicated Screenshot Region (⌃⌥⌘1) and Screenshot Window (⌃⌥⌘2) global hotkeys that skip the capture picker and go straight to region or window selection, similar to macOS's built-in ⇧⌘4 shortcuts. Rebind or clear them anytime in Settings > Shortcuts.
+
 ### Fixed
 - Fixed macOS screenshot editor exports showing a light hairline around the screenshot card when centered in a preset frame (for example 16:9 or 9:16) with an odd amount of leftover space. The card origin could land on a half pixel, anti-aliasing its edge; on a transparent background exported as JPEG that edge flattened to a visible line. Export layouts are now snapped to whole pixels while the live preview keeps fractional geometry.
 

@@ -334,6 +334,10 @@ class CaptureManager: ObservableObject {
                         self.startGifRecording()
                     case .copyTextFromRegion:
                         self.copyTextFromRegion()
+                    case .screenshotRegion:
+                        self.takeScreenshotInMode(.region)
+                    case .screenshotWindow:
+                        self.takeScreenshotInMode(.window)
                     }
                 }
             )
@@ -355,6 +359,18 @@ class CaptureManager: ObservableObject {
     }
 
     func takeScreenshot() {
+        beginScreenshot(directMode: nil)
+    }
+
+    /// Takes a screenshot in the given mode without showing the capture picker.
+    /// Used by the dedicated region/window screenshot hotkeys.
+    func takeScreenshotInMode(_ mode: CapturePickerMode) {
+        beginScreenshot(directMode: mode)
+    }
+
+    /// Shared screenshot entry point. With `directMode == nil` the capture-picker setting decides
+    /// between the picker and a direct region capture; a non-nil mode always bypasses the picker.
+    private func beginScreenshot(directMode: CapturePickerMode?) {
         guard !isCaptureActionInProgress else { return }
 
         isCapturePreparationInProgress = true
@@ -365,11 +381,11 @@ class CaptureManager: ObservableObject {
             guard await PermissionManager.shared.checkPermission() else { return }
             guard !isOCRInFlight else { return }
             let settings = CaptureSettings.shared
-            if settings.shouldShowCapturePicker(for: .screenshot) {
+            if directMode == nil, settings.shouldShowCapturePicker(for: .screenshot) {
                 showScreenshotPicker(cursorScreen: cursorScreen)
             } else {
                 await performScreenshotCapture(
-                    mode: .region,
+                    mode: directMode ?? .region,
                     countdownEnabled: settings.screenshotCountdownEnabled,
                     countdownDuration: settings.screenshotCountdownDuration,
                     shouldReturnToPicker: false,

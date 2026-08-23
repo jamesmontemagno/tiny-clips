@@ -33,6 +33,8 @@ public sealed partial class HotkeysSettingsSection : UserControl
         "Video" => HotKeyAction.RecordVideo,
         "Gif" => HotKeyAction.RecordGif,
         "RecognizeText" => HotKeyAction.RecognizeText,
+        "ScreenshotRegion" => HotKeyAction.ScreenshotRegion,
+        "ScreenshotWindow" => HotKeyAction.ScreenshotWindow,
         _ => HotKeyAction.Screenshot,
     };
 
@@ -53,17 +55,26 @@ public sealed partial class HotkeysSettingsSection : UserControl
 
         var action = ActionFromTag(element.Tag);
         var defaultBinding = ViewModel.GetDefaultHotKey(action);
-        var validation = ViewModel.ValidateHotKey(action, defaultBinding);
-        if (!validation.IsValid)
+
+        // An unbound default (no modifiers, no key) means "clear the shortcut"; it is always
+        // valid and intentionally fails the modifier/key requirements, so skip validation.
+        var isUnboundDefault = defaultBinding.IsUnbound;
+        if (!isUnboundDefault)
         {
-            ShowSectionStatus(ValidationMessage(validation), InfoBarSeverity.Error);
-            return;
+            var validation = ViewModel.ValidateHotKey(action, defaultBinding);
+            if (!validation.IsValid)
+            {
+                ShowSectionStatus(ValidationMessage(validation), InfoBarSeverity.Error);
+                return;
+            }
         }
 
         if (TryApplyCandidate(action, defaultBinding, out var errorMessage))
         {
             ShowSectionStatus(
-                $"{ActionName(action)} shortcut reset to {defaultBinding.DisplayString}.",
+                isUnboundDefault
+                    ? $"{ActionName(action)} shortcut cleared."
+                    : $"{ActionName(action)} shortcut reset to {defaultBinding.DisplayString}.",
                 InfoBarSeverity.Success);
         }
         else
@@ -344,6 +355,8 @@ public sealed partial class HotkeysSettingsSection : UserControl
         HotKeyAction.RecordVideo => "Record video",
         HotKeyAction.RecordGif => "Record GIF",
         HotKeyAction.RecognizeText => "Recognize text",
+        HotKeyAction.ScreenshotRegion => "Screenshot region",
+        HotKeyAction.ScreenshotWindow => "Screenshot window",
         _ => "Screenshot",
     };
 }

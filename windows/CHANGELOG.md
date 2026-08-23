@@ -53,6 +53,10 @@ own `CHANGELOG.md` at the repository root.
   overlay closes, which reflects changes made while selecting.
 - **Teleprompter transcript file import** — Settings → Teleprompter can now load a `.txt`, `.md`,
   or `.csv` file up to 1 MB to replace the recording transcript.
+- **Direct region/window screenshot hotkeys** — Two new optional global shortcuts, **Screenshot
+  region** and **Screenshot window**, skip the capture picker and jump straight to region or
+  window selection for a screenshot (macOS ⇧⌘4-style parity). They are unbound by default; assign
+  them under Settings → Keyboard shortcuts.
 - **Tray Capture Text** — A compact action beside **Clips Library** starts region text recognition
   and copies the result to the clipboard.
 - **OCR region capture** — Select **Recognize Text** in the capture picker or press `Ctrl+Shift+T`

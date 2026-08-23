@@ -602,6 +602,10 @@ public partial class App : Application
 
     private Task CaptureScreenshotAsync() => BeginCaptureAsync(CaptureType.Screenshot);
 
+    private Task CaptureScreenshotRegionAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.Region);
+
+    private Task CaptureScreenshotWindowAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.Window);
+
     private Task RecognizeTextAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.RecognizeText);
 
     /// <summary>
@@ -2674,6 +2678,26 @@ public partial class App : Application
                 screenshot.ModifiersValue,
                 screenshot.VirtualKey,
                 () => _ = CaptureScreenshotAsync());
+
+            var screenshotRegion = hotKeys.GetBinding(HotKeyAction.ScreenshotRegion);
+            if (!screenshotRegion.IsUnbound)
+            {
+                manager.Add(
+                    $"Screenshot region ({screenshotRegion.DisplayString})",
+                    screenshotRegion.ModifiersValue,
+                    screenshotRegion.VirtualKey,
+                    () => _ = CaptureScreenshotRegionAsync());
+            }
+
+            var screenshotWindow = hotKeys.GetBinding(HotKeyAction.ScreenshotWindow);
+            if (!screenshotWindow.IsUnbound)
+            {
+                manager.Add(
+                    $"Screenshot window ({screenshotWindow.DisplayString})",
+                    screenshotWindow.ModifiersValue,
+                    screenshotWindow.VirtualKey,
+                    () => _ = CaptureScreenshotWindowAsync());
+            }
 
             var videoBinding = hotKeys.GetBinding(HotKeyAction.RecordVideo);
             manager.Add(

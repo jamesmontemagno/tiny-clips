@@ -6,6 +6,8 @@ public enum HotKeyAction
     RecordVideo,
     RecordGif,
     RecognizeText,
+    ScreenshotRegion,
+    ScreenshotWindow,
 
     /// <summary>
     /// Stops the active recording. Not user-configurable; its binding is fixed
