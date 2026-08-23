@@ -570,6 +570,30 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string TeleprompterScrollSpeedDisplay => $"{TeleprompterScrollSpeed:N0} DIPs/s";
 
+    /// <summary>0 = Small, 1 = Medium, 2 = Large (matches <see cref="TeleprompterDisplaySize"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TeleprompterPreviewFontSize))]
+    private int _teleprompterFontSizeIndex = (int)TeleprompterDisplaySize.Medium;
+
+    /// <summary>0 = Small, 1 = Medium, 2 = Large (matches <see cref="TeleprompterDisplaySize"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TeleprompterPreviewPanelHeight))]
+    private int _teleprompterPanelHeightIndex = (int)TeleprompterDisplaySize.Medium;
+
+    public double TeleprompterPreviewFontSize => ToTeleprompterDisplaySize(TeleprompterFontSizeIndex).FontSize();
+
+    public double TeleprompterPreviewPanelHeight => ToTeleprompterDisplaySize(TeleprompterPanelHeightIndex).PanelHeight();
+
+    /// <summary>Raised when the overlay text size or panel height preset changes, so a live overlay can re-apply it.</summary>
+    public event Action? TeleprompterDisplayChanged;
+
+    private static TeleprompterDisplaySize ToTeleprompterDisplaySize(int index) => index switch
+    {
+        0 => TeleprompterDisplaySize.Small,
+        2 => TeleprompterDisplaySize.Large,
+        _ => TeleprompterDisplaySize.Medium,
+    };
+
     // Analytics
     public System.Collections.ObjectModel.ObservableCollection<CaptureAnalyticsDayViewModel> AnalyticsDays { get; } = new();
 
@@ -820,6 +844,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             TeleprompterEnabled = _settings.TeleprompterEnabled;
             TeleprompterTranscript = _settings.TeleprompterTranscript;
             TeleprompterScrollSpeed = Math.Clamp(_settings.TeleprompterScrollSpeed, 10.0, 200.0);
+            TeleprompterFontSizeIndex = (int)_settings.TeleprompterFontSize;
+            TeleprompterPanelHeightIndex = (int)_settings.TeleprompterPanelHeight;
         }
         finally
         {
@@ -1312,6 +1338,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnTeleprompterScrollSpeedChanged(double value) => Persist(() => _settings.TeleprompterScrollSpeed = value);
+
+    partial void OnTeleprompterFontSizeIndexChanged(int value) => Persist(() =>
+    {
+        _settings.TeleprompterFontSize = ToTeleprompterDisplaySize(value);
+        TeleprompterDisplayChanged?.Invoke();
+    });
+
+    partial void OnTeleprompterPanelHeightIndexChanged(int value) => Persist(() =>
+    {
+        _settings.TeleprompterPanelHeight = ToTeleprompterDisplaySize(value);
+        TeleprompterDisplayChanged?.Invoke();
+    });
 
     partial void OnAnalyticsRangeIndexChanged(int value)
     {

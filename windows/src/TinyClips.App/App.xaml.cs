@@ -2803,6 +2803,7 @@ public partial class App : Application
         if (_settingsWindow is null)
         {
             _settingsWindow = new SettingsWindow();
+            _settingsWindow.ViewModel.TeleprompterDisplayChanged += () => _teleprompter?.ApplyDisplaySettings();
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
 

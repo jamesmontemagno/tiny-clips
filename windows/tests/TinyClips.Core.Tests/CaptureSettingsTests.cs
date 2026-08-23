@@ -161,6 +161,51 @@ public sealed class CaptureSettingsTests
     }
 
     [Fact]
+    public void TeleprompterDisplaySizes_DefaultToMediumAndRoundTrip()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterFontSize);
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterPanelHeight);
+
+        settings.TeleprompterFontSize = TeleprompterDisplaySize.Large;
+        settings.TeleprompterPanelHeight = TeleprompterDisplaySize.Small;
+
+        Assert.Equal(TeleprompterDisplaySize.Large, settings.TeleprompterFontSize);
+        Assert.Equal(TeleprompterDisplaySize.Small, settings.TeleprompterPanelHeight);
+        // Persisted as the same lowercase tokens the macOS app uses.
+        Assert.Equal("large", settingsService.Get("teleprompterFontSize", string.Empty));
+        Assert.Equal("small", settingsService.Get("teleprompterPanelHeight", string.Empty));
+
+        settings.ResetToDefaults();
+
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterFontSize);
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterPanelHeight);
+    }
+
+    [Fact]
+    public void TeleprompterDisplaySizes_UnknownPersistedValueFallsBackToMedium()
+    {
+        var settingsService = new TestSettingsService();
+        settingsService.Set("teleprompterFontSize", "gigantic");
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.Equal(TeleprompterDisplaySize.Medium, settings.TeleprompterFontSize);
+    }
+
+    [Theory]
+    [InlineData(TeleprompterDisplaySize.Small, 20, 120)]
+    [InlineData(TeleprompterDisplaySize.Medium, 24, 140)]
+    [InlineData(TeleprompterDisplaySize.Large, 30, 220)]
+    public void TeleprompterDisplaySize_PresetsMatchMacParity(TeleprompterDisplaySize size, double fontSize, double panelHeight)
+    {
+        Assert.Equal(fontSize, size.FontSize());
+        Assert.Equal(panelHeight, size.PanelHeight());
+        Assert.Equal(panelHeight - TeleprompterDisplaySizeExtensions.PanelVerticalPaddingDip, size.ViewportHeight());
+    }
+
+    [Fact]
     public void RoundTrip_StoresExpectedValues()
     {
         var settings = CreateSettings();
