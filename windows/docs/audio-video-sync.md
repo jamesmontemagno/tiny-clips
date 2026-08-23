@@ -191,12 +191,14 @@ Every recording ends with a `Sync report:` block:
 Sync report: encoder='software H.264 Baseline (fallback)' elapsed=12.345s pauses=1 pausedTotal=3.012s.
 Sync report: video lastPts=12.331s framesEmitted=370 framesDroppedByEncoderBackpressure=0.
 Sync report: audio pts=12.340s chunks=617 nonSilent=540 starvedChunks=0 drainedFrames=432 userOffsetMs=0 driverDiscontinuities=0.
-Sync report: audio-video end delta=9.0ms (audio longer; |delta| < 30 ms is healthy).
+Sync report: audio-video end delta=-0.3ms offset-compensated (raw=-0.3ms vs videoEnd=12.364s; audio shorter; |delta| < 30 ms is healthy).
 Sync report: system/loopback: written=12.340s corrections=0 padded=0.0ms trimmed=0.0ms underrun=0.0ms preOriginDropped=3 lastDeviation=0.4ms maxDeviation=1.1ms
 Sync report: microphone: written=12.340s corrections=0 padded=0.0ms trimmed=0.0ms underrun=0.0ms preOriginDropped=2 lastDeviation=-0.8ms maxDeviation=2.3ms
 ```
 
-Healthy values: `|delta|` well under 30 ms, `corrections=0` (or a handful on very long recordings),
+Healthy values: `|delta|` well under 30 ms (the delta compares the audio end cursor with the *end* of
+the last video sample and subtracts the configured audio offset, so a deliberate offset does not look
+like an error), `corrections=0` (or a handful on very long recordings),
 `starvedChunks=0`, `underrun=0`, `maxDeviation` a few ms. A large `framesDropped…` count only means
 the encoder could not keep up (lower effective frame rate) — video PTS is wall-clock, so it does not
 affect sync.

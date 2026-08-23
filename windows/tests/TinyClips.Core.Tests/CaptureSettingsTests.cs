@@ -32,6 +32,7 @@ public sealed class CaptureSettingsTests
         Assert.Equal("TinyClips {date} at {time}", settings.FileNameTemplate);
         Assert.True(settings.ShowTrimmer);
         Assert.True(settings.MicrophoneLimiterEnabled);
+        Assert.Equal(0, settings.AudioOffsetMilliseconds);
         Assert.False(settings.WebcamEnabled);
         Assert.Equal(string.Empty, settings.SelectedWebcamId);
         Assert.Equal(WebcamShape.Circle, settings.WebcamShape);
@@ -114,6 +115,49 @@ public sealed class CaptureSettingsTests
         settings.ResetToDefaults();
 
         Assert.True(settings.MicrophoneLimiterEnabled);
+    }
+
+    [Fact]
+    public void AudioOffsetMilliseconds_RoundTripsAndResetsToZero()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        settings.AudioOffsetMilliseconds = -150;
+
+        Assert.Equal(-150, settings.AudioOffsetMilliseconds);
+        Assert.Equal(-150, settingsService.Get("audioOffsetMilliseconds", 0));
+
+        settings.ResetToDefaults();
+
+        Assert.Equal(0, settings.AudioOffsetMilliseconds);
+    }
+
+    [Theory]
+    [InlineData(600, 500)]
+    [InlineData(500, 500)]
+    [InlineData(-500, -500)]
+    [InlineData(-9999, -500)]
+    public void AudioOffsetMilliseconds_ClampsToSupportedRange(int requested, int expected)
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        settings.AudioOffsetMilliseconds = requested;
+
+        Assert.Equal(expected, settings.AudioOffsetMilliseconds);
+        Assert.Equal(expected, settingsService.Get("audioOffsetMilliseconds", 0));
+    }
+
+    [Fact]
+    public void AudioOffsetMilliseconds_ClampsOutOfRangeStoredValueOnRead()
+    {
+        // A value written by an older/newer build or edited by hand must never leak outside the range.
+        var settingsService = new TestSettingsService();
+        settingsService.Set("audioOffsetMilliseconds", 2000);
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.Equal(CaptureSettings.MaxAudioOffsetMilliseconds, settings.AudioOffsetMilliseconds);
     }
 
     [Fact]

@@ -71,6 +71,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private volatile bool _audioDraining;
     private RecordingTimeline? _recordingTimeline;
     private string _encoderPath = "unknown";
+    private TimeSpan _activeUserOffset;
 
     // Remaining captured audio handed to the muxer after Stop before the track is ended. Bounds the
     // tail so a source that somehow keeps producing cannot hold the transcode open.
@@ -216,12 +217,16 @@ public sealed class VideoRecordingService : IVideoRecordingService
         var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
         _frameDuration = TimeSpan.FromSeconds(1.0 / fps);
 
-        _channel = Channel.CreateBounded<TimestampedFrame>(new BoundedChannelOptions(fps * 4)
-        {
-            FullMode = BoundedChannelFullMode.DropWrite,
-            SingleReader = true,
-            SingleWriter = true,
-        });
+        // DropWrite makes TryWrite report success even when the item is discarded, so drops are
+        // counted through the item-dropped callback rather than the TryWrite result.
+        _channel = Channel.CreateBounded<TimestampedFrame>(
+            new BoundedChannelOptions(fps * 4)
+            {
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true,
+                SingleWriter = true,
+            },
+            _ => Interlocked.Increment(ref _videoFramesDropped));
 
         _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true);
         _capture.FrameReady += OnFrameReady;
@@ -297,6 +302,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 includeAudio,
                 cancellationToken,
                 null).ConfigureAwait(false);
+            usedFallbackProfile = true;
         }
 
         if (!prepare.CanTranscode)
@@ -383,12 +389,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
             Interlocked.Increment(ref _webcamOverlayNullFrames);
         }
 
-        if (_channel?.Writer.TryWrite(new TimestampedFrame(CreateBottomUpVideoBuffer(frame), pts)) == false)
-        {
-            // Encoder back-pressure: the frame is dropped but PTS stays wall-clock, so the video
-            // simply has a lower effective frame rate here and never slides against audio.
-            Interlocked.Increment(ref _videoFramesDropped);
-        }
+        // Encoder back-pressure: the frame is dropped (counted by the channel's item-dropped
+        // callback) but PTS stays wall-clock, so the video simply has a lower effective frame rate
+        // here and never slides against audio.
+        _channel?.Writer.TryWrite(new TimestampedFrame(CreateBottomUpVideoBuffer(frame), pts));
     }
 
     private void StartMouseClickOverlay(CaptureTarget target, PixelRect? region)
@@ -950,6 +954,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         var wantMic = _settings.RecordMicrophone;
         var limitMic = _settings.MicrophoneLimiterEnabled;
         var userOffset = TimeSpan.FromMilliseconds(_settings.AudioOffsetMilliseconds);
+        _activeUserOffset = userOffset;
         WebcamDiagnostics.Log($"StartAudioCapture: RecordAudio={wantSystem} RecordMicrophone={wantMic} MicrophoneLimiter={limitMic} audioOffsetMs={userOffset.TotalMilliseconds:F0} micDeviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedMicrophoneId) ? "(default)" : _settings.SelectedMicrophoneId)}'");
         if (!wantSystem && !wantMic)
         {
@@ -1203,9 +1208,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
 
             var audioPts = TimeSpan.FromSeconds(_audioFramesRead / (double)AudioCaptureService.SampleRate);
-            var delta = videoPts == TimeSpan.MinValue ? TimeSpan.Zero : audioPts - videoPts;
-            WebcamDiagnostics.Log($"Sync report: audio pts={audioPts.TotalSeconds:F3}s chunks={_audioSamplesRequested} nonSilent={_audioNonSilentChunks} starvedChunks={_audioStarvedChunks} drainedFrames={_drainFramesServed} userOffsetMs={_settings.AudioOffsetMilliseconds} driverDiscontinuities={_audio.DriverDiscontinuityCount}.");
-            WebcamDiagnostics.Log($"Sync report: audio-video end delta={delta.TotalMilliseconds:F1}ms (audio {(delta >= TimeSpan.Zero ? "longer" : "shorter")}; |delta| < 30 ms is healthy).");
+
+            // The audio cursor is an end position, so compare it with the END of the last video
+            // sample (its PTS plus one frame), not its start. A non-zero user offset deliberately
+            // shifts the audio endpoint by that amount, so grade the offset-compensated delta.
+            var videoEnd = videoPts == TimeSpan.MinValue ? TimeSpan.MinValue : videoPts + _frameDuration;
+            var rawDelta = videoEnd == TimeSpan.MinValue ? TimeSpan.Zero : audioPts - videoEnd;
+            var delta = rawDelta - _activeUserOffset;
+            WebcamDiagnostics.Log($"Sync report: audio pts={audioPts.TotalSeconds:F3}s chunks={_audioSamplesRequested} nonSilent={_audioNonSilentChunks} starvedChunks={_audioStarvedChunks} drainedFrames={_drainFramesServed} userOffsetMs={_activeUserOffset.TotalMilliseconds:F0} driverDiscontinuities={_audio.DriverDiscontinuityCount}.");
+            WebcamDiagnostics.Log($"Sync report: audio-video end delta={delta.TotalMilliseconds:F1}ms offset-compensated (raw={rawDelta.TotalMilliseconds:F1}ms vs videoEnd={(videoEnd == TimeSpan.MinValue ? "none" : $"{videoEnd.TotalSeconds:F3}s")}; audio {(delta >= TimeSpan.Zero ? "longer" : "shorter")}; |delta| < 30 ms is healthy).");
             foreach (var stats in _audio.GetSyncStats())
             {
                 WebcamDiagnostics.Log($"Sync report: {stats}");
