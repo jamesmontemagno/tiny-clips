@@ -5,6 +5,15 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- **Screenshot editor image alignment is now a 3×3 placement grid** — the Background section's
+  separate Horizontal / Vertical alignment combo boxes are replaced by a single labeled 3×3 grid
+  of toggle cells, so any export-frame placement (e.g. bottom-right) is one click and every
+  combination is visible at once. The selected cell is highlighted; arrow keys move between cells
+  and each cell has a Narrator name ("Top-left image alignment", …). The grid is disabled when the
+  frame is Original (no free space on either axis). Export alignment logic is unchanged. Mirrors
+  the macOS 1.6.0 editor. Closes #296.
+
 ### Added
 - **Teleprompter text size and panel height presets** — Settings → Teleprompter gains **Text
   size** and **Panel height** pickers (Small / Medium / Large), matching the macOS 1.6.0 presets
