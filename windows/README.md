@@ -101,7 +101,8 @@ For coordinate/DPI behaviour across mixed-DPI monitors, see
 [`docs/dpi-and-coordinates.md`](docs/dpi-and-coordinates.md).
 
 For how the screen, webcam, microphone, and system audio are kept in sync (shared timeline,
-WASAPI capture, and audio back-pressure), see [`docs/audio-video-sync.md`](docs/audio-video-sync.md).
+WASAPI capture, drift/discontinuity correction, audio back-pressure, the *Audio offset* setting, and
+the end-of-recording sync report), see [`docs/audio-video-sync.md`](docs/audio-video-sync.md).
 
 ## CI
 

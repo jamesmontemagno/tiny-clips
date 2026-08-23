@@ -41,6 +41,12 @@ public interface ICaptureSettings
     string SelectedMicrophoneId { get; set; }
     /// <summary>Apply a soft-knee limiter to microphone audio so hot input rounds off instead of clipping. Default true.</summary>
     bool MicrophoneLimiterEnabled { get; set; }
+    /// <summary>
+    /// Manual A/V correction in milliseconds applied to all recorded audio. Positive delays audio
+    /// relative to video; negative plays it earlier (e.g. for Bluetooth headsets whose latency
+    /// WASAPI does not report). Clamped to ±<see cref="CaptureSettings.MaxAudioOffsetMilliseconds"/>. Default 0.
+    /// </summary>
+    int AudioOffsetMilliseconds { get; set; }
     bool WebcamEnabled { get; set; }
     string SelectedWebcamId { get; set; }
     WebcamShape WebcamShape { get; set; }

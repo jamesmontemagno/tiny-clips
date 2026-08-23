@@ -66,6 +66,14 @@ internal sealed class ContinuousCaptureSession : IDisposable
     /// <summary>Output height in pixels (region height, or full monitor height), rounded down to even.</summary>
     public int OutputHeight { get; private set; }
 
+    /// <summary>Presentation timestamp of the most recently emitted frame (MinValue if none).</summary>
+    public TimeSpan LastEmittedPts => _lastEmittedPts;
+
+    /// <summary>Frames handed to <see cref="FrameReady"/> since <see cref="BeginEmitting"/>.</summary>
+    public long EmittedFrameCount => Interlocked.Read(ref _emittedFrameCount);
+
+    private long _emittedFrameCount;
+
     public ContinuousCaptureSession(CaptureTarget target, PixelRect? region, int targetFps, bool includeCursor)
     {
         _target = target;
@@ -134,21 +142,22 @@ internal sealed class ContinuousCaptureSession : IDisposable
             _timeline = timeline ?? RecordingTimeline.StartNow();
             _loggedFirstEmit = false;
             _emittingPaused = false;
+            _lastEmittedPts = TimeSpan.MinValue;
+            Interlocked.Exchange(ref _emittedFrameCount, 0);
 
             // Steady-rate pump: re-emits the latest captured frame even when WGC is idle.
             _pump = new Timer(OnPump, null, TimeSpan.Zero, _frameInterval);
         }
     }
 
+    /// <summary>
+    /// Stops emitting frames. WGC keeps capturing into the cached latest frame so that, on
+    /// resume, the pump can emit the current screen immediately instead of waiting for the next
+    /// content change (which on a static desktop might never come).
+    /// </summary>
     public void PauseEmitting()
     {
-        lock (_sync)
-        {
-            _emittingPaused = true;
-            _latestPixels = null;
-            _latestWidth = 0;
-            _latestHeight = 0;
-        }
+        _emittingPaused = true;
     }
 
     public void ResumeEmitting()
@@ -158,7 +167,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
     private void OnFrameArrived(Direct3D11CaptureFramePool pool, object? args)
     {
-        if (!_running || _emittingPaused)
+        if (!_running)
         {
             return;
         }
@@ -219,7 +228,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
     private void OnPump(object? state)
     {
-        if (!_running)
+        if (!_running || _emittingPaused)
         {
             return;
         }
@@ -269,6 +278,8 @@ internal sealed class ContinuousCaptureSession : IDisposable
             _loggedFirstEmit = true;
             WebcamDiagnostics.Log($"First screen frame emitted: ptsMs={pts.TotalMilliseconds:F1}.");
         }
+
+        Interlocked.Increment(ref _emittedFrameCount);
 
         // Raise outside the lock so heavy per-frame compositing doesn't stall WGC delivery.
         FrameReady?.Invoke(new CapturedFrame(copy, width, height), pts);
