@@ -128,15 +128,25 @@ public sealed partial class TeleprompterWindow : Window
             AppWindow.Resize(new SizeInt32(AppWindow.Size.Width, height));
         }
 
-        // A shorter panel may leave the current offset past the new maximum; re-evaluate so
-        // scrolling stops or continues correctly from the clamped position.
-        var maxOffset = Math.Max(0, Scroller.ExtentHeight - Scroller.ViewportHeight);
-        if (Scroller.VerticalOffset > maxOffset)
+        // ExtentHeight/ViewportHeight still reflect the previous font and window size until layout
+        // has run, so defer the clamp/restart to a low-priority pass after the resize and
+        // re-measure have been processed. Otherwise a font-only change that turns fitting text
+        // into overflowing text would be evaluated against the stale extent and never start.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
-            Scroller.ChangeView(null, maxOffset, null, disableAnimation: true);
-        }
+            if (_closed)
+            {
+                return;
+            }
 
-        StartScrollingIfPossible();
+            var maxOffset = Math.Max(0, Scroller.ExtentHeight - Scroller.ViewportHeight);
+            if (Scroller.VerticalOffset > maxOffset)
+            {
+                Scroller.ChangeView(null, maxOffset, null, disableAnimation: true);
+            }
+
+            StartScrollingIfPossible();
+        });
     }
 
     private void OnSizeChanged(object sender, WindowSizeChangedEventArgs args)

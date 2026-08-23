@@ -1390,6 +1390,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.ResetToDefaults();
         Load();
         ThemeChanged?.Invoke();
+        // Load() runs under the _loading guard, so the per-property persistence callbacks (and
+        // their live notifications) are suppressed; tell an active overlay explicitly.
+        TeleprompterDisplayChanged?.Invoke();
     }
 
     public void ResetAnalytics()
