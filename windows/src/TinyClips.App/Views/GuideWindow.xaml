@@ -135,6 +135,44 @@
                             <TextBlock
                                 VerticalAlignment="Center"
                                 Style="{StaticResource BodyStrongTextBlockStyle}"
+                                Text="Screenshot region (skips picker)" />
+                            <Border
+                                Grid.Column="1"
+                                Padding="10,4"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                                <TextBlock
+                                    x:Name="ScreenshotRegionShortcut"
+                                    FontFamily="Consolas" />
+                            </Border>
+                        </Grid>
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource BodyStrongTextBlockStyle}"
+                                Text="Screenshot window (skips picker)" />
+                            <Border
+                                Grid.Column="1"
+                                Padding="10,4"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                                <TextBlock
+                                    x:Name="ScreenshotWindowShortcut"
+                                    FontFamily="Consolas" />
+                            </Border>
+                        </Grid>
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                 Text="Record video" />
                             <Border
                                 Grid.Column="1"

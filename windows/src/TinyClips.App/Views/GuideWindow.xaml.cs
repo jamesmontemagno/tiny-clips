@@ -42,6 +42,8 @@ public sealed partial class GuideWindow : Window
 
         var hotKeys = App.Services.GetRequiredService<IHotKeyService>();
         ScreenshotShortcut.Text = hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString;
+        ScreenshotRegionShortcut.Text = hotKeys.GetBinding(HotKeyAction.ScreenshotRegion).DisplayString;
+        ScreenshotWindowShortcut.Text = hotKeys.GetBinding(HotKeyAction.ScreenshotWindow).DisplayString;
         VideoShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
         GifShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
         OcrShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString;

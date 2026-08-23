@@ -64,6 +64,7 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Description="Optional. Skips the capture picker and goes straight to region selection. Not set by default."
                     Header="Screenshot region"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
@@ -94,6 +95,7 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Description="Optional. Skips the capture picker and goes straight to window selection. Not set by default."
                     Header="Screenshot window"
                     HeaderIcon="{ui:FontIcon Glyph=&#xEF20;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
