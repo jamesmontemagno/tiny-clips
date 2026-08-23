@@ -15,6 +15,11 @@ own `CHANGELOG.md` at the repository root.
   the macOS 1.6.0 editor. Closes #296.
 
 ### Added
+- **Teleprompter text size and panel height presets** — Settings → Teleprompter gains **Text
+  size** and **Panel height** pickers (Small / Medium / Large), matching the macOS 1.6.0 presets
+  (20/24/30 DIP text; 120/140/220 DIP panel). Both persist, drive the live recording overlay
+  immediately — including while a recording is in progress — and are reflected in the Settings
+  scroll preview. Keyboard/Narrator accessible. Closes #295.
 - **Audio offset setting** — Settings → Video → Audio → *Audio offset* (−500 … +500 ms, default
   0) shifts all recorded audio relative to the video. Positive delays audio, negative plays it
   earlier — the fix for Bluetooth headsets and some USB microphones whose real latency WASAPI

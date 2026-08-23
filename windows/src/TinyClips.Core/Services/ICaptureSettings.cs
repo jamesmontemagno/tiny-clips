@@ -89,6 +89,10 @@ public interface ICaptureSettings
     bool TeleprompterEnabled { get; set; }
     string TeleprompterTranscript { get; set; }
     double TeleprompterScrollSpeed { get; set; }
+    /// <summary>Overlay transcript text size preset. Default Medium (24 DIP).</summary>
+    TeleprompterDisplaySize TeleprompterFontSize { get; set; }
+    /// <summary>Overlay panel height preset. Default Medium (140 DIP).</summary>
+    TeleprompterDisplaySize TeleprompterPanelHeight { get; set; }
     double TeleprompterPosX { get; set; }
     double TeleprompterPosY { get; set; }
     string TeleprompterMonitorDeviceName { get; set; }
