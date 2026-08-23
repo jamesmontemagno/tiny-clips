@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -104,8 +106,7 @@ public sealed partial class EditorInspector : UserControl
         CornerSlider.Value = _controller.CanvasCornerRadius;
         ShadowSlider.Value = _controller.CanvasShadow;
         ExportFrameCombo.SelectedIndex = (int)_controller.FramePreset;
-        HorizontalAlignmentCombo.SelectedIndex = (int)_controller.HorizontalExportAlignment;
-        VerticalAlignmentCombo.SelectedIndex = (int)_controller.VerticalExportAlignment;
+        SyncAlignmentGrid();
         UpdateSliderHeaders();
         UpdateBackgroundStyleUi();
         UpdateExportFrameControls();
@@ -469,19 +470,55 @@ public sealed partial class EditorInspector : UserControl
         UpdateExportFrameControls();
     }
 
-    private void OnHorizontalAlignmentChanged(object sender, SelectionChangedEventArgs e)
+    private void OnAlignmentCellClicked(object sender, RoutedEventArgs e)
     {
+        if (sender is not ToggleButton cell || cell.Tag is not string tag || !TryParseAlignmentTag(tag, out var h, out var v))
+        {
+            return;
+        }
+
         if (!_bgInitializing)
         {
-            _controller.SetHorizontalExportAlignment((ExportHorizontalAlignment)HorizontalAlignmentCombo.SelectedIndex);
+            _controller.SetHorizontalExportAlignment(h);
+            _controller.SetVerticalExportAlignment(v);
         }
+
+        // The grid is a single-selection control: the clicked cell is always the one checked,
+        // even when the user clicks the already-selected cell (ToggleButton would uncheck it).
+        SyncAlignmentGrid();
     }
 
-    private void OnVerticalAlignmentChanged(object sender, SelectionChangedEventArgs e)
+    private static bool TryParseAlignmentTag(string tag, out ExportHorizontalAlignment h, out ExportVerticalAlignment v)
     {
-        if (!_bgInitializing)
+        h = ExportHorizontalAlignment.Center;
+        v = ExportVerticalAlignment.Center;
+        var parts = tag.Split(',');
+        if (parts.Length != 2 || !int.TryParse(parts[0], out var hi) || !int.TryParse(parts[1], out var vi))
         {
-            _controller.SetVerticalExportAlignment((ExportVerticalAlignment)VerticalAlignmentCombo.SelectedIndex);
+            return false;
+        }
+
+        h = (ExportHorizontalAlignment)Math.Clamp(hi, 0, 2);
+        v = (ExportVerticalAlignment)Math.Clamp(vi, 0, 2);
+        return true;
+    }
+
+    private IEnumerable<ToggleButton> AlignmentCells => AlignmentGrid.Children.OfType<ToggleButton>();
+
+    /// <summary>Checks exactly the cell matching the controller's current H+V alignment.</summary>
+    private void SyncAlignmentGrid()
+    {
+        var h = _controller.HorizontalExportAlignment;
+        var v = _controller.VerticalExportAlignment;
+        foreach (var cell in AlignmentCells)
+        {
+            var selected = cell.Tag is string tag &&
+                TryParseAlignmentTag(tag, out var cellH, out var cellV) &&
+                cellH == h && cellV == v;
+            if (cell.IsChecked != selected)
+            {
+                cell.IsChecked = selected;
+            }
         }
     }
 
@@ -516,7 +553,13 @@ public sealed partial class EditorInspector : UserControl
 
     private void UpdateExportFrameControls()
     {
-        HorizontalAlignmentCombo.IsEnabled = _controller.HasHorizontalExportFrameSpace;
-        VerticalAlignmentCombo.IsEnabled = _controller.HasVerticalExportFrameSpace;
+        // Placement only matters when the export frame leaves room on at least one axis
+        // (Original has none). A cell's other axis is harmless when that axis has no space.
+        var enabled = _controller.HasHorizontalExportFrameSpace || _controller.HasVerticalExportFrameSpace;
+        AlignmentHeader.Opacity = enabled ? 1.0 : 0.5;
+        foreach (var cell in AlignmentCells)
+        {
+            cell.IsEnabled = enabled;
+        }
     }
 }
