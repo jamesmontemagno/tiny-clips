@@ -273,10 +273,11 @@
                                         <Setter Property="HorizontalContentAlignment" Value="Center" />
                                         <Setter Property="VerticalContentAlignment" Value="Center" />
                                     </Style>
-                                    <Style x:Key="AlignmentDotStyle" TargetType="Ellipse">
-                                        <Setter Property="Width" Value="8" />
-                                        <Setter Property="Height" Value="8" />
-                                        <Setter Property="Fill" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                    <!--  A glyph (not a shape) so the dot inherits the cell's state foreground.  -->
+                                    <Style x:Key="AlignmentDotStyle" TargetType="TextBlock">
+                                        <Setter Property="Text" Value="&#x25CF;" />
+                                        <Setter Property="FontSize" Value="10" />
+                                        <Setter Property="IsTextSelectionEnabled" Value="False" />
                                     </Style>
                                 </Grid.Resources>
                                 <Grid.RowDefinitions>
