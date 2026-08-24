@@ -5,6 +5,27 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- **Startup no longer crashes when the shell has no taskbar yet** — root cause of the
+  `Validation-Executable-Error` that blocked the 1.5.3, 1.7.0 and 1.7.1 winget submissions. On the
+  validation VM (reproduced on a GitHub `windows-11-arm` runner) `Shell_NotifyIcon(NIM_ADD)` fails
+  because Explorer's taskbar is not available in that session; H.NotifyIcon's `ForceCreate()`
+  threw `InvalidOperationException: TryCreate failed`, and because the exception left
+  `OnLaunched`, XAML fail-fasted the process with `0xC000027B` even though the
+  `Application.UnhandledException` handler had marked it handled. Tray-icon shell registration is
+  now separated from constructing the icon, failures are caught and retried every 2 s for up to
+  a minute (after which H.NotifyIcon still re-adds the icon on the shell's `TaskbarCreated`
+  broadcast), and every remaining step in `OnLaunched` runs under a per-step guard so nothing can
+  escape it. Hotkeys and capture flows keep working while the icon is pending.
+
+### Added
+- **`Windows Launch Smoke` workflow** (`.github/workflows/windows-launch-smoke.yml`) — manual
+  workflow that mirrors winget's Installation Validation on real x64 and ARM64 runners: installs
+  the .NET 10 Desktop Runtime and Windows App Runtime 1.8, installs either a released MSIX or a
+  freshly built one from the current branch, launches `TinyClips.App.exe` from
+  `C:\Program Files\WindowsApps`, and fails with the exit code plus `crash.log` / event-log
+  stack if the process dies. Run it before opening a winget PR.
+
 ## [v1.7.1-windows] - 2026-08-24
 
 ### Changed
