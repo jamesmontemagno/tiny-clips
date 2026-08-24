@@ -1,0 +1,168 @@
+name: Windows Launch Smoke (winget harness repro)
+
+# Reproduces the winget-pkgs "Installation Validation" step on real x64 and ARM64 runners:
+# install the framework-dependent release MSIX together with its declared dependencies, launch
+# TinyClips.App.exe straight from C:\Program Files\WindowsApps (as the harness does), and report
+# whether the process survives. On a crash the job collects the app's crash.log plus the
+# ".NET Runtime" / "Application Error" event-log records, which carry the managed stack that the
+# winget moderators only sometimes paste into the PR.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag holding the MSIX assets (e.g. v1.7.1-windows)"
+        required: true
+        default: "v1.7.1-windows"
+      asset_version:
+        description: "Version embedded in the asset name (e.g. 1.7.1)"
+        required: true
+        default: "1.7.1"
+      wait_seconds:
+        description: "How long the app must stay alive to count as a pass"
+        required: false
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Launch (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
+
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      ASSET_VERSION: ${{ inputs.asset_version }}
+      WAIT_SECONDS: ${{ inputs.wait_seconds }}
+      ARCH: ${{ matrix.arch }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Describe runner
+        shell: pwsh
+        run: |
+          "OS: $([Environment]::OSVersion.VersionString)  Arch: $env:PROCESSOR_ARCHITECTURE"
+          "Display adapters: $((Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join '; ')"
+          "Session: $((Get-Process -Id $PID).SessionId)  Interactive: $([Environment]::UserInteractive)"
+
+      - name: Download release MSIX
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packages | Out-Null
+          gh release download $env:RELEASE_TAG --repo ${{ github.repository }} `
+            --pattern "TinyClips-$env:ASSET_VERSION-$env:ARCH.msix" --dir packages --clobber
+          Get-ChildItem packages
+
+      - name: Install .NET Desktop Runtime 10 (machine-wide)
+        shell: pwsh
+        run: |
+          $url = "https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-$env:ARCH.exe"
+          Invoke-WebRequest $url -OutFile windowsdesktop-runtime.exe -MaximumRedirection 10
+          $p = Start-Process .\windowsdesktop-runtime.exe -ArgumentList '/install','/quiet','/norestart' -Wait -PassThru
+          "Desktop runtime installer exit code: $($p.ExitCode)"
+          if ($p.ExitCode -notin 0, 1638, 3010) { throw "Desktop runtime install failed." }
+
+      - name: Install Windows App Runtime 1.8
+        shell: pwsh
+        run: |
+          $url = "https://aka.ms/windowsappsdk/1.8/latest/windowsappruntimeinstall-$env:ARCH.exe"
+          Invoke-WebRequest $url -OutFile WindowsAppRuntimeInstall.exe -MaximumRedirection 10
+          $p = Start-Process .\WindowsAppRuntimeInstall.exe -ArgumentList '--quiet' -Wait -PassThru
+          "Windows App Runtime installer exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "Windows App Runtime install failed." }
+          Get-AppxPackage Microsoft.WindowsAppRuntime.1.8* | Select-Object Name, Version, Architecture
+
+      - name: Install TinyClips MSIX
+        shell: pwsh
+        run: |
+          $msix = Resolve-Path "packages\TinyClips-$env:ASSET_VERSION-$env:ARCH.msix"
+          Add-AppxPackage -Path $msix
+          $pkg = Get-AppxPackage Refractored.TinyClips
+          if (-not $pkg) { throw "Package did not install." }
+          "Installed $($pkg.PackageFullName) at $($pkg.InstallLocation)"
+          "PKG_INSTALL=$($pkg.InstallLocation)" | Out-File $env:GITHUB_ENV -Append
+          "PKG_PFN=$($pkg.PackageFamilyName)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Launch TinyClips.App.exe like the winget harness
+        id: launch
+        shell: pwsh
+        run: |
+          # The harness starts the exe by full path with an unrelated working directory.
+          $exe = Join-Path $env:PKG_INSTALL 'TinyClips.App.exe'
+          $start = Get-Date
+          $proc = Start-Process $exe -WorkingDirectory $env:TEMP -PassThru
+          $deadline = $start.AddSeconds([int]$env:WAIT_SECONDS)
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 2
+            $proc.Refresh()
+            if ($proc.HasExited) { break }
+          }
+          $proc.Refresh()
+          if ($proc.HasExited) {
+            $code = $proc.ExitCode
+            "::error::TinyClips.App.exe exited after $([int]((Get-Date) - $start).TotalSeconds)s with exit code $code (0x$('{0:X8}' -f $code))"
+            "crashed=true" | Out-File $env:GITHUB_OUTPUT -Append
+          } else {
+            "TinyClips.App.exe still running after $env:WAIT_SECONDS s (PID $($proc.Id)) -> PASS"
+            Get-Process -Id $proc.Id | Select-Object Id, ProcessName, WorkingSet64, StartTime
+            Stop-Process -Id $proc.Id -Force
+            "crashed=false" | Out-File $env:GITHUB_OUTPUT -Append
+          }
+          "launch_start=$($start.ToString('o'))" | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Collect diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force diag | Out-Null
+          $start = [DateTime]::Parse('${{ steps.launch.outputs.launch_start }}')
+
+          foreach ($log in @(
+              "$env:LOCALAPPDATA\TinyClips\Logs\crash.log",
+              "$env:LOCALAPPDATA\Packages\$env:PKG_PFN\LocalCache\Local\TinyClips\Logs\crash.log")) {
+            if (Test-Path $log) {
+              "=== $log ==="
+              Get-Content $log
+              Copy-Item $log ("diag\" + ($log -replace '[:\\]', '_'))
+            } else { "No crash log at $log" }
+          }
+
+          "=== Application event log (.NET Runtime / Application Error / WER) since launch ==="
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $start.AddSeconds(-5) } -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error', 'Windows Error Reporting' -or $_.Message -match 'TinyClips' } |
+            ForEach-Object {
+              $text = "[{0}] {1} (Id {2})`n{3}`n" -f $_.TimeCreated, $_.ProviderName, $_.Id, $_.Message
+              $text
+              $text | Out-File diag\application-events.txt -Append
+            }
+
+          "=== WER report signatures ==="
+          Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\WER", "C:\ProgramData\Microsoft\Windows\WER" -Recurse -Filter Report.wer -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $start.AddSeconds(-5) } |
+            ForEach-Object {
+              "== $($_.FullName)"
+              Get-Content $_.FullName | Select-String 'AppName|AppPath|ExceptionCode|Sig\[|DynamicSig\[' | ForEach-Object { "   $_" }
+              Copy-Item $_.FullName ("diag\" + $_.Directory.Name + ".wer")
+            }
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: launch-diagnostics-${{ matrix.arch }}
+          path: diag
+          if-no-files-found: ignore
+
+      - name: Fail if the app crashed
+        if: steps.launch.outputs.crashed == 'true'
+        shell: pwsh
+        run: exit 1
