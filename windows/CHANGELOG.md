@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.7.2-windows] - 2026-08-24
+
 ### Fixed
 - **Startup no longer crashes when the shell has no taskbar yet** — root cause of the
   `Validation-Executable-Error` that blocked the 1.5.3, 1.7.0 and 1.7.1 winget submissions. On the
