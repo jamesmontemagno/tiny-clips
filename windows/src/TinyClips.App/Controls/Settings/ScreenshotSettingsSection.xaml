@@ -134,6 +134,15 @@
                         AutomationProperties.Name="Re-capture screen after region selection"
                         IsOn="{x:Bind ViewModel.ScreenshotUsesLiveCapture, Mode=TwoWay}" />
                 </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Copy screenshots to the clipboard"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="CopyScreenshotToggle"
+                        AutomationProperties.Name="Copy screenshots to the clipboard"
+                        IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=TwoWay}" />
+                </controls:SettingsCard>
             </StackPanel>
         </StackPanel>
     </Border>

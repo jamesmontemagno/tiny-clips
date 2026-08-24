@@ -387,7 +387,7 @@ public partial class App : Application
 
         footerActions.Children.Add(CreateFooterButton(
             GlyphTextRecognition,
-            $"Capture Text ({hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString})",
+            $"Recognize Text ({hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString})",
             "TrayCaptureTextButton",
             new AsyncRelayCommand(RecognizeTextAsync),
             Dismiss));
@@ -399,12 +399,7 @@ public partial class App : Application
             new AsyncRelayCommand(CheckForUpdatesFromTrayAsync),
             Dismiss));
 #endif
-        footerActions.Children.Add(CreateFooterButton(
-            GlyphSettings,
-            "Settings",
-            "TraySettingsButton",
-            new RelayCommand(OpenSettingsWindow),
-            Dismiss));
+
         footerActions.Children.Add(CreateFooterButton(
             GlyphDocument,
             "Guide",
@@ -417,7 +412,13 @@ public partial class App : Application
             "TrayFileBugButton",
             new RelayCommand(OpenQuickBugReportWindow),
             Dismiss));
-        footerActions.Children.Add(CreateFooterButton(
+		footerActions.Children.Add(CreateFooterButton(
+	        GlyphSettings,
+	        "Settings",
+	        "TraySettingsButton",
+	        new RelayCommand(OpenSettingsWindow),
+	        Dismiss));
+		footerActions.Children.Add(CreateFooterButton(
             GlyphExit,
             "Exit",
             "TrayExitButton",
