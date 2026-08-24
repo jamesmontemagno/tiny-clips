@@ -8,6 +8,8 @@ name: Windows Launch Smoke (winget harness repro)
 # winget moderators only sometimes paste into the PR.
 
 on:
+  push:
+    branches: [diag/winget-launch-smoke]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -40,9 +42,9 @@ jobs:
             runner: windows-11-arm
 
     env:
-      RELEASE_TAG: ${{ inputs.release_tag }}
-      ASSET_VERSION: ${{ inputs.asset_version }}
-      WAIT_SECONDS: ${{ inputs.wait_seconds }}
+      RELEASE_TAG: ${{ inputs.release_tag || 'v1.7.1-windows' }}
+      ASSET_VERSION: ${{ inputs.asset_version || '1.7.1' }}
+      WAIT_SECONDS: ${{ inputs.wait_seconds || '60' }}
       ARCH: ${{ matrix.arch }}
       GH_TOKEN: ${{ github.token }}
 
