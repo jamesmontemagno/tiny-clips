@@ -151,14 +151,6 @@
                 Text="Capture behavior" />
 
             <StackPanel Spacing="2">
-                <controls:SettingsCard
-                    Header="Copy screenshots to the clipboard"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="CopyScreenshotToggle"
-                        AutomationProperties.Name="Copy screenshots to the clipboard"
-                        IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=TwoWay}" />
-                </controls:SettingsCard>
 
                 <controls:SettingsCard
                     Description="Add a small Tiny Clips watermark to the corner of captures."

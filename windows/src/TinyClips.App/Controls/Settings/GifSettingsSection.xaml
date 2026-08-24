@@ -68,6 +68,18 @@
                         IsOn="{x:Bind ViewModel.ShowGifCapturePicker, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
+
+                <controls:SettingsCard
+                    Description="Start another GIF recording with the same picker after saving."
+                    Header="Show capture picker after recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowGifCapturePickerAfterCaptureToggle"
+                        AutomationProperties.Name="Show capture picker after GIF recording"
+                        IsEnabled="{x:Bind ViewModel.GifCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.ShowGifCapturePickerAfterCapture, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
                 <controls:SettingsCard
                     Header="Countdown before recording"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE823;}">
@@ -110,16 +122,6 @@
                         IsOn="{x:Bind ViewModel.CopyGifToClipboard, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
-                <controls:SettingsCard
-                    Description="Start another GIF recording with the same picker after saving."
-                    Header="Show capture picker after recording"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="ShowGifCapturePickerAfterCaptureToggle"
-                        AutomationProperties.Name="Show capture picker after GIF recording"
-                        IsEnabled="{x:Bind ViewModel.GifCapturePickerAfterCaptureEnabled, Mode=OneWay}"
-                        IsOn="{x:Bind ViewModel.ShowGifCapturePickerAfterCapture, Mode=TwoWay}" />
-                </controls:SettingsCard>
             </StackPanel>
         </StackPanel>
     </Border>

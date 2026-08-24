@@ -248,6 +248,18 @@
                         IsOn="{x:Bind ViewModel.ShowVideoCapturePicker, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
+
+                <controls:SettingsCard
+                    Description="Start another recording with the same picker after saving."
+                    Header="Show capture picker after recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowVideoCapturePickerAfterCaptureToggle"
+                        AutomationProperties.Name="Show capture picker after recording"
+                        IsEnabled="{x:Bind ViewModel.VideoCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.ShowVideoCapturePickerAfterCapture, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
                 <controls:SettingsCard
                     Header="Countdown before recording"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE823;}">
@@ -304,16 +316,6 @@
                         IsOn="{x:Bind ViewModel.CopyVideoToClipboard, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
-                <controls:SettingsCard
-                    Description="Start another recording with the same picker after saving."
-                    Header="Show capture picker after recording"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="ShowVideoCapturePickerAfterCaptureToggle"
-                        AutomationProperties.Name="Show capture picker after recording"
-                        IsEnabled="{x:Bind ViewModel.VideoCapturePickerAfterCaptureEnabled, Mode=OneWay}"
-                        IsOn="{x:Bind ViewModel.ShowVideoCapturePickerAfterCapture, Mode=TwoWay}" />
-                </controls:SettingsCard>
             </StackPanel>
         </StackPanel>
     </Border>
