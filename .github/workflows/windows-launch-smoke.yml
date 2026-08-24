@@ -12,8 +12,6 @@ name: Windows Launch Smoke (winget harness repro)
 # fix can be verified before cutting a release.
 
 on:
-  push:
-    branches: [diag/winget-launch-smoke]
   workflow_dispatch:
     inputs:
       source:
@@ -52,7 +50,7 @@ jobs:
             runner: windows-11-arm
 
     env:
-      SOURCE: ${{ inputs.source || 'build' }}
+      SOURCE: ${{ inputs.source || 'release' }}
       RELEASE_TAG: ${{ inputs.release_tag || 'v1.7.1-windows' }}
       ASSET_VERSION: ${{ inputs.asset_version || '1.7.1' }}
       WAIT_SECONDS: ${{ inputs.wait_seconds || '60' }}
