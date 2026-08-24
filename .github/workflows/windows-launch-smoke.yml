@@ -1,20 +1,30 @@
 name: Windows Launch Smoke (winget harness repro)
 
 # Reproduces the winget-pkgs "Installation Validation" step on real x64 and ARM64 runners:
-# install the framework-dependent release MSIX together with its declared dependencies, launch
+# install a framework-dependent MSIX together with its declared dependencies, launch
 # TinyClips.App.exe straight from C:\Program Files\WindowsApps (as the harness does), and report
 # whether the process survives. On a crash the job collects the app's crash.log plus the
 # ".NET Runtime" / "Application Error" event-log records, which carry the managed stack that the
 # winget moderators only sometimes paste into the PR.
+#
+# source=release downloads the signed MSIX from a GitHub release; source=build packages the
+# checked-out branch with the release recipe and signs it with a throwaway self-signed cert so a
+# fix can be verified before cutting a release.
 
 on:
   push:
     branches: [diag/winget-launch-smoke]
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: "Release tag holding the MSIX assets (e.g. v1.7.1-windows)"
+      source:
+        description: "Where the MSIX comes from"
         required: true
+        type: choice
+        options: [release, build]
+        default: "release"
+      release_tag:
+        description: "Release tag holding the MSIX assets (source=release)"
+        required: false
         default: "v1.7.1-windows"
       asset_version:
         description: "Version embedded in the asset name (e.g. 1.7.1)"
@@ -42,27 +52,99 @@ jobs:
             runner: windows-11-arm
 
     env:
+      SOURCE: ${{ inputs.source || 'build' }}
       RELEASE_TAG: ${{ inputs.release_tag || 'v1.7.1-windows' }}
       ASSET_VERSION: ${{ inputs.asset_version || '1.7.1' }}
       WAIT_SECONDS: ${{ inputs.wait_seconds || '60' }}
       ARCH: ${{ matrix.arch }}
       GH_TOKEN: ${{ github.token }}
+      APP_PROJECT: windows/src/TinyClips.App/TinyClips.App.csproj
 
     steps:
       - name: Describe runner
         shell: pwsh
         run: |
+          "Source: $env:SOURCE"
           "OS: $([Environment]::OSVersion.VersionString)  Arch: $env:PROCESSOR_ARCHITECTURE"
           "Display adapters: $((Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join '; ')"
           "Session: $((Get-Process -Id $PID).SessionId)  Interactive: $([Environment]::UserInteractive)"
 
       - name: Download release MSIX
+        if: env.SOURCE == 'release'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force packages | Out-Null
           gh release download $env:RELEASE_TAG --repo ${{ github.repository }} `
             --pattern "TinyClips-$env:ASSET_VERSION-$env:ARCH.msix" --dir packages --clobber
           Get-ChildItem packages
+
+      - name: Checkout code
+        if: env.SOURCE == 'build'
+        uses: actions/checkout@v6
+
+      - name: Setup .NET SDK
+        if: env.SOURCE == 'build'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build and package MSIX from this branch
+        if: env.SOURCE == 'build'
+        shell: pwsh
+        run: |
+          $platform = if ($env:ARCH -eq 'arm64') { 'ARM64' } else { 'x64' }
+          $packageDir = "packages/build"
+          New-Item -ItemType Directory -Force packages, $packageDir | Out-Null
+          $packageDirFull = (Resolve-Path $packageDir).Path + [IO.Path]::DirectorySeparatorChar
+
+          $manifestPath = "windows/src/TinyClips.App/Package.appxmanifest"
+          $content = Get-Content $manifestPath -Raw
+          $content = $content -creplace '(<Identity[\s\S]*?Version=")[^"]+(")', "`${1}$env:ASSET_VERSION.0`${2}"
+          Set-Content -Path $manifestPath -Value $content -Encoding UTF8
+
+          dotnet build $env:APP_PROJECT `
+            -c Release `
+            -p:Platform=$platform `
+            -p:RuntimeIdentifier=win-$env:ARCH `
+            -p:SelfContained=false `
+            -p:WindowsAppSDKSelfContained=false `
+            -p:EnableMsixTooling=true `
+            -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxPackageDir=$packageDirFull `
+            -p:AppxBundle=Never `
+            -p:UapAppxPackageBuildMode=SideloadOnly `
+            -p:AppxPackageSigningEnabled=false `
+            -v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "MSIX build failed for $platform." }
+
+          $produced = Get-ChildItem $packageDir -Recurse -Filter *.msix |
+            Where-Object { $_.Name -notmatch 'symbols' } | Select-Object -First 1
+          if (-not $produced) { throw "No MSIX produced." }
+          Copy-Item $produced.FullName "packages/TinyClips-$env:ASSET_VERSION-$env:ARCH.msix" -Force
+          Get-ChildItem packages -File
+
+      - name: Sign MSIX with a throwaway self-signed certificate
+        if: env.SOURCE == 'build'
+        shell: pwsh
+        run: |
+          $subject = ([xml](Get-Content windows/src/TinyClips.App/Package.appxmanifest)).Package.Identity.Publisher
+          "Publisher: $subject"
+          $cert = New-SelfSignedCertificate -Type Custom -Subject $subject `
+            -KeyUsage DigitalSignature -FriendlyName "TinyClips smoke" `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+          $pfx = "packages\smoke.pfx"
+          $pwd = ConvertTo-SecureString -String "smoke" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $pwd | Out-Null
+          Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\LocalMachine\TrustedPeople -Password $pwd | Out-Null
+
+          $kitsBin = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Directory |
+            Where-Object { $_.Name -match '^10\.' } | Sort-Object Name -Descending | Select-Object -First 1
+          $toolArch = if ($env:ARCH -eq 'arm64') { 'arm64' } else { 'x64' }
+          $signtool = Join-Path $kitsBin.FullName "$toolArch\signtool.exe"
+          if (-not (Test-Path $signtool)) { $signtool = Join-Path $kitsBin.FullName "x64\signtool.exe" }
+          & $signtool sign /fd SHA256 /f $pfx /p smoke "packages\TinyClips-$env:ASSET_VERSION-$env:ARCH.msix"
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed." }
 
       - name: Install .NET Desktop Runtime 10 (machine-wide)
         shell: pwsh

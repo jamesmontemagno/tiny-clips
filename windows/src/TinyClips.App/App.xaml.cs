@@ -44,6 +44,8 @@ public partial class App : Application
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
+    private DispatcherQueueTimer? _trayIconRetryTimer;
+    private int _trayIconRetryAttempts;
     private SettingsWindow? _settingsWindow;
     private GuideWindow? _guideWindow;
     private ClipsManagerWindow? _clipsManagerWindow;
@@ -80,6 +82,12 @@ public partial class App : Application
     private const double TrayPopupHeight = 242;
     private const double TrayPopupFooterHeight = 48;
     private const double TrayPopupFooterButtonSize = 32;
+    // Shell_NotifyIcon(NIM_ADD) fails while Explorer's taskbar is not yet up (fresh sign-in,
+    // Explorer restart, or a bare automation session such as winget's validation VM). Retry for
+    // a while so the icon appears once the shell is ready; after that H.NotifyIcon re-adds it on
+    // the TaskbarCreated broadcast without further help from us.
+    private static readonly TimeSpan TrayIconRetryInterval = TimeSpan.FromSeconds(2);
+    private const int TrayIconMaxRetryAttempts = 30;
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -106,10 +114,14 @@ public partial class App : Application
     {
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
-        // The tray icon and hotkeys are the app; everything else is best-effort so that an
-        // optional startup step failing (e.g. on a locked-down validation VM) cannot crash launch.
-        WireRecordingEvents();
-        CreateTrayIcon();
+        // Nothing may escape OnLaunched: XAML treats an exception here as fatal and terminates the
+        // process with a stowed exception (0xC000027B) *even when* Application.UnhandledException
+        // marks it handled. That exit code is what winget's Validation-Executable-Error reported
+        // for 1.5.3 / 1.7.0 / 1.7.1, where Shell_NotifyIcon failed on the validation VM. Every
+        // step is therefore guarded; the tray icon and hotkeys are the app, everything else is
+        // best-effort.
+        RunStartupStep(nameof(WireRecordingEvents), WireRecordingEvents);
+        RunStartupStep(nameof(CreateTrayIcon), CreateTrayIcon);
         RunStartupStep(nameof(RegisterGlobalHotKeys), () => RegisterGlobalHotKeys());
         RunStartupStep(nameof(ShowOnboardingIfNeeded), ShowOnboardingIfNeeded);
         RunStartupStep(nameof(HandleFileActivation), HandleFileActivation);
@@ -117,9 +129,9 @@ public partial class App : Application
         _ = Task.Run(() => RunStartupStep("ScreenCaptureWarmUp", () =>
             Services.GetRequiredService<IScreenCaptureService>().WarmUp()));
 #if !TINYCLIPS_STORE_BUILD
-        _ = RunStartupUpdateCheckAsync();
+        RunStartupStep(nameof(RunStartupUpdateCheckAsync), () => _ = RunStartupUpdateCheckAsync());
 #endif
-        EndStartupPhaseAfterFirstDispatcherPass();
+        RunStartupStep(nameof(EndStartupPhaseAfterFirstDispatcherPass), EndStartupPhaseAfterFirstDispatcherPass);
     }
 
     private static void RunStartupStep(string name, Action step)
@@ -155,6 +167,8 @@ public partial class App : Application
         // A XAML-thread exception that reaches the framework terminates the process with a stowed
         // exception (0xC000027B). During launch we log and swallow so a non-fatal startup hiccup
         // cannot produce a crash exit code for a tray app that has no main window to tear down.
+        // NOTE: this does not cover exceptions thrown out of OnLaunched itself - XAML fail-fasts
+        // on those even when Handled is set - which is why OnLaunched guards each step directly.
         // After launch the handler only records diagnostics: continuing past an arbitrary
         // mid-operation failure could leave app state partially mutated, so we let it terminate.
         UnhandledException += (_, e) =>
@@ -249,9 +263,97 @@ public partial class App : Application
         _taskbarIcon.LeftClickCommand = showPopup;
         _taskbarIcon.RightClickCommand = showPopup;
 
-        _taskbarIcon.ForceCreate();
-
         UpdateRecordingState();
+
+        if (!TryRegisterTrayIconWithShell())
+        {
+            ScheduleTrayIconRetry();
+        }
+    }
+
+    /// <summary>
+    /// Asks the shell to add the notification icon. Returns <see langword="false"/> instead of
+    /// throwing when <c>Shell_NotifyIcon</c> refuses (no taskbar yet); the <see cref="TaskbarIcon"/>
+    /// stays alive so a later attempt, or the shell's own <c>TaskbarCreated</c> broadcast, can add it.
+    /// </summary>
+    private bool TryRegisterTrayIconWithShell()
+    {
+        if (_taskbarIcon is null || _isExiting)
+        {
+            return true;
+        }
+
+        if (_taskbarIcon.IsCreated)
+        {
+            return true;
+        }
+
+        try
+        {
+            _taskbarIcon.ForceCreate();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Tray icon registration failed (attempt {_trayIconRetryAttempts + 1}): {ex.Message}");
+            if (_trayIconRetryAttempts == 0)
+            {
+                CrashDiagnostics.Log("TaskbarIcon.ForceCreate", ex, handled: true);
+            }
+
+            return false;
+        }
+    }
+
+    private void ScheduleTrayIconRetry()
+    {
+        if (_trayIconRetryTimer is not null || _dispatcher is null || _isExiting)
+        {
+            return;
+        }
+
+        _trayIconRetryTimer = _dispatcher.CreateTimer();
+        _trayIconRetryTimer.Interval = TrayIconRetryInterval;
+        _trayIconRetryTimer.IsRepeating = true;
+        _trayIconRetryTimer.Tick += OnTrayIconRetryTick;
+        _trayIconRetryTimer.Start();
+    }
+
+    private void OnTrayIconRetryTick(DispatcherQueueTimer sender, object args)
+    {
+        _trayIconRetryAttempts++;
+        var registered = TryRegisterTrayIconWithShell();
+        if (registered)
+        {
+            Debug.WriteLine($"Tray icon registered after {_trayIconRetryAttempts} retr{(_trayIconRetryAttempts == 1 ? "y" : "ies")}.");
+        }
+        else if (_trayIconRetryAttempts < TrayIconMaxRetryAttempts)
+        {
+            return;
+        }
+        else
+        {
+            // Give up polling; H.NotifyIcon still listens for TaskbarCreated and the hotkeys keep
+            // the app usable. Recorded once so a persistent failure leaves evidence in crash.log.
+            CrashDiagnostics.Log(
+                "TaskbarIcon.ForceCreate",
+                new InvalidOperationException($"Tray icon still not registered after {_trayIconRetryAttempts} attempts; waiting for TaskbarCreated."),
+                handled: true);
+        }
+
+        StopTrayIconRetry();
+    }
+
+    private void StopTrayIconRetry()
+    {
+        if (_trayIconRetryTimer is null)
+        {
+            return;
+        }
+
+        _trayIconRetryTimer.Stop();
+        _trayIconRetryTimer.Tick -= OnTrayIconRetryTick;
+        _trayIconRetryTimer = null;
     }
 
     /// <summary>
@@ -2991,6 +3093,7 @@ public partial class App : Application
         ReleaseDisplaySleepAssertion();
         _hotKeyManager?.Dispose();
         _hotKeyManager = null;
+        StopTrayIconRetry();
         _taskbarIcon?.Dispose();
         _taskbarIcon = null;
         _automationNotificationAnnouncer?.Close();
