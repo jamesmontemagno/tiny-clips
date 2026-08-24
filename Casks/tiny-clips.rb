@@ -1,7 +1,7 @@
 cask "tiny-clips" do
   auto_updates true
-  version "1.6.1"
-  sha256 "78d38e22eae6c09b6c15eb08af786ff2f123771621a9e5aaba2cd689e09ecae6"
+  version "1.7.1.0"
+  sha256 "be80f3c1bcdce9cdf08385e437672e66f95679ab1a79e7151530fc31b556d48f"
 
   url "https://github.com/jamesmontemagno/tiny-clips/releases/download/v#{version}-mac/TinyClips-v#{version}-mac.zip"
   name "TinyClips"

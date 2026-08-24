@@ -11,24 +11,24 @@
         <item>
             
             
-            <title>1.6.1</title>
+            <title>1.7.1.0</title>
             
             
-            <pubDate>Wed, 19 Aug 2026 04:12:50 +0000</pubDate>
+            <pubDate>Mon, 24 Aug 2026 16:19:13 +0000</pubDate>
             
             
-            <sparkle:version>58</sparkle:version>
+            <sparkle:version>59</sparkle:version>
             
             
-            <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
+            <sparkle:shortVersionString>1.7.1.0</sparkle:shortVersionString>
             
             
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             
             
-            <description><![CDATA[<h3>What's Changed</h3><ul><li>Mark v1.6.1-mac release</li><li>Fix mac release version override</li><li>Address Windows overlay review feedback</li><li>Refactor Windows overlays: shared helpers, DPI, drag, icons</li><li>Address PR review: throw on crop failure, propagate resolved region, align drag readout</li><li>Enhance macOS screenshot quality by improving pixel alignment and cropping logic</li><li>Fix macOS region screenshot quality by aligning to whole device pixels</li><li>Add StopRecording to HotKeyAction enum</li><li>Address PR #275 review comments: OCR size limit, cancellation, countdown, error message</li><li>Address PR #275 review comments: OCR size limit, cancellation, countdown, error message</li><li>Fix display sleep assertion release guards in PR review feedback</li><li>Add Windows OCR region capture</li><li>Add Windows display sleep prevention</li><li>Initial plan</li><li>Initial plan</li><li>Refine Settings update and hotkey visuals</li><li>Keep tray footer flush with popup edge</li><li>Harden crop application state</li><li>Keep tray footer actions grouped</li><li>Use the Fluent GIF tray icon</li><li>Increase tray flyout content spacing</li><li>Remove the redundant tray popup border</li><li>Refine the tray quick access flyout</li><li>Bump app versions to 1.8.0</li><li>Fix screenshot editor crop alignment</li><li>Address Settings review feedback</li><li>Modernize Windows settings experience</li><li>Merge release metadata from hub</li><li>Update release metadata for v1.6.0-mac</li><li>Create PR for release metadata</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v1.6.0-mac...v1.6.1-mac">Full Changelog</a></p>]]></description>
-            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v1.6.1-mac</sparkle:releaseNotesLink>
-            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v1.6.1-mac/TinyClips-v1.6.1-mac.zip" length="4150840" type="application/octet-stream" sparkle:edSignature="HFIoYxTVERoQuoBhlJb+/nO9+GM9f2zhjKlZpL4j04G3Mw8RedfBLoQITnk1Fqy3gbA9xGSX0Uj1o46HAUTGBQ=="/>
+            <description><![CDATA[<h3>What's Changed</h3><ul><li>Merge pull request #300 from jamesmontemagno/release/v1.7.1.0-mac</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v1.6.1-mac...v1.7.1.0-mac">Full Changelog</a></p>]]></description>
+            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v1.7.1.0-mac</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v1.7.1.0-mac/TinyClips-v1.7.1.0-mac.zip" length="4156838" type="application/octet-stream" sparkle:edSignature="PEUGDNGUR7mnRhdY21FGRpqZ5xPYcohBXw8ITSd0f16YHenP2lMC/Hs4kxY6uPPrK55EWd12GpilHcsYUeSSDQ=="/>
             
         
         </item>
