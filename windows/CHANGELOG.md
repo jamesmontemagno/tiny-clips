@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.7.1-windows] - 2026-08-24
+
 ### Changed
 - **Screenshot editor image alignment is now a 3×3 placement grid** — the Background section's
   separate Horizontal / Vertical alignment combo boxes are replaced by a single labeled 3×3 grid
