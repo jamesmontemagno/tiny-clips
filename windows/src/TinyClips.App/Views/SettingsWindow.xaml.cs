@@ -68,8 +68,8 @@ public sealed partial class SettingsWindow : Window
 
     private void OnActivatedSetIcon(object sender, WindowActivatedEventArgs args)
     {
-        AppWindow.SetIcon(@"Assets\AppIcon.ico");
         Activated -= OnActivatedSetIcon;
+        WindowIcon.Apply(AppWindow);
     }
 
     private void OnRootGridLoaded(object sender, RoutedEventArgs args)

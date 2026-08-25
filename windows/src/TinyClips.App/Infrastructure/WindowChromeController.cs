@@ -52,8 +52,8 @@ internal sealed class WindowChromeController
     // Sets the AppWindow icon once on first activation and self-unsubscribes.
     private void OnActivatedSetIcon(object sender, WindowActivatedEventArgs args)
     {
-        _window.AppWindow.SetIcon(@"Assets\AppIcon.ico");
         _window.Activated -= OnActivatedSetIcon;
+        WindowIcon.Apply(_window.AppWindow);
     }
 
     private void OnRootElementLoaded(object sender, RoutedEventArgs args)
