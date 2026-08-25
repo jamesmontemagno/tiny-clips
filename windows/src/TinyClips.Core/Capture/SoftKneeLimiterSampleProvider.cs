@@ -27,9 +27,12 @@ public sealed class SoftKneeLimiterSampleProvider : ISampleProvider
 
     public WaveFormat WaveFormat => _source.WaveFormat;
 
-    public int Read(float[] buffer, int offset, int count)
+    public int Read(float[] buffer, int offset, int count) =>
+        Read(buffer.AsSpan(offset, count));
+
+    public int Read(Span<float> buffer)
     {
-        var read = _source.Read(buffer, offset, count);
+        var read = _source.Read(buffer);
         if (read <= 0)
         {
             return read;
@@ -37,7 +40,7 @@ public sealed class SoftKneeLimiterSampleProvider : ISampleProvider
 
         try
         {
-            LimitInPlace(buffer.AsSpan(offset, read));
+            LimitInPlace(buffer[..read]);
         }
         catch (Exception ex)
         {

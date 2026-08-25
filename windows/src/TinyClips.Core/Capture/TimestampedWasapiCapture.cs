@@ -33,7 +33,7 @@ internal sealed class TimestampedWasapiCapture : IDisposable
     public TimestampedWasapiCapture(MMDevice device, bool isLoopback)
     {
         _device = device;
-        _audioClient = device.AudioClient;
+        _audioClient = device.CreateAudioClient();
         _isLoopback = isLoopback;
 
         // WASAPI's shared-mode mix format is a WaveFormatExtensible. Initialize WASAPI with

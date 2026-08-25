@@ -71,12 +71,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/windows | Out-Null
 
-          # Self-contained MSIX: the package bundles both the .NET 10 runtime and the Windows App
-          # SDK runtime, so it has no framework-package or winget dependencies and runs on a clean
-          # machine (including Windows Sandbox) with nothing else installed. This is larger than a
-          # framework-dependent package (~3x) but removes the target machine's runtime versions as
-          # a variable - adopted while chasing winget's Validation-Executable-Error on 1.7.x.
-          # PublishTrimmed is forced off: trimming WinUI 3 + H.NotifyIcon + NAudio is not safe.
+          # Framework-dependent MSIX (small package). The app does NOT bundle the .NET or
+          # Windows App SDK runtimes; instead they are declared as winget PackageDependencies
+          # in the installer manifest (Microsoft.DotNet.DesktopRuntime.10 and
+          # Microsoft.WindowsAppRuntime.1.8). winget installs those dependency packages before
+          # the app, and the Windows App SDK runtime is also auto-acquired by the OS on machines
+          # with the Store/App Installer. NOTE: a framework-dependent MSIX cannot be verified in
+          # Windows Sandbox (it has no Store, so framework auto-acquisition fails with
+          # 0x80073cf3) - validate on a real machine or via the winget validation pipeline.
           $platforms = @(
             @{ Platform = "x64";   Rid = "win-x64";   Asset = "x64" }
             @{ Platform = "ARM64"; Rid = "win-arm64"; Asset = "arm64" }
@@ -91,9 +93,8 @@ jobs:
               -c Release `
               -p:Platform=$($p.Platform) `
               -p:RuntimeIdentifier=$($p.Rid) `
-              -p:SelfContained=true `
-              -p:WindowsAppSDKSelfContained=true `
-              -p:PublishTrimmed=false `
+              -p:SelfContained=false `
+              -p:WindowsAppSDKSelfContained=false `
               -p:EnableMsixTooling=true `
               -p:GenerateAppxPackageOnBuild=true `
               -p:AppxPackageDir=$packageDirFull `
@@ -109,10 +110,11 @@ jobs:
             if (-not $produced) { throw "No MSIX produced for $($p.Platform)." }
 
             # Guard against silently shipping the wrong kind of package. Unpack the MSIX and
-            # assert it is genuinely self-contained: (1) the AppxManifest declares NO
-            # WindowsAppRuntime framework dependency (the runtime is bundled), and (2) the payload
-            # contains the .NET runtime (coreclr.dll). The winget manifest declares no
-            # dependencies, so a framework-dependent package here would fail to install.
+            # assert it is genuinely framework-dependent: (1) the AppxManifest declares the
+            # WindowsAppRuntime framework dependency (so the declared winget dependency matches
+            # the package), and (2) the payload does NOT contain the .NET runtime (coreclr.dll),
+            # confirming the .NET runtime is framework-dependent and delivered via the declared
+            # Microsoft.DotNet.DesktopRuntime.10 winget dependency.
             $verifyDir = Join-Path $packageDir "verify"
             Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
             $zipCopy = "$($produced.FullName).zip"
@@ -120,17 +122,13 @@ jobs:
             Expand-Archive $zipCopy -DestinationPath $verifyDir -Force
 
             $appxManifest = Get-Content (Join-Path $verifyDir "AppxManifest.xml") -Raw
-            if ($appxManifest -match '<PackageDependency[^>]*Name="Microsoft\.WindowsAppRuntime') {
-              throw "Self-contained MSIX for $($p.Platform) still declares a WindowsAppRuntime framework dependency - expected WindowsAppSDKSelfContained=true."
+            if ($appxManifest -notmatch '<PackageDependency[^>]*Name="Microsoft\.WindowsAppRuntime') {
+              throw "Framework-dependent MSIX for $($p.Platform) is missing the WindowsAppRuntime framework dependency."
             }
 
-            if (-not (Get-ChildItem $verifyDir -Recurse -Filter "coreclr.dll" -ErrorAction SilentlyContinue)) {
-              throw "MSIX for $($p.Platform) does not bundle the .NET runtime (coreclr.dll) - expected a self-contained (SelfContained=true) build."
+            if (Get-ChildItem $verifyDir -Recurse -Filter "coreclr.dll" -ErrorAction SilentlyContinue) {
+              throw "MSIX for $($p.Platform) bundles the .NET runtime (coreclr.dll) - expected a framework-dependent (SelfContained=false) build."
             }
-            if (-not (Get-ChildItem $verifyDir -Recurse -Filter "Microsoft.UI.Xaml.dll" -ErrorAction SilentlyContinue)) {
-              throw "MSIX for $($p.Platform) does not bundle the Windows App SDK runtime (Microsoft.UI.Xaml.dll) - expected WindowsAppSDKSelfContained=true."
-            }
-            "$($p.Platform): self-contained package verified ($([math]::Round($produced.Length / 1MB, 1)) MB)"
             Remove-Item $zipCopy -Force -ErrorAction SilentlyContinue
             Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -265,9 +263,11 @@ jobs:
 
           @"
           # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
-          # Installer manifest for the signed, self-contained MSIX produced by the Windows Release
-          # workflow. The package bundles the .NET and Windows App SDK runtimes, so it declares no
-          # winget package dependencies. Do not set Scope here.
+          # Installer manifest for the signed, framework-dependent MSIX produced by the Windows
+          # Release workflow. The package does NOT bundle the .NET or Windows App SDK runtimes;
+          # they are declared below as winget package dependencies so winget installs them before
+          # the app. Do not set Scope here: the dependency installers are machine-scope/unknown
+          # scope, and forcing user scope makes winget reject them during validation.
           PackageIdentifier: Refractored.TinyClips
           PackageVersion: $env:PACKAGE_VERSION
           MinimumOSVersion: 10.0.22000.0
@@ -276,6 +276,10 @@ jobs:
             - silent
             - silentWithProgress
           PackageFamilyName: $env:PACKAGE_FAMILY_NAME
+          Dependencies:
+            PackageDependencies:
+              - PackageIdentifier: Microsoft.DotNet.DesktopRuntime.10
+              - PackageIdentifier: Microsoft.WindowsAppRuntime.1.8
           Installers:
             - Architecture: x64
               InstallerUrl: https://github.com/jamesmontemagno/tiny-clips/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-x64.msix
