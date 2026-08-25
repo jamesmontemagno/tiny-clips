@@ -174,6 +174,23 @@ jobs:
           "PKG_INSTALL=$($pkg.InstallLocation)" | Out-File $env:GITHUB_ENV -Append
           "PKG_PFN=$($pkg.PackageFamilyName)" | Out-File $env:GITHUB_ENV -Append
 
+      - name: Start the Explorer shell (taskbar) like a real desktop session
+        shell: pwsh
+        run: |
+          # Hosted runners have an interactive session but no Explorer, so Shell_NotifyIcon has no
+          # taskbar to talk to. The winget validation VM does have a shell (it screenshots the app),
+          # so start Explorer here to exercise the post-tray-icon startup path as well.
+          if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) {
+            Start-Process explorer.exe
+            Start-Sleep -Seconds 15
+          }
+          Get-Process explorer -ErrorAction SilentlyContinue | Select-Object Id, SessionId, StartTime
+          Add-Type -AssemblyName System.Windows.Forms
+          $tray = [System.Windows.Forms.Screen]::PrimaryScreen
+          "Primary screen: $($tray.Bounds.Width)x$($tray.Bounds.Height), work area $($tray.WorkingArea.Width)x$($tray.WorkingArea.Height)"
+          $shellTray = (Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr FindWindow(string c, string w);' -Name U -Namespace W -PassThru)::FindWindow('Shell_TrayWnd', $null)
+          "Shell_TrayWnd hwnd: $shellTray"
+
       - name: Launch TinyClips.App.exe like the winget harness
         id: launch
         shell: pwsh
@@ -183,10 +200,21 @@ jobs:
           $start = Get-Date
           $proc = Start-Process $exe -WorkingDirectory $env:TEMP -PassThru
           $deadline = $start.AddSeconds([int]$env:WAIT_SECONDS)
+          $shot = $false
           while ((Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 2
             $proc.Refresh()
             if ($proc.HasExited) { break }
+            if (-not $shot -and ((Get-Date) - $start).TotalSeconds -ge 15) {
+              $shot = $true
+              New-Item -ItemType Directory -Force diag | Out-Null
+              Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+              $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+              $bmp.Save("diag\desktop-15s.png"); $g.Dispose(); $bmp.Dispose()
+            }
           }
           $proc.Refresh()
           if ($proc.HasExited) {
