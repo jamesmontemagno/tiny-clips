@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.7.4-windows] - 2026-08-25
+
 ### Changed
 - **Back to a framework-dependent MSIX.** 1.7.3's self-contained package did not change winget's
   arm64 `Validation-Executable-Error`, so it bought nothing for ~100 MB. The package again declares
