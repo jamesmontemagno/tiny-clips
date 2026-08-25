@@ -200,13 +200,13 @@ jobs:
           [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool Shell_NotifyIcon(int msg, ref NOTIFYICONDATA d);
           [DllImport("user32.dll")] public static extern IntPtr LoadIcon(IntPtr h, IntPtr name);
           [DllImport("user32.dll")] public static extern IntPtr GetDesktopWindow();
-          '@ -Name U -Namespace W -PassThru
+          '@ -Name U -Namespace W -PassThru | Where-Object { $_.Name -eq 'U' }
           $tray = $u::FindWindow('Shell_TrayWnd', $null)
           "Shell_TrayWnd hwnd: $tray  hung: $(if ($tray -ne [IntPtr]::Zero) { $u::IsHungAppWindow($tray) } else { 'n/a' })"
           "TrayNotifyWnd: $($u::FindWindowEx($tray, [IntPtr]::Zero, 'TrayNotifyWnd', $null))"
           # Probe Shell_NotifyIcon(NIM_ADD) the way H.NotifyIcon does, using a throwaway window.
           $f = New-Object System.Windows.Forms.Form; $f.Show(); $f.Hide()
-          $d = New-Object W.U+NOTIFYICONDATA
+          $d = New-Object 'W.U+NOTIFYICONDATA'
           $d.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($d); $d.hWnd = $f.Handle; $d.uID = 1
           $d.uFlags = 0x1 -bor 0x2 -bor 0x4; $d.uCallbackMessage = 0x401; $d.szTip = 'probe'
           $d.hIcon = $u::LoadIcon([IntPtr]::Zero, [IntPtr]32512)
@@ -268,7 +268,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force diag | Out-Null
-          $start = [DateTime]::Parse('${{ steps.launch.outputs.launch_start }}')
+          $startText = '${{ steps.launch.outputs.launch_start }}'
+          $start = if ($startText) { [DateTime]::Parse($startText) } else { (Get-Date).AddMinutes(-10) }
 
           foreach ($log in @(
               "$env:LOCALAPPDATA\TinyClips\Logs\crash.log",
