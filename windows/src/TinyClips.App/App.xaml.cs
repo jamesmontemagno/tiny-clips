@@ -83,11 +83,16 @@ public partial class App : Application
     private const double TrayPopupFooterHeight = 48;
     private const double TrayPopupFooterButtonSize = 32;
     // Shell_NotifyIcon(NIM_ADD) fails while Explorer's taskbar is not yet up (fresh sign-in,
-    // Explorer restart, or a bare automation session such as winget's validation VM). Retry for
-    // a while so the icon appears once the shell is ready; after that H.NotifyIcon re-adds it on
-    // the TaskbarCreated broadcast without further help from us.
-    private static readonly TimeSpan TrayIconRetryInterval = TimeSpan.FromSeconds(2);
-    private const int TrayIconMaxRetryAttempts = 30;
+    // Explorer restart, or a bare automation session such as winget's validation VM). Retry so
+    // the icon appears once the shell is ready; after that H.NotifyIcon re-adds it on the
+    // TaskbarCreated broadcast without further help from us.
+    //
+    // Each failed Shell_NotifyIcon call can block the calling (UI) thread for the shell's
+    // 4-second reply timeout, so the retries back off exponentially: a fixed 2 s cadence would
+    // keep the UI thread pinned and make the process look hung to the user and to automation.
+    private static readonly TimeSpan TrayIconInitialRetryDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan TrayIconMaxRetryDelay = TimeSpan.FromSeconds(40);
+    private const int TrayIconMaxRetryAttempts = 6; // 5 + 10 + 20 + 40 + 40 + 40 s ≈ 2.5 min
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -313,8 +318,8 @@ public partial class App : Application
         }
 
         _trayIconRetryTimer = _dispatcher.CreateTimer();
-        _trayIconRetryTimer.Interval = TrayIconRetryInterval;
-        _trayIconRetryTimer.IsRepeating = true;
+        _trayIconRetryTimer.Interval = TrayIconInitialRetryDelay;
+        _trayIconRetryTimer.IsRepeating = false;
         _trayIconRetryTimer.Tick += OnTrayIconRetryTick;
         _trayIconRetryTimer.Start();
     }
@@ -327,8 +332,12 @@ public partial class App : Application
         {
             Debug.WriteLine($"Tray icon registered after {_trayIconRetryAttempts} retr{(_trayIconRetryAttempts == 1 ? "y" : "ies")}.");
         }
-        else if (_trayIconRetryAttempts < TrayIconMaxRetryAttempts)
+        else if (_trayIconRetryAttempts < TrayIconMaxRetryAttempts && !_isExiting)
         {
+            // Exponential backoff, capped: the next delay doubles until TrayIconMaxRetryDelay.
+            var next = TimeSpan.FromTicks(Math.Min(sender.Interval.Ticks * 2, TrayIconMaxRetryDelay.Ticks));
+            sender.Interval = next;
+            sender.Start();
             return;
         }
         else

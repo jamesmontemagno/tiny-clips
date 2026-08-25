@@ -5,6 +5,26 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- **Self-contained MSIX** — the release package now bundles the .NET 10 runtime and the Windows
+  App SDK 1.8 runtime (`SelfContained=true`, `WindowsAppSDKSelfContained=true`, trimming off), and
+  the winget manifest no longer declares `Microsoft.DotNet.DesktopRuntime.10` /
+  `Microsoft.WindowsAppRuntime.1.8` dependencies. The package is larger (~3×) but installs and runs
+  on a clean machine with nothing else present, and removes the target machine's runtime versions
+  as a variable while we chase winget's `Validation-Executable-Error`. See
+  `windows/packaging/README.md` for the trade-offs and how to revert.
+- **Tray icon registration retries back off exponentially** (5 → 10 → 20 → 40 s, ~2.5 min total)
+  instead of every 2 s. A failed `Shell_NotifyIcon` call can block the UI thread for the shell's
+  4-second reply timeout, so the old cadence could keep the process "Not Responding" for minutes on
+  a machine whose taskbar was slow to answer. H.NotifyIcon still re-adds the icon on
+  `TaskbarCreated` after the retries stop.
+- **Welcome screen shows the real app icon** — the first onboarding step now uses the Tiny Clips
+  app icon instead of a generic camera glyph on an accent tile.
+
+### Fixed
+- Window title-bar icon is resolved to an absolute path under the app's install folder and any
+  `AppWindow.SetIcon` failure is logged rather than propagated from `Window.Activated`.
+
 ## [v1.7.2-windows] - 2026-08-24
 
 ### Fixed

@@ -4,8 +4,9 @@ name: WinGet Submission
 # repository (microsoft/winget-pkgs). Run this AFTER you've eyeballed the GitHub release.
 #
 # Unlike the PowerToys "wingetcreate update" approach, this regenerates our full multi-file
-# manifest from source (windows/packaging/winget) so the framework Dependencies block is
-# always present, instead of inheriting whatever the previously published version declared.
+# manifest from source (windows/packaging/winget) so the installer manifest always matches the
+# package we ship (currently self-contained, no Dependencies block), instead of inheriting
+# whatever the previously published version declared.
 #
 # Requires a repository secret named WINGET_CREATE_GITHUB_TOKEN: a classic PAT from an
 # account that can fork microsoft/winget-pkgs, with the `public_repo` scope. wingetcreate
@@ -88,11 +89,9 @@ jobs:
 
           @"
           # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
-          # Installer manifest for the signed, framework-dependent MSIX produced by the Windows
-          # Release workflow. The package does NOT bundle the .NET or Windows App SDK runtimes;
-          # they are declared below as winget package dependencies so winget installs them before
-          # the app. Do not set Scope here: the dependency installers are machine-scope/unknown
-          # scope, and forcing user scope makes winget reject them during validation.
+          # Installer manifest for the signed, self-contained MSIX produced by the Windows Release
+          # workflow. The package bundles the .NET and Windows App SDK runtimes, so it declares no
+          # winget package dependencies. Do not set Scope here.
           PackageIdentifier: Refractored.TinyClips
           PackageVersion: $env:PACKAGE_VERSION
           MinimumOSVersion: 10.0.22000.0
@@ -101,10 +100,6 @@ jobs:
             - silent
             - silentWithProgress
           PackageFamilyName: $env:PACKAGE_FAMILY_NAME
-          Dependencies:
-            PackageDependencies:
-              - PackageIdentifier: Microsoft.DotNet.DesktopRuntime.10
-              - PackageIdentifier: Microsoft.WindowsAppRuntime.1.8
           Installers:
             - Architecture: x64
               InstallerUrl: https://github.com/${{ github.repository }}/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-x64.msix
