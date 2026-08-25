@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.7.3-windows] - 2026-08-25
+
 ### Changed
 - **Self-contained MSIX** — the release package now bundles the .NET 10 runtime and the Windows
   App SDK 1.8 runtime (`SelfContained=true`, `WindowsAppSDKSelfContained=true`, trimming off), and
