@@ -53,18 +53,13 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Spacing="16">
-                <Border
-                    Width="88"
-                    Height="88"
+                <Image
+                    Width="96"
+                    Height="96"
                     HorizontalAlignment="Center"
-                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                    CornerRadius="20">
-                    <FontIcon
-                        FontFamily="Segoe Fluent Icons"
-                        FontSize="44"
-                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                        Glyph="&#xE722;" />
-                </Border>
+                    AutomationProperties.Name="Tiny Clips app icon"
+                    Source="ms-appx:///Assets/AppIcon-512.png"
+                    Stretch="Uniform" />
                 <TextBlock
                     HorizontalAlignment="Center"
                     Style="{StaticResource TitleLargeTextBlockStyle}"

@@ -51,6 +51,7 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" />
     <Content Include="Assets\AppIcon.ico" />
+    <Content Include="Assets\AppIcon-512.png" />
     <Content Include="Assets\TrayIcon.ico" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
@@ -105,13 +106,16 @@
   <PropertyGroup>
     <!--
       ReadyToRun pre-compiles IL so the first capture after launch doesn't pay JIT cost for every
-      overlay window type. Applies to `dotnet publish`; the MSIX `dotnet build` path in CI is
-      framework-dependent and unaffected.
+      overlay window type. It applies to `dotnet publish` and to the MSIX packaging path (the
+      packaging targets run the publish pipeline), so Release MSIX payloads ship R2R images.
     -->
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == '' and '$(Configuration)' == 'Release'">True</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">False</PublishReadyToRun>
+    <!--
+      Trimming is opt-in only. The release workflow passes -p:PublishTrimmed=false explicitly:
+      WinUI 3 + H.NotifyIcon + NAudio + System.Drawing rely on reflection that trimming breaks.
+    -->
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug' and ('$(SelfContained)' == 'true' or '$(PublishSelfContained)' == 'true')">True</PublishTrimmed>
     <PublishTrimmed Condition="'$(PublishTrimmed)' == ''">False</PublishTrimmed>
   </PropertyGroup>
 </Project>

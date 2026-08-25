@@ -1,7 +1,8 @@
 name: Windows Launch Smoke (winget harness repro)
 
 # Reproduces the winget-pkgs "Installation Validation" step on real x64 and ARM64 runners:
-# install a framework-dependent MSIX together with its declared dependencies, launch
+# install an MSIX (the runtimes are installed too so older framework-dependent releases still
+# work; current releases are self-contained and ignore them), launch
 # TinyClips.App.exe straight from C:\Program Files\WindowsApps (as the harness does), and report
 # whether the process survives. On a crash the job collects the app's crash.log plus the
 # ".NET Runtime" / "Application Error" event-log records, which carry the managed stack that the
@@ -104,8 +105,9 @@ jobs:
             -c Release `
             -p:Platform=$platform `
             -p:RuntimeIdentifier=win-$env:ARCH `
-            -p:SelfContained=false `
-            -p:WindowsAppSDKSelfContained=false `
+            -p:SelfContained=true `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:PublishTrimmed=false `
             -p:EnableMsixTooling=true `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageDir=$packageDirFull `
