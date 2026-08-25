@@ -128,10 +128,10 @@ public sealed class SoftKneeLimiterSampleProviderTests
 
         public WaveFormat WaveFormat { get; } = WaveFormat.CreateIeeeFloatWaveFormat(48000, 2);
 
-        public int Read(float[] buffer, int offset, int count)
+        public int Read(Span<float> buffer)
         {
-            var available = Math.Min(count, _samples.Length - _position);
-            Array.Copy(_samples, _position, buffer, offset, available);
+            var available = Math.Min(buffer.Length, _samples.Length - _position);
+            _samples.AsSpan(_position, available).CopyTo(buffer);
             _position += available;
             return available;
         }

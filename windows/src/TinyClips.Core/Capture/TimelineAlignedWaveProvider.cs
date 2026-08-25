@@ -51,11 +51,10 @@ internal sealed class TimelineAlignedWaveProvider : IWaveProvider
     {
         WaveFormat = waveFormat;
         _sourceName = sourceName ?? "audio";
-        _buffer = new BufferedWaveProvider(waveFormat)
+        _buffer = new BufferedWaveProvider(waveFormat, TimeSpan.FromSeconds(5))
         {
             ReadFully = true,
             DiscardOnBufferOverflow = true,
-            BufferDuration = TimeSpan.FromSeconds(5),
         };
     }
 
@@ -280,10 +279,13 @@ internal sealed class TimelineAlignedWaveProvider : IWaveProvider
     /// written cursor advances to cover them. The next packet then sees an overlap and is trimmed,
     /// instead of landing late behind silence the muxer has already consumed.
     /// </summary>
-    public int Read(byte[] buffer, int offset, int count)
+    public int Read(byte[] buffer, int offset, int count) =>
+        Read(buffer.AsSpan(offset, count));
+
+    public int Read(Span<byte> buffer)
     {
         var bufferedBefore = _buffer.BufferedBytes;
-        var read = _buffer.Read(buffer, offset, count);
+        var read = _buffer.Read(buffer);
         if (read > bufferedBefore)
         {
             var underrunFrames = (read - bufferedBefore) / WaveFormat.BlockAlign;

@@ -300,7 +300,7 @@ public sealed class AudioCaptureService : IDisposable
 
             var bytesWanted = frameCount * Channels * (BitsPerSample / 8);
             var buffer = new byte[bytesWanted];
-            var read = _output.Read(buffer, 0, bytesWanted);
+            var read = _output.Read(buffer.AsSpan());
             if (read <= 0)
             {
                 return null;
@@ -425,12 +425,15 @@ public sealed class AudioCaptureService : IDisposable
 
         public WaveFormat WaveFormat => _source.WaveFormat;
 
-        public int Read(float[] buffer, int offset, int count)
+        public int Read(float[] buffer, int offset, int count) =>
+            Read(buffer.AsSpan(offset, count));
+
+        public int Read(Span<float> buffer)
         {
-            var read = _source.Read(buffer, offset, count);
+            var read = _source.Read(buffer);
             if (read > 0 && _isMuted())
             {
-                Array.Clear(buffer, offset, read);
+                buffer[..read].Clear();
             }
 
             return read;

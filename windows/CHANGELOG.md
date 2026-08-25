@@ -5,6 +5,19 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- **Back to a framework-dependent MSIX.** 1.7.3's self-contained package did not change winget's
+  arm64 `Validation-Executable-Error`, so it bought nothing for ~100 MB. The package again declares
+  `Microsoft.DotNet.DesktopRuntime.10` and `Microsoft.WindowsAppRuntime.1.8` as winget
+  dependencies and the release workflow guards are restored.
+- **Dependency updates** — Windows App SDK 1.8.260804001 (staying on 1.8), Win2D 1.4.0,
+  H.NotifyIcon.WinUI 2.4.1, CommunityToolkit.Mvvm 8.4.2, Microsoft.Extensions.* 10.0.11,
+  System.Drawing.Common 10.0.11, Vortice 3.8.3, Windows SDK BuildTools 10.0.28000.2526 /
+  WinApp 0.6.1, NAudio 3.0.1 (its `ISampleProvider`/`IWaveProvider.Read` are now `Span<T>`-based;
+  the limiter, mute and timeline providers were updated and `MMDevice.CreateAudioClient()` replaces
+  the obsolete property), plus test tooling (Microsoft.NET.Test.Sdk 18.9, xunit.runner 4.0,
+  coverlet 10).
+
 ## [v1.7.3-windows] - 2026-08-25
 
 ### Changed

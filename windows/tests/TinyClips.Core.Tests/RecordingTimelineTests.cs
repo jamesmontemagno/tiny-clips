@@ -413,7 +413,7 @@ public sealed class RecordingTimelineTests
     private static short[] ReadSamples(IWaveProvider provider, int count)
     {
         var bytes = new byte[count * sizeof(short)];
-        Assert.Equal(bytes.Length, provider.Read(bytes, 0, bytes.Length));
+        Assert.Equal(bytes.Length, provider.Read(bytes.AsSpan()));
         var samples = new short[count];
         Buffer.BlockCopy(bytes, 0, samples, 0, bytes.Length);
         return samples;
