@@ -180,16 +180,41 @@ jobs:
           # Hosted runners have an interactive session but no Explorer, so Shell_NotifyIcon has no
           # taskbar to talk to. The winget validation VM does have a shell (it screenshots the app),
           # so start Explorer here to exercise the post-tray-icon startup path as well.
-          if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) {
-            Start-Process explorer.exe
-            Start-Sleep -Seconds 15
-          }
-          Get-Process explorer -ErrorAction SilentlyContinue | Select-Object Id, SessionId, StartTime
+          "Processes before: " + ((Get-Process | Where-Object { $_.Name -match 'oobe|CloudExperience|explorer|WWAHost|ShellHost|StartMenu|SearchHost|sihost|ShellExperienceHost' } | ForEach-Object { "$($_.Name)($($_.Id))" }) -join ', ')
+          # The image boots into OOBE ("Choose privacy settings"), which keeps the shell from
+          # servicing Shell_NotifyIcon. Stop it and (re)start Explorer.
+          Get-Process | Where-Object { $_.Name -match 'msoobe|CloudExperienceHost|WWAHost' } | ForEach-Object { "Stopping $($_.Name)"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+          Get-Process explorer -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 3
+          Start-Process explorer.exe
+          Start-Sleep -Seconds 20
+          "Processes after: " + ((Get-Process | Where-Object { $_.Name -match 'oobe|CloudExperience|explorer|WWAHost|ShellHost|StartMenu|SearchHost|sihost|ShellExperienceHost' } | ForEach-Object { "$($_.Name)($($_.Id))" }) -join ', ')
           Add-Type -AssemblyName System.Windows.Forms
-          $tray = [System.Windows.Forms.Screen]::PrimaryScreen
-          "Primary screen: $($tray.Bounds.Width)x$($tray.Bounds.Height), work area $($tray.WorkingArea.Width)x$($tray.WorkingArea.Height)"
-          $shellTray = (Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr FindWindow(string c, string w);' -Name U -Namespace W -PassThru)::FindWindow('Shell_TrayWnd', $null)
-          "Shell_TrayWnd hwnd: $shellTray"
+          $scr = [System.Windows.Forms.Screen]::PrimaryScreen
+          "Primary screen: $($scr.Bounds.Width)x$($scr.Bounds.Height), work area $($scr.WorkingArea.Width)x$($scr.WorkingArea.Height)"
+          $u = Add-Type -MemberDefinition @'
+          [DllImport("user32.dll")] public static extern IntPtr FindWindow(string c, string w);
+          [DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr a, string c, string w);
+          [DllImport("user32.dll")] public static extern bool IsHungAppWindow(IntPtr h);
+          [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] public struct NOTIFYICONDATA { public int cbSize; public IntPtr hWnd; public int uID; public int uFlags; public int uCallbackMessage; public IntPtr hIcon; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string szTip; public int dwState; public int dwStateMask; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string szInfo; public int uTimeoutOrVersion; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string szInfoTitle; public int dwInfoFlags; public Guid guidItem; public IntPtr hBalloonIcon; }
+          [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool Shell_NotifyIcon(int msg, ref NOTIFYICONDATA d);
+          [DllImport("user32.dll")] public static extern IntPtr LoadIcon(IntPtr h, IntPtr name);
+          [DllImport("user32.dll")] public static extern IntPtr GetDesktopWindow();
+          '@ -Name U -Namespace W -PassThru
+          $tray = $u::FindWindow('Shell_TrayWnd', $null)
+          "Shell_TrayWnd hwnd: $tray  hung: $(if ($tray -ne [IntPtr]::Zero) { $u::IsHungAppWindow($tray) } else { 'n/a' })"
+          "TrayNotifyWnd: $($u::FindWindowEx($tray, [IntPtr]::Zero, 'TrayNotifyWnd', $null))"
+          # Probe Shell_NotifyIcon(NIM_ADD) the way H.NotifyIcon does, using a throwaway window.
+          $f = New-Object System.Windows.Forms.Form; $f.Show(); $f.Hide()
+          $d = New-Object W.U+NOTIFYICONDATA
+          $d.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($d); $d.hWnd = $f.Handle; $d.uID = 1
+          $d.uFlags = 0x1 -bor 0x2 -bor 0x4; $d.uCallbackMessage = 0x401; $d.szTip = 'probe'
+          $d.hIcon = $u::LoadIcon([IntPtr]::Zero, [IntPtr]32512)
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $ok = $u::Shell_NotifyIcon(0, [ref]$d); $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+          "Shell_NotifyIcon(NIM_ADD) probe: $ok (Win32 error $err) in $($sw.ElapsedMilliseconds) ms"
+          if ($ok) { [void]$u::Shell_NotifyIcon(2, [ref]$d) }
+          $f.Close()
 
       - name: Launch TinyClips.App.exe like the winget harness
         id: launch
@@ -207,6 +232,15 @@ jobs:
             if ($proc.HasExited) { break }
             if (-not $shot -and ((Get-Date) - $start).TotalSeconds -ge 15) {
               $shot = $true
+              # Bring the app's first window (first-run onboarding) to the foreground, as a user
+              # or the harness would, so Window.Activated handlers run.
+              $p = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+              if ($p -and $p.MainWindowHandle -ne 0) {
+                "Activating main window $($p.MainWindowHandle) '$($p.MainWindowTitle)'"
+                $act = Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);' -Name A -Namespace W -PassThru
+                [void]$act::ShowWindow($p.MainWindowHandle, 5); [void]$act::SetForegroundWindow($p.MainWindowHandle)
+                Start-Sleep -Seconds 3
+              } else { "No main window handle yet" }
               New-Item -ItemType Directory -Force diag | Out-Null
               Add-Type -AssemblyName System.Windows.Forms, System.Drawing
               $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
