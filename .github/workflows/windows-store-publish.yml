@@ -196,4 +196,6 @@ jobs:
             throw "The downloaded Store package is missing."
           }
 
-          msstore publish "." --inputFile $upload.FullName --appId $env:STORE_PRODUCT_ID
+          # msstore publish takes the directory holding the package, not the file itself.
+          msstore publish "." --inputDirectory $upload.Directory.FullName --appId $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { throw "msstore publish failed." }
