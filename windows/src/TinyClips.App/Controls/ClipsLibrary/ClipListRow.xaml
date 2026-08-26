@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="TinyClips.App.Controls.ClipsLibrary.ClipListRow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:TinyClips.App.Controls.ClipsLibrary"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    AutomationProperties.Name="{x:Bind Item.AutomationName, Mode=OneWay}"
+    mc:Ignorable="d">
+
+    <Grid
+        Height="{x:Bind Item.Owner.ListRowHeight, Mode=OneWay}"
+        Padding="4,0,8,0"
+        ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="2*" MinWidth="160" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!--  Thumbnail  -->
+        <Grid
+            Grid.Column="0"
+            Width="{x:Bind Item.Owner.ListThumbnailWidth, Mode=OneWay}"
+            Margin="0,6"
+            Background="{ThemeResource ControlFillColorDefaultBrush}"
+            CornerRadius="{ThemeResource ControlCornerRadius}">
+            <Image Source="{x:Bind Item.ThumbnailLazy, Mode=OneWay}" Stretch="UniformToFill" />
+            <FontIcon
+                FontSize="16"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Glyph="{x:Bind Item.TypeGlyph, Mode=OneWay}"
+                Visibility="{x:Bind local:ClipGridCard.Not(Item.HasThumbnail), Mode=OneWay}" />
+        </Grid>
+
+        <!--  Name + meta  -->
+        <StackPanel
+            Grid.Column="1"
+            VerticalAlignment="Center"
+            Spacing="1">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="{x:Bind Item.DisplayName, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    ToolTipService.ToolTip="{x:Bind Item.FileName, Mode=OneWay}" />
+                <FontIcon
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                    Glyph="&#xE735;"
+                    Visibility="{x:Bind Item.IsFavorite, Mode=OneWay}" />
+            </StackPanel>
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind Item.MetaLine, Mode=OneWay}"
+                TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <!--  Tags / notes / upload  -->
+        <StackPanel
+            Grid.Column="2"
+            VerticalAlignment="Center"
+            Spacing="1"
+            Visibility="{x:Bind local:ClipGridCard.Not(Item.Owner.CompactListDensity), Mode=OneWay}">
+            <TextBlock
+                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind Item.TagsDisplay, Mode=OneWay}"
+                TextTrimming="CharacterEllipsis"
+                Visibility="{x:Bind Item.HasTags, Mode=OneWay}" />
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind Item.NotesPreview, Mode=OneWay}"
+                TextTrimming="CharacterEllipsis"
+                Visibility="{x:Bind local:ClipGridCard.And(Item.HasNotes, Item.Owner.ShowNotesPreview), Mode=OneWay}" />
+            <StackPanel
+                Orientation="Horizontal"
+                Spacing="6"
+                Visibility="{x:Bind local:ClipGridCard.Or(Item.IsUploading, Item.HasUploadedUrl), Mode=OneWay}">
+                <ProgressRing
+                    Width="12"
+                    Height="12"
+                    IsActive="{x:Bind Item.IsUploading, Mode=OneWay}"
+                    Visibility="{x:Bind Item.IsUploading, Mode=OneWay}" />
+                <FontIcon
+                    FontSize="11"
+                    Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                    Glyph="&#xE898;"
+                    Visibility="{x:Bind local:ClipGridCard.And(Item.HasUploadedUrl, Item.IsUploadIdle), Mode=OneWay}" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind local:ClipGridCard.UploadText(Item.IsUploading, Item.HasUploadedUrl), Mode=OneWay}" />
+            </StackPanel>
+        </StackPanel>
+
+        <!--  Quick actions  -->
+        <StackPanel
+            Grid.Column="3"
+            VerticalAlignment="Center"
+            Orientation="Horizontal"
+            Spacing="2">
+            <Button
+                Padding="7"
+                AutomationProperties.AutomationId="{x:Bind local:ClipListRow.Id(Item, 'Favorite'), Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind local:ClipGridCard.FavoriteLabel(Item.IsFavorite), Mode=OneWay}"
+                Background="Transparent"
+                BorderThickness="0"
+                Command="{x:Bind Item.Owner.ToggleFavoriteCommand, Mode=OneWay}"
+                CommandParameter="{x:Bind Item, Mode=OneWay}"
+                ToolTipService.ToolTip="{x:Bind local:ClipGridCard.FavoriteLabel(Item.IsFavorite), Mode=OneWay}"
+                Visibility="{x:Bind Item.Owner.ShowQuickActions, Mode=OneWay}">
+                <FontIcon FontSize="14" Glyph="{x:Bind local:ClipGridCard.FavoriteGlyph(Item.IsFavorite), Mode=OneWay}" />
+            </Button>
+            <Button
+                Padding="7"
+                AutomationProperties.AutomationId="{x:Bind local:ClipListRow.Id(Item, 'Open'), Mode=OneWay}"
+                AutomationProperties.Name="Open"
+                Background="Transparent"
+                BorderThickness="0"
+                Command="{x:Bind Item.Owner.OpenCommand, Mode=OneWay}"
+                CommandParameter="{x:Bind Item, Mode=OneWay}"
+                ToolTipService.ToolTip="Open in editor"
+                Visibility="{x:Bind Item.Owner.ShowQuickActions, Mode=OneWay}">
+                <FontIcon FontSize="14" Glyph="&#xE8A7;" />
+            </Button>
+            <Button
+                Padding="7"
+                AutomationProperties.AutomationId="{x:Bind local:ClipListRow.Id(Item, 'Copy'), Mode=OneWay}"
+                AutomationProperties.Name="Copy to clipboard"
+                Background="Transparent"
+                BorderThickness="0"
+                Command="{x:Bind Item.Owner.CopyCommand, Mode=OneWay}"
+                CommandParameter="{x:Bind Item, Mode=OneWay}"
+                ToolTipService.ToolTip="Copy to clipboard"
+                Visibility="{x:Bind Item.Owner.ShowQuickActions, Mode=OneWay}">
+                <FontIcon FontSize="14" Glyph="&#xE8C8;" />
+            </Button>
+            <Button
+                x:Name="MoreButton"
+                Padding="7"
+                AutomationProperties.AutomationId="{x:Bind local:ClipListRow.Id(Item, 'More'), Mode=OneWay}"
+                AutomationProperties.Name="More clip actions"
+                Background="Transparent"
+                BorderThickness="0"
+                Click="OnMoreClicked"
+                ToolTipService.ToolTip="More actions">
+                <FontIcon FontSize="14" Glyph="&#xE712;" />
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>

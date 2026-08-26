@@ -17,5 +17,6 @@ public enum SettingsSectionKind
     MouseClicks,
     Teleprompter,
     Hotkeys,
+    ClipsLibrary,
     About,
 }
