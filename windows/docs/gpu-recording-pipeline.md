@@ -6,10 +6,13 @@ pipelines, and the **benchmark harness** used to compare them. It complements
 [`audio-video-sync.md`](audio-video-sync.md), which covers timeline/sync; nothing here changes the
 timeline model — both pipelines stamp frames with the same `RecordingTimeline`.
 
-- Settings (all under **Settings → Video → Recording & output**, all default to the legacy behaviour while experimental):
-  - **GPU recording pipeline** (`UseGpuRecordingPipeline`, default off) — frames stay in video memory.
-  - **Video encoder** (`VideoEncoderBackend`: *Standard* = `MediaTranscoder`, *Low latency* = `IMFSinkWriter`; default Standard).
+- Settings (all under **Settings → Video → Recording & output**):
+  - **GPU recording pipeline** (`UseGpuRecordingPipeline`, **default on**) — frames stay in video memory.
+  - **Video encoder** (`VideoEncoderBackend`: *Standard* = `MediaTranscoder`, *Low latency* = `IMFSinkWriter`; **default Low latency**).
   - **Video codec** (`VideoCodec`: H.264 default, or HEVC).
+  Both new defaults fall back to the previous behaviour automatically if they cannot start, and the
+  one-time **What's new** window shown after updating points users at these settings if recordings
+  misbehave on their hardware.
 - Code: `GpuCaptureSession`, `GpuFrame` / `GpuFrameTexturePool`, `GpuOverlayCompositor`, `FramePacer`,
   `MfSinkWriterEncoder`, `RecordingPerformanceMonitor` in `windows/src/TinyClips.Core/Capture/`;
   pipeline/backend selection in `VideoRecordingService.PrepareCoreAsync`.
@@ -211,7 +214,8 @@ Takeaways:
 - **Driver coverage.** Validated on AMD VCN only. NVIDIA (NVENC) and Intel (QSV) MFTs should accept
   the same `IDirect3DSurface` samples (it is the documented pattern), but hold times, pool high-water
   marks and `VIDEO_SUPPORT` behaviour need checking; WARP falls back to software encoding and the
-  `pipeline=`/`encoder=` report columns make that visible. Until then the setting ships **off**.
+  `pipeline=`/`encoder=` report columns make that visible. (Phase 1 shipped the setting off; it was
+  turned on by default in phase 2 alongside the What's new window — see §8.5.)
 - **Window capture.** Window targets resize mid-recording; the GPU session recreates the "latest"
   texture on size change but the pooled encoder textures are fixed to the initial size (as in the CPU
   path, the encoder profile is fixed too). Behaviour is unchanged from the CPU path (crop/clamp).
@@ -320,7 +324,10 @@ Takeaways:
 
 ### 8.5 Remaining follow-ups
 
-- Validate on NVIDIA (NVENC) and Intel (QSV), then make **GPU + Low latency** the default.
+- GPU + Low latency are now the defaults (validated on AMD VCN; NVIDIA/Intel use the same documented
+  MF pattern). Both fall back automatically, the `encoder=`/`pipeline=` report columns show what ran,
+  and the What's new window tells users where the switch is. Watch the first release's bug reports for
+  `falling back to` lines in `webcam-diagnostics.log`.
 - The CodecAPI keys are applied best-effort; log which ones the encoder accepted (`ICodecAPI::IsSupported`).
 - Lossless keyframe-aligned trim through the sink writer (source reader → sink writer pass-through)
   to replace the `MediaComposition` re-encode in the trimmer.

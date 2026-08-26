@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
+using TinyClips.App.Settings;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
@@ -2934,7 +2935,9 @@ public partial class App : Application
         }
     }
 
-    private void OpenSettingsWindow()
+    private void OpenSettingsWindow() => OpenSettingsWindow(null);
+
+    private void OpenSettingsWindow(SettingsSectionKind? section)
     {
         if (_settingsWindow is null)
         {
@@ -2943,8 +2946,16 @@ public partial class App : Application
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
 
+        if (section is { } kind)
+        {
+            _settingsWindow.NavigateTo(kind);
+        }
+
         ActivateWindowToForeground(_settingsWindow);
     }
+
+    /// <summary>Opens Settings on a specific section; used by the "What's new" window.</summary>
+    internal void OpenSettings(SettingsSectionKind section) => OpenSettingsWindow(section);
 
     private void OpenGuideWindow()
     {
@@ -3056,12 +3067,30 @@ public partial class App : Application
         var settings = Services.GetRequiredService<ICaptureSettings>();
         if (settings.HasCompletedOnboarding)
         {
+            ShowWhatsNewIfNeeded(settings);
             return;
         }
 
+        // A brand-new install gets the tour, not the update notes; stamp the version so the
+        // next launch doesn't show "what's new" for features they have always had.
+        WhatsNewWindow.MarkSeenForCurrentVersion(settings);
         _onboardingWindow = new OnboardingWindow();
         _onboardingWindow.Closed += (_, _) => _onboardingWindow = null;
         ActivateWindowToForeground(_onboardingWindow);
+    }
+
+    private WhatsNewWindow? _whatsNewWindow;
+
+    private void ShowWhatsNewIfNeeded(ICaptureSettings settings)
+    {
+        if (_whatsNewWindow is not null || !WhatsNewWindow.ShouldShow(settings))
+        {
+            return;
+        }
+
+        _whatsNewWindow = new WhatsNewWindow();
+        _whatsNewWindow.Closed += (_, _) => _whatsNewWindow = null;
+        ActivateWindowToForeground(_whatsNewWindow);
     }
 
     private async Task ExitApplicationAsync()
@@ -3111,6 +3140,7 @@ public partial class App : Application
         _guideWindow?.Close();
         _clipsManagerWindow?.Close();
         _onboardingWindow?.Close();
+        _whatsNewWindow?.Close();
         _editorWindow?.Close();
         _trimmerWindow?.Close();
         CapturePickerWindow.ReleasePooled();

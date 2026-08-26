@@ -37,6 +37,12 @@ public interface ICaptureSettings
 
     /// <summary>H.264 (default, universally playable) or HEVC (smaller files, needs an HEVC decoder to play).</summary>
     VideoCodec VideoCodec { get; set; }
+
+    /// <summary>
+    /// Marker for the last "What's new" the user dismissed: <c>rev{N};{version}</c>, where N is the
+    /// window's content revision. Empty = never shown.
+    /// </summary>
+    string LastSeenWhatsNewVersion { get; set; }
     bool KeepDisplayAwakeWhileRecording { get; set; }
     bool ShowMouseClickVisualsInVideo { get; set; }
     bool ShowMouseClickVisualsInGif { get; set; }

@@ -171,15 +171,15 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public bool UseGpuRecordingPipeline
     {
-        get => _settings.Get("useGpuRecordingPipeline", false);
+        get => _settings.Get("useGpuRecordingPipeline", true);
         set => _settings.Set("useGpuRecordingPipeline", value);
     }
 
     public VideoEncoderBackend VideoEncoderBackend
     {
-        get => string.Equals(_settings.Get("videoEncoderBackend", "transcoder"), "sinkWriter", StringComparison.OrdinalIgnoreCase)
-            ? VideoEncoderBackend.SinkWriter
-            : VideoEncoderBackend.Transcoder;
+        get => string.Equals(_settings.Get("videoEncoderBackend", "sinkWriter"), "transcoder", StringComparison.OrdinalIgnoreCase)
+            ? VideoEncoderBackend.Transcoder
+            : VideoEncoderBackend.SinkWriter;
         set => _settings.Set("videoEncoderBackend", value == VideoEncoderBackend.SinkWriter ? "sinkWriter" : "transcoder");
     }
 
@@ -189,6 +189,13 @@ public sealed class CaptureSettings : ICaptureSettings
             ? VideoCodec.Hevc
             : VideoCodec.H264;
         set => _settings.Set("videoCodec", value == VideoCodec.Hevc ? "hevc" : "h264");
+    }
+
+    /// <summary>Version string (e.g. "1.8.0.0") of the last "What's new" the user has seen; empty if never.</summary>
+    public string LastSeenWhatsNewVersion
+    {
+        get => _settings.Get("lastSeenWhatsNewVersion", string.Empty);
+        set => _settings.Set("lastSeenWhatsNewVersion", value ?? string.Empty);
     }
 
     public bool KeepDisplayAwakeWhileRecording
@@ -771,8 +778,8 @@ public sealed class CaptureSettings : ICaptureSettings
         GifFrameRate = 10.0;
         GifMaxWidth = 640;
         VideoFrameRate = 30;
-        UseGpuRecordingPipeline = false;
-        VideoEncoderBackend = VideoEncoderBackend.Transcoder;
+        UseGpuRecordingPipeline = true;
+        VideoEncoderBackend = VideoEncoderBackend.SinkWriter;
         VideoCodec = VideoCodec.H264;
         KeepDisplayAwakeWhileRecording = true;
         ShowMouseClickVisualsInVideo = false;

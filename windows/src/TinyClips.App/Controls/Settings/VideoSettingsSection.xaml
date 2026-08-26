@@ -239,7 +239,7 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
-                    Description="Keep frames on the graphics card from capture through encoding. Lowers CPU use and dropped frames at high resolutions; falls back to the standard pipeline automatically if unavailable. Experimental."
+                    Description="Keep frames on the graphics card from capture through encoding. Lower CPU use and no dropped frames at high resolutions. Turn off to use the previous pipeline if recordings misbehave on your PC."
                     Header="GPU recording pipeline"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE950;}">
                     <ToggleSwitch
@@ -249,7 +249,7 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
-                    Description="Low latency configures the hardware encoder for real-time capture (no look-ahead, no B-frames) so high frame rates don't drop frames. Falls back to Standard automatically if unavailable. Experimental."
+                    Description="Low latency tunes the hardware encoder for real-time capture (no look-ahead, no B-frames) so high frame rates don't drop frames. Choose Standard to use the previous encoder."
                     Header="Video encoder"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE9D9;}">
                     <ComboBox

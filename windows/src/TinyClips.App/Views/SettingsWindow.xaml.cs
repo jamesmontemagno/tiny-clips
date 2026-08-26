@@ -154,6 +154,20 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>Selects a settings section, e.g. when a "What's new" link deep-links into Video.</summary>
+    public void NavigateTo(SettingsSectionKind kind)
+    {
+        var tag = kind.ToString();
+        foreach (var item in SettingsNavigation.MenuItems.OfType<NavigationViewItem>())
+        {
+            if (item.Tag is string itemTag && itemTag == tag)
+            {
+                SettingsNavigation.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
     private UserControl GetOrCreateSection(SettingsSectionKind kind)
     {
         if (_sectionCache.TryGetValue(kind, out var existing))
