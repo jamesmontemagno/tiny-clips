@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
-- Fixed macOS "Window" screenshot mode not being able to highlight or capture windows on secondary displays. The picker overlay for each non-primary display was positioned with a display-relative offset applied twice, so it never covered that display and clicks went to the app underneath. The overlay now covers every display, and the AppKit↔ScreenCaptureKit coordinate conversion is anchored to the display at the global origin.
+- Fixed macOS "Window" screenshot mode not highlighting or capturing windows on secondary displays. The picker overlay on each non-primary display was offset twice, so it never covered that display and clicks fell through to the app underneath.
 
 ## v1.7.1.0-mac - 2026-08-24
 
