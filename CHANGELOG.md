@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- macOS screenshot editor now supports the standard ⌘W shortcut (File > Close) to close the Edit Screenshot window, with the same unsaved-changes confirmation you get when pressing Escape.
+
 ## v1.7.1.0-mac - 2026-08-24
 
 ### Added

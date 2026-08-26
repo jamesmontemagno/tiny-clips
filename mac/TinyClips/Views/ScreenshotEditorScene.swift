@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ScreenshotEditorCommandActions {
+    let close: () -> Void
     let save: () -> Void
     let saveAs: () -> Void
     let revealInFinder: () -> Void
@@ -37,6 +38,14 @@ private struct ScreenshotEditorMenuCommands: Commands {
     @FocusedValue(\.screenshotEditorCommandActions) private var editor
 
     var body: some Commands {
+        CommandGroup(before: .saveItem) {
+            Button("Close") {
+                editor?.close()
+            }
+            .disabled(editor == nil)
+            .keyboardShortcut("w", modifiers: .command)
+        }
+
         CommandGroup(replacing: .saveItem) {
             Button("Save") {
                 editor?.save()

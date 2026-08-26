@@ -605,6 +605,7 @@ struct ScreenshotEditorView: View {
         .focusedSceneValue(
             \.screenshotEditorCommandActions,
             ScreenshotEditorCommandActions(
+                close: requestClose,
                 save: saveCurrentImage,
                 saveAs: beginSaveAs,
                 revealInFinder: openSaveFolder,
