@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - macOS screenshot editor now supports the standard ⌘W shortcut (File > Close) to close the Edit Screenshot window, with the same unsaved-changes confirmation you get when pressing Escape. The restored Close menu item also works for other app windows such as the Clips Manager.
+### Fixed
+- Fixed macOS "Window" screenshot mode not highlighting or capturing windows on secondary displays. The picker overlay on each non-primary display was offset twice, so it never covered that display and clicks fell through to the app underneath.
 
 ## v1.7.1.0-mac - 2026-08-24
 

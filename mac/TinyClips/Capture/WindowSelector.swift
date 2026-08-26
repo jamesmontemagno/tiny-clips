@@ -63,13 +63,18 @@ private class WindowSelectorController {
     init(windows: [SCWindow], completion: @escaping (SCWindow?) -> Void) {
         self.scWindows = windows
         self.completion = completion
-        self.primaryScreenHeight = NSScreen.screens.first?.frame.height ?? 0
+        self.primaryScreenHeight = CaptureCoordinateMath.primaryDisplayHeight(
+            forDisplayFrames: NSScreen.screens.map(\.frame)
+        )
     }
 
     func show() {
         for screen in NSScreen.screens {
+            // The content rect is relative to the lower-left corner of `screen`, so passing the
+            // global screen frame double-offsets overlays on secondary displays and leaves those
+            // displays uncovered, making their windows impossible to hover or click.
             let window = WindowOverlayWindow(
-                contentRect: screen.frame,
+                contentRect: NSRect(origin: .zero, size: screen.frame.size),
                 styleMask: .borderless,
                 backing: .buffered,
                 defer: false,

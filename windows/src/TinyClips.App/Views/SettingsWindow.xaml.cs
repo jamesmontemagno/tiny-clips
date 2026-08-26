@@ -6,8 +6,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.Settings;
 using TinyClips.App.Settings.Sections;
+using TinyClips.App.ViewModels.ClipsLibrary;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Services.ClipsLibrary;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -145,6 +147,18 @@ public sealed partial class SettingsWindow : Window
         };
     }
 
+    /// <summary>Selects the navigation item for <paramref name="kind"/> (e.g. from the Library's gear button).</summary>
+    public void NavigateTo(SettingsSectionKind kind)
+    {
+        var item = SettingsNavigation.MenuItems.Concat(SettingsNavigation.FooterMenuItems)
+            .OfType<NavigationViewItem>()
+            .FirstOrDefault(candidate => candidate.Tag is string tag && tag == kind.ToString());
+        if (item is not null)
+        {
+            SettingsNavigation.SelectedItem = item;
+        }
+    }
+
     private void OnSettingsNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is NavigationViewItem { Tag: string sectionTag } &&
@@ -174,6 +188,8 @@ public sealed partial class SettingsWindow : Window
             SettingsSectionKind.MouseClicks => new MouseClicksSettingsSection(ViewModel),
             SettingsSectionKind.Teleprompter => CreateTeleprompterSection(),
             SettingsSectionKind.Hotkeys => new HotkeysSettingsSection(ViewModel),
+            SettingsSectionKind.ClipsLibrary => new ClipsLibrarySettingsSection(
+                new ClipsLibrarySettingsViewModel(App.Services.GetRequiredService<IClipsLibrarySettings>(), ViewModel.NotifyClipsLibrarySettingsChanged)),
             SettingsSectionKind.About => new AboutSettingsSection(ViewModel),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, message: null),
         };

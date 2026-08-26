@@ -7,12 +7,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Windows release tag (for example, v1.6.1-windows)'
-        required: true
+        description: 'Windows release tag (for example, v1.6.1-windows). Not needed when running diagnostics only.'
+        required: false
         type: string
       publish:
         description: 'Publish the package after the protected-environment approval'
         required: true
+        default: false
+        type: boolean
+      diagnose_only:
+        description: 'Only check the Partner Center credentials. Skips packaging and publishing.'
+        required: false
         default: false
         type: boolean
 
@@ -27,8 +32,27 @@ env:
   APP_PROJECT: windows/src/TinyClips.App/TinyClips.App.csproj
 
 jobs:
+  diagnose:
+    name: Diagnose Partner Center credentials
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnose_only
+    runs-on: ubuntu-latest
+    environment: microsoft-store
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Check Partner Center credentials
+        uses: ./.github/actions/diagnose-partner-center
+        with:
+          tenant-id: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          seller-id: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          client-id: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          client-secret: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+
   package:
     name: Package Microsoft Store upload
+    if: github.event_name == 'push' || !inputs.diagnose_only
     runs-on: windows-latest
 
     steps:
@@ -109,6 +133,9 @@ jobs:
     environment: microsoft-store
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
       - name: Download Store package
         uses: actions/download-artifact@v8
         with:
@@ -139,6 +166,14 @@ jobs:
             throw "Configure the following before enabling Store publication: $($missing -join ', ')."
           }
 
+      - name: Diagnose Partner Center credentials
+        uses: ./.github/actions/diagnose-partner-center
+        with:
+          tenant-id: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          seller-id: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          client-id: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          client-secret: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+
       - name: Setup Microsoft Store Developer CLI
         uses: microsoft/microsoft-store-apppublisher@v1.4
 
@@ -161,4 +196,9 @@ jobs:
             throw "The downloaded Store package is missing."
           }
 
-          msstore publish "." --inputFile $upload.FullName --appId $env:STORE_PRODUCT_ID
+          # Pass the package file itself. Pointing msstore at a directory makes it look for a
+          # project to infer a publisher from, which does not exist in this workflow.
+          # --uploadTimeout must be set explicitly: when omitted the CLI has defaulted it to 0,
+          # which cancels the blob upload immediately. See microsoft/msstore-cli#162.
+          msstore publish $upload.FullName --appId $env:STORE_PRODUCT_ID --uploadTimeout 900
+          if ($LASTEXITCODE -ne 0) { throw "msstore publish failed." }
