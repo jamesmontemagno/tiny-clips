@@ -73,9 +73,10 @@ if ($Source -eq 'Release') {
     $packageDir = Join-Path $WorkDir 'build'
     Remove-Item $packageDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $packageDir | Out-Null
-    $manifestBackup = Get-Content $manifestPath -Raw
+    $manifestBackup = [IO.File]::ReadAllBytes($manifestPath)
     try {
-        ($manifestBackup -creplace '(<Identity[\s\S]*?Version=")[^"]+(")', "`${1}$Version.0`${2}") | Set-Content $manifestPath -Encoding UTF8 -NoNewline
+        $text = [Text.Encoding]::UTF8.GetString($manifestBackup)
+        [IO.File]::WriteAllText($manifestPath, ($text -creplace '(<Identity[\s\S]*?Version=")[^"]+(")', "`${1}$Version.0`${2}"), (New-Object Text.UTF8Encoding $true))
         dotnet build $appProject -c Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
             -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -p:PublishTrimmed=false `
             -p:EnableMsixTooling=true -p:GenerateAppxPackageOnBuild=true `
@@ -83,7 +84,7 @@ if ($Source -eq 'Release') {
             -p:AppxPackageSigningEnabled=false -nologo -v minimal
         if ($LASTEXITCODE -ne 0) { throw 'MSIX build failed.' }
     } finally {
-        Set-Content $manifestPath $manifestBackup -NoNewline
+        [IO.File]::WriteAllBytes($manifestPath, $manifestBackup)
     }
     $produced = Get-ChildItem $packageDir -Recurse -Filter *.msix | Where-Object Name -notmatch 'symbols' | Select-Object -First 1
     if (-not $produced) { throw 'No MSIX produced.' }
