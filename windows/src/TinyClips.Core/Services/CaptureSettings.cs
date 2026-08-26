@@ -169,6 +169,12 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("videoFrameRate", value);
     }
 
+    public bool UseGpuRecordingPipeline
+    {
+        get => _settings.Get("useGpuRecordingPipeline", false);
+        set => _settings.Set("useGpuRecordingPipeline", value);
+    }
+
     public bool KeepDisplayAwakeWhileRecording
     {
         get => _settings.Get("keepDisplayAwakeWhileRecording", true);
@@ -749,6 +755,7 @@ public sealed class CaptureSettings : ICaptureSettings
         GifFrameRate = 10.0;
         GifMaxWidth = 640;
         VideoFrameRate = 30;
+        UseGpuRecordingPipeline = false;
         KeepDisplayAwakeWhileRecording = true;
         ShowMouseClickVisualsInVideo = false;
         ShowMouseClickVisualsInGif = false;

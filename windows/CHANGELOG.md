@@ -5,6 +5,27 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Experimental GPU recording pipeline** (Settings → Video → *GPU recording pipeline*, off by
+  default). Frames stay on the graphics card from Windows.Graphics.Capture through Direct2D overlay
+  compositing (click visuals, branding badge, webcam PiP) to the hardware H.264 encoder via
+  `MediaStreamSample.CreateFromDirect3D11Surface`, eliminating the staging readback, per-frame
+  `byte[]` clones, CPU alpha blending and bottom-up flip of the standard path. On a 3440×1440
+  display this recorded 28–30 fps instead of ~11, at 0.4× the CPU and ~0.5 MB/s of allocations
+  instead of ~1.2 GB/s (zero Gen2 GCs instead of 100+ per 10 s). Falls back to the standard
+  pipeline automatically if unavailable. See `windows/docs/gpu-recording-pipeline.md`.
+- **Per-recording performance report** for both pipelines (per-stage avg/p99/max timings, CPU %,
+  allocation rate, GC counts and pause time, frames emitted/encoded/dropped), written to the
+  diagnostics log at stop and exposed as `IVideoRecordingService.LastPerformanceReport`.
+- **`windows/tools/RecordingBenchmark`** — headless harness that records the primary monitor through
+  the production recorder for each CPU/GPU × overlays scenario and prints a comparison table.
+
+### Changed
+- The shared Direct3D 11 device is created with `VIDEO_SUPPORT` (falls back without it) so Media
+  Foundation's hardware encoders can bind recorder textures directly.
+- Webcam overlay placement math moved to the shared `WebcamOverlayLayout`; click-ring geometry and
+  the branding badge bitmap are exposed for reuse so the CPU and GPU compositors render identically.
+
 ## [v1.7.4-windows] - 2026-08-25
 
 ### Changed

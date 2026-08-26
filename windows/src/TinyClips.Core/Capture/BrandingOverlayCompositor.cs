@@ -80,6 +80,21 @@ public sealed class BrandingOverlayCompositor
         }
     }
 
+    /// <summary>
+    /// Returns the cached straight-alpha BGRA badge bitmap for a frame of the given height, so a
+    /// GPU compositor can upload it once instead of re-rasterizing. Returns false when branding
+    /// could not be rasterized.
+    /// </summary>
+    public bool TryGetBadge(int frameHeight, out byte[] bgra, out int width, out int height, out int margin)
+    {
+        EnsureBadge(frameHeight);
+        bgra = _badge ?? [];
+        width = _badgeWidth;
+        height = _badgeHeight;
+        margin = _margin;
+        return _badge is not null && _badgeWidth > 0 && _badgeHeight > 0;
+    }
+
     private void EnsureBadge(int frameHeight)
     {
         if (_badge is not null && _builtForHeight == frameHeight)

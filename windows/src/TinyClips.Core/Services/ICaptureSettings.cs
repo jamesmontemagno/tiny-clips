@@ -21,6 +21,13 @@ public interface ICaptureSettings
     double GifFrameRate { get; set; }
     int GifMaxWidth { get; set; }
     int VideoFrameRate { get; set; }
+
+    /// <summary>
+    /// Keep recorded frames on the GPU (WGC texture → Direct2D overlays → encoder surface) instead of
+    /// reading them back to system memory and compositing on the CPU. Falls back to the CPU pipeline
+    /// automatically if the GPU path cannot start.
+    /// </summary>
+    bool UseGpuRecordingPipeline { get; set; }
     bool KeepDisplayAwakeWhileRecording { get; set; }
     bool ShowMouseClickVisualsInVideo { get; set; }
     bool ShowMouseClickVisualsInGif { get; set; }

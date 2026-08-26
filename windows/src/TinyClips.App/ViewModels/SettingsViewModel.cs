@@ -379,6 +379,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _keepDisplayAwakeWhileRecording;
 
     [ObservableProperty]
+    private bool _useGpuRecordingPipeline;
+
+    [ObservableProperty]
     private bool _recordAudio;
 
     [ObservableProperty]
@@ -792,6 +795,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
             VideoFrameRate = _settings.VideoFrameRate;
             KeepDisplayAwakeWhileRecording = _settings.KeepDisplayAwakeWhileRecording;
+            UseGpuRecordingPipeline = _settings.UseGpuRecordingPipeline;
             RecordAudio = _settings.RecordAudio;
             RecordMicrophone = _settings.RecordMicrophone;
             MicrophoneLimiterEnabled = _settings.MicrophoneLimiterEnabled;
@@ -1176,6 +1180,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnKeepDisplayAwakeWhileRecordingChanged(bool value) =>
         Persist(() => _settings.KeepDisplayAwakeWhileRecording = value);
+
+    partial void OnUseGpuRecordingPipelineChanged(bool value) =>
+        Persist(() => _settings.UseGpuRecordingPipeline = value);
 
     partial void OnRecordAudioChanged(bool value) => Persist(() => _settings.RecordAudio = value);
 

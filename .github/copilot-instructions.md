@@ -15,6 +15,7 @@ Use this file for repo-wide rules and platform selection. Keep behavior platform
 - For deeper platform details, link to docs instead of re-embedding:
   - [docs/retina-display-capture.md](../docs/retina-display-capture.md)
   - [windows/docs/dpi-and-coordinates.md](../windows/docs/dpi-and-coordinates.md)
+  - [windows/docs/gpu-recording-pipeline.md](../windows/docs/gpu-recording-pipeline.md)
   - [docs/app-store-variant-setup.md](../docs/app-store-variant-setup.md)
   - [windows/packaging/README.md](../windows/packaging/README.md)
 

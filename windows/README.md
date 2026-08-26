@@ -61,6 +61,8 @@ windows/
     TinyClips.Core/             UI-free domain (services, models) — capture pipeline lands here
   tests/
     TinyClips.Core.Tests/       xUnit tests
+  tools/
+    RecordingBenchmark/         Headless CPU-vs-GPU recording benchmark (manual; see docs)
   packaging/
     msix/  winget/              Packaging artifacts (later phases)
   spikes/                       Throwaway de-risking prototypes (not in the solution/CI)
@@ -103,6 +105,10 @@ For coordinate/DPI behaviour across mixed-DPI monitors, see
 For how the screen, webcam, microphone, and system audio are kept in sync (shared timeline,
 WASAPI capture, drift/discontinuity correction, audio back-pressure, the *Audio offset* setting, and
 the end-of-recording sync report), see [`docs/audio-video-sync.md`](docs/audio-video-sync.md).
+
+For the experimental **GPU recording pipeline** (zero-copy WGC → Direct2D overlays → hardware
+encoder), the per-recording performance report, and the `RecordingBenchmark` harness with measured
+CPU-vs-GPU numbers, see [`docs/gpu-recording-pipeline.md`](docs/gpu-recording-pipeline.md).
 
 ## CI
 

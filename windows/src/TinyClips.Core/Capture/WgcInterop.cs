@@ -130,30 +130,55 @@ internal static partial class WgcInterop
             FeatureLevel.Level_11_0,
         };
 
-        var result = D3D11.D3D11CreateDevice(
-            null,
-            DriverType.Hardware,
-            DeviceCreationFlags.BgraSupport,
-            featureLevels,
-            out var device);
-
-        if (result.Success)
+        // VideoSupport lets Media Foundation's hardware encoder MFTs bind textures created on this
+        // device directly (the GPU recording path hands encoder samples whole D3D11 surfaces).
+        // Some drivers/WARP reject the flag, so fall back to a plain BGRA device.
+        var flagSets = new[]
         {
-            return device;
+            DeviceCreationFlags.BgraSupport | DeviceCreationFlags.VideoSupport,
+            DeviceCreationFlags.BgraSupport,
+        };
+
+        foreach (var driverType in new[] { DriverType.Hardware, DriverType.Warp })
+        {
+            foreach (var flags in flagSets)
+            {
+                var result = D3D11.D3D11CreateDevice(
+                    null,
+                    driverType,
+                    flags,
+                    featureLevels,
+                    out var device);
+
+                if (result.Success)
+                {
+                    return device;
+                }
+            }
         }
 
-        result = D3D11.D3D11CreateDevice(
-            null,
-            DriverType.Warp,
-            DeviceCreationFlags.BgraSupport,
-            featureLevels,
-            out device);
-
-        return result.Success ? device : null;
+        return null;
     }
 
     [DllImport("d3d11.dll", ExactSpelling = true)]
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(nint dxgiDevice, out nint graphicsDevice);
+
+    [DllImport("d3d11.dll", ExactSpelling = true)]
+    private static extern int CreateDirect3D11SurfaceFromDXGISurface(nint dxgiSurface, out nint graphicsSurface);
+
+    /// <summary>
+    /// Wraps a D3D11 texture as a WinRT <see cref="IDirect3DSurface"/> so it can be handed to
+    /// <c>MediaStreamSample.CreateFromDirect3D11Surface</c> without a CPU round-trip.
+    /// </summary>
+    internal static IDirect3DSurface CreateDirect3DSurface(ID3D11Texture2D texture)
+    {
+        using var dxgiSurface = texture.QueryInterface<IDXGISurface>();
+        CreateDirect3D11SurfaceFromDXGISurface(dxgiSurface.NativePointer, out var pInspectable)
+            .ThrowIfFailed("CreateDirect3D11SurfaceFromDXGISurface");
+        var surface = MarshalInterface<IDirect3DSurface>.FromAbi(pInspectable);
+        Marshal.Release(pInspectable);
+        return surface;
+    }
 
     internal static IDirect3DDevice? CreateDirect3DDevice(ID3D11Device d3dDevice)
     {

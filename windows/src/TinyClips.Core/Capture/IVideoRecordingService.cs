@@ -32,6 +32,12 @@ public interface IVideoRecordingService
     event EventHandler<string>? WebcamCaptureFailed;
 
     /// <summary>
+    /// Per-stage performance report of the most recently completed recording (null before the
+    /// first recording finishes). Used by the benchmark harness and the diagnostics log.
+    /// </summary>
+    RecordingPerformanceReport? LastPerformanceReport { get; }
+
+    /// <summary>
     /// Begins recording. When <paramref name="target"/> is null the primary monitor is
     /// recorded; pass a monitor or window target (and optional monitor-relative region)
     /// to record a specific screen, window, or region. Throws if already recording.

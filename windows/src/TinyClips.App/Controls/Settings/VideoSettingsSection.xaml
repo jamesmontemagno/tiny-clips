@@ -239,6 +239,16 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Description="Keep frames on the graphics card from capture through encoding. Lowers CPU use and dropped frames at high resolutions; falls back to the standard pipeline automatically if unavailable. Experimental."
+                    Header="GPU recording pipeline"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE950;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="UseGpuRecordingPipelineToggle"
+                        AutomationProperties.Name="GPU recording pipeline"
+                        IsOn="{x:Bind ViewModel.UseGpuRecordingPipeline, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
                     Description="Choose Region, Screen, or Window before recording."
                     Header="Show capture picker before recording"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
