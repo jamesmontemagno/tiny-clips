@@ -32,6 +32,18 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture.
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
+- **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
+  **Smart Collections** (All, Recent, This Week, This Month, Large Files, Favorites, Screenshots,
+  Videos, GIFs), your **Collections**, and **Tags**; search across names, tags and notes; a
+  **Sort & Filter** flyout (type, date, five sort orders); grid or list view; a details pane with
+  inline video/GIF preview and an editor for **name, tags, notes, collection**; favorites; multi-select
+  with batch favorite/tag/copy/share/delete; Windows **Share** and drag-out to other apps; rename,
+  archive, Uploadcare upload/link; live updates via a folder watcher; thumbnails cached on disk.
+  Keyboard: `Ctrl+F` search, `Ctrl+A` select all, `Enter` open, `F2` rename, `Delete`, `Ctrl+C`,
+  `Ctrl+Shift+G`/`L` grid/list, `Ctrl+Shift+D` details, `Ctrl+Shift+E` select mode, `Ctrl+R` refresh.
+  Preferences live in **Settings → Clips Library** (defaults, density, quick actions, confirm delete,
+  auto-refresh, archive-old-clips). Metadata is stored in `clip-metadata.json` in the app's local
+  data folder; the files themselves are never modified.
 - **Global hotkeys** — Screenshot `Ctrl+Shift+5`, Video `Ctrl+Shift+6`, GIF `Ctrl+Shift+7`,
   Stop recording `Ctrl+Shift+S`.
 - **Launch at login** — optionally start TinyClips when you sign in to Windows.
@@ -61,6 +73,7 @@ windows/
     TinyClips.Core/             UI-free domain (services, models) — capture pipeline lands here
   tests/
     TinyClips.Core.Tests/       xUnit tests
+    ui/                         winapp ui automation scripts (run against a live app by PID)
   packaging/
     msix/  winget/              Packaging artifacts (later phases)
   spikes/                       Throwaway de-risking prototypes (not in the solution/CI)

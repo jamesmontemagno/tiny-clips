@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using TinyClips.Core.Capture;
+using TinyClips.Core.Services.ClipsLibrary;
 
 namespace TinyClips.Core.Services;
 
@@ -16,7 +17,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IClipAnalyticsService, ClipAnalyticsService>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IRecentCaptureService, RecentCaptureService>();
+        services.AddSingleton<IClipFileOperations, ClipFileOperations>();
         services.AddSingleton<IClipLibraryService, ClipLibraryService>();
+        services.AddSingleton<IClipsLibrarySettings, ClipsLibrarySettings>();
+        services.AddSingleton<IClipArchiveService, ClipArchiveService>();
+        services.AddSingleton<IClipLibraryWatcher>(_ => new ClipLibraryWatcher());
+        services.AddSingleton<IClipMetadataStore>(_ => new JsonClipMetadataStore(
+            JsonClipMetadataStore.DefaultFilePath(ClipsLibraryPaths.LocalDataDirectory())));
         services.AddSingleton<IUploadcareUploadService, UploadcareUploadService>();
         services.AddSingleton<IAppUpdateService, GitHubReleaseUpdateService>();
         services.AddSingleton<IHotKeyService, HotKeyService>();

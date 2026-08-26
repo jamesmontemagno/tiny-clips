@@ -15,9 +15,13 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
+using TinyClips.App.Services.ClipsLibrary;
+using TinyClips.App.Settings;
+using TinyClips.App.Views.ClipsLibrary;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Services.ClipsLibrary;
 using Windows.Storage;
 
 namespace TinyClips.App;
@@ -48,7 +52,7 @@ public partial class App : Application
     private int _trayIconRetryAttempts;
     private SettingsWindow? _settingsWindow;
     private GuideWindow? _guideWindow;
-    private ClipsManagerWindow? _clipsManagerWindow;
+    private ClipsLibraryWindow? _clipsManagerWindow;
     private QuickBugReportWindow? _quickBugReportWindow;
     private OnboardingWindow? _onboardingWindow;
     private ScreenshotEditorWindow? _editorWindow;
@@ -108,6 +112,7 @@ public partial class App : Application
         Services = new ServiceCollection()
             .AddTinyClipsCore()
             .AddSingleton<IUploadcareCredentialStore, WindowsCredentialStore>()
+            .AddSingleton<IThumbnailCache, ThumbnailCacheService>()
             .AddSingleton<IMediaDevicePermissionService, MediaDevicePermissionService>()
             .AddSingleton<IDisplaySleepAssertion, WindowsDisplaySleepAssertion>()
             .BuildServiceProvider();
@@ -2531,6 +2536,7 @@ public partial class App : Application
         {
             var result = await Services.GetRequiredService<IUploadcareUploadService>().UploadAsync(path);
             var settings = Services.GetRequiredService<ICaptureSettings>();
+            RecordUploadLink(path, result.DeliveryUri.AbsoluteUri);
             if (settings.UploadcareCopyUrl)
             {
                 try
@@ -2547,6 +2553,20 @@ public partial class App : Application
         catch (UploadcareUploadException)
         {
             ShowUploadFailureNotification(Path.GetFileName(path));
+        }
+    }
+
+    /// <summary>Remembers an Uploadcare link with the clip so the Library can show/copy it later.</summary>
+    private static void RecordUploadLink(string path, string url)
+    {
+        try
+        {
+            var store = Services.GetRequiredService<IClipMetadataStore>();
+            store.Upsert(store.Get(path) with { UploadedUrl = url });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to record upload link: {ex}");
         }
     }
 
@@ -2934,13 +2954,21 @@ public partial class App : Application
         }
     }
 
-    private void OpenSettingsWindow()
+    private void OpenSettingsWindow() => OpenSettingsWindow(section: null);
+
+    internal void OpenSettingsWindow(SettingsSectionKind? section)
     {
         if (_settingsWindow is null)
         {
             _settingsWindow = new SettingsWindow();
             _settingsWindow.ViewModel.TeleprompterDisplayChanged += () => _teleprompter?.ApplyDisplaySettings();
+            _settingsWindow.ViewModel.ClipsLibrarySettingsChanged += () => _clipsManagerWindow?.ReloadSettings();
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        }
+
+        if (section is { } kind)
+        {
+            _settingsWindow.NavigateTo(kind);
         }
 
         ActivateWindowToForeground(_settingsWindow);
@@ -2961,7 +2989,7 @@ public partial class App : Application
     {
         if (_clipsManagerWindow is null)
         {
-            _clipsManagerWindow = new ClipsManagerWindow();
+            _clipsManagerWindow = new ClipsLibraryWindow();
             _clipsManagerWindow.Closed += (_, _) => _clipsManagerWindow = null;
         }
 
@@ -2970,7 +2998,7 @@ public partial class App : Application
 
     /// <summary>
     /// Opens a clip from the Clips Library in its appropriate editor or trimmer.
-    /// Called by <see cref="ClipsManagerWindow"/> when the user clicks "Open" on a clip.
+    /// Called by <see cref="ClipsLibraryWindow"/> when the user opens a clip.
     /// </summary>
     internal void OpenRecentCaptureFromLibrary(RecentCapture capture)
     {
