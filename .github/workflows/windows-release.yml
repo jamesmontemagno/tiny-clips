@@ -19,6 +19,10 @@ env:
   APP_PROJECT: windows/src/TinyClips.App/TinyClips.App.csproj
   PACKAGE_FAMILY_NAME: Refractored.TinyClips_vmshqmcyy894t
   SIGNTOOL_TIMESTAMP_URL: http://timestamp.acs.microsoft.com
+  # Highest WindowsAppRuntime 1.8 version installable via winget's Microsoft.WindowsAppRuntime.1.8
+  # (manifests/m/Microsoft/WindowsAppRuntime/1/8 in microsoft/winget-pkgs; 1.8.9 = 8000.879.2017.0).
+  # The MSIX's MinVersion must not exceed this or winget installs fail on dependency resolution.
+  WINGET_WINDOWSAPPRUNTIME_MAX_VERSION: 8000.879.2017.0
 
 jobs:
   build-sign-release:
@@ -76,9 +80,9 @@ jobs:
           # in the installer manifest (Microsoft.DotNet.DesktopRuntime.10 and
           # Microsoft.WindowsAppRuntime.1.8). winget installs those dependency packages before
           # the app, and the Windows App SDK runtime is also auto-acquired by the OS on machines
-          # with the Store/App Installer. NOTE: a framework-dependent MSIX cannot be verified in
-          # Windows Sandbox (it has no Store, so framework auto-acquisition fails with
-          # 0x80073cf3) - validate on a real machine or via the winget validation pipeline.
+          # with the Store/App Installer. Validate locally with
+          # windows/packaging/sandbox/Invoke-SandboxValidation.ps1 (installs the runtimes in a fresh
+          # Windows Sandbox first) and on ARM64 via the Windows Launch Smoke workflow.
           $platforms = @(
             @{ Platform = "x64";   Rid = "win-x64";   Asset = "x64" }
             @{ Platform = "ARM64"; Rid = "win-arm64"; Asset = "arm64" }
@@ -125,6 +129,18 @@ jobs:
             if ($appxManifest -notmatch '<PackageDependency[^>]*Name="Microsoft\.WindowsAppRuntime') {
               throw "Framework-dependent MSIX for $($p.Platform) is missing the WindowsAppRuntime framework dependency."
             }
+
+            # The declared winget dependency Microsoft.WindowsAppRuntime.1.8 can only deliver the
+            # runtime versions published in winget-pkgs. If the SDK bump raised the package's
+            # MinVersion past that, every winget install fails with a missing-dependency error.
+            $runtimeDependency = [regex]::Match($appxManifest, '<PackageDependency[^>]*Name="Microsoft\.WindowsAppRuntime\.1\.8"[^>]*MinVersion="([^"]+)"')
+            if (-not $runtimeDependency.Success) { throw "Could not read the WindowsAppRuntime.1.8 MinVersion for $($p.Platform)." }
+            $minVersion = [version]$runtimeDependency.Groups[1].Value
+            $wingetMax = [version]$env:WINGET_WINDOWSAPPRUNTIME_MAX_VERSION
+            if ($minVersion -gt $wingetMax) {
+              throw "MSIX for $($p.Platform) requires WindowsAppRuntime.1.8 >= $minVersion, but winget's Microsoft.WindowsAppRuntime.1.8 only provides up to $wingetMax. Pin Microsoft.WindowsAppSDK to a version whose runtime winget ships (see the csproj comment), or raise WINGET_WINDOWSAPPRUNTIME_MAX_VERSION after winget-pkgs publishes the newer runtime."
+            }
+            "$($p.Platform): WindowsAppRuntime.1.8 MinVersion $minVersion <= winget-available $wingetMax"
 
             if (Get-ChildItem $verifyDir -Recurse -Filter "coreclr.dll" -ErrorAction SilentlyContinue) {
               throw "MSIX for $($p.Platform) bundles the .NET runtime (coreclr.dll) - expected a framework-dependent (SelfContained=false) build."

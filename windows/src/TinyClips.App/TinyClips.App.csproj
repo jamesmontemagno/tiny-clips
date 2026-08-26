@@ -80,7 +80,13 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
+    <!--
+      Pinned: the MSIX's WindowsAppRuntime MinVersion follows this SDK version, and winget's
+      Microsoft.WindowsAppRuntime.1.8 package (our declared dependency) currently tops out at the
+      runtime built from 1.8.260529003 (8000.879.2017.0). Newer 1.8 SDKs raise MinVersion above
+      what winget can install. Bump only after winget-pkgs ships the matching runtime version.
+    -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260529003" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.6.1" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />

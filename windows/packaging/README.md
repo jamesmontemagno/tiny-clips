@@ -62,11 +62,28 @@ before signing.
 > dependency. The .NET Desktop Runtime is **not** an MSIX framework — the OS will not auto-deliver
 > it — so it is installed via the declared `Microsoft.DotNet.DesktopRuntime.10` winget dependency.
 
-> ⚠️ **Do not verify a framework-dependent build in Windows Sandbox.** Sandbox has no Microsoft
-> Store, so MSIX framework auto-acquisition fails and the install dies at ~95% with `0x80073cf3`
-> (`This package has a dependency missing from your system`). That is a Sandbox artifact, not a
-> real failure. Validate on a real machine (with the runtimes absent, then `winget install` and
-> let winget resolve the dependencies) or rely on winget's Installation Validation pipeline.
+> ⚠️ **Keep `Microsoft.WindowsAppSDK` pinned to a version whose runtime winget ships.** The MSIX's
+> `Microsoft.WindowsAppRuntime.1.8` `MinVersion` follows the SDK NuGet version, and winget's
+> `Microsoft.WindowsAppRuntime.1.8` package (`manifests/m/Microsoft/WindowsAppRuntime/1/8` in
+> winget-pkgs) only provides the runtime builds Microsoft has published there — 1.8.9 = `8000.879.2017.0`
+> = SDK `1.8.260529003`. A newer SDK (e.g. `1.8.260804001` → `8000.946.1701.0`) makes every winget
+> install fail on dependency resolution. The release workflow asserts `MinVersion` ≤
+> `WINGET_WINDOWSAPPRUNTIME_MAX_VERSION`; raise both together once winget-pkgs publishes the newer
+> runtime.
+
+#### Verifying locally in Windows Sandbox (recommended before every release)
+
+```pwsh
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.7.4     # working tree
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.7.4   # published tag
+```
+
+This installs both runtimes from their installers in a fresh Sandbox (so framework-dependent
+packages *do* work there — without that step Sandbox fails with `0x80073cf3` because it has no
+Store to auto-acquire frameworks), installs the MSIX, launches it exactly like winget's harness,
+clicks through onboarding and requires the process to stay alive. See
+[`sandbox/README.md`](sandbox/README.md). Sandbox is x64-only; for ARM64 run the
+*Windows Launch Smoke* workflow (`source=release`, `windows-11-arm` runner).
 
 #### Verifying on a real clean machine
 
