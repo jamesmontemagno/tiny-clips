@@ -5,9 +5,11 @@
     against the primary monitor for N seconds per scenario (CPU vs GPU pipeline, with and
     without overlays) and prints the per-stage RecordingPerformanceReport for each, so
     pipeline changes can be compared with numbers instead of feel. Excluded from the app
-    solution's default build; run it manually (see windows/docs/gpu-recording-pipeline.md):
+    solution's default build; run it manually (see windows/docs/gpu-recording-pipeline.md for
+    the full command line, which XML comments cannot contain verbatim because of the
+    double-hyphen option prefixes):
 
-      dotnet run ‑‑project windows/tools/RecordingBenchmark -c Release (then ‑‑seconds 10 after the argument separator)
+      dotnet run (dash)(dash)project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 (dash)(dash) (dash)(dash)seconds 10
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

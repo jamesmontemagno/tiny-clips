@@ -162,7 +162,42 @@ public sealed class RecordingPerformanceMonitor
         _gen1AtStart = GC.CollectionCount(1);
         _gen2AtStart = GC.CollectionCount(2);
         _gcPauseAtStart = GC.GetTotalPauseDuration();
+        _peakWorkingSet = _process.WorkingSet64;
+        _lastWorkingSetSampleTicks = Stopwatch.GetTimestamp();
         _wall.Restart();
+    }
+
+    private long _peakWorkingSet;
+    private long _lastWorkingSetSampleTicks;
+
+    /// <summary>
+    /// Samples the working set about once a second so the report's peak reflects this recording,
+    /// not the process lifetime (<c>Process.PeakWorkingSet64</c> is monotonic across sequential
+    /// benchmark runs and would make later scenarios inherit earlier peaks).
+    /// </summary>
+    private void SampleWorkingSet(bool force = false)
+    {
+        var now = Stopwatch.GetTimestamp();
+        if (!force && now - Volatile.Read(ref _lastWorkingSetSampleTicks) < Stopwatch.Frequency)
+        {
+            return;
+        }
+
+        Volatile.Write(ref _lastWorkingSetSampleTicks, now);
+        try
+        {
+            _process.Refresh();
+            var current = _process.WorkingSet64;
+            long peak;
+            while (current > (peak = Volatile.Read(ref _peakWorkingSet)) &&
+                   Interlocked.CompareExchange(ref _peakWorkingSet, current, peak) != peak)
+            {
+            }
+        }
+        catch
+        {
+            // Diagnostics only.
+        }
     }
 
     /// <summary>Returns a Stopwatch timestamp to pair with <see cref="End"/>.</summary>
@@ -189,7 +224,14 @@ public sealed class RecordingPerformanceMonitor
 
     public void FrameEmitted() => Interlocked.Increment(ref _framesEmitted);
 
-    public void FrameEncoded() => Interlocked.Increment(ref _framesEncoded);
+    public void FrameEncoded()
+    {
+        Interlocked.Increment(ref _framesEncoded);
+        if (_wall.IsRunning)
+        {
+            SampleWorkingSet();
+        }
+    }
 
     public void FrameDropped() => Interlocked.Increment(ref _framesDropped);
 
@@ -198,6 +240,7 @@ public sealed class RecordingPerformanceMonitor
     public RecordingPerformanceReport Complete()
     {
         _wall.Stop();
+        SampleWorkingSet(force: true);
         _process.Refresh();
         var cpu = _process.TotalProcessorTime - _cpuAtStart;
         var wall = _wall.Elapsed;
@@ -230,7 +273,7 @@ public sealed class RecordingPerformanceMonitor
             GC.CollectionCount(1) - _gen1AtStart,
             GC.CollectionCount(2) - _gen2AtStart,
             GC.GetTotalPauseDuration() - _gcPauseAtStart,
-            _process.PeakWorkingSet64,
+            Volatile.Read(ref _peakWorkingSet),
             stages);
     }
 

@@ -307,6 +307,28 @@ internal sealed class GpuCaptureSession : IDisposable
                 return;
             }
 
+            // From here on the frame is ours until FrameReady hands it over; any failure must
+            // return it, or the pool/allocator leaks one slot per failed tick.
+            try
+            {
+                ProduceFrame(frame, produce);
+            }
+            catch
+            {
+                frame.Release();
+                _perf?.FrameDropped();
+                return;
+            }
+        }
+
+        Interlocked.Increment(ref _emittedFrameCount);
+        _perf?.FrameEmitted();
+        FrameReady?.Invoke(frame);
+    }
+
+    private void ProduceFrame(GpuFrame frame, long produceTimestamp)
+    {
+        {
             // Source rectangle in capture-surface pixels: the region (clamped to current content)
             // or the whole content area.
             int x = 0, y = 0, width = _contentWidth, height = _contentHeight;
@@ -329,14 +351,14 @@ internal sealed class GpuCaptureSession : IDisposable
             if (needsScale)
             {
                 // Content no longer matches the encoder frame (window resized): letterbox it.
-                scaled = ScaledBlit?.Invoke(new GpuBlitRequest(_latest, x, y, width, height, frame)) == true;
+                scaled = ScaledBlit?.Invoke(new GpuBlitRequest(_latest!, x, y, width, height, frame)) == true;
             }
 
             if (!scaled)
             {
                 var copyW = Math.Min(width, OutputWidth);
                 var copyH = Math.Min(height, OutputHeight);
-                _context.CopySubresourceRegion(
+                _context!.CopySubresourceRegion(
                     frame.Texture,
                     0,
                     0,
@@ -347,7 +369,7 @@ internal sealed class GpuCaptureSession : IDisposable
                     new Box(x, y, 0, x + copyW, y + copyH, 1));
             }
 
-            _perf?.Record(RecordingStage.FrameProduce, Stopwatch.GetTimestamp() - produce);
+            _perf?.Record(RecordingStage.FrameProduce, Stopwatch.GetTimestamp() - produceTimestamp);
 
             var pts = _timeline?.Elapsed ?? TimeSpan.Zero;
             if (pts < TimeSpan.Zero)
@@ -374,13 +396,9 @@ internal sealed class GpuCaptureSession : IDisposable
             }
 
             // Submit the copy + overlay work before the encoder (possibly on its own context) reads it.
-            _context.Flush();
+            _context!.Flush();
             _perf?.Record(RecordingStage.Composite, Stopwatch.GetTimestamp() - compose);
         }
-
-        Interlocked.Increment(ref _emittedFrameCount);
-        _perf?.FrameEmitted();
-        FrameReady?.Invoke(frame);
     }
 
     public void Stop()

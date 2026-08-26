@@ -278,9 +278,22 @@ internal static class Program
                 {
                     case "--seconds" when i + 1 < args.Length:
                         options.Seconds = int.Parse(args[++i], CultureInfo.InvariantCulture);
+                        if (options.Seconds < 1 || options.Seconds > 3600)
+                        {
+                            Console.Error.WriteLine("--seconds must be between 1 and 3600.");
+                            return null;
+                        }
+
                         break;
                     case "--fps" when i + 1 < args.Length:
                         options.Fps = int.Parse(args[++i], CultureInfo.InvariantCulture);
+                        // Mirror VideoRecordingService's clamp so the label matches what is recorded.
+                        if (options.Fps < 1 || options.Fps > 60)
+                        {
+                            Console.Error.WriteLine("--fps must be between 1 and 60 (the recorder's supported range).");
+                            return null;
+                        }
+
                         break;
                     case "--iterations" when i + 1 < args.Length:
                         options.Iterations = Math.Max(1, int.Parse(args[++i], CultureInfo.InvariantCulture));

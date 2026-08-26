@@ -753,12 +753,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
-        frame.HandedOffTimestamp = RecordingPerformanceMonitor.Begin();
-
         if (_sinkWriter is { } sink)
         {
             // Push model: write on the pump thread, then drop our reference — Media Foundation
             // recycles the texture into its allocator once the encoder has consumed it.
+            var write = RecordingPerformanceMonitor.Begin();
             try
             {
                 sink.WriteVideo(frame, _frameDuration);
@@ -770,13 +769,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
             finally
             {
-                _perf?.End(RecordingStage.SamplePrepare, frame.HandedOffTimestamp);
+                _perf?.End(RecordingStage.SamplePrepare, write);
                 frame.Release();
             }
 
             return;
         }
 
+        // Transcoder path: queue for the SampleRequested pull loop, which stamps HandedOffTimestamp
+        // when it actually hands the sample to the encoder.
         var channel = _gpuChannel;
         if (channel is null || !channel.Writer.TryWrite(frame))
         {
@@ -1293,16 +1294,34 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
                     // The sample references the pooled texture directly; the encoder's colour
                     // converter reads it on the GPU. Processed fires when the pipeline is done with
-                    // it, which is when the texture can be reused.
-                    var sample = MediaStreamSample.CreateFromDirect3D11Surface(frame.Surface!, frame.Pts);
-                    sample.Duration = _frameDuration;
-                    var perf = _perf;
-                    sample.Processed += (_, _) =>
+                    // it, which is when the texture can be reused. Until ownership has transferred
+                    // to the sample (Processed hooked and the sample accepted), a failure must
+                    // return the frame to the pool ourselves.
+                    var handedOff = false;
+                    try
                     {
-                        perf?.Record(RecordingStage.EncoderHold, RecordingPerformanceMonitor.Begin() - frame.HandedOffTimestamp);
-                        frame.Release();
-                    };
-                    args.Request.Sample = sample;
+                        var sample = MediaStreamSample.CreateFromDirect3D11Surface(frame.Surface!, frame.Pts);
+                        sample.Duration = _frameDuration;
+                        var perf = _perf;
+                        // Hold time is measured from the actual hand-off, not from when the frame
+                        // entered the channel, so a backlog cannot inflate EncoderHold.
+                        frame.HandedOffTimestamp = RecordingPerformanceMonitor.Begin();
+                        sample.Processed += (_, _) =>
+                        {
+                            perf?.Record(RecordingStage.EncoderHold, RecordingPerformanceMonitor.Begin() - frame.HandedOffTimestamp);
+                            frame.Release();
+                        };
+                        args.Request.Sample = sample;
+                        handedOff = true;
+                    }
+                    finally
+                    {
+                        if (!handedOff)
+                        {
+                            frame.Release();
+                        }
+                    }
+
                     _perf?.End(RecordingStage.SamplePrepare, prepare);
                     _perf?.FrameEncoded();
                     return;
