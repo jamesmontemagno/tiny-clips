@@ -10,7 +10,7 @@ own `CHANGELOG.md` at the repository root.
   arm64 `Validation-Executable-Error`, so it bought nothing for ~100 MB. The package again declares
   `Microsoft.DotNet.DesktopRuntime.10` and `Microsoft.WindowsAppRuntime.1.8` as winget
   dependencies and the release workflow guards are restored.
-- **Dependency updates** — Windows App SDK 1.8.260804001 (staying on 1.8), Win2D 1.4.0,
+- **Dependency updates** — Win2D 1.4.0,
   H.NotifyIcon.WinUI 2.4.1, CommunityToolkit.Mvvm 8.4.2, Microsoft.Extensions.* 10.0.11,
   System.Drawing.Common 10.0.11, Vortice 3.8.3, Windows SDK BuildTools 10.0.28000.2526 /
   WinApp 0.6.1, NAudio 3.0.1 (its `ISampleProvider`/`IWaveProvider.Read` are now `Span<T>`-based;
@@ -20,6 +20,17 @@ own `CHANGELOG.md` at the repository root.
   the new MTP runner; the test project is now an executable and no longer references
   `Microsoft.NET.Test.Sdk`, `xunit.runner.visualstudio` or `coverlet.collector`. The
   `dotnet test` command is unchanged.
+- **Windows App SDK stays pinned at 1.8.260529003.** Newer 1.8 SDKs raise the MSIX's
+  `Microsoft.WindowsAppRuntime.1.8` `MinVersion` (e.g. 1.8.260804001 → `8000.946.1701.0`) beyond
+  the runtime winget's `Microsoft.WindowsAppRuntime.1.8` package can install (1.8.9 =
+  `8000.879.2017.0`), which would break every winget install. The release workflow now asserts
+  `MinVersion` ≤ the winget-available runtime (`WINGET_WINDOWSAPPRUNTIME_MAX_VERSION`).
+
+### Added
+- **Windows Sandbox validation scripts** (`windows/packaging/sandbox/`) — one command installs both
+  runtimes in a fresh Sandbox, installs a built or released MSIX, launches it exactly like winget's
+  harness (full `WindowsApps` path, foreign working directory), clicks through onboarding and
+  requires the process to stay alive, collecting `crash.log` and event-log stacks on failure.
 
 ## [v1.7.3-windows] - 2026-08-25
 
