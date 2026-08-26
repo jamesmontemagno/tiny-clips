@@ -196,6 +196,9 @@ jobs:
             throw "The downloaded Store package is missing."
           }
 
-          # msstore publish takes the directory holding the package, not the file itself.
-          msstore publish "." --inputDirectory $upload.Directory.FullName --appId $env:STORE_PRODUCT_ID
+          # Pass the package file itself. Pointing msstore at a directory makes it look for a
+          # project to infer a publisher from, which does not exist in this workflow.
+          # --uploadTimeout must be set explicitly: when omitted the CLI has defaulted it to 0,
+          # which cancels the blob upload immediately. See microsoft/msstore-cli#162.
+          msstore publish $upload.FullName --appId $env:STORE_PRODUCT_ID --uploadTimeout 900
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed." }

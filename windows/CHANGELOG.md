@@ -42,12 +42,45 @@ own `CHANGELOG.md` at the repository root.
   webcam frames now reuse a small buffer ring (via `IMemoryBufferByteAccess`) instead of allocating
   two ~2 MB arrays per camera frame.
 
+- `tests/ui/ClipsLibrary.Tests.ps1` — `winapp ui` automation smoke test for the Library window
+  (shell, details editing, favorites, sidebar filters, search/empty state, filter flyout, view modes,
+  selection mode, delete confirmation, context menu, accessibility-name audit).
+
 ### Changed
 - The shared Direct3D 11 device is created with `VIDEO_SUPPORT` (falls back without it) so Media
   Foundation's hardware encoders can bind recorder textures directly.
 - Webcam overlay placement math moved to the shared `WebcamOverlayLayout`; click-ring geometry and
   the branding badge bitmap are exposed for reuse so the CPU and GPU compositors render identically.
 - `TinyClips.Core` now references `Vortice.Direct2D1` and `Vortice.MediaFoundation` (3.8.3).
+- **Clips Library rewritten** as a proper MVVM feature (`ViewModels/ClipsLibrary`,
+  `Views/ClipsLibrary`, `Controls/ClipsLibrary`) with macOS Clips Manager parity. New: collapsible
+  sidebar with Smart Collections / Collections / Tags and live counts; search across names, tags and
+  notes with suggestions; Sort & Filter menu (five sort orders, type incl. Favorites, date); grid or
+  list view with compact density; right-hand details pane with inline `MediaPlayerElement` video
+  preview, animated GIF preview, file facts, and an editor for display name, tags, notes and
+  collection; favorites; multi-select with a batch action bar (select all, favorite, tag, copy, share,
+  delete with a count-aware confirmation); a shared context menu on cards, rows and the details pane;
+  Windows Share contract and drag-out of clips to other apps; rename (display name or file on disk);
+  move to Archive; Uploadcare upload with the link persisted on the clip; contextual empty states
+  (loading, no clips, no match, folder missing); keyboard accelerators (`Ctrl+F`, `Ctrl+A`, `Enter`,
+  `F2`, `Delete`, `Ctrl+C`, `Ctrl+Shift+G/L/D/E`, `Ctrl+R`, `Esc`); AutomationIds/names on every
+  control.
+- **Library stays current automatically.** A `FileSystemWatcher` on the capture folders (debounced)
+  refreshes the library as captures are saved, renamed or deleted; an optional auto-refresh timer
+  remains available. Thumbnails are generated once off the UI thread and cached as JPEG in the app's
+  local data folder, keyed by path + modified time + size, and pruned when clips disappear.
+- **Clip metadata store.** Favorites, names, tags, notes, collections and upload links are kept in
+  `clip-metadata.json` (`TinyClips.Core.Services.ClipsLibrary.JsonClipMetadataStore`) with debounced
+  atomic writes; records follow renames/archives and are pruned when files are gone. Auto-upload after
+  save now records the Uploadcare link with the clip.
+- **Settings → Clips Library** section: remember last state or choose default view/sort/filters,
+  notes preview, quick actions, compact list, upload status, confirm delete, only-Tiny-Clips files,
+  auto-refresh interval, archive-old-clips after N days, and reset. Legacy `clipsManager*` keys are
+  migrated once.
+- `IClipLibraryService` gains `GetClipsAsync(onlyTinyClipsFiles)`, `GetLibraryDirectories()` and
+  `Rename(...)`; new Core services `ClipQueryEngine`, `ClipArchiveService`, `ClipLibraryWatcher`,
+  `ClipsLibrarySettings`, `IClipFileOperations`, all covered by unit tests (29 new).
+- Removed the old code-behind `ClipsManagerWindow`.
 
 ## [v1.7.4-windows] - 2026-08-25
 

@@ -68,6 +68,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Raised when the selected theme changes so the window can re-apply it live.</summary>
     public event Action? ThemeChanged;
 
+    /// <summary>Raised when any Clips Library preference changes so an open Library window can re-read them.</summary>
+    public event Action? ClipsLibrarySettingsChanged;
+
+    public void NotifyClipsLibrarySettingsChanged() => ClipsLibrarySettingsChanged?.Invoke();
+
     public SettingsViewModel(
         ICaptureSettings settings,
         IHotKeyService hotKeys,

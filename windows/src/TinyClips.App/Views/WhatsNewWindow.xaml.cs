@@ -83,7 +83,7 @@ public sealed partial class WhatsNewWindow : Window
 
     private void OnOpenVideoSettingsClicked(object sender, RoutedEventArgs e)
     {
-        ((App)Application.Current).OpenSettings(SettingsSectionKind.Video);
+        ((App)Application.Current).OpenSettingsWindow(SettingsSectionKind.Video);
         Close();
     }
 }

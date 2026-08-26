@@ -82,6 +82,14 @@
                     Icon="Keyboard"
                     Tag="Hotkeys" />
                 <NavigationViewItem
+                    AutomationProperties.AutomationId="ClipsLibraryNavigationItem"
+                    Content="Clips Library"
+                    Tag="ClipsLibrary">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8B7;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
                     AutomationProperties.AutomationId="UploadcareNavigationItem"
                     Content="Uploadcare"
                     Tag="Uploadcare">

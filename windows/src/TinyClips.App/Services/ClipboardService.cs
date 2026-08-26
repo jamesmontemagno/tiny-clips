@@ -23,6 +23,19 @@ internal static class ClipboardService
         SetContent(package);
     }
 
+    public static async Task CopyFilesAsync(IReadOnlyList<string> paths)
+    {
+        var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+        var files = new List<IStorageItem>(paths.Count);
+        foreach (var path in paths)
+        {
+            files.Add(await StorageFile.GetFileFromPathAsync(path));
+        }
+
+        package.SetStorageItems(files);
+        SetContent(package);
+    }
+
     public static Task CopyTextAsync(string text)
     {
         var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
