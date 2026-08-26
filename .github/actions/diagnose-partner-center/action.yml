@@ -1,0 +1,105 @@
+name: Diagnose Partner Center credentials
+description: >-
+  Reproduces the two calls the Microsoft Store Developer CLI makes during
+  `msstore reconfigure` so an authentication failure points at a specific cause
+  instead of the CLI's generic "Really failed to auth" message.
+
+inputs:
+  tenant-id:
+    description: Microsoft Entra tenant ID for the Partner Center account.
+    required: true
+  seller-id:
+    description: Partner Center seller ID (numeric).
+    required: true
+  client-id:
+    description: Application (client) ID of the Entra application.
+    required: true
+  client-secret:
+    description: Client secret for the Entra application.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check Partner Center credentials
+      shell: pwsh
+      env:
+        PARTNER_CENTER_TENANT_ID: ${{ inputs.tenant-id }}
+        PARTNER_CENTER_SELLER_ID: ${{ inputs.seller-id }}
+        PARTNER_CENTER_CLIENT_ID: ${{ inputs.client-id }}
+        PARTNER_CENTER_CLIENT_SECRET: ${{ inputs.client-secret }}
+      run: |
+        # The secret and the access token are never written to the log.
+        $tenantId = "$env:PARTNER_CENTER_TENANT_ID".Trim()
+        $clientId = "$env:PARTNER_CENTER_CLIENT_ID".Trim()
+        $sellerId = "$env:PARTNER_CENTER_SELLER_ID".Trim()
+        $clientSecret = "$env:PARTNER_CENTER_CLIENT_SECRET".Trim()
+
+        Write-Host "--- Secret shape ---"
+        foreach ($entry in @(
+          @{ Name = "tenantId";     Value = "$env:PARTNER_CENTER_TENANT_ID" }
+          @{ Name = "clientId";     Value = "$env:PARTNER_CENTER_CLIENT_ID" }
+          @{ Name = "sellerId";     Value = "$env:PARTNER_CENTER_SELLER_ID" }
+          @{ Name = "clientSecret"; Value = "$env:PARTNER_CENTER_CLIENT_SECRET" }
+        )) {
+          $raw = $entry.Value
+          $padded = $raw -ne $raw.Trim()
+          Write-Host "$($entry.Name): length=$($raw.Length) hasSurroundingWhitespace=$padded"
+        }
+
+        $guidPattern = '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+        if ($tenantId -notmatch $guidPattern) {
+          Write-Host "::warning::The tenant ID is not a GUID."
+        }
+        if ($clientId -notmatch $guidPattern) {
+          Write-Host "::warning::The client ID is not a GUID."
+        }
+        if ($sellerId -notmatch '^\d+$') {
+          Write-Host "::warning::The seller ID is not numeric. Partner Center seller IDs are numbers, not GUIDs, and are shown under Account settings > Account details."
+        }
+
+        Write-Host "`n--- Step 1: request a Store submission API token from Microsoft Entra ID ---"
+        $accessToken = $null
+        try {
+          $tokenResponse = Invoke-RestMethod -Method Post `
+            -Uri "https://login.microsoftonline.com/$tenantId/oauth2/token" `
+            -ContentType "application/x-www-form-urlencoded" `
+            -Body @{
+              grant_type    = "client_credentials"
+              client_id     = $clientId
+              client_secret = $clientSecret
+              resource      = "https://manage.devcenter.microsoft.com"
+            }
+          $accessToken = $tokenResponse.access_token
+          Write-Host "Token acquired. The Entra application and client secret are valid."
+        }
+        catch {
+          $detail = if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }
+          $code = if ($detail -match '(AADSTS\d+)') { $Matches[1] } else { "unknown" }
+          Write-Host "::error::Entra token request failed ($code)."
+          switch -Regex ($code) {
+            'AADSTS7000215' { Write-Host "::error::Invalid client secret. It has most likely expired. Create a new secret and update the PARTNER_CENTER_CLIENT_SECRET environment secret." }
+            'AADSTS700016'  { Write-Host "::error::The client ID does not exist in this tenant. The client ID and tenant ID do not belong together." }
+            'AADSTS90002'   { Write-Host "::error::The tenant was not found. Check the tenant ID." }
+            'AADSTS7000222' { Write-Host "::error::The client secret has expired. Create a new one." }
+            default         { Write-Host "::error::See the raw response below." }
+          }
+          if ($clientSecret) { $detail = $detail -replace [regex]::Escape($clientSecret), "***" }
+          Write-Host $detail
+          throw "Partner Center diagnosis failed at the Entra token step."
+        }
+
+        Write-Host "`n--- Step 2: call the Store submission API with that token ---"
+        try {
+          Invoke-RestMethod -Method Get `
+            -Uri "https://manage.devcenter.microsoft.com/v1.0/my/applications?top=1" `
+            -Headers @{ Authorization = "Bearer $accessToken" } | Out-Null
+          Write-Host "The Store submission API responded. Credentials and the Partner Center association look correct."
+        }
+        catch {
+          $status = $_.Exception.Response.StatusCode.value__
+          Write-Host "::error::The Store submission API returned HTTP $status."
+          Write-Host "::error::The Entra credentials are valid, so the application itself is not the problem. The application is not associated with the Partner Center account. In Partner Center, open Account settings > User management > Microsoft Entra applications, add this application, and give it the Manager role. Registering the application only in the Entra portal is not enough."
+          if ($_.ErrorDetails.Message) { Write-Host $_.ErrorDetails.Message }
+          throw "Partner Center diagnosis failed at the submission API step."
+        }
