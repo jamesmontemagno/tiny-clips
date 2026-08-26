@@ -139,6 +139,82 @@ jobs:
             throw "Configure the following before enabling Store publication: $($missing -join ', ')."
           }
 
+      - name: Diagnose Partner Center credentials
+        shell: pwsh
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          # msstore reconfigure only reports "Really failed to auth", so reproduce the two
+          # underlying calls here to identify whether the Entra credentials or the Partner
+          # Center association is the problem. Never print the secret or the access token.
+          $tenantId = $env:PARTNER_CENTER_TENANT_ID.Trim()
+          $clientId = $env:PARTNER_CENTER_CLIENT_ID.Trim()
+          $sellerId = $env:PARTNER_CENTER_SELLER_ID.Trim()
+          $clientSecret = $env:PARTNER_CENTER_CLIENT_SECRET.Trim()
+
+          function Show-Shape($name, $value) {
+            $trimmedDiffers = $value -ne ($value.Trim())
+            Write-Host "$name : length=$($value.Length) hasSurroundingWhitespace=$trimmedDiffers"
+          }
+          Show-Shape "tenantId" $env:PARTNER_CENTER_TENANT_ID
+          Show-Shape "clientId" $env:PARTNER_CENTER_CLIENT_ID
+          Show-Shape "sellerId" $env:PARTNER_CENTER_SELLER_ID
+          Show-Shape "clientSecret" $env:PARTNER_CENTER_CLIENT_SECRET
+
+          $guidPattern = '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+          if ($tenantId -notmatch $guidPattern) { Write-Host "::warning::PARTNER_CENTER_TENANT_ID is not a GUID." }
+          if ($clientId -notmatch $guidPattern) { Write-Host "::warning::PARTNER_CENTER_CLIENT_ID is not a GUID." }
+          if ($sellerId -match $guidPattern) { Write-Host "::warning::PARTNER_CENTER_SELLER_ID looks like a GUID; Partner Center seller IDs are numeric." }
+
+          Write-Host "`n--- Step 1: request a devcenter token from Microsoft Entra ID ---"
+          $body = @{
+            grant_type    = "client_credentials"
+            client_id     = $clientId
+            client_secret = $clientSecret
+            resource      = "https://manage.devcenter.microsoft.com"
+          }
+
+          $accessToken = $null
+          try {
+            $tokenResponse = Invoke-RestMethod -Method Post `
+              -Uri "https://login.microsoftonline.com/$tenantId/oauth2/token" `
+              -Body $body -ContentType "application/x-www-form-urlencoded"
+            $accessToken = $tokenResponse.access_token
+            Write-Host "Token acquired. The Entra app registration and client secret are valid."
+          }
+          catch {
+            $detail = ""
+            if ($_.ErrorDetails.Message) { $detail = $_.ErrorDetails.Message }
+            $code = if ($detail -match '(AADSTS\d+)') { $Matches[1] } else { "unknown" }
+            Write-Host "::error::Entra token request failed ($code)."
+            switch -Regex ($code) {
+              'AADSTS7000215' { Write-Host "::error::Invalid client secret. It has most likely expired - create a new secret in Partner Center and update PARTNER_CENTER_CLIENT_SECRET." }
+              'AADSTS700016'  { Write-Host "::error::The client ID was not found in this tenant. PARTNER_CENTER_CLIENT_ID and PARTNER_CENTER_TENANT_ID do not belong together." }
+              'AADSTS90002'   { Write-Host "::error::The tenant was not found. Check PARTNER_CENTER_TENANT_ID." }
+              default         { Write-Host "::error::See the raw response below." }
+            }
+            Write-Host ($detail -replace [regex]::Escape($clientSecret), "***")
+            throw "Partner Center credential diagnosis failed at the Entra token step."
+          }
+
+          Write-Host "`n--- Step 2: call the Store submission API with that token ---"
+          try {
+            Invoke-RestMethod -Method Get `
+              -Uri "https://manage.devcenter.microsoft.com/v1.0/my/applications?top=1" `
+              -Headers @{ Authorization = "Bearer $accessToken" } | Out-Null
+            Write-Host "Store submission API responded. Credentials and Partner Center association look correct."
+          }
+          catch {
+            $status = $_.Exception.Response.StatusCode.value__
+            Write-Host "::error::Store submission API returned HTTP $status."
+            Write-Host "::error::The Entra credentials are valid, but the app is not usable against Partner Center. Confirm the Entra application was added under Partner Center > Account settings > User management > Microsoft Entra applications with the Manager role, and that the account has completed at least one manual submission."
+            if ($_.ErrorDetails.Message) { Write-Host $_.ErrorDetails.Message }
+            throw "Partner Center credential diagnosis failed at the submission API step."
+          }
+
       - name: Setup Microsoft Store Developer CLI
         uses: microsoft/microsoft-store-apppublisher@v1.4
 
