@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
+using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
@@ -9,206 +10,23 @@ using Windows.Graphics.DirectX.Direct3D11;
 namespace TinyClips.Core.Capture;
 
 /// <summary>
-/// A frame that lives entirely on the GPU: a pooled BGRA render-target texture plus its WinRT
-/// <see cref="IDirect3DSurface"/> wrapper, ready for <c>MediaStreamSample.CreateFromDirect3D11Surface</c>.
-/// Call <see cref="Release"/> when the encoder reports the sample processed so the texture returns
-/// to the pool.
+/// Source rectangle (in capture-surface pixels) the pump wants rendered into a fixed-size encoder
+/// frame when the two differ in size — i.e. after the captured window was resized.
 /// </summary>
-internal sealed class GpuFrame
-{
-    private readonly GpuFrameTexturePool _pool;
-    private int _released;
-
-    internal GpuFrame(GpuFrameTexturePool pool, ID3D11Texture2D texture, IDirect3DSurface surface, int width, int height)
-    {
-        _pool = pool;
-        Texture = texture;
-        Surface = surface;
-        Width = width;
-        Height = height;
-    }
-
-    public ID3D11Texture2D Texture { get; }
-
-    public IDirect3DSurface Surface { get; }
-
-    public int Width { get; }
-
-    public int Height { get; }
-
-    public TimeSpan Pts { get; internal set; }
-
-    /// <summary>Stopwatch timestamp when the frame was handed to the encoder (for hold-time stats).</summary>
-    public long HandedOffTimestamp { get; internal set; }
-
-    internal void Rented()
-    {
-        Volatile.Write(ref _released, 0);
-    }
-
-    public void Release()
-    {
-        if (Interlocked.Exchange(ref _released, 1) == 0)
-        {
-            _pool.Return(this);
-        }
-    }
-}
-
-/// <summary>
-/// Pool of encoder-ready textures that grows on demand up to a hard cap. Bounding the pool (not
-/// just the channel) bounds VRAM: at 4K each BGRA frame is ~33 MB. The encoder pipeline holds
-/// input surfaces for its look-ahead / B-frame window (measured 50–200 ms on AMD VCN), so the pool
-/// must cover that latency at the target frame rate or frames are dropped at the source.
-/// </summary>
-internal sealed class GpuFrameTexturePool : IDisposable
-{
-    private readonly Stack<GpuFrame> _free = new();
-    private readonly List<GpuFrame> _all = new();
-    private readonly object _gate = new();
-    private readonly ID3D11Device _device;
-    private readonly int _width;
-    private readonly int _height;
-    private bool _disposed;
-
-    public GpuFrameTexturePool(ID3D11Device device, int width, int height, int initialCapacity, int maxCapacity)
-    {
-        _device = device;
-        _width = width;
-        _height = height;
-        MaxCapacity = Math.Max(initialCapacity, maxCapacity);
-        for (var i = 0; i < initialCapacity; i++)
-        {
-            _free.Push(CreateFrame());
-        }
-    }
-
-    public int MaxCapacity { get; }
-
-    /// <summary>Textures allocated so far (high-water mark of concurrent in-flight frames).</summary>
-    public int Allocated
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _all.Count;
-            }
-        }
-    }
-
-    public int Available
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _free.Count;
-            }
-        }
-    }
-
-    public IReadOnlyList<GpuFrame> All => _all;
-
-    public bool TryRent(out GpuFrame frame)
-    {
-        lock (_gate)
-        {
-            if (_disposed)
-            {
-                frame = null!;
-                return false;
-            }
-
-            if (_free.Count == 0)
-            {
-                if (_all.Count >= MaxCapacity)
-                {
-                    frame = null!;
-                    return false;
-                }
-
-                _free.Push(CreateFrame());
-            }
-
-            frame = _free.Pop();
-            frame.Rented();
-            return true;
-        }
-    }
-
-    private GpuFrame CreateFrame()
-    {
-        var texture = _device.CreateTexture2D(new Texture2DDescription
-        {
-            Width = (uint)_width,
-            Height = (uint)_height,
-            MipLevels = 1,
-            ArraySize = 1,
-            Format = Format.B8G8R8A8_UNorm,
-            SampleDescription = new SampleDescription(1, 0),
-            Usage = ResourceUsage.Default,
-            // RenderTarget for Direct2D compositing; ShaderResource for the encoder's
-            // colour-space converter. No CPU access so the driver keeps it in VRAM.
-            BindFlags = BindFlags.RenderTarget | BindFlags.ShaderResource,
-            CPUAccessFlags = CpuAccessFlags.None,
-            MiscFlags = ResourceOptionFlags.None,
-        });
-        var surface = WgcInterop.CreateDirect3DSurface(texture);
-        var frame = new GpuFrame(this, texture, surface, _width, _height);
-        _all.Add(frame);
-        return frame;
-    }
-
-    internal void Return(GpuFrame frame)
-    {
-        lock (_gate)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _free.Push(frame);
-        }
-    }
-
-    public void Dispose()
-    {
-        lock (_gate)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            _free.Clear();
-        }
-
-        // Textures may still be referenced by in-flight MediaStreamSamples; releasing our COM
-        // reference is safe because the sample holds its own on the IDirect3DSurface.
-        List<GpuFrame> all;
-        lock (_gate)
-        {
-            all = new List<GpuFrame>(_all);
-            _all.Clear();
-        }
-
-        foreach (var frame in all)
-        {
-            frame.Surface.Dispose();
-            frame.Texture.Dispose();
-        }
-    }
-}
+internal readonly record struct GpuBlitRequest(ID3D11Texture2D Source, int X, int Y, int Width, int Height, GpuFrame Target);
 
 /// <summary>
 /// GPU-resident counterpart of <see cref="ContinuousCaptureSession"/>. WGC frames are copied
 /// GPU→GPU into a "latest frame" texture; the steady-rate pump then copies the (optionally
-/// cropped) region into a pooled encoder texture, lets the owner composite overlays onto it with
-/// Direct2D, and emits it. No frame pixels ever cross to system memory, eliminating the staging
-/// map, the per-tick byte[] clone, CPU alpha blending and the bottom-up flip of the CPU path.
+/// cropped) region into an encoder frame obtained from the attached <see cref="IGpuFrameAllocator"/>,
+/// lets the owner composite overlays onto it with Direct2D, and emits it. No frame pixels ever
+/// cross to system memory, eliminating the staging map, the per-tick byte[] clone, CPU alpha
+/// blending and the bottom-up flip of the CPU path.
+///
+/// The encoder frame size is fixed for the recording (encoders cannot change size mid-stream).
+/// When the capture item's content size changes — a recorded window being resized — the WGC frame
+/// pool is recreated at the new size and the pump asks <see cref="ScaledBlit"/> to letterbox the
+/// new content into the fixed frame instead of cropping it.
 /// </summary>
 internal sealed class GpuCaptureSession : IDisposable
 {
@@ -225,21 +43,24 @@ internal sealed class GpuCaptureSession : IDisposable
     private Direct3D11CaptureFramePool? _framePool;
     private GraphicsCaptureSession? _session;
     private ID3D11Texture2D? _latest;
-    private GpuFrameTexturePool? _pool;
+    private IGpuFrameAllocator? _allocator;
 
     private RecordingTimeline? _timeline;
     private FramePacer? _pump;
     private bool _hasLatest;
-    private int _fullWidth;
-    private int _fullHeight;
+    private SizeInt32 _poolSize;
+    private int _contentWidth;
+    private int _contentHeight;
     private TimeSpan _lastEmittedPts = TimeSpan.MinValue;
     private long _emittedFrameCount;
     private long _poolExhaustedDrops;
+    private long _contentResizes;
+    private long _pumpOverrunsAtStop;
     private volatile bool _running;
     private volatile bool _emittingPaused;
 
     /// <summary>
-    /// Raised on the pump thread with a rented, cropped, overlay-composited frame. The handler
+    /// Raised on the pump thread with an acquired, cropped, overlay-composited frame. The handler
     /// owns the frame and must eventually call <see cref="GpuFrame.Release"/>.
     /// </summary>
     public event Action<GpuFrame>? FrameReady;
@@ -250,13 +71,17 @@ internal sealed class GpuCaptureSession : IDisposable
     /// </summary>
     public event Action<GpuFrame>? Compose;
 
+    /// <summary>
+    /// Scales/letterboxes a source rectangle into the target frame when the captured content no
+    /// longer matches the encoder size. Returns false to fall back to a top-left crop.
+    /// </summary>
+    public Func<GpuBlitRequest, bool>? ScaledBlit { get; set; }
+
     public GpuCaptureSession(
         CaptureTarget target,
         PixelRect? region,
         int targetFps,
         bool includeCursor,
-        int initialPoolCapacity = 4,
-        int maxPoolCapacity = 16,
         RecordingPerformanceMonitor? perf = null)
     {
         _target = target;
@@ -264,13 +89,8 @@ internal sealed class GpuCaptureSession : IDisposable
         _includeCursor = includeCursor;
         var fps = Math.Clamp(targetFps, 1, 120);
         _frameInterval = TimeSpan.FromSeconds(1.0 / fps);
-        _initialPoolCapacity = Math.Clamp(initialPoolCapacity, 2, 32);
-        _maxPoolCapacity = Math.Clamp(maxPoolCapacity, _initialPoolCapacity, 64);
         _perf = perf;
     }
-
-    private readonly int _initialPoolCapacity;
-    private readonly int _maxPoolCapacity;
 
     public int OutputWidth { get; private set; }
 
@@ -280,13 +100,19 @@ internal sealed class GpuCaptureSession : IDisposable
 
     public long EmittedFrameCount => Interlocked.Read(ref _emittedFrameCount);
 
-    /// <summary>Frames skipped because every pooled texture was still held by the encoder.</summary>
+    /// <summary>Frames skipped because every encoder frame was still held by the encoder.</summary>
     public long PoolExhaustedDrops => Interlocked.Read(ref _poolExhaustedDrops);
 
-    /// <summary>Textures allocated so far — the peak number of frames the encoder held concurrently.</summary>
-    public int PoolHighWaterMark => _pool?.Allocated ?? 0;
+    /// <summary>Times the captured content changed size mid-recording (window resized).</summary>
+    public long ContentResizes => Interlocked.Read(ref _contentResizes);
 
-    public int PoolMaxCapacity => _maxPoolCapacity;
+    /// <summary>Frames allocated so far — the peak number of frames the encoder held concurrently.</summary>
+    public int PoolHighWaterMark => _allocator?.Allocated ?? 0;
+
+    public int PoolMaxCapacity => _allocator?.MaxCapacity ?? 0;
+
+    /// <summary>Pacer grid slots skipped because a pump tick overran its frame interval.</summary>
+    public long PumpOverruns => _pump?.SkippedTicks ?? _pumpOverrunsAtStop;
 
     public ID3D11Device D3DDevice => _d3dDevice ?? throw new InvalidOperationException("Session not started.");
 
@@ -306,15 +132,14 @@ internal sealed class GpuCaptureSession : IDisposable
             ?? throw new InvalidOperationException("Failed to create a GraphicsCaptureItem for the target.");
 
         var size = item.Size;
-        _fullWidth = size.Width;
-        _fullHeight = size.Height;
+        _poolSize = size;
+        _contentWidth = size.Width;
+        _contentHeight = size.Height;
 
         var outW = _region?.Width ?? size.Width;
         var outH = _region?.Height ?? size.Height;
         OutputWidth = Math.Max(2, outW - (outW % 2));
         OutputHeight = Math.Max(2, outH - (outH % 2));
-
-        _pool = new GpuFrameTexturePool(d3dDevice, OutputWidth, OutputHeight, _initialPoolCapacity, _maxPoolCapacity);
 
         _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
             _device,
@@ -330,6 +155,20 @@ internal sealed class GpuCaptureSession : IDisposable
         _session.StartCapture();
     }
 
+    /// <summary>
+    /// Supplies the encoder-frame allocator. Must be called before <see cref="BeginEmitting"/>;
+    /// the session disposes it. Separate from <see cref="Start"/> because the allocator depends
+    /// on the encoder backend, which in turn needs <see cref="OutputWidth"/>/<see cref="OutputHeight"/>.
+    /// </summary>
+    public void AttachAllocator(IGpuFrameAllocator allocator)
+    {
+        lock (_sync)
+        {
+            _allocator?.Dispose();
+            _allocator = allocator;
+        }
+    }
+
     public void BeginEmitting(RecordingTimeline? timeline = null)
     {
         lock (_sync)
@@ -337,6 +176,11 @@ internal sealed class GpuCaptureSession : IDisposable
             if (!_running || _pump is not null)
             {
                 return;
+            }
+
+            if (_allocator is null)
+            {
+                throw new InvalidOperationException("AttachAllocator must be called before BeginEmitting.");
             }
 
             _timeline = timeline ?? RecordingTimeline.StartNow();
@@ -347,11 +191,6 @@ internal sealed class GpuCaptureSession : IDisposable
             _pump.Start();
         }
     }
-
-    /// <summary>Pacer grid slots skipped because a pump tick overran its frame interval.</summary>
-    public long PumpOverruns => _pump?.SkippedTicks ?? _pumpOverrunsAtStop;
-
-    private long _pumpOverrunsAtStop;
 
     public void PauseEmitting() => _emittingPaused = true;
 
@@ -373,6 +212,8 @@ internal sealed class GpuCaptureSession : IDisposable
                 return;
             }
 
+            var contentSize = frame.ContentSize;
+            var needsRecreate = false;
             lock (_sync)
             {
                 if (!_running || _context is null || _d3dDevice is null)
@@ -409,6 +250,25 @@ internal sealed class GpuCaptureSession : IDisposable
                 _context.CopyResource(_latest, frameTexture);
                 _context.Flush();
                 _hasLatest = true;
+
+                // The surface is pool-sized; real content occupies the top-left ContentSize. A
+                // resized window first shows up as a ContentSize change on an old-size surface.
+                _contentWidth = Math.Clamp(contentSize.Width, 1, (int)desc.Width);
+                _contentHeight = Math.Clamp(contentSize.Height, 1, (int)desc.Height);
+
+                if (contentSize.Width != _poolSize.Width || contentSize.Height != _poolSize.Height)
+                {
+                    needsRecreate = contentSize.Width > 0 && contentSize.Height > 0;
+                }
+            }
+
+            if (needsRecreate)
+            {
+                // Recreate at the new content size so subsequent frames arrive full-resolution
+                // instead of being clipped to the old pool size. Allowed from inside FrameArrived.
+                _poolSize = contentSize;
+                Interlocked.Increment(ref _contentResizes);
+                pool.Recreate(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, contentSize);
             }
         }
         catch
@@ -434,38 +294,59 @@ internal sealed class GpuCaptureSession : IDisposable
         GpuFrame frame;
         lock (_sync)
         {
-            if (!_running || !_hasLatest || _latest is null || _context is null || _pool is null)
+            if (!_running || !_hasLatest || _latest is null || _context is null || _allocator is null)
             {
                 return;
             }
 
             var produce = Stopwatch.GetTimestamp();
-            if (!_pool.TryRent(out frame))
+            if (!_allocator.TryAcquire(out frame))
             {
                 Interlocked.Increment(ref _poolExhaustedDrops);
                 _perf?.FrameDropped();
                 return;
             }
 
-            var x = 0;
-            var y = 0;
+            // Source rectangle in capture-surface pixels: the region (clamped to current content)
+            // or the whole content area.
+            int x = 0, y = 0, width = _contentWidth, height = _contentHeight;
             if (_region is { } r)
             {
-                x = Math.Clamp(r.X, 0, _fullWidth);
-                y = Math.Clamp(r.Y, 0, _fullHeight);
+                x = Math.Clamp(r.X, 0, Math.Max(0, _contentWidth - 1));
+                y = Math.Clamp(r.Y, 0, Math.Max(0, _contentHeight - 1));
+                width = Math.Clamp(OutputWidth, 1, _contentWidth - x);
+                height = Math.Clamp(OutputHeight, 1, _contentHeight - y);
             }
 
-            var width = Math.Clamp(OutputWidth, 1, _fullWidth - x);
-            var height = Math.Clamp(OutputHeight, 1, _fullHeight - y);
-            _context.CopySubresourceRegion(
-                frame.Texture,
-                0,
-                0,
-                0,
-                0,
-                _latest,
-                0,
-                new Box(x, y, 0, x + width, y + height, 1));
+            var scaled = false;
+            var mismatch = width != OutputWidth || height != OutputHeight;
+
+            // OutputWidth/Height are rounded down to even for the encoder, so an odd-sized window is
+            // legitimately 1px larger than the frame: that is a crop, not a resize. Only scale when
+            // the content is actually smaller than the frame (or more than a pixel larger).
+            var needsScale = mismatch &&
+                (width < OutputWidth || height < OutputHeight || width > OutputWidth + 1 || height > OutputHeight + 1);
+            if (needsScale)
+            {
+                // Content no longer matches the encoder frame (window resized): letterbox it.
+                scaled = ScaledBlit?.Invoke(new GpuBlitRequest(_latest, x, y, width, height, frame)) == true;
+            }
+
+            if (!scaled)
+            {
+                var copyW = Math.Min(width, OutputWidth);
+                var copyH = Math.Min(height, OutputHeight);
+                _context.CopySubresourceRegion(
+                    frame.Texture,
+                    0,
+                    0,
+                    0,
+                    0,
+                    _latest,
+                    0,
+                    new Box(x, y, 0, x + copyW, y + copyH, 1));
+            }
+
             _perf?.Record(RecordingStage.FrameProduce, Stopwatch.GetTimestamp() - produce);
 
             var pts = _timeline?.Elapsed ?? TimeSpan.Zero;
@@ -534,8 +415,8 @@ internal sealed class GpuCaptureSession : IDisposable
         {
             _framePool?.Dispose();
             _framePool = null;
-            _pool?.Dispose();
-            _pool = null;
+            _allocator?.Dispose();
+            _allocator = null;
             _latest?.Dispose();
             _latest = null;
             _hasLatest = false;

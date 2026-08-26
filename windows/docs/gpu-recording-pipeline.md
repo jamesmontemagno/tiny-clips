@@ -6,11 +6,17 @@ pipelines, and the **benchmark harness** used to compare them. It complements
 [`audio-video-sync.md`](audio-video-sync.md), which covers timeline/sync; nothing here changes the
 timeline model — both pipelines stamp frames with the same `RecordingTimeline`.
 
-- Setting: **Settings → Video → Recording & output → GPU recording pipeline** (`UseGpuRecordingPipeline`, default **off** while experimental).
-- Code: `GpuCaptureSession`, `GpuFrameTexturePool`, `GpuOverlayCompositor`, `FramePacer`,
-  `RecordingPerformanceMonitor` in `windows/src/TinyClips.Core/Capture/`; pipeline selection in
-  `VideoRecordingService.PrepareCoreAsync` / `TryStartGpuCapture`.
+- Settings (all under **Settings → Video → Recording & output**, all default to the legacy behaviour while experimental):
+  - **GPU recording pipeline** (`UseGpuRecordingPipeline`, default off) — frames stay in video memory.
+  - **Video encoder** (`VideoEncoderBackend`: *Standard* = `MediaTranscoder`, *Low latency* = `IMFSinkWriter`; default Standard).
+  - **Video codec** (`VideoCodec`: H.264 default, or HEVC).
+- Code: `GpuCaptureSession`, `GpuFrame` / `GpuFrameTexturePool`, `GpuOverlayCompositor`, `FramePacer`,
+  `MfSinkWriterEncoder`, `RecordingPerformanceMonitor` in `windows/src/TinyClips.Core/Capture/`;
+  pipeline/backend selection in `VideoRecordingService.PrepareCoreAsync`.
 - Benchmark: `windows/tools/RecordingBenchmark`.
+
+> **Phase 2 (sink writer, resize, GPU webcam) results are in §8.** Sections 1–7 record the first
+> pass (GPU capture + Direct2D overlays feeding the existing `MediaTranscoder`).
 
 ## 1. Problem: where the time went in the CPU pipeline
 
@@ -42,7 +48,7 @@ precisely.
 | Option | Verdict | Why |
 |--------|---------|-----|
 | **A. Keep `MediaTranscoder` + `MediaStreamSource`, feed D3D11 surfaces** via `MediaStreamSample.CreateFromDirect3D11Surface` | **Chosen** | It is the documented Microsoft pattern ([Screen capture to video](https://learn.microsoft.com/windows/uwp/audio-video-camera/screen-capture-video), SimpleRecorder). Keeps the existing encoder prep / Baseline fallback / AAC mux / audio back-pressure code untouched. MF handles BGRA→NV12 on the GPU through its Video Processor MFT, so the hardware encoder receives GPU memory end-to-end. |
-| B. Native MF `IMFSinkWriter` + `IMFDXGIDeviceManager` + own Video Processor MFT | Rejected for now | Full control (encoder MFT selection, NV12 conversion, B-frame/GOP tuning) but hundreds of lines of COM lifetime code, and the earlier `MediaFoundationEncoderSpike` found Vortice's MF wrappers unusable. Revisit only if A's encoder hold time becomes the bottleneck. |
+| B. Native MF `IMFSinkWriter` + `IMFDXGIDeviceManager` + own Video Processor MFT | **Adopted in phase 2** (§8) | Full control (encoder MFT attributes, HEVC, push model). The earlier `MediaFoundationEncoderSpike` found Vortice's MF wrappers unusable, but `Vortice.MediaFoundation` 3.8.3 exposes everything needed (`MFCreateSinkWriterFromURL`, `MFCreateDXGIDeviceManager`, `IMFVideoSampleAllocatorEx`), as [crutkas/tiny-clips](https://github.com/crutkas/tiny-clips) demonstrated. Phase 1 measured the transcoder's encoder hold time as the remaining bottleneck, which is exactly what this fixes. |
 | C. Direct Desktop Duplication (`IDXGIOutputDuplication`) instead of WGC | Rejected | No window capture, no cursor composition without extra work, and WGC already hands us a D3D11 texture. |
 | D. Win2D (`CanvasDevice`) for overlays | Rejected | Win2D is WinUI-app-only (the `TinyClips.App` package); the compositor must live in UI-free `TinyClips.Core`. Direct2D via `Vortice.Direct2D1` gives the same primitives on the same D3D11 device. |
 | E. Custom HLSL compute/pixel shader for overlays | Deferred | More work for no measurable gain: Direct2D fills/ellipses/bitmaps on a 5 MP target cost 0.1–0.7 ms. |
@@ -143,12 +149,15 @@ desktop session (WGC needs the DWM).
 
 ```powershell
 dotnet run --project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 -- --seconds 10
-dotnet run --project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 -- --seconds 10 --fps 60 --scenarios cpu,gpu
-dotnet run --project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 -- --scenarios cpu+overlays,gpu+overlays --webcam --keep --json out.json
+dotnet run --project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 -- --seconds 10 --fps 60 --scenarios cpu,gpu,gpu+sink
+dotnet run --project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 -- --scenarios gpu+sink+overlays,gpu+sink+hevc --webcam --audio --keep --json out.json
+dotnet run --project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 -- --scenarios gpu+sink --window "Notepad"
 ```
 
-Scenarios: `cpu`, `gpu`, `cpu+overlays`, `gpu+overlays` (`+overlays` = branding badge + click visuals,
-plus the webcam PiP with `--webcam`). `--region WxH` records a centred region, `--audio` adds system
+Scenarios follow `(cpu|gpu)[+overlays][+sink][+hevc]`: `+overlays` = branding badge + click visuals
+(plus the webcam PiP with `--webcam`), `+sink` = the `IMFSinkWriter` backend, `+hevc` = H.265.
+`--region WxH` records a centred region, `--window <title>` records a window (resize it to exercise
+letterboxing), `--audio` adds system
 audio, `--iterations N` repeats, `--keep` leaves the MP4s in `%TEMP%\TinyClipsBenchmark` for
 inspection (e.g. `ffmpeg -ss 3 -i file.mp4 -frames:v 1 frame.png`).
 
@@ -216,3 +225,103 @@ Takeaways:
 - **Next steps, in order of payoff:** (1) flip the default to GPU once NVIDIA/Intel are validated;
   (2) GPU webcam frames; (3) low-latency encoder configuration or Option B to cut `EncoderHold`;
   (4) expose the perf report in the Quick Bug Report so users can attach it.
+
+## 8. Phase 2: sink-writer backend, window resize, GPU webcam
+
+Prompted by a review of Clint Rutkas's [crutkas/tiny-clips](https://github.com/crutkas/tiny-clips)
+spec (WGC → `IMFSinkWriter`), phase 2 added the items that phase 1 had deferred.
+
+### 8.1 `IMFSinkWriter` encoder backend (`MfSinkWriterEncoder`)
+
+*Setting: Video encoder → Low latency.* A push-model MP4 writer built on `Vortice.MediaFoundation`:
+
+- `MFCreateSinkWriterFromURL` with `MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS`,
+  `MF_SINK_WRITER_D3D_MANAGER` (an `IMFDXGIDeviceManager` reset to our shared `VIDEO_SUPPORT` device),
+  `MF_LOW_LATENCY`, and `MF_SINK_WRITER_DISABLE_THROTTLING`.
+- Video out: H.264 High or **HEVC Main**, CBR at the same bitrate formula as the transcoder (HEVC ×0.6).
+  Video in: `MFVideoFormat_ARGB32` at the capture size — MF's Video Processor does BGRA→NV12 on the GPU.
+- **Encoder configuration** via the `SetInputMediaType` encoding-parameters store (passed through to
+  the encoder's `ICodecAPI`): `CODECAPI_AVLowLatencyMode=1`, `AVEncMPVDefaultBPictureCount=0`,
+  `AVEncMPVGOPSize=2·fps`, `AVEncCommonRateControlMode=CBR`, `AVEncCommonMeanBitRate`,
+  `AVEncCommonQualityVsSpeed=50`. These are the knobs `MediaTranscoder` has no way to set.
+- Audio: PCM 48 kHz/16-bit/stereo in → AAC-LC 192 kbps out. A dedicated `AudioMux` thread pushes
+  20 ms chunks gated on captured-frame availability (the same back-pressure rule as the pull path,
+  shared through `AccountAudioChunk`), and drains the captured tail after Stop.
+- **GPU frames come from `IMFVideoSampleAllocatorEx`** (`MF_SA_D3D11_BINDFLAGS = RENDER_TARGET|SHADER_RESOURCE`,
+  `MF_SA_D3D11_USAGE = DEFAULT`). The allocator's samples are `IMFTrackedSample`s: when the sink
+  writer releases one, its texture returns to the allocator automatically. That replaces the
+  phase-1 texture pool + `MediaStreamSample.Processed` bookkeeping on this backend, and `AllocateSample`
+  failing with `MF_E_SAMPLEALLOCATOR_EMPTY` is the natural "encoder is behind, drop at source" signal.
+  `GpuFrame` became allocator-agnostic (`IGpuFrameAllocator`) so the transcoder keeps its pool.
+- CPU frames are written as memory buffers (bottom-up BGRA, as MF expects for RGB32).
+- Both stream writers take their own lock; `Finalize` takes both. A single lock across streams
+  deadlocked intermittently against the sink writer's cross-stream throttling (fixed by per-stream
+  locks *and* disabling throttling, since both streams are real-time paced already).
+- Any failure creating the writer falls back to the transcoder; the report's `encoder=` column says
+  which ran. GUIDs not surfaced by Vortice were verified against the Windows SDK 10.0.26100 headers.
+
+### 8.2 Window resize (`GpuCaptureSession` + `GpuOverlayCompositor.BlitLetterboxed`)
+
+Encoders cannot change frame size mid-stream, so the encoder frame stays at the initial size. When
+WGC reports a different `ContentSize` the session recreates the frame pool at the new size
+(`Direct3D11CaptureFramePool.Recreate`, legal from inside `FrameArrived`) and the pump asks the
+compositor to **scale-to-fit with black letterboxing** via a single Direct2D `DrawBitmap` instead of
+cropping. Verified by recording Notepad while resizing it 1200×800 → 700×900 → 1600×600
+(`contentResizes=2` in the report; frames pillar/letter-boxed and centred). The CPU pipeline is unchanged.
+
+### 8.3 GPU webcam frames (`WebcamCaptureService.SetPreferredDirect3DDevice`)
+
+On the GPU pipeline the recorder hands the webcam service the shared `IDirect3DDevice`. The service
+then initialises `MediaCapture` with `MemoryPreference.Auto` and, per frame, lets Media Foundation
+copy (and colour-convert) the camera frame into a ring of three
+`VideoFrame.CreateAsDirect3D11SurfaceBacked` BGRA surfaces on our device via `VideoFrame.CopyToAsync`.
+`WebcamFrame.Surface` carries the surface; `GpuOverlayCompositor` wraps it as a Direct2D bitmap
+(`AlphaMode.Ignore`, cached per ring slot) and fills the shaped PiP from a bitmap brush. Any failure
+falls back to CPU frames for that recording. The CPU pipeline still receives pixel buffers, now
+copied through `IMemoryBufferByteAccess` into a reusable ring instead of two fresh LOH arrays per frame.
+
+### 8.4 Results (same machine as §6; 10 s, 3440×1440)
+
+| Scenario | Encoded fps | CPU cores | Alloc | Gen2 | Composite avg/p99 | Size |
+|---|---:|---:|---:|---:|---:|---:|
+| cpu (transcoder) | 17.0 | 0.75 | 1546 MB/s | 167 | 0.01 / 0.05 ms | 10.2 MB |
+| gpu (transcoder) | 27.5 | 0.22 | 0.4 MB/s | 0 | 0.8 / 13.5 ms | 17.7 MB |
+| **gpu + sink writer** | **29.8** | **0.18** | 0.2 MB/s | 0 | **0.4 / 1.6 ms** | 17.7 MB |
+| **gpu + sink writer + HEVC** | 29.6 | 0.17 | 0.2 MB/s | 0 | 0.4 / 1.4 ms | **10.6 MB** |
+| cpu + overlays | 19.1 | 0.48 | 1655 MB/s | 129 | 68.6 / **1140 ms** (GC) | 10.7 MB |
+| gpu + overlays (transcoder) | 27.9 | 0.25 | 0.4 MB/s | 0 | 1.5 / 20.7 ms | 17.7 MB |
+| **gpu + sink writer + overlays** | 29.6 | **0.15** | 0.2 MB/s | 0 | 0.7 / 2.6 ms | 17.6 MB |
+
+**60 fps** target:
+
+| Scenario | Encoded fps | Dropped | CPU cores | Encoder held frames (high-water) |
+|---|---:|---:|---:|---:|
+| cpu (transcoder) | 19.6 | 0 (pump skipped) | 0.99 | — |
+| gpu (transcoder) | 44.3 | 57 | 0.25 | 14–16 of 30 |
+| **gpu + sink writer** | **59.6** | **0** | 0.22 | **1** of 30 |
+
+**Webcam** (gpu + sink writer + overlays, 8 s): webcam overlay cost **1.9 ms → 0.095 ms** per frame
+with GPU delivery (all 268 camera frames stayed on the GPU, source = `Direct3DSurface`); total CPU
+0.43 cores vs 1.03 for the CPU pipeline with the same overlays, 29.4 fps vs 20.9.
+
+Takeaways:
+
+1. **Low-latency encoder configuration removed the last bottleneck.** With `AVLowLatencyMode` and
+   no B-frames the encoder holds **one** input frame instead of 14+, so 60 fps is sustained with zero
+   drops and `WriteSample` costs ~0.1 ms. The transcoder's opaque look-ahead was the whole problem.
+2. **HEVC** cuts file size ~40 % (17.7 → 10.6 MB) at identical CPU cost; keep H.264 the default for
+   playback compatibility.
+3. **The GPU webcam path makes the webcam overlay free** (<0.1 ms). The remaining Gen2 collections
+   seen with the webcam on (~60 per 8 s even at 0.2 MB/s managed allocation) are *induced* by the
+   WinRT camera pipeline's RCW/finalizer pressure, not by our code — bisected by swapping the copy
+   path with `TINYCLIPS_WEBCAM_DIRECT_COPY=0` and by recording with no webcam (0 GCs).
+4. **Transcoder vs sink writer on the CPU pipeline** is a wash (both bounded by the readback); the
+   sink writer's value is on the GPU pipeline.
+
+### 8.5 Remaining follow-ups
+
+- Validate on NVIDIA (NVENC) and Intel (QSV), then make **GPU + Low latency** the default.
+- The CodecAPI keys are applied best-effort; log which ones the encoder accepted (`ICodecAPI::IsSupported`).
+- Lossless keyframe-aligned trim through the sink writer (source reader → sink writer pass-through)
+  to replace the `MediaComposition` re-encode in the trimmer.
+- Surface the perf report in the Quick Bug Report.

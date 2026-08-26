@@ -219,8 +219,9 @@ internal static partial class WgcInterop
             Marshal.QueryInterface(factory.ThisPtr, in GraphicsCaptureItemInteropGuid, out interopPtr)
                 .ThrowIfFailed("QueryInterface(IGraphicsCaptureItemInterop)");
 
+            // ConvertToManaged does not take ownership (the wrapper AddRefs); the QI reference
+            // is released in the finally block.
             var interop = ComInterfaceMarshaller<IGraphicsCaptureItemInterop>.ConvertToManaged((void*)interopPtr)!;
-            interopPtr = 0;
 
             create(interop, out itemPtr)
                 .ThrowIfFailed("IGraphicsCaptureItemInterop.CreateForMonitor/Window");
@@ -243,9 +244,11 @@ internal static partial class WgcInterop
         }
     }
 
-    internal static unsafe ID3D11Texture2D GetTextureFromFrame(Direct3D11CaptureFrame frame)
+    internal static ID3D11Texture2D GetTextureFromFrame(Direct3D11CaptureFrame frame) => GetTextureFromSurface(frame.Surface);
+
+    internal static unsafe ID3D11Texture2D GetTextureFromSurface(IDirect3DSurface surface)
     {
-        var surfacePtr = ((IWinRTObject)frame.Surface).NativeObject.ThisPtr;
+        var surfacePtr = ((IWinRTObject)surface).NativeObject.ThisPtr;
         nint accessPtr = 0;
         nint texturePtr = 0;
         try
@@ -254,7 +257,6 @@ internal static partial class WgcInterop
                 .ThrowIfFailed("QueryInterface(IDirect3DDxgiInterfaceAccess)");
 
             var access = ComInterfaceMarshaller<IDirect3DDxgiInterfaceAccess>.ConvertToManaged((void*)accessPtr)!;
-            accessPtr = 0;
 
             access.GetInterface(in D3D11Texture2DGuid, out texturePtr)
                 .ThrowIfFailed("IDirect3DDxgiInterfaceAccess.GetInterface(ID3D11Texture2D)");

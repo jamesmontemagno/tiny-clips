@@ -249,6 +249,34 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Description="Low latency configures the hardware encoder for real-time capture (no look-ahead, no B-frames) so high frame rates don't drop frames. Falls back to Standard automatically if unavailable. Experimental."
+                    Header="Video encoder"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE9D9;}">
+                    <ComboBox
+                        MinWidth="220"
+                        AutomationProperties.AutomationId="VideoEncoderBackendCombo"
+                        AutomationProperties.Name="Video encoder"
+                        SelectedIndex="{x:Bind ViewModel.VideoEncoderBackendIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="Standard" />
+                        <ComboBoxItem Content="Low latency" />
+                    </ComboBox>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="HEVC (H.265) files are roughly 40% smaller at the same quality but need an HEVC-capable player. H.264 plays everywhere."
+                    Header="Video codec"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B2;}">
+                    <ComboBox
+                        MinWidth="220"
+                        AutomationProperties.AutomationId="VideoCodecCombo"
+                        AutomationProperties.Name="Video codec"
+                        SelectedIndex="{x:Bind ViewModel.VideoCodecIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="H.264 (compatible)" />
+                        <ComboBoxItem Content="HEVC / H.265 (smaller files)" />
+                    </ComboBox>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
                     Description="Choose Region, Screen, or Window before recording."
                     Header="Show capture picker before recording"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">

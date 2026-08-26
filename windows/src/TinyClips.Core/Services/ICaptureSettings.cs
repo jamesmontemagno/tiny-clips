@@ -28,6 +28,15 @@ public interface ICaptureSettings
     /// automatically if the GPU path cannot start.
     /// </summary>
     bool UseGpuRecordingPipeline { get; set; }
+
+    /// <summary>
+    /// Media Foundation front-end for MP4 writing. <see cref="VideoEncoderBackend.SinkWriter"/> enables
+    /// low-latency encoder configuration and HEVC; falls back to the transcoder if it cannot start.
+    /// </summary>
+    VideoEncoderBackend VideoEncoderBackend { get; set; }
+
+    /// <summary>H.264 (default, universally playable) or HEVC (smaller files, needs an HEVC decoder to play).</summary>
+    VideoCodec VideoCodec { get; set; }
     bool KeepDisplayAwakeWhileRecording { get; set; }
     bool ShowMouseClickVisualsInVideo { get; set; }
     bool ShowMouseClickVisualsInGif { get; set; }

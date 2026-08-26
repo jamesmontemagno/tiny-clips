@@ -17,14 +17,34 @@ own `CHANGELOG.md` at the repository root.
 - **Per-recording performance report** for both pipelines (per-stage avg/p99/max timings, CPU %,
   allocation rate, GC counts and pause time, frames emitted/encoded/dropped), written to the
   diagnostics log at stop and exposed as `IVideoRecordingService.LastPerformanceReport`.
-- **`windows/tools/RecordingBenchmark`** — headless harness that records the primary monitor through
-  the production recorder for each CPU/GPU × overlays scenario and prints a comparison table.
+- **`windows/tools/RecordingBenchmark`** — headless harness that records the primary monitor (or a
+  window with `--window`) through the production recorder for each CPU/GPU × encoder × overlays
+  scenario and prints a comparison table.
+- **Low-latency encoder backend** (Settings → Video → *Video encoder* → Low latency, default Standard).
+  An `IMFSinkWriter` push-model MP4 writer with an `IMFDXGIDeviceManager` that configures the hardware
+  encoder for real-time capture (`AVLowLatencyMode`, no B-frames, 2 s GOP, CBR) and sources GPU frames
+  from Media Foundation's own `IMFVideoSampleAllocatorEx`. With the GPU pipeline this sustains
+  **60 fps at 3440×1440 with zero dropped frames** (the standard transcoder managed 44 fps with drops
+  because it holds 14+ frames of look-ahead; the sink writer holds one) at ~0.2 CPU cores. Audio is
+  muxed from a dedicated thread with the same captured-frame back-pressure as before. Falls back to
+  the standard encoder automatically.
+- **HEVC / H.265 recording** (Settings → Video → *Video codec*). ~40 % smaller files at the same
+  quality on both encoder backends; H.264 stays the default for playback compatibility.
+- **Window resize handling on the GPU pipeline.** When a recorded window changes size the WGC frame
+  pool is recreated at the new size and the content is scaled-to-fit with black letterboxing into the
+  fixed encoder frame (a single Direct2D draw) instead of being cropped.
+- **GPU webcam frames.** On the GPU pipeline camera frames are copied by Media Foundation straight
+  into BGRA surfaces on the recorder's device (`VideoFrame.CopyToAsync`) and drawn by Direct2D without
+  touching system memory; the webcam overlay went from ~1.9 ms to <0.1 ms per frame. The CPU pipeline's
+  webcam frames now reuse a small buffer ring (via `IMemoryBufferByteAccess`) instead of allocating
+  two ~2 MB arrays per camera frame.
 
 ### Changed
 - The shared Direct3D 11 device is created with `VIDEO_SUPPORT` (falls back without it) so Media
   Foundation's hardware encoders can bind recorder textures directly.
 - Webcam overlay placement math moved to the shared `WebcamOverlayLayout`; click-ring geometry and
   the branding badge bitmap are exposed for reuse so the CPU and GPU compositors render identically.
+- `TinyClips.Core` now references `Vortice.Direct2D1` and `Vortice.MediaFoundation` (3.8.3).
 
 ## [v1.7.4-windows] - 2026-08-25
 

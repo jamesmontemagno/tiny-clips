@@ -28,6 +28,8 @@ public sealed class CaptureSettingsTests
         Assert.Equal(10.0, settings.GifFrameRate);
         Assert.Equal(30, settings.VideoFrameRate);
         Assert.False(settings.UseGpuRecordingPipeline);
+        Assert.Equal(VideoEncoderBackend.Transcoder, settings.VideoEncoderBackend);
+        Assert.Equal(VideoCodec.H264, settings.VideoCodec);
         Assert.True(settings.KeepDisplayAwakeWhileRecording);
         Assert.Equal(100, settings.ScreenshotScale);
         Assert.Equal("TinyClips {date} at {time}", settings.FileNameTemplate);

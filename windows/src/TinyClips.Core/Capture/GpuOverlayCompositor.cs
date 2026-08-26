@@ -155,7 +155,12 @@ internal sealed class GpuOverlayCompositor : IDisposable
         WebcamShape shape,
         double? cornerRadius)
     {
-        if (frame.Width <= 0 || frame.Height <= 0 || frame.BgraPixels.Length < frame.Width * frame.Height * 4)
+        if (frame.Width <= 0 || frame.Height <= 0)
+        {
+            return;
+        }
+
+        if (!frame.IsGpuFrame && frame.BgraPixels.Length < frame.Width * frame.Height * 4)
         {
             return;
         }
@@ -166,8 +171,7 @@ internal sealed class GpuOverlayCompositor : IDisposable
             return;
         }
 
-        EnsureWebcamBitmap(frame);
-        var brush = _webcamBrush!;
+        var brush = frame.IsGpuFrame ? EnsureWebcamSurfaceBrush(frame) : EnsureWebcamBitmap(frame);
 
         // Map the source crop rectangle onto the overlay rectangle: translate crop origin to 0,
         // scale to the overlay size, then translate into place.
@@ -226,6 +230,53 @@ internal sealed class GpuOverlayCompositor : IDisposable
         }
     }
 
+    private ID2D1Bitmap1? _sourceBitmap;
+    private nint _sourceBitmapKey;
+
+    /// <summary>
+    /// Scales a source rectangle into the target frame preserving aspect ratio, letterboxing with
+    /// black. Used when a recorded window is resized mid-recording and no longer matches the fixed
+    /// encoder frame size. The whole operation is a single Direct2D draw.
+    /// </summary>
+    public bool BlitLetterboxed(in GpuBlitRequest request)
+    {
+        if (request.Width <= 0 || request.Height <= 0)
+        {
+            return false;
+        }
+
+        // The "latest" capture texture is recreated on size change; re-wrap when its identity changes.
+        if (_sourceBitmap is null || _sourceBitmapKey != request.Source.NativePointer)
+        {
+            _sourceBitmap?.Dispose();
+            using var surface = request.Source.QueryInterface<IDXGISurface>();
+            _sourceBitmap = _context.CreateBitmapFromDxgiSurface(
+                surface,
+                new BitmapProperties1(
+                    new D2DPixelFormat(Format.B8G8R8A8_UNorm, D2DAlphaMode.Premultiplied),
+                    96f,
+                    96f,
+                    BitmapOptions.None));
+            _sourceBitmapKey = request.Source.NativePointer;
+        }
+
+        var targetW = request.Target.Width;
+        var targetH = request.Target.Height;
+        var scale = Math.Min(targetW / (float)request.Width, targetH / (float)request.Height);
+        var drawW = request.Width * scale;
+        var drawH = request.Height * scale;
+        var dest = new RectangleF((targetW - drawW) / 2f, (targetH - drawH) / 2f, drawW, drawH);
+        var src = new RectangleF(request.X, request.Y, request.Width, request.Height);
+
+        _context.Target = GetOrCreateTarget(request.Target.Texture);
+        _context.BeginDraw();
+        _context.Clear(new Color4(0f, 0f, 0f, 1f));
+        _context.DrawBitmap(_sourceBitmap, dest, 1f, BitmapInterpolationMode.Linear, src);
+        _context.EndDraw();
+        _context.Target = null;
+        return true;
+    }
+
     private void EnsureClickBrush(string colorHex)
     {
         if (_clickBrush is not null && string.Equals(_clickColorHex, colorHex, StringComparison.Ordinal))
@@ -261,7 +312,51 @@ internal sealed class GpuOverlayCompositor : IDisposable
         }
     }
 
-    private unsafe void EnsureWebcamBitmap(WebcamFrame frame)
+    private readonly Dictionary<nint, (ID2D1Bitmap1 Bitmap, ID2D1BitmapBrush Brush)> _webcamSurfaceBrushes = new();
+
+    /// <summary>
+    /// Wraps a GPU-delivered webcam surface as a Direct2D bitmap (no pixel copy) and caches a brush
+    /// per surface. The capture service rotates through a small fixed ring of surfaces, so this
+    /// cache stays tiny and a frame never costs more than a QueryInterface.
+    /// </summary>
+    private ID2D1BitmapBrush EnsureWebcamSurfaceBrush(WebcamFrame frame)
+    {
+        using var texture = WgcInterop.GetTextureFromSurface(frame.Surface!);
+        var key = texture.NativePointer;
+        if (_webcamSurfaceBrushes.TryGetValue(key, out var cached))
+        {
+            return cached.Brush;
+        }
+
+        if (_webcamSurfaceBrushes.Count >= 8)
+        {
+            // The ring was recreated (size change): drop stale wrappers.
+            foreach (var entry in _webcamSurfaceBrushes.Values)
+            {
+                entry.Brush.Dispose();
+                entry.Bitmap.Dispose();
+            }
+
+            _webcamSurfaceBrushes.Clear();
+        }
+
+        using var dxgiSurface = texture.QueryInterface<IDXGISurface>();
+        var bitmap = _context.CreateBitmapFromDxgiSurface(
+            dxgiSurface,
+            new BitmapProperties1(
+                // Camera drivers leave BGRA alpha undefined; Ignore treats every pixel as opaque.
+                new D2DPixelFormat(Format.B8G8R8A8_UNorm, D2DAlphaMode.Ignore),
+                96f,
+                96f,
+                BitmapOptions.None));
+        var brush = _context.CreateBitmapBrush(
+            bitmap,
+            new BitmapBrushProperties(ExtendMode.Clamp, ExtendMode.Clamp, BitmapInterpolationMode.Linear));
+        _webcamSurfaceBrushes[key] = (bitmap, brush);
+        return brush;
+    }
+
+    private unsafe ID2D1BitmapBrush EnsureWebcamBitmap(WebcamFrame frame)
     {
         if (_webcamBitmap is null || _webcamBitmapWidth != frame.Width || _webcamBitmapHeight != frame.Height)
         {
@@ -291,6 +386,7 @@ internal sealed class GpuOverlayCompositor : IDisposable
         _webcamBrush ??= _context.CreateBitmapBrush(
             _webcamBitmap,
             new BitmapBrushProperties(ExtendMode.Clamp, ExtendMode.Clamp, BitmapInterpolationMode.Linear));
+        return _webcamBrush;
     }
 
     public void Dispose()
@@ -301,6 +397,14 @@ internal sealed class GpuOverlayCompositor : IDisposable
         }
 
         _targets.Clear();
+        foreach (var entry in _webcamSurfaceBrushes.Values)
+        {
+            entry.Brush.Dispose();
+            entry.Bitmap.Dispose();
+        }
+
+        _webcamSurfaceBrushes.Clear();
+        _sourceBitmap?.Dispose();
         _webcamBrush?.Dispose();
         _webcamBitmap?.Dispose();
         _badge?.Dispose();

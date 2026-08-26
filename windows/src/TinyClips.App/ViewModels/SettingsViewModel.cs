@@ -382,6 +382,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _useGpuRecordingPipeline;
 
     [ObservableProperty]
+    private int _videoEncoderBackendIndex;
+
+    [ObservableProperty]
+    private int _videoCodecIndex;
+
+    [ObservableProperty]
     private bool _recordAudio;
 
     [ObservableProperty]
@@ -796,6 +802,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             VideoFrameRate = _settings.VideoFrameRate;
             KeepDisplayAwakeWhileRecording = _settings.KeepDisplayAwakeWhileRecording;
             UseGpuRecordingPipeline = _settings.UseGpuRecordingPipeline;
+            VideoEncoderBackendIndex = _settings.VideoEncoderBackend == VideoEncoderBackend.SinkWriter ? 1 : 0;
+            VideoCodecIndex = _settings.VideoCodec == VideoCodec.Hevc ? 1 : 0;
             RecordAudio = _settings.RecordAudio;
             RecordMicrophone = _settings.RecordMicrophone;
             MicrophoneLimiterEnabled = _settings.MicrophoneLimiterEnabled;
@@ -1183,6 +1191,12 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnUseGpuRecordingPipelineChanged(bool value) =>
         Persist(() => _settings.UseGpuRecordingPipeline = value);
+
+    partial void OnVideoEncoderBackendIndexChanged(int value) =>
+        Persist(() => _settings.VideoEncoderBackend = value == 1 ? VideoEncoderBackend.SinkWriter : VideoEncoderBackend.Transcoder);
+
+    partial void OnVideoCodecIndexChanged(int value) =>
+        Persist(() => _settings.VideoCodec = value == 1 ? VideoCodec.Hevc : VideoCodec.H264);
 
     partial void OnRecordAudioChanged(bool value) => Persist(() => _settings.RecordAudio = value);
 

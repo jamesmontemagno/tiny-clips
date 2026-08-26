@@ -60,6 +60,21 @@ internal static class Program
             region = new PixelRect((primary.Width - w) / 2, (primary.Height - h) / 2, w, h);
         }
 
+        CaptureTarget? target = null;
+        if (!string.IsNullOrEmpty(options.WindowTitle))
+        {
+            var hwnd = FindWindowByTitle(options.WindowTitle);
+            if (hwnd == 0)
+            {
+                Console.Error.WriteLine($"No visible top-level window with a title containing '{options.WindowTitle}'.");
+                return 2;
+            }
+
+            target = CaptureTarget.Window(hwnd);
+            region = null;
+            Console.WriteLine($"Recording window 0x{hwnd:X} ('{options.WindowTitle}') — resize it during the run to exercise letterboxing.");
+        }
+
         var results = new List<ScenarioResult>();
         foreach (var scenario in options.Scenarios)
         {
@@ -69,7 +84,7 @@ internal static class Program
                 Console.Write($"[{label}] recording... ");
                 try
                 {
-                    var result = await RunScenarioAsync(recorder, settings, scenario, label, region, options).ConfigureAwait(false);
+                    var result = await RunScenarioAsync(recorder, settings, scenario, label, target, region, options).ConfigureAwait(false);
                     results.Add(result);
                     Console.WriteLine(result.Report is null
                         ? "no report"
@@ -106,6 +121,8 @@ internal static class Program
                     Scenario = r.Scenario.Name,
                     r.Scenario.RequestGpu,
                     r.Scenario.Overlays,
+                    r.Scenario.SinkWriter,
+                    r.Scenario.Hevc,
                     r.OutputBytes,
                     r.Error,
                     r.Report,
@@ -123,15 +140,18 @@ internal static class Program
         CaptureSettings settings,
         Scenario scenario,
         string label,
+        CaptureTarget? target,
         PixelRect? region,
         BenchmarkOptions options)
     {
         settings.UseGpuRecordingPipeline = scenario.RequestGpu;
+        settings.VideoEncoderBackend = scenario.SinkWriter ? VideoEncoderBackend.SinkWriter : VideoEncoderBackend.Transcoder;
+        settings.VideoCodec = scenario.Hevc ? VideoCodec.Hevc : VideoCodec.H264;
         settings.ShowBrandingOverlay = scenario.Overlays;
         settings.ShowMouseClickVisualsInVideo = scenario.Overlays;
         settings.WebcamEnabled = scenario.Overlays && options.Webcam;
 
-        await recorder.StartAsync(null, region).ConfigureAwait(false);
+        await recorder.StartAsync(target, region).ConfigureAwait(false);
         await Task.Delay(TimeSpan.FromSeconds(options.Seconds)).ConfigureAwait(false);
         var path = await recorder.StopAsync().ConfigureAwait(false);
 
@@ -155,7 +175,7 @@ internal static class Program
     private static string BuildComparisonTable(IReadOnlyList<ScenarioResult> results)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("scenario               pipeline  size       cpu%   cores  effFps  emitted  encoded  dropped  alloc MB/s  gc0/1/2   gcPause%  composite avg/p99 ms  readback avg ms  produce avg ms  encWait avg ms");
+        sb.AppendLine("scenario               pipeline  size       cpu%   cores  effFps  emitted  encoded  dropped  alloc MB/s  gc0/1/2   gcPause%  composite avg/p99 ms  readback avg ms  produce avg ms  encWait avg ms  MB   encoder");
         foreach (var r in results)
         {
             if (r.Report is null)
@@ -171,13 +191,57 @@ internal static class Program
             var encWait = rep.Stages.FirstOrDefault(s => s.Stage == RecordingStage.EncoderWait);
             sb.AppendLine(string.Create(
                 CultureInfo.InvariantCulture,
-                $"{r.Label,-22} {rep.Pipeline,-8} {rep.Width}x{rep.Height,-5} {rep.ProcessCpuPercent,6:F1} {rep.ProcessCpuCores,6:F2} {rep.EffectiveFps,7:F1} {rep.FramesEmitted,8} {rep.FramesEncoded,8} {rep.FramesDropped,8} {rep.AllocationMbPerSecond,11:F1}  {rep.Gen0Collections}/{rep.Gen1Collections}/{rep.Gen2Collections,-6} {rep.GcPausePercent,7:F1}  {composite?.AverageMs ?? 0,8:F3}/{composite?.P99Ms ?? 0,-8:F3} {readback?.AverageMs ?? 0,15:F3} {produce?.AverageMs ?? 0,15:F3} {encWait?.AverageMs ?? 0,15:F3}"));
+                $"{r.Label,-22} {rep.Pipeline,-8} {rep.Width}x{rep.Height,-5} {rep.ProcessCpuPercent,6:F1} {rep.ProcessCpuCores,6:F2} {rep.EffectiveFps,7:F1} {rep.FramesEmitted,8} {rep.FramesEncoded,8} {rep.FramesDropped,8} {rep.AllocationMbPerSecond,11:F1}  {rep.Gen0Collections}/{rep.Gen1Collections}/{rep.Gen2Collections,-6} {rep.GcPausePercent,7:F1}  {composite?.AverageMs ?? 0,8:F3}/{composite?.P99Ms ?? 0,-8:F3} {readback?.AverageMs ?? 0,15:F3} {produce?.AverageMs ?? 0,15:F3} {encWait?.AverageMs ?? 0,15:F3} {r.OutputBytes / 1024.0 / 1024.0,5:F1}  {rep.EncoderPath}"));
         }
 
         return sb.ToString();
     }
 
-    private sealed record Scenario(string Name, bool RequestGpu, bool Overlays);
+    private static nint FindWindowByTitle(string titleFragment)
+    {
+        nint found = 0;
+        EnumWindows((hwnd, _) =>
+        {
+            if (!IsWindowVisible(hwnd))
+            {
+                return true;
+            }
+
+            var length = GetWindowTextLength(hwnd);
+            if (length <= 0)
+            {
+                return true;
+            }
+
+            var buffer = new char[length + 1];
+            GetWindowText(hwnd, buffer, buffer.Length);
+            var title = new string(buffer, 0, length);
+            if (title.Contains(titleFragment, StringComparison.OrdinalIgnoreCase))
+            {
+                found = hwnd;
+                return false;
+            }
+
+            return true;
+        }, 0);
+        return found;
+    }
+
+    private delegate bool EnumWindowsProc(nint hwnd, nint lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, nint lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(nint hwnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetWindowTextLength(nint hwnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetWindowText(nint hwnd, [System.Runtime.InteropServices.Out] char[] text, int maxCount);
+
+    private sealed record Scenario(string Name, bool RequestGpu, bool Overlays, bool SinkWriter, bool Hevc);
 
     private sealed record ScenarioResult(string Label, Scenario Scenario, RecordingPerformanceReport? Report, long OutputBytes, string? Error);
 
@@ -198,6 +262,9 @@ internal static class Program
         public string? JsonPath { get; private set; }
 
         public (int Width, int Height)? Region { get; private set; }
+
+        /// <summary>Substring of a top-level window title to record instead of the primary monitor.</summary>
+        public string? WindowTitle { get; private set; }
 
         public List<Scenario> Scenarios { get; } = new();
 
@@ -225,6 +292,9 @@ internal static class Program
                         var parts = args[++i].Split('x');
                         options.Region = (int.Parse(parts[0], CultureInfo.InvariantCulture), int.Parse(parts[1], CultureInfo.InvariantCulture));
                         break;
+                    case "--window" when i + 1 < args.Length:
+                        options.WindowTitle = args[++i];
+                        break;
                     case "--json" when i + 1 < args.Length:
                         options.JsonPath = args[++i];
                         break;
@@ -248,15 +318,18 @@ internal static class Program
 
             foreach (var name in scenarioNames)
             {
-                var overlays = name.EndsWith("+overlays", StringComparison.OrdinalIgnoreCase);
-                var baseName = overlays ? name[..^"+overlays".Length] : name;
-                var gpu = baseName switch
+                // Grammar: (cpu|gpu)[+overlays][+sink][+hevc]
+                var parts = name.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var gpu = parts[0].ToLowerInvariant() switch
                 {
                     "gpu" => true,
                     "cpu" => false,
-                    _ => throw new ArgumentException($"Unknown scenario '{name}'. Use cpu, gpu, cpu+overlays or gpu+overlays."),
+                    _ => throw new ArgumentException($"Unknown scenario '{name}'. Use cpu or gpu, optionally +overlays, +sink, +hevc."),
                 };
-                options.Scenarios.Add(new Scenario(name, gpu, overlays));
+                var overlays = parts.Skip(1).Contains("overlays", StringComparer.OrdinalIgnoreCase);
+                var sink = parts.Skip(1).Contains("sink", StringComparer.OrdinalIgnoreCase);
+                var hevc = parts.Skip(1).Contains("hevc", StringComparer.OrdinalIgnoreCase);
+                options.Scenarios.Add(new Scenario(name, gpu, overlays, sink, hevc));
             }
 
             return options;
@@ -271,8 +344,11 @@ internal static class Program
                   --seconds     Recording length per scenario (default 10).
                   --fps         Target frame rate (default 30).
                   --iterations  Repeat each scenario N times (default 1).
-                  --scenarios   Comma-separated list. "+overlays" enables branding + click visuals (+ webcam with --webcam).
+                  --scenarios   Comma-separated list of (cpu|gpu)[+overlays][+sink][+hevc]. "+overlays" enables branding +
+                                click visuals (+ webcam with --webcam); "+sink" uses the IMFSinkWriter encoder backend;
+                                "+hevc" records H.265. Default: cpu,gpu,cpu+overlays,gpu+overlays.
                   --region      Record a centred WxH region of the primary monitor instead of the whole screen.
+                  --window      Record the first visible window whose title contains this text (resize it to test letterboxing).
                   --webcam      Enable the webcam overlay in "+overlays" scenarios (needs a camera and permission).
                   --audio       Record system audio too (exercises the muxer's audio path).
                   --keep        Keep the recorded MP4s in %TEMP%\TinyClipsBenchmark.

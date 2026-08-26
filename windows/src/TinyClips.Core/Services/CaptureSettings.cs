@@ -175,6 +175,22 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("useGpuRecordingPipeline", value);
     }
 
+    public VideoEncoderBackend VideoEncoderBackend
+    {
+        get => string.Equals(_settings.Get("videoEncoderBackend", "transcoder"), "sinkWriter", StringComparison.OrdinalIgnoreCase)
+            ? VideoEncoderBackend.SinkWriter
+            : VideoEncoderBackend.Transcoder;
+        set => _settings.Set("videoEncoderBackend", value == VideoEncoderBackend.SinkWriter ? "sinkWriter" : "transcoder");
+    }
+
+    public VideoCodec VideoCodec
+    {
+        get => string.Equals(_settings.Get("videoCodec", "h264"), "hevc", StringComparison.OrdinalIgnoreCase)
+            ? VideoCodec.Hevc
+            : VideoCodec.H264;
+        set => _settings.Set("videoCodec", value == VideoCodec.Hevc ? "hevc" : "h264");
+    }
+
     public bool KeepDisplayAwakeWhileRecording
     {
         get => _settings.Get("keepDisplayAwakeWhileRecording", true);
@@ -756,6 +772,8 @@ public sealed class CaptureSettings : ICaptureSettings
         GifMaxWidth = 640;
         VideoFrameRate = 30;
         UseGpuRecordingPipeline = false;
+        VideoEncoderBackend = VideoEncoderBackend.Transcoder;
+        VideoCodec = VideoCodec.H264;
         KeepDisplayAwakeWhileRecording = true;
         ShowMouseClickVisualsInVideo = false;
         ShowMouseClickVisualsInGif = false;
