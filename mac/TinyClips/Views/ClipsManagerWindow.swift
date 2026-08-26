@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import AVFoundation
+import AVKit
 import SwiftData
 import ImageIO
 
@@ -15,7 +16,7 @@ private struct ClipsManagerRootView: View {
 @MainActor
 func clipsManagerRootView() -> some View {
     ClipsManagerRootView()
-        .frame(minWidth: 700, minHeight: 460)
+        .frame(minWidth: 760, minHeight: 480)
 }
 
 // MARK: - Clip Item Model
@@ -214,6 +215,8 @@ private class ClipsViewModel: ObservableObject {
     @Published var selectedCollection: String = "" { didSet { persistUIStateIfNeeded() } }
     @Published var selectionMode = false
     @Published var selectedClipIDs: Set<String> = []
+    /// The clip shown in the inspector pane (independent of multi-selection).
+    @Published var inspectedClipID: String?
     @Published var uploadingClipIDs: Set<String> = []
     @Published var uploadStatusByPath: [String: String] = [:]
     @Published var uploadProgressByPath: [String: Double] = [:]
@@ -282,33 +285,22 @@ private class ClipsViewModel: ObservableObject {
         applyInitialPreferences()
     }
 
-    var filteredSortedClips: [ClipItem] {
-        var result = clips
+    /// The clip currently shown in the inspector, or nil when it was deleted/filtered away.
+    var inspectedItem: ClipItem? {
+        guard let inspectedClipID else { return nil }
+        return clips.first { $0.id == inspectedClipID }
+    }
 
-        // Smart collection filter
-        let now = Date()
-        switch smartCollection {
-        case .all: break
-        case .recent:
-            guard let threshold = Calendar.current.date(byAdding: .day, value: -1, to: now) else { break }
-            result = result.filter { $0.date >= threshold }
-        case .thisWeek:
-            guard let threshold = Calendar.current.date(byAdding: .day, value: -7, to: now) else { break }
-            result = result.filter { $0.date >= threshold }
-        case .thisMonth:
-            guard let threshold = Calendar.current.date(byAdding: .day, value: -30, to: now) else { break }
-            result = result.filter { $0.date >= threshold }
-        case .largeFiles:
-            result = result.filter { $0.fileSize > 5_242_880 }
-        case .favorites:
-            result = result.filter { isFavorite($0) }
-        case .screenshots:
-            result = result.filter { $0.type == .screenshot }
-        case .videos:
-            result = result.filter { $0.type == .video }
-        case .gifs:
-            result = result.filter { $0.type == .gif }
-        }
+    func inspect(_ item: ClipItem) {
+        inspectedClipID = item.id
+    }
+
+    func isInspected(_ item: ClipItem) -> Bool {
+        inspectedClipID == item.id
+    }
+
+    var filteredSortedClips: [ClipItem] {
+        var result = clips.filter { matches($0, smartCollection: smartCollection) }
 
         // Type filter (additional, on top of smart collection)
         switch filterType {
@@ -366,6 +358,59 @@ private class ClipsViewModel: ObservableObject {
         }
 
         return result
+    }
+
+    /// Whether `item` belongs to `collection`; shared by filtering and the sidebar badges.
+    func matches(_ item: ClipItem, smartCollection collection: SmartCollection) -> Bool {
+        let now = Date()
+        switch collection {
+        case .all:
+            return true
+        case .recent:
+            guard let threshold = Calendar.current.date(byAdding: .day, value: -1, to: now) else { return true }
+            return item.date >= threshold
+        case .thisWeek:
+            guard let threshold = Calendar.current.date(byAdding: .day, value: -7, to: now) else { return true }
+            return item.date >= threshold
+        case .thisMonth:
+            guard let threshold = Calendar.current.date(byAdding: .day, value: -30, to: now) else { return true }
+            return item.date >= threshold
+        case .largeFiles:
+            return item.fileSize > 5_242_880
+        case .favorites:
+            return isFavorite(item)
+        case .screenshots:
+            return item.type == .screenshot
+        case .videos:
+            return item.type == .video
+        case .gifs:
+            return item.type == .gif
+        }
+    }
+
+    func count(for collection: SmartCollection) -> Int {
+        clips.reduce(into: 0) { total, item in
+            if matches(item, smartCollection: collection) { total += 1 }
+        }
+    }
+
+    /// True when anything beyond the default "All Clips" view narrows the list.
+    var hasActiveFilters: Bool {
+        filterType != .all
+            || dateFilter != .allTime
+            || smartCollection != .all
+            || !selectedTag.isEmpty
+            || !selectedCollection.isEmpty
+            || !searchText.isEmpty
+    }
+
+    func clearFilters() {
+        filterType = .all
+        dateFilter = .allTime
+        smartCollection = .all
+        selectedTag = ""
+        selectedCollection = ""
+        searchText = ""
     }
 
     // MARK: - Loading
@@ -556,7 +601,8 @@ private class ClipsViewModel: ObservableObject {
                     let asset = AVURLAsset(url: url)
                     let generator = AVAssetImageGenerator(asset: asset)
                     generator.appliesPreferredTrackTransform = true
-                    generator.maximumSize = CGSize(width: 160, height: 120)
+                    // 2x the 220×135 grid tile so thumbnails stay crisp on Retina displays.
+                    generator.maximumSize = CGSize(width: 440, height: 270)
                     let time = CMTime(seconds: 0, preferredTimescale: 600)
                     var generatedImage: CGImage?
                     let semaphore = DispatchSemaphore(value: 0)
@@ -587,6 +633,9 @@ private class ClipsViewModel: ObservableObject {
             try FileManager.default.removeItem(at: item.url)
             clips.removeAll { $0.id == item.id }
             thumbnails.removeValue(forKey: item.id)
+            if inspectedClipID == item.id {
+                inspectedClipID = nil
+            }
             metadataStore.remove(path: item.filePath)
             metadataByPath.removeValue(forKey: item.filePath)
             uploadStatusByPath.removeValue(forKey: item.filePath)
@@ -987,7 +1036,6 @@ private struct ClipsManagerContentView: View {
     @State private var renameClip: ClipItem?
     @State private var tagEditorClip: ClipItem?
     @State private var notesClip: ClipItem?
-    @State private var detailClip: ClipItem?
     @State private var collectionClip: ClipItem?
     @State private var batchTag = ""
     @State private var showProUpsell = false
@@ -1003,7 +1051,7 @@ private struct ClipsManagerContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 140, ideal: 160, max: 200)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 280)
         } detail: {
             VStack(spacing: 0) {
                 if viewModel.selectionMode {
@@ -1011,8 +1059,28 @@ private struct ClipsManagerContentView: View {
                 }
                 content
             }
+            .inspector(isPresented: $settings.clipsManagerShowInspector) {
+                ClipInspectorView(
+                    viewModel: viewModel,
+                    item: viewModel.inspectedItem,
+                    onEditMedia: { item in viewModel.editClip(item) },
+                    onReveal: { item in viewModel.revealInFinder(item) },
+                    onCopy: { item in viewModel.copyToClipboard(item) },
+                    onDelete: { item in confirmDelete(item) },
+                    onUpload: { item in
+                        if viewModel.canUploadToUploadcare {
+                            viewModel.uploadToUploadcare(item)
+                        } else {
+                            showUploadcareSettings = true
+                        }
+                    },
+                    onCopyUploadcareLink: { item in viewModel.copyUploadcareLink(item) }
+                )
+                .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
+            }
         }
-        .searchable(text: $viewModel.searchText, placement: .toolbar, prompt: "Search")
+        .searchable(text: $viewModel.searchText, placement: .toolbar, prompt: "Search names, tags, notes")
+        .navigationSubtitle(countSubtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 // Sort & Filter menu
@@ -1051,17 +1119,15 @@ private struct ClipsManagerContentView: View {
                     Label("Sort & Filter", systemImage: "line.3.horizontal.decrease.circle")
                 }
 
-                if viewModel.filterType != .all || viewModel.dateFilter != .allTime || !viewModel.selectedTag.isEmpty {
+                if viewModel.hasActiveFilters {
                     Button {
-                        viewModel.filterType = .all
-                        viewModel.dateFilter = .allTime
-                        viewModel.selectedTag = ""
+                        viewModel.clearFilters()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                     }
                     .help("Clear filters")
                     .accessibilityLabel("Clear filters")
-                    .accessibilityHint("Resets type, date, and tag filters.")
+                    .accessibilityHint("Resets search, type, date, tag, and collection filters.")
                 }
 
                 // View mode toggle
@@ -1093,6 +1159,16 @@ private struct ClipsManagerContentView: View {
                     }
                 }
                 .help(viewModel.selectionMode ? "Exit selection mode." : "Select multiple clips.")
+
+                Toggle(isOn: $settings.clipsManagerShowInspector) {
+                    Image(systemName: "info.circle")
+                }
+                .toggleStyle(.button)
+                .keyboardShortcut("i", modifiers: [.command, .option])
+                .help(settings.clipsManagerShowInspector ? "Hide the details pane (⌥⌘I)" : "Show the details pane (⌥⌘I)")
+                .accessibilityLabel("Details pane")
+                .accessibilityValue(settings.clipsManagerShowInspector ? "Shown" : "Hidden")
+                .accessibilityHint("Shows a pane with a preview and editable details for the selected clip.")
 
                 Button {
                     showUploadcareSettings = true
@@ -1184,30 +1260,6 @@ private struct ClipsManagerContentView: View {
                 }
             )
         }
-        .sheet(item: $detailClip) { item in
-            ClipDetailPopover(
-                item: item,
-                title: viewModel.displayName(for: item),
-                tags: viewModel.tags(for: item),
-                notes: viewModel.note(for: item),
-                collection: viewModel.collection(for: item),
-                uploadcareLink: viewModel.uploadcareLink(for: item),
-                isFavorite: viewModel.isFavorite(item),
-                onToggleFavorite: { viewModel.toggleFavorite(item) },
-                tagSuggestions: viewModel.availableTags,
-                collectionSuggestions: viewModel.availableCollections,
-                onSaveMetadata: { name, tags, notes, collection in
-                    viewModel.setDisplayName(item, name: name)
-                    viewModel.setTags(item, tags: tags)
-                    viewModel.setNotes(item, notes: notes)
-                    viewModel.setCollection(item, collection: collection)
-                    viewModel.load()
-                },
-                onEditMedia: { viewModel.editClip(item) },
-                onReveal: { viewModel.revealInFinder(item) },
-                onCopyUploadcareLink: { viewModel.copyUploadcareLink(item) }
-            )
-        }
         .sheet(item: $collectionClip) { item in
             ClipCollectionPopover(
                 initialCollection: viewModel.collection(for: item),
@@ -1255,10 +1307,26 @@ private struct ClipsManagerContentView: View {
         }
     }
 
+    /// Selects the clip for the inspector and makes sure the pane is visible.
+    private func openDetails(for item: ClipItem) {
+        viewModel.inspect(item)
+        if !settings.clipsManagerShowInspector {
+            settings.clipsManagerShowInspector = true
+        }
+    }
+
     private func colorForTag(_ tag: String) -> Color {
         let palette: [Color] = [.blue, .purple, .pink, .orange, .green, .teal, .indigo]
         let hash = tag.unicodeScalars.reduce(0) { $0 + Int($1.value) }
         return palette[hash % palette.count]
+    }
+
+    private var countSubtitle: String {
+        let visible = viewModel.filteredSortedClips.count
+        let total = viewModel.clips.count
+        if total == 0 { return "" }
+        if visible == total { return total == 1 ? "1 clip" : "\(total) clips" }
+        return "\(visible) of \(total) clips"
     }
 
     // MARK: - Sidebar
@@ -1268,7 +1336,9 @@ private struct ClipsManagerContentView: View {
             Section("Smart Collections") {
                 ForEach(ClipsViewModel.SmartCollection.allCases, id: \.self) { collection in
                     Label(collection.rawValue, systemImage: collection.icon)
+                        .badge(viewModel.count(for: collection))
                         .tag(collection)
+                        .accessibilityLabel("\(collection.rawValue), \(viewModel.count(for: collection)) clips")
                 }
             }
 
@@ -1398,23 +1468,33 @@ private struct ClipsManagerContentView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            Image(systemName: "photo.on.rectangle")
+            Image(systemName: viewModel.hasActiveFilters ? "magnifyingglass" : "photo.on.rectangle")
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
-            Text(viewModel.searchText.isEmpty && viewModel.filterType == .all
-                 ? "No clips found"
-                 : "No clips match your filter")
+            Text(viewModel.hasActiveFilters ? "No clips match your filters" : "No clips yet")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            if viewModel.searchText.isEmpty && viewModel.filterType == .all {
+            if viewModel.hasActiveFilters {
+                Text("Try a different search, or clear the filters to see everything.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 300)
+                Button("Clear Filters") { viewModel.clearFilters() }
+                    .keyboardShortcut(.cancelAction)
+            } else {
                 Text("Captures will appear here after you take screenshots, record videos, or create GIFs.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 300)
+                Button("Open Save Folder") {
+                    NSWorkspace.shared.open(SaveService.shared.outputDirectoryURL(for: .screenshot))
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Grid View
@@ -1438,6 +1518,7 @@ private struct ClipsManagerContentView: View {
                         isFavorite: viewModel.isFavorite(item),
                         isSelectionMode: viewModel.selectionMode,
                         isSelected: viewModel.isSelected(item),
+                        isInspected: viewModel.isInspected(item),
                         rowTapSelectsInSelectionMode: settings.clipsManagerSelectionRowTapSelects,
                         thumbnail: viewModel.thumbnails[item.id],
                         onDelete: { confirmDelete(item) },
@@ -1448,7 +1529,7 @@ private struct ClipsManagerContentView: View {
                         onEditTags: { tagEditorClip = item },
                         onEditNotes: { notesClip = item },
                         onEditCollection: { collectionClip = item },
-                        onOpenDetails: { detailClip = item },
+                        onOpenDetails: { openDetails(for: item) },
                         onEditMedia: { viewModel.editClip(item) },
                         onCopyUploadcareLink: { viewModel.copyUploadcareLink(item) },
                         onUpload: {
@@ -1490,6 +1571,7 @@ private struct ClipsManagerContentView: View {
                 isFavorite: viewModel.isFavorite(item),
                 isSelectionMode: viewModel.selectionMode,
                 isSelected: viewModel.isSelected(item),
+                isInspected: viewModel.isInspected(item),
                 thumbnail: viewModel.thumbnails[item.id],
                 onDelete: { confirmDelete(item) },
                 onCopy: { viewModel.copyToClipboard(item) },
@@ -1499,7 +1581,7 @@ private struct ClipsManagerContentView: View {
                 onEditTags: { tagEditorClip = item },
                 onEditNotes: { notesClip = item },
                 onEditCollection: { collectionClip = item },
-                onOpenDetails: { detailClip = item },
+                onOpenDetails: { openDetails(for: item) },
                 onEditMedia: { viewModel.editClip(item) },
                 onCopyUploadcareLink: { viewModel.copyUploadcareLink(item) },
                 onUpload: {
@@ -1535,6 +1617,7 @@ private struct ClipGridCell: View {
     let isFavorite: Bool
     let isSelectionMode: Bool
     let isSelected: Bool
+    let isInspected: Bool
     let rowTapSelectsInSelectionMode: Bool
     let thumbnail: NSImage?
     let onDelete: () -> Void
@@ -1590,6 +1673,12 @@ private struct ClipGridCell: View {
             .frame(width: 220, height: 135)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .contentShape(RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                if isInspected {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                }
+            }
             .overlay(alignment: .topLeading) {
                 Button(action: onToggleFavorite) {
                     Image(systemName: isFavorite ? "star.fill" : "star")
@@ -1627,6 +1716,11 @@ private struct ClipGridCell: View {
                 }
             }
             .onHover { isHovered = $0 }
+            .onTapGesture(count: 2) {
+                if !isSelectionMode {
+                    onEditMedia()
+                }
+            }
             .onTapGesture {
                 if isSelectionMode {
                     if rowTapSelectsInSelectionMode {
@@ -1634,11 +1728,6 @@ private struct ClipGridCell: View {
                     }
                 } else {
                     onOpenDetails()
-                }
-            }
-            .onTapGesture(count: 2) {
-                if !isSelectionMode {
-                    onReveal()
                 }
             }
 
@@ -1689,6 +1778,9 @@ private struct ClipGridCell: View {
             }
         }
         .frame(width: 220, alignment: .top)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(title), \(item.typeLabel)")
+        .accessibilityAddTraits(isInspected ? .isSelected : [])
         .contextMenu {
             Button(isFavorite ? "Remove Favorite" : "Add Favorite") { onToggleFavorite() }
             Button("Rename…") { onRename() }
@@ -1749,6 +1841,7 @@ private struct ClipListRow: View {
     let isFavorite: Bool
     let isSelectionMode: Bool
     let isSelected: Bool
+    let isInspected: Bool
     let thumbnail: NSImage?
     let onDelete: () -> Void
     let onCopy: () -> Void
@@ -1945,7 +2038,18 @@ private struct ClipListRow: View {
             }
         }
         .padding(.vertical, compactDensity ? 2 : 4)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isInspected ? Color.accentColor.opacity(0.12) : Color.clear)
+        )
         .contentShape(Rectangle())
+        .accessibilityAddTraits(isInspected ? .isSelected : [])
+        .onTapGesture(count: 2) {
+            if !isSelectionMode {
+                onEditMedia()
+            }
+        }
         .onTapGesture {
             if isSelectionMode {
                 if rowTapSelectsInSelectionMode {
@@ -2124,29 +2228,29 @@ private struct ClipNotesPopover: View {
     }
 }
 
-private struct ClipDetailPopover: View {
-    @Environment(\.dismiss) private var dismiss
+// MARK: - Inspector
 
-    let item: ClipItem
-    let title: String
-    let tags: [String]
-    let notes: String
-    let collection: String
-    let uploadcareLink: String?
-    let isFavorite: Bool
-    let onToggleFavorite: () -> Void
-    let tagSuggestions: [String]
-    let collectionSuggestions: [String]
-    let onSaveMetadata: (String, [String], String, String) -> Void
-    let onEditMedia: () -> Void
-    let onReveal: () -> Void
-    let onCopyUploadcareLink: () -> Void
+/// Right-hand details pane: preview, primary actions, editable metadata and file facts for the
+/// clip selected in the grid or list. Mirrors the Windows Library's details pane.
+private struct ClipInspectorView: View {
+    @ObservedObject var viewModel: ClipsViewModel
+    let item: ClipItem?
+    let onEditMedia: (ClipItem) -> Void
+    let onReveal: (ClipItem) -> Void
+    let onCopy: (ClipItem) -> Void
+    let onDelete: (ClipItem) -> Void
+    let onUpload: (ClipItem) -> Void
+    let onCopyUploadcareLink: (ClipItem) -> Void
 
     @State private var draftTitle = ""
     @State private var draftTagInput = ""
     @State private var draftTagList: [String] = []
     @State private var draftNotes = ""
     @State private var draftCollection = ""
+    @State private var previewImage: NSImage?
+    @State private var player: AVPlayer?
+    @State private var pixelSize: CGSize?
+    @State private var duration: Double?
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -2155,102 +2259,237 @@ private struct ClipDetailPopover: View {
         return formatter
     }()
 
-    private var actionColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 76), spacing: 8)]
-    }
+    private static let durationFormatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.minute, .second]
+        formatter.zeroFormattingBehavior = .pad
+        return formatter
+    }()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer()
-                Button(action: onToggleFavorite) {
-                    Image(systemName: isFavorite ? "star.fill" : "star")
-                        .foregroundStyle(isFavorite ? .yellow : .secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isFavorite ? "Remove favorite" : "Add favorite")
-
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Close")
-                .accessibilityLabel("Close details")
+        Group {
+            if let item {
+                inspector(for: item)
+            } else {
+                placeholder
             }
+        }
+        .onChange(of: item?.id, initial: true) { _, _ in
+            resetDrafts()
+        }
+        .task(id: item?.id) {
+            await loadPreview()
+        }
+        .onDisappear {
+            player?.pause()
+        }
+    }
 
-            Text(item.url.lastPathComponent)
-                .font(.caption)
+    // MARK: Placeholder
+
+    private var placeholder: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "sidebar.trailing")
+                .font(.system(size: 34))
+                .foregroundStyle(.tertiary)
+            Text("Select a clip to preview it")
+                .font(.headline)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            Text("Edit its name, tags, notes and collection here.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+    }
 
-            HStack(spacing: 6) {
-                Label(item.typeLabel, systemImage: item.typeIcon)
-                Text("·")
-                Text(Self.dateFormatter.string(from: item.date))
-                Text("·")
-                Text(item.formattedSize)
+    // MARK: Inspector
+
+    private func inspector(for item: ClipItem) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                preview(for: item)
+                primaryActions(for: item)
+                secondaryActions(for: item)
+                metadataEditor(for: item)
+                if let link = viewModel.uploadcareLink(for: item), !link.isEmpty {
+                    uploadLinkSection(link, item: item)
+                }
+                fileFacts(for: item)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .padding(16)
+        }
+        .accessibilityLabel("Clip details")
+    }
 
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("Name", text: $draftTitle)
+    @ViewBuilder
+    private func preview(for item: ClipItem) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.quaternary)
+
+            if item.type == .video, let player {
+                VideoPlayer(player: player)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("Video preview")
+            } else if let previewImage {
+                Image(nsImage: previewImage)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("\(item.typeLabel) preview")
+            } else if let thumbnail = viewModel.thumbnails[item.id] {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("\(item.typeLabel) preview")
+            } else {
+                Image(systemName: item.typeIcon)
+                    .font(.system(size: 32))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 180)
+        .overlay(alignment: .topLeading) {
+            Text(item.typeLabel)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(8)
+        }
+    }
+
+    private func primaryActions(for item: ClipItem) -> some View {
+        HStack(spacing: 8) {
+            inspectorActionButton(
+                item.type == .screenshot ? "Edit" : "Trim",
+                systemImage: item.type == .screenshot ? "slider.horizontal.3" : "scissors",
+                prominent: true
+            ) { onEditMedia(item) }
+            inspectorActionButton("Copy", systemImage: "doc.on.doc") { onCopy(item) }
+            ShareLink(item: item.url) {
+                VStack(spacing: 4) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.callout.weight(.semibold))
+                    Text("Share")
+                        .font(.caption2)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Share this clip")
+            inspectorActionButton("Show", systemImage: "folder") { onReveal(item) }
+        }
+    }
+
+    private func secondaryActions(for item: ClipItem) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                viewModel.toggleFavorite(item)
+            } label: {
+                Label("Favorite", systemImage: viewModel.isFavorite(item) ? "star.fill" : "star")
+                    .foregroundStyle(viewModel.isFavorite(item) ? .yellow : .primary)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help(viewModel.isFavorite(item) ? "Remove from favorites" : "Add to favorites")
+            .accessibilityLabel(viewModel.isFavorite(item) ? "Remove favorite" : "Add favorite")
+
+            Menu {
+                Button("Upload to Uploadcare") { onUpload(item) }
+                    .disabled(viewModel.uploadingClipIDs.contains(item.id))
+                if viewModel.uploadcareLink(for: item)?.isEmpty == false {
+                    Button("Copy Uploadcare Link") { onCopyUploadcareLink(item) }
+                }
+                Divider()
+                Button("Delete…", role: .destructive) { onDelete(item) }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .fixedSize()
+            .help("More actions")
+
+            Spacer()
+        }
+    }
+
+    private func metadataEditor(for item: ClipItem) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            LabeledContent("Name") {
+                TextField(item.url.lastPathComponent, text: $draftTitle)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Clip name")
+            }
+            .labeledContentStyle(.inspectorField)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Tags")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Tags")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                    if !draftTagList.isEmpty {
-                        FlowTagWrap(tags: draftTagList) { tag in
-                            draftTagList.removeAll { $0 == tag }
-                        }
+                if !draftTagList.isEmpty {
+                    FlowTagWrap(tags: draftTagList) { tag in
+                        draftTagList.removeAll { $0 == tag }
                     }
+                }
 
-                    HStack(spacing: 8) {
-                        TextField("Add tag", text: $draftTagInput)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Add") {
+                HStack(spacing: 8) {
+                    TextField("Add a tag", text: $draftTagInput)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit {
                             addDraftTag(draftTagInput)
                             draftTagInput = ""
                         }
-                        .disabled(draftTagInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityLabel("Add tag")
+                    Button("Add") {
+                        addDraftTag(draftTagInput)
+                        draftTagInput = ""
                     }
+                    .disabled(draftTagInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
 
-                    if !normalizedTagSuggestions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(normalizedTagSuggestions, id: \.self) { suggestion in
-                                    Button {
-                                        toggleDraftTag(suggestion)
-                                    } label: {
-                                        Text(suggestion)
-                                            .font(.caption2)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 3)
-                                            .background(
-                                                draftTagList.contains(suggestion) ? Color.accentColor.opacity(0.24) : Color.secondary.opacity(0.14),
-                                                in: Capsule()
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(draftTagList.contains(suggestion) ? Color.accentColor : .primary)
+                if !normalizedTagSuggestions.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(normalizedTagSuggestions, id: \.self) { suggestion in
+                                Button {
+                                    toggleDraftTag(suggestion)
+                                } label: {
+                                    Text(suggestion)
+                                        .font(.caption2)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(
+                                            draftTagList.contains(suggestion) ? Color.accentColor.opacity(0.24) : Color.secondary.opacity(0.14),
+                                            in: Capsule()
+                                        )
                                 }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(draftTagList.contains(suggestion) ? Color.accentColor : .primary)
+                                .accessibilityLabel("\(draftTagList.contains(suggestion) ? "Remove" : "Add") tag \(suggestion)")
                             }
                         }
                     }
                 }
+            }
 
-                TextField("Collection", text: $draftCollection)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Collection")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("None", text: $draftCollection)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Collection")
                 if !normalizedCollectionSuggestions.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
@@ -2261,68 +2500,114 @@ private struct ClipDetailPopover: View {
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
                                     .background(
-                                        draftCollection.trimmingCharacters(in: .whitespacesAndNewlines) == suggestion ? Color.accentColor.opacity(0.24) : Color.secondary.opacity(0.14),
+                                        trimmedDraftCollection == suggestion ? Color.accentColor.opacity(0.24) : Color.secondary.opacity(0.14),
                                         in: Capsule()
                                     )
-                                    .foregroundStyle(
-                                        draftCollection.trimmingCharacters(in: .whitespacesAndNewlines) == suggestion ? Color.accentColor : .primary
-                                    )
+                                    .foregroundStyle(trimmedDraftCollection == suggestion ? Color.accentColor : .primary)
                             }
                         }
                     }
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Notes")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextEditor(text: $draftNotes)
                     .font(.body)
-                    .frame(height: 100)
+                    .frame(minHeight: 72)
+                    .scrollContentBackground(.hidden)
+                    .padding(4)
+                    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary, lineWidth: 1))
-            }
-
-            if let uploadcareLink, !uploadcareLink.isEmpty {
-                Text(uploadcareLink)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .accessibilityLabel("Notes")
             }
 
             HStack {
                 Spacer()
-                Button("Save Metadata") {
-                    onSaveMetadata(
-                        draftTitle.trimmingCharacters(in: .whitespacesAndNewlines),
-                        draftTagList,
-                        draftNotes,
-                        draftCollection.trimmingCharacters(in: .whitespacesAndNewlines)
-                    )
-                }
-                .keyboardShortcut(.defaultAction)
+                Button("Revert") { resetDrafts() }
+                    .disabled(!isDirty(item))
+                Button("Save") { save(item) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!isDirty(item))
             }
-
-            Divider()
-
-            LazyVGrid(columns: actionColumns, spacing: 8) {
-                detailActionButton(item.type == .screenshot ? "Edit" : "Trim", systemImage: item.type == .screenshot ? "slider.horizontal.3" : "scissors", action: onEditMedia)
-                detailActionButton("Show", systemImage: "folder.badge.questionmark", action: onReveal)
-                if uploadcareLink?.isEmpty == false {
-                    detailActionButton("Copy Link", systemImage: "link", action: onCopyUploadcareLink)
-                }
-            }
-        }
-        .padding(16)
-        .frame(width: 520, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
-        .onAppear {
-            draftTitle = title
-            draftTagList = tags
-            draftNotes = notes
-            draftCollection = collection
         }
     }
 
-    private func detailActionButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+    private func uploadLinkSection(_ link: String, item: ClipItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Upload link")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(link)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                Spacer(minLength: 0)
+                Button { onCopyUploadcareLink(item) } label: {
+                    Image(systemName: "link")
+                }
+                .buttonStyle(.borderless)
+                .help("Copy link")
+                .accessibilityLabel("Copy upload link")
+                if let url = URL(string: link) {
+                    Link(destination: url) {
+                        Image(systemName: "arrow.up.right.square")
+                    }
+                    .help("Open link")
+                    .accessibilityLabel("Open upload link")
+                }
+            }
+        }
+    }
+
+    private func fileFacts(for item: ClipItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("File")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                factRow("Type", item.typeLabel)
+                factRow("Captured", Self.dateFormatter.string(from: item.date))
+                factRow("Size", item.formattedSize)
+                if let pixelSize {
+                    factRow("Dimensions", "\(Int(pixelSize.width)) × \(Int(pixelSize.height))")
+                }
+                if let duration, duration > 0 {
+                    factRow("Duration", Self.durationFormatter.string(from: duration) ?? "")
+                }
+                GridRow(alignment: .top) {
+                    Text("Location")
+                        .foregroundStyle(.secondary)
+                    Text(item.url.path)
+                        .textSelection(.enabled)
+                        .lineLimit(3)
+                        .truncationMode(.middle)
+                }
+            }
+            .font(.caption)
+        }
+    }
+
+    private func factRow(_ label: String, _ value: String) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func inspectorActionButton(
+        _ title: String,
+        systemImage: String,
+        prominent: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemImage)
@@ -2335,7 +2620,48 @@ private struct ClipDetailPopover: View {
             .padding(.vertical, 6)
         }
         .buttonStyle(.bordered)
+        .tint(prominent ? Color.accentColor : nil)
         .controlSize(.small)
+        .help(title)
+    }
+
+    // MARK: Drafts
+
+    private func resetDrafts() {
+        guard let item else {
+            draftTitle = ""
+            draftTagList = []
+            draftNotes = ""
+            draftCollection = ""
+            draftTagInput = ""
+            return
+        }
+        draftTitle = viewModel.displayName(for: item)
+        draftTagList = viewModel.tags(for: item)
+        draftNotes = viewModel.note(for: item)
+        draftCollection = viewModel.collection(for: item)
+        draftTagInput = ""
+    }
+
+    private func isDirty(_ item: ClipItem) -> Bool {
+        draftTitle.trimmingCharacters(in: .whitespacesAndNewlines) != viewModel.displayName(for: item)
+            || draftTagList != viewModel.tags(for: item)
+            || draftNotes != viewModel.note(for: item)
+            || trimmedDraftCollection != viewModel.collection(for: item)
+    }
+
+    private func save(_ item: ClipItem) {
+        let name = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Typing the file name back means "no custom name".
+        viewModel.setDisplayName(item, name: name == item.url.lastPathComponent ? "" : name)
+        viewModel.setTags(item, tags: draftTagList)
+        viewModel.setNotes(item, notes: draftNotes)
+        viewModel.setCollection(item, collection: trimmedDraftCollection)
+        resetDrafts()
+    }
+
+    private var trimmedDraftCollection: String {
+        draftCollection.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func addDraftTag(_ rawTag: String) {
@@ -2355,7 +2681,7 @@ private struct ClipDetailPopover: View {
     }
 
     private var normalizedTagSuggestions: [String] {
-        tagSuggestions
+        viewModel.availableTags
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { !$0.isEmpty }
             .reduce(into: [String]()) { acc, tag in
@@ -2365,7 +2691,7 @@ private struct ClipDetailPopover: View {
     }
 
     private var normalizedCollectionSuggestions: [String] {
-        collectionSuggestions
+        viewModel.availableCollections
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .reduce(into: [String]()) { acc, value in
@@ -2373,6 +2699,75 @@ private struct ClipDetailPopover: View {
             }
             .sorted()
     }
+
+    // MARK: Preview + file facts
+
+    @MainActor
+    private func loadPreview() async {
+        player?.pause()
+        player = nil
+        previewImage = nil
+        pixelSize = nil
+        duration = nil
+
+        guard let item else { return }
+        let url = item.url
+
+        switch item.type {
+        case .video:
+            let asset = AVURLAsset(url: url)
+            let newPlayer = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+            newPlayer.actionAtItemEnd = .pause
+            player = newPlayer
+            if let loadedDuration = try? await asset.load(.duration) {
+                duration = CMTimeGetSeconds(loadedDuration)
+            }
+            if let track = (try? await asset.loadTracks(withMediaType: .video))?.first,
+               let size = try? await track.load(.naturalSize),
+               let transform = try? await track.load(.preferredTransform) {
+                let transformed = size.applying(transform)
+                pixelSize = CGSize(width: abs(transformed.width), height: abs(transformed.height))
+            }
+        case .screenshot, .gif:
+            let result = await Task.detached(priority: .userInitiated) { () -> (NSImage?, CGSize?) in
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return (nil, nil) }
+                var size: CGSize?
+                if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                   let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+                   let height = properties[kCGImagePropertyPixelHeight] as? CGFloat {
+                    size = CGSize(width: width, height: height)
+                }
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 1200,
+                ]
+                guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                    return (nil, size)
+                }
+                return (NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)), size)
+            }.value
+            guard !Task.isCancelled, self.item?.id == item.id else { return }
+            previewImage = result.0
+            pixelSize = result.1
+        }
+    }
+}
+
+/// Compact "label above field" layout used by the inspector's name field.
+private struct InspectorFieldLabeledContentStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            configuration.label
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            configuration.content
+        }
+    }
+}
+
+private extension LabeledContentStyle where Self == InspectorFieldLabeledContentStyle {
+    static var inspectorField: InspectorFieldLabeledContentStyle { InspectorFieldLabeledContentStyle() }
 }
 
 private struct ClipCollectionPopover: View {

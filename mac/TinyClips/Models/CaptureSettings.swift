@@ -329,6 +329,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("clipsManagerArchiveAfterDays") var clipsManagerArchiveAfterDays: Int = 30
     @AppStorage("clipsManagerAutoUploadAfterSave") var clipsManagerAutoUploadAfterSave: Bool = false
     @AppStorage("clipsManagerAutoCopyUploadLink") var clipsManagerAutoCopyUploadLink: Bool = false
+    @AppStorage("clipsManagerShowInspector") var clipsManagerShowInspector: Bool = true
     @AppStorage("gifFrameRate") var gifFrameRate: Double = 10
     @AppStorage("gifMaxWidth") var gifMaxWidth: Int = 640
     @AppStorage("videoFrameRate") var videoFrameRate: Int = 30
@@ -706,7 +707,7 @@ class CaptureSettings: ObservableObject {
             "clipsManagerSelectionRowTapSelects", "clipsManagerIgnoreNonTinyClipsFiles", "clipsManagerRememberLastState",
             "clipsManagerDefaultViewMode", "clipsManagerDefaultSortOption", "clipsManagerDefaultFilterType", "clipsManagerDefaultDateFilter",
             "clipsManagerAutoRefreshSeconds", "clipsManagerArchiveOldClips", "clipsManagerArchiveAfterDays",
-            "clipsManagerAutoUploadAfterSave", "clipsManagerAutoCopyUploadLink",
+            "clipsManagerAutoUploadAfterSave", "clipsManagerAutoCopyUploadLink", "clipsManagerShowInspector",
             "clipsManagerLastViewMode", "clipsManagerLastSortOption", "clipsManagerLastFilterType", "clipsManagerLastDateFilter",
             "clipsManagerLastSmartCollection", "clipsManagerLastSearchText", "clipsManagerLastSelectedTag", "clipsManagerLastSelectedCollection",
             "gifFrameRate", "gifMaxWidth", "videoFrameRate", "showMouseClickVisualsInVideo", "showMouseClickVisualsInGif",

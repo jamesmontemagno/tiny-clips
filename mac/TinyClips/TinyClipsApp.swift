@@ -73,7 +73,8 @@ struct TinyClipsApp: App {
         Window("Clips Manager", id: "clips-manager") {
             clipsManagerRootView()
         }
-        .defaultSize(width: 980, height: 540)
+        // Sidebar (~210) + two 220 pt grid columns + inspector (~320) fit comfortably at this size.
+        .defaultSize(width: 1180, height: 680)
         .commands {
             AppWindowCommands()
         }

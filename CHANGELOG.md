@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- **Clips Manager details pane (macOS).** A persistent inspector on the right (toggle with the ⓘ toolbar button or ⌥⌘I) replaces the Details sheet. Click a clip to show it: a large preview (inline video player for recordings, rendered image for screenshots/GIFs), Edit/Trim · Copy · Share · Show actions, favorite and a More menu (upload, copy link, delete), an editor for name, tags, notes and collection with Save/Revert, the upload link, and file facts (type, captured, size, dimensions, duration, location). The selected clip is outlined in the grid and highlighted in the list; the pane's visibility is remembered.
+- Smart Collections in the Clips Manager sidebar now show live counts, and the window subtitle reports "N clips" or "N of M clips" while filtering.
+
+### Changed
+- **Clips Manager UI review.** Double-clicking a clip now opens the editor/trimmer (Show in Finder stays on hover and in the context menu); the empty state distinguishes "No clips yet" (with Open Save Folder) from "No clips match your filters" (with Clear Filters); the Clear Filters toolbar button also resets search, collection and smart-collection selections; the sidebar is wider (170–280 pt) so section titles and counts don't truncate; video thumbnails are generated at 2× for Retina displays; search placeholder explains what is searched.
+
 ## v1.7.1.0-mac - 2026-08-24
 
 ### Added
