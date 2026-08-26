@@ -285,10 +285,10 @@ private class ClipsViewModel: ObservableObject {
         applyInitialPreferences()
     }
 
-    /// The clip currently shown in the inspector, or nil when it was deleted/filtered away.
+    /// The clip currently shown in the inspector, or nil when it was deleted or filtered away.
     var inspectedItem: ClipItem? {
         guard let inspectedClipID else { return nil }
-        return clips.first { $0.id == inspectedClipID }
+        return filteredSortedClips.first { $0.id == inspectedClipID }
     }
 
     func inspect(_ item: ClipItem) {
@@ -1325,8 +1325,12 @@ private struct ClipsManagerContentView: View {
         let visible = viewModel.filteredSortedClips.count
         let total = viewModel.clips.count
         if total == 0 { return "" }
-        if visible == total { return total == 1 ? "1 clip" : "\(total) clips" }
+        if visible == total { return clipCountLabel(total) }
         return "\(visible) of \(total) clips"
+    }
+
+    private func clipCountLabel(_ count: Int) -> String {
+        count == 1 ? "1 clip" : "\(count) clips"
     }
 
     // MARK: - Sidebar
@@ -1338,7 +1342,7 @@ private struct ClipsManagerContentView: View {
                     Label(collection.rawValue, systemImage: collection.icon)
                         .badge(viewModel.count(for: collection))
                         .tag(collection)
-                        .accessibilityLabel("\(collection.rawValue), \(viewModel.count(for: collection)) clips")
+                        .accessibilityLabel("\(collection.rawValue), \(clipCountLabel(viewModel.count(for: collection)))")
                 }
             }
 
