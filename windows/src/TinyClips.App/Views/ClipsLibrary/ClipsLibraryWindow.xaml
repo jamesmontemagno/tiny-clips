@@ -1,0 +1,545 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="TinyClips.App.Views.ClipsLibrary.ClipsLibraryWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:TinyClips.App.Controls.ClipsLibrary"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:TinyClips.App.Views.ClipsLibrary"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:TinyClips.App.ViewModels.ClipsLibrary"
+    Title="Tiny Clips — Library"
+    mc:Ignorable="d">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator
+                Key="F"
+                Invoked="OnFocusSearchAccelerator"
+                Modifiers="Control" />
+            <KeyboardAccelerator
+                Key="R"
+                Invoked="OnRefreshAccelerator"
+                Modifiers="Control" />
+            <KeyboardAccelerator
+                Key="G"
+                Invoked="OnGridViewAccelerator"
+                Modifiers="Control,Shift" />
+            <KeyboardAccelerator
+                Key="L"
+                Invoked="OnListViewAccelerator"
+                Modifiers="Control,Shift" />
+            <KeyboardAccelerator
+                Key="D"
+                Invoked="OnToggleDetailAccelerator"
+                Modifiers="Control,Shift" />
+            <KeyboardAccelerator
+                Key="E"
+                Invoked="OnToggleSelectionAccelerator"
+                Modifiers="Control,Shift" />
+        </Grid.KeyboardAccelerators>
+
+        <!--  Title bar  -->
+        <TitleBar
+            x:Name="AppTitleBar"
+            Grid.Row="0"
+            AutomationProperties.AutomationId="ClipsLibraryTitleBar"
+            IsPaneToggleButtonVisible="True"
+            PaneToggleRequested="OnPaneToggleRequested"
+            Subtitle="{x:Bind ViewModel.CountSubtitle, Mode=OneWay}"
+            Title="Library">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <NavigationView
+            x:Name="NavView"
+            Grid.Row="1"
+            AutomationProperties.AutomationId="ClipsLibraryNavigation"
+            CompactModeThresholdWidth="0"
+            ExpandedModeThresholdWidth="900"
+            IsBackButtonVisible="Collapsed"
+            IsPaneOpen="{x:Bind ViewModel.IsNavigationPaneOpen, Mode=TwoWay}"
+            IsPaneToggleButtonVisible="False"
+            IsSettingsVisible="False"
+            IsTitleBarAutoPaddingEnabled="False"
+            OpenPaneLength="232"
+            PaneDisplayMode="Left"
+            SelectionChanged="OnNavigationSelectionChanged">
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!--  Toolbar  -->
+                <Grid
+                    Grid.Row="0"
+                    Padding="16,10,16,8"
+                    ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="280" MaxWidth="560" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <AutoSuggestBox
+                        x:Name="SearchBox"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="LibrarySearchBox"
+                        AutomationProperties.Name="Search clips"
+                        ItemsSource="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"
+                        PlaceholderText="Search names, tags, notes  (Ctrl+F)"
+                        QueryIcon="Find"
+                        QuerySubmitted="OnSearchQuerySubmitted"
+                        Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <!--  Sort & filter  -->
+                    <DropDownButton
+                        x:Name="FilterButton"
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="LibraryFilterButton"
+                        AutomationProperties.Name="{x:Bind local:ClipsLibraryWindow.FilterButtonName(ViewModel.FilterSummary), Mode=OneWay}"
+                        ToolTipService.ToolTip="Sort and filter">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontSize="14" Glyph="&#xE71C;" />
+                            <TextBlock Text="{x:Bind ViewModel.FilterSummary, Mode=OneWay}" />
+                        </StackPanel>
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <MenuFlyoutSubItem AutomationProperties.AutomationId="SortSubMenu" Icon="Sort" Text="Sort">
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="SortNewest"
+                                        Command="{x:Bind ViewModel.SetSortCommand}"
+                                        CommandParameter="NewestFirst"
+                                        GroupName="Sort"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsSort(ViewModel.Sort, 'NewestFirst'), Mode=OneWay}"
+                                        Text="Newest first" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="SortOldest"
+                                        Command="{x:Bind ViewModel.SetSortCommand}"
+                                        CommandParameter="OldestFirst"
+                                        GroupName="Sort"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsSort(ViewModel.Sort, 'OldestFirst'), Mode=OneWay}"
+                                        Text="Oldest first" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="SortLargest"
+                                        Command="{x:Bind ViewModel.SetSortCommand}"
+                                        CommandParameter="Largest"
+                                        GroupName="Sort"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsSort(ViewModel.Sort, 'Largest'), Mode=OneWay}"
+                                        Text="Largest first" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="SortName"
+                                        Command="{x:Bind ViewModel.SetSortCommand}"
+                                        CommandParameter="Name"
+                                        GroupName="Sort"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsSort(ViewModel.Sort, 'Name'), Mode=OneWay}"
+                                        Text="Name" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="SortFavorites"
+                                        Command="{x:Bind ViewModel.SetSortCommand}"
+                                        CommandParameter="FavoritesFirst"
+                                        GroupName="Sort"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsSort(ViewModel.Sort, 'FavoritesFirst'), Mode=OneWay}"
+                                        Text="Favorites first" />
+                                </MenuFlyoutSubItem>
+                                <MenuFlyoutSubItem AutomationProperties.AutomationId="TypeSubMenu" Text="Type">
+                                    <MenuFlyoutSubItem.Icon>
+                                        <FontIcon Glyph="&#xE8B7;" />
+                                    </MenuFlyoutSubItem.Icon>
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterAll"
+                                        Command="{x:Bind ViewModel.SetTypeFilterCommand}"
+                                        CommandParameter="All"
+                                        GroupName="Type"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsType(ViewModel.TypeFilter, 'All'), Mode=OneWay}"
+                                        Text="All types" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterScreenshot"
+                                        Command="{x:Bind ViewModel.SetTypeFilterCommand}"
+                                        CommandParameter="Screenshots"
+                                        GroupName="Type"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsType(ViewModel.TypeFilter, 'Screenshots'), Mode=OneWay}"
+                                        Text="Screenshots" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterVideo"
+                                        Command="{x:Bind ViewModel.SetTypeFilterCommand}"
+                                        CommandParameter="Videos"
+                                        GroupName="Type"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsType(ViewModel.TypeFilter, 'Videos'), Mode=OneWay}"
+                                        Text="Videos" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterGif"
+                                        Command="{x:Bind ViewModel.SetTypeFilterCommand}"
+                                        CommandParameter="Gifs"
+                                        GroupName="Type"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsType(ViewModel.TypeFilter, 'Gifs'), Mode=OneWay}"
+                                        Text="GIFs" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterFavorites"
+                                        Command="{x:Bind ViewModel.SetTypeFilterCommand}"
+                                        CommandParameter="Favorites"
+                                        GroupName="Type"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsType(ViewModel.TypeFilter, 'Favorites'), Mode=OneWay}"
+                                        Text="Favorites" />
+                                </MenuFlyoutSubItem>
+                                <MenuFlyoutSubItem AutomationProperties.AutomationId="DateSubMenu" Icon="Calendar" Text="Date">
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterDateAll"
+                                        Command="{x:Bind ViewModel.SetDateFilterCommand}"
+                                        CommandParameter="Any"
+                                        GroupName="Date"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsDate(ViewModel.DateFilter, 'Any'), Mode=OneWay}"
+                                        Text="Any date" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterDateToday"
+                                        Command="{x:Bind ViewModel.SetDateFilterCommand}"
+                                        CommandParameter="Today"
+                                        GroupName="Date"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsDate(ViewModel.DateFilter, 'Today'), Mode=OneWay}"
+                                        Text="Today" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterDateWeek"
+                                        Command="{x:Bind ViewModel.SetDateFilterCommand}"
+                                        CommandParameter="Last7Days"
+                                        GroupName="Date"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsDate(ViewModel.DateFilter, 'Last7Days'), Mode=OneWay}"
+                                        Text="Last 7 days" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="FilterDateMonth"
+                                        Command="{x:Bind ViewModel.SetDateFilterCommand}"
+                                        CommandParameter="Last30Days"
+                                        GroupName="Date"
+                                        IsChecked="{x:Bind local:ClipsLibraryWindow.IsDate(ViewModel.DateFilter, 'Last30Days'), Mode=OneWay}"
+                                        Text="Last 30 days" />
+                                </MenuFlyoutSubItem>
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem
+                                    AutomationProperties.AutomationId="ClearLibraryFiltersMenuItem"
+                                    Command="{x:Bind ViewModel.ClearFiltersCommand}"
+                                    Icon="ClearSelection"
+                                    IsEnabled="{x:Bind ViewModel.HasActiveFilters, Mode=OneWay}"
+                                    Text="Clear filters" />
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+
+                    <Button
+                        Grid.Column="2"
+                        Padding="8"
+                        AutomationProperties.AutomationId="ClearLibraryFiltersButton"
+                        AutomationProperties.Name="Clear filters"
+                        Command="{x:Bind ViewModel.ClearFiltersCommand}"
+                        ToolTipService.ToolTip="Clear filters"
+                        Visibility="{x:Bind ViewModel.HasActiveFilters, Mode=OneWay}">
+                        <FontIcon FontSize="14" Glyph="&#xE894;" />
+                    </Button>
+
+                    <!--  View mode  -->
+                    <SelectorBar
+                        x:Name="ViewModeBar"
+                        Grid.Column="4"
+                        AutomationProperties.AutomationId="ViewModeBar"
+                        AutomationProperties.Name="View mode"
+                        SelectionChanged="OnViewModeChanged">
+                        <SelectorBarItem
+                            x:Name="GridViewModeItem"
+                            AutomationProperties.AutomationId="GridViewToggle"
+                            AutomationProperties.Name="Grid view"
+                            Icon="ViewAll"
+                            ToolTipService.ToolTip="Grid (Ctrl+Shift+G)" />
+                        <SelectorBarItem
+                            x:Name="ListViewModeItem"
+                            AutomationProperties.AutomationId="ListViewToggle"
+                            AutomationProperties.Name="List view"
+                            Icon="List"
+                            ToolTipService.ToolTip="List (Ctrl+Shift+L)" />
+                    </SelectorBar>
+
+                    <ToggleButton
+                        Grid.Column="5"
+                        AutomationProperties.AutomationId="SelectModeToggle"
+                        AutomationProperties.Name="Select clips"
+                        IsChecked="{x:Bind ViewModel.IsSelectionMode, Mode=TwoWay}"
+                        ToolTipService.ToolTip="Select multiple clips (Ctrl+Shift+E)">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontSize="14" Glyph="&#xE762;" />
+                            <TextBlock Text="{x:Bind local:ClipsLibraryWindow.SelectLabel(ViewModel.IsSelectionMode), Mode=OneWay}" />
+                        </StackPanel>
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Grid.Column="6"
+                        Padding="8"
+                        AutomationProperties.AutomationId="DetailPaneToggle"
+                        AutomationProperties.Name="Show details pane"
+                        IsChecked="{x:Bind ViewModel.IsDetailPaneOpen, Mode=TwoWay}"
+                        ToolTipService.ToolTip="Details pane (Ctrl+Shift+D)">
+                        <FontIcon FontSize="14" Glyph="&#xE946;" />
+                    </ToggleButton>
+
+                    <Button
+                        Grid.Column="7"
+                        Padding="8"
+                        AutomationProperties.AutomationId="RefreshButton"
+                        AutomationProperties.Name="Refresh"
+                        Command="{x:Bind ViewModel.RefreshCommand}"
+                        ToolTipService.ToolTip="Refresh (Ctrl+R)">
+                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                    </Button>
+
+                    <Button
+                        Grid.Column="8"
+                        Padding="8"
+                        AutomationProperties.AutomationId="LibrarySettingsButton"
+                        AutomationProperties.Name="Library settings"
+                        Command="{x:Bind ViewModel.OpenSettingsCommand}"
+                        ToolTipService.ToolTip="Library settings">
+                        <FontIcon FontSize="14" Glyph="&#xE713;" />
+                    </Button>
+                </Grid>
+
+                <!--  Batch action bar  -->
+                <Grid
+                    Grid.Row="1"
+                    Margin="16,0,16,8"
+                    Padding="12,8"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                    BorderThickness="1"
+                    ColumnSpacing="6"
+                    CornerRadius="{ThemeResource OverlayCornerRadius}"
+                    Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="BatchSelectionCount"
+                        AutomationProperties.LiveSetting="Polite"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="{x:Bind ViewModel.SelectionCountText, Mode=OneWay}" />
+                    <Button
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="BatchSelectAll"
+                        Command="{x:Bind ViewModel.SelectAllCommand}"
+                        Content="Select all"
+                        ToolTipService.ToolTip="Select all (Ctrl+A)" />
+                    <Button
+                        Grid.Column="2"
+                        AutomationProperties.AutomationId="BatchFavorite"
+                        AutomationProperties.Name="Favorite selected"
+                        Command="{x:Bind ViewModel.ToggleFavoriteCommand}"
+                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                        ToolTipService.ToolTip="Favorite selected">
+                        <FontIcon FontSize="14" Glyph="&#xE734;" />
+                    </Button>
+                    <Button
+                        Grid.Column="3"
+                        AutomationProperties.AutomationId="BatchAddTag"
+                        AutomationProperties.Name="Add tag to selected"
+                        Command="{x:Bind ViewModel.EditTagsCommand}"
+                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                        ToolTipService.ToolTip="Add tag to selected">
+                        <FontIcon FontSize="14" Glyph="&#xE8EC;" />
+                    </Button>
+                    <Button
+                        Grid.Column="4"
+                        AutomationProperties.AutomationId="BatchCopy"
+                        AutomationProperties.Name="Copy selected"
+                        Command="{x:Bind ViewModel.CopyCommand}"
+                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                        ToolTipService.ToolTip="Copy selected (Ctrl+C)">
+                        <FontIcon FontSize="14" Glyph="&#xE8C8;" />
+                    </Button>
+                    <Button
+                        Grid.Column="5"
+                        AutomationProperties.AutomationId="BatchShare"
+                        AutomationProperties.Name="Share selected"
+                        Command="{x:Bind ViewModel.ShareCommand}"
+                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                        ToolTipService.ToolTip="Share selected">
+                        <FontIcon FontSize="14" Glyph="&#xE72D;" />
+                    </Button>
+                    <Button
+                        Grid.Column="6"
+                        AutomationProperties.AutomationId="BatchDelete"
+                        AutomationProperties.Name="Delete selected"
+                        Command="{x:Bind ViewModel.DeleteCommand}"
+                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                        ToolTipService.ToolTip="Delete selected (Delete)">
+                        <FontIcon
+                            FontSize="14"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Glyph="&#xE74D;" />
+                    </Button>
+                    <Button
+                        Grid.Column="7"
+                        AutomationProperties.AutomationId="BatchDone"
+                        Command="{x:Bind ViewModel.ExitSelectionModeCommand}"
+                        Content="Done"
+                        Style="{StaticResource AccentButtonStyle}"
+                        ToolTipService.ToolTip="Exit selection (Esc)" />
+                </Grid>
+
+                <!--  Status  -->
+                <InfoBar
+                    Grid.Row="2"
+                    Margin="16,0,16,8"
+                    AutomationProperties.AutomationId="LibraryStatusBar"
+                    CloseButtonCommand="{x:Bind ViewModel.DismissStatusCommand}"
+                    IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                    Severity="{x:Bind local:ClipsLibraryWindow.SeverityFor(ViewModel.IsStatusError), Mode=OneWay}" />
+
+                <!--  Content + detail pane  -->
+                <SplitView
+                    Grid.Row="3"
+                    CompactPaneLength="0"
+                    DisplayMode="Inline"
+                    IsPaneOpen="{x:Bind ViewModel.IsDetailPaneOpen, Mode=TwoWay}"
+                    OpenPaneLength="340"
+                    PaneBackground="Transparent"
+                    PanePlacement="Right">
+                    <SplitView.Pane>
+                        <controls:ClipDetailPane
+                            x:Name="DetailPane"
+                            Library="{x:Bind ViewModel}"
+                            ViewModel="{x:Bind ViewModel.Detail}" />
+                    </SplitView.Pane>
+
+                    <Grid Padding="16,0,16,16">
+                        <controls:LibraryEmptyStateView
+                            Library="{x:Bind ViewModel}"
+                            State="{x:Bind ViewModel.EmptyState, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.ShowEmptyState, Mode=OneWay}" />
+
+                        <GridView
+                            x:Name="ClipsGridView"
+                            AutomationProperties.AutomationId="ClipsGridView"
+                            AutomationProperties.Name="Clips grid"
+                            CanDragItems="True"
+                            DoubleTapped="OnItemsDoubleTapped"
+                            DragItemsStarting="OnDragItemsStarting"
+                            IsItemClickEnabled="False"
+                            IsMultiSelectCheckBoxEnabled="True"
+                            ItemsSource="{x:Bind ViewModel.Clips}"
+                            SelectionChanged="OnGridSelectionChanged"
+                            SelectionMode="{x:Bind local:ClipsLibraryWindow.SelectionModeFor(ViewModel.IsSelectionMode), Mode=OneWay}"
+                            Visibility="{x:Bind local:ClipsLibraryWindow.And(ViewModel.ShowContent, ViewModel.IsGridView), Mode=OneWay}">
+                            <GridView.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="Enter" Invoked="OnOpenAccelerator" />
+                                <KeyboardAccelerator Key="Delete" Invoked="OnDeleteAccelerator" />
+                                <KeyboardAccelerator Key="F2" Invoked="OnRenameAccelerator" />
+                                <KeyboardAccelerator Key="Space" Invoked="OnTogglePlaybackAccelerator" />
+                                <KeyboardAccelerator Key="Escape" Invoked="OnEscapeAccelerator" />
+                                <KeyboardAccelerator
+                                    Key="C"
+                                    Invoked="OnCopyAccelerator"
+                                    Modifiers="Control" />
+                                <KeyboardAccelerator
+                                    Key="A"
+                                    Invoked="OnSelectAllAccelerator"
+                                    Modifiers="Control" />
+                            </GridView.KeyboardAccelerators>
+                            <GridView.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ItemsWrapGrid
+                                        HorizontalAlignment="Center"
+                                        CacheLength="2"
+                                        ItemHeight="236"
+                                        ItemWidth="248"
+                                        Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </GridView.ItemsPanel>
+                            <GridView.ItemContainerStyle>
+                                <Style BasedOn="{StaticResource DefaultGridViewItemStyle}" TargetType="GridViewItem">
+                                    <Setter Property="Margin" Value="4" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                                    <Setter Property="CornerRadius" Value="{ThemeResource OverlayCornerRadius}" />
+                                </Style>
+                            </GridView.ItemContainerStyle>
+                            <GridView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ClipItemViewModel">
+                                    <controls:ClipGridCard Item="{x:Bind}" />
+                                </DataTemplate>
+                            </GridView.ItemTemplate>
+                        </GridView>
+
+                        <ListView
+                            x:Name="ClipsListView"
+                            AutomationProperties.AutomationId="ClipsListView"
+                            AutomationProperties.Name="Clips list"
+                            CanDragItems="True"
+                            DoubleTapped="OnItemsDoubleTapped"
+                            DragItemsStarting="OnDragItemsStarting"
+                            IsItemClickEnabled="False"
+                            IsMultiSelectCheckBoxEnabled="True"
+                            ItemsSource="{x:Bind ViewModel.Clips}"
+                            SelectionChanged="OnListSelectionChanged"
+                            SelectionMode="{x:Bind local:ClipsLibraryWindow.SelectionModeFor(ViewModel.IsSelectionMode), Mode=OneWay}"
+                            Visibility="{x:Bind local:ClipsLibraryWindow.And(ViewModel.ShowContent, ViewModel.IsListView), Mode=OneWay}">
+                            <ListView.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="Enter" Invoked="OnOpenAccelerator" />
+                                <KeyboardAccelerator Key="Delete" Invoked="OnDeleteAccelerator" />
+                                <KeyboardAccelerator Key="F2" Invoked="OnRenameAccelerator" />
+                                <KeyboardAccelerator Key="Space" Invoked="OnTogglePlaybackAccelerator" />
+                                <KeyboardAccelerator Key="Escape" Invoked="OnEscapeAccelerator" />
+                                <KeyboardAccelerator
+                                    Key="C"
+                                    Invoked="OnCopyAccelerator"
+                                    Modifiers="Control" />
+                                <KeyboardAccelerator
+                                    Key="A"
+                                    Invoked="OnSelectAllAccelerator"
+                                    Modifiers="Control" />
+                            </ListView.KeyboardAccelerators>
+                            <ListView.ItemContainerStyle>
+                                <Style BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="8,0,4,0" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ClipItemViewModel">
+                                    <controls:ClipListRow Item="{x:Bind}" />
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </SplitView>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</Window>
