@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v1.7.5-mac - 2026-08-27
+
 ### Added
 - Screenshot editor gains an **Emoji** tool. Pick a recent or common emoji, type or paste one, or open the macOS emoji picker (Control-Command-Space) right from the inspector, click to drop a sticker, then use the Move tool to drag it, resize it from any corner (aspect-locked about its center), and rotate it with the new grip above the sticker — hold Shift to snap to 15° steps. A rotation slider in the inspector offers precise control, and stickers export with their rotation baked into the saved image. The editor's tool sidebar also opens wider by default.
 - **Rotate more annotations.** Text, rectangles, circles, and freehand drawings now show the same rotation grip when selected with the Move tool (Shift snaps to 15°); text and shapes also get the inspector rotation slider. Rotated shapes and text resize uniformly about their center, and every rotation is baked into the exported image.
