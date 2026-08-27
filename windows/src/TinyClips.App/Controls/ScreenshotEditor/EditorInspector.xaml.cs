@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
+using TinyClips.Core.Editing;
 
 namespace TinyClips.App.ScreenshotEditor;
 
@@ -39,8 +40,23 @@ public sealed partial class EditorInspector : UserControl
 
         InitializeInspectorControls();
         InitializeBackgroundControls();
+        InitializeEmojiControls();
 
         controller.ToolChanged += (_, tool) => ShowForTool(tool);
+        controller.EmojiChanged += (_, emoji) => SyncEmojiSelection(emoji);
+        controller.AnnotationVisualInvalidated += (_, ann) =>
+        {
+            // Keep the rotation slider in step with the on-canvas rotation grip.
+            if (ann.Tool.StoresRotation()
+                && ReferenceEquals(ann, _controller.SelectedAnnotation)
+                && Math.Abs(RotationSlider.Value - ann.Rotation) > 0.5)
+            {
+                _inspectorInitializing = true;
+                RotationSlider.Value = ann.Rotation;
+                UpdateInspectorHeaders();
+                _inspectorInitializing = false;
+            }
+        };
         controller.BackgroundChanged += (_, _) => UpdateExportFrameControls();
         controller.ImageChanged += (_, _) => UpdateExportFrameControls();
         controller.SelectionChanged += (_, ann) =>
@@ -84,6 +100,23 @@ public sealed partial class EditorInspector : UserControl
         StrokeSlider.Header = $"Stroke — {(int)_controller.StrokeThickness} px";
         NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(_controller.NumberScale * 100)}%";
         FontSizeSlider.Header = $"Font size — {(int)_controller.TextFontSize} px";
+        RotationSlider.Header = $"Rotation — {(int)Math.Round(RotationSlider.Value)}°";
+    }
+
+    private void InitializeEmojiControls()
+    {
+        CommonEmojiGrid.ItemsSource = EmojiAnnotationMath.Common;
+        SyncEmojiSelection(_controller.EmojiDefault);
+    }
+
+    private void SyncEmojiSelection(string emoji)
+    {
+        SelectedEmojiText.Text = emoji;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SelectedEmojiText, $"Selected emoji {emoji}");
+
+        var recent = _controller.RecentEmoji;
+        RecentEmojiGrid.ItemsSource = recent.ToList();
+        RecentEmojiPanel.Visibility = recent.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void InitializeBackgroundControls()
@@ -162,6 +195,7 @@ public sealed partial class EditorInspector : UserControl
         var showsNumber = tool is EditTool.Counter;
         var showsRedact = tool is EditTool.Redact;
         var showsArrowStyle = tool is EditTool.Arrow;
+        var showsEmoji = tool is EditTool.Emoji;
 
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
         StrokeSection.Visibility = showsStroke ? Visibility.Visible : Visibility.Collapsed;
@@ -170,6 +204,13 @@ public sealed partial class EditorInspector : UserControl
         TextSection.Visibility = showsText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = showsNumber ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = showsRedact ? Visibility.Visible : Visibility.Collapsed;
+        EmojiSection.Visibility = showsEmoji ? Visibility.Visible : Visibility.Collapsed;
+        RotationSection.Visibility = Visibility.Collapsed;
+
+        if (showsEmoji)
+        {
+            SyncEmojiSelection(_controller.EmojiDefault);
+        }
 
         if (showsArrowStyle)
         {
@@ -193,6 +234,7 @@ public sealed partial class EditorInspector : UserControl
             EditTool.Pen => "Draw",
             EditTool.Text => "Text",
             EditTool.Counter => "Number badge",
+            EditTool.Emoji => "Emoji",
             EditTool.Redact => "Redact",
             _ => "Tool",
         };
@@ -214,6 +256,7 @@ public sealed partial class EditorInspector : UserControl
         var isCounter = ann.Tool is EditTool.Counter;
         var isRedact = ann.Tool is EditTool.Redact;
         var isArrow = ann.Tool is EditTool.Arrow;
+        var isEmoji = ann.Tool is EditTool.Emoji;
         var hasColor = isShape || isText || isCounter;
 
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
@@ -223,7 +266,19 @@ public sealed partial class EditorInspector : UserControl
         TextSection.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = isRedact ? Visibility.Visible : Visibility.Collapsed;
+        EmojiSection.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
+        var isRotatable = ann.Tool.StoresRotation();
+        RotationSection.Visibility = isRotatable ? Visibility.Visible : Visibility.Collapsed;
         InspectorTitle.Text = $"{ann.Tool} (selected)";
+
+        if (isRotatable)
+        {
+            RotationSlider.Value = ann.Rotation;
+        }
+        if (isEmoji)
+        {
+            SyncEmojiSelection(ann.Text);
+        }
 
         if (isArrow)
         {
@@ -366,6 +421,129 @@ public sealed partial class EditorInspector : UserControl
 
         _controller.SetNumberSize(e.NewValue);
         UpdateInspectorHeaders();
+    }
+
+    private void OnRotationChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetRotation(e.NewValue);
+        UpdateInspectorHeaders();
+    }
+
+    private void OnOpenEmojiPanelClick(object sender, RoutedEventArgs e)
+    {
+        // The system emoji panel inserts into whichever edit control has focus, so the
+        // custom box must be focused first; OnCustomEmojiTextChanged then adopts the glyph.
+        CustomEmojiBox.Focus(FocusState.Programmatic);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!TryShowEmojiPanelViaCoreInputView())
+            {
+                SendWinPeriodShortcut();
+            }
+        });
+    }
+
+    private static bool TryShowEmojiPanelViaCoreInputView()
+    {
+        try
+        {
+            return Windows.UI.ViewManagement.Core.CoreInputView.GetForCurrentView()
+                .TryShow(Windows.UI.ViewManagement.Core.CoreInputViewKind.Emoji);
+        }
+        catch (Exception)
+        {
+            // CoreInputView is not always reachable from a desktop (non-CoreWindow) thread.
+            return false;
+        }
+    }
+
+    /// <summary>Synthesizes Win+. so the shell opens its emoji panel over the focused TextBox.</summary>
+    private static void SendWinPeriodShortcut()
+    {
+        const ushort VK_LWIN = 0x5B;
+        const ushort VK_OEM_PERIOD = 0xBE;
+        const uint KEYEVENTF_KEYUP = 0x0002;
+
+        var inputs = new NativeInput[]
+        {
+            NativeInput.Key(VK_LWIN, 0),
+            NativeInput.Key(VK_OEM_PERIOD, 0),
+            NativeInput.Key(VK_OEM_PERIOD, KEYEVENTF_KEYUP),
+            NativeInput.Key(VK_LWIN, KEYEVENTF_KEYUP),
+        };
+        _ = SendInput((uint)inputs.Length, inputs, System.Runtime.InteropServices.Marshal.SizeOf<NativeInput>());
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint cInputs, NativeInput[] pInputs, int cbSize);
+
+    // INPUT is a tagged union; the MouseInput member sizes it correctly (40 bytes on 64-bit)
+    // so SendInput accepts cbSize. The app only ships 64-bit (x64/ARM64) builds.
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit)]
+    private struct NativeInput
+    {
+        [System.Runtime.InteropServices.FieldOffset(0)] public uint Type;
+        [System.Runtime.InteropServices.FieldOffset(8)] public KeyboardInput Ki;
+        [System.Runtime.InteropServices.FieldOffset(8)] public MouseInput Mi;
+
+        public static NativeInput Key(ushort vk, uint flags) => new()
+        {
+            Type = 1, // INPUT_KEYBOARD
+            Ki = new KeyboardInput { Vk = vk, Flags = flags },
+        };
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int Dx;
+        public int Dy;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        public ushort Vk;
+        public ushort Scan;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    private void OnEmojiItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is string emoji)
+        {
+            _controller.SetEmoji(emoji);
+        }
+    }
+
+    private void OnCustomEmojiTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        var emoji = EmojiAnnotationMath.ExtractEmoji(CustomEmojiBox.Text);
+        if (emoji is null)
+        {
+            return;
+        }
+
+        _controller.SetEmoji(emoji);
+        _inspectorInitializing = true;
+        CustomEmojiBox.Text = string.Empty;
+        _inspectorInitializing = false;
     }
 
     private void OnRedactionLevelChanged(object sender, SelectionChangedEventArgs e)

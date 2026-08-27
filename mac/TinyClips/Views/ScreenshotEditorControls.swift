@@ -53,6 +53,92 @@ struct ArrowStyleButton: View {
     }
 }
 
+struct EmojiPickerView: View {
+    let selectedEmoji: String
+    let recentEmoji: [String]
+    let onSelect: (String) -> Void
+
+    @State private var customEntry = ""
+    @FocusState private var isEntryFocused: Bool
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 6)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(selectedEmoji)
+                    .font(.system(size: 28))
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel("Selected emoji \(selectedEmoji)")
+
+                TextField("Type or paste", text: $customEntry)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isEntryFocused)
+                    .onChange(of: customEntry) { _, newValue in
+                        guard let emoji = EmojiAnnotationMath.emoji(from: newValue) else { return }
+                        onSelect(emoji)
+                        customEntry = ""
+                    }
+                    .accessibilityLabel("Custom emoji")
+                    .help("Type or paste any emoji, or open the emoji picker")
+
+                Button {
+                    openSystemEmojiPicker()
+                } label: {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 15))
+                        .frame(width: 30, height: 28)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Open emoji picker")
+                .help("Open the macOS emoji picker (Control-Command-Space)")
+            }
+
+            if !recentEmoji.isEmpty {
+                emojiSection("Recent", emoji: recentEmoji)
+            }
+
+            emojiSection("Common", emoji: EmojiPalette.common)
+        }
+    }
+
+    /// The Character Viewer inserts into the first responder, so focus the entry field first
+    /// and let `onChange` adopt whatever glyph the user picks.
+    private func openSystemEmojiPicker() {
+        isEntryFocused = true
+        DispatchQueue.main.async {
+            NSApp.orderFrontCharacterPalette(nil)
+        }
+    }
+
+    private func emojiSection(_ title: String, emoji: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(emoji, id: \.self) { item in
+                    Button {
+                        onSelect(item)
+                    } label: {
+                        Text(item)
+                            .font(.system(size: 18))
+                            .frame(maxWidth: .infinity, minHeight: 28)
+                            .background(item == selectedEmoji ? Color.accentColor.opacity(0.2) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .contentShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Emoji \(item)")
+                    .accessibilityValue(item == selectedEmoji ? "Selected" : "Not selected")
+                }
+            }
+        }
+    }
+}
+
 struct BackgroundPresetSwatch: View {
     let preset: ExportBackgroundPreset
     let isSelected: Bool
