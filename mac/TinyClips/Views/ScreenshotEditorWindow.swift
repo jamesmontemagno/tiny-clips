@@ -554,7 +554,7 @@ struct ScreenshotEditorView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 160, ideal: 220, max: 320)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 280, max: 380)
         } detail: {
             VStack(spacing: 0) {
                 GeometryReader { geo in
@@ -851,7 +851,49 @@ struct ScreenshotEditorView: View {
                     }
                 }
             }
+
+            if viewModel.showsRotationControl, let rotationDegrees = viewModel.selectedAnnotationRotationDegrees() {
+                HStack(spacing: 8) {
+                    Slider(value: rotationBinding, in: -180...180, step: 1) {
+                        Text("Rotation")
+                    } onEditingChanged: { isEditing in
+                        if isEditing {
+                            viewModel.beginSelectedAnnotationRotationEdit()
+                        }
+                    }
+                    .accessibilityLabel("Rotation")
+                    .accessibilityValue("\(Int(rotationDegrees.rounded())) degrees")
+                    Text("\(Int(rotationDegrees.rounded()))°")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 36, alignment: .trailing)
+                    Button {
+                        viewModel.resetSelectedAnnotationRotation()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(abs(rotationDegrees) < 0.5)
+                    .help("Reset rotation")
+                    .accessibilityLabel("Reset rotation")
+                }
+            }
+
+            if viewModel.showsEmojiPicker {
+                EmojiPickerView(
+                    selectedEmoji: viewModel.selectedEmojiValue() ?? viewModel.selectedEmoji,
+                    recentEmoji: viewModel.recentEmoji
+                ) { emoji in
+                    viewModel.chooseEmoji(emoji)
+                }
+            }
         }
+    }
+
+    private var rotationBinding: Binding<Double> {
+        Binding(
+            get: { viewModel.selectedAnnotationRotationDegrees() ?? 0 },
+            set: { viewModel.updateSelectedAnnotationRotationDegrees($0, recordsHistory: false) }
+        )
     }
     private var backgroundControls: some View {
         VStack(alignment: .leading, spacing: 10) {

@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Screenshot editor gains an **Emoji** tool. Pick a recent or common emoji, type or paste one, or open the macOS emoji picker (Control-Command-Space) right from the inspector, click to drop a sticker, then use the Move tool to drag it, resize it from any corner (aspect-locked about its center), and rotate it with the new grip above the sticker — hold Shift to snap to 15° steps. A rotation slider in the inspector offers precise control, and stickers export with their rotation baked into the saved image. The editor's tool sidebar also opens wider by default.
+- **Rotate more annotations.** Text, rectangles, circles, and freehand drawings now show the same rotation grip when selected with the Move tool (Shift snaps to 15°); text and shapes also get the inspector rotation slider. Rotated shapes and text resize uniformly about their center, and every rotation is baked into the exported image.
 - **Clips Manager details pane (macOS).** A persistent inspector on the right (toggle with the ⓘ toolbar button or ⌥⌘I) replaces the Details sheet. Click a clip to show it: a large preview (inline video player for recordings, rendered image for screenshots/GIFs), Edit/Trim · Copy · Share · Show actions, favorite and a More menu (upload, copy link, delete), an editor for name, tags, notes and collection with Save/Revert, the upload link, and file facts (type, captured, size, dimensions, duration, location). The selected clip is outlined in the grid and highlighted in the list; the pane's visibility is remembered.
 - Smart Collections in the Clips Manager sidebar now show live counts, and the window subtitle reports "N clips" or "N of M clips" while filtering.
 

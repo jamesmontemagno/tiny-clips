@@ -45,7 +45,7 @@
                 </Canvas>
                 <Canvas
                     x:Name="OverlayCanvas"
-                    AutomationProperties.HelpText="Select an annotation, drag inside it to move, drag a corner handle to resize, or hold Space and drag to pan."
+                    AutomationProperties.HelpText="Select an annotation, drag inside it to move, drag a corner handle to resize, drag the grip above it to rotate, or hold Space and drag to pan."
                     AutomationProperties.Name="Screenshot annotation canvas"
                     Background="Transparent"
                     DoubleTapped="OnOverlayDoubleTapped"
@@ -90,6 +90,15 @@
                     <Ellipse x:Name="EndEndpointHandle" Canvas.ZIndex="10001" Width="12" Height="12"
                              Fill="{ThemeResource AccentFillColorDefaultBrush}" IsHitTestVisible="False"
                              Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
+                    <Line x:Name="RotationHandleStem" Canvas.ZIndex="10001" IsHitTestVisible="False"
+                          Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="1.5" Visibility="Collapsed" />
+                    <Grid x:Name="RotationHandle" Canvas.ZIndex="10002" Width="18" Height="18"
+                          IsHitTestVisible="False" Visibility="Collapsed">
+                        <Ellipse Fill="{ThemeResource ControlSolidFillColorDefaultBrush}"
+                                 Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" />
+                        <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" FontSize="9"
+                                  Foreground="{ThemeResource AccentFillColorDefaultBrush}" Glyph="&#xE72C;" />
+                    </Grid>
                 </Canvas>
             </Grid>
         </ScrollView>

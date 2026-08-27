@@ -122,6 +122,15 @@
                         Text="#" />
                 </ToggleButton>
                 <ToggleButton
+                    x:Name="ToolEmoji"
+                    AutomationProperties.AutomationId="EditorToolEmoji"
+                    AutomationProperties.Name="Emoji"
+                    Click="OnToolClick"
+                    Tag="Emoji"
+                    ToolTipService.ToolTip="Emoji (E)">
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE76E;" />
+                </ToggleButton>
+                <ToggleButton
                     x:Name="ToolRedact"
                     AutomationProperties.AutomationId="EditorToolRedact"
                     AutomationProperties.Name="Redact"

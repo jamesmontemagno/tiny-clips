@@ -6,6 +6,18 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Emoji tool in the screenshot editor** (`E`). The inspector shows the current emoji, Recent and
+  Common rows, a "type or paste" box, and a button that opens the Windows emoji panel (Win+.)
+  straight into that box; clicking the
+  image drops a sticker. With the Select tool a sticker can be moved, resized from any corner
+  (aspect-locked about its center), and rotated via a new grip above it — hold Shift to snap to
+  15°. A rotation slider in the inspector gives precise control, and stickers are baked into the
+  export with their rotation via Win2D color-font text. The editor's single-letter tool hotkeys,
+  Space-pan, and Delete are now suppressed while typing in an inspector text box.
+- **Rotate text, rectangles, ellipses, and pen strokes.** Selecting any of these with the Select
+  tool shows the same rotation grip (Shift snaps to 15°); text and shapes also get a Rotation
+  slider in the inspector. Rotated shapes/text resize uniformly about their center, pen strokes
+  rotate their points in place, and all rotations are baked into the exported image.
 - **What's new window.** After updating, a one-time window highlights the release's new recording
   features and links straight to Settings → Video for anyone who needs to switch back to the previous
   pipeline. It is keyed on a content revision (not a version number), so it appears once per rewrite

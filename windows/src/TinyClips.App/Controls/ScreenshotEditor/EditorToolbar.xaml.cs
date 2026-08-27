@@ -51,6 +51,7 @@ public sealed partial class EditorToolbar : UserControl
         yield return (ToolPen, EditTool.Pen);
         yield return (ToolText, EditTool.Text);
         yield return (ToolCounter, EditTool.Counter);
+        yield return (ToolEmoji, EditTool.Emoji);
         yield return (ToolRedact, EditTool.Redact);
     }
 }
