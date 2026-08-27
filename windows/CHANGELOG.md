@@ -13,6 +13,10 @@ own `CHANGELOG.md` at the repository root.
   15°. A rotation slider in the inspector gives precise control, and stickers are baked into the
   export with their rotation via Win2D color-font text. The editor's single-letter tool hotkeys,
   Space-pan, and Delete are now suppressed while typing in an inspector text box.
+- **Rotate text, rectangles, ellipses, and pen strokes.** Selecting any of these with the Select
+  tool shows the same rotation grip (Shift snaps to 15°); text and shapes also get a Rotation
+  slider in the inspector. Rotated shapes/text resize uniformly about their center, pen strokes
+  rotate their points in place, and all rotations are baked into the exported image.
 
 ### Changed
 - **Clips Library rewritten** as a proper MVVM feature (`ViewModels/ClipsLibrary`,

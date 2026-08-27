@@ -247,13 +247,13 @@ internal sealed class EditorController : IDisposable
         for (var i = _annotations.Count - 1; i >= 0; i--)
         {
             var ann = _annotations[i];
-            if (ann.Tool == EditTool.Emoji)
+            if (ann.Tool == EditTool.Emoji || ann.IsRotated)
             {
                 if (RotatableAnnotationGeometry.Contains(
                         new PointD(pixelPoint.X, pixelPoint.Y),
-                        ToRectD(ann.Bounds),
+                        ToRectD(NormalizedBounds(ann)),
                         ann.Rotation,
-                        padding: 6))
+                        padding: ann.Thickness + 6))
                 {
                     return ann;
                 }
@@ -452,10 +452,10 @@ internal sealed class EditorController : IDisposable
         EmojiChanged?.Invoke(this, emoji);
     }
 
-    /// <summary>Sets the selected sticker's rotation (degrees, clockwise) — used by the inspector slider.</summary>
-    public void SetEmojiRotation(double degrees)
+    /// <summary>Sets the selected annotation's rotation (degrees, clockwise) — used by the inspector slider.</summary>
+    public void SetRotation(double degrees)
     {
-        if (SelectedAnnotation is not { Tool: EditTool.Emoji } ann)
+        if (SelectedAnnotation is not { } ann || !ann.Tool.StoresRotation())
         {
             return;
         }
@@ -470,12 +470,52 @@ internal sealed class EditorController : IDisposable
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
-    /// <summary>Points a sticker's rotation grip at <paramref name="pixelPoint"/>; Shift snaps to 15° steps.</summary>
-    public void RotateAnnotationToward(Annotation ann, Point pixelPoint, bool snap)
+    /// <summary>
+    /// Bounds and angle the rotation grip is anchored to, or null for tools that can't rotate.
+    /// Pen strokes use their point bounds and always report 0° because rotation is baked into the
+    /// points.
+    /// </summary>
+    public static (Rect Bounds, double Rotation)? RotationFrame(Annotation ann)
     {
-        var center = ToRectD(ann.Bounds).Center;
+        if (!ann.Tool.SupportsRotation())
+        {
+            return null;
+        }
+        return ann.Tool == EditTool.Pen
+            ? (NormalizedBounds(ann), 0)
+            : (NormalizedBounds(ann), ann.Rotation);
+    }
+
+    /// <summary>
+    /// Points the annotation's rotation grip at <paramref name="pixelPoint"/>; Shift snaps to 15°
+    /// steps. <paramref name="originalBounds"/>/<paramref name="originalPoints"/> are captured at
+    /// drag start so pen strokes (whose bounds move as their points turn) rotate about a fixed center.
+    /// </summary>
+    public void RotateAnnotationToward(
+        Annotation ann,
+        Rect originalBounds,
+        IReadOnlyList<Vector2> originalPoints,
+        Point pixelPoint,
+        bool snap)
+    {
+        var center = ToRectD(originalBounds).Center;
         var angle = RotatableAnnotationGeometry.AngleDegrees(center, new PointD(pixelPoint.X, pixelPoint.Y));
-        ann.Rotation = RotatableAnnotationGeometry.NormalizeDegrees(RotatableAnnotationGeometry.Snap(angle, 15, snap));
+        var snapped = RotatableAnnotationGeometry.NormalizeDegrees(RotatableAnnotationGeometry.Snap(angle, 15, snap));
+
+        if (ann.Tool == EditTool.Pen)
+        {
+            ann.Points.Clear();
+            foreach (var original in originalPoints)
+            {
+                var rotated = RotatableAnnotationGeometry.Rotate(new PointD(original.X, original.Y), center, snapped);
+                ann.Points.Add(new Vector2((float)rotated.X, (float)rotated.Y));
+            }
+            UpdatePenBounds(ann);
+        }
+        else
+        {
+            ann.Rotation = snapped;
+        }
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
@@ -866,9 +906,9 @@ internal sealed class EditorController : IDisposable
         AnnotationResizeHandle handle,
         Point pixelPoint)
     {
-        if (ann.Tool == EditTool.Emoji)
+        if (ann.Tool == EditTool.Emoji || ann.IsRotated)
         {
-            ResizeRotatedSquare(ann, originalBounds, handle, pixelPoint);
+            ResizeRotatedAboutCenter(ann, originalBounds, originalFontSize, handle, pixelPoint);
             return;
         }
 
@@ -957,10 +997,16 @@ internal sealed class EditorController : IDisposable
     }
 
     /// <summary>
-    /// Scales a sticker about its center by comparing the dragged corner's distance from the
-    /// center with the original corner's, so the gesture works identically at any rotation.
+    /// Scales a rotated annotation uniformly about its center by comparing the dragged corner's
+    /// distance from the center with the original corner's, so the gesture works identically at
+    /// any rotation.
     /// </summary>
-    private void ResizeRotatedSquare(Annotation ann, Rect originalBounds, AnnotationResizeHandle handle, Point pixelPoint)
+    private void ResizeRotatedAboutCenter(
+        Annotation ann,
+        Rect originalBounds,
+        double originalFontSize,
+        AnnotationResizeHandle handle,
+        Point pixelPoint)
     {
         var original = ToRectD(originalBounds);
         var center = original.Center;
@@ -974,13 +1020,41 @@ internal sealed class EditorController : IDisposable
         }];
         var originalDistance = Math.Max(RotatableAnnotationGeometry.Distance(originalCorner, center), 0.5);
         var draggedDistance = RotatableAnnotationGeometry.Distance(new PointD(pixelPoint.X, pixelPoint.Y), center);
-        var imageWidth = _bitmap?.PixelWidth ?? 1000;
-        var imageHeight = _bitmap?.PixelHeight ?? 1000;
-        var side = EmojiAnnotationMath.ClampSidePixels(
-            original.Width * (draggedDistance / originalDistance),
-            imageWidth,
-            imageHeight);
-        var resized = EmojiAnnotationMath.SquareBounds(center, side);
+        var scale = draggedDistance / originalDistance;
+
+        RectD resized;
+        switch (ann.Tool)
+        {
+            case EditTool.Emoji:
+            {
+                var imageWidth = _bitmap?.PixelWidth ?? 1000;
+                var imageHeight = _bitmap?.PixelHeight ?? 1000;
+                var side = EmojiAnnotationMath.ClampSidePixels(original.Width * scale, imageWidth, imageHeight);
+                resized = EmojiAnnotationMath.SquareBounds(center, side);
+                break;
+            }
+            case EditTool.Text:
+            {
+                scale = Math.Clamp(scale, 10 / Math.Max(originalFontSize, 1), 200 / Math.Max(originalFontSize, 1));
+                ann.FontSize = originalFontSize * scale;
+                // Re-measure so the box matches the new glyph size, then keep the center fixed.
+                ann.Bounds = new Rect(original.X, original.Y, 0, 0);
+                UpdateTextBounds(ann);
+                var measured = ann.Bounds;
+                resized = new RectD(center.X - measured.Width / 2, center.Y - measured.Height / 2, measured.Width, measured.Height);
+                break;
+            }
+            default:
+            {
+                var minimumScale = Math.Max(2 / Math.Max(original.Width, 1), 2 / Math.Max(original.Height, 1));
+                scale = Math.Max(scale, minimumScale);
+                var width = original.Width * scale;
+                var height = original.Height * scale;
+                resized = new RectD(center.X - width / 2, center.Y - height / 2, width, height);
+                break;
+            }
+        }
+
         ann.Bounds = new Rect(resized.X, resized.Y, resized.Width, resized.Height);
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
@@ -1425,6 +1499,28 @@ internal sealed class EditorController : IDisposable
         var color = ann.Color;
         var thickness = (float)ann.Thickness;
 
+        // Rotated shapes/text draw through a rotation about their center composed with whatever
+        // transform the export path already applied (e.g. the padded-frame translation).
+        var previousTransform = ds.Transform;
+        if (ann.IsRotated)
+        {
+            var b = NormalizedBounds(ann);
+            var center = new Vector2((float)(b.X + b.Width / 2), (float)(b.Y + b.Height / 2));
+            ds.Transform = Matrix3x2.CreateRotation((float)(ann.Rotation * Math.PI / 180.0), center) * previousTransform;
+        }
+
+        try
+        {
+            DrawAnnotationCore(ds, ann, color, thickness);
+        }
+        finally
+        {
+            ds.Transform = previousTransform;
+        }
+    }
+
+    private static void DrawAnnotationCore(CanvasDrawingSession ds, Annotation ann, Color color, float thickness)
+    {
         switch (ann.Tool)
         {
             case EditTool.Rectangle:
@@ -1535,7 +1631,6 @@ internal sealed class EditorController : IDisposable
             case EditTool.Emoji:
             {
                 var b = ann.Bounds;
-                var center = new Vector2((float)(b.X + b.Width / 2), (float)(b.Y + b.Height / 2));
                 using var format = new CanvasTextFormat
                 {
                     FontSize = (float)EmojiAnnotationMath.GlyphFontSize(b.Height),
@@ -1545,12 +1640,7 @@ internal sealed class EditorController : IDisposable
                     WordWrapping = CanvasWordWrapping.NoWrap,
                     Options = CanvasDrawTextOptions.EnableColorFont,
                 };
-                // Compose with any existing transform (the padded-frame export path translates the
-                // session) so the sticker rotates about its own center in image space.
-                var previous = ds.Transform;
-                ds.Transform = Matrix3x2.CreateRotation((float)(ann.Rotation * Math.PI / 180.0), center) * previous;
                 ds.DrawText(ann.Text, b, Colors.Black, format);
-                ds.Transform = previous;
                 break;
             }
         }

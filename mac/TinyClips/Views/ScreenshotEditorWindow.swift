@@ -851,33 +851,33 @@ struct ScreenshotEditorView: View {
                 }
             }
 
-            if viewModel.showsEmojiPicker {
-                if let rotationDegrees = viewModel.selectedEmojiRotationDegrees() {
-                    HStack(spacing: 8) {
-                        Slider(value: emojiRotationBinding, in: -180...180, step: 1) {
-                            Text("Rotation")
-                        } onEditingChanged: { isEditing in
-                            if isEditing {
-                                viewModel.beginSelectedEmojiRotationEdit()
-                            }
+            if viewModel.showsRotationControl, let rotationDegrees = viewModel.selectedAnnotationRotationDegrees() {
+                HStack(spacing: 8) {
+                    Slider(value: rotationBinding, in: -180...180, step: 1) {
+                        Text("Rotation")
+                    } onEditingChanged: { isEditing in
+                        if isEditing {
+                            viewModel.beginSelectedAnnotationRotationEdit()
                         }
-                        .accessibilityLabel("Emoji rotation")
-                        .accessibilityValue("\(Int(rotationDegrees.rounded())) degrees")
-                        Text("\(Int(rotationDegrees.rounded()))°")
-                            .font(.caption.monospacedDigit())
-                            .frame(width: 36, alignment: .trailing)
-                        Button {
-                            viewModel.resetSelectedEmojiRotation()
-                        } label: {
-                            Image(systemName: "arrow.counterclockwise")
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(abs(rotationDegrees) < 0.5)
-                        .help("Reset rotation")
-                        .accessibilityLabel("Reset emoji rotation")
                     }
+                    .accessibilityLabel("Rotation")
+                    .accessibilityValue("\(Int(rotationDegrees.rounded())) degrees")
+                    Text("\(Int(rotationDegrees.rounded()))°")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 36, alignment: .trailing)
+                    Button {
+                        viewModel.resetSelectedAnnotationRotation()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(abs(rotationDegrees) < 0.5)
+                    .help("Reset rotation")
+                    .accessibilityLabel("Reset rotation")
                 }
+            }
 
+            if viewModel.showsEmojiPicker {
                 EmojiPickerView(
                     selectedEmoji: viewModel.selectedEmojiValue() ?? viewModel.selectedEmoji,
                     recentEmoji: viewModel.recentEmoji
@@ -888,10 +888,10 @@ struct ScreenshotEditorView: View {
         }
     }
 
-    private var emojiRotationBinding: Binding<Double> {
+    private var rotationBinding: Binding<Double> {
         Binding(
-            get: { viewModel.selectedEmojiRotationDegrees() ?? 0 },
-            set: { viewModel.updateSelectedEmojiRotationDegrees($0, recordsHistory: false) }
+            get: { viewModel.selectedAnnotationRotationDegrees() ?? 0 },
+            set: { viewModel.updateSelectedAnnotationRotationDegrees($0, recordsHistory: false) }
         )
     }
     private var backgroundControls: some View {

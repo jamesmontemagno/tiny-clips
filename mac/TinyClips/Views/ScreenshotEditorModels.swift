@@ -38,6 +38,20 @@ enum EditTool: String, CaseIterable {
         case .blur: return "Redact"
         }
     }
+
+    /// Tools whose annotations can be turned with the rotation grip. Pencil strokes rotate their
+    /// points in place, so they don't store an angle; see `storesRotation`.
+    var supportsRotation: Bool {
+        switch self {
+        case .emoji, .text, .rectangle, .circle, .pencil: return true
+        case .move, .crop, .arrow, .line, .number, .blur: return false
+        }
+    }
+
+    /// Tools that keep a persistent `rotation` angle on the annotation (drawn via a transform).
+    var storesRotation: Bool {
+        supportsRotation && self != .pencil
+    }
 }
 
 struct ScreenshotAnnotation: Identifiable {
@@ -57,8 +71,13 @@ struct ScreenshotAnnotation: Identifiable {
     var isUnderlined: Bool = false
     var redactionBlurPreset: RedactionBlurPreset = .medium
     var arrowStyle: ArrowStyle = .straight
-    /// Clockwise rotation in radians around the center of `rect`. Only emoji annotations use it today.
+    /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
     var rotation: CGFloat = 0
+
+    /// Whether this annotation is drawn through a rotation transform.
+    var isRotated: Bool {
+        tool.storesRotation && abs(rotation) > 0.0001
+    }
 }
 
 typealias LinePoints = (start: CGPoint, end: CGPoint)

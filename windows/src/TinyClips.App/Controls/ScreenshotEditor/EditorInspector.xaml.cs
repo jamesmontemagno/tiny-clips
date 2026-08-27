@@ -47,12 +47,12 @@ public sealed partial class EditorInspector : UserControl
         controller.AnnotationVisualInvalidated += (_, ann) =>
         {
             // Keep the rotation slider in step with the on-canvas rotation grip.
-            if (ann.Tool == EditTool.Emoji
+            if (ann.Tool.StoresRotation()
                 && ReferenceEquals(ann, _controller.SelectedAnnotation)
-                && Math.Abs(EmojiRotationSlider.Value - ann.Rotation) > 0.5)
+                && Math.Abs(RotationSlider.Value - ann.Rotation) > 0.5)
             {
                 _inspectorInitializing = true;
-                EmojiRotationSlider.Value = ann.Rotation;
+                RotationSlider.Value = ann.Rotation;
                 UpdateInspectorHeaders();
                 _inspectorInitializing = false;
             }
@@ -100,7 +100,7 @@ public sealed partial class EditorInspector : UserControl
         StrokeSlider.Header = $"Stroke — {(int)_controller.StrokeThickness} px";
         NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(_controller.NumberScale * 100)}%";
         FontSizeSlider.Header = $"Font size — {(int)_controller.TextFontSize} px";
-        EmojiRotationSlider.Header = $"Rotation — {(int)Math.Round(EmojiRotationSlider.Value)}°";
+        RotationSlider.Header = $"Rotation — {(int)Math.Round(RotationSlider.Value)}°";
     }
 
     private void InitializeEmojiControls()
@@ -230,7 +230,7 @@ public sealed partial class EditorInspector : UserControl
         CounterSection.Visibility = showsNumber ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = showsRedact ? Visibility.Visible : Visibility.Collapsed;
         EmojiSection.Visibility = showsEmoji ? Visibility.Visible : Visibility.Collapsed;
-        EmojiRotationSlider.Visibility = Visibility.Collapsed;
+        RotationSection.Visibility = Visibility.Collapsed;
 
         if (showsEmoji)
         {
@@ -292,12 +292,16 @@ public sealed partial class EditorInspector : UserControl
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = isRedact ? Visibility.Visible : Visibility.Collapsed;
         EmojiSection.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
-        EmojiRotationSlider.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
+        var isRotatable = ann.Tool.StoresRotation();
+        RotationSection.Visibility = isRotatable ? Visibility.Visible : Visibility.Collapsed;
         InspectorTitle.Text = $"{ann.Tool} (selected)";
 
+        if (isRotatable)
+        {
+            RotationSlider.Value = ann.Rotation;
+        }
         if (isEmoji)
         {
-            EmojiRotationSlider.Value = ann.Rotation;
             SyncEmojiSelection(ann.Text);
         }
 
@@ -444,14 +448,14 @@ public sealed partial class EditorInspector : UserControl
         UpdateInspectorHeaders();
     }
 
-    private void OnEmojiRotationChanged(object sender, RangeBaseValueChangedEventArgs e)
+    private void OnRotationChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_inspectorInitializing)
         {
             return;
         }
 
-        _controller.SetEmojiRotation(e.NewValue);
+        _controller.SetRotation(e.NewValue);
         UpdateInspectorHeaders();
     }
 

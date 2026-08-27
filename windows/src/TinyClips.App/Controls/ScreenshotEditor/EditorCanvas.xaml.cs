@@ -281,7 +281,7 @@ public sealed partial class EditorCanvas : UserControl
         HintText.Text = tool switch
         {
             EditTool.Crop => "Drag to select an area, then choose Apply crop.",
-            EditTool.Select => "Click an annotation to select it; drag inside to move, drag a handle to resize, or drag the grip above an emoji to rotate. Del removes it.",
+            EditTool.Select => "Click an annotation to select it; drag inside to move, drag a handle to resize, or drag the grip above it to rotate. Del removes it.",
             EditTool.Text => "Click where you want text to open the editor; double-click text to edit it.",
             EditTool.Counter => "Click to drop a numbered badge.",
             EditTool.Emoji => "Pick an emoji in the panel, then click to place it. Use Select to move, resize, or rotate it.",
@@ -577,6 +577,7 @@ public sealed partial class EditorCanvas : UserControl
                 var stroke = new SolidColorBrush();
                 var fill = new SolidColorBrush();
                 var rect = new Rectangle { Stroke = stroke, Fill = fill };
+                MakeRotatable(rect);
                 OverlayCanvas.Children.Add(rect);
                 return new AnnotationVisual { Primary = rect, StrokeBrush = stroke, FillBrush = fill };
             }
@@ -585,6 +586,7 @@ public sealed partial class EditorCanvas : UserControl
                 var stroke = new SolidColorBrush();
                 var fill = new SolidColorBrush();
                 var ellipse = new Ellipse { Stroke = stroke, Fill = fill };
+                MakeRotatable(ellipse);
                 OverlayCanvas.Children.Add(ellipse);
                 return new AnnotationVisual { Primary = ellipse, StrokeBrush = stroke, FillBrush = fill };
             }
@@ -641,6 +643,7 @@ public sealed partial class EditorCanvas : UserControl
             {
                 var textBrush = new SolidColorBrush();
                 var text = new TextBlock { Foreground = textBrush };
+                MakeRotatable(text);
                 OverlayCanvas.Children.Add(text);
                 return new AnnotationVisual { Primary = text, TextBrush = textBrush };
             }
@@ -662,11 +665,8 @@ public sealed partial class EditorCanvas : UserControl
             }
             case EditTool.Emoji:
             {
-                var grid = new Grid
-                {
-                    RenderTransformOrigin = new Point(0.5, 0.5),
-                    RenderTransform = new RotateTransform(),
-                };
+                var grid = new Grid();
+                MakeRotatable(grid);
                 grid.Children.Add(new TextBlock
                 {
                     FontFamily = new FontFamily("Segoe UI Emoji"),
@@ -688,6 +688,21 @@ public sealed partial class EditorCanvas : UserControl
             ? new ShapesPath { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round }
             : new Line { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
 
+    /// <summary>Gives a visual a center-anchored <see cref="RotateTransform"/> so <see cref="ApplyRotation"/> can turn it in place.</summary>
+    private static void MakeRotatable(FrameworkElement element)
+    {
+        element.RenderTransformOrigin = new Point(0.5, 0.5);
+        element.RenderTransform = new RotateTransform();
+    }
+
+    private static void ApplyRotation(FrameworkElement element, double degrees)
+    {
+        if (element.RenderTransform is RotateTransform rotate)
+        {
+            rotate.Angle = degrees;
+        }
+    }
+
     private void PositionVisual(Annotation ann, AnnotationVisual visual)
     {
         var (scale, offX, offY) = HostLayout();
@@ -707,6 +722,7 @@ public sealed partial class EditorCanvas : UserControl
                 rect.StrokeThickness = thickness;
                 visual.StrokeBrush!.Color = ann.Color;
                 visual.FillBrush!.Color = ann.FillColor;
+                ApplyRotation(rect, ann.Rotation);
                 break;
             }
             case EditTool.Ellipse:
@@ -721,6 +737,7 @@ public sealed partial class EditorCanvas : UserControl
                 ellipse.StrokeThickness = thickness;
                 visual.StrokeBrush!.Color = ann.Color;
                 visual.FillBrush!.Color = ann.FillColor;
+                ApplyRotation(ellipse, ann.Rotation);
                 break;
             }
             case EditTool.Line:
@@ -766,7 +783,7 @@ public sealed partial class EditorCanvas : UserControl
         var grid = (Grid)visual.Primary;
         grid.Width = side;
         grid.Height = side;
-        ((RotateTransform)grid.RenderTransform).Angle = ann.Rotation;
+        ApplyRotation(grid, ann.Rotation);
 
         var textBlock = (TextBlock)grid.Children[0];
         textBlock.Text = ann.Text;
@@ -918,6 +935,7 @@ public sealed partial class EditorCanvas : UserControl
             decorations |= Windows.UI.Text.TextDecorations.Strikethrough;
         }
         text.TextDecorations = decorations;
+        ApplyRotation(text, ann.Rotation);
 
         Canvas.SetLeft(text, tl.X);
         Canvas.SetTop(text, tl.Y);
@@ -966,9 +984,9 @@ public sealed partial class EditorCanvas : UserControl
         var b = EditorController.NormalizedBounds(ann);
         var tl = ToCanvas(new Point(b.X, b.Y), scale, offX, offY);
 
-        if (ann.Tool == EditTool.Emoji)
+        if (EditorController.RotationFrame(ann) is { } frame)
         {
-            PositionRotatedMarquee(ann, b, scale, offX, offY);
+            PositionRotatedMarquee(frame.Bounds, frame.Rotation, scale, offX, offY);
             return;
         }
 
@@ -1026,19 +1044,19 @@ public sealed partial class EditorCanvas : UserControl
         return (bounds, RotatableAnnotationGeometry.RotationHandleOffset(bounds.Height));
     }
 
-    private void PositionRotatedMarquee(Annotation ann, Rect pixelBounds, double scale, double offX, double offY)
+    private void PositionRotatedMarquee(Rect pixelBounds, double rotation, double scale, double offX, double offY)
     {
         var (bounds, offset) = CanvasStickerGeometry(pixelBounds, scale, offX, offY);
         var center = bounds.Center;
 
-        SetMarqueeRotation(ann.Rotation);
+        SetMarqueeRotation(rotation);
         SelectionMarquee.Width = Math.Max(bounds.Width, 8) + 12;
         SelectionMarquee.Height = Math.Max(bounds.Height, 8) + 12;
         Canvas.SetLeft(SelectionMarquee, center.X - SelectionMarquee.Width / 2);
         Canvas.SetTop(SelectionMarquee, center.Y - SelectionMarquee.Height / 2);
         SelectionMarquee.Visibility = Visibility.Visible;
 
-        var corners = RotatableAnnotationGeometry.Corners(bounds, ann.Rotation);
+        var corners = RotatableAnnotationGeometry.Corners(bounds, rotation);
         PositionHandle(TopLeftResizeHandle, new Point(corners[0].X, corners[0].Y));
         PositionHandle(TopRightResizeHandle, new Point(corners[1].X, corners[1].Y));
         PositionHandle(BottomLeftResizeHandle, new Point(corners[2].X, corners[2].Y));
@@ -1048,8 +1066,8 @@ public sealed partial class EditorCanvas : UserControl
         BottomLeftResizeHandle.Visibility = Visibility.Visible;
         BottomRightResizeHandle.Visibility = Visibility.Visible;
 
-        var grip = RotatableAnnotationGeometry.RotationHandle(bounds, ann.Rotation, offset);
-        var topCenter = RotatableAnnotationGeometry.Rotate(new PointD(center.X, bounds.Top), center, ann.Rotation);
+        var grip = RotatableAnnotationGeometry.RotationHandle(bounds, rotation, offset);
+        var topCenter = RotatableAnnotationGeometry.Rotate(new PointD(center.X, bounds.Top), center, rotation);
         RotationHandleStem.X1 = topCenter.X;
         RotationHandleStem.Y1 = topCenter.Y;
         RotationHandleStem.X2 = grip.X;
@@ -1061,13 +1079,13 @@ public sealed partial class EditorCanvas : UserControl
 
     private bool IsRotationHandleAt(Point point, Annotation ann)
     {
-        if (ann.Tool != EditTool.Emoji)
+        if (EditorController.RotationFrame(ann) is not { } frame)
         {
             return false;
         }
         var (scale, offX, offY) = HostLayout();
-        var (bounds, offset) = CanvasStickerGeometry(ann.Bounds, scale, offX, offY);
-        var grip = RotatableAnnotationGeometry.RotationHandle(bounds, ann.Rotation, offset);
+        var (bounds, offset) = CanvasStickerGeometry(frame.Bounds, scale, offX, offY);
+        var grip = RotatableAnnotationGeometry.RotationHandle(bounds, frame.Rotation, offset);
         return RotatableAnnotationGeometry.Distance(new PointD(point.X, point.Y), grip) <= 11;
     }
 
@@ -1085,9 +1103,9 @@ public sealed partial class EditorCanvas : UserControl
         }
         var (scale, offX, offY) = HostLayout();
 
-        if (ann.Tool == EditTool.Emoji)
+        if (ann.Tool == EditTool.Emoji || ann.IsRotated)
         {
-            var (stickerBounds, _) = CanvasStickerGeometry(ann.Bounds, scale, offX, offY);
+            var (stickerBounds, _) = CanvasStickerGeometry(EditorController.NormalizedBounds(ann), scale, offX, offY);
             var corners = RotatableAnnotationGeometry.Corners(stickerBounds, ann.Rotation);
             var order = new[]
             {
@@ -1221,6 +1239,8 @@ public sealed partial class EditorCanvas : UserControl
                 if (IsRotationHandleAt(p, selected))
                 {
                     _rotatingAnnotation = selected;
+                    _resizeOriginalBounds = EditorController.NormalizedBounds(selected);
+                    _resizeOriginalPoints = new List<Vector2>(selected.Points);
                     OverlayCanvas.CapturePointer(e.Pointer);
                     _capturedPointer = e.Pointer;
                     return;
@@ -1328,7 +1348,12 @@ public sealed partial class EditorCanvas : UserControl
         if (tool == EditTool.Select && _rotatingAnnotation is not null)
         {
             var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
-            _controller.RotateAnnotationToward(_rotatingAnnotation, pixel, EditorController.IsShiftDown());
+            _controller.RotateAnnotationToward(
+                _rotatingAnnotation,
+                _resizeOriginalBounds,
+                _resizeOriginalPoints,
+                pixel,
+                EditorController.IsShiftDown());
             return;
         }
 

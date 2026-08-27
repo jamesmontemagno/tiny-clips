@@ -148,18 +148,21 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!--  Emoji sticker  -->
-                <StackPanel x:Name="EmojiSection" Spacing="10">
+                <!--  Rotation (selected rotatable annotation)  -->
+                <StackPanel x:Name="RotationSection" Spacing="2" Visibility="Collapsed">
                     <Slider
-                        x:Name="EmojiRotationSlider"
-                        AutomationProperties.AutomationId="EditorEmojiRotationSlider"
-                        AutomationProperties.Name="Emoji rotation"
+                        x:Name="RotationSlider"
+                        AutomationProperties.AutomationId="EditorRotationSlider"
+                        AutomationProperties.Name="Rotation"
                         Header="Rotation"
                         Maximum="180"
                         Minimum="-180"
                         StepFrequency="1"
-                        ValueChanged="OnEmojiRotationChanged"
-                        Visibility="Collapsed" />
+                        ValueChanged="OnRotationChanged" />
+                </StackPanel>
+
+                <!--  Emoji sticker  -->
+                <StackPanel x:Name="EmojiSection" Spacing="10">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />

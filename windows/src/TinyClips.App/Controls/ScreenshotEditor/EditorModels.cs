@@ -35,6 +35,17 @@ internal enum AnnotationResizeHandle
     BottomRight,
 }
 
+internal static class EditToolExtensions
+{
+    /// <summary>Tools whose annotations can be turned with the rotation grip. Pen strokes rotate
+    /// their points in place and therefore don't store an angle (see <see cref="StoresRotation"/>).</summary>
+    public static bool SupportsRotation(this EditTool tool) =>
+        tool is EditTool.Emoji or EditTool.Text or EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen;
+
+    /// <summary>Tools that keep a persistent <see cref="Annotation.Rotation"/> drawn via a transform.</summary>
+    public static bool StoresRotation(this EditTool tool) => tool.SupportsRotation() && tool != EditTool.Pen;
+}
+
 internal enum RedactionLevel
 {
     Light,
@@ -176,8 +187,11 @@ internal sealed class Annotation
     public bool Underline { get; set; }
     public bool Strikethrough { get; set; }
 
-    /// <summary>Clockwise rotation in degrees around the center of <see cref="Bounds"/> (emoji stickers).</summary>
+    /// <summary>Clockwise rotation in degrees around the center of <see cref="Bounds"/> for tools where <c>Tool.StoresRotation()</c>.</summary>
     public double Rotation { get; set; }
+
+    /// <summary>Whether this annotation is drawn through a rotation transform.</summary>
+    public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 
     // Cached blurred preview for redaction annotations (invalidated on move / level change).
     public SoftwareBitmapSource? RedactPreview { get; set; }

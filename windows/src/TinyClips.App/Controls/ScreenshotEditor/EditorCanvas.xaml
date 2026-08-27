@@ -45,7 +45,7 @@
                 </Canvas>
                 <Canvas
                     x:Name="OverlayCanvas"
-                    AutomationProperties.HelpText="Select an annotation, drag inside it to move, drag a corner handle to resize, drag the grip above an emoji to rotate it, or hold Space and drag to pan."
+                    AutomationProperties.HelpText="Select an annotation, drag inside it to move, drag a corner handle to resize, drag the grip above it to rotate, or hold Space and drag to pan."
                     AutomationProperties.Name="Screenshot annotation canvas"
                     Background="Transparent"
                     DoubleTapped="OnOverlayDoubleTapped"
