@@ -329,7 +329,8 @@ public sealed class RecordingPerformanceMonitor
                 var samples = new long[sampleCount];
                 Array.Copy(_reservoir, samples, sampleCount);
                 Array.Sort(samples);
-                var p99 = sampleCount > 0 ? samples[Math.Min(sampleCount - 1, (int)(sampleCount * 0.99))] : 0;
+                // Nearest-rank percentile: the value at rank ceil(0.99·n), 1-based.
+                var p99 = sampleCount > 0 ? samples[Math.Clamp((int)Math.Ceiling(sampleCount * 0.99) - 1, 0, sampleCount - 1)] : 0;
                 return new RecordingStageStats(
                     Stage,
                     _count,

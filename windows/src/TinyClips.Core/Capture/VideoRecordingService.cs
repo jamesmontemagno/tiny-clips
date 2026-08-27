@@ -1509,14 +1509,36 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         try
         {
+            // Same back-pressure rule as HandleAudioRequestAsync: wait for real captured frames so
+            // audio never runs ahead of the capture clock; wait without limit only while paused. A
+            // stalled/disconnected device must not leave the track short, so after the same 2 s cap
+            // the chunk is filled with silence and counted as starved.
+            const int maxWaitMs = 2000;
+            var waitedMs = 0;
             while (!_audioMuxStop)
             {
-                if (IsPaused || audio.AvailableFrames < frameCount)
+                if (IsPaused)
                 {
+                    waitedMs = 0;
                     Thread.Sleep(pollMs);
                     continue;
                 }
 
+                if (audio.AvailableFrames < frameCount)
+                {
+                    if (waitedMs < maxWaitMs)
+                    {
+                        Thread.Sleep(pollMs);
+                        waitedMs += pollMs;
+                        continue;
+                    }
+
+                    WriteStarvedAudioChunk(sink, frameCount);
+                    waitedMs = 0;
+                    continue;
+                }
+
+                waitedMs = 0;
                 WriteAudioChunk(sink, audio, frameCount);
             }
 
@@ -1549,6 +1571,23 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return false;
         }
 
+        return WriteAudioData(sink, data);
+    }
+
+    /// <summary>Emits a silent chunk in place of audio a stalled source never delivered.</summary>
+    private void WriteStarvedAudioChunk(MfSinkWriterEncoder sink, int frameCount)
+    {
+        _audioStarvedChunks++;
+        if (_audioStarvedChunks == 1 || _audioStarvedChunks % 50 == 0)
+        {
+            WebcamDiagnostics.Log($"Audio muxer starved: no captured audio for 2 s; filled chunk with silence (starvedChunks={_audioStarvedChunks}).");
+        }
+
+        WriteAudioData(sink, new byte[frameCount * AudioCaptureService.Channels * (AudioCaptureService.BitsPerSample / 8)]);
+    }
+
+    private bool WriteAudioData(MfSinkWriterEncoder sink, byte[] data)
+    {
         var (pts, duration) = AccountAudioChunk(data);
         try
         {
@@ -1844,8 +1883,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             if (_perf is { } perf)
             {
-                perf.SetDroppedFrames(videoDropped);
+                // Every drop site (channel DropWrite, pool exhaustion, frame-production failure)
+                // reports to the monitor directly, so its count is authoritative; the two counters
+                // below are kept for the sync line and cross-checked here.
                 var report = perf.Complete();
+                videoDropped = Math.Max(videoDropped, report.FramesDropped);
                 LastPerformanceReport = report;
                 foreach (var line in report.ToTable().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries))
                 {

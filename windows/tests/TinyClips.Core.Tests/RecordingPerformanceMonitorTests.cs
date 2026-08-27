@@ -66,6 +66,23 @@ public sealed class RecordingPerformanceMonitorTests
     }
 
     [Fact]
+    public void P99_UsesNearestRank()
+    {
+        var monitor = new RecordingPerformanceMonitor("cpu", 1, 1, 30);
+        monitor.Start();
+        for (var i = 1; i <= 100; i++)
+        {
+            monitor.Record(RecordingStage.Composite, i);
+        }
+
+        var stats = Assert.Single(monitor.Complete().Stages, s => s.Stage == RecordingStage.Composite);
+
+        // Nearest-rank p99 of 1..100 is the 99th value, not the maximum.
+        Assert.Equal(99 * 1000.0 / System.Diagnostics.Stopwatch.Frequency, stats.P99Ms, 9);
+        Assert.Equal(100 * 1000.0 / System.Diagnostics.Stopwatch.Frequency, stats.MaxMs, 9);
+    }
+
+    [Fact]
     public void ToTable_ContainsSummaryAndStageRows()
     {
         var monitor = new RecordingPerformanceMonitor("gpu", 640, 480, 60);

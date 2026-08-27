@@ -277,33 +277,44 @@ internal static class Program
                 switch (args[i])
                 {
                     case "--seconds" when i + 1 < args.Length:
-                        options.Seconds = int.Parse(args[++i], CultureInfo.InvariantCulture);
-                        if (options.Seconds < 1 || options.Seconds > 3600)
+                        if (!TryParseInRange(args[++i], "--seconds", 1, 3600, out var seconds))
                         {
-                            Console.Error.WriteLine("--seconds must be between 1 and 3600.");
                             return null;
                         }
 
+                        options.Seconds = seconds;
                         break;
                     case "--fps" when i + 1 < args.Length:
-                        options.Fps = int.Parse(args[++i], CultureInfo.InvariantCulture);
                         // Mirror VideoRecordingService's clamp so the label matches what is recorded.
-                        if (options.Fps < 1 || options.Fps > 60)
+                        if (!TryParseInRange(args[++i], "--fps", 1, 60, out var fps))
                         {
-                            Console.Error.WriteLine("--fps must be between 1 and 60 (the recorder's supported range).");
                             return null;
                         }
 
+                        options.Fps = fps;
                         break;
                     case "--iterations" when i + 1 < args.Length:
-                        options.Iterations = Math.Max(1, int.Parse(args[++i], CultureInfo.InvariantCulture));
+                        if (!TryParseInRange(args[++i], "--iterations", 1, 1000, out var iterations))
+                        {
+                            return null;
+                        }
+
+                        options.Iterations = iterations;
                         break;
                     case "--scenarios" when i + 1 < args.Length:
                         scenarioNames = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
                         break;
                     case "--region" when i + 1 < args.Length:
-                        var parts = args[++i].Split('x');
-                        options.Region = (int.Parse(parts[0], CultureInfo.InvariantCulture), int.Parse(parts[1], CultureInfo.InvariantCulture));
+                        var parts = args[++i].Split('x', StringSplitOptions.TrimEntries);
+                        if (parts.Length != 2 ||
+                            !TryParseInRange(parts[0], "--region width", 2, 16384, out var regionWidth) ||
+                            !TryParseInRange(parts[1], "--region height", 2, 16384, out var regionHeight))
+                        {
+                            Console.Error.WriteLine("--region expects WxH, e.g. 1920x1080.");
+                            return null;
+                        }
+
+                        options.Region = (regionWidth, regionHeight);
                         break;
                     case "--window" when i + 1 < args.Length:
                         options.WindowTitle = args[++i];
@@ -331,23 +342,50 @@ internal static class Program
 
             foreach (var name in scenarioNames)
             {
-                // Grammar: (cpu|gpu)[+overlays][+sink][+hevc]
+                // Grammar: (cpu|gpu)[+overlays][+sink][+hevc]. Unknown modifiers are rejected rather
+                // than ignored so a typo cannot run the wrong configuration under the right label.
                 var parts = name.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var gpu = parts[0].ToLowerInvariant() switch
+                if (parts.Length == 0 || parts[0].ToLowerInvariant() is not ("cpu" or "gpu"))
                 {
-                    "gpu" => true,
-                    "cpu" => false,
-                    _ => throw new ArgumentException($"Unknown scenario '{name}'. Use cpu or gpu, optionally +overlays, +sink, +hevc."),
-                };
-                var overlays = parts.Skip(1).Contains("overlays", StringComparer.OrdinalIgnoreCase);
-                var sink = parts.Skip(1).Contains("sink", StringComparer.OrdinalIgnoreCase);
-                var hevc = parts.Skip(1).Contains("hevc", StringComparer.OrdinalIgnoreCase);
-                options.Scenarios.Add(new Scenario(name, gpu, overlays, sink, hevc));
+                    Console.Error.WriteLine($"Unknown scenario '{name}'. Use cpu or gpu, optionally +overlays, +sink, +hevc.");
+                    return null;
+                }
+
+                var modifiers = parts.Skip(1).Select(m => m.ToLowerInvariant()).ToList();
+                var unknown = modifiers.Where(m => m is not ("overlays" or "sink" or "hevc")).ToList();
+                if (unknown.Count > 0)
+                {
+                    Console.Error.WriteLine($"Unknown scenario modifier(s) '{string.Join("', '", unknown)}' in '{name}'. Valid modifiers: overlays, sink, hevc.");
+                    return null;
+                }
+
+                options.Scenarios.Add(new Scenario(
+                    name,
+                    parts[0].Equals("gpu", StringComparison.OrdinalIgnoreCase),
+                    modifiers.Contains("overlays"),
+                    modifiers.Contains("sink"),
+                    modifiers.Contains("hevc")));
             }
 
             return options;
         }
 
+        private static bool TryParseInRange(string text, string option, int min, int max, out int value)
+        {
+            if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+            {
+                Console.Error.WriteLine($"{option}: '{text}' is not a whole number.");
+                return false;
+            }
+
+            if (value < min || value > max)
+            {
+                Console.Error.WriteLine($"{option} must be between {min} and {max}.");
+                return false;
+            }
+
+            return true;
+        }
         public static void PrintUsage()
         {
             Console.WriteLine("""
