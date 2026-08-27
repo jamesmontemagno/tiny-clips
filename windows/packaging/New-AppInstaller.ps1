@@ -120,6 +120,7 @@ $onLaunch.SetAttribute('HoursBetweenUpdateChecks', '24')
 $onLaunch.SetAttribute('ShowPrompt', 'false')
 $onLaunch.SetAttribute('UpdateBlocksActivation', 'false')
 [void] $updateSettings.AppendChild($onLaunch)
+[void] $updateSettings.AppendChild($appInstallerDocument.CreateElement('AutomaticBackgroundTask', $appInstallerNamespace))
 [void] $appInstaller.AppendChild($updateSettings)
 
 Save-XmlDocument -Document $appInstallerDocument -Path $AppInstallerPath

@@ -47,10 +47,7 @@
 
   <ItemGroup Condition="'$(TinyClipsAutoUpdateBuild)' == 'true' and '$(TinyClipsStoreBuild)' != 'true'">
     <AppxManifest Include="Package.AutoUpdate.appxmanifest" />
-    <Content Include="install.appinstaller">
-      <PackagePath>install.appinstaller</PackagePath>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <Content Include="install.appinstaller" />
   </ItemGroup>
 
   <Target Name="ValidateTinyClipsAutoUpdateInputs" BeforeTargets="PrepareForBuild" Condition="'$(TinyClipsAutoUpdateBuild)' == 'true'">

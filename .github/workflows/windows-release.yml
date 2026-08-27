@@ -187,6 +187,7 @@ jobs:
             $appInstallerRoot = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller", $appInstallerNamespaces)
             $mainPackage = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller/ai:MainPackage", $appInstallerNamespaces)
             $onLaunch = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller/ai:UpdateSettings/ai:OnLaunch", $appInstallerNamespaces)
+            $backgroundTask = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller/ai:UpdateSettings/ai:AutomaticBackgroundTask", $appInstallerNamespaces)
 
             if ($appInstallerRoot.Version -ne $env:PACKAGE_VERSION -or $mainPackage.Version -ne $env:PACKAGE_VERSION) {
               throw "App Installer version for $($p.Platform) does not match $env:PACKAGE_VERSION."
@@ -200,6 +201,9 @@ jobs:
             }
             if (-not $onLaunch -or $onLaunch.HoursBetweenUpdateChecks -ne "24") {
               throw "App Installer for $($p.Platform) must check on launch about every 24 hours."
+            }
+            if (-not $backgroundTask) {
+              throw "App Installer for $($p.Platform) must check for updates in the background."
             }
 
             $standaloneAppInstallerPath = "artifacts/windows/TinyClips-$($p.Asset).appinstaller"
@@ -413,7 +417,7 @@ jobs:
 
           $notes += ""
           $notes += "## Install"
-          $notes += 'For direct installation with automatic updates, download the `.appinstaller` for your architecture below. Windows checks for a signed update when Tiny Clips launches if about 24 hours have passed.'
+          $notes += 'For direct installation with automatic updates, download the `.appinstaller` for your architecture below. It always resolves through the stable update channel, so opening one from an older release installs the current Windows version. Windows checks periodically in the background and on launch when about 24 hours have passed.'
           $notes += 'Direct installation requires the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0); winget installs that prerequisite automatically.'
           $notes += ""
           $notes += "Tiny Clips is also published in the [winget community repository](https://github.com/microsoft/winget-pkgs). Install it from any Windows 11 terminal:"
@@ -422,7 +426,7 @@ jobs:
           $notes += 'winget install Refractored.TinyClips'
           $notes += '```'
           $notes += ""
-          $notes += 'Update later with `winget upgrade Refractored.TinyClips`.'
+          $notes += 'winget installs the same auto-updating direct MSIX. `winget upgrade` and App Installer can both update its package family.'
 
           $notes += ""
           $notes += "## Release validation"
@@ -484,7 +488,7 @@ jobs:
               --repo "${{ github.repository }}" `
               --target "${{ github.sha }}" `
               --title "Tiny Clips for Windows (auto-update channel)" `
-              --notes "Stable App Installer metadata for direct MSIX installs. Each file references the signed, immutable MSIX in its versioned Windows release." `
+              --notes "Stable App Installer metadata for direct MSIX installs. Each file references the signed, immutable MSIX in its versioned Windows release. The source archives identify only the commit that created this channel; use the App Installer assets for current channel state." `
               --latest=false
             if ($LASTEXITCODE -ne 0) { throw "Could not create the windows-latest rolling release." }
             $rollingReleaseCreated = $true

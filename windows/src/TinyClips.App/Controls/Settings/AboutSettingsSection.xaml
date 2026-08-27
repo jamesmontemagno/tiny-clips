@@ -44,7 +44,7 @@
                             <TextBlock
                                 FontSize="12"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="Direct installs check for signed updates about every 24 hours. You can also update through winget."
+                                Text="Release MSIX installs receive signed updates automatically in the background and when Tiny Clips restarts. You can also update through winget."
                                 TextAlignment="Right"
                                 TextWrapping="Wrap" />
                             <TextBlock
