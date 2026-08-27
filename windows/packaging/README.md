@@ -31,14 +31,42 @@ winapp package src\TinyClips.App\bin\arm64\Release\net10.0-windows10.0.26100.0\w
 winapp sign --package <path-to.msix>
 ```
 
-Attach the signed `.msix` files to a GitHub Release (e.g. `v1.0.0`).
+Attach the signed `.msix` files to a GitHub Release (e.g. `v1.0.0`). The automated release
+workflow also generates architecture-specific `.appinstaller` files for auto-updating direct installs.
 
 ### Automated Windows release workflow
 
 `.github/workflows/windows-release.yml` runs for tags like `v1.0.1-windows` and maps them to
 MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 as **framework-dependent** MSIX
 packages, signs them with Azure Artifact Signing, runs WACK, computes winget hashes, generates
-a versioned winget manifest artifact, and creates the GitHub Release.
+a versioned winget manifest artifact, and creates the GitHub Release. Direct release packages embed
+their generated App Installer configuration; Store packages use their separate manifest and never
+include it.
+
+#### Direct install auto-updates
+
+Each versioned Windows release publishes `TinyClips-x64.appinstaller` and
+`TinyClips-arm64.appinstaller` beside the signed MSIX files. Installing the architecture-specific
+`.appinstaller` opts the direct package into Windows App Installer updates. Windows checks on launch
+when approximately 24 hours have passed since the previous check.
+
+The App Installer files and embedded `uap13:AutoUpdate` metadata use a dedicated rolling GitHub
+Release at `windows-latest`. Its stable App Installer URLs do not change when a new version tag is
+published:
+
+```text
+https://github.com/jamesmontemagno/tiny-clips/releases/download/windows-latest/TinyClips-x64.appinstaller
+```
+
+ARM64 uses the corresponding `TinyClips-arm64.appinstaller` filename. Each rolling App Installer
+file references the signed MSIX on its immutable, versioned Windows release URL. The workflow creates
+that versioned release before promoting the update metadata, refuses to replace a newer installer
+with an older rerun, and verifies the uploaded files. The rolling release is explicitly not marked
+as the repository's latest release, avoiding collisions with interleaved macOS releases.
+
+Direct packages remain framework-dependent. App Installer can acquire the Windows App SDK framework,
+but a clean machine still needs the .NET 10 Desktop Runtime; installing through winget remains the
+easiest bootstrap because winget declares and installs both runtime dependencies.
 
 #### Framework-dependent + declared winget dependencies (and how)
 

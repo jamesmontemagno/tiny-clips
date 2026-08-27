@@ -44,7 +44,7 @@
                             <TextBlock
                                 FontSize="12"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="Update through winget or download the latest GitHub release."
+                                Text="Direct installs check for signed updates about every 24 hours. You can also update through winget."
                                 TextAlignment="Right"
                                 TextWrapping="Wrap" />
                             <TextBlock

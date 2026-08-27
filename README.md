@@ -26,7 +26,7 @@ video (MP4), and animated GIFs of a selected screen region — on **macOS** and 
 - **Global Hotkeys** — Quick capture from anywhere
 - **Configurable** — Save location, clipboard, reveal-in-Finder/Explorer, GIF quality, trimmer toggles, and more
 
-> macOS uses Sparkle for auto-updates; Windows distributes via **winget** (`winget upgrade`) and the Microsoft Store.
+> macOS uses Sparkle for auto-updates; direct Windows installs use MSIX App Installer updates, with **winget** and Microsoft Store options also available.
 
 ## macOS
 

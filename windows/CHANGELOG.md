@@ -6,6 +6,11 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Changed
+- **Native MSIX auto-updates for direct installs.** Windows GitHub Releases now publish x64 and
+  ARM64 `.appinstaller` files and embed the matching configuration in direct MSIX packages. A
+  dedicated `windows-latest` GitHub Release provides stable update metadata URLs, and Windows checks
+  on launch when about 24 hours have passed. Microsoft Store packages remain on Store-managed
+  updates and do not include the direct update channel.
 - **Clips Library rewritten** as a proper MVVM feature (`ViewModels/ClipsLibrary`,
   `Views/ClipsLibrary`, `Controls/ClipsLibrary`) with macOS Clips Manager parity. New: collapsible
   sidebar with Smart Collections / Collections / Tags and live counts; search across names, tags and

@@ -15,6 +15,10 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
 env:
   APP_PROJECT: windows/src/TinyClips.App/TinyClips.App.csproj
   PACKAGE_FAMILY_NAME: Refractored.TinyClips_vmshqmcyy894t
@@ -92,6 +96,18 @@ jobs:
             $packageDir = "artifacts/windows/package/$($p.Asset)"
             New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
             $packageDirFull = (Resolve-Path $packageDir).Path + [IO.Path]::DirectorySeparatorChar
+            $stableReleaseBase = "https://github.com/jamesmontemagno/tiny-clips/releases/download/windows-latest"
+            $packageUri = "https://github.com/jamesmontemagno/tiny-clips/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-$($p.Asset).msix"
+            $appInstallerUri = "$stableReleaseBase/TinyClips-$($p.Asset).appinstaller"
+
+            & ./windows/packaging/New-AppInstaller.ps1 `
+              -ManifestPath windows/src/TinyClips.App/Package.appxmanifest `
+              -ManifestOutputPath windows/src/TinyClips.App/Package.AutoUpdate.appxmanifest `
+              -AppInstallerPath windows/src/TinyClips.App/install.appinstaller `
+              -Architecture $p.Asset `
+              -PackageUri $packageUri `
+              -AppInstallerUri $appInstallerUri
+            Copy-Item windows/src/TinyClips.App/install.appinstaller "artifacts/windows/TinyClips-$($p.Asset).appinstaller" -Force
 
             dotnet build $env:APP_PROJECT `
               -c Release `
@@ -105,6 +121,7 @@ jobs:
               -p:AppxBundle=Never `
               -p:UapAppxPackageBuildMode=SideloadOnly `
               -p:AppxPackageSigningEnabled=false `
+              -p:TinyClipsAutoUpdateBuild=true `
               -v:minimal
             if ($LASTEXITCODE -ne 0) { throw "MSIX build failed for $($p.Platform)." }
 
@@ -144,6 +161,49 @@ jobs:
 
             if (Get-ChildItem $verifyDir -Recurse -Filter "coreclr.dll" -ErrorAction SilentlyContinue) {
               throw "MSIX for $($p.Platform) bundles the .NET runtime (coreclr.dll) - expected a framework-dependent (SelfContained=false) build."
+            }
+
+            [xml]$packagedManifest = $appxManifest
+            $manifestNamespaces = [Xml.XmlNamespaceManager]::new($packagedManifest.NameTable)
+            $manifestNamespaces.AddNamespace("foundation", "http://schemas.microsoft.com/appx/manifest/foundation/windows10")
+            $manifestNamespaces.AddNamespace("uap13", "http://schemas.microsoft.com/appx/manifest/uap/windows10/13")
+            $appInstallerDeclaration = $packagedManifest.SelectSingleNode(
+              "/foundation:Package/foundation:Properties/uap13:AutoUpdate/uap13:AppInstaller",
+              $manifestNamespaces
+            )
+            if (-not $appInstallerDeclaration -or $appInstallerDeclaration.File -ne "install.appinstaller") {
+              throw "Direct MSIX for $($p.Platform) is missing the uap13 AutoUpdate declaration."
+            }
+
+            $embeddedAppInstallerPath = Join-Path $verifyDir "install.appinstaller"
+            if (-not (Test-Path $embeddedAppInstallerPath)) {
+              throw "Direct MSIX for $($p.Platform) does not contain install.appinstaller."
+            }
+
+            [xml]$embeddedAppInstaller = Get-Content $embeddedAppInstallerPath -Raw
+            $appInstallerNamespaces = [Xml.XmlNamespaceManager]::new($embeddedAppInstaller.NameTable)
+            $appInstallerNamespaces.AddNamespace("ai", "http://schemas.microsoft.com/appx/appinstaller/2018")
+            $appInstallerRoot = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller", $appInstallerNamespaces)
+            $mainPackage = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller/ai:MainPackage", $appInstallerNamespaces)
+            $onLaunch = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller/ai:UpdateSettings/ai:OnLaunch", $appInstallerNamespaces)
+
+            if ($appInstallerRoot.Version -ne $env:PACKAGE_VERSION -or $mainPackage.Version -ne $env:PACKAGE_VERSION) {
+              throw "App Installer version for $($p.Platform) does not match $env:PACKAGE_VERSION."
+            }
+            if ($mainPackage.Name -ne "Refractored.TinyClips" -or
+                $mainPackage.Publisher -ne "CN=Refractored LLC, O=Refractored LLC, L=Seattle, S=Washington, C=US" -or
+                $mainPackage.ProcessorArchitecture -ne $p.Asset -or
+                $mainPackage.Uri -ne $packageUri -or
+                $appInstallerRoot.Uri -ne $appInstallerUri) {
+              throw "App Installer identity or stable URL is invalid for $($p.Platform)."
+            }
+            if (-not $onLaunch -or $onLaunch.HoursBetweenUpdateChecks -ne "24") {
+              throw "App Installer for $($p.Platform) must check on launch about every 24 hours."
+            }
+
+            $standaloneAppInstallerPath = "artifacts/windows/TinyClips-$($p.Asset).appinstaller"
+            if ((Get-FileHash $embeddedAppInstallerPath).Hash -ne (Get-FileHash $standaloneAppInstallerPath).Hash) {
+              throw "Embedded and standalone App Installer files differ for $($p.Platform)."
             }
             Remove-Item $zipCopy -Force -ErrorAction SilentlyContinue
             Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -352,7 +412,10 @@ jobs:
 
           $notes += ""
           $notes += "## Install"
-          $notes += "Tiny Clips is published in the [winget community repository](https://github.com/microsoft/winget-pkgs). Install it from any Windows 11 terminal:"
+          $notes += 'For direct installation with automatic updates, download the `.appinstaller` for your architecture below. Windows checks for a signed update when Tiny Clips launches if about 24 hours have passed.'
+          $notes += 'Direct installation requires the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0); winget installs that prerequisite automatically.'
+          $notes += ""
+          $notes += "Tiny Clips is also published in the [winget community repository](https://github.com/microsoft/winget-pkgs). Install it from any Windows 11 terminal:"
           $notes += ""
           $notes += '```text'
           $notes += 'winget install Refractored.TinyClips'
@@ -379,6 +442,7 @@ jobs:
           name: windows-release
           path: |
             artifacts/windows/*.msix
+            artifacts/windows/*.appinstaller
             artifacts/windows/*.txt
             artifacts/windows/winget/*.yaml
             artifacts/windows/wack/*.xml
@@ -391,9 +455,118 @@ jobs:
           body_path: artifacts/windows/release-notes.md
           files: |
             artifacts/windows/*.msix
+            artifacts/windows/*.appinstaller
             artifacts/windows/winget-hashes.txt
             artifacts/windows/wack/*.xml
+          overwrite_files: false
+          preserve_order: true
+          fail_on_unmatched_files: true
           draft: false
           prerelease: ${{ contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'beta') || contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'alpha') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote stable direct-install assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $rollingDir = "artifacts/windows/rolling"
+          New-Item -ItemType Directory -Force -Path $rollingDir | Out-Null
+          Copy-Item "artifacts/windows/TinyClips-x64.appinstaller" $rollingDir -Force
+          Copy-Item "artifacts/windows/TinyClips-arm64.appinstaller" $rollingDir -Force
+
+          $rollingReleaseCreated = $false
+          gh release view windows-latest --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create windows-latest `
+              --repo "${{ github.repository }}" `
+              --target "${{ github.sha }}" `
+              --title "Tiny Clips for Windows (auto-update channel)" `
+              --notes "Stable App Installer metadata for direct MSIX installs. Each file references the signed, immutable MSIX in its versioned Windows release." `
+              --latest=false
+            if ($LASTEXITCODE -ne 0) { throw "Could not create the windows-latest rolling release." }
+            $rollingReleaseCreated = $true
+          }
+
+          $currentDir = "artifacts/windows/current-appinstaller"
+          New-Item -ItemType Directory -Force -Path $currentDir | Out-Null
+          if (-not $rollingReleaseCreated) {
+            $downloadedCurrent = $false
+            for ($attempt = 1; $attempt -le 3 -and -not $downloadedCurrent; $attempt++) {
+              gh release download windows-latest `
+                --repo "${{ github.repository }}" `
+                --pattern "*.appinstaller" `
+                --dir $currentDir `
+                --clobber
+              $downloadedCurrent = $LASTEXITCODE -eq 0
+              if (-not $downloadedCurrent -and $attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
+            }
+            if (-not $downloadedCurrent) {
+              throw "Could not read the existing windows-latest channel; refusing to promote without a downgrade check."
+            }
+            foreach ($architecture in @("x64", "arm64")) {
+              if (-not (Test-Path "$currentDir/TinyClips-$architecture.appinstaller")) {
+                throw "The existing windows-latest channel is missing its $architecture App Installer; repair it before promoting."
+              }
+            }
+            foreach ($currentInstaller in Get-ChildItem $currentDir -Filter *.appinstaller) {
+              [xml]$current = Get-Content $currentInstaller.FullName -Raw
+              if ([version]$current.AppInstaller.Version -gt [version]$env:PACKAGE_VERSION) {
+                throw "Refusing to downgrade windows-latest from $($current.AppInstaller.Version) to $env:PACKAGE_VERSION."
+              }
+            }
+          }
+          $global:LASTEXITCODE = 0
+
+          function Publish-AppInstallers([string] $sourceDirectory) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              gh release upload windows-latest `
+                "$sourceDirectory/TinyClips-x64.appinstaller" `
+                "$sourceDirectory/TinyClips-arm64.appinstaller" `
+                --repo "${{ github.repository }}" `
+                --clobber 2>&1 | ForEach-Object { Write-Host $_ }
+              if ($LASTEXITCODE -eq 0) { return $true }
+              if ($attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
+            }
+            return $false
+          }
+
+          function Restore-PreviousChannel {
+            if ($rollingReleaseCreated) {
+              gh release delete windows-latest --repo "${{ github.repository }}" --cleanup-tag --yes
+              return
+            }
+            if (-not (Publish-AppInstallers $currentDir)) {
+              throw "Promotion failed and the previous windows-latest channel could not be restored."
+            }
+          }
+
+          if (-not (Publish-AppInstallers $rollingDir)) {
+            Restore-PreviousChannel
+            throw "Could not publish rolling App Installer assets after three attempts."
+          }
+
+          try {
+            $verifyDir = "artifacts/windows/verify-appinstaller"
+            New-Item -ItemType Directory -Force -Path $verifyDir | Out-Null
+            gh release download windows-latest `
+              --repo "${{ github.repository }}" `
+              --pattern "*.appinstaller" `
+              --dir $verifyDir `
+              --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Could not download rolling App Installer assets for verification." }
+
+            foreach ($architecture in @("x64", "arm64")) {
+              $local = "$rollingDir/TinyClips-$architecture.appinstaller"
+              $publishedFile = "$verifyDir/TinyClips-$architecture.appinstaller"
+              if (-not (Test-Path $publishedFile) -or
+                  (Get-FileHash $local).Hash -ne (Get-FileHash $publishedFile).Hash) {
+                throw "Published $architecture App Installer does not match the release artifact."
+              }
+            }
+          }
+          catch {
+            Restore-PreviousChannel
+            throw
+          }
