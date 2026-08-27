@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
+using Windows.Graphics.Imaging;
 
 namespace TinyClips.App;
 
@@ -69,16 +70,29 @@ public sealed partial class WebcamPreviewSurface : UserControl
             return;
         }
 
-        var requiredLength = checked(frame.Width * frame.Height * 4);
-        if (frame.BgraPixels.Length < requiredLength)
-        {
-            return;
-        }
-
         if (_bitmap is null || _bitmap.PixelWidth != frame.Width || _bitmap.PixelHeight != frame.Height)
         {
             _bitmap = new WriteableBitmap(frame.Width, frame.Height);
             PreviewImage.Source = _bitmap;
+        }
+
+        if (frame.IsGpuFrame)
+        {
+            // GPU-delivered frame (recorder is on the GPU pipeline): read it back once for the
+            // preview. One conversion in flight at a time; extra ticks simply show the last image.
+            if (!_gpuReadbackInFlight)
+            {
+                _gpuReadbackInFlight = true;
+                _ = ReadBackGpuFrameAsync(frame, _bitmap);
+            }
+
+            return;
+        }
+
+        var requiredLength = checked(frame.Width * frame.Height * 4);
+        if (frame.BgraPixels.Length < requiredLength)
+        {
+            return;
         }
 
         using var stream = _bitmap.PixelBuffer.AsStream();
@@ -86,5 +100,29 @@ public sealed partial class WebcamPreviewSurface : UserControl
         stream.Write(frame.BgraPixels.Span[..requiredLength]);
         _bitmap.Invalidate();
         _lastTimestamp = frame.Timestamp;
+    }
+
+    private bool _gpuReadbackInFlight;
+
+    private async Task ReadBackGpuFrameAsync(WebcamFrame frame, WriteableBitmap target)
+    {
+        try
+        {
+            using var softwareBitmap = await SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface!, BitmapAlphaMode.Premultiplied);
+            if (ReferenceEquals(_bitmap, target) && softwareBitmap.PixelWidth == target.PixelWidth && softwareBitmap.PixelHeight == target.PixelHeight)
+            {
+                softwareBitmap.CopyToBuffer(target.PixelBuffer);
+                target.Invalidate();
+                _lastTimestamp = frame.Timestamp;
+            }
+        }
+        catch
+        {
+            // Preview is best-effort; the recording itself is unaffected.
+        }
+        finally
+        {
+            _gpuReadbackInFlight = false;
+        }
     }
 }

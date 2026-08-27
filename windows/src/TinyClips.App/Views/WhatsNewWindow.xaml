@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="TinyClips.App.WhatsNewWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:TinyClips.App"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="What's new in Tiny Clips"
+    mc:Ignorable="d">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TitleBar
+            x:Name="AppTitleBar"
+            Grid.Row="0"
+            AutomationProperties.AutomationId="WhatsNewTitleBar"
+            IsPaneToggleButtonVisible="False"
+            Title="What's new in Tiny Clips">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <ScrollViewer
+            Grid.Row="1"
+            Padding="40,8,40,16"
+            VerticalScrollBarVisibility="Auto">
+            <StackPanel
+                MaxWidth="600"
+                HorizontalAlignment="Center"
+                Spacing="16">
+                <StackPanel
+                    HorizontalAlignment="Center"
+                    Spacing="8">
+                    <Border
+                        Width="72"
+                        Height="72"
+                        HorizontalAlignment="Center"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        CornerRadius="18">
+                        <FontIcon
+                            FontFamily="Segoe Fluent Icons"
+                            FontSize="36"
+                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                            Glyph="&#xE945;" />
+                    </Border>
+                    <TextBlock
+                        x:Name="HeadlineText"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource TitleTextBlockStyle}"
+                        Text="Recording just got a lot faster"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="VersionText"
+                        HorizontalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Version 1.8" />
+                </StackPanel>
+
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="Screen recordings now stay on your graphics card from capture to encoder. Video, webcam and overlays are composited on the GPU, so recordings hold their frame rate at high resolutions while using a fraction of the CPU."
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+
+                <StackPanel Spacing="12">
+                    <local:GuideRow
+                        Glyph="&#xE950;"
+                        Subtitle="Frames never leave video memory. At 3440×1440 that means smooth 60 fps recordings with a quarter of the CPU the old pipeline needed."
+                        Title="GPU recording pipeline" />
+                    <local:GuideRow
+                        Glyph="&#xE9D9;"
+                        Subtitle="The hardware encoder is tuned for real-time capture (no look-ahead, no B-frames), so high frame rates no longer drop frames."
+                        Title="Low-latency encoder" />
+                    <local:GuideRow
+                        Glyph="&#xE8B2;"
+                        Subtitle="Choose HEVC in Video settings for files about 40% smaller at the same quality. H.264 stays the default so clips play everywhere."
+                        Title="HEVC (H.265) option" />
+                    <local:GuideRow
+                        Glyph="&#xE8B8;"
+                        Subtitle="Your camera picture is blended on the GPU too, so turning the webcam on no longer costs frame rate."
+                        Title="Webcam overlay on the GPU" />
+                    <local:GuideRow
+                        Glyph="&#xE740;"
+                        Subtitle="Resizing a recorded window mid-recording now scales the content to fit instead of cropping it."
+                        Title="Window recordings follow resizes" />
+                </StackPanel>
+
+                <InfoBar
+                    x:Name="FallbackInfoBar"
+                    AutomationProperties.AutomationId="WhatsNewFallbackInfoBar"
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="Having trouble with recordings on your PC? You can switch back to the previous pipeline any time: Settings → Video → Recording &amp; output → turn off GPU recording pipeline or set Video encoder to Standard."
+                    Severity="Informational">
+                    <InfoBar.ActionButton>
+                        <Button
+                            AutomationProperties.AutomationId="WhatsNewOpenVideoSettingsButton"
+                            AutomationProperties.HelpText="Open the Video section of Settings"
+                            Click="OnOpenVideoSettingsClicked"
+                            Content="Open video settings" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid
+            Grid.Row="2"
+            Padding="24,16"
+            ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <HyperlinkButton
+                AutomationProperties.AutomationId="WhatsNewChangelogLink"
+                Content="Full changelog"
+                NavigateUri="https://github.com/jamesmontemagno/tiny-clips/blob/main/windows/CHANGELOG.md" />
+            <Button
+                x:Name="DoneButton"
+                Grid.Column="1"
+                AutomationProperties.AutomationId="WhatsNewDoneButton"
+                Click="OnDoneClicked"
+                Content="Got it"
+                Style="{StaticResource AccentButtonStyle}" />
+        </Grid>
+    </Grid>
+</Window>

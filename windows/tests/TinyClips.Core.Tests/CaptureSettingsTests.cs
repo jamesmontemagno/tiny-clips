@@ -27,6 +27,10 @@ public sealed class CaptureSettingsTests
             settingsService.Get("gifSaveDirectory", string.Empty));
         Assert.Equal(10.0, settings.GifFrameRate);
         Assert.Equal(30, settings.VideoFrameRate);
+        Assert.True(settings.UseGpuRecordingPipeline);
+        Assert.Equal(VideoEncoderBackend.SinkWriter, settings.VideoEncoderBackend);
+        Assert.Equal(VideoCodec.H264, settings.VideoCodec);
+        Assert.Equal(string.Empty, settings.LastSeenWhatsNewVersion);
         Assert.True(settings.KeepDisplayAwakeWhileRecording);
         Assert.Equal(100, settings.ScreenshotScale);
         Assert.Equal("TinyClips {date} at {time}", settings.FileNameTemplate);
