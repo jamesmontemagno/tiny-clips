@@ -2418,7 +2418,9 @@ class CaptureManager: ObservableObject {
     }
 
     private func appKitRect(fromSCFrame scFrame: CGRect, screens: [NSScreen]) -> CGRect {
-        let primaryScreenTop = screens.first?.frame.maxY ?? 0
+        let primaryScreenTop = CaptureCoordinateMath.primaryDisplayHeight(
+            forDisplayFrames: screens.map(\.frame)
+        )
         return CGRect(
             x: scFrame.minX,
             y: primaryScreenTop - scFrame.maxY,

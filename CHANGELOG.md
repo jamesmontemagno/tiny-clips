@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Screenshot editor gains an **Emoji** tool. Pick from a categorized palette (plus a Recent row and a "type or paste" field for any emoji), click to drop a sticker, then use the Move tool to drag it, resize it from any corner (aspect-locked about its center), and rotate it with the new grip above the sticker — hold Shift to snap to 15° steps. A rotation slider in the inspector offers precise control, and stickers export with their rotation baked into the saved image.
 - **Rotate more annotations.** Text, rectangles, circles, and freehand drawings now show the same rotation grip when selected with the Move tool (Shift snaps to 15°); text and shapes also get the inspector rotation slider. Rotated shapes and text resize uniformly about their center, and every rotation is baked into the exported image.
+- macOS screenshot editor now supports the standard ⌘W shortcut (File > Close) to close the Edit Screenshot window, with the same unsaved-changes confirmation you get when pressing Escape. The restored Close menu item also works for other app windows such as the Clips Manager.
+### Fixed
+- Fixed macOS "Window" screenshot mode not highlighting or capturing windows on secondary displays. The picker overlay on each non-primary display was offset twice, so it never covered that display and clicks fell through to the app underneath.
 
 ## v1.7.1.0-mac - 2026-08-24
 

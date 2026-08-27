@@ -205,6 +205,25 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(scale, 1)
     }
 
+    func testPrimaryDisplayHeightUsesZeroOriginDisplayRegardlessOfOrder() {
+        let height = CaptureCoordinateMath.primaryDisplayHeight(forDisplayFrames: [
+            CGRect(x: -1920, y: 0, width: 1920, height: 1080),
+            CGRect(x: 0, y: 0, width: 1440, height: 900),
+        ])
+
+        XCTAssertEqual(height, 900)
+    }
+
+    func testPrimaryDisplayHeightFallsBackToFirstDisplayAndZero() {
+        XCTAssertEqual(
+            CaptureCoordinateMath.primaryDisplayHeight(forDisplayFrames: [
+                CGRect(x: 10, y: 20, width: 1920, height: 1080),
+            ]),
+            1080
+        )
+        XCTAssertEqual(CaptureCoordinateMath.primaryDisplayHeight(forDisplayFrames: []), 0)
+    }
+
     func testWindowScaleFallsBackWhenNoDisplayOverlaps() {
         let scale = CaptureCoordinateMath.scaleFactor(
             forWindowFrame: CGRect(x: 2000, y: 2000, width: 100, height: 100),

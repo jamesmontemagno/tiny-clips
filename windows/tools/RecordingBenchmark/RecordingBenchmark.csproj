@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RecordingBenchmark: headless console harness that drives the real VideoRecordingService
+    against the primary monitor for N seconds per scenario (CPU vs GPU pipeline, with and
+    without overlays) and prints the per-stage RecordingPerformanceReport for each, so
+    pipeline changes can be compared with numbers instead of feel. Excluded from the app
+    solution's default build; run it manually (see windows/docs/gpu-recording-pipeline.md for
+    the full command line, which XML comments cannot contain verbatim because of the
+    double-hyphen option prefixes):
+
+      dotnet run (dash)(dash)project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 (dash)(dash) (dash)(dash)seconds 10
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>TinyClips.Tools.RecordingBenchmark</RootNamespace>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TinyClips.Core\TinyClips.Core.csproj" />
+  </ItemGroup>
+
+</Project>
