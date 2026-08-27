@@ -18,6 +18,7 @@ permissions:
 concurrency:
   group: windows-release
   cancel-in-progress: false
+  queue: max
 
 env:
   APP_PROJECT: windows/src/TinyClips.App/TinyClips.App.csproj
@@ -512,8 +513,15 @@ jobs:
             }
             foreach ($currentInstaller in Get-ChildItem $currentDir -Filter *.appinstaller) {
               [xml]$current = Get-Content $currentInstaller.FullName -Raw
-              if ([version]$current.AppInstaller.Version -gt [version]$env:PACKAGE_VERSION) {
+              $currentVersion = [version]$current.AppInstaller.Version
+              $candidateVersion = [version]$env:PACKAGE_VERSION
+              if ($currentVersion -gt $candidateVersion) {
                 throw "Refusing to downgrade windows-latest from $($current.AppInstaller.Version) to $env:PACKAGE_VERSION."
+              }
+              $candidateInstaller = Join-Path $rollingDir $currentInstaller.Name
+              if ($currentVersion -eq $candidateVersion -and
+                  (Get-FileHash $currentInstaller.FullName).Hash -ne (Get-FileHash $candidateInstaller).Hash) {
+                throw "Refusing to replace windows-latest version $env:PACKAGE_VERSION with different App Installer metadata."
               }
             }
           }
