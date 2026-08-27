@@ -554,7 +554,7 @@ struct ScreenshotEditorView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 160, ideal: 220, max: 320)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 280, max: 380)
         } detail: {
             VStack(spacing: 0) {
                 GeometryReader { geo in

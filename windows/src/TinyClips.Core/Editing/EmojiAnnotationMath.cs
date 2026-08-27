@@ -3,7 +3,7 @@ using System.Text;
 
 namespace TinyClips.Core.Editing;
 
-/// <summary>Sizing, glyph, and palette helpers for emoji sticker annotations.</summary>
+/// <summary>Sizing, glyph, and recent-list helpers for emoji sticker annotations.</summary>
 public static class EmojiAnnotationMath
 {
     /// <summary>Default sticker side as a fraction of the image width.</summary>
@@ -17,6 +17,15 @@ public static class EmojiAnnotationMath
     public const string DefaultEmoji = "😀";
 
     public const int MaximumRecent = 12;
+
+    /// <summary>Curated quick picks shown in the inspector; the system picker covers everything else.</summary>
+    public static readonly IReadOnlyList<string> Common =
+    [
+        "👍", "👎", "👏", "🙌", "👉", "👀",
+        "😀", "😂", "😍", "😎", "🤔", "😱",
+        "❤️", "🔥", "⭐", "✨", "💯", "🎉",
+        "✅", "❌", "⚠️", "❓", "💡", "🚀",
+    ];
 
     public static double DefaultSidePixels(double imageWidth, double imageHeight) =>
         ClampSidePixels(imageWidth * DefaultSideRatio, imageWidth, imageHeight);
@@ -97,35 +106,4 @@ public static class EmojiAnnotationMath
         }
         return updated;
     }
-
-    public static readonly IReadOnlyList<EmojiPaletteCategory> Palette =
-    [
-        new("Smileys",
-        [
-            "😀", "😂", "🤣", "😍", "🥰", "😎", "🤩", "😉", "🙂", "🤔", "🤨", "😮",
-            "😱", "😭", "😡", "🥳", "🤯", "🙄", "😴", "🤮", "🤡", "👻", "💀", "🤖",
-        ]),
-        new("Gestures",
-        [
-            "👍", "👎", "👏", "🙌", "🙏", "👋", "✌️", "🤞", "🤙", "💪", "👉", "👈",
-            "👆", "👇", "☝️", "✋", "🤝", "🫶", "👀", "👁️", "🧠", "🫡",
-        ]),
-        new("Symbols",
-        [
-            "❤️", "🧡", "💛", "💚", "💙", "💜", "🔥", "⭐", "✨", "💯", "✅", "❌",
-            "⚠️", "❗", "❓", "💡", "🎯", "🚀", "🎉", "🏆", "🔔", "🔒", "🔑", "⏰",
-        ]),
-        new("Objects",
-        [
-            "💻", "🖥️", "📱", "⌨️", "🖱️", "📷", "🎥", "🎬", "🎧", "🎮", "📌", "📎",
-            "✏️", "📝", "📊", "📈", "📉", "🗂️", "🔍", "🧩", "🐛", "🛠️", "⚙️", "🧪",
-        ]),
-        new("Nature",
-        [
-            "🐶", "🐱", "🦊", "🐼", "🐸", "🦄", "🐙", "🦋", "🌈", "☀️", "🌙", "⚡",
-            "🌊", "🍀", "🌸", "🌵", "🍕", "🍩", "☕", "🍺",
-        ]),
-    ];
 }
-
-public sealed record EmojiPaletteCategory(string Name, IReadOnlyList<string> Emoji);

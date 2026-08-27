@@ -167,6 +167,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Border
                             Width="44"
@@ -191,9 +192,22 @@
                             VerticalAlignment="Center"
                             AutomationProperties.AutomationId="EditorCustomEmojiBox"
                             AutomationProperties.Name="Custom emoji"
-                            PlaceholderText="Type or paste (Win+.)"
+                            PlaceholderText="Type or paste"
                             TextChanged="OnCustomEmojiTextChanged"
-                            ToolTipService.ToolTip="Type or paste any emoji. Press Win+. for the Windows emoji panel." />
+                            ToolTipService.ToolTip="Type or paste any emoji, or open the Windows emoji panel." />
+                        <Button
+                            x:Name="OpenEmojiPanelButton"
+                            Grid.Column="2"
+                            Width="36"
+                            Height="32"
+                            Padding="0"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="EditorOpenEmojiPanel"
+                            AutomationProperties.Name="Open emoji panel"
+                            Click="OnOpenEmojiPanelClick"
+                            ToolTipService.ToolTip="Open the Windows emoji panel (Win+.)">
+                            <FontIcon FontSize="16" Glyph="&#xE76E;" />
+                        </Button>
                     </Grid>
                     <StackPanel x:Name="RecentEmojiPanel" Spacing="4" Visibility="Collapsed">
                         <TextBlock
@@ -210,7 +224,21 @@
                             ItemTemplate="{StaticResource EmojiItemTemplate}"
                             SelectionMode="None" />
                     </StackPanel>
-                    <StackPanel x:Name="EmojiPalettePanel" Spacing="8" />
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Common" />
+                        <GridView
+                            x:Name="CommonEmojiGrid"
+                            Padding="0"
+                            AutomationProperties.Name="Common emoji"
+                            IsItemClickEnabled="True"
+                            ItemClick="OnEmojiItemClick"
+                            ItemContainerStyle="{StaticResource EmojiGridItemStyle}"
+                            ItemTemplate="{StaticResource EmojiItemTemplate}"
+                            SelectionMode="None" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!--  Redaction style + strength  -->

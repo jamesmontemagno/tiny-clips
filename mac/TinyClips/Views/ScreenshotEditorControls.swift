@@ -59,6 +59,7 @@ struct EmojiPickerView: View {
     let onSelect: (String) -> Void
 
     @State private var customEntry = ""
+    @FocusState private var isEntryFocused: Bool
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 6)
 
@@ -74,22 +75,41 @@ struct EmojiPickerView: View {
 
                 TextField("Type or paste", text: $customEntry)
                     .textFieldStyle(.roundedBorder)
+                    .focused($isEntryFocused)
                     .onChange(of: customEntry) { _, newValue in
                         guard let emoji = EmojiAnnotationMath.emoji(from: newValue) else { return }
                         onSelect(emoji)
                         customEntry = ""
                     }
                     .accessibilityLabel("Custom emoji")
-                    .help("Type or paste any emoji, or press Control-Command-Space for the system emoji picker")
+                    .help("Type or paste any emoji, or open the emoji picker")
+
+                Button {
+                    openSystemEmojiPicker()
+                } label: {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 15))
+                        .frame(width: 30, height: 28)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Open emoji picker")
+                .help("Open the macOS emoji picker (Control-Command-Space)")
             }
 
             if !recentEmoji.isEmpty {
                 emojiSection("Recent", emoji: recentEmoji)
             }
 
-            ForEach(EmojiPalette.categories) { category in
-                emojiSection(category.name, emoji: category.emoji)
-            }
+            emojiSection("Common", emoji: EmojiPalette.common)
+        }
+    }
+
+    /// The Character Viewer inserts into the first responder, so focus the entry field first
+    /// and let `onChange` adopt whatever glyph the user picks.
+    private func openSystemEmojiPicker() {
+        isEntryFocused = true
+        DispatchQueue.main.async {
+            NSApp.orderFrontCharacterPalette(nil)
         }
     }
 

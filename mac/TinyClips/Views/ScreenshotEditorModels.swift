@@ -216,35 +216,13 @@ enum EmojiAnnotationMath {
     }
 }
 
-struct EmojiPaletteCategory: Identifiable {
-    let name: String
-    let emoji: [String]
-
-    var id: String { name }
-}
-
 enum EmojiPalette {
-    static let categories: [EmojiPaletteCategory] = [
-        EmojiPaletteCategory(name: "Smileys", emoji: [
-            "😀", "😂", "🤣", "😍", "🥰", "😎", "🤩", "😉", "🙂", "🤔", "🤨", "😮",
-            "😱", "😭", "😡", "🥳", "🤯", "🙄", "😴", "🤮", "🤡", "👻", "💀", "🤖",
-        ]),
-        EmojiPaletteCategory(name: "Gestures", emoji: [
-            "👍", "👎", "👏", "🙌", "🙏", "👋", "✌️", "🤞", "🤙", "💪", "👉", "👈",
-            "👆", "👇", "☝️", "✋", "🤝", "🫶", "👀", "👁️", "🧠", "🫡",
-        ]),
-        EmojiPaletteCategory(name: "Symbols", emoji: [
-            "❤️", "🧡", "💛", "💚", "💙", "💜", "🔥", "⭐", "✨", "💯", "✅", "❌",
-            "⚠️", "❗", "❓", "💡", "🎯", "🚀", "🎉", "🏆", "🔔", "🔒", "🔑", "⏰",
-        ]),
-        EmojiPaletteCategory(name: "Objects", emoji: [
-            "💻", "🖥️", "📱", "⌨️", "🖱️", "📷", "🎥", "🎬", "🎧", "🎮", "📌", "📎",
-            "✏️", "📝", "📊", "📈", "📉", "🗂️", "🔍", "🧩", "🐛", "🛠️", "⚙️", "🧪",
-        ]),
-        EmojiPaletteCategory(name: "Nature", emoji: [
-            "🐶", "🐱", "🦊", "🐼", "🐸", "🦄", "🐙", "🦋", "🌈", "☀️", "🌙", "⚡",
-            "🌊", "🍀", "🌸", "🌵", "🍕", "🍩", "☕", "🍺",
-        ]),
+    /// Curated quick picks shown in the inspector; the system picker covers everything else.
+    static let common: [String] = [
+        "👍", "👎", "👏", "🙌", "👉", "👀",
+        "😀", "😂", "😍", "😎", "🤔", "😱",
+        "❤️", "🔥", "⭐", "✨", "💯", "🎉",
+        "✅", "❌", "⚠️", "❓", "💡", "🚀",
     ]
 
     static let defaultEmoji = "😀"

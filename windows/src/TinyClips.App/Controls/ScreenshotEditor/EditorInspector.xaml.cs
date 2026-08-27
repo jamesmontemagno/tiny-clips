@@ -105,32 +105,7 @@ public sealed partial class EditorInspector : UserControl
 
     private void InitializeEmojiControls()
     {
-        foreach (var category in EmojiAnnotationMath.Palette)
-        {
-            var header = new TextBlock
-            {
-                Text = category.Name,
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-            };
-            var grid = new GridView
-            {
-                Padding = new Thickness(0),
-                IsItemClickEnabled = true,
-                SelectionMode = ListViewSelectionMode.None,
-                ItemContainerStyle = (Style)Resources["EmojiGridItemStyle"],
-                ItemTemplate = (DataTemplate)Resources["EmojiItemTemplate"],
-                ItemsSource = category.Emoji,
-            };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(grid, $"{category.Name} emoji");
-            grid.ItemClick += OnEmojiItemClick;
-
-            var section = new StackPanel { Spacing = 4 };
-            section.Children.Add(header);
-            section.Children.Add(grid);
-            EmojiPalettePanel.Children.Add(section);
-        }
-
+        CommonEmojiGrid.ItemsSource = EmojiAnnotationMath.Common;
         SyncEmojiSelection(_controller.EmojiDefault);
     }
 
@@ -457,6 +432,91 @@ public sealed partial class EditorInspector : UserControl
 
         _controller.SetRotation(e.NewValue);
         UpdateInspectorHeaders();
+    }
+
+    private void OnOpenEmojiPanelClick(object sender, RoutedEventArgs e)
+    {
+        // The system emoji panel inserts into whichever edit control has focus, so the
+        // custom box must be focused first; OnCustomEmojiTextChanged then adopts the glyph.
+        CustomEmojiBox.Focus(FocusState.Programmatic);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!TryShowEmojiPanelViaCoreInputView())
+            {
+                SendWinPeriodShortcut();
+            }
+        });
+    }
+
+    private static bool TryShowEmojiPanelViaCoreInputView()
+    {
+        try
+        {
+            return Windows.UI.ViewManagement.Core.CoreInputView.GetForCurrentView()
+                .TryShow(Windows.UI.ViewManagement.Core.CoreInputViewKind.Emoji);
+        }
+        catch (Exception)
+        {
+            // CoreInputView is not always reachable from a desktop (non-CoreWindow) thread.
+            return false;
+        }
+    }
+
+    /// <summary>Synthesizes Win+. so the shell opens its emoji panel over the focused TextBox.</summary>
+    private static void SendWinPeriodShortcut()
+    {
+        const ushort VK_LWIN = 0x5B;
+        const ushort VK_OEM_PERIOD = 0xBE;
+        const uint KEYEVENTF_KEYUP = 0x0002;
+
+        var inputs = new NativeInput[]
+        {
+            NativeInput.Key(VK_LWIN, 0),
+            NativeInput.Key(VK_OEM_PERIOD, 0),
+            NativeInput.Key(VK_OEM_PERIOD, KEYEVENTF_KEYUP),
+            NativeInput.Key(VK_LWIN, KEYEVENTF_KEYUP),
+        };
+        _ = SendInput((uint)inputs.Length, inputs, System.Runtime.InteropServices.Marshal.SizeOf<NativeInput>());
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint cInputs, NativeInput[] pInputs, int cbSize);
+
+    // INPUT is a tagged union; the MouseInput member sizes it correctly (40 bytes on 64-bit)
+    // so SendInput accepts cbSize. The app only ships 64-bit (x64/ARM64) builds.
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit)]
+    private struct NativeInput
+    {
+        [System.Runtime.InteropServices.FieldOffset(0)] public uint Type;
+        [System.Runtime.InteropServices.FieldOffset(8)] public KeyboardInput Ki;
+        [System.Runtime.InteropServices.FieldOffset(8)] public MouseInput Mi;
+
+        public static NativeInput Key(ushort vk, uint flags) => new()
+        {
+            Type = 1, // INPUT_KEYBOARD
+            Ki = new KeyboardInput { Vk = vk, Flags = flags },
+        };
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int Dx;
+        public int Dy;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        public ushort Vk;
+        public ushort Scan;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
     }
 
     private void OnEmojiItemClick(object sender, ItemClickEventArgs e)
