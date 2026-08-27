@@ -59,6 +59,12 @@ own `CHANGELOG.md` at the repository root.
   selection mode, delete confirmation, context menu, accessibility-name audit).
 
 ### Changed
+- **Native MSIX auto-updates for direct installs.** Windows GitHub Releases now publish x64 and
+  ARM64 `.appinstaller` files and embed the matching configuration in direct MSIX packages. A
+  dedicated `windows-latest` GitHub Release provides stable update metadata URLs. Windows checks
+  periodically in the background and on launch when about 24 hours have passed; winget installs use
+  the same auto-updating direct MSIX. Microsoft Store packages remain on Store-managed updates and
+  do not include the direct update channel.
 - The shared Direct3D 11 device is created with `VIDEO_SUPPORT` (falls back without it) so Media
   Foundation's hardware encoders can bind recorder textures directly.
 - Webcam overlay placement math moved to the shared `WebcamOverlayLayout`; click-ring geometry and

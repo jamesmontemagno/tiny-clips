@@ -23,6 +23,8 @@ Packages/
 # Windows local SDK/release artifacts
 .winapp/
 artifacts/
+windows/src/TinyClips.App/Package.AutoUpdate.appxmanifest
+windows/src/TinyClips.App/install.appinstaller
 
 # Python (tooling/scripts)
 __pycache__/

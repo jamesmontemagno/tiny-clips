@@ -137,10 +137,15 @@ automation review does not replace the documented hands-on results.
 
 ## Distribution
 
-- **Direct (available now):** signed MSIX distributed via **winget** — install with
-  `winget install Refractored.TinyClips` and update with `winget upgrade Refractored.TinyClips`
-  (no separate in-app updater). Fully free.
-- **Microsoft Store (planned):** Store auto-update. Feature set matches Direct; no Windows Pro tier.
+- **Direct (available now):** install with `winget install Refractored.TinyClips`, or use the
+  architecture-specific `.appinstaller` from a Windows GitHub Release as a stable bootstrap for the
+  current version. Both routes install the same MSIX, which checks for signed updates in the
+  background and on launch. winget also installs the required .NET 10 Desktop and Windows App SDK
+  runtimes; standalone App Installer use requires the
+  [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) on a clean machine.
+  `winget upgrade` and App Installer can both update the same package family. Fully free.
+- **Microsoft Store:** Store-managed updates only. Store packages do not include the direct
+  `.appinstaller` update channel. Feature set matches Direct; no Windows Pro tier.
 
 See the plan for the full phased roadmap, packaging, and signing details.
 
