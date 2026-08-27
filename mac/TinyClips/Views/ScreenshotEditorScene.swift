@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ScreenshotEditorCommandActions {
+    let close: () -> Void
     let save: () -> Void
     let saveAs: () -> Void
     let revealInFinder: () -> Void
@@ -37,6 +38,19 @@ private struct ScreenshotEditorMenuCommands: Commands {
     @FocusedValue(\.screenshotEditorCommandActions) private var editor
 
     var body: some Commands {
+        // Replacing `.saveItem` below removes SwiftUI's default Close item app-wide, so restore it
+        // here. The editor routes through its unsaved-changes prompt; other windows close normally.
+        CommandGroup(before: .saveItem) {
+            Button("Close") {
+                if let editor {
+                    editor.close()
+                } else {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+            }
+            .keyboardShortcut("w", modifiers: .command)
+        }
+
         CommandGroup(replacing: .saveItem) {
             Button("Save") {
                 editor?.save()

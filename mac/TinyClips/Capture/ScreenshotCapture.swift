@@ -9,6 +9,14 @@ struct CaptureDisplayGeometry {
 }
 
 enum CaptureCoordinateMath {
+    /// Height of the display that anchors global coordinates: ScreenCaptureKit measures Y down from
+    /// the top-left of the display whose AppKit origin is (0, 0), which is not guaranteed to be the
+    /// first entry of `NSScreen.screens`.
+    static func primaryDisplayHeight(forDisplayFrames displayFrames: [CGRect]) -> CGFloat {
+        let primary = displayFrames.first { $0.origin == .zero } ?? displayFrames.first
+        return primary?.height ?? 0
+    }
+
     static func appKitFrame(for screenCaptureFrame: CGRect, primaryDisplayHeight: CGFloat) -> CGRect {
         CGRect(
             x: screenCaptureFrame.origin.x,
@@ -196,7 +204,9 @@ struct ScreenshotCapture {
 
     /// Returns the backing scale factor of the screen that most overlaps the given SCWindow.
     private static func scaleFactorForWindow(_ window: SCWindow) -> CGFloat {
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let primaryHeight = CaptureCoordinateMath.primaryDisplayHeight(
+            forDisplayFrames: NSScreen.screens.map(\.frame)
+        )
         let displays = NSScreen.screens.map {
             CaptureDisplayGeometry(frame: $0.frame, scaleFactor: $0.backingScaleFactor)
         }
