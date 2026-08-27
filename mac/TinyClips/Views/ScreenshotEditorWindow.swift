@@ -393,6 +393,7 @@ struct ScreenshotEditorView: View {
     @State private var zoomScale: CGFloat = 1
     @State private var panOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
+    @State private var isEmojiTextEntryFocused = false
 
     init(
         imageURL: URL,
@@ -567,7 +568,7 @@ struct ScreenshotEditorView: View {
                         )
 
                         ScreenshotEditorViewportEventMonitor(
-                            isEnabled: !viewModel.isEditingText,
+                            isEnabled: !isTextInputActive,
                             onZoom: { multiplier, focalPoint in
                                 setZoom(zoomScale * multiplier, focalPoint: focalPoint)
                             },
@@ -621,9 +622,9 @@ struct ScreenshotEditorView: View {
                 canRedo: viewModel.canRedo,
                 hasAnnotations: viewModel.hasAnnotations,
                 canApplyCrop: viewModel.canApplyCrop,
-                isEditingText: viewModel.isEditingText,
-                canZoomIn: !viewModel.isEditingText && zoomScale < ScreenshotEditorZoomMath.maximumScale,
-                canZoomOut: !viewModel.isEditingText && zoomScale > ScreenshotEditorZoomMath.minimumScale
+                isEditingText: isTextInputActive,
+                canZoomIn: !isTextInputActive && zoomScale < ScreenshotEditorZoomMath.maximumScale,
+                canZoomOut: !isTextInputActive && zoomScale > ScreenshotEditorZoomMath.minimumScale
             )
         )
         .onExitCommand {
@@ -881,7 +882,8 @@ struct ScreenshotEditorView: View {
             if viewModel.showsEmojiPicker {
                 EmojiPickerView(
                     selectedEmoji: viewModel.selectedEmojiValue() ?? viewModel.selectedEmoji,
-                    recentEmoji: viewModel.recentEmoji
+                    recentEmoji: viewModel.recentEmoji,
+                    isTextEntryFocused: $isEmojiTextEntryFocused
                 ) { emoji in
                     viewModel.chooseEmoji(emoji)
                 }
@@ -1126,7 +1128,7 @@ struct ScreenshotEditorView: View {
     }
 
     private func zoomIn() {
-        guard !viewModel.isEditingText else { return }
+        guard !isTextInputActive else { return }
         setZoom(ScreenshotEditorZoomMath.steppedScale(from: zoomScale, direction: 1))
     }
 
@@ -1136,8 +1138,12 @@ struct ScreenshotEditorView: View {
     }
 
     private func zoomOut() {
-        guard !viewModel.isEditingText else { return }
+        guard !isTextInputActive else { return }
         setZoom(ScreenshotEditorZoomMath.steppedScale(from: zoomScale, direction: -1))
+    }
+
+    private var isTextInputActive: Bool {
+        viewModel.isEditingText || isEmojiTextEntryFocused
     }
 
     private func fitZoom() {
