@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - **Clips Manager UI review.** Double-clicking a clip now opens the editor/trimmer (Show in Finder stays on hover and in the context menu); the empty state distinguishes "No clips yet" (with Open Save Folder) from "No clips match your filters" (with Clear Filters); the Clear Filters toolbar button also resets search, collection and smart-collection selections; the sidebar is wider (170–280 pt) so section titles and counts don't truncate; video thumbnails are generated at 2× for Retina displays; search placeholder explains what is searched.
 - macOS screenshot editor now supports the standard ⌘W shortcut (File > Close) to close the Edit Screenshot window, with the same unsaved-changes confirmation you get when pressing Escape. The restored Close menu item also works for other app windows such as the Clips Manager.
 ### Fixed
+- Fixed macOS screenshot editor keyboard commands while the custom emoji field is focused, so Cut, Copy, Paste, Undo, and Redo target the field instead of the annotation canvas.
 - Fixed macOS "Window" screenshot mode not highlighting or capturing windows on secondary displays. The picker overlay on each non-primary display was offset twice, so it never covered that display and clicks fell through to the app underneath.
 
 ## v1.7.1.0-mac - 2026-08-24

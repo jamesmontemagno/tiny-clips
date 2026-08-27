@@ -56,6 +56,7 @@ struct ArrowStyleButton: View {
 struct EmojiPickerView: View {
     let selectedEmoji: String
     let recentEmoji: [String]
+    @Binding var isTextEntryFocused: Bool
     let onSelect: (String) -> Void
 
     @State private var customEntry = ""
@@ -76,6 +77,9 @@ struct EmojiPickerView: View {
                 TextField("Type or paste", text: $customEntry)
                     .textFieldStyle(.roundedBorder)
                     .focused($isEntryFocused)
+                    .onChange(of: isEntryFocused) { _, isFocused in
+                        isTextEntryFocused = isFocused
+                    }
                     .onChange(of: customEntry) { _, newValue in
                         guard let emoji = EmojiAnnotationMath.emoji(from: newValue) else { return }
                         onSelect(emoji)
@@ -101,6 +105,9 @@ struct EmojiPickerView: View {
             }
 
             emojiSection("Common", emoji: EmojiPalette.common)
+        }
+        .onDisappear {
+            isTextEntryFocused = false
         }
     }
 
