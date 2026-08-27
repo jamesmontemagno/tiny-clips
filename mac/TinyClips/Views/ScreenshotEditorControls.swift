@@ -53,6 +53,72 @@ struct ArrowStyleButton: View {
     }
 }
 
+struct EmojiPickerView: View {
+    let selectedEmoji: String
+    let recentEmoji: [String]
+    let onSelect: (String) -> Void
+
+    @State private var customEntry = ""
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 6)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(selectedEmoji)
+                    .font(.system(size: 28))
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel("Selected emoji \(selectedEmoji)")
+
+                TextField("Type or paste", text: $customEntry)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: customEntry) { _, newValue in
+                        guard let emoji = EmojiAnnotationMath.emoji(from: newValue) else { return }
+                        onSelect(emoji)
+                        customEntry = ""
+                    }
+                    .accessibilityLabel("Custom emoji")
+                    .help("Type or paste any emoji, or press Control-Command-Space for the system emoji picker")
+            }
+
+            if !recentEmoji.isEmpty {
+                emojiSection("Recent", emoji: recentEmoji)
+            }
+
+            ForEach(EmojiPalette.categories) { category in
+                emojiSection(category.name, emoji: category.emoji)
+            }
+        }
+    }
+
+    private func emojiSection(_ title: String, emoji: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(emoji, id: \.self) { item in
+                    Button {
+                        onSelect(item)
+                    } label: {
+                        Text(item)
+                            .font(.system(size: 18))
+                            .frame(maxWidth: .infinity, minHeight: 28)
+                            .background(item == selectedEmoji ? Color.accentColor.opacity(0.2) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .contentShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Emoji \(item)")
+                    .accessibilityValue(item == selectedEmoji ? "Selected" : "Not selected")
+                }
+            }
+        }
+    }
+}
+
 struct BackgroundPresetSwatch: View {
     let preset: ExportBackgroundPreset
     let isSelected: Bool

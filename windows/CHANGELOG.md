@@ -5,6 +5,15 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Emoji tool in the screenshot editor** (`E`). The inspector shows a categorized emoji palette
+  with a Recent row and a "type or paste" box (Win+. opens the system emoji panel); clicking the
+  image drops a sticker. With the Select tool a sticker can be moved, resized from any corner
+  (aspect-locked about its center), and rotated via a new grip above it — hold Shift to snap to
+  15°. A rotation slider in the inspector gives precise control, and stickers are baked into the
+  export with their rotation via Win2D color-font text. The editor's single-letter tool hotkeys,
+  Space-pan, and Delete are now suppressed while typing in an inspector text box.
+
 ### Changed
 - **Clips Library rewritten** as a proper MVVM feature (`ViewModels/ClipsLibrary`,
   `Views/ClipsLibrary`, `Controls/ClipsLibrary`) with macOS Clips Manager parity. New: collapsible

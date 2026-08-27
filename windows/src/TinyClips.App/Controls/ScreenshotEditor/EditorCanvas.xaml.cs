@@ -12,6 +12,7 @@ using Windows.Devices.Input;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.UI;
+using TinyClips.Core.Editing;
 using ShapesPath = Microsoft.UI.Xaml.Shapes.Path;
 
 namespace TinyClips.App.ScreenshotEditor;
@@ -75,6 +76,7 @@ public sealed partial class EditorCanvas : UserControl
     private double _resizeOriginalSizeScale;
     private Annotation? _endpointAnnotation;
     private bool _movingStartEndpoint;
+    private Annotation? _rotatingAnnotation;
     private bool _spacePressed;
     private bool _panning;
     private float _zoomFactor = 1.0f;
@@ -232,6 +234,7 @@ public sealed partial class EditorCanvas : UserControl
         _resizingAnnotation = null;
         _resizeHandle = null;
         _endpointAnnotation = null;
+        _rotatingAnnotation = null;
 
         var moved = _movingAnnotation;
         _movingAnnotation = null;
@@ -278,9 +281,10 @@ public sealed partial class EditorCanvas : UserControl
         HintText.Text = tool switch
         {
             EditTool.Crop => "Drag to select an area, then choose Apply crop.",
-            EditTool.Select => "Click an annotation to select it; drag inside to move or drag a handle to resize. Del removes it.",
+            EditTool.Select => "Click an annotation to select it; drag inside to move, drag a handle to resize, or drag the grip above an emoji to rotate. Del removes it.",
             EditTool.Text => "Click where you want text to open the editor; double-click text to edit it.",
             EditTool.Counter => "Click to drop a numbered badge.",
+            EditTool.Emoji => "Pick an emoji in the panel, then click to place it. Use Select to move, resize, or rotate it.",
             EditTool.Pen => "Drag to draw freehand.",
             EditTool.Redact => "Drag over content to redact it.",
             EditTool.Rectangle or EditTool.Ellipse => "Drag to draw. Hold Shift for a perfect shape.",
@@ -656,6 +660,24 @@ public sealed partial class EditorCanvas : UserControl
                 OverlayCanvas.Children.Add(grid);
                 return new AnnotationVisual { Primary = grid, StrokeBrush = circleBrush, TextBrush = textBrush };
             }
+            case EditTool.Emoji:
+            {
+                var grid = new Grid
+                {
+                    RenderTransformOrigin = new Point(0.5, 0.5),
+                    RenderTransform = new RotateTransform(),
+                };
+                grid.Children.Add(new TextBlock
+                {
+                    FontFamily = new FontFamily("Segoe UI Emoji"),
+                    IsColorFontEnabled = true,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextLineBounds = TextLineBounds.Tight,
+                });
+                OverlayCanvas.Children.Add(grid);
+                return new AnnotationVisual { Primary = grid };
+            }
             default:
                 throw new ArgumentOutOfRangeException(nameof(ann), ann.Tool, "Unsupported annotation tool.");
         }
@@ -730,7 +752,28 @@ public sealed partial class EditorCanvas : UserControl
             case EditTool.Counter:
                 PositionCounter(ann, visual, scale, offX, offY);
                 break;
+            case EditTool.Emoji:
+                PositionEmoji(ann, visual, scale, offX, offY);
+                break;
         }
+    }
+
+    private static void PositionEmoji(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
+    {
+        var b = ann.Bounds;
+        var tl = ToCanvas(new Point(b.X, b.Y), scale, offX, offY);
+        var side = b.Width * scale;
+        var grid = (Grid)visual.Primary;
+        grid.Width = side;
+        grid.Height = side;
+        ((RotateTransform)grid.RenderTransform).Angle = ann.Rotation;
+
+        var textBlock = (TextBlock)grid.Children[0];
+        textBlock.Text = ann.Text;
+        textBlock.FontSize = EmojiAnnotationMath.GlyphFontSize(side);
+
+        Canvas.SetLeft(grid, tl.X);
+        Canvas.SetTop(grid, tl.Y);
     }
 
     private static void PositionArrow(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY, double thickness)
@@ -922,6 +965,14 @@ public sealed partial class EditorCanvas : UserControl
 
         var b = EditorController.NormalizedBounds(ann);
         var tl = ToCanvas(new Point(b.X, b.Y), scale, offX, offY);
+
+        if (ann.Tool == EditTool.Emoji)
+        {
+            PositionRotatedMarquee(ann, b, scale, offX, offY);
+            return;
+        }
+
+        SetMarqueeRotation(0);
         SelectionMarquee.Width = Math.Max(b.Width * scale, 8) + 12;
         SelectionMarquee.Height = Math.Max(b.Height * scale, 8) + 12;
         Canvas.SetLeft(SelectionMarquee, tl.X - 6);
@@ -945,6 +996,79 @@ public sealed partial class EditorCanvas : UserControl
         BottomRightResizeHandle.Visibility = Visibility.Collapsed;
         StartEndpointHandle.Visibility = Visibility.Collapsed;
         EndEndpointHandle.Visibility = Visibility.Collapsed;
+        RotationHandle.Visibility = Visibility.Collapsed;
+        RotationHandleStem.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Rotates the dashed marquee (and the square corner grips) so they hug a rotated sticker.</summary>
+    private void SetMarqueeRotation(double degrees)
+    {
+        foreach (var element in new FrameworkElement[]
+                 {
+                     SelectionMarquee, TopLeftResizeHandle, TopRightResizeHandle, BottomLeftResizeHandle, BottomRightResizeHandle,
+                 })
+        {
+            if (element.RenderTransform is not RotateTransform rotate)
+            {
+                rotate = new RotateTransform();
+                element.RenderTransformOrigin = new Point(0.5, 0.5);
+                element.RenderTransform = rotate;
+            }
+            rotate.Angle = degrees;
+        }
+    }
+
+    /// <summary>Canvas-space geometry shared by the marquee, corner grips, and the rotation grip.</summary>
+    private (RectD Bounds, double Offset) CanvasStickerGeometry(Rect pixelBounds, double scale, double offX, double offY)
+    {
+        var tl = ToCanvas(new Point(pixelBounds.X, pixelBounds.Y), scale, offX, offY);
+        var bounds = new RectD(tl.X, tl.Y, pixelBounds.Width * scale, pixelBounds.Height * scale);
+        return (bounds, RotatableAnnotationGeometry.RotationHandleOffset(bounds.Height));
+    }
+
+    private void PositionRotatedMarquee(Annotation ann, Rect pixelBounds, double scale, double offX, double offY)
+    {
+        var (bounds, offset) = CanvasStickerGeometry(pixelBounds, scale, offX, offY);
+        var center = bounds.Center;
+
+        SetMarqueeRotation(ann.Rotation);
+        SelectionMarquee.Width = Math.Max(bounds.Width, 8) + 12;
+        SelectionMarquee.Height = Math.Max(bounds.Height, 8) + 12;
+        Canvas.SetLeft(SelectionMarquee, center.X - SelectionMarquee.Width / 2);
+        Canvas.SetTop(SelectionMarquee, center.Y - SelectionMarquee.Height / 2);
+        SelectionMarquee.Visibility = Visibility.Visible;
+
+        var corners = RotatableAnnotationGeometry.Corners(bounds, ann.Rotation);
+        PositionHandle(TopLeftResizeHandle, new Point(corners[0].X, corners[0].Y));
+        PositionHandle(TopRightResizeHandle, new Point(corners[1].X, corners[1].Y));
+        PositionHandle(BottomLeftResizeHandle, new Point(corners[2].X, corners[2].Y));
+        PositionHandle(BottomRightResizeHandle, new Point(corners[3].X, corners[3].Y));
+        TopLeftResizeHandle.Visibility = Visibility.Visible;
+        TopRightResizeHandle.Visibility = Visibility.Visible;
+        BottomLeftResizeHandle.Visibility = Visibility.Visible;
+        BottomRightResizeHandle.Visibility = Visibility.Visible;
+
+        var grip = RotatableAnnotationGeometry.RotationHandle(bounds, ann.Rotation, offset);
+        var topCenter = RotatableAnnotationGeometry.Rotate(new PointD(center.X, bounds.Top), center, ann.Rotation);
+        RotationHandleStem.X1 = topCenter.X;
+        RotationHandleStem.Y1 = topCenter.Y;
+        RotationHandleStem.X2 = grip.X;
+        RotationHandleStem.Y2 = grip.Y;
+        RotationHandleStem.Visibility = Visibility.Visible;
+        PositionHandle(RotationHandle, new Point(grip.X, grip.Y));
+        RotationHandle.Visibility = Visibility.Visible;
+    }
+
+    private bool IsRotationHandleAt(Point point, Annotation ann)
+    {
+        if (ann.Tool != EditTool.Emoji)
+        {
+            return false;
+        }
+        var (scale, offX, offY) = HostLayout();
+        var (bounds, offset) = CanvasStickerGeometry(ann.Bounds, scale, offX, offY);
+        var grip = RotatableAnnotationGeometry.RotationHandle(bounds, ann.Rotation, offset);
+        return RotatableAnnotationGeometry.Distance(new PointD(point.X, point.Y), grip) <= 11;
     }
 
     private static void PositionHandle(FrameworkElement handle, Point center)
@@ -960,6 +1084,26 @@ public sealed partial class EditorCanvas : UserControl
             return null;
         }
         var (scale, offX, offY) = HostLayout();
+
+        if (ann.Tool == EditTool.Emoji)
+        {
+            var (stickerBounds, _) = CanvasStickerGeometry(ann.Bounds, scale, offX, offY);
+            var corners = RotatableAnnotationGeometry.Corners(stickerBounds, ann.Rotation);
+            var order = new[]
+            {
+                AnnotationResizeHandle.TopLeft, AnnotationResizeHandle.TopRight,
+                AnnotationResizeHandle.BottomLeft, AnnotationResizeHandle.BottomRight,
+            };
+            for (var i = 0; i < corners.Length; i++)
+            {
+                if (RotatableAnnotationGeometry.Distance(new PointD(point.X, point.Y), corners[i]) <= 9)
+                {
+                    return order[i];
+                }
+            }
+            return null;
+        }
+
         var b = EditorController.NormalizedBounds(ann);
         var tl = ToCanvas(new Point(b.Left, b.Top), scale, offX, offY);
         var br = ToCanvas(new Point(b.Right, b.Bottom), scale, offX, offY);
@@ -1074,6 +1218,13 @@ public sealed partial class EditorCanvas : UserControl
         {
             if (_controller.SelectedAnnotation is { } selected)
             {
+                if (IsRotationHandleAt(p, selected))
+                {
+                    _rotatingAnnotation = selected;
+                    OverlayCanvas.CapturePointer(e.Pointer);
+                    _capturedPointer = e.Pointer;
+                    return;
+                }
                 if (ResizeHandleAt(p, selected) is { } handle)
                 {
                     _resizingAnnotation = selected;
@@ -1126,6 +1277,13 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
+        if (tool == EditTool.Emoji)
+        {
+            var center = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
+            _controller.AddEmojiAnnotation(center);
+            return;
+        }
+
         // Shape / line / arrow / pen / redact: begin a drag.
         _dragging = true;
         _dragStart = p;
@@ -1164,6 +1322,13 @@ public sealed partial class EditorCanvas : UserControl
             Canvas.SetTop(SelectionRect, y);
             SelectionRect.Width = Math.Abs(p.X - _dragStart.X);
             SelectionRect.Height = Math.Abs(p.Y - _dragStart.Y);
+            return;
+        }
+
+        if (tool == EditTool.Select && _rotatingAnnotation is not null)
+        {
+            var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
+            _controller.RotateAnnotationToward(_rotatingAnnotation, pixel, EditorController.IsShiftDown());
             return;
         }
 
@@ -1237,6 +1402,7 @@ public sealed partial class EditorCanvas : UserControl
             _resizingAnnotation = null;
             _resizeHandle = null;
             _endpointAnnotation = null;
+            _rotatingAnnotation = null;
             // A moved redact block only shows the lightweight placeholder while dragging (see
             // UpdateVisual); re-blur it now that the drag has settled. Guarded on list
             // membership in case the annotation was deleted/undone mid-drag — Undo/Delete cancel

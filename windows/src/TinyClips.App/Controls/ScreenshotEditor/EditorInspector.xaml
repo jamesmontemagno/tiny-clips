@@ -8,6 +8,27 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <Style x:Key="EmojiGridItemStyle" TargetType="GridViewItem">
+            <Setter Property="Margin" Value="0,0,2,2" />
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <DataTemplate x:Key="EmojiItemTemplate" x:DataType="x:String">
+            <TextBlock
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="{x:Bind}"
+                FontFamily="Segoe UI Emoji"
+                FontSize="18"
+                IsColorFontEnabled="True"
+                Text="{x:Bind}" />
+        </DataTemplate>
+    </UserControl.Resources>
+
     <Border
         Width="252"
         VerticalAlignment="Stretch"
@@ -125,6 +146,68 @@
                             ColorChanged="OnNumberColorChanged"
                             IsAlphaEnabled="False" />
                     </StackPanel>
+                </StackPanel>
+
+                <!--  Emoji sticker  -->
+                <StackPanel x:Name="EmojiSection" Spacing="10">
+                    <Slider
+                        x:Name="EmojiRotationSlider"
+                        AutomationProperties.AutomationId="EditorEmojiRotationSlider"
+                        AutomationProperties.Name="Emoji rotation"
+                        Header="Rotation"
+                        Maximum="180"
+                        Minimum="-180"
+                        StepFrequency="1"
+                        ValueChanged="OnEmojiRotationChanged"
+                        Visibility="Collapsed" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Width="44"
+                            Height="44"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                            CornerRadius="{ThemeResource ControlCornerRadius}"
+                            Opacity="0.9">
+                            <TextBlock
+                                x:Name="SelectedEmojiText"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                AutomationProperties.AutomationId="EditorSelectedEmoji"
+                                AutomationProperties.Name="Selected emoji"
+                                FontFamily="Segoe UI Emoji"
+                                FontSize="26"
+                                IsColorFontEnabled="True"
+                                IsTextSelectionEnabled="False" />
+                        </Border>
+                        <TextBox
+                            x:Name="CustomEmojiBox"
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="EditorCustomEmojiBox"
+                            AutomationProperties.Name="Custom emoji"
+                            PlaceholderText="Type or paste (Win+.)"
+                            TextChanged="OnCustomEmojiTextChanged"
+                            ToolTipService.ToolTip="Type or paste any emoji. Press Win+. for the Windows emoji panel." />
+                    </Grid>
+                    <StackPanel x:Name="RecentEmojiPanel" Spacing="4" Visibility="Collapsed">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Recent" />
+                        <GridView
+                            x:Name="RecentEmojiGrid"
+                            Padding="0"
+                            AutomationProperties.Name="Recent emoji"
+                            IsItemClickEnabled="True"
+                            ItemClick="OnEmojiItemClick"
+                            ItemContainerStyle="{StaticResource EmojiGridItemStyle}"
+                            ItemTemplate="{StaticResource EmojiItemTemplate}"
+                            SelectionMode="None" />
+                    </StackPanel>
+                    <StackPanel x:Name="EmojiPalettePanel" Spacing="8" />
                 </StackPanel>
 
                 <!--  Redaction style + strength  -->

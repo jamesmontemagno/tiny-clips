@@ -175,6 +175,54 @@ struct ScreenshotEditorCanvasView: View {
                             .frame(width: 12, height: 12)
                             .position(endPt)
                             .allowsHitTesting(false)
+                    } else if ann.tool == .emoji {
+                        let corners = RotatableAnnotationGeometry.corners(of: ann.rect, rotation: ann.rotation, in: imageSize)
+                            .map { CGPoint(x: origin.x + $0.x, y: origin.y + $0.y) }
+                        let scaledRect = viewModel.scaledRect(ann.rect, imageSize: imageSize, origin: origin)
+                        let center = CGPoint(x: scaledRect.midX, y: scaledRect.midY)
+                        let handleLocal = RotatableAnnotationGeometry.rotationHandle(for: ann.rect, rotation: ann.rotation, in: imageSize)
+                        let handle = CGPoint(x: origin.x + handleLocal.x, y: origin.y + handleLocal.y)
+                        let topCenter = RotatableAnnotationGeometry.rotate(
+                            CGPoint(x: center.x, y: scaledRect.minY),
+                            around: center,
+                            by: ann.rotation
+                        )
+
+                        RoundedRectangle(cornerRadius: 2)
+                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                            .frame(width: scaledRect.width + 8, height: scaledRect.height + 8)
+                            .rotationEffect(.radians(ann.rotation))
+                            .position(center)
+                            .allowsHitTesting(false)
+
+                        Path { path in
+                            path.move(to: topCenter)
+                            path.addLine(to: handle)
+                        }
+                        .stroke(Color.accentColor, lineWidth: 1.5)
+                        .allowsHitTesting(false)
+
+                        ForEach(Array(corners.enumerated()), id: \.offset) { _, corner in
+                            Rectangle()
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                                .stroke(Color.accentColor, lineWidth: 2)
+                                .frame(width: 10, height: 10)
+                                .rotationEffect(.radians(ann.rotation))
+                                .position(corner)
+                                .allowsHitTesting(false)
+                        }
+
+                        ZStack {
+                            Circle()
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                                .stroke(Color.accentColor, lineWidth: 2)
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .frame(width: 16, height: 16)
+                        .position(handle)
+                        .allowsHitTesting(false)
                     } else if let selRect = viewModel.selectedAnnotationRect(imageSize: imageSize, origin: origin) {
                         RoundedRectangle(cornerRadius: 2)
                             .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
@@ -224,6 +272,8 @@ struct ScreenshotEditorCanvasView: View {
                                     viewModel.isEditingText = true
                                 } else if viewModel.selectedTool == .number {
                                     viewModel.placeNumberAnnotation(at: normalized)
+                                } else if viewModel.selectedTool == .emoji {
+                                    viewModel.placeEmojiAnnotation(at: normalized)
                                 } else if viewModel.selectedTool == .move {
                                     // Tap to select/deselect annotations
                                     if let idx = viewModel.annotationIndex(at: normalized) {
@@ -237,8 +287,10 @@ struct ScreenshotEditorCanvasView: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Screenshot annotation canvas")
                     .accessibilityHint(viewModel.selectedTool == .move
-                        ? "Select an annotation, drag inside it to move, or drag a corner handle to resize."
-                        : "Use the selected tool to edit the screenshot.")
+                        ? "Select an annotation, drag inside it to move, drag a corner handle to resize, or drag the rotation grip above an emoji to rotate it."
+                        : viewModel.selectedTool == .emoji
+                            ? "Click to place the selected emoji."
+                            : "Use the selected tool to edit the screenshot.")
                     .position(x: origin.x + imageSize.width / 2, y: origin.y + imageSize.height / 2)
             }
         }
@@ -355,6 +407,15 @@ struct ScreenshotEditorCanvasView: View {
                 .font(.system(size: fontSize, weight: .bold, design: .rounded))
                 .foregroundColor(annotation.textColor)
             context.draw(numberText, at: CGPoint(x: scaledRect.midX, y: scaledRect.midY), anchor: .center)
+
+        case .emoji:
+            let center = CGPoint(x: scaledRect.midX, y: scaledRect.midY)
+            var rotated = context
+            rotated.translateBy(x: center.x, y: center.y)
+            rotated.rotate(by: .radians(annotation.rotation))
+            let glyph = Text(annotation.text)
+                .font(.system(size: EmojiAnnotationMath.glyphFontSize(forSide: scaledRect.height)))
+            rotated.draw(glyph, at: .zero, anchor: .center)
 
         case .text, .crop, .move:
             break

@@ -23,6 +23,7 @@ internal enum EditTool
     Pen,
     Text,
     Counter,
+    Emoji,
     Redact,
 }
 
@@ -174,6 +175,9 @@ internal sealed class Annotation
     public bool Italic { get; set; }
     public bool Underline { get; set; }
     public bool Strikethrough { get; set; }
+
+    /// <summary>Clockwise rotation in degrees around the center of <see cref="Bounds"/> (emoji stickers).</summary>
+    public double Rotation { get; set; }
 
     // Cached blurred preview for redaction annotations (invalidated on move / level change).
     public SoftwareBitmapSource? RedactPreview { get; set; }

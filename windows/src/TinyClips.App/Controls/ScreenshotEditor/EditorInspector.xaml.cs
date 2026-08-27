@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
+using TinyClips.Core.Editing;
 
 namespace TinyClips.App.ScreenshotEditor;
 
@@ -39,8 +40,23 @@ public sealed partial class EditorInspector : UserControl
 
         InitializeInspectorControls();
         InitializeBackgroundControls();
+        InitializeEmojiControls();
 
         controller.ToolChanged += (_, tool) => ShowForTool(tool);
+        controller.EmojiChanged += (_, emoji) => SyncEmojiSelection(emoji);
+        controller.AnnotationVisualInvalidated += (_, ann) =>
+        {
+            // Keep the rotation slider in step with the on-canvas rotation grip.
+            if (ann.Tool == EditTool.Emoji
+                && ReferenceEquals(ann, _controller.SelectedAnnotation)
+                && Math.Abs(EmojiRotationSlider.Value - ann.Rotation) > 0.5)
+            {
+                _inspectorInitializing = true;
+                EmojiRotationSlider.Value = ann.Rotation;
+                UpdateInspectorHeaders();
+                _inspectorInitializing = false;
+            }
+        };
         controller.BackgroundChanged += (_, _) => UpdateExportFrameControls();
         controller.ImageChanged += (_, _) => UpdateExportFrameControls();
         controller.SelectionChanged += (_, ann) =>
@@ -84,6 +100,48 @@ public sealed partial class EditorInspector : UserControl
         StrokeSlider.Header = $"Stroke — {(int)_controller.StrokeThickness} px";
         NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(_controller.NumberScale * 100)}%";
         FontSizeSlider.Header = $"Font size — {(int)_controller.TextFontSize} px";
+        EmojiRotationSlider.Header = $"Rotation — {(int)Math.Round(EmojiRotationSlider.Value)}°";
+    }
+
+    private void InitializeEmojiControls()
+    {
+        foreach (var category in EmojiAnnotationMath.Palette)
+        {
+            var header = new TextBlock
+            {
+                Text = category.Name,
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            };
+            var grid = new GridView
+            {
+                Padding = new Thickness(0),
+                IsItemClickEnabled = true,
+                SelectionMode = ListViewSelectionMode.None,
+                ItemContainerStyle = (Style)Resources["EmojiGridItemStyle"],
+                ItemTemplate = (DataTemplate)Resources["EmojiItemTemplate"],
+                ItemsSource = category.Emoji,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(grid, $"{category.Name} emoji");
+            grid.ItemClick += OnEmojiItemClick;
+
+            var section = new StackPanel { Spacing = 4 };
+            section.Children.Add(header);
+            section.Children.Add(grid);
+            EmojiPalettePanel.Children.Add(section);
+        }
+
+        SyncEmojiSelection(_controller.EmojiDefault);
+    }
+
+    private void SyncEmojiSelection(string emoji)
+    {
+        SelectedEmojiText.Text = emoji;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SelectedEmojiText, $"Selected emoji {emoji}");
+
+        var recent = _controller.RecentEmoji;
+        RecentEmojiGrid.ItemsSource = recent.ToList();
+        RecentEmojiPanel.Visibility = recent.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void InitializeBackgroundControls()
@@ -162,6 +220,7 @@ public sealed partial class EditorInspector : UserControl
         var showsNumber = tool is EditTool.Counter;
         var showsRedact = tool is EditTool.Redact;
         var showsArrowStyle = tool is EditTool.Arrow;
+        var showsEmoji = tool is EditTool.Emoji;
 
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
         StrokeSection.Visibility = showsStroke ? Visibility.Visible : Visibility.Collapsed;
@@ -170,6 +229,13 @@ public sealed partial class EditorInspector : UserControl
         TextSection.Visibility = showsText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = showsNumber ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = showsRedact ? Visibility.Visible : Visibility.Collapsed;
+        EmojiSection.Visibility = showsEmoji ? Visibility.Visible : Visibility.Collapsed;
+        EmojiRotationSlider.Visibility = Visibility.Collapsed;
+
+        if (showsEmoji)
+        {
+            SyncEmojiSelection(_controller.EmojiDefault);
+        }
 
         if (showsArrowStyle)
         {
@@ -193,6 +259,7 @@ public sealed partial class EditorInspector : UserControl
             EditTool.Pen => "Draw",
             EditTool.Text => "Text",
             EditTool.Counter => "Number badge",
+            EditTool.Emoji => "Emoji",
             EditTool.Redact => "Redact",
             _ => "Tool",
         };
@@ -214,6 +281,7 @@ public sealed partial class EditorInspector : UserControl
         var isCounter = ann.Tool is EditTool.Counter;
         var isRedact = ann.Tool is EditTool.Redact;
         var isArrow = ann.Tool is EditTool.Arrow;
+        var isEmoji = ann.Tool is EditTool.Emoji;
         var hasColor = isShape || isText || isCounter;
 
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
@@ -223,7 +291,15 @@ public sealed partial class EditorInspector : UserControl
         TextSection.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = isRedact ? Visibility.Visible : Visibility.Collapsed;
+        EmojiSection.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
+        EmojiRotationSlider.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
         InspectorTitle.Text = $"{ann.Tool} (selected)";
+
+        if (isEmoji)
+        {
+            EmojiRotationSlider.Value = ann.Rotation;
+            SyncEmojiSelection(ann.Text);
+        }
 
         if (isArrow)
         {
@@ -366,6 +442,44 @@ public sealed partial class EditorInspector : UserControl
 
         _controller.SetNumberSize(e.NewValue);
         UpdateInspectorHeaders();
+    }
+
+    private void OnEmojiRotationChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetEmojiRotation(e.NewValue);
+        UpdateInspectorHeaders();
+    }
+
+    private void OnEmojiItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is string emoji)
+        {
+            _controller.SetEmoji(emoji);
+        }
+    }
+
+    private void OnCustomEmojiTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        var emoji = EmojiAnnotationMath.ExtractEmoji(CustomEmojiBox.Text);
+        if (emoji is null)
+        {
+            return;
+        }
+
+        _controller.SetEmoji(emoji);
+        _inspectorInitializing = true;
+        CustomEmojiBox.Text = string.Empty;
+        _inspectorInitializing = false;
     }
 
     private void OnRedactionLevelChanged(object sender, SelectionChangedEventArgs e)

@@ -47,6 +47,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var numberTextColor: Color = .white
     @Published var redactionBlurPreset: RedactionBlurPreset = .medium
     @Published var selectedArrowStylePreset: ArrowStyle = .straight
+    @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
+    @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
     @Published var backgroundColor: Color = Color(red: 0.96, green: 0.96, blue: 0.98)
     @Published var backgroundSecondaryColor: Color = Color(red: 0.84, green: 0.90, blue: 0.99)
@@ -65,7 +67,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var dragOriginalRect: CGRect = .zero
     private var dragOriginalPoints: [CGPoint] = []
     private var dragOriginalFontSize: CGFloat = 0
+    private var dragOriginalRotation: CGFloat = 0
     private var isDraggingAnnotation = false
+    private var isRotatingAnnotation = false
     private var isDraggingEndpoint = false // true = dragging arrowhead/line end
     private var isDraggingStartpoint = false // true = dragging arrow tail/line start
     private var activeResizeHandle: AnnotationResizeHandle?
@@ -111,7 +115,13 @@ class ScreenshotEditorViewModel: ObservableObject {
         self.initialExportFramePreset = .original
         self.initialHorizontalExportAlignment = .center
         self.initialVerticalExportAlignment = .center
+        self.recentEmoji = UserDefaults.standard.stringArray(forKey: Self.recentEmojiDefaultsKey) ?? []
+        if let lastUsed = recentEmoji.first {
+            self.selectedEmoji = lastUsed
+        }
     }
+
+    private static let recentEmojiDefaultsKey = "screenshotEditor.recentEmoji"
 
     // Convert point in overlay-local space to 0..1 normalized coordinate
     func normalizePoint(_ point: CGPoint, imageSize: CGSize) -> CGPoint {
@@ -234,6 +244,19 @@ class ScreenshotEditorViewModel: ObservableObject {
                     // Text annotations need a larger hit area since the visual text
                     // size doesn't scale with the normalized rect
                     hitRect = ann.rect.insetBy(dx: -0.03, dy: -0.03)
+                } else if ann.tool == .emoji {
+                    let pixelSize = hitTestImageSize
+                    let pixelPoint = CGPoint(x: point.x * pixelSize.width, y: point.y * pixelSize.height)
+                    if RotatableAnnotationGeometry.contains(
+                        pixelPoint,
+                        rect: ann.rect,
+                        rotation: ann.rotation,
+                        in: pixelSize,
+                        padding: emojiHitPaddingPixels
+                    ) {
+                        return i
+                    }
+                    continue
                 } else {
                     hitRect = ann.rect.insetBy(dx: -0.01, dy: -0.01)
                 }
@@ -287,6 +310,108 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     var showsArrowStyleControl: Bool {
         inspectorTool == .arrow
+    }
+
+    var showsEmojiPicker: Bool {
+        inspectorTool == .emoji
+    }
+
+    /// Image size used for rotation-aware hit testing; falls back to a square so
+    /// geometry still works before the image has loaded.
+    private var hitTestImageSize: CGSize {
+        imagePixelSize.width > 0 && imagePixelSize.height > 0 ? imagePixelSize : CGSize(width: 1000, height: 1000)
+    }
+
+    private var emojiHitPaddingPixels: CGFloat {
+        max(4, hitTestImageSize.width * 0.005)
+    }
+
+    private var handleHitThresholdPixels: CGFloat {
+        max(10, hitTestImageSize.width * 0.02)
+    }
+
+    func selectedEmojiValue() -> String? {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .emoji else {
+            return nil
+        }
+        return annotations[index].text
+    }
+
+    /// Picks `emoji` for new stickers, or swaps the glyph on the selected sticker.
+    func chooseEmoji(_ emoji: String) {
+        selectedEmoji = emoji
+        rememberRecentEmoji(emoji)
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .emoji else {
+            return
+        }
+        guard annotations[index].text != emoji else { return }
+        recordHistory()
+        annotations[index].text = emoji
+        markDirty()
+    }
+
+    func selectedEmojiRotationDegrees() -> Double? {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .emoji else {
+            return nil
+        }
+        return Double(RotatableAnnotationGeometry.normalizedAngle(annotations[index].rotation) * 180 / .pi)
+    }
+
+    /// Captures one undo step before a slider drag starts changing the rotation live.
+    func beginSelectedEmojiRotationEdit() {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .emoji else {
+            return
+        }
+        recordHistory()
+    }
+
+    @discardableResult
+    func updateSelectedEmojiRotationDegrees(_ degrees: Double, recordsHistory: Bool = true) -> Bool {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .emoji else {
+            return false
+        }
+        let radians = RotatableAnnotationGeometry.normalizedAngle(CGFloat(degrees) * .pi / 180)
+        guard abs(annotations[index].rotation - radians) > 0.0001 else { return false }
+        if recordsHistory {
+            recordHistory()
+        }
+        annotations[index].rotation = radians
+        markDirty()
+        return true
+    }
+
+    @discardableResult
+    func resetSelectedEmojiRotation() -> Bool {
+        updateSelectedEmojiRotationDegrees(0)
+    }
+
+    func placeEmojiAnnotation(at position: CGPoint) {
+        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return }
+        let side = EmojiAnnotationMath.defaultSidePixels(forImageSize: imagePixelSize)
+        let rect = EmojiAnnotationMath.normalizedRect(centeredAt: position, sidePixels: side, imageSize: imagePixelSize)
+        recordHistory()
+        annotations.append(ScreenshotAnnotation(
+            tool: .emoji,
+            rect: rect,
+            color: selectedColor,
+            lineWidth: lineWidth,
+            text: selectedEmoji,
+            points: []
+        ))
+        selectedAnnotationIndex = annotations.count - 1
+        rememberRecentEmoji(selectedEmoji)
+        markDirty()
+    }
+
+    private func rememberRecentEmoji(_ emoji: String) {
+        var updated = recentEmoji.filter { $0 != emoji }
+        updated.insert(emoji, at: 0)
+        if updated.count > EmojiPalette.maximumRecent {
+            updated.removeLast(updated.count - EmojiPalette.maximumRecent)
+        }
+        guard updated != recentEmoji else { return }
+        recentEmoji = updated
+        UserDefaults.standard.set(updated, forKey: Self.recentEmojiDefaultsKey)
     }
 
     var inspectorTool: EditTool {
@@ -387,7 +512,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var showsAnyStyleControls: Bool {
-        primaryStyleControlsVisible || showsLineWidthControl || showsArrowStyleControl || showsNumberSizeControl || showsRedactionPresetControl || showsTextStyleControls
+        primaryStyleControlsVisible || showsLineWidthControl || showsArrowStyleControl || showsNumberSizeControl || showsRedactionPresetControl || showsTextStyleControls || showsEmojiPicker
     }
 
     var showsTextStyleControls: Bool {
@@ -398,7 +523,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         switch inspectorTool {
         case .rectangle, .circle, .arrow, .line, .pencil, .text, .number:
             return true
-        case .move, .crop, .blur:
+        case .move, .crop, .blur, .emoji:
             return false
         }
     }
@@ -484,10 +609,14 @@ class ScreenshotEditorViewModel: ObservableObject {
     func handleDrag(start: CGPoint, current: CGPoint, isAspectLocked: Bool = false) {
         switch selectedTool {
         case .move:
-            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && activeResizeHandle == nil {
+            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && !isRotatingAnnotation && activeResizeHandle == nil {
                 // First drag event — find what we hit
-                let selectedIndex = selectedAnnotationIndex.flatMap { index in
-                    annotations.indices.contains(index) && resizeHandle(at: start, for: annotations[index]) != nil ? index : nil
+                let selectedIndex = selectedAnnotationIndex.flatMap { (index: Int) -> Int? in
+                    guard annotations.indices.contains(index) else { return nil }
+                    let annotation = annotations[index]
+                    let hitsHandle = resizeHandle(at: start, for: annotation) != nil
+                        || isRotationHandle(at: start, for: annotation)
+                    return hitsHandle ? index : nil
                 }
                 if let idx = selectedIndex ?? annotationIndex(at: start) {
                     beginDragHistory()
@@ -497,6 +626,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                         : annotations[idx].rect
                     dragOriginalPoints = annotations[idx].points
                     dragOriginalFontSize = annotations[idx].fontSize
+                    dragOriginalRotation = annotations[idx].rotation
 
                     let ann = annotations[idx]
                     if ann.tool == .arrow || ann.tool == .line {
@@ -519,6 +649,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                         } else {
                             isDraggingAnnotation = true
                         }
+                    } else if isRotationHandle(at: start, for: ann) {
+                        isRotatingAnnotation = true
                     } else if let handle = resizeHandle(at: start, for: ann) {
                         activeResizeHandle = handle
                     } else {
@@ -534,7 +666,9 @@ class ScreenshotEditorViewModel: ObservableObject {
                 if dx != 0 || dy != 0 {
                     didChangePendingDrag = true
                 }
-                if let resizeHandle = activeResizeHandle {
+                if isRotatingAnnotation {
+                    rotateAnnotation(at: idx, toward: current, snaps: isAspectLocked)
+                } else if let resizeHandle = activeResizeHandle {
                     resizeAnnotation(at: idx, from: resizeHandle, to: current)
                 } else if isDraggingEndpoint {
                     // Move just the endpoint (rotate the arrow/line)
@@ -584,8 +718,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                 points: pencilPoints
             )
 
-        case .text, .number:
-            break // text/number use click, not drag
+        case .text, .number, .emoji:
+            break // text/number/emoji use click, not drag
 
         default:
             let rect = makeRect(from: start, to: current, isAspectLocked: isAspectLocked)
@@ -610,6 +744,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             isDraggingAnnotation = false
             isDraggingEndpoint = false
             isDraggingStartpoint = false
+            isRotatingAnnotation = false
             activeResizeHandle = nil
             commitDragHistory()
 
@@ -631,7 +766,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             pencilPoints = []
             currentAnnotation = nil
 
-        case .text, .number:
+        case .text, .number, .emoji:
             break // handled by SpatialTapGesture
 
         default:
@@ -684,6 +819,9 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     private func resizeHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> AnnotationResizeHandle? {
         guard annotation.tool != .arrow, annotation.tool != .line else { return nil }
+        if annotation.tool == .emoji {
+            return rotatedResizeHandle(at: point, for: annotation)
+        }
         let bounds = annotation.tool == .pencil ? pencilBounds(for: annotation) : annotation.rect
         guard let bounds else { return nil }
         let threshold: CGFloat = 0.025
@@ -697,7 +835,74 @@ class ScreenshotEditorViewModel: ObservableObject {
             .flatMap { hypot(point.x - $0.1.x, point.y - $0.1.y) <= threshold ? $0.0 : nil }
     }
 
+    /// Corner handle lookup for annotations whose frame follows their rotation.
+    private func rotatedResizeHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> AnnotationResizeHandle? {
+        let size = hitTestImageSize
+        let pixelPoint = CGPoint(x: point.x * size.width, y: point.y * size.height)
+        let corners = RotatableAnnotationGeometry.corners(of: annotation.rect, rotation: annotation.rotation, in: size)
+        let handles: [AnnotationResizeHandle] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+        var best: (handle: AnnotationResizeHandle, distance: CGFloat)?
+        for (handle, corner) in zip(handles, corners) {
+            let distance = hypot(pixelPoint.x - corner.x, pixelPoint.y - corner.y)
+            if best == nil || distance < best!.distance {
+                best = (handle, distance)
+            }
+        }
+        guard let best, best.distance <= handleHitThresholdPixels else { return nil }
+        return best.handle
+    }
+
+    private func isRotationHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> Bool {
+        guard annotation.tool == .emoji else { return false }
+        let size = hitTestImageSize
+        let pixelPoint = CGPoint(x: point.x * size.width, y: point.y * size.height)
+        let handle = RotatableAnnotationGeometry.rotationHandle(for: annotation.rect, rotation: annotation.rotation, in: size)
+        return hypot(pixelPoint.x - handle.x, pixelPoint.y - handle.y) <= handleHitThresholdPixels
+    }
+
+    /// Points the sticker's rotation grip at `point`; Shift snaps to 15° steps.
+    private func rotateAnnotation(at index: Int, toward point: CGPoint, snaps: Bool) {
+        var annotation = annotations[index]
+        let size = hitTestImageSize
+        let pixelPoint = CGPoint(x: point.x * size.width, y: point.y * size.height)
+        let center = RotatableAnnotationGeometry.center(of: dragOriginalRect, in: size)
+        let angle = RotatableAnnotationGeometry.angle(from: center, to: pixelPoint)
+        let snappedAngle = RotatableAnnotationGeometry.snapped(angle, to: .pi / 12, shouldSnap: snaps)
+        annotation.rotation = RotatableAnnotationGeometry.normalizedAngle(snappedAngle)
+        annotations[index] = annotation
+        markDirty()
+    }
+
+    /// Scales a sticker about its center so corner drags work at any rotation.
+    private func resizeRotatedAnnotation(at index: Int, from handle: AnnotationResizeHandle, to point: CGPoint) {
+        var annotation = annotations[index]
+        let size = hitTestImageSize
+        let pixelPoint = CGPoint(x: point.x * size.width, y: point.y * size.height)
+        let center = RotatableAnnotationGeometry.center(of: dragOriginalRect, in: size)
+        let originalCorners = RotatableAnnotationGeometry.corners(of: dragOriginalRect, rotation: dragOriginalRotation, in: size)
+        let handleIndex: Int
+        switch handle {
+        case .topLeft: handleIndex = 0
+        case .topRight: handleIndex = 1
+        case .bottomLeft: handleIndex = 2
+        case .bottomRight: handleIndex = 3
+        }
+        let originalCorner = originalCorners[handleIndex]
+        let originalDistance = max(hypot(originalCorner.x - center.x, originalCorner.y - center.y), 0.5)
+        let draggedDistance = hypot(pixelPoint.x - center.x, pixelPoint.y - center.y)
+        let originalSide = dragOriginalRect.width * size.width
+        let side = EmojiAnnotationMath.clampSidePixels(originalSide * (draggedDistance / originalDistance), imageSize: size)
+        let normalizedCenter = CGPoint(x: dragOriginalRect.midX, y: dragOriginalRect.midY)
+        annotation.rect = EmojiAnnotationMath.normalizedRect(centeredAt: normalizedCenter, sidePixels: side, imageSize: size)
+        annotations[index] = annotation
+        markDirty()
+    }
+
     private func resizeAnnotation(at index: Int, from handle: AnnotationResizeHandle, to point: CGPoint) {
+        if annotations[index].tool == .emoji {
+            resizeRotatedAnnotation(at: index, from: handle, to: point)
+            return
+        }
         var annotation = annotations[index]
         let originalBounds = dragOriginalRect
         let opposite = CGPoint(
@@ -1506,6 +1711,21 @@ class ScreenshotEditorViewModel: ObservableObject {
                 y: pixelRect.midY - textSize.height / 2
             )
             str.draw(at: drawPoint, withAttributes: attrs)
+
+        case .emoji:
+            let str = annotation.text as NSString
+            let font = NSFont.systemFont(ofSize: EmojiAnnotationMath.glyphFontSize(forSide: pixelRect.height))
+            let attrs: [NSAttributedString.Key: Any] = [.font: font]
+            let glyphSize = str.size(withAttributes: attrs)
+            ctx.saveGState()
+            ctx.translateBy(x: pixelRect.midX, y: pixelRect.midY)
+            // The bitmap context is y-up, so a clockwise on-screen rotation is negative here.
+            ctx.rotate(by: -annotation.rotation)
+            str.draw(
+                at: CGPoint(x: -glyphSize.width / 2, y: -glyphSize.height / 2),
+                withAttributes: attrs
+            )
+            ctx.restoreGState()
 
         case .crop, .move:
             break

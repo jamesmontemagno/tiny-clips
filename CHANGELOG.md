@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- Screenshot editor gains an **Emoji** tool. Pick from a categorized palette (plus a Recent row and a "type or paste" field for any emoji), click to drop a sticker, then use the Move tool to drag it, resize it from any corner (aspect-locked about its center), and rotate it with the new grip above the sticker — hold Shift to snap to 15° steps. A rotation slider in the inspector offers precise control, and stickers export with their rotation baked into the saved image.
+
 ## v1.7.1.0-mac - 2026-08-24
 
 ### Added

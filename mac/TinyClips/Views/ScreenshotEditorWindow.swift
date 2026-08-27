@@ -850,7 +850,49 @@ struct ScreenshotEditorView: View {
                     }
                 }
             }
+
+            if viewModel.showsEmojiPicker {
+                if let rotationDegrees = viewModel.selectedEmojiRotationDegrees() {
+                    HStack(spacing: 8) {
+                        Slider(value: emojiRotationBinding, in: -180...180, step: 1) {
+                            Text("Rotation")
+                        } onEditingChanged: { isEditing in
+                            if isEditing {
+                                viewModel.beginSelectedEmojiRotationEdit()
+                            }
+                        }
+                        .accessibilityLabel("Emoji rotation")
+                        .accessibilityValue("\(Int(rotationDegrees.rounded())) degrees")
+                        Text("\(Int(rotationDegrees.rounded()))°")
+                            .font(.caption.monospacedDigit())
+                            .frame(width: 36, alignment: .trailing)
+                        Button {
+                            viewModel.resetSelectedEmojiRotation()
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(abs(rotationDegrees) < 0.5)
+                        .help("Reset rotation")
+                        .accessibilityLabel("Reset emoji rotation")
+                    }
+                }
+
+                EmojiPickerView(
+                    selectedEmoji: viewModel.selectedEmojiValue() ?? viewModel.selectedEmoji,
+                    recentEmoji: viewModel.recentEmoji
+                ) { emoji in
+                    viewModel.chooseEmoji(emoji)
+                }
+            }
         }
+    }
+
+    private var emojiRotationBinding: Binding<Double> {
+        Binding(
+            get: { viewModel.selectedEmojiRotationDegrees() ?? 0 },
+            set: { viewModel.updateSelectedEmojiRotationDegrees($0, recordsHistory: false) }
+        )
     }
     private var backgroundControls: some View {
         VStack(alignment: .leading, spacing: 10) {
