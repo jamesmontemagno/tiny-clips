@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.7.5-windows] - 2026-08-27
+
 ### Added
 - **Emoji tool in the screenshot editor** (`E`). The inspector shows the current emoji, Recent and
   Common rows, a "type or paste" box, and a button that opens the Windows emoji panel (Win+.)
