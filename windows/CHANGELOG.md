@@ -5,7 +5,21 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.7.5-windows] - 2026-08-27
+
 ### Added
+- **Emoji tool in the screenshot editor** (`E`). The inspector shows the current emoji, Recent and
+  Common rows, a "type or paste" box, and a button that opens the Windows emoji panel (Win+.)
+  straight into that box; clicking the
+  image drops a sticker. With the Select tool a sticker can be moved, resized from any corner
+  (aspect-locked about its center), and rotated via a new grip above it — hold Shift to snap to
+  15°. A rotation slider in the inspector gives precise control, and stickers are baked into the
+  export with their rotation via Win2D color-font text. The editor's single-letter tool hotkeys,
+  Space-pan, and Delete are now suppressed while typing in an inspector text box.
+- **Rotate text, rectangles, ellipses, and pen strokes.** Selecting any of these with the Select
+  tool shows the same rotation grip (Shift snaps to 15°); text and shapes also get a Rotation
+  slider in the inspector. Rotated shapes/text resize uniformly about their center, pen strokes
+  rotate their points in place, and all rotations are baked into the exported image.
 - **What's new window.** After updating, a one-time window highlights the release's new recording
   features and links straight to Settings → Video for anyone who needs to switch back to the previous
   pipeline. It is keyed on a content revision (not a version number), so it appears once per rewrite
@@ -61,6 +75,12 @@ own `CHANGELOG.md` at the repository root.
 - The self-contained x64 package is about 50.9 MiB compressed (126.4 MiB expanded), versus
   22.4 MiB compressed (72.1 MiB expanded) for a same-source framework-dependent artifact; the
   28.5 MiB download increase removes both runtime prerequisites.
+- **Native MSIX auto-updates for direct installs.** Windows GitHub Releases now publish x64 and
+  ARM64 `.appinstaller` files and embed the matching configuration in direct MSIX packages. A
+  dedicated `windows-latest` GitHub Release provides stable update metadata URLs. Windows checks
+  periodically in the background and on launch when about 24 hours have passed; winget installs use
+  the same auto-updating direct MSIX. Microsoft Store packages remain on Store-managed updates and
+  do not include the direct update channel.
 - The shared Direct3D 11 device is created with `VIDEO_SUPPORT` (falls back without it) so Media
   Foundation's hardware encoders can bind recorder textures directly.
 - Webcam overlay placement math moved to the shared `WebcamOverlayLayout`; click-ring geometry and

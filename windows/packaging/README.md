@@ -30,13 +30,48 @@ dotnet build windows\src\TinyClips.App\TinyClips.App.csproj -c Release `
 Repeat with `Platform=ARM64`, `RuntimeIdentifier=win-arm64`, and
 `Assert-DirectPackage.ps1 -Architecture arm64`. Sign the resulting packages before distribution.
 NativeAOT requires Visual Studio's **Desktop development with C++** workload.
+Attach the signed `.msix` files to a GitHub Release (e.g. `v1.0.0`). The automated release
+workflow also generates architecture-specific `.appinstaller` files for auto-updating direct installs.
 
 ### Automated Windows release workflow
 
 `.github/workflows/windows-release.yml` runs for tags like `v1.0.1-windows` and maps them to
 MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 as NativeAOT self-contained MSIX
 packages, signs them with Azure Artifact Signing, runs WACK, computes winget hashes, generates a
-versioned winget manifest artifact, and creates the GitHub Release.
+versioned winget manifest artifact, and creates the GitHub Release. Direct release packages embed
+their generated App Installer configuration; Store packages use their separate manifest and never
+include it.
+
+#### Direct install auto-updates
+
+Each versioned Windows release publishes `TinyClips-x64.appinstaller` and
+`TinyClips-arm64.appinstaller` beside the signed MSIX files. The direct MSIX itself embeds the
+App Installer configuration, so installing it by any route—including double-click, `Add-AppxPackage`,
+or winget—opts the package into Windows App Installer updates. The `.appinstaller` is a stable
+bootstrap that lets new users install the current version without knowing its versioned asset URL.
+Windows checks in the background approximately every eight hours and also checks on launch when
+24 hours have passed since the previous launch check.
+
+The App Installer files and embedded `uap13:AutoUpdate` metadata use a dedicated rolling GitHub
+Release at `windows-latest`. Its stable App Installer URLs do not change when a new version tag is
+published:
+
+```text
+https://github.com/jamesmontemagno/tiny-clips/releases/download/windows-latest/TinyClips-x64.appinstaller
+```
+
+ARM64 uses the corresponding `TinyClips-arm64.appinstaller` filename. Each rolling App Installer
+file references the signed MSIX on its immutable, versioned Windows release URL. The workflow creates
+that versioned release before promoting the update metadata, refuses to replace a newer installer
+with an older rerun, and verifies the uploaded files. The rolling release is explicitly not marked
+as the repository's latest release, avoiding collisions with interleaved macOS releases. Its
+`windows-latest` git tag and generated source archives identify the commit that first created the
+channel; only the `.appinstaller` assets represent current channel state.
+
+Direct packages remain NativeAOT and self-contained, including the Windows App SDK runtime, so a
+clean machine needs no separate .NET or Windows App Runtime installation. `winget` and App Installer
+install the same direct MSIX, so both routes receive App Installer updates. `winget upgrade` and
+App Installer operate on the same package family; either can advance its installed version.
 
 #### Direct release runtime model
 

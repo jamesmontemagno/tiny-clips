@@ -20,6 +20,7 @@ enum EditTool: String, CaseIterable {
     case pencil = "pencil.tip"
     case text = "textformat"
     case number = "number.circle.fill"
+    case emoji = "face.smiling"
     case blur = "eye.slash"
 
     var label: String {
@@ -33,8 +34,23 @@ enum EditTool: String, CaseIterable {
         case .pencil: return "Draw"
         case .text: return "Text"
         case .number: return "Number"
+        case .emoji: return "Emoji"
         case .blur: return "Redact"
         }
+    }
+
+    /// Tools whose annotations can be turned with the rotation grip. Pencil strokes rotate their
+    /// points in place, so they don't store an angle; see `storesRotation`.
+    var supportsRotation: Bool {
+        switch self {
+        case .emoji, .text, .rectangle, .circle, .pencil: return true
+        case .move, .crop, .arrow, .line, .number, .blur: return false
+        }
+    }
+
+    /// Tools that keep a persistent `rotation` angle on the annotation (drawn via a transform).
+    var storesRotation: Bool {
+        supportsRotation && self != .pencil
     }
 }
 
@@ -55,9 +71,163 @@ struct ScreenshotAnnotation: Identifiable {
     var isUnderlined: Bool = false
     var redactionBlurPreset: RedactionBlurPreset = .medium
     var arrowStyle: ArrowStyle = .straight
+    /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
+    var rotation: CGFloat = 0
+
+    /// Whether this annotation is drawn through a rotation transform.
+    var isRotated: Bool {
+        tool.storesRotation && abs(rotation) > 0.0001
+    }
 }
 
 typealias LinePoints = (start: CGPoint, end: CGPoint)
+
+// MARK: - Emoji annotations
+
+/// Sizing constants for emoji stickers, expressed relative to the image width.
+let emojiDefaultSideRatio: CGFloat = 0.10
+let emojiMinimumSidePixels: CGFloat = 16
+let emojiMaximumSideRatio: CGFloat = 1.0
+/// Fraction of the sticker's square that the emoji glyph's point size occupies.
+let emojiGlyphFontRatio: CGFloat = 0.8
+
+/// Geometry helpers for annotations that can rotate around their center.
+///
+/// All functions take a `size` describing the rendered image (pixels for export and
+/// hit-testing, points for the SwiftUI preview). Because both spaces share the image's
+/// aspect ratio, the same math produces correct results in either one; normalized rects
+/// are converted into that space before any rotation is applied.
+enum RotatableAnnotationGeometry {
+    static func scaledRect(_ rect: CGRect, in size: CGSize) -> CGRect {
+        CGRect(
+            x: rect.origin.x * size.width,
+            y: rect.origin.y * size.height,
+            width: rect.width * size.width,
+            height: rect.height * size.height
+        )
+    }
+
+    static func center(of rect: CGRect, in size: CGSize) -> CGPoint {
+        let scaled = scaledRect(rect, in: size)
+        return CGPoint(x: scaled.midX, y: scaled.midY)
+    }
+
+    /// Rotates `point` clockwise (in a y-down coordinate space) around `center`.
+    static func rotate(_ point: CGPoint, around center: CGPoint, by angle: CGFloat) -> CGPoint {
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        let cosA = cos(angle)
+        let sinA = sin(angle)
+        return CGPoint(
+            x: center.x + dx * cosA - dy * sinA,
+            y: center.y + dx * sinA + dy * cosA
+        )
+    }
+
+    /// Corner positions (top-left, top-right, bottom-left, bottom-right) after rotation.
+    static func corners(of rect: CGRect, rotation: CGFloat, in size: CGSize) -> [CGPoint] {
+        let scaled = scaledRect(rect, in: size)
+        let center = CGPoint(x: scaled.midX, y: scaled.midY)
+        return [
+            CGPoint(x: scaled.minX, y: scaled.minY),
+            CGPoint(x: scaled.maxX, y: scaled.minY),
+            CGPoint(x: scaled.minX, y: scaled.maxY),
+            CGPoint(x: scaled.maxX, y: scaled.maxY),
+        ].map { rotate($0, around: center, by: rotation) }
+    }
+
+    /// Distance between the rotated top edge and the rotation handle.
+    static func rotationHandleOffset(forScaledHeight height: CGFloat) -> CGFloat {
+        max(18, height * 0.3)
+    }
+
+    /// Position of the rotation grip, which sits above the sticker's top edge and follows its rotation.
+    static func rotationHandle(for rect: CGRect, rotation: CGFloat, in size: CGSize) -> CGPoint {
+        let scaled = scaledRect(rect, in: size)
+        let center = CGPoint(x: scaled.midX, y: scaled.midY)
+        let unrotated = CGPoint(
+            x: center.x,
+            y: scaled.minY - rotationHandleOffset(forScaledHeight: scaled.height)
+        )
+        return rotate(unrotated, around: center, by: rotation)
+    }
+
+    /// Whether `point` (already in the `size` space) falls inside the rotated rect, grown by `padding`.
+    static func contains(_ point: CGPoint, rect: CGRect, rotation: CGFloat, in size: CGSize, padding: CGFloat = 0) -> Bool {
+        let scaled = scaledRect(rect, in: size)
+        let center = CGPoint(x: scaled.midX, y: scaled.midY)
+        let local = rotate(point, around: center, by: -rotation)
+        return scaled.insetBy(dx: -padding, dy: -padding).contains(local)
+    }
+
+    /// Rotation (clockwise radians, 0 = straight up) of the direction from `center` to `point`.
+    static func angle(from center: CGPoint, to point: CGPoint) -> CGFloat {
+        atan2(point.x - center.x, -(point.y - center.y))
+    }
+
+    /// Normalizes an angle into the `-π...π` range.
+    static func normalizedAngle(_ angle: CGFloat) -> CGFloat {
+        var result = angle.truncatingRemainder(dividingBy: 2 * .pi)
+        if result > .pi { result -= 2 * .pi }
+        if result < -.pi { result += 2 * .pi }
+        return result
+    }
+
+    /// Snaps to the nearest `increment` (e.g. 15°) when `shouldSnap` is true.
+    static func snapped(_ angle: CGFloat, to increment: CGFloat, shouldSnap: Bool) -> CGFloat {
+        guard shouldSnap, increment > 0 else { return angle }
+        return (angle / increment).rounded() * increment
+    }
+}
+
+enum EmojiAnnotationMath {
+    /// Default sticker side length in pixels for an image of `imageSize`.
+    static func defaultSidePixels(forImageSize imageSize: CGSize) -> CGFloat {
+        clampSidePixels(imageSize.width * emojiDefaultSideRatio, imageSize: imageSize)
+    }
+
+    static func clampSidePixels(_ side: CGFloat, imageSize: CGSize) -> CGFloat {
+        let maximum = max(emojiMinimumSidePixels, min(imageSize.width, imageSize.height) * emojiMaximumSideRatio)
+        return min(max(side, emojiMinimumSidePixels), maximum)
+    }
+
+    /// Normalized rect for a square sticker of `sidePixels` centered on a normalized point.
+    static func normalizedRect(centeredAt center: CGPoint, sidePixels: CGFloat, imageSize: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return .zero }
+        let normW = sidePixels / imageSize.width
+        let normH = sidePixels / imageSize.height
+        return CGRect(x: center.x - normW / 2, y: center.y - normH / 2, width: normW, height: normH)
+    }
+
+    /// Point size of the emoji glyph for a sticker rendered `sideLength` tall.
+    static func glyphFontSize(forSide sideLength: CGFloat) -> CGFloat {
+        max(1, sideLength * emojiGlyphFontRatio)
+    }
+
+    /// Returns the last user-perceived character of `text` if it is an emoji, otherwise nil.
+    static func emoji(from text: String) -> String? {
+        guard let last = text.last else { return nil }
+        let scalars = Array(last.unicodeScalars)
+        // Plain digits/symbols report `isEmoji` too, so require emoji presentation unless
+        // the cluster carries a variation selector, modifier, or ZWJ sequence.
+        let isEmoji = scalars.contains { $0.properties.isEmojiPresentation }
+            || (scalars.count > 1 && scalars.contains { $0.properties.isEmoji })
+        return isEmoji ? String(last) : nil
+    }
+}
+
+enum EmojiPalette {
+    /// Curated quick picks shown in the inspector; the system picker covers everything else.
+    static let common: [String] = [
+        "👍", "👎", "👏", "🙌", "👉", "👀",
+        "😀", "😂", "😍", "😎", "🤔", "😱",
+        "❤️", "🔥", "⭐", "✨", "💯", "🎉",
+        "✅", "❌", "⚠️", "❓", "💡", "🚀",
+    ]
+
+    static let defaultEmoji = "😀"
+    static let maximumRecent = 12
+}
 
 enum RedactionBlurPreset: String, CaseIterable, Identifiable {
     case light

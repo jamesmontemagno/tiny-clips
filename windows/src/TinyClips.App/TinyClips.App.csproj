@@ -35,6 +35,8 @@
     <TinyClipsStoreBuild Condition="'$(TinyClipsStoreBuild)' == ''">false</TinyClipsStoreBuild>
     <!-- Enables the NativeAOT, .NET self-contained, and Windows App SDK self-contained direct release profile. -->
     <TinyClipsDirectReleaseBuild Condition="'$(TinyClipsDirectReleaseBuild)' == ''">false</TinyClipsDirectReleaseBuild>
+    <!-- Enabled only by the GitHub Release workflow for direct-install MSIX packages. -->
+    <TinyClipsAutoUpdateBuild Condition="'$(TinyClipsAutoUpdateBuild)' == ''">false</TinyClipsAutoUpdateBuild>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TinyClipsStoreBuild)' == 'true'">
@@ -57,6 +59,17 @@
     <!-- Keep the Store-assigned identity separate from the direct/winget package identity. -->
     <AppxManifest Include="Package.Store.appxmanifest" />
   </ItemGroup>
+
+  <ItemGroup Condition="'$(TinyClipsAutoUpdateBuild)' == 'true' and '$(TinyClipsStoreBuild)' != 'true'">
+    <AppxManifest Include="Package.AutoUpdate.appxmanifest" />
+    <Content Include="install.appinstaller" />
+  </ItemGroup>
+
+  <Target Name="ValidateTinyClipsAutoUpdateInputs" BeforeTargets="PrepareForBuild" Condition="'$(TinyClipsAutoUpdateBuild)' == 'true'">
+    <Error Condition="'$(TinyClipsStoreBuild)' == 'true'" Text="TinyClipsAutoUpdateBuild cannot be enabled for Microsoft Store packages." />
+    <Error Condition="!Exists('Package.AutoUpdate.appxmanifest')" Text="Package.AutoUpdate.appxmanifest must be generated before an auto-update build." />
+    <Error Condition="!Exists('install.appinstaller')" Text="install.appinstaller must be generated before an auto-update build." />
+  </Target>
 
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />

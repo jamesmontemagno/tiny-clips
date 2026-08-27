@@ -218,6 +218,13 @@ public sealed partial class ScreenshotEditorWindow : Window
             return;
         }
 
+        // Typing in an inspector text field (e.g. the custom emoji box) must not trigger
+        // single-letter tool hotkeys, Space panning, or Delete-selected-annotation.
+        if (e.OriginalSource is Microsoft.UI.Xaml.Controls.TextBox)
+        {
+            return;
+        }
+
         if (!ctrl && e.Key == Windows.System.VirtualKey.Space)
         {
             Canvas.SetSpacePressed(true);
@@ -243,6 +250,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             Windows.System.VirtualKey.D => EditTool.Pen,
             Windows.System.VirtualKey.T => EditTool.Text,
             Windows.System.VirtualKey.N => EditTool.Counter,
+            Windows.System.VirtualKey.E => EditTool.Emoji,
             Windows.System.VirtualKey.B => EditTool.Redact,
             _ => (EditTool?)null,
         };

@@ -393,6 +393,7 @@ struct ScreenshotEditorView: View {
     @State private var zoomScale: CGFloat = 1
     @State private var panOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
+    @State private var isEmojiTextEntryFocused = false
 
     init(
         imageURL: URL,
@@ -554,7 +555,7 @@ struct ScreenshotEditorView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 160, ideal: 220, max: 320)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 280, max: 380)
         } detail: {
             VStack(spacing: 0) {
                 GeometryReader { geo in
@@ -567,7 +568,7 @@ struct ScreenshotEditorView: View {
                         )
 
                         ScreenshotEditorViewportEventMonitor(
-                            isEnabled: !viewModel.isEditingText,
+                            isEnabled: !isTextInputActive,
                             onZoom: { multiplier, focalPoint in
                                 setZoom(zoomScale * multiplier, focalPoint: focalPoint)
                             },
@@ -621,9 +622,9 @@ struct ScreenshotEditorView: View {
                 canRedo: viewModel.canRedo,
                 hasAnnotations: viewModel.hasAnnotations,
                 canApplyCrop: viewModel.canApplyCrop,
-                isEditingText: viewModel.isEditingText,
-                canZoomIn: !viewModel.isEditingText && zoomScale < ScreenshotEditorZoomMath.maximumScale,
-                canZoomOut: !viewModel.isEditingText && zoomScale > ScreenshotEditorZoomMath.minimumScale
+                isEditingText: isTextInputActive,
+                canZoomIn: !isTextInputActive && zoomScale < ScreenshotEditorZoomMath.maximumScale,
+                canZoomOut: !isTextInputActive && zoomScale > ScreenshotEditorZoomMath.minimumScale
             )
         )
         .onExitCommand {
@@ -851,7 +852,50 @@ struct ScreenshotEditorView: View {
                     }
                 }
             }
+
+            if viewModel.showsRotationControl, let rotationDegrees = viewModel.selectedAnnotationRotationDegrees() {
+                HStack(spacing: 8) {
+                    Slider(value: rotationBinding, in: -180...180, step: 1) {
+                        Text("Rotation")
+                    } onEditingChanged: { isEditing in
+                        if isEditing {
+                            viewModel.beginSelectedAnnotationRotationEdit()
+                        }
+                    }
+                    .accessibilityLabel("Rotation")
+                    .accessibilityValue("\(Int(rotationDegrees.rounded())) degrees")
+                    Text("\(Int(rotationDegrees.rounded()))°")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 36, alignment: .trailing)
+                    Button {
+                        viewModel.resetSelectedAnnotationRotation()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(abs(rotationDegrees) < 0.5)
+                    .help("Reset rotation")
+                    .accessibilityLabel("Reset rotation")
+                }
+            }
+
+            if viewModel.showsEmojiPicker {
+                EmojiPickerView(
+                    selectedEmoji: viewModel.selectedEmojiValue() ?? viewModel.selectedEmoji,
+                    recentEmoji: viewModel.recentEmoji,
+                    isTextEntryFocused: $isEmojiTextEntryFocused
+                ) { emoji in
+                    viewModel.chooseEmoji(emoji)
+                }
+            }
         }
+    }
+
+    private var rotationBinding: Binding<Double> {
+        Binding(
+            get: { viewModel.selectedAnnotationRotationDegrees() ?? 0 },
+            set: { viewModel.updateSelectedAnnotationRotationDegrees($0, recordsHistory: false) }
+        )
     }
     private var backgroundControls: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1084,7 +1128,7 @@ struct ScreenshotEditorView: View {
     }
 
     private func zoomIn() {
-        guard !viewModel.isEditingText else { return }
+        guard !isTextInputActive else { return }
         setZoom(ScreenshotEditorZoomMath.steppedScale(from: zoomScale, direction: 1))
     }
 
@@ -1094,8 +1138,12 @@ struct ScreenshotEditorView: View {
     }
 
     private func zoomOut() {
-        guard !viewModel.isEditingText else { return }
+        guard !isTextInputActive else { return }
         setZoom(ScreenshotEditorZoomMath.steppedScale(from: zoomScale, direction: -1))
+    }
+
+    private var isTextInputActive: Bool {
+        viewModel.isEditingText || isEmojiTextEntryFocused
     }
 
     private func fitZoom() {

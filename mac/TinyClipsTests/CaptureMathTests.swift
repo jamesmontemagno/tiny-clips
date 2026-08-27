@@ -312,6 +312,82 @@ final class CaptureMathTests: XCTestCase {
         )
     }
 
+    func testEmojiAnnotationRectIsSquareInPixelsAndCentered() {
+        let imageSize = CGSize(width: 2_000, height: 1_000)
+        let side = EmojiAnnotationMath.defaultSidePixels(forImageSize: imageSize)
+        XCTAssertEqual(side, 200)
+
+        let rect = EmojiAnnotationMath.normalizedRect(
+            centeredAt: CGPoint(x: 0.5, y: 0.5),
+            sidePixels: side,
+            imageSize: imageSize
+        )
+        XCTAssertEqual(rect.width * imageSize.width, 200, accuracy: 0.001)
+        XCTAssertEqual(rect.height * imageSize.height, 200, accuracy: 0.001)
+        XCTAssertEqual(rect.midX, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(rect.midY, 0.5, accuracy: 0.0001)
+
+        XCTAssertEqual(EmojiAnnotationMath.clampSidePixels(2, imageSize: imageSize), emojiMinimumSidePixels)
+        XCTAssertEqual(EmojiAnnotationMath.clampSidePixels(5_000, imageSize: imageSize), 1_000)
+    }
+
+    func testRotatableGeometryRotatesCornersAndHandleClockwise() {
+        let size = CGSize(width: 1_000, height: 1_000)
+        let rect = CGRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2) // 200px square centered at (500, 500)
+
+        let quarterTurn = RotatableAnnotationGeometry.corners(of: rect, rotation: .pi / 2, in: size)
+        // Top-left (400, 400) rotates clockwise to the top-right position (600, 400).
+        XCTAssertEqual(quarterTurn[0].x, 600, accuracy: 0.001)
+        XCTAssertEqual(quarterTurn[0].y, 400, accuracy: 0.001)
+
+        let handle = RotatableAnnotationGeometry.rotationHandle(for: rect, rotation: .pi / 2, in: size)
+        let offset = RotatableAnnotationGeometry.rotationHandleOffset(forScaledHeight: 200)
+        // Grip starts above the top edge and ends up to the right after a clockwise quarter turn.
+        XCTAssertEqual(handle.x, 500 + 100 + offset, accuracy: 0.001)
+        XCTAssertEqual(handle.y, 500, accuracy: 0.001)
+
+        XCTAssertEqual(
+            RotatableAnnotationGeometry.angle(from: CGPoint(x: 500, y: 500), to: CGPoint(x: 900, y: 500)),
+            .pi / 2,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            RotatableAnnotationGeometry.angle(from: CGPoint(x: 500, y: 500), to: CGPoint(x: 500, y: 100)),
+            0,
+            accuracy: 0.0001
+        )
+    }
+
+    func testRotatableGeometryHitTestFollowsRotation() {
+        let size = CGSize(width: 1_000, height: 500)
+        // 100×100 px square centered at (500, 250).
+        let rect = CGRect(x: 0.45, y: 0.4, width: 0.1, height: 0.2)
+
+        // Unrotated: a point 65px to the right of center is outside the 50px half-width.
+        XCTAssertFalse(RotatableAnnotationGeometry.contains(CGPoint(x: 565, y: 250), rect: rect, rotation: 0, in: size))
+        // Rotated 45°, the corner reaches ~70px out along the diagonal, so the same point is inside.
+        XCTAssertTrue(RotatableAnnotationGeometry.contains(CGPoint(x: 565, y: 250), rect: rect, rotation: .pi / 4, in: size))
+        // Padding extends the hit area.
+        XCTAssertTrue(RotatableAnnotationGeometry.contains(CGPoint(x: 565, y: 250), rect: rect, rotation: 0, in: size, padding: 20))
+    }
+
+    func testRotatableGeometryNormalizesAndSnapsAngles() {
+        XCTAssertEqual(RotatableAnnotationGeometry.normalizedAngle(3 * .pi), .pi, accuracy: 0.0001)
+        XCTAssertEqual(RotatableAnnotationGeometry.normalizedAngle(-3 * .pi), -.pi, accuracy: 0.0001)
+        XCTAssertEqual(RotatableAnnotationGeometry.snapped(0.30, to: .pi / 12, shouldSnap: true), .pi / 12, accuracy: 0.0001)
+        XCTAssertEqual(RotatableAnnotationGeometry.snapped(0.30, to: .pi / 12, shouldSnap: false), 0.30, accuracy: 0.0001)
+    }
+
+    func testEmojiExtractionAcceptsEmojiAndRejectsPlainText() {
+        XCTAssertEqual(EmojiAnnotationMath.emoji(from: "😀"), "😀")
+        XCTAssertEqual(EmojiAnnotationMath.emoji(from: "abc🚀"), "🚀")
+        XCTAssertEqual(EmojiAnnotationMath.emoji(from: "❤️"), "❤️")
+        XCTAssertEqual(EmojiAnnotationMath.emoji(from: "👍🏽"), "👍🏽")
+        XCTAssertNil(EmojiAnnotationMath.emoji(from: "7"))
+        XCTAssertNil(EmojiAnnotationMath.emoji(from: "hello"))
+        XCTAssertNil(EmojiAnnotationMath.emoji(from: ""))
+    }
+
     func testExportFrameLayoutSnapsToWholePixels() {
         // Fractional padding and preset ratios must not produce fractional frame
         // sizes or image origins when snapping to pixels: sub-pixel slivers at the
