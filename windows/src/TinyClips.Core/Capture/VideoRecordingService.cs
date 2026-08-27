@@ -33,7 +33,14 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private const uint AvcHighProfile = 100;
 
     private ContinuousCaptureSession? _capture;
+    private GpuCaptureSession? _gpuCapture;
+    private GpuOverlayCompositor? _gpuOverlay;
     private Channel<TimestampedFrame>? _channel;
+    private Channel<GpuFrame>? _gpuChannel;
+    private MfSinkWriterEncoder? _sinkWriter;
+    private Thread? _audioMuxThread;
+    private volatile bool _audioMuxStop;
+    private RecordingPerformanceMonitor? _perf;
     private Task? _transcodeTask;
     private FileStream? _fileStream;
     private MediaStreamSource? _mediaStreamSource;
@@ -106,6 +113,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
     public event EventHandler<string?>? RecordingCompleted;
 
     public event EventHandler<string>? WebcamCaptureFailed;
+
+    public RecordingPerformanceReport? LastPerformanceReport { get; private set; }
+
+    /// <summary>"gpu" or "cpu" for the pipeline actually in use (after any fallback); null when idle.</summary>
+    public string? ActivePipeline => _perf?.Pipeline;
 
     public async Task PrepareAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default)
     {
@@ -216,30 +228,36 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
         _frameDuration = TimeSpan.FromSeconds(1.0 / fps);
+        Interlocked.Exchange(ref _videoFramesDropped, 0);
 
-        // DropWrite makes TryWrite report success even when the item is discarded, so drops are
-        // counted through the item-dropped callback rather than the TryWrite result.
-        _channel = Channel.CreateBounded<TimestampedFrame>(
-            new BoundedChannelOptions(fps * 4)
-            {
-                FullMode = BoundedChannelFullMode.DropWrite,
-                SingleReader = true,
-                SingleWriter = true,
-            },
-            _ => Interlocked.Increment(ref _videoFramesDropped));
-
-        _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true);
-        _capture.FrameReady += OnFrameReady;
-        _capture.Start();
-        CaptureFlowTrace.Mark("video: capture session started");
+        int width;
+        int height;
+        if (_settings.UseGpuRecordingPipeline && TryStartGpuCapture(captureTarget, region, fps, out width, out height))
+        {
+            CaptureFlowTrace.Mark("video: GPU capture session started");
+        }
+        else
+        {
+            _perf = new RecordingPerformanceMonitor("cpu", 0, 0, fps);
+            _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true, _perf);
+            _capture.FrameReady += OnFrameReady;
+            _capture.Start();
+            width = _capture.OutputWidth;
+            height = _capture.OutputHeight;
+            _perf.Width = width;
+            _perf.Height = height;
+            CaptureFlowTrace.Mark("video: capture session started");
+        }
 
         StartMouseClickOverlay(captureTarget, region);
         _branding = _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
+        if (_branding is not null && _gpuOverlay is not null)
+        {
+            _gpuOverlay.EnableBranding(_branding);
+        }
+
         await StartWebcamOverlayAsync(cancellationToken).ConfigureAwait(false);
         CaptureFlowTrace.Mark("video: webcam overlay started");
-
-        var width = _capture.OutputWidth;
-        var height = _capture.OutputHeight;
 
         _outputPath = _storage.GenerateFilePath(CaptureType.Video);
         var directory = Path.GetDirectoryName(_outputPath);
@@ -248,9 +266,6 @@ public sealed class VideoRecordingService : IVideoRecordingService
             Directory.CreateDirectory(directory);
         }
 
-        _fileStream = new FileStream(_outputPath, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
-        var randomAccessStream = _fileStream.AsRandomAccessStream();
-
         _audioEnding = false;
         _audioDraining = false;
         _audioFramesRead = 0;
@@ -258,13 +273,65 @@ public sealed class VideoRecordingService : IVideoRecordingService
         _audioNonSilentChunks = 0;
         _audioStarvedChunks = 0;
         _drainFramesServed = 0;
-        Interlocked.Exchange(ref _videoFramesDropped, 0);
         _loggedFirstAudioChunk = false;
         StartAudioCapture();
         CaptureFlowTrace.Mark("video: audio capture started");
 
         var includeAudio = _hasAudio;
-        var profile = CreateEncodingProfile(width, height, fps, includeAudio);
+        var codec = _settings.VideoCodec;
+
+        if (_settings.VideoEncoderBackend == VideoEncoderBackend.SinkWriter &&
+            TryCreateSinkWriter(width, height, fps, codec, includeAudio))
+        {
+            CaptureFlowTrace.Mark("video: sink writer prepared");
+            _prepared = new PreparedPipeline(captureTarget, region, null);
+            return;
+        }
+
+        await PrepareTranscoderAsync(captureTarget, region, width, height, fps, codec, includeAudio, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sets up the <c>MediaTranscoder</c> + <c>MediaStreamSource</c> encoder (the original pull-model
+    /// backend) and the plumbing that feeds it: a bounded channel of CPU frames, or a texture pool +
+    /// channel of GPU frames.
+    /// </summary>
+    private async Task PrepareTranscoderAsync(
+        CaptureTarget captureTarget,
+        PixelRect? region,
+        int width,
+        int height,
+        int fps,
+        VideoCodec codec,
+        bool includeAudio,
+        CancellationToken cancellationToken)
+    {
+        if (_gpuCapture is { } gpu)
+        {
+            AttachTranscoderGpuPlumbing(gpu, fps);
+        }
+        else
+        {
+            // DropWrite makes TryWrite report success even when the item is discarded, so drops are
+            // counted through the item-dropped callback rather than the TryWrite result.
+            _channel = Channel.CreateBounded<TimestampedFrame>(
+                new BoundedChannelOptions(fps * 4)
+                {
+                    FullMode = BoundedChannelFullMode.DropWrite,
+                    SingleReader = true,
+                    SingleWriter = true,
+                },
+                _ =>
+                {
+                    Interlocked.Increment(ref _videoFramesDropped);
+                    _perf?.FrameDropped();
+                });
+        }
+
+        _fileStream = new FileStream(_outputPath!, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+        var randomAccessStream = _fileStream.AsRandomAccessStream();
+
+        var profile = CreateEncodingProfile(width, height, fps, includeAudio, codec);
         var mediaStreamSource = CreateMediaStreamSource(width, height, fps);
 
         var transcoder = new MediaTranscoder { HardwareAccelerationEnabled = true };
@@ -310,9 +377,72 @@ public sealed class VideoRecordingService : IVideoRecordingService
             throw new InvalidOperationException($"Cannot encode video: {prepare.FailureReason}.");
         }
 
-        _encoderPath = usedFallbackProfile ? "software H.264 Baseline (fallback)" : "H.264 High (hardware-accelerated)";
+        _encoderPath = usedFallbackProfile
+            ? "software H.264 Baseline (fallback)"
+            : $"{(codec == VideoCodec.Hevc ? "HEVC" : "H.264 High")} via MediaTranscoder (hardware-accelerated)";
+        if (_perf is not null)
+        {
+            _perf.EncoderPath = _encoderPath;
+        }
+
         CaptureFlowTrace.Mark("video: transcoder prepared");
         _prepared = new PreparedPipeline(captureTarget, region, prepare);
+    }
+
+    /// <summary>
+    /// Creates the <c>IMFSinkWriter</c> backend. GPU frames come from Media Foundation's own sample
+    /// allocator (auto-recycled), CPU frames are pushed as memory buffers, and audio is pushed by
+    /// <see cref="AudioMuxLoop"/>. Returns false (after cleanup) to fall back to the transcoder.
+    /// </summary>
+    private bool TryCreateSinkWriter(int width, int height, int fps, VideoCodec codec, bool includeAudio)
+    {
+        MfSinkWriterEncoder? encoder = null;
+        try
+        {
+            var device = _gpuCapture?.D3DDevice ?? WgcInterop.GetSharedDevice().D3D;
+            var bitrate = (uint)Math.Clamp((long)width * height * fps / 10, 2_000_000, 24_000_000);
+            if (codec == VideoCodec.Hevc)
+            {
+                bitrate = (uint)(bitrate * 0.6);
+            }
+
+            encoder = MfSinkWriterEncoder.Create(
+                _outputPath!,
+                device,
+                width,
+                height,
+                fps,
+                bitrate,
+                codec,
+                includeAudio,
+                AudioCaptureService.SampleRate,
+                AudioCaptureService.Channels,
+                AudioCaptureService.BitsPerSample,
+                192_000);
+
+            if (_gpuCapture is { } gpu)
+            {
+                gpu.AttachAllocator(encoder.CreateFrameAllocator(4, GpuPoolMaxCapacity(fps)));
+            }
+
+            _sinkWriter = encoder;
+            _encoderPath = encoder.Description;
+            if (_perf is not null)
+            {
+                _perf.EncoderPath = _encoderPath;
+            }
+
+            WebcamDiagnostics.Log($"Sink writer encoder ready: {encoder.Description}, audio={includeAudio}.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            WebcamDiagnostics.Log($"Sink writer encoder unavailable (0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}); falling back to MediaTranscoder.");
+            encoder?.Dispose();
+            _sinkWriter = null;
+            DeleteOutputFileIfPresent(_outputPath);
+            return false;
+        }
     }
 
     private async Task BeginPreparedAsync(double? timeLimitMinutesOverride, CancellationToken cancellationToken)
@@ -331,11 +461,21 @@ public sealed class VideoRecordingService : IVideoRecordingService
         _recordingTimeline = RecordingTimeline.StartNow();
         _webcamPlacements = new WebcamPlacementTimeline(_settings.WebcamCornerPosition);
         _audio?.BeginTimeline(_recordingTimeline);
-        _capture!.BeginEmitting(_recordingTimeline);
+        _perf?.Start();
+        _capture?.BeginEmitting(_recordingTimeline);
+        _gpuCapture?.BeginEmitting(_recordingTimeline);
 
-        _transcodeTask = prepared.Transcode.TranscodeAsync().AsTask();
+        if (prepared.Transcode is { } transcode)
+        {
+            _transcodeTask = transcode.TranscodeAsync().AsTask();
+        }
+        else if (_sinkWriter is not null && _hasAudio)
+        {
+            StartAudioMux();
+        }
+
         IsRecording = true;
-        CaptureFlowTrace.Mark("video: recording started (emitting)");
+        CaptureFlowTrace.Mark($"video: recording started (emitting, pipeline={_perf?.Pipeline ?? "cpu"}, encoder={_encoderPath})");
 
         var limitMinutes = timeLimitMinutesOverride ?? _settings.VideoRecordingTimeLimitMinutes;
         if (limitMinutes > 0)
@@ -348,7 +488,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
     }
 
-    private sealed record PreparedPipeline(CaptureTarget Target, PixelRect? Region, PrepareTranscodeResult Transcode)
+    private sealed record PreparedPipeline(CaptureTarget Target, PixelRect? Region, PrepareTranscodeResult? Transcode)
     {
         public bool Matches(CaptureTarget target, PixelRect? region) =>
             Target.HMonitor == target.HMonitor && Target.Hwnd == target.Hwnd && Region == region;
@@ -361,39 +501,297 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
+        var compose = RecordingPerformanceMonitor.Begin();
+        var clicks = RecordingPerformanceMonitor.Begin();
         DrawClickOverlay(frame, pts);
-        _branding?.Draw(frame.BgraPixels, frame.Width, frame.Height);
+        _perf?.End(RecordingStage.OverlayClicks, clicks);
+
+        if (_branding is not null)
+        {
+            var branding = RecordingPerformanceMonitor.Begin();
+            _branding.Draw(frame.BgraPixels, frame.Width, frame.Height);
+            _perf?.End(RecordingStage.OverlayBranding, branding);
+        }
 
         if (_webcamOverlay is not null)
         {
-            if (_webcamCapture.TryGetLatestFrame(out WebcamFrame? webcamFrame) &&
-                webcamFrame is not null &&
-                IsWebcamFrameReady(webcamFrame, pts))
-            {
-                _lastTimelineWebcamFrame = webcamFrame;
-            }
-
-            if (_lastTimelineWebcamFrame is not null)
+            var webcam = RecordingPerformanceMonitor.Begin();
+            var webcamFrame = ResolveWebcamFrame(pts);
+            if (webcamFrame is not null)
             {
                 var corner = _webcamPlacements?.CornerAt(pts) ?? _settings.WebcamCornerPosition;
-                _webcamOverlay.Draw(frame.BgraPixels, frame.Width, frame.Height, _lastTimelineWebcamFrame, corner);
-                Interlocked.Increment(ref _webcamCompositedFrames);
+                _webcamOverlay.Draw(frame.BgraPixels, frame.Width, frame.Height, webcamFrame, corner);
             }
-            else
-            {
-                Interlocked.Increment(ref _webcamNoFrameFrames);
-            }
+
+            _perf?.End(RecordingStage.OverlayWebcam, webcam);
         }
         else if (_settings.WebcamEnabled)
         {
             Interlocked.Increment(ref _webcamOverlayNullFrames);
         }
 
+        _perf?.End(RecordingStage.Composite, compose);
+
         // Encoder back-pressure: the frame is dropped (counted by the channel's item-dropped
         // callback) but PTS stays wall-clock, so the video simply has a lower effective frame rate
         // here and never slides against audio.
-        _channel?.Writer.TryWrite(new TimestampedFrame(CreateBottomUpVideoBuffer(frame), pts));
+        var prepare = RecordingPerformanceMonitor.Begin();
+        var buffer = CreateBottomUpVideoBuffer(frame);
+        if (_sinkWriter is { } sink)
+        {
+            // Push model: the sink writer throttles internally if the encoder falls behind.
+            try
+            {
+                sink.WriteVideo(buffer, pts, _frameDuration);
+                _perf?.FrameEncoded();
+            }
+            catch (Exception ex)
+            {
+                LogEncoderWriteFailure(ex);
+            }
+
+            _perf?.End(RecordingStage.SamplePrepare, prepare);
+            return;
+        }
+
+        _perf?.End(RecordingStage.SamplePrepare, prepare);
+        _channel?.Writer.TryWrite(new TimestampedFrame(buffer, pts));
     }
+
+    private int _encoderWriteFailuresLogged;
+
+    private void LogEncoderWriteFailure(Exception ex)
+    {
+        if (Interlocked.Increment(ref _encoderWriteFailuresLogged) <= 3)
+        {
+            WebcamDiagnostics.Log($"Sink writer WriteSample failed: 0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Picks the webcam frame to composite at <paramref name="pts"/> (shared by both pipelines) and
+    /// maintains the webcam diagnostics counters.
+    /// </summary>
+    private WebcamFrame? ResolveWebcamFrame(TimeSpan pts)
+    {
+        if (_webcamCapture.TryGetLatestFrame(out WebcamFrame? webcamFrame) &&
+            webcamFrame is not null &&
+            IsWebcamFrameReady(webcamFrame, pts))
+        {
+            _lastTimelineWebcamFrame = webcamFrame;
+        }
+
+        if (_lastTimelineWebcamFrame is not null)
+        {
+            Interlocked.Increment(ref _webcamCompositedFrames);
+            return _lastTimelineWebcamFrame;
+        }
+
+        Interlocked.Increment(ref _webcamNoFrameFrames);
+        return null;
+    }
+
+    /// <summary>
+    /// Starts the GPU-resident capture session and its Direct2D overlay compositor. Returns false
+    /// (after cleaning up) when anything in the GPU path is unavailable so the caller can fall back
+    /// to the CPU pipeline — the recording must never fail just because the fast path did.
+    /// </summary>
+    private bool TryStartGpuCapture(CaptureTarget captureTarget, PixelRect? region, int fps, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+        var perf = new RecordingPerformanceMonitor("gpu", 0, 0, fps);
+        GpuCaptureSession? session = null;
+        try
+        {
+            session = new GpuCaptureSession(captureTarget, region, fps, includeCursor: true, perf);
+            session.Start();
+            var overlay = new GpuOverlayCompositor(session.D3DDevice);
+
+            session.Compose += OnGpuCompose;
+            session.FrameReady += OnGpuFrameReady;
+            session.ScaledBlit = request =>
+            {
+                var compositor = _gpuOverlay;
+                if (compositor is null)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    return compositor.BlitLetterboxed(request);
+                }
+                catch (Exception ex)
+                {
+                    WebcamDiagnostics.Log($"GPU letterbox blit failed (0x{(uint)ex.HResult:X8}); cropping instead.");
+                    return false;
+                }
+            };
+
+            width = session.OutputWidth;
+            height = session.OutputHeight;
+            perf.Width = width;
+            perf.Height = height;
+            _gpuCapture = session;
+            _gpuOverlay = overlay;
+            _perf = perf;
+            WebcamDiagnostics.Log($"GPU recording pipeline active: {width}x{height}@{fps}.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            WebcamDiagnostics.Log($"GPU recording pipeline unavailable (0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}); falling back to CPU pipeline.");
+            session?.Dispose();
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Transcoder backend on the GPU pipeline: a hand-rolled texture pool (frames return on
+    /// <c>MediaStreamSample.Processed</c>) and a bounded channel the <c>SampleRequested</c> pull loop drains.
+    /// </summary>
+    private void AttachTranscoderGpuPlumbing(GpuCaptureSession session, int fps)
+    {
+        var max = GpuPoolMaxCapacity(fps);
+        session.AttachAllocator(new GpuFrameTexturePool(session.D3DDevice, session.OutputWidth, session.OutputHeight, 4, max));
+
+        // The channel can hold as many frames as the pool; when the encoder falls behind,
+        // the pool runs dry first and the pump drops at the source (no texture churn).
+        var perf = _perf;
+        _gpuChannel = Channel.CreateBounded<GpuFrame>(
+            new BoundedChannelOptions(max)
+            {
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true,
+                SingleWriter = true,
+            },
+            dropped =>
+            {
+                dropped.Release();
+                Interlocked.Increment(ref _videoFramesDropped);
+                perf?.FrameDropped();
+            });
+        WebcamDiagnostics.Log($"GPU pipeline feeding MediaTranscoder; texture pool up to {max}.");
+    }
+
+    private void OnGpuCompose(GpuFrame frame)
+    {
+        var overlay = _gpuOverlay;
+        if (overlay is null)
+        {
+            return;
+        }
+
+        var clicks = _clickMonitor?.GetClicks();
+        var drawClicks = clicks is { Count: > 0 };
+        var webcamFrame = _webcamOverlay is not null ? ResolveWebcamFrame(frame.Pts) : null;
+        if (_webcamOverlay is null && _settings.WebcamEnabled)
+        {
+            Interlocked.Increment(ref _webcamOverlayNullFrames);
+        }
+
+        if (!drawClicks && _branding is null && webcamFrame is null)
+        {
+            return;
+        }
+
+        try
+        {
+            overlay.BeginFrame(frame.Texture);
+            try
+            {
+                if (drawClicks)
+                {
+                    var t = RecordingPerformanceMonitor.Begin();
+                    overlay.DrawClicks(frame.Pts.TotalSeconds, clicks!, _clickOriginX, _clickOriginY, _clickStyle);
+                    _perf?.End(RecordingStage.OverlayClicks, t);
+                }
+
+                if (_branding is not null)
+                {
+                    var t = RecordingPerformanceMonitor.Begin();
+                    overlay.DrawBranding(frame.Width, frame.Height);
+                    _perf?.End(RecordingStage.OverlayBranding, t);
+                }
+
+                if (webcamFrame is not null)
+                {
+                    var t = RecordingPerformanceMonitor.Begin();
+                    var corner = _webcamPlacements?.CornerAt(frame.Pts) ?? _settings.WebcamCornerPosition;
+                    overlay.DrawWebcam(
+                        frame.Width,
+                        frame.Height,
+                        webcamFrame,
+                        corner,
+                        _settings.WebcamSizePreset,
+                        _settings.WebcamShape,
+                        _settings.WebcamCornerRadius);
+                    _perf?.End(RecordingStage.OverlayWebcam, t);
+                }
+            }
+            finally
+            {
+                overlay.EndFrame();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Typically D2DERR_RECREATE_TARGET after a device reset. Drop overlays for the rest of
+            // this recording rather than losing the screen content.
+            WebcamDiagnostics.Log($"GPU overlay compositing failed (0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}); overlays disabled for the rest of this recording.");
+            _gpuOverlay = null;
+            overlay.Dispose();
+        }
+    }
+
+    private void OnGpuFrameReady(GpuFrame frame)
+    {
+        if (IsPaused)
+        {
+            frame.Release();
+            return;
+        }
+
+        if (_sinkWriter is { } sink)
+        {
+            // Push model: write on the pump thread, then drop our reference — Media Foundation
+            // recycles the texture into its allocator once the encoder has consumed it.
+            var write = RecordingPerformanceMonitor.Begin();
+            try
+            {
+                sink.WriteVideo(frame, _frameDuration);
+                _perf?.FrameEncoded();
+            }
+            catch (Exception ex)
+            {
+                LogEncoderWriteFailure(ex);
+            }
+            finally
+            {
+                _perf?.End(RecordingStage.SamplePrepare, write);
+                frame.Release();
+            }
+
+            return;
+        }
+
+        // Transcoder path: queue for the SampleRequested pull loop, which stamps HandedOffTimestamp
+        // when it actually hands the sample to the encoder.
+        var channel = _gpuChannel;
+        if (channel is null || !channel.Writer.TryWrite(frame))
+        {
+            // Writer completed (stopping) — DropWrite handles the "full" case via the callback.
+            frame.Release();
+        }
+    }
+
+    /// <summary>
+    /// Upper bound on encoder-ready textures. Hardware encoders hold roughly 200–400 ms of input
+    /// for look-ahead, so cover half a second at the target rate (bounded to keep 4K VRAM under
+    /// ~1 GB: 30 × 33 MB).
+    /// </summary>
+    private static int GpuPoolMaxCapacity(int fps) => Math.Clamp(fps / 2, 8, 30);
 
     private void StartMouseClickOverlay(CaptureTarget target, PixelRect? region)
     {
@@ -461,26 +859,35 @@ public sealed class VideoRecordingService : IVideoRecordingService
         int height,
         int fps,
         bool includeAudio,
+        VideoCodec codec,
         bool useBaselineProfile = false)
     {
-        var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.HD1080p);
+        // The Baseline retry is an H.264-only recovery path, so it overrides an HEVC request.
+        var useHevc = codec == VideoCodec.Hevc && !useBaselineProfile;
+        var profile = useHevc
+            ? MediaEncodingProfile.CreateHevc(VideoEncodingQuality.HD1080p)
+            : MediaEncodingProfile.CreateMp4(VideoEncodingQuality.HD1080p);
         profile.Container.Subtype = MediaEncodingSubtypes.Mpeg4;
         profile.Audio = includeAudio
             ? AudioEncodingProperties.CreateAac(AudioCaptureService.SampleRate, AudioCaptureService.Channels, 192_000)
             : null;
-        profile.Video.Subtype = MediaEncodingSubtypes.H264;
+        profile.Video.Subtype = useHevc ? MediaEncodingSubtypes.Hevc : MediaEncodingSubtypes.H264;
         profile.Video.Width = (uint)width;
         profile.Video.Height = (uint)height;
         profile.Video.FrameRate.Numerator = (uint)fps;
         profile.Video.FrameRate.Denominator = 1;
         profile.Video.PixelAspectRatio.Numerator = 1;
         profile.Video.PixelAspectRatio.Denominator = 1;
-        profile.Video.Bitrate = (uint)Math.Clamp((long)width * height * fps / 10, 2_000_000, 24_000_000);
+        var bitrate = (uint)Math.Clamp((long)width * height * fps / 10, 2_000_000, 24_000_000);
+        profile.Video.Bitrate = useHevc ? (uint)(bitrate * 0.6) : bitrate;
 
         // High is the normal recording profile. Baseline is reserved for the recovery path when
-        // the system encoder cannot initialize with High.
-        profile.Video.Properties[Mpeg2ProfileAttribute] =
-            useBaselineProfile ? AvcBaselineProfile : AvcHighProfile;
+        // the system encoder cannot initialize with High. HEVC keeps the profile's own default.
+        if (!useHevc)
+        {
+            profile.Video.Properties[Mpeg2ProfileAttribute] =
+                useBaselineProfile ? AvcBaselineProfile : AvcHighProfile;
+        }
 
         return profile;
     }
@@ -565,6 +972,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             height,
             fps,
             includeAudio,
+            VideoCodec.H264,
             useBaselineProfile: true);
         var fallbackSource = CreateMediaStreamSource(width, height, fps);
         var fallbackTranscoder = new MediaTranscoder { HardwareAccelerationEnabled = false };
@@ -588,9 +996,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
         await StopWebcamOverlayAsync().ConfigureAwait(false);
         _capture?.Dispose();
         _capture = null;
+        DisposeGpuPipeline();
+        StopAudioMux();
+        DisposeSinkWriter();
         DisposeAudio();
         _channel?.Writer.TryComplete();
         _channel = null;
+        _perf = null;
         _transcodeTask = null;
         _fileStream?.Dispose();
         _fileStream = null;
@@ -615,6 +1027,56 @@ public sealed class VideoRecordingService : IVideoRecordingService
         WebcamDiagnostics.EndRecording();
     }
 
+    private void StopAudioMux()
+    {
+        var thread = _audioMuxThread;
+        _audioMuxThread = null;
+        if (thread is null)
+        {
+            return;
+        }
+
+        _audioMuxStop = true;
+        if (thread.IsAlive && Thread.CurrentThread != thread)
+        {
+            thread.Join(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private void DisposeSinkWriter()
+    {
+        var sink = _sinkWriter;
+        _sinkWriter = null;
+        sink?.Dispose();
+    }
+
+    private void DisposeGpuPipeline()
+    {
+        var gpuChannel = _gpuChannel;
+        _gpuChannel = null;
+        gpuChannel?.Writer.TryComplete();
+        if (gpuChannel is not null)
+        {
+            // Frames still queued never reached the encoder; hand their textures back before the
+            // pool is torn down so nothing is double-released later.
+            while (gpuChannel.Reader.TryRead(out var frame))
+            {
+                frame.Release();
+            }
+        }
+
+        if (_gpuCapture is { } session)
+        {
+            session.Compose -= OnGpuCompose;
+            session.FrameReady -= OnGpuFrameReady;
+            session.Dispose();
+            _gpuCapture = null;
+        }
+
+        _gpuOverlay?.Dispose();
+        _gpuOverlay = null;
+    }
+
     private async Task StartWebcamOverlayAsync(CancellationToken cancellationToken)
     {
         _webcamOverlay = null;
@@ -637,6 +1099,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _settings.WebcamSizePreset,
             _settings.WebcamShape,
             _settings.WebcamCornerRadius);
+
+        // On the GPU pipeline the camera frames stay in video memory and the Direct2D compositor
+        // draws them directly; the CPU pipeline needs pixel buffers.
+        _webcamCapture.SetPreferredDirect3DDevice(_gpuCapture is not null ? WgcInterop.GetSharedDevice().WinRT : null);
 
         if (_webcamCapture.IsRunning)
         {
@@ -771,6 +1237,12 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
+        if (_gpuChannel is { } gpuChannel)
+        {
+            await HandleGpuVideoRequestAsync(args, gpuChannel).ConfigureAwait(false);
+            return;
+        }
+
         var channel = _channel;
         if (channel is null)
         {
@@ -778,20 +1250,84 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
 
         var deferral = args.Request.GetDeferral();
+        var wait = RecordingPerformanceMonitor.Begin();
         try
         {
             while (await channel.Reader.WaitToReadAsync().ConfigureAwait(false))
             {
                 if (channel.Reader.TryRead(out var frame))
                 {
+                    _perf?.End(RecordingStage.EncoderWait, wait);
                     var sample = MediaStreamSample.CreateFromBuffer(frame.Pixels.AsBuffer(), frame.Pts);
                     sample.Duration = _frameDuration;
                     args.Request.Sample = sample;
+                    _perf?.FrameEncoded();
                     return;
                 }
             }
 
             // Channel completed and drained -> signal end of stream.
+            args.Request.Sample = null;
+        }
+        catch
+        {
+            args.Request.Sample = null;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private async Task HandleGpuVideoRequestAsync(MediaStreamSourceSampleRequestedEventArgs args, Channel<GpuFrame> channel)
+    {
+        var deferral = args.Request.GetDeferral();
+        var wait = RecordingPerformanceMonitor.Begin();
+        try
+        {
+            while (await channel.Reader.WaitToReadAsync().ConfigureAwait(false))
+            {
+                if (channel.Reader.TryRead(out var frame))
+                {
+                    _perf?.End(RecordingStage.EncoderWait, wait);
+                    var prepare = RecordingPerformanceMonitor.Begin();
+
+                    // The sample references the pooled texture directly; the encoder's colour
+                    // converter reads it on the GPU. Processed fires when the pipeline is done with
+                    // it, which is when the texture can be reused. Until ownership has transferred
+                    // to the sample (Processed hooked and the sample accepted), a failure must
+                    // return the frame to the pool ourselves.
+                    var handedOff = false;
+                    try
+                    {
+                        var sample = MediaStreamSample.CreateFromDirect3D11Surface(frame.Surface!, frame.Pts);
+                        sample.Duration = _frameDuration;
+                        var perf = _perf;
+                        // Hold time is measured from the actual hand-off, not from when the frame
+                        // entered the channel, so a backlog cannot inflate EncoderHold.
+                        frame.HandedOffTimestamp = RecordingPerformanceMonitor.Begin();
+                        sample.Processed += (_, _) =>
+                        {
+                            perf?.Record(RecordingStage.EncoderHold, RecordingPerformanceMonitor.Begin() - frame.HandedOffTimestamp);
+                            frame.Release();
+                        };
+                        args.Request.Sample = sample;
+                        handedOff = true;
+                    }
+                    finally
+                    {
+                        if (!handedOff)
+                        {
+                            frame.Release();
+                        }
+                    }
+
+                    _perf?.End(RecordingStage.SamplePrepare, prepare);
+                    _perf?.FrameEncoded();
+                    return;
+                }
+            }
+
             args.Request.Sample = null;
         }
         catch
@@ -907,6 +1443,18 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
         }
 
+        var (pts, duration) = AccountAudioChunk(data);
+        var sample = MediaStreamSample.CreateFromBuffer(data.AsBuffer(), pts);
+        sample.Duration = duration;
+        args.Request.Sample = sample;
+    }
+
+    /// <summary>
+    /// Assigns the next contiguous audio PTS/duration to a PCM chunk and maintains the muxer
+    /// diagnostics counters. Shared by the transcoder pull path and the sink-writer push loop.
+    /// </summary>
+    private (TimeSpan Pts, TimeSpan Duration) AccountAudioChunk(byte[] data)
+    {
         var producedFrames = data.Length / (AudioCaptureService.Channels * (AudioCaptureService.BitsPerSample / 8));
         var pts = TimeSpan.FromTicks((long)(_audioFramesRead * TimeSpan.TicksPerSecond / AudioCaptureService.SampleRate));
         var duration = TimeSpan.FromTicks((long)(producedFrames * TimeSpan.TicksPerSecond / AudioCaptureService.SampleRate));
@@ -928,9 +1476,129 @@ public sealed class VideoRecordingService : IVideoRecordingService
             WebcamDiagnostics.Log($"Audio muxer progress: requests={_audioSamplesRequested} nonSilentChunks={_audioNonSilentChunks} framesRead={_audioFramesRead}.");
         }
 
-        var sample = MediaStreamSample.CreateFromBuffer(data.AsBuffer(), pts);
-        sample.Duration = duration;
-        args.Request.Sample = sample;
+        return (pts, duration);
+    }
+
+    /// <summary>
+    /// Sink-writer backend: pushes captured audio into the muxer from a dedicated thread, gated on
+    /// real captured frames (same back-pressure rule as the pull path) so audio never runs ahead of
+    /// the capture clock. After Stop it drains what was captured before the devices stopped.
+    /// </summary>
+    private void StartAudioMux()
+    {
+        _audioMuxStop = false;
+        _audioMuxThread = new Thread(AudioMuxLoop)
+        {
+            IsBackground = true,
+            Name = "TinyClips.AudioMux",
+            Priority = ThreadPriority.AboveNormal,
+        };
+        _audioMuxThread.Start();
+    }
+
+    private void AudioMuxLoop()
+    {
+        const int frameCount = AudioCaptureService.SampleRate / 50;
+        const int pollMs = 4;
+        var audio = _audio;
+        var sink = _sinkWriter;
+        if (audio is null || sink is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Same back-pressure rule as HandleAudioRequestAsync: wait for real captured frames so
+            // audio never runs ahead of the capture clock; wait without limit only while paused. A
+            // stalled/disconnected device must not leave the track short, so after the same 2 s cap
+            // the chunk is filled with silence and counted as starved.
+            const int maxWaitMs = 2000;
+            var waitedMs = 0;
+            while (!_audioMuxStop)
+            {
+                if (IsPaused)
+                {
+                    waitedMs = 0;
+                    Thread.Sleep(pollMs);
+                    continue;
+                }
+
+                if (audio.AvailableFrames < frameCount)
+                {
+                    if (waitedMs < maxWaitMs)
+                    {
+                        Thread.Sleep(pollMs);
+                        waitedMs += pollMs;
+                        continue;
+                    }
+
+                    WriteStarvedAudioChunk(sink, frameCount);
+                    waitedMs = 0;
+                    continue;
+                }
+
+                waitedMs = 0;
+                WriteAudioChunk(sink, audio, frameCount);
+            }
+
+            // Drain: devices are stopped; hand the muxer what was captured before Stop so the audio
+            // track ends where the video does. Bounded so a misbehaving source cannot hold us here.
+            var budget = MaxDrainFrames;
+            while (budget > 0 && audio.AvailableFrames > 0)
+            {
+                var n = Math.Min(frameCount, Math.Min(audio.AvailableFrames, budget));
+                if (!WriteAudioChunk(sink, audio, n))
+                {
+                    break;
+                }
+
+                budget -= n;
+                _drainFramesServed += n;
+            }
+        }
+        catch (Exception ex)
+        {
+            WebcamDiagnostics.Log($"Audio mux loop ended with {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private bool WriteAudioChunk(MfSinkWriterEncoder sink, AudioCaptureService audio, int frameCount)
+    {
+        var data = audio.ReadChunk(frameCount);
+        if (data is null || data.Length == 0)
+        {
+            return false;
+        }
+
+        return WriteAudioData(sink, data);
+    }
+
+    /// <summary>Emits a silent chunk in place of audio a stalled source never delivered.</summary>
+    private void WriteStarvedAudioChunk(MfSinkWriterEncoder sink, int frameCount)
+    {
+        _audioStarvedChunks++;
+        if (_audioStarvedChunks == 1 || _audioStarvedChunks % 50 == 0)
+        {
+            WebcamDiagnostics.Log($"Audio muxer starved: no captured audio for 2 s; filled chunk with silence (starvedChunks={_audioStarvedChunks}).");
+        }
+
+        WriteAudioData(sink, new byte[frameCount * AudioCaptureService.Channels * (AudioCaptureService.BitsPerSample / 8)]);
+    }
+
+    private bool WriteAudioData(MfSinkWriterEncoder sink, byte[] data)
+    {
+        var (pts, duration) = AccountAudioChunk(data);
+        try
+        {
+            sink.WriteAudio(data, pts, duration);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogEncoderWriteFailure(ex);
+            return false;
+        }
     }
 
     private static bool ContainsNonSilence(byte[] pcm16)
@@ -1013,6 +1681,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             _recordingTimeline?.Pause();
             _capture?.PauseEmitting();
+            _gpuCapture?.PauseEmitting();
             _audio?.Pause();
             IsPaused = true;
         }
@@ -1035,6 +1704,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _recordingTimeline?.Resume();
             _audio?.Resume();
             _capture?.ResumeEmitting();
+            _gpuCapture?.ResumeEmitting();
             IsPaused = false;
         }
         finally
@@ -1126,6 +1796,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             _capture?.Stop();
             _channel?.Writer.TryComplete();
+            _gpuCapture?.Stop();
+            _gpuChannel?.Writer.TryComplete();
 
             if (_transcodeTask is not null)
             {
@@ -1139,14 +1811,25 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 }
             }
 
+            if (_sinkWriter is { } sink)
+            {
+                // Capture pumps are stopped (no more video writes). Let the audio mux drain what
+                // was captured before Stop, then finalize the MP4 (blocking until the encoder flushes).
+                StopAudioMux();
+                await Task.Run(sink.Finish).ConfigureAwait(false);
+            }
+
             LogSyncReport();
 
             _capture?.Dispose();
             _capture = null;
+            DisposeGpuPipeline();
+            DisposeSinkWriter();
             DisposeAudio();
             _fileStream?.Dispose();
             _fileStream = null;
             _channel = null;
+            _perf = null;
             _transcodeTask = null;
             _recordingTimeline = null;
             _webcamPlacements = null;
@@ -1191,12 +1874,36 @@ public sealed class VideoRecordingService : IVideoRecordingService
         try
         {
             var timeline = _recordingTimeline;
-            var videoPts = _capture?.LastEmittedPts ?? TimeSpan.MinValue;
-            var videoEmitted = _capture?.EmittedFrameCount ?? 0;
-            var videoDropped = Interlocked.Read(ref _videoFramesDropped);
+            var videoPts = _gpuCapture?.LastEmittedPts ?? _capture?.LastEmittedPts ?? TimeSpan.MinValue;
+            var videoEmitted = _gpuCapture?.EmittedFrameCount ?? _capture?.EmittedFrameCount ?? 0;
+            var videoDropped = Interlocked.Read(ref _videoFramesDropped) + (_gpuCapture?.PoolExhaustedDrops ?? 0);
             var elapsed = timeline?.Elapsed ?? TimeSpan.Zero;
             var pauses = timeline?.PauseCount ?? 0;
             var paused = timeline?.PausedDuration ?? TimeSpan.Zero;
+
+            if (_perf is { } perf)
+            {
+                // Every drop site (channel DropWrite, pool exhaustion, frame-production failure)
+                // reports to the monitor directly, so its count is authoritative; the two counters
+                // below are kept for the sync line and cross-checked here.
+                var report = perf.Complete();
+                videoDropped = Math.Max(videoDropped, report.FramesDropped);
+                LastPerformanceReport = report;
+                foreach (var line in report.ToTable().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    WebcamDiagnostics.Log($"Perf report: {line}");
+                }
+
+                if (_gpuCapture is { } gpu)
+                {
+                    WebcamDiagnostics.Log($"Perf report: GPU frames highWater={gpu.PoolHighWaterMark}/{gpu.PoolMaxCapacity} exhaustedDrops={gpu.PoolExhaustedDrops} pumpOverruns={gpu.PumpOverruns} contentResizes={gpu.ContentResizes}.");
+                }
+
+                if (_sinkWriter is { } sink)
+                {
+                    WebcamDiagnostics.Log($"Perf report: sink writer videoSamples={sink.VideoSamplesWritten} audioSamples={sink.AudioSamplesWritten}.");
+                }
+            }
 
             WebcamDiagnostics.Log($"Sync report: encoder='{_encoderPath}' elapsed={elapsed.TotalSeconds:F3}s pauses={pauses} pausedTotal={paused.TotalSeconds:F3}s.");
             WebcamDiagnostics.Log($"Sync report: video lastPts={(videoPts == TimeSpan.MinValue ? "none" : $"{videoPts.TotalSeconds:F3}s")} framesEmitted={videoEmitted} framesDroppedByEncoderBackpressure={videoDropped}.");

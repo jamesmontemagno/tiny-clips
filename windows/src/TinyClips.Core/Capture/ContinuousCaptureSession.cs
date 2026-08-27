@@ -74,14 +74,17 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
     private long _emittedFrameCount;
 
-    public ContinuousCaptureSession(CaptureTarget target, PixelRect? region, int targetFps, bool includeCursor)
+    public ContinuousCaptureSession(CaptureTarget target, PixelRect? region, int targetFps, bool includeCursor, RecordingPerformanceMonitor? perf = null)
     {
         _target = target;
         _region = region;
         _includeCursor = includeCursor;
+        _perf = perf;
         var fps = Math.Clamp(targetFps, 1, 120);
         _frameInterval = TimeSpan.FromSeconds(1.0 / fps);
     }
+
+    private readonly RecordingPerformanceMonitor? _perf;
 
     public void Start()
     {
@@ -172,6 +175,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
             return;
         }
 
+        var started = Stopwatch.GetTimestamp();
         try
         {
             using var frame = pool.TryGetNextFrame();
@@ -224,6 +228,10 @@ internal sealed class ContinuousCaptureSession : IDisposable
         {
             // A single dropped/failed frame must not tear down the recording.
         }
+        finally
+        {
+            _perf?.Record(RecordingStage.CaptureReadback, Stopwatch.GetTimestamp() - started);
+        }
     }
 
     private void OnPump(object? state)
@@ -243,6 +251,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
             return;
         }
 
+        var produce = Stopwatch.GetTimestamp();
         try
         {
             if (!_running || _latestPixels is null)
@@ -273,6 +282,8 @@ internal sealed class ContinuousCaptureSession : IDisposable
             Monitor.Exit(_sync);
         }
 
+        _perf?.Record(RecordingStage.FrameProduce, Stopwatch.GetTimestamp() - produce);
+
         if (!_loggedFirstEmit)
         {
             _loggedFirstEmit = true;
@@ -280,6 +291,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
         }
 
         Interlocked.Increment(ref _emittedFrameCount);
+        _perf?.FrameEmitted();
 
         // Raise outside the lock so heavy per-frame compositing doesn't stall WGC delivery.
         FrameReady?.Invoke(new CapturedFrame(copy, width, height), pts);

@@ -39,26 +39,48 @@ public static class MouseClickOverlayCompositor
 
         foreach (MouseClickSample click in clicks)
         {
-            double elapsed = frameSeconds - click.TimeSeconds;
-            if (elapsed < 0 || elapsed > style.DurationSeconds)
+            if (!TryComputeRing(click, frameSeconds, originX, originY, style, out var ring))
             {
                 continue;
             }
 
-            double progress = elapsed / style.DurationSeconds;
-            double alpha = Math.Max(0, (1 - progress) * style.Opacity);
-            if (alpha <= 0)
-            {
-                continue;
-            }
-
-            double radius = (style.Size / 2.0) + (style.Size * 0.58 * progress);
-            double half = Math.Max(0.5, style.StrokeWidth / 2.0);
-            double cx = click.ScreenX - originX;
-            double cy = click.ScreenY - originY;
-
-            DrawRing(bgra, width, height, cx, cy, radius, half, r, g, b, alpha);
+            DrawRing(bgra, width, height, ring.CenterX, ring.CenterY, ring.Radius, ring.HalfStroke, r, g, b, ring.Alpha);
         }
+    }
+
+    /// <summary>Geometry of one click pulse at a given frame time, in frame pixel space.</summary>
+    public readonly record struct Ring(double CenterX, double CenterY, double Radius, double HalfStroke, double Alpha);
+
+    /// <summary>
+    /// Computes the pulse ring for <paramref name="click"/> at <paramref name="frameSeconds"/>.
+    /// Shared by the CPU rasterizer and the Direct2D path so both animate identically.
+    /// </summary>
+    public static bool TryComputeRing(
+        in MouseClickSample click,
+        double frameSeconds,
+        int originX,
+        int originY,
+        in MouseClickOverlayStyle style,
+        out Ring ring)
+    {
+        ring = default;
+        double elapsed = frameSeconds - click.TimeSeconds;
+        if (elapsed < 0 || elapsed > style.DurationSeconds || style.DurationSeconds <= 0)
+        {
+            return false;
+        }
+
+        double progress = elapsed / style.DurationSeconds;
+        double alpha = Math.Max(0, (1 - progress) * style.Opacity);
+        if (alpha <= 0)
+        {
+            return false;
+        }
+
+        double radius = (style.Size / 2.0) + (style.Size * 0.58 * progress);
+        double half = Math.Max(0.5, style.StrokeWidth / 2.0);
+        ring = new Ring(click.ScreenX - originX, click.ScreenY - originY, radius, half, alpha);
+        return true;
     }
 
     private static void DrawRing(
@@ -108,7 +130,8 @@ public static class MouseClickOverlayCompositor
     private static byte Blend(byte dst, byte src, double a) =>
         (byte)Math.Clamp((src * a) + (dst * (1 - a)), 0, 255);
 
-    private static (byte R, byte G, byte B) ParseColor(string hex)
+    /// <summary>Parses a "#RRGGBB" / "#AARRGGBB" style color; falls back to the default accent.</summary>
+    public static (byte R, byte G, byte B) ParseColor(string hex)
     {
         string s = (hex ?? string.Empty).Trim().TrimStart('#');
         if (s.Length == 8)
