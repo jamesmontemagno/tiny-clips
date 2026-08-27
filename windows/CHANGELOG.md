@@ -5,7 +5,53 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **What's new window.** After updating, a one-time window highlights the release's new recording
+  features and links straight to Settings → Video for anyone who needs to switch back to the previous
+  pipeline. It is keyed on a content revision (not a version number), so it appears once per rewrite
+  of its content and never re-shows stale notes; fresh installs see the onboarding tour instead.
+- **GPU recording pipeline** (Settings → Video → *GPU recording pipeline*, **on by default**). Frames stay on the graphics card from Windows.Graphics.Capture through Direct2D overlay
+  compositing (click visuals, branding badge, webcam PiP) to the hardware H.264 encoder via
+  `MediaStreamSample.CreateFromDirect3D11Surface`, eliminating the staging readback, per-frame
+  `byte[]` clones, CPU alpha blending and bottom-up flip of the standard path. On a 3440×1440
+  display this recorded 28–30 fps instead of ~11, at 0.4× the CPU and ~0.5 MB/s of allocations
+  instead of ~1.2 GB/s (zero Gen2 GCs instead of 100+ per 10 s). Falls back to the standard
+  pipeline automatically if unavailable. See `windows/docs/gpu-recording-pipeline.md`.
+- **Per-recording performance report** for both pipelines (per-stage avg/p99/max timings, CPU %,
+  allocation rate, GC counts and pause time, frames emitted/encoded/dropped), written to the
+  diagnostics log at stop and exposed as `IVideoRecordingService.LastPerformanceReport`.
+- **`windows/tools/RecordingBenchmark`** — headless harness that records the primary monitor (or a
+  window with `--window`) through the production recorder for each CPU/GPU × encoder × overlays
+  scenario and prints a comparison table.
+- **Low-latency encoder backend** (Settings → Video → *Video encoder* → Low latency, **on by default**).
+  An `IMFSinkWriter` push-model MP4 writer with an `IMFDXGIDeviceManager` that configures the hardware
+  encoder for real-time capture (`AVLowLatencyMode`, no B-frames, 2 s GOP, CBR) and sources GPU frames
+  from Media Foundation's own `IMFVideoSampleAllocatorEx`. With the GPU pipeline this sustains
+  **60 fps at 3440×1440 with zero dropped frames** (the standard transcoder managed 44 fps with drops
+  because it holds 14+ frames of look-ahead; the sink writer holds one) at ~0.2 CPU cores. Audio is
+  muxed from a dedicated thread with the same captured-frame back-pressure as before. Falls back to
+  the standard encoder automatically.
+- **HEVC / H.265 recording** (Settings → Video → *Video codec*). ~40 % smaller files at the same
+  quality on both encoder backends; H.264 stays the default for playback compatibility.
+- **Window resize handling on the GPU pipeline.** When a recorded window changes size the WGC frame
+  pool is recreated at the new size and the content is scaled-to-fit with black letterboxing into the
+  fixed encoder frame (a single Direct2D draw) instead of being cropped.
+- **GPU webcam frames.** On the GPU pipeline camera frames are copied by Media Foundation straight
+  into BGRA surfaces on the recorder's device (`VideoFrame.CopyToAsync`) and drawn by Direct2D without
+  touching system memory; the webcam overlay went from ~1.9 ms to <0.1 ms per frame. The CPU pipeline's
+  webcam frames now reuse a small buffer ring (via `IMemoryBufferByteAccess`) instead of allocating
+  two ~2 MB arrays per camera frame.
+
+- `tests/ui/ClipsLibrary.Tests.ps1` — `winapp ui` automation smoke test for the Library window
+  (shell, details editing, favorites, sidebar filters, search/empty state, filter flyout, view modes,
+  selection mode, delete confirmation, context menu, accessibility-name audit).
+
 ### Changed
+- The shared Direct3D 11 device is created with `VIDEO_SUPPORT` (falls back without it) so Media
+  Foundation's hardware encoders can bind recorder textures directly.
+- Webcam overlay placement math moved to the shared `WebcamOverlayLayout`; click-ring geometry and
+  the branding badge bitmap are exposed for reuse so the CPU and GPU compositors render identically.
+- `TinyClips.Core` now references `Vortice.Direct2D1` and `Vortice.MediaFoundation` (3.8.3).
 - **Clips Library rewritten** as a proper MVVM feature (`ViewModels/ClipsLibrary`,
   `Views/ClipsLibrary`, `Controls/ClipsLibrary`) with macOS Clips Manager parity. New: collapsible
   sidebar with Smart Collections / Collections / Tags and live counts; search across names, tags and
@@ -35,11 +81,6 @@ own `CHANGELOG.md` at the repository root.
   `Rename(...)`; new Core services `ClipQueryEngine`, `ClipArchiveService`, `ClipLibraryWatcher`,
   `ClipsLibrarySettings`, `IClipFileOperations`, all covered by unit tests (29 new).
 - Removed the old code-behind `ClipsManagerWindow`.
-
-### Added
-- `tests/ui/ClipsLibrary.Tests.ps1` — `winapp ui` automation smoke test for the Library window
-  (shell, details editing, favorites, sidebar filters, search/empty state, filter flyout, view modes,
-  selection mode, delete confirmation, context menu, accessibility-name audit).
 
 ## [v1.7.4-windows] - 2026-08-25
 

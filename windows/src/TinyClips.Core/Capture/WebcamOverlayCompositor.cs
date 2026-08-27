@@ -167,108 +167,26 @@ public sealed class WebcamOverlayCompositor
         _builtForWebcamWidth = webcamWidth;
         _builtForWebcamHeight = webcamHeight;
 
-        double sizeFraction = _sizePreset switch
-        {
-            WebcamSizePreset.Small => 0.18,
-            WebcamSizePreset.Large => 0.30,
-            _ => 0.24,
-        };
+        var layout = WebcamOverlayLayout.Compute(
+            frameWidth,
+            frameHeight,
+            webcamWidth,
+            webcamHeight,
+            _corner,
+            _sizePreset,
+            _shape,
+            _configuredCornerRadius);
 
-        int overlayWidth;
-        int overlayHeight;
-        if (_shape == WebcamShape.Circle)
-        {
-            int side = Math.Clamp(
-                (int)Math.Round(Math.Min(frameWidth, frameHeight) * sizeFraction),
-                48,
-                Math.Min(frameWidth, frameHeight) - 2);
-            overlayWidth = side;
-            overlayHeight = side;
-        }
-        else
-        {
-            double sourceAspect = webcamHeight <= 0 ? (16.0 / 9.0) : webcamWidth / (double)webcamHeight;
-            overlayWidth = Math.Clamp(
-                (int)Math.Round(frameWidth * sizeFraction),
-                64,
-                Math.Max(64, (int)Math.Round(frameWidth * 0.45)));
-            overlayHeight = Math.Max(48, (int)Math.Round(overlayWidth / sourceAspect));
+        _overlayX = layout.OverlayX;
+        _overlayY = layout.OverlayY;
+        _overlayWidth = layout.OverlayWidth;
+        _overlayHeight = layout.OverlayHeight;
+        _cropX = layout.CropX;
+        _cropY = layout.CropY;
+        _cropWidth = layout.CropWidth;
+        _cropHeight = layout.CropHeight;
 
-            int maxHeight = Math.Max(48, (int)Math.Round(frameHeight * 0.40));
-            if (overlayHeight > maxHeight)
-            {
-                overlayHeight = maxHeight;
-                overlayWidth = Math.Max(64, (int)Math.Round(overlayHeight * sourceAspect));
-            }
-
-            overlayWidth = Math.Min(overlayWidth, Math.Max(2, frameWidth - 2));
-            overlayHeight = Math.Min(overlayHeight, Math.Max(2, frameHeight - 2));
-        }
-
-        int margin = Math.Clamp((int)Math.Round(Math.Min(frameWidth, frameHeight) * 0.03), 12, 40);
-        _overlayX = _corner switch
-        {
-            WebcamCornerPosition.TopRight or WebcamCornerPosition.BottomRight => frameWidth - overlayWidth - margin,
-            _ => margin,
-        };
-        _overlayY = _corner switch
-        {
-            WebcamCornerPosition.BottomLeft or WebcamCornerPosition.BottomRight => frameHeight - overlayHeight - margin,
-            _ => margin,
-        };
-        _overlayWidth = overlayWidth;
-        _overlayHeight = overlayHeight;
-
-        ComputeSourceCrop(webcamWidth, webcamHeight, overlayWidth, overlayHeight);
-
-        int cornerRadiusPx = ResolveCornerRadiusPx(overlayWidth, overlayHeight);
-        EnsureMask(overlayWidth, overlayHeight, cornerRadiusPx);
-    }
-
-    private void ComputeSourceCrop(int webcamWidth, int webcamHeight, int overlayWidth, int overlayHeight)
-    {
-        if (webcamWidth <= 0 || webcamHeight <= 0 || overlayWidth <= 0 || overlayHeight <= 0)
-        {
-            _cropX = 0;
-            _cropY = 0;
-            _cropWidth = Math.Max(1, webcamWidth);
-            _cropHeight = Math.Max(1, webcamHeight);
-            return;
-        }
-
-        double sourceAspect = webcamWidth / (double)webcamHeight;
-        double destinationAspect = overlayWidth / (double)overlayHeight;
-
-        if (sourceAspect > destinationAspect)
-        {
-            _cropHeight = webcamHeight;
-            _cropWidth = Math.Max(1, (int)Math.Round(webcamHeight * destinationAspect));
-            _cropX = Math.Max(0, (webcamWidth - _cropWidth) / 2);
-            _cropY = 0;
-        }
-        else
-        {
-            _cropWidth = webcamWidth;
-            _cropHeight = Math.Max(1, (int)Math.Round(webcamWidth / destinationAspect));
-            _cropY = Math.Max(0, (webcamHeight - _cropHeight) / 2);
-            _cropX = 0;
-        }
-    }
-
-    private int ResolveCornerRadiusPx(int overlayWidth, int overlayHeight)
-    {
-        if (_shape != WebcamShape.RoundedRectangle)
-        {
-            return 0;
-        }
-
-        int maxRadius = Math.Min(overlayWidth, overlayHeight) / 2;
-        if (_configuredCornerRadius is not > 0)
-        {
-            return Math.Clamp((int)Math.Round(Math.Min(overlayWidth, overlayHeight) * 0.12), 2, maxRadius);
-        }
-
-        return Math.Clamp((int)Math.Round(_configuredCornerRadius.Value), 0, maxRadius);
+        EnsureMask(layout.OverlayWidth, layout.OverlayHeight, layout.CornerRadiusPx);
     }
 
     private void EnsureMask(int width, int height, int cornerRadiusPx)

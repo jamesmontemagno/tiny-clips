@@ -130,30 +130,55 @@ internal static partial class WgcInterop
             FeatureLevel.Level_11_0,
         };
 
-        var result = D3D11.D3D11CreateDevice(
-            null,
-            DriverType.Hardware,
-            DeviceCreationFlags.BgraSupport,
-            featureLevels,
-            out var device);
-
-        if (result.Success)
+        // VideoSupport lets Media Foundation's hardware encoder MFTs bind textures created on this
+        // device directly (the GPU recording path hands encoder samples whole D3D11 surfaces).
+        // Some drivers/WARP reject the flag, so fall back to a plain BGRA device.
+        var flagSets = new[]
         {
-            return device;
+            DeviceCreationFlags.BgraSupport | DeviceCreationFlags.VideoSupport,
+            DeviceCreationFlags.BgraSupport,
+        };
+
+        foreach (var driverType in new[] { DriverType.Hardware, DriverType.Warp })
+        {
+            foreach (var flags in flagSets)
+            {
+                var result = D3D11.D3D11CreateDevice(
+                    null,
+                    driverType,
+                    flags,
+                    featureLevels,
+                    out var device);
+
+                if (result.Success)
+                {
+                    return device;
+                }
+            }
         }
 
-        result = D3D11.D3D11CreateDevice(
-            null,
-            DriverType.Warp,
-            DeviceCreationFlags.BgraSupport,
-            featureLevels,
-            out device);
-
-        return result.Success ? device : null;
+        return null;
     }
 
     [DllImport("d3d11.dll", ExactSpelling = true)]
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(nint dxgiDevice, out nint graphicsDevice);
+
+    [DllImport("d3d11.dll", ExactSpelling = true)]
+    private static extern int CreateDirect3D11SurfaceFromDXGISurface(nint dxgiSurface, out nint graphicsSurface);
+
+    /// <summary>
+    /// Wraps a D3D11 texture as a WinRT <see cref="IDirect3DSurface"/> so it can be handed to
+    /// <c>MediaStreamSample.CreateFromDirect3D11Surface</c> without a CPU round-trip.
+    /// </summary>
+    internal static IDirect3DSurface CreateDirect3DSurface(ID3D11Texture2D texture)
+    {
+        using var dxgiSurface = texture.QueryInterface<IDXGISurface>();
+        CreateDirect3D11SurfaceFromDXGISurface(dxgiSurface.NativePointer, out var pInspectable)
+            .ThrowIfFailed("CreateDirect3D11SurfaceFromDXGISurface");
+        var surface = MarshalInterface<IDirect3DSurface>.FromAbi(pInspectable);
+        Marshal.Release(pInspectable);
+        return surface;
+    }
 
     internal static IDirect3DDevice? CreateDirect3DDevice(ID3D11Device d3dDevice)
     {
@@ -194,8 +219,9 @@ internal static partial class WgcInterop
             Marshal.QueryInterface(factory.ThisPtr, in GraphicsCaptureItemInteropGuid, out interopPtr)
                 .ThrowIfFailed("QueryInterface(IGraphicsCaptureItemInterop)");
 
+            // ConvertToManaged does not take ownership (the wrapper AddRefs); the QI reference
+            // is released in the finally block.
             var interop = ComInterfaceMarshaller<IGraphicsCaptureItemInterop>.ConvertToManaged((void*)interopPtr)!;
-            interopPtr = 0;
 
             create(interop, out itemPtr)
                 .ThrowIfFailed("IGraphicsCaptureItemInterop.CreateForMonitor/Window");
@@ -218,9 +244,11 @@ internal static partial class WgcInterop
         }
     }
 
-    internal static unsafe ID3D11Texture2D GetTextureFromFrame(Direct3D11CaptureFrame frame)
+    internal static ID3D11Texture2D GetTextureFromFrame(Direct3D11CaptureFrame frame) => GetTextureFromSurface(frame.Surface);
+
+    internal static unsafe ID3D11Texture2D GetTextureFromSurface(IDirect3DSurface surface)
     {
-        var surfacePtr = ((IWinRTObject)frame.Surface).NativeObject.ThisPtr;
+        var surfacePtr = ((IWinRTObject)surface).NativeObject.ThisPtr;
         nint accessPtr = 0;
         nint texturePtr = 0;
         try
@@ -229,7 +257,6 @@ internal static partial class WgcInterop
                 .ThrowIfFailed("QueryInterface(IDirect3DDxgiInterfaceAccess)");
 
             var access = ComInterfaceMarshaller<IDirect3DDxgiInterfaceAccess>.ConvertToManaged((void*)accessPtr)!;
-            accessPtr = 0;
 
             access.GetInterface(in D3D11Texture2DGuid, out texturePtr)
                 .ThrowIfFailed("IDirect3DDxgiInterfaceAccess.GetInterface(ID3D11Texture2D)");
