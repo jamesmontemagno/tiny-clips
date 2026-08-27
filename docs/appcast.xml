@@ -11,24 +11,24 @@
         <item>
             
             
-            <title>1.7.1.0</title>
+            <title>1.7.5</title>
             
             
-            <pubDate>Mon, 24 Aug 2026 16:19:13 +0000</pubDate>
+            <pubDate>Thu, 27 Aug 2026 15:06:15 +0000</pubDate>
             
             
-            <sparkle:version>59</sparkle:version>
+            <sparkle:version>60</sparkle:version>
             
             
-            <sparkle:shortVersionString>1.7.1.0</sparkle:shortVersionString>
+            <sparkle:shortVersionString>1.7.5</sparkle:shortVersionString>
             
             
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             
             
-            <description><![CDATA[<h3>What's Changed</h3><ul><li>Merge pull request #300 from jamesmontemagno/release/v1.7.1.0-mac</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v1.6.1-mac...v1.7.1.0-mac">Full Changelog</a></p>]]></description>
-            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v1.7.1.0-mac</sparkle:releaseNotesLink>
-            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v1.7.1.0-mac/TinyClips-v1.7.1.0-mac.zip" length="4156838" type="application/octet-stream" sparkle:edSignature="PEUGDNGUR7mnRhdY21FGRpqZ5xPYcohBXw8ITSd0f16YHenP2lMC/Hs4kxY6uPPrK55EWd12GpilHcsYUeSSDQ=="/>
+            <description><![CDATA[<h3>What's Changed</h3><ul><li>Merge pull request #329 from jamesmontemagno/release/v1.7.5-mac</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v1.7.1.0-mac...v1.7.5-mac">Full Changelog</a></p>]]></description>
+            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v1.7.5-mac</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v1.7.5-mac/TinyClips-v1.7.5-mac.zip" length="4301116" type="application/octet-stream" sparkle:edSignature="03sjD5cGy17S5n29VBQsYHNzhb6btZk6ypg5pQGfUcKqkdJ9M8TXDL3imTU2pgjStxoDreOITwB1T5RtrDkqCw=="/>
             
         
         </item>
