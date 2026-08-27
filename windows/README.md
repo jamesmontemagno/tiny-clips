@@ -137,7 +137,10 @@ automation review does not replace the documented hands-on results.
 
 ## Distribution
 
-- **Direct (available now):** signed MSIX distributed via **winget** — install with
+- **Direct (available now):** signed x64/ARM64 NativeAOT MSIX distributed through GitHub Releases
+  and **winget**. The package includes the .NET native code and Windows App SDK runtime, so clean
+  Windows 11 machines do not need a separate .NET 10 Desktop Runtime or Windows App Runtime install.
+  Install with
   `winget install Refractored.TinyClips` and update with `winget upgrade Refractored.TinyClips`
   (no separate in-app updater). Fully free.
 - **Microsoft Store (planned):** Store auto-update. Feature set matches Direct; no Windows Pro tier.

@@ -10,14 +10,8 @@ namespace TinyClips.Core.Services.ClipsLibrary;
 /// writes with a short debounce, and replaces the file atomically so a crash mid-write never
 /// leaves a truncated index behind.
 /// </summary>
-public sealed class JsonClipMetadataStore : IClipMetadataStore, IDisposable
+public sealed partial class JsonClipMetadataStore : IClipMetadataStore, IDisposable
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     private readonly string _filePath;
     private readonly TimeSpan _debounce;
     private readonly TimeProvider _timeProvider;
@@ -166,7 +160,9 @@ public sealed class JsonClipMetadataStore : IClipMetadataStore, IDisposable
             }
 
             var temporaryPath = _filePath + ".tmp";
-            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(new MetadataFile(1, snapshot), SerializerOptions));
+            File.WriteAllText(
+                temporaryPath,
+                JsonSerializer.Serialize(new MetadataFile(1, snapshot), ClipMetadataJsonContext.Default.MetadataFile));
             File.Move(temporaryPath, _filePath, overwrite: true);
         }
         catch (Exception ex)
@@ -203,7 +199,9 @@ public sealed class JsonClipMetadataStore : IClipMetadataStore, IDisposable
                 return records;
             }
 
-            var file = JsonSerializer.Deserialize<MetadataFile>(File.ReadAllText(_filePath), SerializerOptions);
+            var file = JsonSerializer.Deserialize(
+                File.ReadAllText(_filePath),
+                ClipMetadataJsonContext.Default.MetadataFile);
             foreach (var record in file?.Clips ?? [])
             {
                 if (!string.IsNullOrWhiteSpace(record.Path) && !record.IsEmpty)
@@ -224,4 +222,10 @@ public sealed class JsonClipMetadataStore : IClipMetadataStore, IDisposable
         Path.GetFullPath(path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar));
 
     private sealed record MetadataFile(int Version, List<ClipMetadata> Clips);
+
+    [JsonSourceGenerationOptions(
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonSerializable(typeof(MetadataFile))]
+    private sealed partial class ClipMetadataJsonContext : JsonSerializerContext;
 }

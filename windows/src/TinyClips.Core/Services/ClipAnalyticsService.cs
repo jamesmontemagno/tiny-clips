@@ -1,10 +1,11 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Globalization;
 using TinyClips.Core.Models;
 
 namespace TinyClips.Core.Services;
 
-public sealed class ClipAnalyticsService : IClipAnalyticsService
+public sealed partial class ClipAnalyticsService : IClipAnalyticsService
 {
     private const string StorageKey = "captureAnalyticsHistoryV1";
     private const string LifetimeStorageKey = "captureAnalyticsLifetimeV1";
@@ -14,8 +15,6 @@ public sealed class ClipAnalyticsService : IClipAnalyticsService
     private readonly ISettingsService _settings;
     private readonly TimeProvider _timeProvider;
     private readonly object _gate = new();
-    private readonly JsonSerializerOptions _serializerOptions = new(JsonSerializerDefaults.Web);
-
     private Dictionary<string, DailyCountsState> _history;
     private LifetimeCountsState _lifetime;
     private Dictionary<int, int> _hourly;
@@ -167,7 +166,7 @@ public sealed class ClipAnalyticsService : IClipAnalyticsService
 
         try
         {
-            return JsonSerializer.Deserialize<Dictionary<string, DailyCountsState>>(raw, _serializerOptions)
+            return JsonSerializer.Deserialize(raw, AnalyticsJsonContext.Default.DictionaryStringDailyCountsState)
                 ?? new Dictionary<string, DailyCountsState>(StringComparer.Ordinal);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
@@ -186,7 +185,7 @@ public sealed class ClipAnalyticsService : IClipAnalyticsService
 
         try
         {
-            return JsonSerializer.Deserialize<LifetimeCountsState>(raw, _serializerOptions)
+            return JsonSerializer.Deserialize(raw, AnalyticsJsonContext.Default.LifetimeCountsState)
                 ?? new LifetimeCountsState();
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
@@ -205,7 +204,7 @@ public sealed class ClipAnalyticsService : IClipAnalyticsService
 
         try
         {
-            return JsonSerializer.Deserialize<Dictionary<int, int>>(raw, _serializerOptions)
+            return JsonSerializer.Deserialize(raw, AnalyticsJsonContext.Default.DictionaryInt32Int32)
                 ?? new Dictionary<int, int>();
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
@@ -245,13 +244,13 @@ public sealed class ClipAnalyticsService : IClipAnalyticsService
 
     private void PersistInternal()
     {
-        var raw = JsonSerializer.Serialize(_history, _serializerOptions);
+        var raw = JsonSerializer.Serialize(_history, AnalyticsJsonContext.Default.DictionaryStringDailyCountsState);
         _settings.Set(StorageKey, raw);
 
-        var lifetimeRaw = JsonSerializer.Serialize(_lifetime, _serializerOptions);
+        var lifetimeRaw = JsonSerializer.Serialize(_lifetime, AnalyticsJsonContext.Default.LifetimeCountsState);
         _settings.Set(LifetimeStorageKey, lifetimeRaw);
 
-        var hourlyRaw = JsonSerializer.Serialize(_hourly, _serializerOptions);
+        var hourlyRaw = JsonSerializer.Serialize(_hourly, AnalyticsJsonContext.Default.DictionaryInt32Int32);
         _settings.Set(HourlyStorageKey, hourlyRaw);
     }
 
@@ -270,4 +269,10 @@ public sealed class ClipAnalyticsService : IClipAnalyticsService
         public int VideoCount { get; set; }
         public int GifCount { get; set; }
     }
+
+    [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+    [JsonSerializable(typeof(Dictionary<string, DailyCountsState>))]
+    [JsonSerializable(typeof(LifetimeCountsState))]
+    [JsonSerializable(typeof(Dictionary<int, int>))]
+    private sealed partial class AnalyticsJsonContext : JsonSerializerContext;
 }

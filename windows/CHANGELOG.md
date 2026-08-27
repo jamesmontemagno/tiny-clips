@@ -47,6 +47,20 @@ own `CHANGELOG.md` at the repository root.
   selection mode, delete confirmation, context menu, accessibility-name audit).
 
 ### Changed
+- **Direct GitHub Release and winget packages are now .NET 10 NativeAOT and fully
+  self-contained.** x64 and ARM64 MSIX artifacts bundle the Windows App SDK/WinUI runtime and do
+  not require a machine-installed .NET 10 Desktop Runtime or Windows App Runtime. The Microsoft
+  Store package remains framework-dependent and independently configured.
+- Release, pull-request, winget-submission, launch-smoke, and offline Windows Sandbox checks now
+  inspect each direct package for a native architecture-specific executable, no CLR payload, no
+  Windows App Runtime framework dependency, bundled WinUI/runtime files, and embedded
+  registration-free WinRT activation metadata.
+- JSON persistence/update payloads use `System.Text.Json` source generation, the Windows Share
+  contract uses source-generated COM interop, and the remaining picker/device XAML templates use
+  compiled bindings so trimming cannot remove required members.
+- The self-contained x64 package is about 50.9 MiB compressed (126.4 MiB expanded), versus
+  22.4 MiB compressed (72.1 MiB expanded) for a same-source framework-dependent artifact; the
+  28.5 MiB download increase removes both runtime prerequisites.
 - The shared Direct3D 11 device is created with `VIDEO_SUPPORT` (falls back without it) so Media
   Foundation's hardware encoders can bind recorder textures directly.
 - Webcam overlay placement math moved to the shared `WebcamOverlayLayout`; click-ring geometry and

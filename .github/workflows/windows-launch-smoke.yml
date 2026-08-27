@@ -1,11 +1,9 @@
-name: Windows Launch Smoke (winget harness repro)
+name: Windows Launch Smoke (self-contained package)
 
 # Reproduces the winget-pkgs "Installation Validation" step on real x64 and ARM64 runners:
-# install the framework-dependent MSIX together with its declared runtime dependencies, launch
-# TinyClips.App.exe straight from C:\Program Files\WindowsApps (as the harness does), and report
-# whether the process survives. On a crash the job collects the app's crash.log plus the
-# ".NET Runtime" / "Application Error" event-log records, which carry the managed stack that the
-# winget moderators only sometimes paste into the PR.
+# verify the direct MSIX is NativeAOT and bundles Windows App SDK, install it without installing
+# either runtime first, launch TinyClips.App.exe straight from C:\Program Files\WindowsApps (as the
+# harness does), and report whether the process survives. On a crash the job collects diagnostics.
 #
 # source=release downloads the signed MSIX from a GitHub release; source=build packages the
 # checked-out branch with the release recipe and signs it with a throwaway self-signed cert so a
@@ -23,11 +21,11 @@ on:
       release_tag:
         description: "Release tag holding the MSIX assets (source=release)"
         required: false
-        default: "v1.7.1-windows"
+        default: "v1.8.0-windows"
       asset_version:
         description: "Version embedded in the asset name (e.g. 1.7.1)"
         required: true
-        default: "1.7.1"
+        default: "1.8.0"
       wait_seconds:
         description: "How long the app must stay alive to count as a pass"
         required: false
@@ -51,8 +49,8 @@ jobs:
 
     env:
       SOURCE: ${{ inputs.source || 'release' }}
-      RELEASE_TAG: ${{ inputs.release_tag || 'v1.7.1-windows' }}
-      ASSET_VERSION: ${{ inputs.asset_version || '1.7.1' }}
+      RELEASE_TAG: ${{ inputs.release_tag || 'v1.8.0-windows' }}
+      ASSET_VERSION: ${{ inputs.asset_version || '1.8.0' }}
       WAIT_SECONDS: ${{ inputs.wait_seconds || '60' }}
       ARCH: ${{ matrix.arch }}
       GH_TOKEN: ${{ github.token }}
@@ -67,6 +65,9 @@ jobs:
           "Display adapters: $((Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join '; ')"
           "Session: $((Get-Process -Id $PID).SessionId)  Interactive: $([Environment]::UserInteractive)"
 
+      - name: Checkout code
+        uses: actions/checkout@v6
+
       - name: Download release MSIX
         if: env.SOURCE == 'release'
         shell: pwsh
@@ -76,15 +77,29 @@ jobs:
             --pattern "TinyClips-$env:ASSET_VERSION-$env:ARCH.msix" --dir packages --clobber
           Get-ChildItem packages
 
-      - name: Checkout code
-        if: env.SOURCE == 'build'
-        uses: actions/checkout@v6
-
       - name: Setup .NET SDK
         if: env.SOURCE == 'build'
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Verify NativeAOT toolchain
+        if: env.SOURCE == 'build'
+        shell: pwsh
+        run: |
+          $vswhereDirectory = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer"
+          $vswhere = Join-Path $vswhereDirectory "vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe was not found." }
+
+          $visualStudio = & $vswhere -latest -products * -property installationPath
+          if (-not $visualStudio) { throw "Visual Studio was not found." }
+
+          $linker = Get-ChildItem "$visualStudio\VC\Tools\MSVC" -Recurse -Filter link.exe |
+            Where-Object { $_.FullName -match "\\Host(x64|arm64)\\$env:ARCH\\link\.exe$" } |
+            Select-Object -First 1
+          if (-not $linker) { throw "NativeAOT linker for $env:ARCH was not found." }
+
+          $vswhereDirectory >> $env:GITHUB_PATH
 
       - name: Build and package MSIX from this branch
         if: env.SOURCE == 'build'
@@ -104,9 +119,12 @@ jobs:
             -c Release `
             -p:Platform=$platform `
             -p:RuntimeIdentifier=win-$env:ARCH `
-            -p:SelfContained=false `
-            -p:WindowsAppSDKSelfContained=false `
-            -p:PublishTrimmed=false `
+            -p:TinyClipsDirectReleaseBuild=true `
+            -p:PublishAot=true `
+            -p:SelfContained=true `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:PublishTrimmed=true `
+            -p:PublishReadyToRun=false `
             -p:EnableMsixTooling=true `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageDir=$packageDirFull `
@@ -121,6 +139,14 @@ jobs:
           if (-not $produced) { throw "No MSIX produced." }
           Copy-Item $produced.FullName "packages/TinyClips-$env:ASSET_VERSION-$env:ARCH.msix" -Force
           Get-ChildItem packages -File
+
+      - name: Verify self-contained NativeAOT package
+        shell: pwsh
+        run: |
+          & windows/packaging/Assert-DirectPackage.ps1 `
+            -MsixPath "packages/TinyClips-$env:ASSET_VERSION-$env:ARCH.msix" `
+            -Architecture $env:ARCH
+          if ($LASTEXITCODE -ne 0) { throw "Direct package assertions failed." }
 
       - name: Sign MSIX with a throwaway self-signed certificate
         if: env.SOURCE == 'build'
@@ -144,25 +170,6 @@ jobs:
           if (-not (Test-Path $signtool)) { $signtool = Join-Path $kitsBin.FullName "x64\signtool.exe" }
           & $signtool sign /fd SHA256 /f $pfx /p smoke "packages\TinyClips-$env:ASSET_VERSION-$env:ARCH.msix"
           if ($LASTEXITCODE -ne 0) { throw "signtool failed." }
-
-      - name: Install .NET Desktop Runtime 10 (machine-wide)
-        shell: pwsh
-        run: |
-          $url = "https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-$env:ARCH.exe"
-          Invoke-WebRequest $url -OutFile windowsdesktop-runtime.exe -MaximumRedirection 10
-          $p = Start-Process .\windowsdesktop-runtime.exe -ArgumentList '/install','/quiet','/norestart' -Wait -PassThru
-          "Desktop runtime installer exit code: $($p.ExitCode)"
-          if ($p.ExitCode -notin 0, 1638, 3010) { throw "Desktop runtime install failed." }
-
-      - name: Install Windows App Runtime 1.8
-        shell: pwsh
-        run: |
-          $url = "https://aka.ms/windowsappsdk/1.8/latest/windowsappruntimeinstall-$env:ARCH.exe"
-          Invoke-WebRequest $url -OutFile WindowsAppRuntimeInstall.exe -MaximumRedirection 10
-          $p = Start-Process .\WindowsAppRuntimeInstall.exe -ArgumentList '--quiet' -Wait -PassThru
-          "Windows App Runtime installer exit code: $($p.ExitCode)"
-          if ($p.ExitCode -ne 0) { throw "Windows App Runtime install failed." }
-          Get-AppxPackage Microsoft.WindowsAppRuntime.1.8* | Select-Object Name, Version, Architecture
 
       - name: Install TinyClips MSIX
         shell: pwsh

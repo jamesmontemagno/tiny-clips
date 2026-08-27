@@ -4,13 +4,8 @@ using System.Text.Json.Serialization;
 
 namespace TinyClips.Core.Services;
 
-public sealed class GitHubReleaseUpdateService : IAppUpdateService
+public sealed partial class GitHubReleaseUpdateService : IAppUpdateService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
-
     private readonly HttpClient _httpClient;
     private readonly string _releasesApiUrl;
 
@@ -43,7 +38,10 @@ public sealed class GitHubReleaseUpdateService : IAppUpdateService
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            var releases = await JsonSerializer.DeserializeAsync<List<GitHubRelease>>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+            var releases = await JsonSerializer.DeserializeAsync(
+                stream,
+                GitHubReleaseJsonContext.Default.ListGitHubRelease,
+                cancellationToken).ConfigureAwait(false);
             if (releases is null || releases.Count == 0)
             {
                 return Save(AppUpdateCheckResult.Failed(currentVersion, "No releases were returned."));
@@ -165,4 +163,8 @@ public sealed class GitHubReleaseUpdateService : IAppUpdateService
         [JsonPropertyName("prerelease")]
         public bool PreRelease { get; init; }
     }
+
+    [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
+    [JsonSerializable(typeof(List<GitHubRelease>))]
+    private sealed partial class GitHubReleaseJsonContext : JsonSerializerContext;
 }

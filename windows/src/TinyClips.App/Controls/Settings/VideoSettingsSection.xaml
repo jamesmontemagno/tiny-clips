@@ -7,6 +7,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:TinyClips.App.Settings.Sections"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="using:TinyClips.Core.Services"
     xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
@@ -80,11 +81,16 @@
                                 <ComboBox
                                     AutomationProperties.AutomationId="MicrophoneDeviceCombo"
                                     AutomationProperties.Name="Microphone device"
-                                    DisplayMemberPath="Name"
                                     IsEnabled="{x:Bind ViewModel.MicrophoneSelectorEnabled, Mode=OneWay}"
                                     ItemsSource="{x:Bind ViewModel.Microphones, Mode=OneWay}"
                                     SelectedItem="{x:Bind ViewModel.SelectedMicrophone, Mode=TwoWay}"
-                                    Visibility="{x:Bind ViewModel.MicrophoneSelectorVisibility, Mode=OneWay}" />
+                                    Visibility="{x:Bind ViewModel.MicrophoneSelectorVisibility, Mode=OneWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="services:AudioInputDevice">
+                                            <TextBlock Text="{x:Bind Name}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </Grid>
                         </controls:SettingsCard>
                         <controls:SettingsCard ContentAlignment="Left">
@@ -158,11 +164,16 @@
                         MinWidth="220"
                         AutomationProperties.AutomationId="WebcamDeviceCombo"
                         AutomationProperties.Name="Webcam device"
-                        DisplayMemberPath="Name"
                         IsEnabled="{x:Bind ViewModel.WebcamDeviceSelectorEnabled, Mode=OneWay}"
                         ItemsSource="{x:Bind ViewModel.Webcams, Mode=OneWay}"
                         SelectedItem="{x:Bind ViewModel.SelectedWebcam, Mode=TwoWay}"
-                        Visibility="{x:Bind ViewModel.WebcamSelectorVisibility, Mode=OneWay}" />
+                        Visibility="{x:Bind ViewModel.WebcamSelectorVisibility, Mode=OneWay}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="services:WebcamDeviceInfo">
+                                <TextBlock Text="{x:Bind Name}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                 </Grid>
                 <controls:SettingsExpander.Items>
                     <controls:SettingsCard ContentAlignment="Left">

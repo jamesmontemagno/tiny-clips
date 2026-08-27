@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TinyClips.Core.Models;
 
 namespace TinyClips.Core.Services;
@@ -12,7 +13,7 @@ public interface IRecentCaptureService
     void Remove(string path);
 }
 
-public sealed class RecentCaptureService : IRecentCaptureService
+public sealed partial class RecentCaptureService : IRecentCaptureService
 {
     private const string SettingsKey = "recentCapturesV1";
     private const int MaximumCount = 10;
@@ -83,7 +84,7 @@ public sealed class RecentCaptureService : IRecentCaptureService
 
         try
         {
-            return JsonSerializer.Deserialize<List<RecentCapture>>(json) ?? [];
+            return JsonSerializer.Deserialize(json, RecentCaptureJsonContext.Default.ListRecentCapture) ?? [];
         }
         catch (JsonException)
         {
@@ -91,5 +92,9 @@ public sealed class RecentCaptureService : IRecentCaptureService
         }
     }
 
-    private void Persist() => _settings.Set(SettingsKey, JsonSerializer.Serialize(_captures));
+    private void Persist() =>
+        _settings.Set(SettingsKey, JsonSerializer.Serialize(_captures, RecentCaptureJsonContext.Default.ListRecentCapture));
+
+    [JsonSerializable(typeof(List<RecentCapture>))]
+    private sealed partial class RecentCaptureJsonContext : JsonSerializerContext;
 }

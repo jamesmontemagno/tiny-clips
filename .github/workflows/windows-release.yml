@@ -19,10 +19,6 @@ env:
   APP_PROJECT: windows/src/TinyClips.App/TinyClips.App.csproj
   PACKAGE_FAMILY_NAME: Refractored.TinyClips_vmshqmcyy894t
   SIGNTOOL_TIMESTAMP_URL: http://timestamp.acs.microsoft.com
-  # Highest WindowsAppRuntime 1.8 version installable via winget's Microsoft.WindowsAppRuntime.1.8
-  # (manifests/m/Microsoft/WindowsAppRuntime/1/8 in microsoft/winget-pkgs; 1.8.9 = 8000.879.2017.0).
-  # The MSIX's MinVersion must not exceed this or winget installs fail on dependency resolution.
-  WINGET_WINDOWSAPPRUNTIME_MAX_VERSION: 8000.879.2017.0
 
 jobs:
   build-sign-release:
@@ -40,6 +36,32 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Verify NativeAOT toolchain
+        shell: pwsh
+        run: |
+          $vswhereDirectory = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer"
+          $vswhere = Join-Path $vswhereDirectory "vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe was not found; NativeAOT requires Visual Studio with Desktop development with C++."
+          }
+
+          $visualStudio = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $visualStudio) {
+            throw "Visual Studio Desktop development with C++ was not found."
+          }
+
+          foreach ($target in @("x64", "arm64")) {
+            $linker = Get-ChildItem "$visualStudio\VC\Tools\MSVC" -Recurse -Filter link.exe |
+              Where-Object { $_.FullName -match "\\Hostx64\\$target\\link\.exe$" } |
+              Select-Object -First 1
+            if (-not $linker) {
+              throw "NativeAOT linker for $target was not found."
+            }
+            "$target linker: $($linker.FullName)"
+          }
+
+          $vswhereDirectory >> $env:GITHUB_PATH
 
       - name: Set release version
         shell: pwsh
@@ -74,15 +96,13 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/windows | Out-Null
+          "### Direct package sizes" >> $env:GITHUB_STEP_SUMMARY
+          "| Architecture | Compressed size |" >> $env:GITHUB_STEP_SUMMARY
+          "|---|---:|" >> $env:GITHUB_STEP_SUMMARY
 
-          # Framework-dependent MSIX (small package). The app does NOT bundle the .NET or
-          # Windows App SDK runtimes; instead they are declared as winget PackageDependencies
-          # in the installer manifest (Microsoft.DotNet.DesktopRuntime.10 and
-          # Microsoft.WindowsAppRuntime.1.8). winget installs those dependency packages before
-          # the app, and the Windows App SDK runtime is also auto-acquired by the OS on machines
-          # with the Store/App Installer. Validate locally with
-          # windows/packaging/sandbox/Invoke-SandboxValidation.ps1 (installs the runtimes in a fresh
-          # Windows Sandbox first) and on ARM64 via the Windows Launch Smoke workflow.
+          # Direct release packages are .NET 10 NativeAOT and bundle the Windows App SDK runtime.
+          # Keep build + MSIX packaging in this one invocation so the executable retains the
+          # registration-free WinRT activatable-class metadata required on clean machines.
           $platforms = @(
             @{ Platform = "x64";   Rid = "win-x64";   Asset = "x64" }
             @{ Platform = "ARM64"; Rid = "win-arm64"; Asset = "arm64" }
@@ -97,8 +117,12 @@ jobs:
               -c Release `
               -p:Platform=$($p.Platform) `
               -p:RuntimeIdentifier=$($p.Rid) `
-              -p:SelfContained=false `
-              -p:WindowsAppSDKSelfContained=false `
+              -p:TinyClipsDirectReleaseBuild=true `
+              -p:PublishAot=true `
+              -p:SelfContained=true `
+              -p:WindowsAppSDKSelfContained=true `
+              -p:PublishTrimmed=true `
+              -p:PublishReadyToRun=false `
               -p:EnableMsixTooling=true `
               -p:GenerateAppxPackageOnBuild=true `
               -p:AppxPackageDir=$packageDirFull `
@@ -113,42 +137,15 @@ jobs:
               Select-Object -First 1
             if (-not $produced) { throw "No MSIX produced for $($p.Platform)." }
 
-            # Guard against silently shipping the wrong kind of package. Unpack the MSIX and
-            # assert it is genuinely framework-dependent: (1) the AppxManifest declares the
-            # WindowsAppRuntime framework dependency (so the declared winget dependency matches
-            # the package), and (2) the payload does NOT contain the .NET runtime (coreclr.dll),
-            # confirming the .NET runtime is framework-dependent and delivered via the declared
-            # Microsoft.DotNet.DesktopRuntime.10 winget dependency.
-            $verifyDir = Join-Path $packageDir "verify"
-            Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
-            $zipCopy = "$($produced.FullName).zip"
-            Copy-Item $produced.FullName $zipCopy -Force
-            Expand-Archive $zipCopy -DestinationPath $verifyDir -Force
+            & windows/packaging/Assert-DirectPackage.ps1 `
+              -MsixPath $produced.FullName `
+              -Architecture $p.Asset
+            if ($LASTEXITCODE -ne 0) { throw "Direct package assertions failed for $($p.Platform)." }
 
-            $appxManifest = Get-Content (Join-Path $verifyDir "AppxManifest.xml") -Raw
-            if ($appxManifest -notmatch '<PackageDependency[^>]*Name="Microsoft\.WindowsAppRuntime') {
-              throw "Framework-dependent MSIX for $($p.Platform) is missing the WindowsAppRuntime framework dependency."
-            }
-
-            # The declared winget dependency Microsoft.WindowsAppRuntime.1.8 can only deliver the
-            # runtime versions published in winget-pkgs. If the SDK bump raised the package's
-            # MinVersion past that, every winget install fails with a missing-dependency error.
-            $runtimeDependency = [regex]::Match($appxManifest, '<PackageDependency[^>]*Name="Microsoft\.WindowsAppRuntime\.1\.8"[^>]*MinVersion="([^"]+)"')
-            if (-not $runtimeDependency.Success) { throw "Could not read the WindowsAppRuntime.1.8 MinVersion for $($p.Platform)." }
-            $minVersion = [version]$runtimeDependency.Groups[1].Value
-            $wingetMax = [version]$env:WINGET_WINDOWSAPPRUNTIME_MAX_VERSION
-            if ($minVersion -gt $wingetMax) {
-              throw "MSIX for $($p.Platform) requires WindowsAppRuntime.1.8 >= $minVersion, but winget's Microsoft.WindowsAppRuntime.1.8 only provides up to $wingetMax. Pin Microsoft.WindowsAppSDK to a version whose runtime winget ships (see the csproj comment), or raise WINGET_WINDOWSAPPRUNTIME_MAX_VERSION after winget-pkgs publishes the newer runtime."
-            }
-            "$($p.Platform): WindowsAppRuntime.1.8 MinVersion $minVersion <= winget-available $wingetMax"
-
-            if (Get-ChildItem $verifyDir -Recurse -Filter "coreclr.dll" -ErrorAction SilentlyContinue) {
-              throw "MSIX for $($p.Platform) bundles the .NET runtime (coreclr.dll) - expected a framework-dependent (SelfContained=false) build."
-            }
-            Remove-Item $zipCopy -Force -ErrorAction SilentlyContinue
-            Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
-
-            Copy-Item $produced.FullName "artifacts/windows/TinyClips-$env:ASSET_VERSION-$($p.Asset).msix" -Force
+            $releasePackage = "artifacts/windows/TinyClips-$env:ASSET_VERSION-$($p.Asset).msix"
+            Copy-Item $produced.FullName $releasePackage -Force
+            $sizeMiB = [Math]::Round((Get-Item $releasePackage).Length / 1MB, 2)
+            "| $($p.Asset) | $sizeMiB MiB |" >> $env:GITHUB_STEP_SUMMARY
           }
 
       - name: Azure login
@@ -279,11 +276,9 @@ jobs:
 
           @"
           # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
-          # Installer manifest for the signed, framework-dependent MSIX produced by the Windows
-          # Release workflow. The package does NOT bundle the .NET or Windows App SDK runtimes;
-          # they are declared below as winget package dependencies so winget installs them before
-          # the app. Do not set Scope here: the dependency installers are machine-scope/unknown
-          # scope, and forcing user scope makes winget reject them during validation.
+          # Installer manifest for the signed, NativeAOT self-contained MSIX produced by the
+          # Windows Release workflow. The package bundles .NET native code and Windows App SDK,
+          # so winget runtime package dependencies are intentionally unnecessary.
           PackageIdentifier: Refractored.TinyClips
           PackageVersion: $env:PACKAGE_VERSION
           MinimumOSVersion: 10.0.22000.0
@@ -292,10 +287,6 @@ jobs:
             - silent
             - silentWithProgress
           PackageFamilyName: $env:PACKAGE_FAMILY_NAME
-          Dependencies:
-            PackageDependencies:
-              - PackageIdentifier: Microsoft.DotNet.DesktopRuntime.10
-              - PackageIdentifier: Microsoft.WindowsAppRuntime.1.8
           Installers:
             - Architecture: x64
               InstallerUrl: https://github.com/jamesmontemagno/tiny-clips/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-x64.msix
@@ -362,6 +353,8 @@ jobs:
 
           $notes += ""
           $notes += "## Release validation"
+          $notes += "- Direct packages are .NET 10 NativeAOT and self-contained for both .NET and Windows App SDK."
+          $notes += "- Package inspection confirmed native architecture/entry point, no CLR payload or WindowsAppRuntime framework dependency, and bundled WinUI/Windows App SDK runtime files."
           $notes += "- Azure Artifact Signing completed for x64 and ARM64 MSIX packages."
           $notes += "- SignTool verification passed for x64 and ARM64 MSIX packages."
           $notes += "- WACK overall result passed for x64 and ARM64 MSIX packages."

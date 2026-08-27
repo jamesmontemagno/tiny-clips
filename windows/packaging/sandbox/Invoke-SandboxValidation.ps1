@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
   One-command Windows Sandbox validation of a Tiny Clips MSIX, mirroring winget's Installation
-  Validation: fresh OS, runtimes installed from their installers, MSIX installed, app launched
-  from C:\Program Files\WindowsApps with an unrelated working directory, first-run onboarding
-  clicked through, process must stay alive.
+  Validation: fresh offline OS, self-contained MSIX installed without runtime prerequisites, app
+  launched from C:\Program Files\WindowsApps with an unrelated working directory, first-run
+  onboarding clicked through, process must stay alive.
 
 .DESCRIPTION
   Run from the repository root on the host. Requires Windows Sandbox (optional feature
@@ -20,7 +20,7 @@
              throwaway self-signed certificate that the Sandbox trusts.
 
 .PARAMETER Version
-  Asset version, e.g. 1.7.4 (used for the download name or to stamp the build).
+  Asset version, e.g. 1.8.0 (used for the download name or to stamp the build).
 
 .PARAMETER WaitSeconds
   How long the app must stay alive to pass. Default 60.
@@ -29,9 +29,9 @@
   Host folder mapped into the Sandbox as C:\share. Default: %TEMP%\tinyclips-sandbox.
 
 .EXAMPLE
-  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.7.4
+  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.0
 .EXAMPLE
-  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.7.4
+  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.0
 #>
 [CmdletBinding()]
 param(
@@ -50,17 +50,12 @@ if (-not (Get-Command WindowsSandbox.exe -ErrorAction SilentlyContinue)) { throw
 if (Get-Process WindowsSandbox* -ErrorAction SilentlyContinue) { throw 'A Windows Sandbox instance is already running; close it first.' }
 
 New-Item -ItemType Directory -Force $WorkDir | Out-Null
-Remove-Item (Join-Path $WorkDir 'sandbox-result.txt'), (Join-Path $WorkDir '*.png'), (Join-Path $WorkDir 'smoke.cer') -ErrorAction SilentlyContinue
-
-# --- Runtimes (cached between runs) ---
-$dotnet = Join-Path $WorkDir 'windowsdesktop-runtime.exe'
-$war = Join-Path $WorkDir 'WindowsAppRuntimeInstall.exe'
-if (-not (Test-Path $dotnet)) { Write-Host 'Downloading .NET 10 Desktop Runtime installer...'; Invoke-WebRequest 'https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe' -OutFile $dotnet -MaximumRedirection 10 }
-if (-not (Test-Path $war)) {
-    # Same runtime build winget's Microsoft.WindowsAppRuntime.1.8 (1.8.9) installs: 8000.879.2017.0.
-    Write-Host 'Downloading Windows App Runtime 1.8 installer...'
-    Invoke-WebRequest 'https://aka.ms/windowsappsdk/1.8/1.8.260529003/windowsappruntimeinstall-x64.exe' -OutFile $war -MaximumRedirection 10
-}
+Remove-Item `
+    (Join-Path $WorkDir 'sandbox-result.txt'), `
+    (Join-Path $WorkDir 'welcome.png'), `
+    (Join-Path $WorkDir 'after-onboarding.png'), `
+    (Join-Path $WorkDir 'smoke.cer') `
+    -ErrorAction SilentlyContinue
 
 # --- Package ---
 $msixPath = Join-Path $WorkDir $msixName
@@ -69,7 +64,7 @@ if ($Source -eq 'Release') {
     gh release download "v$Version-windows" --repo jamesmontemagno/tiny-clips --pattern $msixName --dir $WorkDir --clobber
     if ($LASTEXITCODE -ne 0) { throw 'gh release download failed.' }
 } else {
-    Write-Host "Building framework-dependent x64 MSIX $Version from the working tree..."
+    Write-Host "Building NativeAOT self-contained x64 MSIX $Version from the working tree..."
     $packageDir = Join-Path $WorkDir 'build'
     Remove-Item $packageDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $packageDir | Out-Null
@@ -77,8 +72,11 @@ if ($Source -eq 'Release') {
     try {
         $text = [Text.Encoding]::UTF8.GetString($manifestBackup)
         [IO.File]::WriteAllText($manifestPath, ($text -creplace '(<Identity[\s\S]*?Version=")[^"]+(")', "`${1}$Version.0`${2}"), (New-Object Text.UTF8Encoding $true))
+        $vswhereDirectory = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
+        $env:PATH = "$vswhereDirectory;$env:PATH"
         dotnet build $appProject -c Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
-            -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -p:PublishTrimmed=false `
+            -p:TinyClipsDirectReleaseBuild=true -p:PublishAot=true -p:SelfContained=true `
+            -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=true -p:PublishReadyToRun=false `
             -p:EnableMsixTooling=true -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageDir="$packageDir\" -p:AppxBundle=Never -p:UapAppxPackageBuildMode=SideloadOnly `
             -p:AppxPackageSigningEnabled=false -nologo -v minimal
@@ -109,13 +107,7 @@ if ($Source -eq 'Release') {
     }
 }
 
-# Report what the package demands vs. what winget can install.
-$verify = Join-Path $WorkDir 'verify'
-Remove-Item $verify -Recurse -Force -ErrorAction SilentlyContinue
-Copy-Item $msixPath "$msixPath.zip" -Force; Expand-Archive "$msixPath.zip" $verify -Force; Remove-Item "$msixPath.zip"
-$dep = ([xml](Get-Content (Join-Path $verify 'AppxManifest.xml'))).Package.Dependencies.PackageDependency | Where-Object Name -eq 'Microsoft.WindowsAppRuntime.1.8'
-Write-Host "Package requires Microsoft.WindowsAppRuntime.1.8 >= $($dep.MinVersion) (winget 1.8.9 provides 8000.879.2017.0)"
-Remove-Item $verify -Recurse -Force -ErrorAction SilentlyContinue
+& (Join-Path $repo 'windows\packaging\Assert-DirectPackage.ps1') -MsixPath $msixPath -Architecture x64
 
 # --- Sandbox ---
 Copy-Item (Join-Path $PSScriptRoot 'Validate-TinyClips.ps1') (Join-Path $WorkDir 'Validate-TinyClips.ps1') -Force
@@ -126,7 +118,7 @@ $wsb = Join-Path $WorkDir 'TinyClips.wsb'
   <vGPU>Disable</vGPU>
   <AudioInput>Disable</AudioInput>
   <VideoInput>Disable</VideoInput>
-  <Networking>Enable</Networking>
+  <Networking>Disable</Networking>
   <MappedFolders>
     <MappedFolder>
       <HostFolder>$WorkDir</HostFolder>
@@ -140,7 +132,7 @@ $wsb = Join-Path $WorkDir 'TinyClips.wsb'
 </Configuration>
 "@ | Set-Content $wsb -Encoding UTF8
 
-Write-Host "Starting Windows Sandbox (runtime install takes ~8-10 minutes; leave the window alone)..."
+Write-Host "Starting offline Windows Sandbox (leave the window alone)..."
 Start-Process $wsb
 $result = Join-Path $WorkDir 'sandbox-result.txt'
 $deadline = (Get-Date).AddMinutes(20)

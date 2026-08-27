@@ -14,6 +14,7 @@
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!--
@@ -32,10 +33,24 @@
       - true: Microsoft Store distribution
     -->
     <TinyClipsStoreBuild Condition="'$(TinyClipsStoreBuild)' == ''">false</TinyClipsStoreBuild>
+    <!-- Enables the NativeAOT, .NET self-contained, and Windows App SDK self-contained direct release profile. -->
+    <TinyClipsDirectReleaseBuild Condition="'$(TinyClipsDirectReleaseBuild)' == ''">false</TinyClipsDirectReleaseBuild>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TinyClipsStoreBuild)' == 'true'">
     <DefineConstants>$(DefineConstants);TINYCLIPS_STORE_BUILD</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TinyClipsDirectReleaseBuild)' == 'true'">
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL3050</WarningsAsErrors>
+    <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);WMC1510</MSBuildWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TinyClipsStoreBuild)' == 'true'">
@@ -81,10 +96,8 @@
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
     <!--
-      Pinned: the MSIX's WindowsAppRuntime MinVersion follows this SDK version, and winget's
-      Microsoft.WindowsAppRuntime.1.8 package (our declared dependency) currently tops out at the
-      runtime built from 1.8.260529003 (8000.879.2017.0). Newer 1.8 SDKs raise MinVersion above
-      what winget can install. Bump only after winget-pkgs ships the matching runtime version.
+      Keep the SDK version deliberate: direct releases bundle this Windows App SDK runtime,
+      while Store builds remain framework-dependent and must be validated separately.
     -->
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260529003" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.6.1" />
@@ -112,8 +125,8 @@
   <PropertyGroup>
     <!--
       ReadyToRun pre-compiles IL so the first capture after launch doesn't pay JIT cost for every
-      overlay window type. It applies to `dotnet publish` and to the MSIX packaging path (the
-      packaging targets run the publish pipeline), so Release MSIX payloads ship R2R images.
+      overlay window type in ordinary Release builds. Direct release packages use NativeAOT
+      instead and explicitly disable ReadyToRun above.
     -->
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == '' and '$(Configuration)' == 'Release'">True</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">False</PublishReadyToRun>
@@ -124,4 +137,10 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(PublishTrimmed)' == ''">False</PublishTrimmed>
   </PropertyGroup>
+
+  <Target Name="ValidateTinyClipsReleaseFlavor" BeforeTargets="PrepareForBuild">
+    <Error
+      Condition="'$(TinyClipsDirectReleaseBuild)' == 'true' and '$(TinyClipsStoreBuild)' == 'true'"
+      Text="TinyClipsDirectReleaseBuild and TinyClipsStoreBuild are mutually exclusive." />
+  </Target>
 </Project>

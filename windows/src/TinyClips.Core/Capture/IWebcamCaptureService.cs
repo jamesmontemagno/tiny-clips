@@ -1,7 +1,5 @@
 using Windows.Graphics.Imaging;
-
 using Windows.Graphics.DirectX.Direct3D11;
-using Windows.Graphics.Imaging;
 
 namespace TinyClips.Core.Capture;
 

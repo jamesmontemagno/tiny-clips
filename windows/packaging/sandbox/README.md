@@ -5,11 +5,10 @@ one command. Use it before tagging a Windows release and before opening a winget
 
 What it checks, in order:
 
-1. Fresh Windows (Sandbox) with **no** .NET or Windows App SDK runtime.
-2. Installs the .NET 10 Desktop Runtime and the Windows App Runtime 1.8 from their installers —
-   the same runtime build winget's `Microsoft.WindowsAppRuntime.1.8` dependency delivers
-   (`8000.879.2017.0`), so a package whose `MinVersion` is too new fails here too.
-3. Installs the framework-dependent MSIX (`Add-AppxPackage`) and verifies it actually registered.
+1. Fresh Windows (Sandbox), with networking disabled so App Installer cannot acquire dependencies.
+2. Reports whether .NET 10 Desktop Runtime or Windows App Runtime 1.8 happens to be present; it
+   deliberately installs neither.
+3. Validates and installs the NativeAOT self-contained MSIX (`Add-AppxPackage`).
 4. Launches `TinyClips.App.exe` by full path from `C:\Program Files\WindowsApps\…` with an unrelated
    working directory (`C:\Windows\Temp`) — exactly how the winget harness starts the app.
 5. Brings the first-run Welcome window to the foreground and presses Enter three times
@@ -34,20 +33,18 @@ From the repository root:
 
 ```pwsh
 # Validate a published release (Azure-signed, no certificate juggling)
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.7.4
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.0
 
 # Validate the current working tree: builds the MSIX with the release recipe and signs it with a
 # throwaway self-signed certificate that only the Sandbox trusts
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.7.4
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.0
 ```
 
-The run takes ~10–12 minutes; almost all of it is the .NET runtime installer (silent, nothing on
-screen). Then the Windows App Runtime installer's console flashes briefly, the Welcome window
-appears, gets clicked through, and the script prints the result:
+The Welcome window appears, gets clicked through, and the script prints the result:
 
 ```
 18:05:28   installed
-18:05:31   Refractored.TinyClips_1.7.4.0_x64__vmshqmcyy894t
+18:05:31   Refractored.TinyClips_1.8.0.0_x64__vmshqmcyy894t
 18:05:32 Launching C:\Program Files\WindowsApps\...\TinyClips.App.exe (cwd C:\Windows\Temp)
 18:05:52 Activating 'Welcome to Tiny Clips' and clicking through onboarding (3x Enter)
 18:06:34 RESULT: PASS - alive after 60s
@@ -58,26 +55,24 @@ Exit code 0 = PASS. Anything else: read `sandbox-result.txt` — a `RESULT: FAIL
 exit code (`0xC000027B` = XAML stowed exception), followed by `crash.log` and the event-log
 stack.
 
-Artifacts land in `%TEMP%\tinyclips-sandbox\` (override with `-WorkDir`). Runtime installers are
-cached there between runs.
+Artifacts land in `%TEMP%\tinyclips-sandbox\` (override with `-WorkDir`).
 
 ## Files
 
 | File | Where it runs | Purpose |
 |---|---|---|
-| `Invoke-SandboxValidation.ps1` | host | Downloads/builds + signs the MSIX, fetches the runtime installers, writes the `.wsb`, starts Sandbox, waits for and prints the result. |
-| `Validate-TinyClips.ps1` | inside Sandbox (LogonCommand) | Installs runtimes + MSIX, launches and drives the app, collects evidence. Reads `config.json` written by the host script. |
+| `Invoke-SandboxValidation.ps1` | host | Downloads or builds + validates + signs the MSIX, writes the offline `.wsb`, starts Sandbox, waits for and prints the result. |
+| `Validate-TinyClips.ps1` | inside Sandbox (LogonCommand) | Installs the MSIX without runtime prerequisites, launches and drives the app, and collects evidence. Reads `config.json` written by the host script. |
 
 ## Gotchas we hit
 
-- **`Add-AppxPackage` can print success while the package never registers.** Seen when the MSIX's
-  `Microsoft.WindowsAppRuntime.1.8` `MinVersion` (set by the `Microsoft.WindowsAppSDK` NuGet version)
-  was newer than the installed runtime. `Validate-TinyClips.ps1` checks `Get-AppxPackage` afterwards
-  and fails loudly. The release workflow also asserts `MinVersion` ≤ what winget ships
-  (`WINGET_WINDOWSAPPRUNTIME_MAX_VERSION` in `windows-release.yml`).
-- **Framework-dependent packages *do* work in Sandbox** as long as the runtimes are installed from
-  their installers first (which this script does). Without them, install fails with `0x80073CF3`
-  because Sandbox has no Store to auto-acquire framework packages.
+- **`Add-AppxPackage` can print success while the package never registers.**
+  `Validate-TinyClips.ps1` checks `Get-AppxPackage` afterwards and fails loudly.
+- **Networking is disabled intentionally.** A framework-dependent regression must fail instead of
+  being masked by App Installer or Store dependency acquisition.
+- **The host validates package structure before starting Sandbox.** This catches the wrong
+  architecture, managed/CLR output, missing bundled Windows App SDK files, a stale
+  `WindowsAppRuntime` framework dependency, or missing registration-free activation metadata.
 - **Sandbox ≠ ARM64.** For ARM64 use the *Windows Launch Smoke* GitHub workflow
   (`windows-11-arm` runner), or a real ARM64 machine with the gist-style test script.
 - Don't hand-edit `Validate-TinyClips.ps1` with regex replacements in a shell: a `$_` in a
