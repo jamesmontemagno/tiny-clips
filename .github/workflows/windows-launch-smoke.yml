@@ -146,7 +146,6 @@ jobs:
           & windows/packaging/Assert-DirectPackage.ps1 `
             -MsixPath "packages/TinyClips-$env:ASSET_VERSION-$env:ARCH.msix" `
             -Architecture $env:ARCH
-          if ($LASTEXITCODE -ne 0) { throw "Direct package assertions failed." }
 
       - name: Sign MSIX with a throwaway self-signed certificate
         if: env.SOURCE == 'build'

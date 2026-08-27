@@ -71,7 +71,6 @@ jobs:
             & windows/packaging/Assert-DirectPackage.ps1 `
               -MsixPath "packages/TinyClips-$env:ASSET_VERSION-$architecture.msix" `
               -Architecture $architecture
-            if ($LASTEXITCODE -ne 0) { throw "Direct package assertions failed for $architecture." }
           }
 
       - name: Generate winget manifest

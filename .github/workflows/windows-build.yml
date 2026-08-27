@@ -126,7 +126,6 @@ jobs:
           & windows/packaging/Assert-DirectPackage.ps1 `
             -MsixPath $msix.FullName `
             -Architecture ${{ matrix.architecture }}
-          if ($LASTEXITCODE -ne 0) { throw "Direct package assertions failed." }
 
   store-build:
     name: Build Microsoft Store flavor

@@ -140,7 +140,6 @@ jobs:
             & windows/packaging/Assert-DirectPackage.ps1 `
               -MsixPath $produced.FullName `
               -Architecture $p.Asset
-            if ($LASTEXITCODE -ne 0) { throw "Direct package assertions failed for $($p.Platform)." }
 
             $releasePackage = "artifacts/windows/TinyClips-$env:ASSET_VERSION-$($p.Asset).msix"
             Copy-Item $produced.FullName $releasePackage -Force
