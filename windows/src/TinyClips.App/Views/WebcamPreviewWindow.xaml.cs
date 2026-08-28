@@ -74,9 +74,12 @@ public sealed partial class WebcamPreviewWindow : Window
         }
 
         SnapTo(_corner);
-        ApplyWindowShape(hwnd);
         PreviewSurface.Attach(_capture);
         AppWindow.Show(false);
+
+        // Shape the window only after the first present: applying SetWindowRgn beforehand can
+        // leave a WinUI surface blank (see CountdownWindow.RunAsync).
+        ApplyWindowShape(hwnd);
     }
 
     /// <summary>

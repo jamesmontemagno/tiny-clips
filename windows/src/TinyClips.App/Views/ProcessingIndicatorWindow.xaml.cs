@@ -42,12 +42,18 @@ public sealed partial class ProcessingIndicatorWindow : Window
 
     public void ShowNear(MonitorInfo? monitor, PixelRect? regionInVirtualDesktop)
     {
-        PositionNearMonitorWorkArea(monitor, regionInVirtualDesktop);
+        var scale = PositionNearMonitorWorkArea(monitor, regionInVirtualDesktop);
         AppWindow.Show(false);
 
         // Keep the panel out of any concurrent capture.
         var hwnd = WindowNative.GetWindowHandle(this);
         OverlayWindowHelpers.ExcludeFromCapture(hwnd);
+
+        // Clip the window to the card's rounded corners so the acrylic backdrop doesn't show as a
+        // square frame around the rounded border. This runs after the first present: applying
+        // SetWindowRgn beforehand can leave a WinUI surface blank (see CountdownWindow.RunAsync).
+        var size = AppWindow.Size;
+        OverlayWindowHelpers.ApplyRoundedRegion(hwnd, size.Width, size.Height, scale, CornerRadiusDip);
     }
 
     public void ClosePanel()
@@ -70,7 +76,7 @@ public sealed partial class ProcessingIndicatorWindow : Window
         AppWindow.IsShownInSwitchers = false;
     }
 
-    private void PositionNearMonitorWorkArea(MonitorInfo? monitor, PixelRect? regionInVirtualDesktop)
+    private double PositionNearMonitorWorkArea(MonitorInfo? monitor, PixelRect? regionInVirtualDesktop)
     {
         var hwnd = WindowNative.GetWindowHandle(this);
         var target = AppWindowPlacement.PrepareForTargetMonitor(AppWindow, hwnd, monitor);
@@ -104,10 +110,7 @@ public sealed partial class ProcessingIndicatorWindow : Window
         }
 
         AppWindow.MoveAndResize(AppWindowPlacement.ClampToWorkArea(work, x, y, width, height));
-
-        // Clip the window to the card's rounded corners so the acrylic backdrop doesn't show as
-        // a square frame around the rounded border.
-        OverlayWindowHelpers.ApplyRoundedRegion(hwnd, width, height, target.Scale, CornerRadiusDip);
+        return target.Scale;
     }
 
     private void OnClosed(object sender, WindowEventArgs args)

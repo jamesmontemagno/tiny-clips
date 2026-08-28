@@ -35,6 +35,11 @@ internal static class OverlayWindowHelpers
     /// ownership of the HRGN and the caller must not delete it. On failure (or if
     /// <c>CreateRoundRectRgn</c> itself failed) the handle is released here.
     /// </para>
+    /// <para>
+    /// Call this only <em>after</em> the window's first present (see
+    /// <c>CountdownWindow.RunAsync</c>): applying <c>SetWindowRgn</c> before a WinUI window has
+    /// been shown can leave its surface blank.
+    /// </para>
     /// </summary>
     /// <param name="hwnd">Target window handle.</param>
     /// <param name="widthPx">Window width in physical pixels.</param>
@@ -53,8 +58,10 @@ internal static class OverlayWindowHelpers
     /// </summary>
     public static void ApplyRoundedRegionPx(nint hwnd, int widthPx, int heightPx, int cornerRadiusPx)
     {
-        var radius = Math.Max(0, cornerRadiusPx);
-        var hrgn = CreateRoundRectRgn(0, 0, widthPx + 1, heightPx + 1, radius, radius);
+        // CreateRoundRectRgn takes the width/height of the *ellipse* that forms the corners, i.e.
+        // the diameter — passing the radius directly would round the corners at half the value.
+        var diameter = Math.Max(0, cornerRadiusPx) * 2;
+        var hrgn = CreateRoundRectRgn(0, 0, widthPx + 1, heightPx + 1, diameter, diameter);
         ApplyRegion(hwnd, hrgn);
     }
 
