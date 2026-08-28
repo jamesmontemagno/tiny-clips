@@ -15,9 +15,11 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class ProcessingIndicatorWindow : Window
 {
-    private const int WidthDip = 220;
+    private const int WidthDip = 260;
     private const int HeightDip = 64;
     private const int TopOffsetDip = 24;
+    private const int RegionOutsideOffsetDip = 12;
+    private const int CornerRadiusDip = 8;
 
     private bool _closed;
 
@@ -76,16 +78,36 @@ public sealed partial class ProcessingIndicatorWindow : Window
         var width = AppWindowPlacement.DipToPixels(WidthDip, target.Scale);
         var height = AppWindowPlacement.DipToPixels(HeightDip, target.Scale);
         var topOffset = AppWindowPlacement.DipToPixels(TopOffsetDip, target.Scale);
+        var regionOutsideOffset = AppWindowPlacement.DipToPixels(RegionOutsideOffsetDip, target.Scale);
         var x = work.X + Math.Max(0, (work.Width - width) / 2);
         var y = work.Y + topOffset;
 
+        // Mirror RecordingIndicatorWindow: sit just above the recorded region when there is room,
+        // otherwise just below it, and only overlap the region as a last resort.
         if (regionInVirtualDesktop is { Width: > 0, Height: > 0 } region)
         {
             x = region.X + Math.Max(0, (region.Width - width) / 2);
-            y = region.Y + topOffset;
+            var preferredAbove = region.Y - height - regionOutsideOffset;
+            var preferredBelow = region.Y + region.Height + regionOutsideOffset;
+            if (preferredAbove >= work.Y)
+            {
+                y = preferredAbove;
+            }
+            else if (preferredBelow <= work.Y + Math.Max(0, work.Height - height))
+            {
+                y = preferredBelow;
+            }
+            else
+            {
+                y = region.Y + topOffset;
+            }
         }
 
         AppWindow.MoveAndResize(AppWindowPlacement.ClampToWorkArea(work, x, y, width, height));
+
+        // Clip the window to the card's rounded corners so the acrylic backdrop doesn't show as
+        // a square frame around the rounded border.
+        OverlayWindowHelpers.ApplyRoundedRegion(hwnd, width, height, target.Scale, CornerRadiusDip);
     }
 
     private void OnClosed(object sender, WindowEventArgs args)

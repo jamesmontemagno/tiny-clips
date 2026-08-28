@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
@@ -38,7 +39,7 @@ public sealed partial class WebcamPreviewSurface : UserControl
         _capture = null;
         _bitmap = null;
         _lastTimestamp = TimeSpan.MinValue;
-        PreviewImage.Source = null;
+        PreviewBrush.ImageSource = null;
     }
 
     public void ConfigureShape(WebcamShape shape, double? cornerRadius)
@@ -50,16 +51,28 @@ public sealed partial class WebcamPreviewSurface : UserControl
 
     private void ApplyShape()
     {
-        var radius = _shape switch
+        var isCircle = _shape == WebcamShape.Circle;
+        CircleShape.Visibility = isCircle ? Visibility.Visible : Visibility.Collapsed;
+        RectangleShape.Visibility = isCircle ? Visibility.Collapsed : Visibility.Visible;
+        if (isCircle)
         {
-            WebcamShape.Circle => Math.Min(ActualWidth, ActualHeight) / 2,
-            WebcamShape.RoundedRectangle => _cornerRadius is { } configuredRadius
-                ? configuredRadius / Math.Max(1.0, XamlRoot?.RasterizationScale ?? 1.0)
-                : Math.Min(ActualWidth, ActualHeight) * 0.12,
-            _ => 0,
-        };
-        PreviewBorder.CornerRadius = new CornerRadius(Math.Max(0, radius));
+            // An Ellipse is always round; nothing to compute.
+            return;
+        }
+
+        // A stroked Rectangle fits its geometry inside the layout bounds deflated by half the
+        // stroke thickness on each side, so the radius must be measured against that geometry.
+        var inset = RectangleShape.StrokeThickness;
+        var minSide = Math.Max(0, Math.Min(ActualWidth, ActualHeight) - inset);
+        var radius = _shape == WebcamShape.RoundedRectangle
+            ? (_cornerRadius is { } configuredRadius
+                ? Math.Min(minSide / 2, configuredRadius / Math.Max(1.0, XamlRoot?.RasterizationScale ?? 1.0))
+                : minSide * 0.12)
+            : 0;
+        RectangleShape.RadiusX = RectangleShape.RadiusY = Math.Max(0, radius);
     }
+
+    private ImageBrush PreviewBrush => (ImageBrush)Resources["PreviewBrush"];
 
     private void OnTick(object? sender, object e)
     {
@@ -73,7 +86,7 @@ public sealed partial class WebcamPreviewSurface : UserControl
         if (_bitmap is null || _bitmap.PixelWidth != frame.Width || _bitmap.PixelHeight != frame.Height)
         {
             _bitmap = new WriteableBitmap(frame.Width, frame.Height);
-            PreviewImage.Source = _bitmap;
+            PreviewBrush.ImageSource = _bitmap;
         }
 
         if (frame.IsGpuFrame)
