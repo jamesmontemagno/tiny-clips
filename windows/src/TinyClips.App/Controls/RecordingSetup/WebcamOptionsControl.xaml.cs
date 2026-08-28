@@ -28,6 +28,8 @@ namespace TinyClips.App.RecordingSetup;
 public sealed partial class WebcamOptionsControl : UserControl
 {
     private static readonly double[] CornerRadiusOptions = { -1d, 8d, 12d, 16d, 24d, 32d, 48d };
+    private const double SetupPreviewHeight = 54;
+    private const double SetupPreviewWideWidth = 96;
 
     private readonly List<WebcamDeviceInfo> _webcams = new();
     private readonly List<ToggleMenuFlyoutItem> _cameraItems = new();
@@ -136,6 +138,7 @@ public sealed partial class WebcamOptionsControl : UserControl
 
         UpdateWebcamVisual();
         UpdateWebcamSettingsEnabled();
+        UpdateSetupPreviewShape();
         UpdateCameraSelectionVisuals();
         UpdateShapeSelectionVisuals();
         UpdateCornerSelectionVisuals();
@@ -291,7 +294,7 @@ public sealed partial class WebcamOptionsControl : UserControl
         if (sender is ToggleMenuFlyoutItem { Tag: WebcamShape shape })
         {
             _webcamShape = shape;
-            SetupPreview.ConfigureShape(_webcamShape, WebcamCornerRadiusOrNull);
+            UpdateSetupPreviewShape();
             UpdateShapeSelectionVisuals();
             UpdateRadiusMenuEnabled();
             UpdateWebcamSettingsSummary();
@@ -339,7 +342,7 @@ public sealed partial class WebcamOptionsControl : UserControl
         if (sender is ToggleMenuFlyoutItem { Tag: double radius })
         {
             _webcamCornerRadius = radius;
-            SetupPreview.ConfigureShape(_webcamShape, WebcamCornerRadiusOrNull);
+            UpdateSetupPreviewShape();
             UpdateRadiusSelectionVisuals();
             UpdateWebcamSettingsSummary();
         }
@@ -364,8 +367,18 @@ public sealed partial class WebcamOptionsControl : UserControl
     public void ShowPreview(IWebcamCaptureService capture)
     {
         SetupPreview.Visibility = Visibility.Visible;
-        SetupPreview.ConfigureShape(_webcamShape, WebcamCornerRadiusOrNull);
+        UpdateSetupPreviewShape();
         SetupPreview.Attach(capture);
+    }
+
+    /// <summary>Keeps the setup preview's footprint in step with the chosen shape: a circle needs a
+    /// square surface (otherwise the rounded corners turn it into an oval), while rectangles keep
+    /// the 16:9 thumbnail footprint.</summary>
+    private void UpdateSetupPreviewShape()
+    {
+        SetupPreview.Width = _webcamShape == WebcamShape.Circle ? SetupPreviewHeight : SetupPreviewWideWidth;
+        SetupPreview.Height = SetupPreviewHeight;
+        SetupPreview.ConfigureShape(_webcamShape, WebcamCornerRadiusOrNull);
     }
 
     public void HidePreview()

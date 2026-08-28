@@ -4,15 +4,31 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Border
-        x:Name="PreviewBorder"
-        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-        BorderBrush="{ThemeResource TextFillColorPrimaryBrush}"
-        BorderThickness="2"
-        CornerRadius="0">
-        <Image
-            x:Name="PreviewImage"
+    <UserControl.Resources>
+        <!--  One brush instance shared by both shapes, so the frame pump only has to update a
+              single ImageSource regardless of which shape is currently visible.  -->
+        <ImageBrush x:Key="PreviewBrush" Stretch="UniformToFill" />
+    </UserControl.Resources>
+
+    <!--  Two shapes rather than one Rectangle with RadiusX/RadiusY: a stretched Rectangle applies
+          its radii to the pre-stretch geometry, so it never renders a true circle. Shapes are used
+          instead of a Border because a Border whose CornerRadius equals half its height clips the
+          bottom row of its own stroke. Only one shape is visible at a time, and neither has a
+          backing fill behind it — a stroked shape insets its geometry by half the stroke, so
+          anything behind it would peek out as a ring.  -->
+    <Grid>
+        <Ellipse
+            x:Name="CircleShape"
             AutomationProperties.Name="Live webcam preview"
-            Stretch="UniformToFill" />
-    </Border>
+            Fill="{StaticResource PreviewBrush}"
+            Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+            StrokeThickness="2"
+            Visibility="Collapsed" />
+        <Rectangle
+            x:Name="RectangleShape"
+            AutomationProperties.Name="Live webcam preview"
+            Fill="{StaticResource PreviewBrush}"
+            Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+            StrokeThickness="2" />
+    </Grid>
 </UserControl>

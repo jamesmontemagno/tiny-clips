@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    AutomationProperties.HelpText="Use Left and Right Arrow to seek. Use Control plus Left or Right Arrow to adjust the start. Use Shift plus Left or Right Arrow to adjust the end. Use Page Up or Page Down to move the selected range. Use Home or End to seek to the beginning or end."
+    AutomationProperties.HelpText="Click or drag the track to scrub. Drag a handle to change the start or end. Hold Shift and drag inside the selection to move the whole range. Use Left and Right Arrow to seek. Use Control plus Left or Right Arrow to adjust the start. Use Shift plus Left or Right Arrow to adjust the end. Use Page Up or Page Down to move the selected range. Use Home or End to seek to the beginning or end."
     Height="44"
     IsTabStop="True"
     MinWidth="80"

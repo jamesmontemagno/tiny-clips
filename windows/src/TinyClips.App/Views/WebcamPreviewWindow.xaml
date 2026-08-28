@@ -5,16 +5,25 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:TinyClips.App">
 
-    <Grid x:Name="RootGrid">
+    <Window.SystemBackdrop>
+        <local:TransparentBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid" Background="Transparent">
         <ContentControl
             x:Name="PreviewControl"
             IsTabStop="True"
             AutomationProperties.Name="Webcam preview. Drag or use arrow keys to move it between recording corners."
+            HorizontalContentAlignment="Stretch"
+            VerticalContentAlignment="Stretch"
             KeyDown="OnKeyDown"
             PointerMoved="OnPointerMoved"
             PointerPressed="OnPointerPressed"
             PointerReleased="OnPointerReleased"
             TabFocusNavigation="Local">
+            <!--  Fills the window edge to edge: the stroked shape already insets itself by half its
+                  stroke, so any extra margin would leave a ring of window background inside the
+                  native elliptic/rounded window region.  -->
             <local:WebcamPreviewSurface x:Name="PreviewSurface" />
         </ContentControl>
     </Grid>
