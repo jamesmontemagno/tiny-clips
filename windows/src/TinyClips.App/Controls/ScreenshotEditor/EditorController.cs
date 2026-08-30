@@ -83,10 +83,9 @@ internal sealed class EditorController : IDisposable
     public IReadOnlyList<Annotation> Annotations => _annotations;
 
     /// <summary>
-    /// True when there are annotations that have not been persisted via Save/Save a copy. Used by
-    /// the window to guard closing (parity with macOS's <c>hasUnsavedChanges</c> exit
-    /// confirmation). Does not by itself account for an in-progress, not-yet-applied crop
-    /// selection — the window combines this with its own crop-selection tracking.
+    /// True when there is at least one annotation on the canvas. Exposed for parity with macOS's
+    /// <c>hasAnnotations</c>/<c>hasUnsavedChanges</c> checks and for callers that only care about
+    /// current annotation state rather than dirty-since-last-save tracking.
     /// </summary>
     public bool HasUnsavedChanges => _annotations.Count > 0;
 
