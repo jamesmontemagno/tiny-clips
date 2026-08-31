@@ -91,6 +91,20 @@ own `CHANGELOG.md` at the repository root.
   selection mode, delete confirmation, context menu, accessibility-name audit).
 
 ### Changed
+- **Direct GitHub Release and winget packages are now .NET 10 NativeAOT and fully
+  self-contained.** x64 and ARM64 MSIX artifacts bundle the Windows App SDK/WinUI runtime and do
+  not require a machine-installed .NET 10 Desktop Runtime or Windows App Runtime. The Microsoft
+  Store package remains framework-dependent and independently configured.
+- Release, pull-request, winget-submission, launch-smoke, and offline Windows Sandbox checks now
+  inspect each direct package for a native architecture-specific executable, no CLR payload, no
+  Windows App Runtime framework dependency, bundled WinUI/runtime files, and embedded
+  registration-free WinRT activation metadata.
+- JSON persistence/update payloads use `System.Text.Json` source generation, the Windows Share
+  contract uses source-generated COM interop, and the remaining picker/device XAML templates use
+  compiled bindings so trimming cannot remove required members.
+- The self-contained x64 package is about 50.9 MiB compressed (126.4 MiB expanded), versus
+  22.4 MiB compressed (72.1 MiB expanded) for a same-source framework-dependent artifact; the
+  28.5 MiB download increase removes both runtime prerequisites.
 - **Native MSIX auto-updates for direct installs.** Windows GitHub Releases now publish x64 and
   ARM64 `.appinstaller` files and embed the matching configuration in direct MSIX packages. A
   dedicated `windows-latest` GitHub Release provides stable update metadata URLs. Windows checks

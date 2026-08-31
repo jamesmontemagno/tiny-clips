@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 
@@ -9,7 +10,7 @@ namespace TinyClips.App.Services.ClipsLibrary;
 /// Windows Share contract + drag-out payloads for clips. Share requires the window's HWND via the
 /// <c>IDataTransferManagerInterop</c> COM interface on WinUI 3 desktop.
 /// </summary>
-internal static class ShareService
+internal static partial class ShareService
 {
     private static readonly Guid DataTransferManagerIid = new("A5CAEE9B-8708-49D1-8D36-67D25A8DA00C");
 
@@ -24,7 +25,7 @@ internal static class ShareService
         {
             var interop = DataTransferManager.As<IDataTransferManagerInterop>();
             var iid = DataTransferManagerIid;
-            var manager = DataTransferManager.FromAbi(interop.GetForWindow(hwnd, ref iid));
+            var manager = DataTransferManager.FromAbi(interop.GetForWindow(hwnd, in iid));
 
             async void OnDataRequested(DataTransferManager sender, DataRequestedEventArgs args)
             {
@@ -100,12 +101,12 @@ internal static class ShareService
         });
     }
 
-    [ComImport]
+    [GeneratedComInterface]
     [Guid("3A3DCD6C-3EAB-43DC-BCDE-45671CE800C8")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IDataTransferManagerInterop
+    internal partial interface IDataTransferManagerInterop
     {
-        nint GetForWindow([In] nint appWindow, [In] ref Guid riid);
+        nint GetForWindow(nint appWindow, in Guid riid);
 
         void ShowShareUIForWindow(nint appWindow);
     }

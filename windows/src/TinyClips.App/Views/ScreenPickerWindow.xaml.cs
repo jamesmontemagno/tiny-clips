@@ -6,13 +6,14 @@ using Windows.Graphics;
 
 namespace TinyClips.App;
 
+public sealed record ScreenPickerItem(MonitorInfo Monitor, string Title, string Subtitle);
+
 /// <summary>
 /// A centered overlay that lets the user pick which physical display to capture when
 /// more than one monitor is present. Resolves with the chosen monitor, or null on cancel.
 /// </summary>
 public sealed partial class ScreenPickerWindow : Window
 {
-    private sealed record ScreenItem(MonitorInfo Monitor, string Title, string Subtitle);
     private const int CornerRadiusDip = 8;
 
     private readonly TaskCompletionSource<MonitorInfo?> _result = new();
@@ -28,12 +29,12 @@ public sealed partial class ScreenPickerWindow : Window
         ConfigurePresenter();
         Activated += OnActivated;
 
-        var items = new List<ScreenItem>();
+        var items = new List<ScreenPickerItem>();
         for (var i = 0; i < monitors.Count; i++)
         {
             var m = monitors[i];
             var title = m.IsPrimary ? $"Display {i + 1} (Primary)" : $"Display {i + 1}";
-            items.Add(new ScreenItem(m, title, $"{m.Width} × {m.Height}"));
+            items.Add(new ScreenPickerItem(m, title, $"{m.Width} × {m.Height}"));
         }
 
         ScreenList.ItemsSource = items;
@@ -49,7 +50,7 @@ public sealed partial class ScreenPickerWindow : Window
 
     private void OnScreenClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is ScreenItem item)
+        if (e.ClickedItem is ScreenPickerItem item)
         {
             Complete(item.Monitor);
         }

@@ -98,8 +98,11 @@ jobs:
             -c Release `
             -p:Platform=x64 `
             -p:TinyClipsStoreBuild=true `
+            -p:TinyClipsDirectReleaseBuild=false `
+            -p:PublishAot=false `
             -p:SelfContained=false `
             -p:WindowsAppSDKSelfContained=false `
+            -p:PublishTrimmed=false `
             -p:EnableMsixTooling=true `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageDir=$packageDir `

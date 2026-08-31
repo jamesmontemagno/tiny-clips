@@ -14,32 +14,31 @@ enables toast notifications, startup tasks, and Store distribution.
 
 ```pwsh
 # From repo root
-cd windows
+$packageDir = (Resolve-Path .).Path + "\artifacts\windows\"
 
-# (Dev only) create + trust a local signing cert
-winapp cert generate --publisher "CN=Refractored LLC, O=Refractored LLC, L=Seattle, S=Washington, C=US"
-winapp cert install
+dotnet build windows\src\TinyClips.App\TinyClips.App.csproj -c Release `
+  -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
+  -p:TinyClipsDirectReleaseBuild=true `
+  -p:EnableMsixTooling=true -p:GenerateAppxPackageOnBuild=true `
+  -p:AppxPackageDir=$packageDir -p:AppxBundle=Never `
+  -p:UapAppxPackageBuildMode=SideloadOnly -p:AppxPackageSigningEnabled=false
 
-# Produce framework-dependent MSIX packages (x64 and arm64). The .NET and Windows App SDK
-# runtimes are NOT bundled; they are declared as winget package dependencies instead.
-dotnet publish src/TinyClips.App/TinyClips.App.csproj -c Release -p:Platform=x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -p:PublishTrimmed=false
-dotnet publish src/TinyClips.App/TinyClips.App.csproj -c Release -p:Platform=arm64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -p:PublishTrimmed=false
-winapp package src\TinyClips.App\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 --output TinyClips-x64.msix
-winapp package src\TinyClips.App\bin\arm64\Release\net10.0-windows10.0.26100.0\win-arm64 --output TinyClips-arm64.msix
-
-# Sign the package(s)
-winapp sign --package <path-to.msix>
+.\windows\packaging\Assert-DirectPackage.ps1 `
+  -MsixPath <path-to-x64.msix> -Architecture x64
 ```
 
+Repeat with `Platform=ARM64`, `RuntimeIdentifier=win-arm64`, and
+`Assert-DirectPackage.ps1 -Architecture arm64`. Sign the resulting packages before distribution.
+NativeAOT requires Visual Studio's **Desktop development with C++** workload.
 Attach the signed `.msix` files to a GitHub Release (e.g. `v1.0.0`). The automated release
 workflow also generates architecture-specific `.appinstaller` files for auto-updating direct installs.
 
 ### Automated Windows release workflow
 
 `.github/workflows/windows-release.yml` runs for tags like `v1.0.1-windows` and maps them to
-MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 as **framework-dependent** MSIX
-packages, signs them with Azure Artifact Signing, runs WACK, computes winget hashes, generates
-a versioned winget manifest artifact, and creates the GitHub Release. Direct release packages embed
+MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 as NativeAOT self-contained MSIX
+packages, signs them with Azure Artifact Signing, runs WACK, computes winget hashes, generates a
+versioned winget manifest artifact, and creates the GitHub Release. Direct release packages embed
 their generated App Installer configuration; Store packages use their separate manifest and never
 include it.
 
@@ -69,77 +68,58 @@ as the repository's latest release, avoiding collisions with interleaved macOS r
 `windows-latest` git tag and generated source archives identify the commit that first created the
 channel; only the `.appinstaller` assets represent current channel state.
 
-Direct packages remain framework-dependent. App Installer can acquire the Windows App SDK framework,
-but a clean machine still needs the .NET 10 Desktop Runtime; installing through winget remains the
-easiest bootstrap because winget declares and installs both runtime dependencies. winget installs
-the same direct MSIX, so those installations also receive App Installer updates. `winget upgrade`
-and App Installer operate on the same package family; either can advance its installed version.
+Direct packages remain NativeAOT and self-contained, including the Windows App SDK runtime, so a
+clean machine needs no separate .NET or Windows App Runtime installation. `winget` and App Installer
+install the same direct MSIX, so both routes receive App Installer updates. `winget upgrade` and
+App Installer operate on the same package family; either can advance its installed version.
 
-#### Framework-dependent + declared winget dependencies (and how)
+#### Direct release runtime model
 
-The package is kept small by **not** bundling the runtimes. The winget installer manifest declares
-both runtimes as package dependencies, so winget installs them before the app:
+Direct GitHub Release and winget artifacts use the `TinyClipsDirectReleaseBuild=true` profile:
 
-| winget `PackageDependency` | Provides |
+| MSBuild property | Direct release effect |
 |---|---|
-| `Microsoft.WindowsAppRuntime.1.8` | The Windows App SDK runtime (WinUI 3, etc.) |
-| `Microsoft.DotNet.DesktopRuntime.10` | The .NET 10 Desktop Runtime |
+| `PublishAot=true` | Compiles Tiny Clips and reachable .NET code to an architecture-specific native executable; no JIT or machine-installed .NET runtime is used. |
+| `SelfContained=true` | Makes the .NET deployment contract explicitly self-contained (NativeAOT also implies this). |
+| `WindowsAppSDKSelfContained=true` | Includes WinUI 3 and Windows App SDK runtime files inside the MSIX instead of declaring `Microsoft.WindowsAppRuntime` as a framework dependency. |
+| `PublishTrimmed=true` | Required by NativeAOT; app JSON serialization, COM interop, and XAML bindings use source-generated/compiled paths. |
 
-The matching MSBuild properties are `-p:SelfContained=false` (do not bundle .NET) and
-`-p:WindowsAppSDKSelfContained=false` (do not bundle the Windows App SDK runtime). The release
-workflow unpacks each MSIX and asserts it is genuinely framework-dependent (the AppxManifest
-declares the `WindowsAppRuntime` dependency and the payload contains no bundled `coreclr.dll`)
-before signing.
+Build and package in one MSBuild invocation. Splitting `dotnet publish` from packaging can lose the
+embedded registration-free WinRT `activatableClass` metadata and cause `REGDB_E_CLASSNOTREG` on a
+clean machine.
 
-> ⚠️ **Both runtimes are delivered differently.** The Windows App SDK runtime is an MSIX
-> *framework package*, so on machines with the Store/App Installer the OS can auto-acquire it
-> during deployment, and winget can also install the declared `Microsoft.WindowsAppRuntime.1.8`
-> dependency. The .NET Desktop Runtime is **not** an MSIX framework — the OS will not auto-deliver
-> it — so it is installed via the declared `Microsoft.DotNet.DesktopRuntime.10` winget dependency.
+`Assert-DirectPackage.ps1` unpacks every x64/ARM64 candidate and requires:
 
-> ⚠️ **Keep `Microsoft.WindowsAppSDK` pinned to a version whose runtime winget ships.** The MSIX's
-> `Microsoft.WindowsAppRuntime.1.8` `MinVersion` follows the SDK NuGet version, and winget's
-> `Microsoft.WindowsAppRuntime.1.8` package (`manifests/m/Microsoft/WindowsAppRuntime/1/8` in
-> winget-pkgs) only provides the runtime builds Microsoft has published there — 1.8.9 = `8000.879.2017.0`
-> = SDK `1.8.260529003`. A newer SDK (e.g. `1.8.260804001` → `8000.946.1701.0`) makes every winget
-> install fail on dependency resolution. The release workflow asserts `MinVersion` ≤
-> `WINGET_WINDOWSAPPRUNTIME_MAX_VERSION`; raise both together once winget-pkgs publishes the newer
-> runtime.
+- a native PE for the requested architecture with a native entry point and no CLR header;
+- no `TinyClips.App.dll`, `coreclr.dll`, `clrjit.dll`, `hostfxr.dll`, or `hostpolicy.dll`;
+- bundled `Microsoft.WindowsAppRuntime.dll` and `Microsoft.UI.Xaml.dll`;
+- no `Microsoft.WindowsAppRuntime` framework dependency; and
+- embedded registration-free WinRT activation metadata.
+
+The x64 package is about **50.9 MiB compressed / 126.4 MiB expanded** at 1.8.0, versus
+**22.4 MiB compressed / 72.1 MiB expanded** for a same-source framework-dependent package. The
+download grows by about 28.5 MiB (2.27x). NativeAOT removes the CLR/JIT payload, but the Windows App
+SDK self-contained payload includes optional runtime components, so release size still increases in
+exchange for clean-machine installation.
 
 #### Verifying locally in Windows Sandbox (recommended before every release)
 
 ```pwsh
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.7.4     # working tree
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.7.4   # published tag
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.0     # working tree
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.0   # published tag
 ```
 
-This installs both runtimes from their installers in a fresh Sandbox (so framework-dependent
-packages *do* work there — without that step Sandbox fails with `0x80073cf3` because it has no
-Store to auto-acquire frameworks), installs the MSIX, launches it exactly like winget's harness,
-clicks through onboarding and requires the process to stay alive. See
-[`sandbox/README.md`](sandbox/README.md). Sandbox is x64-only; for ARM64 run the
-*Windows Launch Smoke* workflow (`source=release`, `windows-11-arm` runner).
+This starts an **offline** fresh Sandbox, installs no .NET or Windows App Runtime prerequisites,
+installs the MSIX, launches it exactly like winget's harness, clicks through onboarding, and
+requires the process to stay alive. See [`sandbox/README.md`](sandbox/README.md). Sandbox is
+x64-only; for ARM64 run the *Windows Launch Smoke* workflow (`source=release`,
+`windows-11-arm` runner).
 
 #### Verifying on a real clean machine
 
-On a normal Windows machine (with the Store/App Installer) that does not yet have the runtimes,
-`winget install --manifest <dir>` should install `Microsoft.DotNet.DesktopRuntime.10` and
-`Microsoft.WindowsAppRuntime.1.8` first, then the app. A pass is the app process running with the
-tray icon present and no `.NET Desktop Runtime` prompt.
-
-Do not add `Scope: user` to the installer manifest. The TinyClips MSIX installs per-user by
-default, but the runtime dependency installers are machine-scope/unknown-scope packages; forcing
-user scope causes winget validation to reject those dependencies with "No suitable installer found."
-
-```pwsh
-# Build a framework-dependent, packaged MSIX (x64)
-dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Release `
-  -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
-  -p:SelfContained=false -p:WindowsAppSDKSelfContained=false `
-  -p:EnableMsixTooling=true -p:GenerateAppxPackageOnBuild=true `
-  -p:AppxBundle=Never -p:UapAppxPackageBuildMode=SideloadOnly `
-  -p:AppxPackageDir=<out>\ -p:AppxPackageSigningEnabled=false
-```
+On a normal Windows 11 machine, direct MSIX and winget installation should not prompt for or install
+.NET 10 Desktop Runtime or Windows App Runtime. A pass is the app process running with the tray icon
+present. The winget installer manifest intentionally has no runtime `PackageDependencies`.
 
 Required repository secrets:
 
@@ -181,9 +161,10 @@ The locale manifest already includes:
    `Package.appxmanifest` `Identity`).
 3. Build the Store-configuration MSIX (Store handles signing) and upload via Partner Center
    or `winapp` Store submission.
-4. Build with the Store flavor flag so Store-only distribution behavior is enabled:
-   `dotnet publish src/TinyClips.App/TinyClips.App.csproj -c Release -p:Platform=x64 -p:TinyClipsStoreBuild=true`
-   (repeat for ARM64 as needed).
+4. Build with the Store flavor flag so Store-only distribution behavior is enabled while the
+   direct NativeAOT/self-contained profile stays disabled:
+   `dotnet build windows\src\TinyClips.App\TinyClips.App.csproj -c Release -p:Platform=x64 -p:TinyClipsStoreBuild=true -p:TinyClipsDirectReleaseBuild=false -p:PublishAot=false -p:SelfContained=false -p:WindowsAppSDKSelfContained=false`
+   (the Store workflow creates the x64 + ARM64 upload bundle).
 5. Complete the listing metadata, privacy, and screen-recording capability declarations.
    - Privacy policy URL: `https://tinyclips.app/privacy.html`
 

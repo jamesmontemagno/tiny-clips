@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-  Runs INSIDE Windows Sandbox (as the LogonCommand). Installs the .NET Desktop Runtime and the
-  Windows App Runtime, installs the Tiny Clips MSIX, launches it the way winget's validation
-  harness does (full exe path, unrelated working directory), clicks through first-run onboarding,
-  and writes a verdict + crash evidence to C:\share\sandbox-result.txt.
+  Runs INSIDE an offline Windows Sandbox (as the LogonCommand). Installs the self-contained Tiny
+  Clips MSIX without installing .NET or Windows App Runtime, launches it the way winget's
+  validation harness does (full exe path, unrelated working directory), clicks through first-run
+  onboarding, and writes a verdict + crash evidence to C:\share\sandbox-result.txt.
 
   Driven by windows\packaging\sandbox\Invoke-SandboxValidation.ps1 on the host; do not run on a
-  real machine (it installs runtimes machine-wide and trusts a throwaway certificate).
+  real machine (it installs an MSIX and trusts a throwaway certificate).
 #>
 $ErrorActionPreference = 'Continue'
 $share = 'C:\share'
@@ -18,13 +18,10 @@ Remove-Item $log -ErrorAction SilentlyContinue
 Out "Tiny Clips sandbox validation: $($cfg.Msix)"
 Out "OS: $([Environment]::OSVersion.VersionString)  Arch: $env:PROCESSOR_ARCHITECTURE"
 
-Out 'Installing .NET Desktop Runtime (takes ~8 min in Sandbox)...'
-$p = Start-Process "$share\windowsdesktop-runtime.exe" -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
-Out "  exit $($p.ExitCode)"
-Out 'Installing Windows App Runtime 1.8...'
-$p = Start-Process "$share\WindowsAppRuntimeInstall.exe" -ArgumentList '--quiet' -Wait -PassThru
-Out "  exit $($p.ExitCode)"
-Out "  runtime: $((Get-AppxPackage 'Microsoft.WindowsAppRuntime.1.8*' | Select-Object -First 1).Version)"
+$desktopRuntime = Get-ChildItem "$env:ProgramFiles\dotnet\shared\Microsoft.WindowsDesktop.App\10.*" -ErrorAction SilentlyContinue
+$windowsAppRuntime = Get-AppxPackage 'Microsoft.WindowsAppRuntime.1.8*'
+Out "Preinstalled .NET 10 Desktop Runtime: $(if ($desktopRuntime) { 'yes' } else { 'no' })"
+Out "Preinstalled Windows App Runtime 1.8: $(if ($windowsAppRuntime) { 'yes' } else { 'no' })"
 
 if (Test-Path "$share\smoke.cer") {
     Import-Certificate -FilePath "$share\smoke.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null

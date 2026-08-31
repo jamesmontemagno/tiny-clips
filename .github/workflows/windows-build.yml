@@ -39,7 +39,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [x64, ARM64]
+        include:
+          - platform: x64
+            rid: win-x64
+            architecture: x64
+          - platform: ARM64
+            rid: win-arm64
+            architecture: arm64
 
     steps:
       - name: Report successful skip
@@ -56,18 +62,109 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Restore app for ${{ matrix.platform }}
+      - name: Verify NativeAOT toolchain
         if: ${{ needs.changes.outputs.windows == 'true' }}
-        run: dotnet restore windows/src/TinyClips.App/TinyClips.App.csproj -p:Configuration=Release -p:Platform=${{ matrix.platform }}
+        shell: pwsh
+        run: |
+          $vswhereDirectory = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer"
+          $vswhere = Join-Path $vswhereDirectory "vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe was not found; NativeAOT requires Visual Studio with Desktop development with C++."
+          }
 
-      - name: Build app for ${{ matrix.platform }}
+          $visualStudio = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $visualStudio) {
+            throw "Visual Studio Desktop development with C++ was not found."
+          }
+
+          $linker = Get-ChildItem "$visualStudio\VC\Tools\MSVC" -Recurse -Filter link.exe |
+            Where-Object { $_.FullName -match "\\Hostx64\\${{ matrix.architecture }}\\link\.exe$" } |
+            Select-Object -First 1
+          if (-not $linker) {
+            throw "NativeAOT linker for ${{ matrix.architecture }} was not found."
+          }
+
+          $vswhereDirectory >> $env:GITHUB_PATH
+
+      - name: Restore direct app for ${{ matrix.platform }}
         if: ${{ needs.changes.outputs.windows == 'true' }}
-        run: dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Release -p:Platform=${{ matrix.platform }} --no-restore
+        run: >-
+          dotnet restore windows/src/TinyClips.App/TinyClips.App.csproj
+          -p:Configuration=Release
+          -p:Platform=${{ matrix.platform }}
+          -p:RuntimeIdentifier=${{ matrix.rid }}
+          -p:TinyClipsDirectReleaseBuild=true
+
+      - name: Build and inspect direct package for ${{ matrix.platform }}
+        if: ${{ needs.changes.outputs.windows == 'true' }}
+        shell: pwsh
+        run: |
+          $packageDirectory = Join-Path (Resolve-Path ".") "artifacts/direct-${{ matrix.architecture }}/"
+          New-Item -ItemType Directory -Force $packageDirectory | Out-Null
+
+          dotnet build windows/src/TinyClips.App/TinyClips.App.csproj `
+            -c Release `
+            -p:Platform=${{ matrix.platform }} `
+            -p:RuntimeIdentifier=${{ matrix.rid }} `
+            -p:TinyClipsDirectReleaseBuild=true `
+            -p:EnableMsixTooling=true `
+            -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxPackageDir=$packageDirectory `
+            -p:AppxBundle=Never `
+            -p:UapAppxPackageBuildMode=SideloadOnly `
+            -p:AppxPackageSigningEnabled=false `
+            -p:AppxSymbolPackageEnabled=false `
+            --no-restore `
+            -v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Direct package build failed." }
+
+          $msix = Get-ChildItem $packageDirectory -Recurse -Filter *.msix |
+            Where-Object { $_.Name -notmatch "symbols" } |
+            Select-Object -First 1
+          if (-not $msix) { throw "Direct package build produced no MSIX." }
+
+          & windows/packaging/Assert-DirectPackage.ps1 `
+            -MsixPath $msix.FullName `
+            -Architecture ${{ matrix.architecture }}
+
+  store-build:
+    name: Build Microsoft Store flavor
+    needs: changes
+    runs-on: windows-latest
+
+    steps:
+      - name: Report successful skip
+        if: ${{ needs.changes.outputs.windows != 'true' }}
+        run: echo "No Windows files changed; skipping the Store flavor build."
+
+      - name: Checkout code
+        if: ${{ needs.changes.outputs.windows == 'true' }}
+        uses: actions/checkout@v6
+
+      - name: Setup .NET SDK
+        if: ${{ needs.changes.outputs.windows == 'true' }}
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build framework-dependent Store flavor
+        if: ${{ needs.changes.outputs.windows == 'true' }}
+        run: >-
+          dotnet build windows/src/TinyClips.App/TinyClips.App.csproj
+          -c Release
+          -p:Platform=x64
+          -p:TinyClipsStoreBuild=true
+          -p:TinyClipsDirectReleaseBuild=false
+          -p:PublishAot=false
+          -p:SelfContained=false
+          -p:WindowsAppSDKSelfContained=false
+          -p:PublishTrimmed=false
+          -v:minimal
 
   test:
     name: Run Core Tests
     runs-on: windows-latest
-    needs: [changes, build]
+    needs: [changes, build, store-build]
 
     steps:
       - name: Report successful skip
