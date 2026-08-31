@@ -5,6 +5,36 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- **Screenshot editor now confirms before discarding unapplied annotations.** Clicking the
+  toolbar **Close** button, the window's ✕ button, or Alt+F4 while the editor has unsaved
+  annotations (or a crop selection that hasn't been applied) now shows a "Discard changes?"
+  confirmation dialog instead of silently closing, matching the macOS app. Closing with no
+  pending edits, or after a successful Save/Save a copy with no further edits, still closes
+  immediately.
+- **Webcam picker preview is the right shape.** The live thumbnail next to the webcam toggle in
+  the recording setup bar was always 96×54, so choosing *Circle* rendered it as an oval. It now
+  becomes a square for Circle and keeps the 16:9 footprint for the rectangle shapes, and its
+  border is no longer clipped along the bottom edge.
+- **No more grey box around the circular webcam overlay while recording.** The floating webcam
+  preview drew an opaque window rectangle behind its rounded surface, plus the DWM window
+  hairline. The overlay window now uses a transparent backdrop, clears its DWM border and
+  rounded-corner treatment, and is clipped by a native region matching the selected shape
+  (elliptic for Circle, rounded-rect otherwise). The recording itself was never affected.
+- **The circular webcam overlay is actually circular.** The preview surface drew its shape with a
+  stretched `Rectangle`, which applies its corner radii to the pre-stretch geometry and so can
+  never render a true circle; Circle now uses a real `Ellipse`. The overlay also squares up its
+  window if Windows' minimum tracking size makes the requested size non-square, and insets the
+  shape slightly so the window region's hard, non-anti-aliased edge doesn't cut the smooth curve.
+- **Processing popup polish.** The "Processing…" panel shown after stopping a recording is now
+  clipped to its rounded corners (the acrylic backdrop no longer shows as a square frame), the
+  card fills the panel instead of floating inside it, and it positions just above/below the
+  recorded region like the recording panel does.
+- **Scrubbing in the video and GIF trimmers.** Clicking or dragging anywhere on the trim track now
+  moves the playhead. Previously a press inside the selected range dragged the whole range, and
+  since the range spans the whole clip by default there was no way to scrub. Hold **Shift** while
+  dragging inside the selection to move the range as a whole.
+
 ## [v1.7.5-windows] - 2026-08-27
 
 ### Added

@@ -15,7 +15,9 @@ namespace TinyClips.App;
 /// normalized fractions in the range [0, 1]; the hosting window maps them to seconds or frames.
 /// </summary>
 /// <remarks>
-/// The control raises <see cref="StartFractionChanged"/>, <see cref="EndFractionChanged"/> and
+/// Pointer gestures: drag a handle to change the start/end, click or drag anywhere else on the
+/// track to scrub the playhead, and hold Shift while dragging inside the selection to move the
+/// whole range. The control raises <see cref="StartFractionChanged"/>, <see cref="EndFractionChanged"/> and
 /// <see cref="SeekRequested"/> only in response to direct user input. Assigning the matching
 /// properties (e.g. from the host while clamping) re-lays out without re-raising events, so there
 /// is no feedback loop. User input supports both pointer gestures and keyboard commands.
@@ -191,9 +193,11 @@ public sealed partial class TrimBar : UserControl
             _drag = DragMode.End;
             ApplyDrag(fraction);
         }
-        else if (x > sx && x < ex)
+        else if (x > sx && x < ex && IsKeyDown(VirtualKey.Shift))
         {
-            // Press inside the selected region: drag the whole selection, preserving its width.
+            // Shift+press inside the selected region: drag the whole selection, preserving its
+            // width. A plain press scrubs so the playhead is always reachable (the selection
+            // covers the entire clip by default).
             _drag = DragMode.Range;
             _rangeGrabFraction = fraction;
             _rangeStartAtGrab = _start;
@@ -353,7 +357,7 @@ public sealed partial class TrimBar : UserControl
         {
             ProtectedCursor = SizeCursor;
         }
-        else if (x > sx && x < ex)
+        else if (x > sx && x < ex && IsKeyDown(VirtualKey.Shift))
         {
             ProtectedCursor = MoveCursor;
         }

@@ -19,6 +19,9 @@ public sealed partial class WebcamPreviewWindow : Window
     private readonly IWebcamCaptureService _capture;
     private readonly RectInt32 _captureBounds;
     private readonly int _margin;
+    private readonly WebcamShape _shape;
+    private readonly double? _cornerRadius;
+    private const int ShapeInsetDip = 2;
     private WebcamCornerPosition _corner;
     private Action<WebcamCornerPosition>? _cornerChanged;
     private bool _closed;
@@ -41,18 +44,30 @@ public sealed partial class WebcamPreviewWindow : Window
         _capture = capture;
         _captureBounds = ResolveCaptureBounds(target, monitor, regionInVirtualDesktop);
         _corner = corner;
+        _shape = shape;
+        _cornerRadius = cornerRadius;
         _cornerChanged = cornerChanged;
         _margin = Math.Clamp((int)Math.Round(Math.Min(_captureBounds.Width, _captureBounds.Height) * 0.03), 12, 40);
 
         ConfigurePresenter();
         ResizePreview(size, shape);
         PreviewSurface.ConfigureShape(shape, cornerRadius);
+
+        // Non-rectangular shapes are clipped twice: by the anti-aliased XAML shape and by the
+        // window's GDI region, which has hard stair-stepped edges. Insetting the content keeps the
+        // region boundary off the visible curve so the smooth XAML edge is what shows; the exposed
+        // ring is transparent window background (see TransparentBackdrop + RemoveSystemBorder).
+        PreviewSurface.Margin = shape == WebcamShape.Rectangle
+            ? new Thickness(0)
+            : new Thickness(ShapeInsetDip);
+
         Closed += OnClosed;
     }
 
     public void Show()
     {
-        if (!OverlayWindowHelpers.ExcludeFromCapture(WindowNative.GetWindowHandle(this)))
+        var hwnd = WindowNative.GetWindowHandle(this);
+        if (!OverlayWindowHelpers.ExcludeFromCapture(hwnd))
         {
             ClosePanel();
             return;
@@ -61,6 +76,36 @@ public sealed partial class WebcamPreviewWindow : Window
         SnapTo(_corner);
         PreviewSurface.Attach(_capture);
         AppWindow.Show(false);
+
+        // Shape the window only after the first present: applying SetWindowRgn beforehand can
+        // leave a WinUI surface blank (see CountdownWindow.RunAsync).
+        ApplyWindowShape(hwnd);
+    }
+
+    /// <summary>
+    /// Clips the native window to the webcam shape. The XAML surface already rounds its own
+    /// corners, but the window itself still paints an opaque rectangular background behind them;
+    /// a matching HRGN keeps that rectangle from showing around a circle or rounded preview.
+    /// </summary>
+    private void ApplyWindowShape(nint hwnd)
+    {
+        if (_shape == WebcamShape.Rectangle)
+        {
+            return;
+        }
+
+        OverlayWindowHelpers.RemoveSystemBorder(hwnd);
+        var size = AppWindow.Size;
+        if (_shape == WebcamShape.Circle)
+        {
+            OverlayWindowHelpers.ApplyEllipticRegion(hwnd, size.Width, size.Height);
+            return;
+        }
+
+        var radiusPx = _cornerRadius is { } configured
+            ? (int)Math.Round(configured)
+            : (int)Math.Round(Math.Min(size.Width, size.Height) * 0.12);
+        OverlayWindowHelpers.ApplyRoundedRegionPx(hwnd, size.Width, size.Height, radiusPx);
     }
 
     public void ClosePanel()
@@ -116,6 +161,19 @@ public sealed partial class WebcamPreviewWindow : Window
         }
 
         AppWindow.Resize(new SizeInt32(width, height));
+
+        // Windows can enforce a minimum tracking size, so the window may come back non-square. A
+        // circular preview stretched into a non-square window renders as an oval, so square it up
+        // against whatever size actually took effect.
+        if (shape == WebcamShape.Circle)
+        {
+            var actual = AppWindow.Size;
+            if (actual.Width != actual.Height)
+            {
+                var side = Math.Max(actual.Width, actual.Height);
+                AppWindow.Resize(new SizeInt32(side, side));
+            }
+        }
     }
 
     private void ConfigurePresenter()

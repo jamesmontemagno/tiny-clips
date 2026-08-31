@@ -10,17 +10,11 @@
 
     <Grid Background="Transparent">
         <Border
-            Padding="16,12"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
+            Padding="16,0"
             Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
             BorderThickness="1"
             CornerRadius="{StaticResource OverlayCornerRadius}">
-            <Border.Shadow>
-                <ThemeShadow />
-            </Border.Shadow>
-
             <StackPanel
                 Orientation="Horizontal"
                 Spacing="12"
@@ -42,7 +36,8 @@
                         x:Name="CaptionText"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Style="{StaticResource CaptionTextBlockStyle}"
-                        Text="Finalizing your clip" />
+                        Text="Finalizing your clip"
+                        TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </StackPanel>
         </Border>
