@@ -2,7 +2,9 @@ using System;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using TinyClips.App.ScreenshotEditor;
 using TinyClips.Core.Capture;
@@ -37,6 +39,16 @@ public sealed partial class ScreenshotEditorWindow : Window
     private readonly CapturedFrame? _initialFrame;
     private readonly Task<string>? _pendingSave;
 
+    // Discard-changes-on-close tracking (parity with macOS's hasUnsavedChanges exit
+    // confirmation). EditorController.IsDirty is the source of truth for annotation/crop-apply
+    // edits (it is only set at genuine committed-mutation call sites, so it isn't confused by
+    // transient drag previews, async redaction-preview refreshes, or self-cancelling
+    // add-then-undo sequences); _hasPendingCropSelection separately tracks an in-progress crop
+    // rectangle that hasn't been applied yet, since that never becomes an annotation. Combined,
+    // HasUnsavedChanges below decides whether closing needs to be guarded.
+    private bool _hasPendingCropSelection;
+    private bool _closeConfirmed;
+
     public ScreenshotEditorWindow(string filePath)
         : this(filePath, initialFrame: null, pendingSave: null)
     {
@@ -67,7 +79,11 @@ public sealed partial class ScreenshotEditorWindow : Window
         Canvas.Attach(_controller);
 
         _controller.ImageChanged += OnControllerImageChanged;
-        Canvas.CropSelectionAvailabilityChanged += (_, available) => ApplyCropButton.IsEnabled = available;
+        Canvas.CropSelectionAvailabilityChanged += (_, available) =>
+        {
+            ApplyCropButton.IsEnabled = available;
+            _hasPendingCropSelection = available;
+        };
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -90,6 +106,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         RootGrid.KeyUp += OnRootKeyUp;
         Activated += OnActivated;
         Closed += OnClosed;
+        AppWindow.Closing += OnAppWindowClosing;
 
         _ = LoadAsync();
     }
@@ -101,6 +118,47 @@ public sealed partial class ScreenshotEditorWindow : Window
     }
 
     private void OnClosed(object sender, WindowEventArgs args) => _controller.Dispose();
+
+    /// <summary>
+    /// Guards the ✕ button, Alt+F4, and system close — anything that raises the AppWindow's
+    /// Closing event — the same way the toolbar Close button is guarded in <see cref="OnClose"/>.
+    /// </summary>
+    private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_closeConfirmed || !HasUnsavedChanges)
+        {
+            return;
+        }
+
+        args.Cancel = true;
+
+        if (await ShowDiscardChangesDialogAsync())
+        {
+            _closeConfirmed = true;
+            Close();
+        }
+    }
+
+    private bool HasUnsavedChanges => _controller.IsDirty || _hasPendingCropSelection;
+
+    private void MarkChangesSaved() => _controller.MarkSaved();
+
+    private async Task<bool> ShowDiscardChangesDialogAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Discard changes?",
+            Content = "You have unsaved annotations. Close anyway?",
+            PrimaryButtonText = "Discard",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = RootGrid.XamlRoot,
+            RequestedTheme = RootGrid.RequestedTheme,
+        };
+        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
 
     // -- Load -------------------------------------------------------------------------------
 
@@ -119,6 +177,7 @@ public sealed partial class ScreenshotEditorWindow : Window
                     BitmapAlphaMode.Premultiplied));
                 await _controller.SetBitmapFromCaptureAsync(bitmap);
                 CaptureFlowTrace.Mark("editor: image visible (from memory)");
+                MarkChangesSaved();
                 if (string.IsNullOrEmpty(_filePath))
                 {
                     _ = BindToPendingSaveAsync();
@@ -128,6 +187,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
             await _controller.LoadAsync(_filePath);
             CaptureFlowTrace.Mark("editor: image visible (from file)");
+            MarkChangesSaved();
         }
         catch (Exception ex)
         {
@@ -365,6 +425,7 @@ public sealed partial class ScreenshotEditorWindow : Window
                 _activeSavePath = path;
             }
 
+            MarkChangesSaved();
             App.ShowSaveNotification(path);
         }
 
@@ -398,7 +459,16 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
     }
 
-    private void OnClose(object sender, RoutedEventArgs e) => Close();
+    private async void OnClose(object sender, RoutedEventArgs e)
+    {
+        if (HasUnsavedChanges && !await ShowDiscardChangesDialogAsync())
+        {
+            return;
+        }
+
+        _closeConfirmed = true;
+        Close();
+    }
 
     private async void OnCopy(object sender, RoutedEventArgs e)
     {
