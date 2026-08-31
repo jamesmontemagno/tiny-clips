@@ -82,12 +82,25 @@ internal sealed class EditorController : IDisposable
 
     public IReadOnlyList<Annotation> Annotations => _annotations;
 
+    /// <summary>True when there is at least one annotation on the canvas.</summary>
+    public bool HasAnnotations => _annotations.Count > 0;
+
     /// <summary>
-    /// True when there is at least one annotation on the canvas. Exposed for parity with macOS's
-    /// <c>hasAnnotations</c>/<c>hasUnsavedChanges</c> checks and for callers that only care about
-    /// current annotation state rather than dirty-since-last-save tracking.
+    /// True when the document has genuine committed edits (annotation added/removed/undone,
+    /// crop applied, or an existing annotation moved/resized/restyled) since the last
+    /// <see cref="MarkSaved"/> call. Deliberately not derived from <see cref="AnnotationVisualInvalidated"/>
+    /// or <see cref="AnnotationsStructureChanged"/> subscriptions — those also fire for
+    /// non-edits (in-progress drag previews, async redaction-preview refreshes) and for
+    /// self-cancelling sequences (add then undo), so callers would either miss real edits or
+    /// see false positives. <see cref="MarkDirty"/> is called only at the specific mutation
+    /// sites that represent a real, persistable change to the document.
     /// </summary>
-    public bool HasUnsavedChanges => _annotations.Count > 0;
+    public bool IsDirty { get; private set; }
+
+    private void MarkDirty() => IsDirty = true;
+
+    /// <summary>Called after a successful Save/Save-a-copy (or the initial image load) to reset the dirty flag.</summary>
+    public void MarkSaved() => IsDirty = false;
 
     public Annotation? SelectedAnnotation { get; private set; }
 
@@ -291,6 +304,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is not null)
         {
             SelectedAnnotation.Color = color;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, SelectedAnnotation);
         }
     }
@@ -301,6 +315,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: EditTool.Counter } ann)
         {
             ann.TextColor = color;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -311,6 +326,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: not EditTool.Counter and not EditTool.Text } ann)
         {
             ann.Thickness = thickness;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -320,6 +336,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: EditTool.Arrow } ann)
         {
             ann.ArrowStyle = style;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
         else
@@ -339,6 +356,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann)
         {
             ann.FillColor = enabled ? FillColor : Colors.Transparent;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -352,6 +370,7 @@ internal sealed class EditorController : IDisposable
             if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } cleared)
             {
                 cleared.FillColor = Colors.Transparent;
+                MarkDirty();
                 AnnotationVisualInvalidated?.Invoke(this, cleared);
             }
             return;
@@ -362,6 +381,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann)
         {
             ann.FillColor = color;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -372,6 +392,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
             ann.FontFamily = font;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -382,6 +403,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
             ann.FontSize = size;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -395,6 +417,7 @@ internal sealed class EditorController : IDisposable
             var center = new Point(ann.Bounds.X + ann.Bounds.Width / 2, ann.Bounds.Y + ann.Bounds.Height / 2);
             var radius = CounterRadius(scale);
             ann.Bounds = new Rect(center.X - radius, center.Y - radius, radius * 2, radius * 2);
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -406,6 +429,7 @@ internal sealed class EditorController : IDisposable
         {
             ann.Redaction = level;
             ann.RedactPreview = null;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -417,6 +441,7 @@ internal sealed class EditorController : IDisposable
         {
             ann.RedactStyle = style;
             ann.RedactPreview = null;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
@@ -454,6 +479,7 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: EditTool.Emoji } ann && ann.Text != emoji)
         {
             ann.Text = emoji;
+            MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
         EmojiChanged?.Invoke(this, emoji);
@@ -474,6 +500,7 @@ internal sealed class EditorController : IDisposable
         }
 
         ann.Rotation = normalized;
+        MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
@@ -523,6 +550,7 @@ internal sealed class EditorController : IDisposable
         {
             ann.Rotation = snapped;
         }
+        MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
@@ -542,6 +570,7 @@ internal sealed class EditorController : IDisposable
         };
         s_recentEmoji = EmojiAnnotationMath.PushRecent(s_recentEmoji, EmojiDefault);
         _annotations.Add(ann);
+        MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
         EmojiChanged?.Invoke(this, EmojiDefault);
         return ann;
@@ -801,6 +830,7 @@ internal sealed class EditorController : IDisposable
         if (significant)
         {
             _annotations.Add(ann);
+            MarkDirty();
             AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -838,6 +868,7 @@ internal sealed class EditorController : IDisposable
             Bounds = new Rect(pixelCenter.X - radius, pixelCenter.Y - radius, radius * 2, radius * 2),
         };
         _annotations.Add(ann);
+        MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
         return ann;
     }
@@ -862,6 +893,7 @@ internal sealed class EditorController : IDisposable
         };
         UpdateTextBounds(ann);
         _annotations.Add(ann);
+        MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
         return ann;
     }
@@ -878,6 +910,7 @@ internal sealed class EditorController : IDisposable
             {
                 SelectedAnnotation = null;
             }
+            MarkDirty();
             AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
@@ -891,6 +924,7 @@ internal sealed class EditorController : IDisposable
         ann.Underline = underline;
         ann.Strikethrough = strikethrough;
         UpdateTextBounds(ann);
+        MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
@@ -901,6 +935,7 @@ internal sealed class EditorController : IDisposable
         {
             ann.Points[i] = new Vector2(ann.Points[i].X + (float)dx, ann.Points[i].Y + (float)dy);
         }
+        MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
@@ -1000,6 +1035,7 @@ internal sealed class EditorController : IDisposable
         }
 
         ann.RedactPreview = null;
+        MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
@@ -1063,6 +1099,7 @@ internal sealed class EditorController : IDisposable
         }
 
         ann.Bounds = new Rect(resized.X, resized.Y, resized.Width, resized.Height);
+        MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
@@ -1083,6 +1120,7 @@ internal sealed class EditorController : IDisposable
             Math.Min(updatedStart.Y, updatedEnd.Y),
             Math.Abs(updatedEnd.X - updatedStart.X),
             Math.Abs(updatedEnd.Y - updatedStart.Y));
+        MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
@@ -1100,6 +1138,7 @@ internal sealed class EditorController : IDisposable
         }
         _annotations.RemoveAt(_annotations.Count - 1);
         SelectedAnnotation = null;
+        MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1112,6 +1151,7 @@ internal sealed class EditorController : IDisposable
 
         _annotations.Remove(SelectedAnnotation);
         SelectedAnnotation = null;
+        MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1162,6 +1202,7 @@ internal sealed class EditorController : IDisposable
         _annotations.Clear();
         _counterValue = 1;
         SelectedAnnotation = null;
+        MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
     }
 

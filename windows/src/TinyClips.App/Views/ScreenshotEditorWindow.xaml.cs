@@ -40,13 +40,13 @@ public sealed partial class ScreenshotEditorWindow : Window
     private readonly Task<string>? _pendingSave;
 
     // Discard-changes-on-close tracking (parity with macOS's hasUnsavedChanges exit
-    // confirmation). _editRevision is bumped on every annotation structure/geometry change and
-    // every time a not-yet-applied crop selection appears; _savedRevision is snapped to it after
-    // the initial image loads/resets and after every successful save. The editor is "dirty" only
-    // when the two disagree, so saving (which intentionally keeps annotations editable rather
-    // than clearing them) does not leave the guard permanently tripped.
-    private int _editRevision;
-    private int _savedRevision;
+    // confirmation). EditorController.IsDirty is the source of truth for annotation/crop-apply
+    // edits (it is only set at genuine committed-mutation call sites, so it isn't confused by
+    // transient drag previews, async redaction-preview refreshes, or self-cancelling
+    // add-then-undo sequences); _hasPendingCropSelection separately tracks an in-progress crop
+    // rectangle that hasn't been applied yet, since that never becomes an annotation. Combined,
+    // HasUnsavedChanges below decides whether closing needs to be guarded.
+    private bool _hasPendingCropSelection;
     private bool _closeConfirmed;
 
     public ScreenshotEditorWindow(string filePath)
@@ -79,15 +79,10 @@ public sealed partial class ScreenshotEditorWindow : Window
         Canvas.Attach(_controller);
 
         _controller.ImageChanged += OnControllerImageChanged;
-        _controller.AnnotationsStructureChanged += (_, _) => _editRevision++;
-        _controller.AnnotationVisualInvalidated += (_, _) => _editRevision++;
         Canvas.CropSelectionAvailabilityChanged += (_, available) =>
         {
             ApplyCropButton.IsEnabled = available;
-            if (available)
-            {
-                _editRevision++;
-            }
+            _hasPendingCropSelection = available;
         };
 
         ExtendsContentIntoTitleBar = true;
@@ -144,9 +139,9 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
     }
 
-    private bool HasUnsavedChanges => _editRevision != _savedRevision;
+    private bool HasUnsavedChanges => _controller.IsDirty || _hasPendingCropSelection;
 
-    private void MarkChangesSaved() => _savedRevision = _editRevision;
+    private void MarkChangesSaved() => _controller.MarkSaved();
 
     private async Task<bool> ShowDiscardChangesDialogAsync()
     {
