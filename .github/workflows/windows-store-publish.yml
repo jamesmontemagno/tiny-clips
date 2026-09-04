@@ -201,7 +201,5 @@ jobs:
 
           # Pass the package file itself. Pointing msstore at a directory makes it look for a
           # project to infer a publisher from, which does not exist in this workflow.
-          # --uploadTimeout must be set explicitly: when omitted the CLI has defaulted it to 0,
-          # which cancels the blob upload immediately. See microsoft/msstore-cli#162.
-          msstore publish $upload.FullName --appId $env:STORE_PRODUCT_ID --uploadTimeout 900
+          msstore publish $upload.FullName --appId $env:STORE_PRODUCT_ID
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed." }
