@@ -12,6 +12,7 @@ permissions:
   copilot-requests: write
 
 engine: copilot
+model: auto
 
 tools:
   github:
