@@ -40,6 +40,21 @@ function Get-EditorWindows {
         Where-Object { $_.title -match 'Edit Screenshot' })
 }
 
+function Wait-EditorCount {
+    param([Parameter(Mandatory)][int]$Expected, [int]$TimeoutMs = 10000)
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    do {
+        $editors = Get-EditorWindows
+        if ($editors.Count -ge $Expected) {
+            return $editors
+        }
+
+        Start-Sleep -Milliseconds 200
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Expected at least $Expected screenshot editor windows, found $($editors.Count)."
+}
+
 function Shot($name) {
     winapp ui screenshot -a $AppPid -o (Join-Path $ShotDir "$name.png") 2>$null | Out-Null
 }
@@ -85,7 +100,7 @@ Test-UI "Capture second screen" {
     winapp ui invoke "CaptureScreenButton" -a $AppPid
 }
 Test-UI "Second editor opens" {
-    winapp ui wait-for "ScreenshotEditorTitleBar" -a $AppPid -t 10000
+    [void](Wait-EditorCount -Expected 2)
 }
 
 $editors = Get-EditorWindows
