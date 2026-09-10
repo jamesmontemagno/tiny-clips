@@ -56,8 +56,10 @@ public partial class App : Application
     private QuickBugReportWindow? _quickBugReportWindow;
     private OnboardingWindow? _onboardingWindow;
     private ScreenshotEditorWindow? _editorWindow;
+    private readonly HashSet<ScreenshotEditorWindow> _captureEditorWindows = [];
+    private readonly SemaphoreSlim _editorReplacementGate = new(1, 1);
     private Window? _trimmerWindow;
-    private string? _lastTrimmerSourcePath;
+    private readonly HashSet<Window> _captureTrimmerWindows = [];
     private RecordingIndicatorWindow? _recordingIndicator;
     private TeleprompterWindow? _teleprompter;
     private WebcamPreviewWindow? _webcamPreview;
@@ -1103,7 +1105,7 @@ public partial class App : Application
             var scaleApplied = settings.ScreenshotScale is > 0 and < 100;
             if (!scaleApplied)
             {
-                OpenScreenshotEditor(frame, saveTask, reopenPickerAfterClose: wasPickerInitiated);
+                OpenCapturedScreenshotEditor(frame, saveTask, reopenPickerAfterClose: wasPickerInitiated);
                 CaptureFlowTrace.Mark("screenshot: editor opened from memory");
                 try
                 {
@@ -1118,7 +1120,7 @@ public partial class App : Application
             }
 
             var savedPath = await saveTask;
-            OpenScreenshotEditor(savedPath, reopenPickerAfterClose: wasPickerInitiated);
+            OpenCapturedScreenshotEditor(savedPath, reopenPickerAfterClose: wasPickerInitiated);
             CaptureFlowTrace.Mark("screenshot: editor opened from file (scaled)");
             return;
         }
@@ -2332,29 +2334,47 @@ public partial class App : Application
         bool isRecentCapture = false,
         bool pickerInitiated = false)
     {
-        _trimmerWindow?.Close();
-        _lastTrimmerSourcePath = path;
-
+        Window window;
         if (type == CaptureType.Gif)
         {
             var gifTrimmer = new GifTrimmerWindow(path);
-            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
-            _trimmerWindow = gifTrimmer;
+            gifTrimmer.Completed += (sender, result) =>
+                OnTrimmerCompleted(sender, result, path, isRecentCapture, pickerInitiated);
+            window = gifTrimmer;
         }
         else
         {
             var videoTrimmer = new VideoTrimmerWindow(path);
-            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
-            _trimmerWindow = videoTrimmer;
+            videoTrimmer.Completed += (sender, result) =>
+                OnTrimmerCompleted(sender, result, path, isRecentCapture, pickerInitiated);
+            window = videoTrimmer;
         }
 
-        _trimmerWindow.Closed += (_, _) => _trimmerWindow = null;
-        ActivateWindowToForeground(_trimmerWindow);
+        if (isRecentCapture)
+        {
+            _trimmerWindow?.Close();
+            _trimmerWindow = window;
+            window.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_trimmerWindow, window))
+                {
+                    _trimmerWindow = null;
+                }
+            };
+        }
+        else
+        {
+            _captureTrimmerWindows.Add(window);
+            window.Closed += (_, _) => _captureTrimmerWindows.Remove(window);
+        }
+
+        ActivateWindowToForeground(window);
     }
 
     private void OnTrimmerCompleted(
         object? sender,
         string? trimmedPath,
+        string sourcePath,
         bool isRecentCapture,
         bool pickerInitiated)
     {
@@ -2370,11 +2390,7 @@ public partial class App : Application
                 return;
             }
 
-            var path = trimmedPath ?? _lastTrimmerSourcePath;
-            if (string.IsNullOrEmpty(path))
-            {
-                return;
-            }
+            var path = trimmedPath ?? sourcePath;
 
             var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
                 ? CaptureType.Gif
@@ -2946,7 +2962,7 @@ public partial class App : Application
 
         if (capture.Type == CaptureType.Screenshot)
         {
-            OpenScreenshotEditor(capture.Path, reopenPickerAfterClose: false);
+            OpenScreenshotEditor(capture.Path);
         }
         else
         {
@@ -3009,7 +3025,7 @@ public partial class App : Application
 
         if (capture.Type == CaptureType.Screenshot)
         {
-            OpenScreenshotEditor(capture.Path, reopenPickerAfterClose: false);
+            OpenScreenshotEditor(capture.Path);
         }
         else
         {
@@ -3030,38 +3046,90 @@ public partial class App : Application
         ActivateWindowToForeground(_quickBugReportWindow);
     }
 
-    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
-        => OpenScreenshotEditorCore(() => new ScreenshotEditorWindow(path), path, reopenPickerAfterClose);
+    private void OpenScreenshotEditor(string path) => _ = OpenScreenshotEditorAsync(path);
+
+    private async Task OpenScreenshotEditorAsync(string path)
+    {
+        await _editorReplacementGate.WaitAsync();
+        try
+        {
+            if (_editorWindow is { } oldWindow && !await oldWindow.TryCloseAsync())
+            {
+                ActivateWindowToForeground(oldWindow);
+                return;
+            }
+
+            _editorWindow = null;
+            OpenScreenshotEditorCore(
+                () => new ScreenshotEditorWindow(path),
+                path,
+                isCapture: false,
+                reopenPickerAfterClose: false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Replacing screenshot editor failed: {ex}");
+            RevealInExplorer(path);
+            ShowSaveToast(path);
+        }
+        finally
+        {
+            _editorReplacementGate.Release();
+        }
+    }
+
+    private void OpenCapturedScreenshotEditor(string path, bool reopenPickerAfterClose)
+        => OpenScreenshotEditorCore(
+            () => new ScreenshotEditorWindow(path),
+            path,
+            isCapture: true,
+            reopenPickerAfterClose);
 
     /// <summary>
     /// Opens the editor directly from the captured pixels while <paramref name="saveTask"/>
     /// encodes and writes the file in the background. The editor binds to the final path once
     /// the save completes so Save/Save-a-copy work exactly as before.
     /// </summary>
-    private void OpenScreenshotEditor(CapturedFrame frame, Task<string> saveTask, bool reopenPickerAfterClose)
-        => OpenScreenshotEditorCore(() => new ScreenshotEditorWindow(frame, saveTask), null, reopenPickerAfterClose);
+    private void OpenCapturedScreenshotEditor(CapturedFrame frame, Task<string> saveTask, bool reopenPickerAfterClose)
+        => OpenScreenshotEditorCore(
+            () => new ScreenshotEditorWindow(frame, saveTask),
+            fallbackPath: null,
+            isCapture: true,
+            reopenPickerAfterClose);
 
-    private void OpenScreenshotEditorCore(Func<ScreenshotEditorWindow> create, string? fallbackPath, bool reopenPickerAfterClose)
+    private void OpenScreenshotEditorCore(
+        Func<ScreenshotEditorWindow> create,
+        string? fallbackPath,
+        bool isCapture,
+        bool reopenPickerAfterClose)
     {
         try
         {
-            var oldWindow = _editorWindow;
-            _editorWindow = null;
-            oldWindow?.Close();
-
             var window = create();
-            _editorWindow = window;
-            window.Closed += (_, _) =>
+            if (isCapture)
             {
-                if (ReferenceEquals(_editorWindow, window))
+                _captureEditorWindows.Add(window);
+                window.Closed += (_, _) =>
                 {
-                    _editorWindow = null;
+                    _captureEditorWindows.Remove(window);
                     if (reopenPickerAfterClose)
                     {
                         ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
                     }
-                }
-            };
+                };
+            }
+            else
+            {
+                _editorWindow = window;
+                window.Closed += (_, _) =>
+                {
+                    if (ReferenceEquals(_editorWindow, window))
+                    {
+                        _editorWindow = null;
+                    }
+                };
+            }
+
             ActivateWindowToForeground(window);
         }
         catch (Exception ex)
@@ -3159,7 +3227,15 @@ public partial class App : Application
         _onboardingWindow?.Close();
         _whatsNewWindow?.Close();
         _editorWindow?.Close();
+        foreach (var window in _captureEditorWindows.ToArray())
+        {
+            window.Close();
+        }
         _trimmerWindow?.Close();
+        foreach (var window in _captureTrimmerWindows.ToArray())
+        {
+            window.Close();
+        }
         CapturePickerWindow.ReleasePooled();
         Application.Current.Exit();
         // No persistent host window keeps the process alive, so force termination

@@ -48,6 +48,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     // HasUnsavedChanges below decides whether closing needs to be guarded.
     private bool _hasPendingCropSelection;
     private bool _closeConfirmed;
+    private Task<bool>? _closeTask;
 
     public ScreenshotEditorWindow(string filePath)
         : this(filePath, initialFrame: null, pendingSave: null)
@@ -131,12 +132,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
 
         args.Cancel = true;
-
-        if (await ShowDiscardChangesDialogAsync())
-        {
-            _closeConfirmed = true;
-            Close();
-        }
+        await TryCloseAsync();
     }
 
     private bool HasUnsavedChanges => _controller.IsDirty || _hasPendingCropSelection;
@@ -158,6 +154,32 @@ public sealed partial class ScreenshotEditorWindow : Window
         dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
 
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    internal async Task<bool> TryCloseAsync()
+    {
+        _closeTask ??= ConfirmAndCloseAsync();
+        var closeTask = _closeTask;
+        var closed = await closeTask;
+
+        if (!closed && ReferenceEquals(_closeTask, closeTask))
+        {
+            _closeTask = null;
+        }
+
+        return closed;
+    }
+
+    private async Task<bool> ConfirmAndCloseAsync()
+    {
+        if (HasUnsavedChanges && !await ShowDiscardChangesDialogAsync())
+        {
+            return false;
+        }
+
+        _closeConfirmed = true;
+        Close();
+        return true;
     }
 
     // -- Load -------------------------------------------------------------------------------
@@ -461,13 +483,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private async void OnClose(object sender, RoutedEventArgs e)
     {
-        if (HasUnsavedChanges && !await ShowDiscardChangesDialogAsync())
-        {
-            return;
-        }
-
-        _closeConfirmed = true;
-        Close();
+        await TryCloseAsync();
     }
 
     private async void OnCopy(object sender, RoutedEventArgs e)

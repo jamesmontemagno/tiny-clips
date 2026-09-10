@@ -6,6 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Capture result windows no longer replace each other.** Taking another screenshot or finishing
+  another GIF/video recording now opens an independent editor or trimmer, so earlier capture
+  windows remain available.
 - **Screenshot editor now confirms before discarding unapplied annotations.** Clicking the
   toolbar **Close** button, the window's ✕ button, or Alt+F4 while the editor has unsaved
   annotations (or a crop selection that hasn't been applied) now shows a "Discard changes?"
