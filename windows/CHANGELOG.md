@@ -6,6 +6,10 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Multiple screenshot editors can stay open at the same time.** Capturing another screenshot no
+  longer closes an existing editor or triggers its unsaved-changes prompt; each editor is tracked
+  independently and all open editors are closed during application exit. Added
+  `tests/ui/ScreenshotEditor.Tests.ps1` to cover a dirty first editor followed by a second capture.
 - **Screenshot editor now confirms before discarding unapplied annotations.** Clicking the
   toolbar **Close** button, the window's ✕ button, or Alt+F4 while the editor has unsaved
   annotations (or a crop selection that hasn't been applied) now shows a "Discard changes?"
