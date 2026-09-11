@@ -3158,7 +3158,7 @@ public partial class App : Application
         _whatsNewWindow?.Close();
         foreach (var editor in _editorWindows.ToArray())
         {
-            editor.Close();
+            editor.CloseForApplicationExit();
         }
         _editorWindows.Clear();
         _trimmerWindow?.Close();

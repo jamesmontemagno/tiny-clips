@@ -143,6 +143,12 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private void MarkChangesSaved() => _controller.MarkSaved();
 
+    internal void CloseForApplicationExit()
+    {
+        _closeConfirmed = true;
+        Close();
+    }
+
     private async Task<bool> ShowDiscardChangesDialogAsync()
     {
         var dialog = new ContentDialog
