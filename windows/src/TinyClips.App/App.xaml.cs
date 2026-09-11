@@ -55,7 +55,7 @@ public partial class App : Application
     private ClipsLibraryWindow? _clipsManagerWindow;
     private QuickBugReportWindow? _quickBugReportWindow;
     private OnboardingWindow? _onboardingWindow;
-    private ScreenshotEditorWindow? _editorWindow;
+    private readonly HashSet<ScreenshotEditorWindow> _editorWindows = new(ReferenceEqualityComparer.Instance);
     private Window? _trimmerWindow;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
@@ -3043,30 +3043,28 @@ public partial class App : Application
 
     private void OpenScreenshotEditorCore(Func<ScreenshotEditorWindow> create, string? fallbackPath, bool reopenPickerAfterClose)
     {
+        ScreenshotEditorWindow? createdWindow = null;
         try
         {
-            var oldWindow = _editorWindow;
-            _editorWindow = null;
-            oldWindow?.Close();
-
             var window = create();
-            _editorWindow = window;
+            createdWindow = window;
             window.Closed += (_, _) =>
             {
-                if (ReferenceEquals(_editorWindow, window))
+                if (_editorWindows.Remove(window) && reopenPickerAfterClose)
                 {
-                    _editorWindow = null;
-                    if (reopenPickerAfterClose)
-                    {
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
-                    }
+                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
                 }
             };
+            _editorWindows.Add(window);
             ActivateWindowToForeground(window);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"OpenScreenshotEditor failed: {ex}");
+            if (createdWindow is not null)
+            {
+                _editorWindows.Remove(createdWindow);
+            }
             if (fallbackPath is not null)
             {
                 RevealInExplorer(fallbackPath);
@@ -3158,7 +3156,11 @@ public partial class App : Application
         _clipsManagerWindow?.Close();
         _onboardingWindow?.Close();
         _whatsNewWindow?.Close();
-        _editorWindow?.Close();
+        foreach (var editor in _editorWindows.ToArray())
+        {
+            editor.Close();
+        }
+        _editorWindows.Clear();
         _trimmerWindow?.Close();
         CapturePickerWindow.ReleasePooled();
         Application.Current.Exit();
