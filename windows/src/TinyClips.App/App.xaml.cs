@@ -55,7 +55,8 @@ public partial class App : Application
     private ClipsLibraryWindow? _clipsManagerWindow;
     private QuickBugReportWindow? _quickBugReportWindow;
     private OnboardingWindow? _onboardingWindow;
-    private ScreenshotEditorWindow? _editorWindow;
+    private readonly EditorWindowTracker<ScreenshotEditorWindow> _editorWindows = new();
+    private ScreenshotEditorWindow? _editorWindow => _editorWindows.ActiveWindow;
     private Window? _trimmerWindow;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
@@ -3045,21 +3046,13 @@ public partial class App : Application
     {
         try
         {
-            var oldWindow = _editorWindow;
-            _editorWindow = null;
-            oldWindow?.Close();
-
             var window = create();
-            _editorWindow = window;
+            _editorWindows.Track(window);
             window.Closed += (_, _) =>
             {
-                if (ReferenceEquals(_editorWindow, window))
+                if (_editorWindows.CloseOne(window, reopenPickerAfterClose))
                 {
-                    _editorWindow = null;
-                    if (reopenPickerAfterClose)
-                    {
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
-                    }
+                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
                 }
             };
             ActivateWindowToForeground(window);
@@ -3158,7 +3151,7 @@ public partial class App : Application
         _clipsManagerWindow?.Close();
         _onboardingWindow?.Close();
         _whatsNewWindow?.Close();
-        _editorWindow?.Close();
+        _editorWindows.CloseAll(window => window.Close());
         _trimmerWindow?.Close();
         CapturePickerWindow.ReleasePooled();
         Application.Current.Exit();

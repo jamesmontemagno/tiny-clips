@@ -7,6 +7,9 @@ own `CHANGELOG.md` at the repository root.
 
 ### Fixed
 - **Enhanced the pop up editor**
+- **Multiple screenshot editors can stay open at the same time.** Opening a new screenshot editor no
+  longer closes the last one; the capture picker reopens only after the final editor window closes,
+  which keeps the workflow consistent when a user wants to compare or edit several screenshots.
 - **Screenshot editor now confirms before discarding unapplied annotations.** Clicking the
   toolbar **Close** button, the window's ✕ button, or Alt+F4 while the editor has unsaved
   annotations (or a crop selection that hasn't been applied) now shows a "Discard changes?"
