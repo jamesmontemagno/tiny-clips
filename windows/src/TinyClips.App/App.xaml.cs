@@ -56,6 +56,7 @@ public partial class App : Application
     private QuickBugReportWindow? _quickBugReportWindow;
     private OnboardingWindow? _onboardingWindow;
     private ScreenshotEditorWindow? _editorWindow;
+    private readonly List<ScreenshotEditorWindow> _editorWindows = [];
     private Window? _trimmerWindow;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
@@ -3045,21 +3046,20 @@ public partial class App : Application
     {
         try
         {
-            var oldWindow = _editorWindow;
-            _editorWindow = null;
-            oldWindow?.Close();
-
             var window = create();
             _editorWindow = window;
+            _editorWindows.Add(window);
             window.Closed += (_, _) =>
             {
+                _editorWindows.Remove(window);
                 if (ReferenceEquals(_editorWindow, window))
                 {
                     _editorWindow = null;
-                    if (reopenPickerAfterClose)
-                    {
-                        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
-                    }
+                }
+
+                if (reopenPickerAfterClose)
+                {
+                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
                 }
             };
             ActivateWindowToForeground(window);
@@ -3158,7 +3158,10 @@ public partial class App : Application
         _clipsManagerWindow?.Close();
         _onboardingWindow?.Close();
         _whatsNewWindow?.Close();
-        _editorWindow?.Close();
+        foreach (var editorWindow in _editorWindows.ToArray())
+        {
+            editorWindow.Close();
+        }
         _trimmerWindow?.Close();
         CapturePickerWindow.ReleasePooled();
         Application.Current.Exit();

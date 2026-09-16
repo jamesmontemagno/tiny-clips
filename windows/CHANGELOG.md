@@ -6,6 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Multiple screenshot editors can stay open at once.** Taking or opening another screenshot no
+  longer closes the current editor window; each screenshot gets its own editor like the macOS app,
+  while app exit still closes all open editors.
 - **Enhanced the pop up editor**
 - **Screenshot editor now confirms before discarding unapplied annotations.** Clicking the
   toolbar **Close** button, the window's ✕ button, or Alt+F4 while the editor has unsaved
