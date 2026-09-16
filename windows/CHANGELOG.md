@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Enhanced the pop up editor 2**
 - **Enhanced the pop up editor**
 - **Multiple screenshot editors can stay open at the same time.** Opening a new screenshot editor no
   longer closes the last one; the capture picker reopens only after the final editor window closes,
