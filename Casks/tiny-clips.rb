@@ -13,7 +13,7 @@ cask "tiny-clips" do
   app "TinyClips.app"
 
   postflight_steps do
-    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/TinyClips.app"]
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/TinyClips.app"]
   end
 
   zap trash: "~/Library/Preferences/com.tinyclips.app.plist"
