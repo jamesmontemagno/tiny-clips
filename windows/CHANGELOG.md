@@ -11,6 +11,8 @@ own `CHANGELOG.md` at the repository root.
   independently and all open editors are closed during application exit. Added
   `tests/ui/ScreenshotEditor.Tests.ps1` to cover a dirty first editor followed by a second capture.
 - **Enhanced the pop up editor**
+- **Screenshot editor now supports Ctrl+C.** Pressing Ctrl+C in the screenshot editor copies the
+  edited image to the clipboard, while text fields still keep their normal text-copy behavior.
 - **Screenshot editor now confirms before discarding unapplied annotations.** Clicking the
   toolbar **Close** button, the window's ✕ button, or Alt+F4 while the editor has unsaved
   annotations (or a crop selection that hasn't been applied) now shows a "Discard changes?"
