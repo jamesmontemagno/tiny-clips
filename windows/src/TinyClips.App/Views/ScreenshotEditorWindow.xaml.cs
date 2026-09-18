@@ -278,6 +278,18 @@ public sealed partial class ScreenshotEditorWindow : Window
             return;
         }
 
+        if (ctrl && e.Key == Windows.System.VirtualKey.C)
+        {
+            if (e.OriginalSource is Microsoft.UI.Xaml.Controls.TextBox)
+            {
+                return;
+            }
+
+            OnCopy(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+
         // Typing in an inspector text field (e.g. the custom emoji box) must not trigger
         // single-letter tool hotkeys, Space panning, or Delete-selected-annotation.
         if (e.OriginalSource is Microsoft.UI.Xaml.Controls.TextBox)
