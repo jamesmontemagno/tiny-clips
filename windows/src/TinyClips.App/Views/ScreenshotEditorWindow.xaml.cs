@@ -278,9 +278,21 @@ public sealed partial class ScreenshotEditorWindow : Window
             return;
         }
 
+        if (ctrl && e.Key == Windows.System.VirtualKey.C)
+        {
+            if (IsTextInputSource(e.OriginalSource))
+            {
+                return;
+            }
+
+            OnCopy(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+
         // Typing in an inspector text field (e.g. the custom emoji box) must not trigger
         // single-letter tool hotkeys, Space panning, or Delete-selected-annotation.
-        if (e.OriginalSource is Microsoft.UI.Xaml.Controls.TextBox)
+        if (IsTextInputSource(e.OriginalSource))
         {
             return;
         }
@@ -320,6 +332,8 @@ public sealed partial class ScreenshotEditorWindow : Window
             e.Handled = true;
         }
     }
+
+    private static bool IsTextInputSource(object originalSource) => originalSource is TextBox;
 
     private void OnRootKeyUp(object sender, KeyRoutedEventArgs e)
     {

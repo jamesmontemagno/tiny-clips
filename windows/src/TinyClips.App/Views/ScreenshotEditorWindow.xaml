@@ -92,7 +92,7 @@
                     Click="OnCopy"
                     Icon="Copy"
                     Label="Copy"
-                    ToolTipService.ToolTip="Copy to clipboard" />
+                    ToolTipService.ToolTip="Copy to clipboard (Ctrl+C)" />
                 <AppBarButton
                     AutomationProperties.AutomationId="EditorSaveButton"
                     Click="OnSave"

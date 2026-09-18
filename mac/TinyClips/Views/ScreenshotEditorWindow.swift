@@ -686,7 +686,7 @@ struct ScreenshotEditorView: View {
                 } label: {
                     Label("Copy", systemImage: "doc.on.doc")
                 }
-                .help("Copy the edited image to the clipboard.")
+                .help("Copy the edited image to the clipboard (⌘C).")
 
                 Button {
                     saveCurrentImage()

@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- macOS screenshot editor Copy toolbar action now advertises the native ⌘C shortcut for copying the edited image.
 - Updated the Homebrew cask for Homebrew 7 compatibility, removing the deprecated `postflight` warning during installation and upgrades.
 
 ## v1.7.5-mac - 2026-08-27
