@@ -72,6 +72,7 @@ final class RecentCaptureStore: ObservableObject {
         items.removeAll { $0.path == path }
         items.insert(RecentCaptureItem(path: path, type: type), at: 0)
         items = Array(items.filter { FileManager.default.fileExists(atPath: $0.path) }.prefix(10))
+        thumbnails.removeValue(forKey: path)
         pruneThumbnails()
         persist()
         loadThumbnails()
