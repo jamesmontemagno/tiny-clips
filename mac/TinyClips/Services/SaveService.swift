@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 import UserNotifications
 import CryptoKit
@@ -46,7 +47,11 @@ struct RecentCaptureItem: Identifiable, Codable {
 final class RecentCaptureStore: ObservableObject {
     static let shared = RecentCaptureStore()
 
+    /// Only the newest captures get a thumbnail generated; the menu itself also only shows this many.
+    static let menuDisplayLimit = 5
+
     @Published private(set) var items: [RecentCaptureItem] = []
+    @Published private(set) var thumbnails: [String: NSImage] = [:]
 
     private let defaultsKey = "recentCapturesV1"
 
@@ -56,6 +61,7 @@ final class RecentCaptureStore: ObservableObject {
             items = Array(decoded.prefix(10))
         }
         pruneMissing()
+        loadThumbnails()
     }
 
     func record(url: URL, type: CaptureType) {
@@ -66,24 +72,81 @@ final class RecentCaptureStore: ObservableObject {
         items.removeAll { $0.path == path }
         items.insert(RecentCaptureItem(path: path, type: type), at: 0)
         items = Array(items.filter { FileManager.default.fileExists(atPath: $0.path) }.prefix(10))
+        thumbnails.removeValue(forKey: path)
+        pruneThumbnails()
         persist()
+        loadThumbnails()
     }
 
     func remove(_ item: RecentCaptureItem) {
         items.removeAll { $0.path == item.path }
+        pruneThumbnails()
         persist()
+        loadThumbnails()
     }
 
     func pruneMissing() {
         let existing = items.filter { FileManager.default.fileExists(atPath: $0.path) }
         guard existing.count != items.count else { return }
         items = existing
+        pruneThumbnails()
         persist()
     }
 
     private func persist() {
         if let data = try? JSONEncoder().encode(items) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
+        }
+    }
+
+    // MARK: - Thumbnails
+
+    /// Generates small poster thumbnails for the items shown in the tray's Recent Captures menu
+    /// (only the newest `menuDisplayLimit`), skipping any already cached.
+    private func loadThumbnails() {
+        let visible = Array(items.prefix(Self.menuDisplayLimit))
+        for item in visible where thumbnails[item.id] == nil {
+            let url = item.url
+            let type = item.type
+            let itemID = item.id
+            let capturedAt = item.capturedAt
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let image = Self.generateThumbnail(url: url, type: type)
+                guard let image else { return }
+                DispatchQueue.main.async {
+                    guard let self,
+                          self.items.prefix(Self.menuDisplayLimit).contains(where: {
+                              $0.id == itemID && $0.type == type && $0.capturedAt == capturedAt
+                          }) else {
+                        return
+                    }
+                    self.thumbnails[itemID] = image
+                }
+            }
+        }
+    }
+
+    /// Drops cached thumbnails for items that are no longer tracked at all, so the dictionary
+    /// doesn't grow unbounded as captures age out of `items`.
+    private func pruneThumbnails() {
+        let liveIDs = Set(items.map(\.id))
+        thumbnails = thumbnails.filter { liveIDs.contains($0.key) }
+    }
+
+    nonisolated private static func generateThumbnail(url: URL, type: CaptureType) -> NSImage? {
+        switch type {
+        case .screenshot, .gif:
+            return NSImage(contentsOf: url)
+        case .video:
+            let asset = AVURLAsset(url: url)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 96, height: 54)
+            let time = CMTime(seconds: 0, preferredTimescale: 600)
+            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+                return nil
+            }
+            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         }
     }
 }

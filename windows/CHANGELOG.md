@@ -47,6 +47,13 @@ own `CHANGELOG.md` at the repository root.
   since the range spans the whole clip by default there was no way to scrub. Hold **Shift** while
   dragging inside the selection to move the range as a whole.
 
+### Added
+- **Recent captures show thumbnails.** The tray popup's "Recent" flyout now displays a thumbnail
+  (a poster frame for videos/GIFs, the image itself for screenshots) next to each of the latest 5
+  captures instead of filename-only entries, reusing the same disk-backed thumbnail cache as the
+  Clips Library so thumbnails load off the UI thread. Filename, capture type, and date remain
+  visible as the item text and accessible name.
+
 ## [v1.7.5-windows] - 2026-08-27
 
 ### Added
