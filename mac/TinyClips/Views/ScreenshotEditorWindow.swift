@@ -1089,16 +1089,7 @@ struct ScreenshotEditorView: View {
             Text("Image Scale")
                 .font(.headline)
 
-            HStack(spacing: 8) {
-                Slider(value: scaleBinding, in: 10...100, step: 1) {
-                    Text("Image scale")
-                }
-                .accessibilityValue("\(viewModel.saveScale) percent")
-
-                Text("\(viewModel.saveScale)%")
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 36, alignment: .trailing)
-            }
+            scaleSliderRow
 
             if let outputResolution = viewModel.outputResolutionText {
                 Text("Output: \(outputResolution)")
@@ -1109,6 +1100,19 @@ struct ScreenshotEditorView: View {
         }
         .frame(width: 240)
         .padding(14)
+    }
+
+    private var scaleSliderRow: some View {
+        HStack(spacing: 8) {
+            Slider(value: scaleBinding, in: 10...100, step: 1) {
+                Text("Image scale")
+            }
+            .accessibilityValue("\(viewModel.saveScale) percent")
+
+            Text("\(viewModel.saveScale)%")
+                .font(.caption.monospacedDigit())
+                .frame(width: 36, alignment: .trailing)
+        }
     }
 
     private var scaleBinding: Binding<Double> {
@@ -1129,17 +1133,11 @@ struct ScreenshotEditorView: View {
                 }
             }
 
-            Picker("Scale", selection: $viewModel.saveScale) {
-                Text("100%").tag(100)
-                Text("90%").tag(90)
-                Text("80%").tag(80)
-                Text("70%").tag(70)
-                Text("60%").tag(60)
-                Text("50%").tag(50)
-                Text("40%").tag(40)
-                Text("30%").tag(30)
-                Text("25%").tag(25)
-                Text("10%").tag(10)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Scale")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                scaleSliderRow
             }
 
             if let outputResolution = viewModel.outputResolutionText {

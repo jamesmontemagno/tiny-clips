@@ -53,15 +53,15 @@
                         AutomationProperties.Name="Output resolution"
                         Background="Transparent"
                         BorderThickness="0"
-                        ToolTipService.ToolTip="Choose the resolution used when copying the image">
+                        ToolTipService.ToolTip="Choose the resolution used when copying or saving the image">
                         <Button.Flyout>
                             <Flyout Placement="Bottom">
                                 <StackPanel Width="280" Padding="16" Spacing="12">
                                     <TextBlock
-                                        Text="Copy scale"
+                                        Text="Export scale"
                                         Style="{ThemeResource SubtitleTextBlockStyle}" />
                                     <TextBlock
-                                        Text="Choose the resolution used when copying to the clipboard."
+                                        Text="Choose the resolution used when copying or saving the image."
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         TextWrapping="Wrap" />
                                     <Grid ColumnSpacing="12">
@@ -72,7 +72,7 @@
                                         <Slider
                                             x:Name="OutputScaleSlider"
                                             AutomationProperties.AutomationId="EditorOutputScaleSlider"
-                                            AutomationProperties.Name="Copy output scale"
+                                            AutomationProperties.Name="Export output scale"
                                             LargeChange="10"
                                             Maximum="100"
                                             Minimum="10"

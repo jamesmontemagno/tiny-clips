@@ -82,6 +82,9 @@ public sealed partial class ScreenshotEditorWindow : Window
         Canvas.Attach(_controller);
 
         _controller.ImageChanged += OnControllerImageChanged;
+        // Padding, corner radius, shadow and frame presets change the exported frame size without
+        // touching the source bitmap, so the advertised output resolution has to follow them too.
+        _controller.BackgroundChanged += OnControllerImageChanged;
         Canvas.CropSelectionAvailabilityChanged += (_, available) =>
         {
             ApplyCropButton.IsEnabled = available;
@@ -114,25 +117,46 @@ public sealed partial class ScreenshotEditorWindow : Window
         _ = LoadAsync();
     }
 
-    private void OnControllerImageChanged(object? sender, EventArgs e)
+    private void OnControllerImageChanged(object? sender, EventArgs e) => UpdateOutputResolutionText();
+
+    /// <summary>
+    /// Mirrors the dimensions <see cref="EditorController.RenderToBitmapAsync"/> produces: the
+    /// export frame (which grows with padding and non-original frame presets), truncated to whole
+    /// pixels exactly like the renderer, then scaled with the same rounding as
+    /// <see cref="ScaleBitmap"/> so the advertised size always matches what is copied or saved.
+    /// </summary>
+    private void UpdateOutputResolutionText()
     {
-        var bitmap = _controller.Bitmap;
-        if (bitmap is null)
+        // The slider raises ValueChanged while InitializeComponent builds the flyout, which is
+        // before the controller field is assigned, so both are checked before use.
+        if (_controller is null || ImageSizeText is null)
+        {
+            return;
+        }
+
+        if (_controller.Bitmap is null)
         {
             ImageSizeText.Text = string.Empty;
             return;
         }
 
-        var outputWidth = Math.Max(1, (int)Math.Round(bitmap.PixelWidth * _outputScalePercent / 100d));
-        var outputHeight = Math.Max(1, (int)Math.Round(bitmap.PixelHeight * _outputScalePercent / 100d));
+        var frame = _controller.GetExportFrameLayout();
+        var renderWidth = (int)(float)frame.FrameSize.Width;
+        var renderHeight = (int)(float)frame.FrameSize.Height;
+        var outputWidth = Math.Max(1, (int)Math.Round(renderWidth * _outputScalePercent / 100d));
+        var outputHeight = Math.Max(1, (int)Math.Round(renderHeight * _outputScalePercent / 100d));
         ImageSizeText.Text = $"{outputWidth} × {outputHeight} px";
     }
 
     private void OnOutputScaleChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         _outputScalePercent = (int)Math.Round(e.NewValue);
-        OutputScaleValueText.Text = $"{_outputScalePercent}%";
-        OnControllerImageChanged(this, EventArgs.Empty);
+        if (OutputScaleValueText is not null)
+        {
+            OutputScaleValueText.Text = $"{_outputScalePercent}%";
+        }
+
+        UpdateOutputResolutionText();
     }
 
     private void OnClosed(object sender, WindowEventArgs args) => _controller.Dispose();
@@ -534,7 +558,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         using var target = new CanvasRenderTarget(device, targetWidthDips, targetHeightDips, dpi);
         using (var drawingSession = target.CreateDrawingSession())
         {
-            drawingSession.Clear(Windows.UI.Colors.Transparent);
+            drawingSession.Clear(Microsoft.UI.Colors.Transparent);
             drawingSession.DrawImage(
                 source,
                 new Windows.Foundation.Rect(0, 0, targetWidthDips, targetHeightDips),
@@ -563,6 +587,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         try
         {
             using var flattened = await _controller.RenderToBitmapAsync();
+            using var scaled = ScaleBitmap(flattened, _outputScalePercent);
             var isPng = path.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
             var encoderId = isPng ? BitmapEncoder.PngEncoderId : BitmapEncoder.JpegEncoderId;
 
@@ -571,13 +596,13 @@ public sealed partial class ScreenshotEditorWindow : Window
             using var stream = await file.OpenAsync(FileAccessMode.ReadWrite);
             var encoder = await BitmapEncoder.CreateAsync(encoderId, stream);
 
-            SoftwareBitmap toEncode = flattened;
+            SoftwareBitmap toEncode = scaled;
             SoftwareBitmap? converted = null;
             try
             {
-                if (!isPng && flattened.BitmapAlphaMode != BitmapAlphaMode.Ignore)
+                if (!isPng && scaled.BitmapAlphaMode != BitmapAlphaMode.Ignore)
                 {
-                    converted = SoftwareBitmap.Convert(flattened, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore);
+                    converted = SoftwareBitmap.Convert(scaled, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore);
                     toEncode = converted;
                 }
 

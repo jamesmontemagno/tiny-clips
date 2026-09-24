@@ -6,8 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
-- **Scaled screenshot-editor copies.** Click the displayed output resolution to choose a 10–100%
-  copy scale; Copy and Ctrl+C now place the scaled edited image on the clipboard.
+- **Scaled screenshot-editor exports.** Click the displayed output resolution to choose a 10–100%
+  export scale; Copy, Ctrl+C, Save and Save As now produce the scaled edited image, and the
+  displayed resolution tracks padding and frame-preset changes.
 
 ### Fixed
 - **Multiple screenshot editors can stay open at the same time.** Capturing another screenshot no
