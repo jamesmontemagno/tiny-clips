@@ -1317,14 +1317,17 @@ struct ScreenshotEditorView: View {
     private func deleteSource() {
         do {
             try FileManager.default.removeItem(at: imageURL)
-            RecentCaptureStore.shared.remove(url: imageURL)
-            onDone(nil)
+            completeSourceDeletion()
         } catch let error as CocoaError where error.code == .fileNoSuchFile {
-            RecentCaptureStore.shared.remove(url: imageURL)
-            onDone(nil)
+            completeSourceDeletion()
         } catch {
             SaveService.shared.showError("Could not delete \(imageURL.lastPathComponent): \(error.localizedDescription)")
         }
+    }
+
+    private func completeSourceDeletion() {
+        RecentCaptureStore.shared.remove(url: imageURL)
+        onDone(nil)
     }
 
     private func handleEscape() {

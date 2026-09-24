@@ -70,12 +70,13 @@ final class RecentCaptureStore: ObservableObject {
     }
 
     func remove(_ item: RecentCaptureItem) {
-        remove(url: item.url)
+        items.removeAll { $0.path == item.path }
+        persist()
     }
 
     func remove(url: URL) {
         let path = url.standardizedFileURL.path
-        items.removeAll { $0.path == path }
+        items.removeAll { URL(fileURLWithPath: $0.path).standardizedFileURL.path == path }
         persist()
     }
 
