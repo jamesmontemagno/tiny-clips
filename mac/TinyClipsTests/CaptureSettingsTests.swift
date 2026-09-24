@@ -23,6 +23,27 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
     }
 
+    func testActivationPolicyIsRegularWhenDockPreferenceIsEnabled() {
+        XCTAssertEqual(
+            TinyClipsActivationPolicy.resolve(showInDock: true, hasOpenScreenshotEditors: false),
+            .regular
+        )
+    }
+
+    func testActivationPolicyIsRegularWhileScreenshotEditorIsOpen() {
+        XCTAssertEqual(
+            TinyClipsActivationPolicy.resolve(showInDock: false, hasOpenScreenshotEditors: true),
+            .regular
+        )
+    }
+
+    func testActivationPolicyIsAccessoryWithoutDockPreferenceOrScreenshotEditor() {
+        XCTAssertEqual(
+            TinyClipsActivationPolicy.resolve(showInDock: false, hasOpenScreenshotEditors: false),
+            .accessory
+        )
+    }
+
     func testHotKeyDefaultsAndRoundTripUseIsolatedDefaults() {
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
 
