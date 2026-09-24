@@ -89,6 +89,7 @@ final class SaveServiceTests: XCTestCase {
         XCTAssertEqual(unique.lastPathComponent, "capture 3.png")
     }
 
+    @MainActor
     func testRecentCaptureRemovalByURLRemovesMatchingCapture() {
         let captureURL = directoryURL.appendingPathComponent("capture.png")
         XCTAssertTrue(FileManager.default.createFile(atPath: captureURL.path, contents: Data()))
