@@ -11,6 +11,10 @@ own `CHANGELOG.md` at the repository root.
   displayed resolution tracks padding and frame-preset changes.
 
 ### Fixed
+- **Smaller Windows App SDK dependency footprint.** Tiny Clips now consumes the modular WinUI
+  components it uses and suppresses legacy metapackage assets required only by third-party package
+  declarations, avoiding unused AI and ML packages while preserving framework-dependent Store
+  builds and self-contained direct releases.
 - **Multiple screenshot editors can stay open at the same time.** Capturing another screenshot no
   longer closes an existing editor or triggers its unsaved-changes prompt; each editor is tracked
   independently and all open editors are closed during application exit. Added
