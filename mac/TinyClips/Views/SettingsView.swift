@@ -236,7 +236,12 @@ struct SettingsView: View {
     }
 
     private func applyDockVisibility(_ showInDock: Bool) {
-        NSApplication.shared.setActivationPolicy(showInDock ? .regular : .accessory)
+        NSApplication.shared.setActivationPolicy(
+            TinyClipsActivationPolicy.resolve(
+                showInDock: showInDock,
+                hasOpenScreenshotEditors: ScreenshotEditorRegistry.shared.hasOpenSessions
+            )
+        )
         if showInDock {
             NSRunningApplication.current.activate(options: [.activateAllWindows])
         }

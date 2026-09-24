@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- macOS now makes TinyClips available in Command-Tab while screenshot editor windows are open, then returns to menu-bar-only mode after the last editor closes when the Dock preference is disabled.
 - macOS screenshot editor Copy toolbar action now advertises the native ⌘C shortcut for copying the edited image.
 - Updated the Homebrew cask for Homebrew 7 compatibility, removing the deprecated `postflight` warning during installation and upgrades.
 
