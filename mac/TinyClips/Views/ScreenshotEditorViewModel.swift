@@ -1180,11 +1180,15 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     var outputResolutionText: String? {
         let size = exportBasePixelSize()
-        guard size.width > 0, size.height > 0 else { return nil }
+        // renderFinalImage truncates the frame size to whole pixels, and scaleBitmap rounds the
+        // scaled dimensions, so mirror both steps here to advertise the exported size exactly.
+        let baseWidth = Int(size.width)
+        let baseHeight = Int(size.height)
+        guard baseWidth > 0, baseHeight > 0 else { return nil }
 
         let scale = CGFloat(saveScale) / 100.0
-        let outputWidth = max(1, Int((size.width * scale).rounded()))
-        let outputHeight = max(1, Int((size.height * scale).rounded()))
+        let outputWidth = max(1, Int((CGFloat(baseWidth) * scale).rounded()))
+        let outputHeight = max(1, Int((CGFloat(baseHeight) * scale).rounded()))
         return "\(outputWidth) × \(outputHeight) px"
     }
 
@@ -1212,8 +1216,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     private func scaleBitmap(_ bitmap: NSBitmapImageRep, to percent: Int) -> NSBitmapImageRep {
         guard percent < 100, percent > 0 else { return bitmap }
         let factor = CGFloat(percent) / 100.0
-        let newW = Int(CGFloat(bitmap.pixelsWide) * factor)
-        let newH = Int(CGFloat(bitmap.pixelsHigh) * factor)
+        // Matches outputResolutionText's rounding so the advertised size is what gets exported.
+        let newW = max(1, Int((CGFloat(bitmap.pixelsWide) * factor).rounded()))
+        let newH = max(1, Int((CGFloat(bitmap.pixelsHigh) * factor).rounded()))
         guard newW > 0, newH > 0,
               let scaled = NSBitmapImageRep(
                 bitmapDataPlanes: nil,
