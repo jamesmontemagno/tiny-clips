@@ -10,6 +10,12 @@ enum TinyClipsRuntime {
     }
 }
 
+enum TinyClipsActivationPolicy {
+    static func resolve(showInDock: Bool, hasOpenScreenshotEditors: Bool) -> NSApplication.ActivationPolicy {
+        showInDock || hasOpenScreenshotEditors ? .regular : .accessory
+    }
+}
+
 final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         ExternalImageOpenCoordinator.shared.handleOpen(urls: urls)
@@ -49,7 +55,12 @@ struct TinyClipsApp: App {
                 olderThan: Date().addingTimeInterval(-24 * 60 * 60)
             )
             _ = SparkleController.shared
-            NSApplication.shared.setActivationPolicy(CaptureSettings.shared.showInDock ? .regular : .accessory)
+            NSApplication.shared.setActivationPolicy(
+                TinyClipsActivationPolicy.resolve(
+                    showInDock: CaptureSettings.shared.showInDock,
+                    hasOpenScreenshotEditors: false
+                )
+            )
         case .alreadyRunning:
             exit(EXIT_SUCCESS)
         case let .failure(error):
