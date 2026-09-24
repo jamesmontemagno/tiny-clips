@@ -109,11 +109,18 @@ final class RecentCaptureStore: ObservableObject {
             let url = item.url
             let type = item.type
             let itemID = item.id
+            let capturedAt = item.capturedAt
             DispatchQueue.global(qos: .utility).async { [weak self] in
                 let image = Self.generateThumbnail(url: url, type: type)
                 guard let image else { return }
                 DispatchQueue.main.async {
-                    self?.thumbnails[itemID] = image
+                    guard let self,
+                          self.items.prefix(Self.menuDisplayLimit).contains(where: {
+                              $0.id == itemID && $0.type == type && $0.capturedAt == capturedAt
+                          }) else {
+                        return
+                    }
+                    self.thumbnails[itemID] = image
                 }
             }
         }
