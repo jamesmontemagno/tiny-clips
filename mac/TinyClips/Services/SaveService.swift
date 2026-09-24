@@ -72,20 +72,23 @@ final class RecentCaptureStore: ObservableObject {
         items.removeAll { $0.path == path }
         items.insert(RecentCaptureItem(path: path, type: type), at: 0)
         items = Array(items.filter { FileManager.default.fileExists(atPath: $0.path) }.prefix(10))
+        pruneThumbnails()
         persist()
         loadThumbnails()
     }
 
     func remove(_ item: RecentCaptureItem) {
         items.removeAll { $0.path == item.path }
-        thumbnails.removeValue(forKey: item.id)
+        pruneThumbnails()
         persist()
+        loadThumbnails()
     }
 
     func pruneMissing() {
         let existing = items.filter { FileManager.default.fileExists(atPath: $0.path) }
         guard existing.count != items.count else { return }
         items = existing
+        pruneThumbnails()
         persist()
     }
 
@@ -113,6 +116,13 @@ final class RecentCaptureStore: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Drops cached thumbnails for items that are no longer tracked at all, so the dictionary
+    /// doesn't grow unbounded as captures age out of `items`.
+    private func pruneThumbnails() {
+        let liveIDs = Set(items.map(\.id))
+        thumbnails = thumbnails.filter { liveIDs.contains($0.key) }
     }
 
     nonisolated private static func generateThumbnail(url: URL, type: CaptureType) -> NSImage? {
