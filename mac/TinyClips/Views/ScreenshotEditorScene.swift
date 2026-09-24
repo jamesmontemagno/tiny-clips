@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ScreenshotEditorCommandActions {
     let close: () -> Void
+    let deleteSource: () -> Void
     let save: () -> Void
     let saveAs: () -> Void
     let revealInFinder: () -> Void
@@ -52,6 +53,13 @@ private struct ScreenshotEditorMenuCommands: Commands {
         }
 
         CommandGroup(replacing: .saveItem) {
+            Button("Delete Screenshot…", role: .destructive) {
+                editor?.deleteSource()
+            }
+            .disabled(editor == nil)
+
+            Divider()
+
             Button("Save") {
                 editor?.save()
             }

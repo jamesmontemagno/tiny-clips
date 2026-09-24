@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- macOS screenshot editor now offers a confirmed Delete Screenshot action in its toolbar and File menu, including a clear warning when unsaved edits will be discarded.
+
 ### Fixed
 - macOS screenshot editor Copy toolbar action now advertises the native ⌘C shortcut for copying the edited image.
 - Updated the Homebrew cask for Homebrew 7 compatibility, removing the deprecated `postflight` warning during installation and upgrades.

@@ -88,4 +88,14 @@ final class SaveServiceTests: XCTestCase {
 
         XCTAssertEqual(unique.lastPathComponent, "capture 3.png")
     }
+
+    func testRecentCaptureRemovalByURLRemovesMatchingCapture() {
+        let captureURL = directoryURL.appendingPathComponent("capture.png")
+        XCTAssertTrue(FileManager.default.createFile(atPath: captureURL.path, contents: Data()))
+
+        RecentCaptureStore.shared.record(url: captureURL, type: .screenshot)
+        RecentCaptureStore.shared.remove(url: captureURL)
+
+        XCTAssertFalse(RecentCaptureStore.shared.items.contains { $0.url == captureURL })
+    }
 }
