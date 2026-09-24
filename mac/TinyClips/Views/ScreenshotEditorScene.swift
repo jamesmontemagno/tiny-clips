@@ -53,13 +53,6 @@ private struct ScreenshotEditorMenuCommands: Commands {
         }
 
         CommandGroup(replacing: .saveItem) {
-            Button("Delete Screenshot…", role: .destructive) {
-                editor?.deleteSource()
-            }
-            .disabled(editor == nil)
-
-            Divider()
-
             Button("Save") {
                 editor?.save()
             }
@@ -79,6 +72,13 @@ private struct ScreenshotEditorMenuCommands: Commands {
             }
             .disabled(editor == nil)
             .keyboardShortcut("r", modifiers: [.command, .shift])
+        }
+
+        CommandGroup(after: .saveItem) {
+            Button("Delete Screenshot…", role: .destructive) {
+                editor?.deleteSource()
+            }
+            .disabled(editor == nil)
         }
 
         CommandGroup(replacing: .undoRedo) {

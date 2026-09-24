@@ -646,7 +646,10 @@ struct ScreenshotEditorView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            if viewModel.hasUnsavedChanges {
+            if let lastSavedURL,
+               lastSavedURL.standardizedFileURL != imageURL.standardizedFileURL {
+                Text("This permanently deletes the original screenshot\(viewModel.hasUnsavedChanges ? " and discards your unsaved edits" : ""). Your saved copy, \(lastSavedURL.lastPathComponent), will remain. This cannot be undone.")
+            } else if viewModel.hasUnsavedChanges {
                 Text("This permanently deletes the original screenshot and discards your unsaved edits. This cannot be undone.")
             } else {
                 Text("This permanently deletes the original screenshot. This cannot be undone.")
@@ -733,7 +736,6 @@ struct ScreenshotEditorView: View {
                 .help("Delete the original screenshot.")
                 .accessibilityLabel("Delete original screenshot")
                 .accessibilityHint("Permanently deletes the original screenshot after confirmation.")
-
             }
         }
         .onChange(of: viewModel.canvasPadding) { _, _ in constrainPan() }
@@ -1093,7 +1095,6 @@ struct ScreenshotEditorView: View {
                 Label("Open Folder", systemImage: "folder")
             }
             .help("Open the folder for the current save location.")
-
         }
     }
 
