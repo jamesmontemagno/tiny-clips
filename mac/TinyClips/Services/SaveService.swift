@@ -125,16 +125,9 @@ final class RecentCaptureStore: ObservableObject {
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: 96, height: 54)
             let time = CMTime(seconds: 0, preferredTimescale: 600)
-            var generatedImage: CGImage?
-            let semaphore = DispatchSemaphore(value: 0)
-            generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cgImage, _, result, _ in
-                if result == .succeeded {
-                    generatedImage = cgImage
-                }
-                semaphore.signal()
+            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+                return nil
             }
-            _ = semaphore.wait(timeout: .now() + 2)
-            guard let cgImage = generatedImage else { return nil }
             return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         }
     }

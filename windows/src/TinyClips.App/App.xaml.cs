@@ -667,14 +667,6 @@ public partial class App : Application
         }
     }
 
-    private static string CaptureTypeGlyph(CaptureType type) => type switch
-    {
-        CaptureType.Screenshot => GlyphScreenshot,
-        CaptureType.Video => GlyphVideo,
-        CaptureType.Gif => GlyphGif,
-        _ => GlyphHistory,
-    };
-
     private Button CreateQuickAccessButton(string text, string glyph, ICommand command, Action dismiss)
     {
         var button = new Button
@@ -704,6 +696,14 @@ public partial class App : Application
         CaptureType.Video => "Video",
         CaptureType.Gif => "GIF",
         _ => type.ToString(),
+    };
+
+    private static string CaptureTypeGlyph(CaptureType type) => type switch
+    {
+        CaptureType.Screenshot => GlyphScreenshot,
+        CaptureType.Video => GlyphVideo,
+        CaptureType.Gif => GlyphGif,
+        _ => GlyphHistory,
     };
 
     private sealed class CaptureTile
