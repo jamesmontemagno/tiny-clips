@@ -112,14 +112,6 @@
                     Label="Open Folder"
                     ToolTipService.ToolTip="Open the current save folder" />
                 <AppBarButton
-                    x:Name="DeleteScreenshotButton"
-                    AutomationProperties.AutomationId="EditorDeleteScreenshotButton"
-                    AutomationProperties.Name="Delete original screenshot"
-                    Click="OnDeleteScreenshot"
-                    Icon="Delete"
-                    Label="Delete screenshot"
-                    ToolTipService.ToolTip="Delete the original screenshot" />
-                <AppBarButton
                     AutomationProperties.AutomationId="EditorCloseButton"
                     Click="OnClose"
                     Icon="Cancel"

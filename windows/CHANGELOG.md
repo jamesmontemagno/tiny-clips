@@ -5,11 +5,6 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
-### Added
-- **Screenshot editor delete.** The editor now has a confirmed **Delete screenshot** action that
-  permanently deletes the original capture, warns when unsaved edits will be discarded, preserves
-  any Save As copy, and removes the capture from Recent captures.
-
 ### Fixed
 - **Multiple screenshot editors can stay open at the same time.** Capturing another screenshot no
   longer closes an existing editor or triggers its unsaved-changes prompt; each editor is tracked

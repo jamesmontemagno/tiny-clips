@@ -1328,7 +1328,7 @@ struct ScreenshotEditorView: View {
 
     private func completeSourceDeletion() {
         RecentCaptureStore.shared.remove(url: imageURL)
-        onDone(nil)
+        onDone(lastSavedURL)
     }
 
     private func handleEscape() {
