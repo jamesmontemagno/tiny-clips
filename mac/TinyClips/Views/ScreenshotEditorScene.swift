@@ -225,6 +225,10 @@ final class ScreenshotEditorRegistry {
     private var pendingOpens: [UUID] = []
     private var opener: ((UUID) -> Void)?
 
+    var hasOpenSessions: Bool {
+        !sessions.isEmpty
+    }
+
     func installOpener(_ opener: @escaping (UUID) -> Void) {
         self.opener = opener
         let pending = pendingOpens
@@ -247,6 +251,7 @@ final class ScreenshotEditorRegistry {
             deleteSourceAfterSave: deleteSourceAfterSave,
             onComplete: onComplete
         )
+        updateActivationPolicy()
         if let opener {
             opener(id)
         } else {
@@ -261,5 +266,15 @@ final class ScreenshotEditorRegistry {
     func finish(_ id: UUID, result: URL?) {
         guard let session = sessions.removeValue(forKey: id) else { return }
         session.onComplete(result)
+        updateActivationPolicy()
+    }
+
+    private func updateActivationPolicy() {
+        NSApplication.shared.setActivationPolicy(
+            TinyClipsActivationPolicy.resolve(
+                showInDock: CaptureSettings.shared.showInDock,
+                hasOpenScreenshotEditors: hasOpenSessions
+            )
+        )
     }
 }
