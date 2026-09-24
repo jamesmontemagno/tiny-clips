@@ -5,6 +5,10 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Scaled screenshot-editor copies.** Click the displayed output resolution to choose a 10–100%
+  copy scale; Copy and Ctrl+C now place the scaled edited image on the clipboard.
+
 ### Fixed
 - **Multiple screenshot editors can stay open at the same time.** Capturing another screenshot no
   longer closes an existing editor or triggers its unsaved-changes prompt; each editor is tracked

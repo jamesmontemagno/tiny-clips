@@ -394,6 +394,7 @@ struct ScreenshotEditorView: View {
     @State private var panOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
     @State private var isEmojiTextEntryFocused = false
+    @State private var isScalePopoverPresented = false
 
     init(
         imageURL: URL,
@@ -1007,11 +1008,22 @@ struct ScreenshotEditorView: View {
 
     private var exportControls: some View {
         HStack(spacing: 12) {
-            if let img = viewModel.originalImage {
-                let rep = img.representations.first
-                Text("\(Int(rep?.pixelsWide ?? 0)) × \(Int(rep?.pixelsHigh ?? 0))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if let outputResolution = viewModel.outputResolutionText {
+                Button {
+                    isScalePopoverPresented = true
+                } label: {
+                    Text(outputResolution)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .buttonStyle(.plain)
+                .help("Set copied and saved image resolution")
+                .accessibilityLabel("Output resolution")
+                .accessibilityValue("\(outputResolution), \(viewModel.saveScale) percent")
+                .popover(isPresented: $isScalePopoverPresented, arrowEdge: .bottom) {
+                    scalePopover
+                }
             }
 
             Divider()
@@ -1072,6 +1084,40 @@ struct ScreenshotEditorView: View {
         }
     }
 
+    private var scalePopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Image Scale")
+                .font(.headline)
+
+            HStack(spacing: 8) {
+                Slider(value: scaleBinding, in: 10...100, step: 1) {
+                    Text("Image scale")
+                }
+                .accessibilityValue("\(viewModel.saveScale) percent")
+
+                Text("\(viewModel.saveScale)%")
+                    .font(.caption.monospacedDigit())
+                    .frame(width: 36, alignment: .trailing)
+            }
+
+            if let outputResolution = viewModel.outputResolutionText {
+                Text("Output: \(outputResolution)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .frame(width: 240)
+        .padding(14)
+    }
+
+    private var scaleBinding: Binding<Double> {
+        Binding(
+            get: { Double(viewModel.saveScale) },
+            set: { viewModel.saveScale = Int($0.rounded()) }
+        )
+    }
+
     private var saveOptionsPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Export")
@@ -1093,6 +1139,7 @@ struct ScreenshotEditorView: View {
                 Text("40%").tag(40)
                 Text("30%").tag(30)
                 Text("25%").tag(25)
+                Text("10%").tag(10)
             }
 
             if let outputResolution = viewModel.outputResolutionText {

@@ -1,10 +1,12 @@
 using System;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
+using Microsoft.Graphics.Canvas;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using TinyClips.App.ScreenshotEditor;
 using TinyClips.Core.Capture;
@@ -48,6 +50,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     // HasUnsavedChanges below decides whether closing needs to be guarded.
     private bool _hasPendingCropSelection;
     private bool _closeConfirmed;
+    private int _outputScalePercent = 100;
 
     public ScreenshotEditorWindow(string filePath)
         : this(filePath, initialFrame: null, pendingSave: null)
@@ -114,7 +117,22 @@ public sealed partial class ScreenshotEditorWindow : Window
     private void OnControllerImageChanged(object? sender, EventArgs e)
     {
         var bitmap = _controller.Bitmap;
-        ImageSizeText.Text = bitmap is null ? string.Empty : $"{bitmap.PixelWidth} × {bitmap.PixelHeight} px";
+        if (bitmap is null)
+        {
+            ImageSizeText.Text = string.Empty;
+            return;
+        }
+
+        var outputWidth = Math.Max(1, (int)Math.Round(bitmap.PixelWidth * _outputScalePercent / 100d));
+        var outputHeight = Math.Max(1, (int)Math.Round(bitmap.PixelHeight * _outputScalePercent / 100d));
+        ImageSizeText.Text = $"{outputWidth} × {outputHeight} px";
+    }
+
+    private void OnOutputScaleChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        _outputScalePercent = (int)Math.Round(e.NewValue);
+        OutputScaleValueText.Text = $"{_outputScalePercent}%";
+        OnControllerImageChanged(this, EventArgs.Empty);
     }
 
     private void OnClosed(object sender, WindowEventArgs args) => _controller.Dispose();
@@ -494,13 +512,45 @@ public sealed partial class ScreenshotEditorWindow : Window
         try
         {
             using var flattened = await _controller.RenderToBitmapAsync();
-            await ClipboardService.CopyBitmapAsync(flattened);
+            using var scaled = ScaleBitmap(flattened, _outputScalePercent);
+            await ClipboardService.CopyBitmapAsync(scaled);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Copy failed: {ex}");
             App.ShowClipboardFailureNotification(System.IO.Path.GetFileName(_filePath));
         }
+    }
+
+    private static SoftwareBitmap ScaleBitmap(SoftwareBitmap bitmap, int percentage)
+    {
+        var width = Math.Max(1, (int)Math.Round(bitmap.PixelWidth * percentage / 100d));
+        var height = Math.Max(1, (int)Math.Round(bitmap.PixelHeight * percentage / 100d));
+        var device = CanvasDevice.GetSharedDevice();
+        using var source = CanvasBitmap.CreateFromSoftwareBitmap(device, bitmap);
+        var dpi = source.Dpi > 0 ? source.Dpi : 96f;
+        var targetWidthDips = width * 96f / dpi;
+        var targetHeightDips = height * 96f / dpi;
+        using var target = new CanvasRenderTarget(device, targetWidthDips, targetHeightDips, dpi);
+        using (var drawingSession = target.CreateDrawingSession())
+        {
+            drawingSession.Clear(Windows.UI.Colors.Transparent);
+            drawingSession.DrawImage(
+                source,
+                new Windows.Foundation.Rect(0, 0, targetWidthDips, targetHeightDips),
+                new Windows.Foundation.Rect(
+                    0,
+                    0,
+                    bitmap.PixelWidth * 96d / dpi,
+                    bitmap.PixelHeight * 96d / dpi));
+        }
+
+        return SoftwareBitmap.CreateCopyFromBuffer(
+            target.GetPixelBytes().AsBuffer(),
+            BitmapPixelFormat.Bgra8,
+            width,
+            height,
+            BitmapAlphaMode.Premultiplied);
     }
 
     private async Task<bool> EncodeToFileAsync(string path)
