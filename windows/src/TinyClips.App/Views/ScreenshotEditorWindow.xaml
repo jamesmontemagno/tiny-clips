@@ -45,14 +45,60 @@
                 DefaultLabelPosition="Right"
                 IsOpen="False">
                 <CommandBar.Content>
-                    <TextBlock
-                        x:Name="ImageSizeText"
-                        Margin="12,16,0,0"
-                        VerticalAlignment="Center"
-                        HorizontalTextAlignment="Center"
-                        AutomationProperties.AutomationId="EditorImageSizeText"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Style="{StaticResource CaptionTextBlockStyle}" />
+                    <Button
+                        x:Name="OutputScaleButton"
+                        Margin="8,4,0,4"
+                        Padding="8"
+                        AutomationProperties.AutomationId="EditorOutputScaleButton"
+                        AutomationProperties.Name="Output resolution"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Choose the resolution used when copying or saving the image">
+                        <Button.Flyout>
+                            <Flyout Placement="Bottom">
+                                <StackPanel Width="280" Padding="16" Spacing="12">
+                                    <TextBlock
+                                        Text="Export scale"
+                                        Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <TextBlock
+                                        Text="Choose the resolution used when copying or saving the image."
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap" />
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider
+                                            x:Name="OutputScaleSlider"
+                                            AutomationProperties.AutomationId="EditorOutputScaleSlider"
+                                            AutomationProperties.Name="Export output scale"
+                                            LargeChange="10"
+                                            Maximum="100"
+                                            Minimum="10"
+                                            SmallChange="1"
+                                            StepFrequency="1"
+                                            Value="100"
+                                            ValueChanged="OnOutputScaleChanged" />
+                                        <TextBlock
+                                            x:Name="OutputScaleValueText"
+                                            Grid.Column="1"
+                                            MinWidth="40"
+                                            VerticalAlignment="Center"
+                                            Text="100%"
+                                            TextAlignment="Right"
+                                            Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                        <TextBlock
+                            x:Name="ImageSizeText"
+                            AutomationProperties.AutomationId="EditorImageSizeText"
+                            HorizontalTextAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    </Button>
                 </CommandBar.Content>
                 <AppBarButton
                     x:Name="ApplyCropButton"
