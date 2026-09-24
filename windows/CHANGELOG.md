@@ -6,6 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Screenshot editor delete.** The editor now has a confirmed **Delete screenshot** action that
+  permanently deletes the original capture, warns when unsaved edits will be discarded, preserves
+  any Save As copy, and removes the capture from Recent captures.
 - **Scaled screenshot-editor exports.** Click the displayed output resolution to choose a 10–100%
   export scale; Copy, Ctrl+C, Save and Save As now produce the scaled edited image, and the
   displayed resolution tracks padding and frame-preset changes.

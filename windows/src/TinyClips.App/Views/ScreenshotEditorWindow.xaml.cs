@@ -50,6 +50,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     // HasUnsavedChanges below decides whether closing needs to be guarded.
     private bool _hasPendingCropSelection;
     private bool _closeConfirmed;
+    private bool _isDeletingSource;
     private int _outputScalePercent = 100;
 
     public ScreenshotEditorWindow(string filePath)
@@ -513,6 +514,80 @@ public sealed partial class ScreenshotEditorWindow : Window
         {
             System.Diagnostics.Debug.WriteLine($"Failed to open save folder: {ex}");
         }
+    }
+
+    private async void OnDeleteScreenshot(object sender, RoutedEventArgs e)
+    {
+        if (_isDeletingSource || !await EnsureFileBackingAsync())
+        {
+            return;
+        }
+
+        if (!await ShowDeleteScreenshotDialogAsync())
+        {
+            return;
+        }
+
+        _isDeletingSource = true;
+        DeleteScreenshotButton.IsEnabled = false;
+        try
+        {
+            File.Delete(_filePath);
+            App.Services.GetRequiredService<IRecentCaptureService>().Remove(_filePath);
+            _closeConfirmed = true;
+            Close();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Delete screenshot failed: {ex}");
+            await ShowDeleteFailureDialogAsync(ex);
+            DeleteScreenshotButton.IsEnabled = true;
+            _isDeletingSource = false;
+        }
+    }
+
+    private async Task<bool> ShowDeleteScreenshotDialogAsync()
+    {
+        var filename = System.IO.Path.GetFileName(_filePath);
+        var hasSavedCopy = !string.Equals(_activeSavePath, _filePath, StringComparison.OrdinalIgnoreCase);
+        var content = HasUnsavedChanges
+            ? $"This permanently deletes {filename} and discards your unsaved edits."
+            : $"This permanently deletes {filename}.";
+
+        if (hasSavedCopy)
+        {
+            content += $" Your saved copy, {System.IO.Path.GetFileName(_activeSavePath)}, will remain.";
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Delete original screenshot?",
+            Content = $"{content} This cannot be undone.",
+            PrimaryButtonText = "Delete screenshot",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = RootGrid.XamlRoot,
+            RequestedTheme = RootGrid.RequestedTheme,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(dialog, "EditorDeleteScreenshotDialog");
+        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    private async Task ShowDeleteFailureDialogAsync(Exception error)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Couldn't delete screenshot",
+            Content = $"Tiny Clips couldn't delete {System.IO.Path.GetFileName(_filePath)}. Check that the file is not in use and that you have permission, then try again. Details: {error.Message}",
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = RootGrid.XamlRoot,
+            RequestedTheme = RootGrid.RequestedTheme,
+        };
+
+        await dialog.ShowAsync();
     }
 
     private async void OnClose(object sender, RoutedEventArgs e)

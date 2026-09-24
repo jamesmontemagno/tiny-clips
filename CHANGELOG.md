@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- macOS screenshot editor now offers a confirmed Delete Screenshot action in its toolbar and File menu, including a clear warning when unsaved edits will be discarded.
 - macOS screenshot editor now lets you click the output resolution to set a 10%–100% scale for copied and saved images.
 
 ### Fixed
