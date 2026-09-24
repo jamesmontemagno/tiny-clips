@@ -580,10 +580,16 @@ public partial class App : Application
         return button;
     }
 
+    private const int RecentCapturesDisplayCount = 5;
+    private const double RecentCaptureThumbnailWidth = 40;
+    private const double RecentCaptureThumbnailHeight = 22.5;
+
     private ButtonBase CreateRecentCapturesButton(Action dismiss)
     {
         var history = Services.GetRequiredService<IRecentCaptureService>();
-        var captures = history.GetRecentCaptures();
+        var thumbnails = Services.GetRequiredService<IThumbnailCache>();
+        var fileSystem = Services.GetRequiredService<IFileSystem>();
+        var captures = history.GetRecentCaptures().Take(RecentCapturesDisplayCount).ToList();
         var flyout = new MenuFlyout();
         var button = new DropDownButton
         {
@@ -599,18 +605,66 @@ public partial class App : Application
         foreach (var capture in captures)
         {
             var capturedItem = capture;
+            var name = $"{Path.GetFileName(capture.Path)} — {CaptureTypeLabel(capture.Type)}, {capture.CapturedAt:g}";
             var item = new MenuFlyoutItem
             {
-                Text = $"{Path.GetFileName(capture.Path)} — {CaptureTypeLabel(capture.Type)}, {capture.CapturedAt:g}",
+                Text = name,
+                Icon = new FontIcon { Glyph = CaptureTypeGlyph(capture.Type), FontFamily = FluentIconFont, FontSize = 14 },
             };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, name);
             item.Click += (_, _) =>
             {
                 dismiss();
                 OpenRecentCapture(capturedItem);
             };
             flyout.Items.Add(item);
+
+            _ = LoadRecentCaptureThumbnailAsync(item, capturedItem, thumbnails, fileSystem);
         }
+
         return button;
+    }
+
+    private async Task LoadRecentCaptureThumbnailAsync(
+        MenuFlyoutItem item,
+        RecentCapture capture,
+        IThumbnailCache thumbnails,
+        IFileSystem fileSystem)
+    {
+        try
+        {
+            if (!fileSystem.FileExists(capture.Path))
+            {
+                return;
+            }
+
+            var entry = new ClipEntry(
+                capture.Path,
+                capture.Type,
+                Path.GetFileName(capture.Path),
+                capture.CapturedAt,
+                fileSystem.GetFileSizeBytes(capture.Path));
+
+            var thumbnailPath = await thumbnails.GetThumbnailPathAsync(entry).ConfigureAwait(false);
+            if (thumbnailPath is null)
+            {
+                return;
+            }
+
+            _dispatcher?.TryEnqueue(() =>
+            {
+                item.Icon = new ImageIcon
+                {
+                    Source = new BitmapImage(new Uri(thumbnailPath)) { DecodePixelWidth = ThumbnailCacheService.ThumbnailWidth },
+                    Width = RecentCaptureThumbnailWidth,
+                    Height = RecentCaptureThumbnailHeight,
+                };
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"CreateRecentCapturesButton: thumbnail load failed for '{capture.Path}': {ex.Message}");
+        }
     }
 
     private Button CreateQuickAccessButton(string text, string glyph, ICommand command, Action dismiss)
@@ -642,6 +696,14 @@ public partial class App : Application
         CaptureType.Video => "Video",
         CaptureType.Gif => "GIF",
         _ => type.ToString(),
+    };
+
+    private static string CaptureTypeGlyph(CaptureType type) => type switch
+    {
+        CaptureType.Screenshot => GlyphScreenshot,
+        CaptureType.Video => GlyphVideo,
+        CaptureType.Gif => GlyphGif,
+        _ => GlyphHistory,
     };
 
     private sealed class CaptureTile

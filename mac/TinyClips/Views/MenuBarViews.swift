@@ -84,11 +84,19 @@ struct MenuBarContentView: View {
 
         if !recentCaptures.items.isEmpty {
             Menu {
-                ForEach(recentCaptures.items) { item in
+                ForEach(recentCaptures.items.prefix(RecentCaptureStore.menuDisplayLimit)) { item in
                     Button {
                         captureManager.openRecentCapture(item)
                     } label: {
-                        Label(recentCaptureTitle(item), systemImage: recentCaptureIcon(item.type))
+                        if let thumbnail = recentCaptures.thumbnails[item.id] {
+                            Label {
+                                Text(recentCaptureTitle(item))
+                            } icon: {
+                                Image(nsImage: thumbnail)
+                            }
+                        } else {
+                            Label(recentCaptureTitle(item), systemImage: recentCaptureIcon(item.type))
+                        }
                     }
                     .accessibilityHint("Opens this \(item.type.label.lowercased()) in its editor.")
                 }

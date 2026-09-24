@@ -5,6 +5,14 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Screenshot editor delete.** The editor now has a confirmed **Delete screenshot** action that
+  permanently deletes the original capture, warns when unsaved edits will be discarded, preserves
+  any Save As copy, and removes the capture from Recent captures.
+- **Scaled screenshot-editor exports.** Click the displayed output resolution to choose a 10–100%
+  export scale; Copy, Ctrl+C, Save and Save As now produce the scaled edited image, and the
+  displayed resolution tracks padding and frame-preset changes.
+
 ### Fixed
 - **Multiple screenshot editors can stay open at the same time.** Capturing another screenshot no
   longer closes an existing editor or triggers its unsaved-changes prompt; each editor is tracked
@@ -41,6 +49,13 @@ own `CHANGELOG.md` at the repository root.
   moves the playhead. Previously a press inside the selected range dragged the whole range, and
   since the range spans the whole clip by default there was no way to scrub. Hold **Shift** while
   dragging inside the selection to move the range as a whole.
+
+### Added
+- **Recent captures show thumbnails.** The tray popup's "Recent" flyout now displays a thumbnail
+  (a poster frame for videos/GIFs, the image itself for screenshots) next to each of the latest 5
+  captures instead of filename-only entries, reusing the same disk-backed thumbnail cache as the
+  Clips Library so thumbnails load off the UI thread. Filename, capture type, and date remain
+  visible as the item text and accessible name.
 
 ## [v1.7.5-windows] - 2026-08-27
 

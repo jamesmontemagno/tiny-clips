@@ -6,11 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - macOS screenshot editor now offers a confirmed Delete Screenshot action in its toolbar and File menu, including a clear warning when unsaved edits will be discarded.
+- macOS screenshot editor now lets you click the output resolution to set a 10%–100% scale for copied and saved images.
 
 ### Fixed
 - macOS now makes TinyClips available in Command-Tab while screenshot editor windows are open, then returns to menu-bar-only mode after the last editor closes when the Dock preference is disabled.
 - macOS screenshot editor Copy toolbar action now advertises the native ⌘C shortcut for copying the edited image.
 - Updated the Homebrew cask for Homebrew 7 compatibility, removing the deprecated `postflight` warning during installation and upgrades.
+
+### Added
+- **Recent Captures menu shows thumbnails.** The menu bar's "Recent Captures" submenu now shows a
+  small poster thumbnail (a frame for videos, the image itself for screenshots/GIFs) next to each
+  of the latest 5 captures instead of only a filename, matching the Windows tray behavior.
 
 ## v1.7.5-mac - 2026-08-27
 
