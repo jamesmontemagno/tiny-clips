@@ -387,6 +387,7 @@ struct ScreenshotEditorView: View {
     @State private var activePopover: EditorPopover?
     @State private var isBackgroundSectionExpanded = true
     @State private var showExitConfirmation = false
+    @State private var showDeleteConfirmation = false
     @State private var showClearAnnotationsConfirmation = false
     @State private var currentSaveURL: URL
     @State private var lastSavedURL: URL?
@@ -608,6 +609,7 @@ struct ScreenshotEditorView: View {
             \.screenshotEditorCommandActions,
             ScreenshotEditorCommandActions(
                 close: requestClose,
+                deleteSource: { showDeleteConfirmation = true },
                 save: saveCurrentImage,
                 saveAs: beginSaveAs,
                 revealInFinder: openSaveFolder,
@@ -638,6 +640,21 @@ struct ScreenshotEditorView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You have unsaved changes. Are you sure you want to exit?")
+        }
+        .confirmationDialog("Delete \(imageURL.lastPathComponent)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete Screenshot", role: .destructive) {
+                deleteSource()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let lastSavedURL,
+               lastSavedURL.standardizedFileURL != imageURL.standardizedFileURL {
+                Text("This permanently deletes the original screenshot\(viewModel.hasUnsavedChanges ? " and discards your unsaved edits" : ""). Your saved copy, \(lastSavedURL.lastPathComponent), will remain. This cannot be undone.")
+            } else if viewModel.hasUnsavedChanges {
+                Text("This permanently deletes the original screenshot and discards your unsaved edits. This cannot be undone.")
+            } else {
+                Text("This permanently deletes the original screenshot. This cannot be undone.")
+            }
         }
         .confirmationDialog("Clear all annotations?", isPresented: $showClearAnnotationsConfirmation, titleVisibility: .visible) {
             Button("Clear Annotations", role: .destructive) {
@@ -711,6 +728,15 @@ struct ScreenshotEditorView: View {
                         saveOptionsPopover
                     }
                 }
+
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete Screenshot", systemImage: "trash")
+                }
+                .help("Delete the original screenshot.")
+                .accessibilityLabel("Delete original screenshot")
+                .accessibilityHint("Permanently deletes the original screenshot after confirmation.")
             }
         }
         .onChange(of: viewModel.canvasPadding) { _, _ in constrainPan() }
@@ -1332,6 +1358,22 @@ struct ScreenshotEditorView: View {
         } else {
             onDone(lastSavedURL)
         }
+    }
+
+    private func deleteSource() {
+        do {
+            try FileManager.default.removeItem(at: imageURL)
+            completeSourceDeletion()
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            completeSourceDeletion()
+        } catch {
+            SaveService.shared.showError("Could not delete \(imageURL.lastPathComponent): \(error.localizedDescription)")
+        }
+    }
+
+    private func completeSourceDeletion() {
+        RecentCaptureStore.shared.remove(url: imageURL)
+        onDone(lastSavedURL)
     }
 
     private func handleEscape() {

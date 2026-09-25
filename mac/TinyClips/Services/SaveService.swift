@@ -85,6 +85,12 @@ final class RecentCaptureStore: ObservableObject {
         loadThumbnails()
     }
 
+    func remove(url: URL) {
+        let path = url.standardizedFileURL.path
+        items.removeAll { URL(fileURLWithPath: $0.path).standardizedFileURL.path == path }
+        persist()
+    }
+
     func pruneMissing() {
         let existing = items.filter { FileManager.default.fileExists(atPath: $0.path) }
         guard existing.count != items.count else { return }
