@@ -515,6 +515,8 @@ public sealed partial class VideoTrimmerWindow : Window
         var error = await EditorSourceDeletion.TryDeleteAsync(_filePath);
         if (error is not null)
         {
+            // The file survived, so put the preview back before handing the window to the user.
+            await RestorePlayerAsync();
             await EditorSourceDeletion.ShowFailureAsync(RootGrid, _filePath, error);
             DeleteVideoButton.IsEnabled = true;
             _isDeletingSource = false;
@@ -528,6 +530,28 @@ public sealed partial class VideoTrimmerWindow : Window
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
         ReleasePlayer();
+    }
+
+    /// <summary>
+    /// Re-attaches a media player to the existing source after <see cref="ReleasePlayer"/>, keeping
+    /// the current trim range and speed. Used when a delete attempt fails and the window stays open.
+    /// </summary>
+    private async Task RestorePlayerAsync()
+    {
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(_filePath);
+            var player = new MediaPlayer { Source = MediaSource.CreateFromStorageFile(file) };
+            player.PlaybackRate = _speed;
+            player.PlaybackSession.PositionChanged += OnPositionChanged;
+            player.PlaybackSession.PlaybackStateChanged += OnPlaybackStateChanged;
+            Player.SetMediaPlayer(player);
+            SeekTo(_startSeconds);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Video preview restore failed: {ex}");
+        }
     }
 
     /// <summary>Detaches and disposes the media player. Safe to call more than once.</summary>

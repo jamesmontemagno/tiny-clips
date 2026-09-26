@@ -374,10 +374,6 @@ private struct GifTrimmerView: View {
 
     /// Deletes the GIF and closes the trimmer, discarding the recording.
     private func deleteSource() {
-        if viewModel.isPlaying {
-            viewModel.togglePlayback()
-        }
-
         do {
             try FileManager.default.removeItem(at: outputURL)
         } catch let error as CocoaError where error.code == .fileNoSuchFile {
