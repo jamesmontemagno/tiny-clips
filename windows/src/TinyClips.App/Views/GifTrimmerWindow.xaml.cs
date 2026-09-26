@@ -581,6 +581,7 @@ public sealed partial class GifTrimmerWindow : Window
             return;
         }
 
+        Discarded?.Invoke(this, EventArgs.Empty);
         Close();
     }
 
@@ -613,4 +614,10 @@ public sealed partial class GifTrimmerWindow : Window
 
     /// <summary>Raised once when the window closes. Carries the trimmed file path, or null if untrimmed.</summary>
     public event EventHandler<string?>? Completed;
+
+    /// <summary>
+    /// Raised instead of <see cref="Completed"/> when the user deletes the source GIF, so the
+    /// caller skips all save handling for the file that no longer exists.
+    /// </summary>
+    public event EventHandler? Discarded;
 }
