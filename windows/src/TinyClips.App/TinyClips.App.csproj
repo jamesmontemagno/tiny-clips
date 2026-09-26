@@ -109,10 +109,23 @@
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
     <!--
-      Keep the SDK version deliberate: direct releases bundle this Windows App SDK runtime,
-      while Store builds remain framework-dependent and must be validated separately.
+      Use only the Windows App SDK components Tiny Clips needs. Framework-dependent builds
+      select the shared runtime package, while direct releases remain component self-contained.
     -->
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260529003" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260528001" />
+    <PackageReference
+      Include="Microsoft.WindowsAppSDK.Runtime"
+      Version="1.8.260529003"
+      Condition="'$(TinyClipsDirectReleaseBuild)' != 'true'" />
+    <!--
+      CommunityToolkit.WinUI and H.NotifyIcon.WinUI still depend on the 1.6 metapackage.
+      Satisfy that dependency without importing or publishing its legacy SDK assets.
+    -->
+    <PackageReference
+      Include="Microsoft.WindowsAppSDK"
+      Version="1.6.250108002"
+      ExcludeAssets="all"
+      PrivateAssets="all" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.6.1" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
