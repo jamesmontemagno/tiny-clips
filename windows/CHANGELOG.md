@@ -6,6 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Video and GIF trimmer delete.** Both trimmers now have a confirmed **Delete** action that
+  permanently deletes the recording, removes it from Recent captures, and closes the trimmer
+  immediately without saving, copying to the clipboard, or showing a save notification.
 - **Screenshot editor delete.** The editor now has a confirmed **Delete screenshot** action that
   permanently deletes the original capture, warns when unsaved edits will be discarded, preserves
   any Save As copy, and removes the capture from Recent captures.

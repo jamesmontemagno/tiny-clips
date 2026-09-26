@@ -2401,17 +2401,42 @@ public partial class App : Application
         {
             var gifTrimmer = new GifTrimmerWindow(path);
             gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
+            gifTrimmer.Discarded += (_, _) => OnTrimmerDiscarded(CaptureType.Gif, isRecentCapture, pickerInitiated);
             _trimmerWindow = gifTrimmer;
         }
         else
         {
             var videoTrimmer = new VideoTrimmerWindow(path);
             videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
+            videoTrimmer.Discarded += (_, _) => OnTrimmerDiscarded(CaptureType.Video, isRecentCapture, pickerInitiated);
             _trimmerWindow = videoTrimmer;
         }
 
         _trimmerWindow.Closed += (_, _) => _trimmerWindow = null;
         ActivateWindowToForeground(_trimmerWindow);
+    }
+
+    /// <summary>
+    /// The user deleted the clip from the trimmer, so there is nothing to finalize. Only the
+    /// post-capture picker is restored, matching the behavior after a normal trimmer close.
+    /// </summary>
+    private void OnTrimmerDiscarded(CaptureType type, bool isRecentCapture, bool pickerInitiated)
+    {
+        if (isRecentCapture)
+        {
+            return;
+        }
+
+        _lastTrimmerSourcePath = null;
+        _dispatcher?.TryEnqueue(() =>
+        {
+            if (_isExiting)
+            {
+                return;
+            }
+
+            ReopenPickerAfterCaptureIfNeeded(type, pickerInitiated);
+        });
     }
 
     private void OnTrimmerCompleted(

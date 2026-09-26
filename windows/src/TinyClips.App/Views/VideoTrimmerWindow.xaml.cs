@@ -23,10 +23,10 @@ namespace TinyClips.App;
 public sealed partial class VideoTrimmerWindow : Window
 {
     // Minimum dimensions chosen to keep the trim bar, playback controls, and footer legible.
-    // Width 640 DIP: trim bar needs at least ~400px; footer has SpeedCombo (96) + RemoveAudio
-    //   checkbox + three buttons (~300px) + spacing/padding, totalling ~540 + 100 margins.
+    // Width 720 DIP: trim bar needs at least ~400px; footer has SpeedCombo (96) + RemoveAudio
+    //   checkbox + four buttons (~390px) + spacing/padding, totalling ~620 + 100 margins.
     // Height 520 DIP: TitleBar (~48) + preview floor (~200) + trim section (~180) + footer (~92).
-    private const int MinimumWidthDip  = 640;
+    private const int MinimumWidthDip  = 720;
     private const int MinimumHeightDip = 520;
 
     private readonly string _filePath;
@@ -36,6 +36,7 @@ public sealed partial class VideoTrimmerWindow : Window
     private double _speed = 1.0;
     private bool _ready;
     private bool _suppressToggle;
+    private bool _isDeletingSource;
 
     // Step a 1/30s "frame" since the recorded fps isn't exposed by the WinRT clip API.
     private static readonly TimeSpan FrameStep = TimeSpan.FromSeconds(1.0 / 30.0);
@@ -383,7 +384,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveTrimmed(object sender, RoutedEventArgs e)
     {
-        if (!_ready)
+        if (!_ready || _isDeletingSource)
         {
             return;
         }
@@ -396,6 +397,11 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveOriginal(object sender, RoutedEventArgs e)
     {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
         StopPlayback();
         if (RemoveAudioCheck.IsChecked == true)
         {
@@ -482,22 +488,110 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private void OnDone(object sender, RoutedEventArgs e)
     {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
         StopPlayback();
         Completed?.Invoke(this, null);
         Close();
     }
 
+    /// <summary>
+    /// Discards the recording entirely: once the user confirms, the source file is deleted and the
+    /// trimmer closes immediately without raising <see cref="Completed"/>, so the deleted clip is
+    /// never copied to the clipboard, revealed, or announced as saved.
+    /// </summary>
+    private async void OnDeleteVideo(object sender, RoutedEventArgs e)
+    {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
+        StopPlayback();
+        if (!await EditorSourceDeletion.ConfirmAsync(RootGrid, _filePath, CaptureType.Video))
+        {
+            return;
+        }
+
+        // Every path that raises Completed stays disabled until the delete resolves, so a save can
+        // never race the deletion.
+        _isDeletingSource = true;
+        SetCompletionActionsEnabled(false);
+
+        // The media player keeps a handle on the MP4; release it before deleting the file.
+        ReleasePlayer();
+
+        var error = await EditorSourceDeletion.TryDeleteAsync(_filePath);
+        if (error is not null)
+        {
+            // The file survived, so put the preview back before handing the window to the user.
+            await RestorePlayerAsync();
+            await EditorSourceDeletion.ShowFailureAsync(RootGrid, _filePath, error);
+            _isDeletingSource = false;
+            SetCompletionActionsEnabled(true);
+            return;
+        }
+
+        Discarded?.Invoke(this, EventArgs.Empty);
+        Close();
+    }
+
+    private void SetCompletionActionsEnabled(bool enabled)
+    {
+        DeleteVideoButton.IsEnabled = enabled;
+        CancelButton.IsEnabled = enabled;
+        SaveOriginalButton.IsEnabled = enabled;
+        SaveTrimmedButton.IsEnabled = enabled;
+    }
+
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
+        ReleasePlayer();
+    }
+
+    /// <summary>
+    /// Re-attaches a media player to the existing source after <see cref="ReleasePlayer"/>, keeping
+    /// the current trim range and speed. Used when a delete attempt fails and the window stays open.
+    /// </summary>
+    private async Task RestorePlayerAsync()
+    {
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(_filePath);
+            var player = new MediaPlayer { Source = MediaSource.CreateFromStorageFile(file) };
+            player.PlaybackRate = _speed;
+            player.PlaybackSession.PositionChanged += OnPositionChanged;
+            player.PlaybackSession.PlaybackStateChanged += OnPlaybackStateChanged;
+            Player.SetMediaPlayer(player);
+            SeekTo(_startSeconds);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Video preview restore failed: {ex}");
+        }
+    }
+
+    /// <summary>Detaches and disposes the media player. Safe to call more than once.</summary>
+    private void ReleasePlayer()
+    {
         var player = Player.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
         StopPlayback();
-        if (player?.PlaybackSession is { } session)
+        if (player.PlaybackSession is { } session)
         {
             session.PositionChanged -= OnPositionChanged;
+            session.PlaybackStateChanged -= OnPlaybackStateChanged;
         }
 
         Player.SetMediaPlayer(null);
-        player?.Dispose();
+        player.Dispose();
     }
 
     private void StopPlayback()
@@ -507,4 +601,10 @@ public sealed partial class VideoTrimmerWindow : Window
 
     /// <summary>Raised once when the window closes. Carries the trimmed file path, or null if untrimmed.</summary>
     public event EventHandler<string?>? Completed;
+
+    /// <summary>
+    /// Raised instead of <see cref="Completed"/> when the user deletes the source recording, so the
+    /// caller skips all save handling for the file that no longer exists.
+    /// </summary>
+    public event EventHandler? Discarded;
 }

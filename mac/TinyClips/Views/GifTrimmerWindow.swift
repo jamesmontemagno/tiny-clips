@@ -54,7 +54,16 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
     private var didComplete = false
     private let menuActions = TrimmerMenuActions()
 
-    convenience init(gifData: GifCaptureData, outputURL: URL, onComplete: @escaping (URL?) -> Void) {
+    /// - Parameters:
+    ///   - outputURL: Destination for a trimmed export, which may not exist yet.
+    ///   - sourceURL: The GIF being edited. Defaults to `outputURL` for capture flows where the
+    ///     trimmer writes back over the recorded file. Deleting always targets this URL.
+    convenience init(
+        gifData: GifCaptureData,
+        outputURL: URL,
+        sourceURL: URL? = nil,
+        onComplete: @escaping (URL?) -> Void
+    ) {
         self.init(
             contentRect: NSRect(x: 0, y: 0, width: 580, height: 460),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -72,6 +81,7 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
         let trimmerView = GifTrimmerView(
             gifData: gifData,
             outputURL: outputURL,
+            sourceURL: sourceURL ?? outputURL,
             menuActions: menuActions,
             onDone: { [weak self] resultURL in
                 self?.completeWith(resultURL)
@@ -121,15 +131,24 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
 private struct GifTrimmerView: View {
     let gifData: GifCaptureData
     let outputURL: URL
+    let sourceURL: URL
     let menuActions: TrimmerMenuActions
     let onDone: (URL?) -> Void
 
     @StateObject private var viewModel: GifTrimmerViewModel
     @State private var isSaving = false
+    @State private var showDeleteConfirmation = false
 
-    init(gifData: GifCaptureData, outputURL: URL, menuActions: TrimmerMenuActions, onDone: @escaping (URL?) -> Void) {
+    init(
+        gifData: GifCaptureData,
+        outputURL: URL,
+        sourceURL: URL,
+        menuActions: TrimmerMenuActions,
+        onDone: @escaping (URL?) -> Void
+    ) {
         self.gifData = gifData
         self.outputURL = outputURL
+        self.sourceURL = sourceURL
         self.menuActions = menuActions
         self.onDone = onDone
         _viewModel = StateObject(wrappedValue: GifTrimmerViewModel(gifData: gifData))
@@ -312,6 +331,19 @@ private struct GifTrimmerView: View {
                 }
                 .help("Save the current frame or export the GIF.")
 
+                Button(role: .destructive) {
+                    if viewModel.isPlaying {
+                        viewModel.togglePlayback()
+                    }
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .help("Delete this GIF and close the trimmer.")
+                .accessibilityLabel("Delete GIF")
+                .accessibilityHint("Permanently deletes the GIF after confirmation and closes the trimmer.")
+                .disabled(isSaving)
+
                 Button("Done") {
                     onDone(nil)
                 }
@@ -323,6 +355,18 @@ private struct GifTrimmerView: View {
             .padding()
         }
         .frame(minWidth: 560, minHeight: 420)
+        .confirmationDialog(
+            "Delete \(sourceURL.lastPathComponent)?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete GIF", role: .destructive) {
+                deleteSource()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the GIF and closes the trimmer without saving. This cannot be undone.")
+        }
         .onAppear(perform: configureMenuActions)
         .onDisappear(perform: menuActions.clear)
         .onChange(of: viewModel.speed) { _, _ in
@@ -344,6 +388,21 @@ private struct GifTrimmerView: View {
         menuActions.togglePlayback = viewModel.togglePlayback
         menuActions.previousFrame = { viewModel.stepFrame(by: -1) }
         menuActions.nextFrame = { viewModel.stepFrame(by: 1) }
+    }
+
+    /// Deletes the GIF and closes the trimmer, discarding the recording.
+    private func deleteSource() {
+        do {
+            try FileManager.default.removeItem(at: sourceURL)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            // The GIF has not been written to disk yet; closing discards it.
+        } catch {
+            SaveService.shared.showError("Could not delete \(sourceURL.lastPathComponent): \(error.localizedDescription)")
+            return
+        }
+
+        RecentCaptureStore.shared.remove(url: sourceURL)
+        onDone(nil)
     }
 
     private func saveTrimmedGif() {

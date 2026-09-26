@@ -24,11 +24,11 @@ namespace TinyClips.App;
 public sealed partial class GifTrimmerWindow : Window
 {
     // Minimum dimensions chosen to keep the trim bar, frame stepper, and footer legible.
-    // Width 560 DIP: trim bar needs at least ~360px; footer has PlayToggle + SpeedCombo (96) +
-    //   three action buttons (~300px) + spacing/padding, totalling ~480 + 80 margins.
+    // Width 640 DIP: trim bar needs at least ~360px; footer has PlayToggle + SpeedCombo (96) +
+    //   four action buttons (~390px) + spacing/padding, totalling ~570 + 80 margins.
     // Height 480 DIP: TitleBar (~48) + preview floor (~160) + trim section (~160) + footer (~92)
     //   + margins (~20). GIF frames are often smaller than video so the floor is set lower.
-    private const int MinimumWidthDip  = 560;
+    private const int MinimumWidthDip  = 640;
     private const int MinimumHeightDip = 480;
 
     private readonly string _filePath;
@@ -41,6 +41,7 @@ public sealed partial class GifTrimmerWindow : Window
     private int _current;
     private double _speed = 1.0;
     private bool _ready;
+    private bool _isDeletingSource;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _playTimer;
     private int _playIndex;
 
@@ -445,7 +446,7 @@ public sealed partial class GifTrimmerWindow : Window
 
     private async void OnSaveTrimmed(object sender, RoutedEventArgs e)
     {
-        if (!_ready)
+        if (!_ready || _isDeletingSource)
         {
             return;
         }
@@ -534,8 +535,74 @@ public sealed partial class GifTrimmerWindow : Window
 
     private void OnDone(object sender, RoutedEventArgs e)
     {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
         Completed?.Invoke(this, null);
         Close();
+    }
+
+    /// <summary>
+    /// Discards the GIF entirely: once the user confirms, the source file is deleted and the trimmer
+    /// closes immediately without raising <see cref="Completed"/>, so the deleted capture is never
+    /// copied to the clipboard, revealed, or announced as saved.
+    /// </summary>
+    private async void OnDeleteGif(object sender, RoutedEventArgs e)
+    {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
+        StopPlayback();
+        if (!await EditorSourceDeletion.ConfirmAsync(RootGrid, _filePath, CaptureType.Gif))
+        {
+            return;
+        }
+
+        // Every path that raises Completed stays disabled until the delete resolves, so a save can
+        // never race the deletion.
+        _isDeletingSource = true;
+        SetCompletionActionsEnabled(false);
+
+        // Frames are decoded into memory from a stream that is closed by LoadAsync, but a decode
+        // still in flight holds the file open; cancel it and let it settle before deleting.
+        _decodeCts.Cancel();
+        try
+        {
+            await _decodeTask;
+        }
+        catch
+        {
+            // Decode failures are already logged; we only need it to be finished before deleting.
+        }
+
+        var error = await EditorSourceDeletion.TryDeleteAsync(_filePath);
+        if (error is not null)
+        {
+            await EditorSourceDeletion.ShowFailureAsync(RootGrid, _filePath, error);
+            _isDeletingSource = false;
+            SetCompletionActionsEnabled(true);
+
+            // Decoding was cancelled above, so any frames that had not landed yet never will and a
+            // trimmed export would fail. Keep that action disabled; Delete, Cancel and Keep
+            // original all still work.
+            SaveTrimmedButton.IsEnabled = false;
+            return;
+        }
+
+        Discarded?.Invoke(this, EventArgs.Empty);
+        Close();
+    }
+
+    private void SetCompletionActionsEnabled(bool enabled)
+    {
+        DeleteGifButton.IsEnabled = enabled;
+        CancelButton.IsEnabled = enabled;
+        SaveOriginalButton.IsEnabled = enabled;
+        SaveTrimmedButton.IsEnabled = enabled;
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs e)
@@ -567,4 +634,10 @@ public sealed partial class GifTrimmerWindow : Window
 
     /// <summary>Raised once when the window closes. Carries the trimmed file path, or null if untrimmed.</summary>
     public event EventHandler<string?>? Completed;
+
+    /// <summary>
+    /// Raised instead of <see cref="Completed"/> when the user deletes the source GIF, so the
+    /// caller skips all save handling for the file that no longer exists.
+    /// </summary>
+    public event EventHandler? Discarded;
 }
