@@ -23,10 +23,10 @@ namespace TinyClips.App;
 public sealed partial class VideoTrimmerWindow : Window
 {
     // Minimum dimensions chosen to keep the trim bar, playback controls, and footer legible.
-    // Width 640 DIP: trim bar needs at least ~400px; footer has SpeedCombo (96) + RemoveAudio
-    //   checkbox + three buttons (~300px) + spacing/padding, totalling ~540 + 100 margins.
+    // Width 720 DIP: trim bar needs at least ~400px; footer has SpeedCombo (96) + RemoveAudio
+    //   checkbox + four buttons (~390px) + spacing/padding, totalling ~620 + 100 margins.
     // Height 520 DIP: TitleBar (~48) + preview floor (~200) + trim section (~180) + footer (~92).
-    private const int MinimumWidthDip  = 640;
+    private const int MinimumWidthDip  = 720;
     private const int MinimumHeightDip = 520;
 
     private readonly string _filePath;
@@ -36,6 +36,7 @@ public sealed partial class VideoTrimmerWindow : Window
     private double _speed = 1.0;
     private bool _ready;
     private bool _suppressToggle;
+    private bool _isDeletingSource;
 
     // Step a 1/30s "frame" since the recorded fps isn't exposed by the WinRT clip API.
     private static readonly TimeSpan FrameStep = TimeSpan.FromSeconds(1.0 / 30.0);
@@ -487,17 +488,65 @@ public sealed partial class VideoTrimmerWindow : Window
         Close();
     }
 
+    /// <summary>
+    /// Discards the recording entirely: once the user confirms, the source file is deleted and the
+    /// trimmer closes immediately without raising <see cref="Completed"/>, so the deleted clip is
+    /// never copied to the clipboard, revealed, or announced as saved.
+    /// </summary>
+    private async void OnDeleteVideo(object sender, RoutedEventArgs e)
+    {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
+        StopPlayback();
+        if (!await EditorSourceDeletion.ConfirmAsync(RootGrid, _filePath, CaptureType.Video))
+        {
+            return;
+        }
+
+        _isDeletingSource = true;
+        DeleteVideoButton.IsEnabled = false;
+
+        // The media player keeps a handle on the MP4; release it before deleting the file.
+        ReleasePlayer();
+
+        var error = await EditorSourceDeletion.TryDeleteAsync(_filePath);
+        if (error is not null)
+        {
+            await EditorSourceDeletion.ShowFailureAsync(RootGrid, _filePath, error);
+            DeleteVideoButton.IsEnabled = true;
+            _isDeletingSource = false;
+            return;
+        }
+
+        Close();
+    }
+
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
+        ReleasePlayer();
+    }
+
+    /// <summary>Detaches and disposes the media player. Safe to call more than once.</summary>
+    private void ReleasePlayer()
+    {
         var player = Player.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
         StopPlayback();
-        if (player?.PlaybackSession is { } session)
+        if (player.PlaybackSession is { } session)
         {
             session.PositionChanged -= OnPositionChanged;
+            session.PlaybackStateChanged -= OnPlaybackStateChanged;
         }
 
         Player.SetMediaPlayer(null);
-        player?.Dispose();
+        player.Dispose();
     }
 
     private void StopPlayback()

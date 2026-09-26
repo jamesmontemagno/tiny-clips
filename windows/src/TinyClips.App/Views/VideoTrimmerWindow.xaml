@@ -211,6 +211,17 @@
                 Orientation="Horizontal"
                 Spacing="8">
                 <Button
+                    x:Name="DeleteVideoButton"
+                    AutomationProperties.AutomationId="VideoDeleteButton"
+                    AutomationProperties.Name="Delete recording"
+                    Click="OnDeleteVideo"
+                    ToolTipService.ToolTip="Permanently delete this recording and close the trimmer">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="14" Glyph="&#xE74D;" />
+                        <TextBlock Text="Delete" />
+                    </StackPanel>
+                </Button>
+                <Button
                     AutomationProperties.AutomationId="VideoTrimmerCloseButton"
                     Click="OnDone"
                     Content="Cancel" />

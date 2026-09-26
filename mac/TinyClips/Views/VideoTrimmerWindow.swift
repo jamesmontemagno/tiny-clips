@@ -183,6 +183,7 @@ private struct VideoTrimmerView: View {
     @StateObject private var viewModel: TrimmerViewModel
     @State private var keyMonitor: Any?
     @State private var trimmerWindow: NSWindow?
+    @State private var showDeleteConfirmation = false
 
     init(videoURL: URL, menuActions: TrimmerMenuActions, onDone: @escaping (URL?) -> Void) {
         self.videoURL = videoURL
@@ -384,6 +385,17 @@ private struct VideoTrimmerView: View {
                 .help("Save the current frame or export the video.")
                 .disabled(viewModel.duration <= 0 || viewModel.isExporting)
 
+                Button(role: .destructive) {
+                    viewModel.stopPlayback()
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .help("Delete this recording and close the trimmer.")
+                .accessibilityLabel("Delete recording")
+                .accessibilityHint("Permanently deletes the recording after confirmation and closes the trimmer.")
+                .disabled(viewModel.isExporting)
+
                 Button("Done") {
                     viewModel.cleanup()
                     onDone(nil)
@@ -396,6 +408,18 @@ private struct VideoTrimmerView: View {
             .padding()
         }
         .frame(minWidth: 660, minHeight: 540)
+        .confirmationDialog(
+            "Delete \(videoURL.lastPathComponent)?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Recording", role: .destructive) {
+                deleteSource()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the recording and closes the trimmer without saving. This cannot be undone.")
+        }
         .onAppear {
             configureMenuActions()
             installKeyMonitor()
@@ -413,6 +437,22 @@ private struct VideoTrimmerView: View {
                 ProgressOverlayView(title: "Saving…")
             }
         }
+    }
+
+    /// Deletes the source recording and closes the trimmer, discarding any pending trim selection.
+    private func deleteSource() {
+        viewModel.cleanup()
+        do {
+            try FileManager.default.removeItem(at: videoURL)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            // Already gone; fall through and close.
+        } catch {
+            SaveService.shared.showError("Could not delete \(videoURL.lastPathComponent): \(error.localizedDescription)")
+            return
+        }
+
+        RecentCaptureStore.shared.remove(url: videoURL)
+        onDone(nil)
     }
 
     private func configureMenuActions() {
