@@ -222,6 +222,7 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="CancelButton"
                     AutomationProperties.AutomationId="VideoTrimmerCloseButton"
                     Click="OnDone"
                     Content="Cancel" />

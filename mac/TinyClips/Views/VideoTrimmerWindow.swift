@@ -441,16 +441,17 @@ private struct VideoTrimmerView: View {
 
     /// Deletes the source recording and closes the trimmer, discarding any pending trim selection.
     private func deleteSource() {
-        viewModel.cleanup()
         do {
             try FileManager.default.removeItem(at: videoURL)
         } catch let error as CocoaError where error.code == .fileNoSuchFile {
             // Already gone; fall through and close.
         } catch {
+            // The trimmer stays open, so leave the player fully wired up.
             SaveService.shared.showError("Could not delete \(videoURL.lastPathComponent): \(error.localizedDescription)")
             return
         }
 
+        viewModel.cleanup()
         RecentCaptureStore.shared.remove(url: videoURL)
         onDone(nil)
     }

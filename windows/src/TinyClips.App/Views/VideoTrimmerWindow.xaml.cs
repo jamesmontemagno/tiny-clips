@@ -384,7 +384,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveTrimmed(object sender, RoutedEventArgs e)
     {
-        if (!_ready)
+        if (!_ready || _isDeletingSource)
         {
             return;
         }
@@ -397,6 +397,11 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveOriginal(object sender, RoutedEventArgs e)
     {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
         StopPlayback();
         if (RemoveAudioCheck.IsChecked == true)
         {
@@ -483,6 +488,11 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private void OnDone(object sender, RoutedEventArgs e)
     {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
         StopPlayback();
         Completed?.Invoke(this, null);
         Close();
@@ -506,8 +516,10 @@ public sealed partial class VideoTrimmerWindow : Window
             return;
         }
 
+        // Every path that raises Completed stays disabled until the delete resolves, so a save can
+        // never race the deletion.
         _isDeletingSource = true;
-        DeleteVideoButton.IsEnabled = false;
+        SetCompletionActionsEnabled(false);
 
         // The media player keeps a handle on the MP4; release it before deleting the file.
         ReleasePlayer();
@@ -518,13 +530,21 @@ public sealed partial class VideoTrimmerWindow : Window
             // The file survived, so put the preview back before handing the window to the user.
             await RestorePlayerAsync();
             await EditorSourceDeletion.ShowFailureAsync(RootGrid, _filePath, error);
-            DeleteVideoButton.IsEnabled = true;
             _isDeletingSource = false;
+            SetCompletionActionsEnabled(true);
             return;
         }
 
         Discarded?.Invoke(this, EventArgs.Empty);
         Close();
+    }
+
+    private void SetCompletionActionsEnabled(bool enabled)
+    {
+        DeleteVideoButton.IsEnabled = enabled;
+        CancelButton.IsEnabled = enabled;
+        SaveOriginalButton.IsEnabled = enabled;
+        SaveTrimmedButton.IsEnabled = enabled;
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs e)

@@ -446,7 +446,7 @@ public sealed partial class GifTrimmerWindow : Window
 
     private async void OnSaveTrimmed(object sender, RoutedEventArgs e)
     {
-        if (!_ready)
+        if (!_ready || _isDeletingSource)
         {
             return;
         }
@@ -535,6 +535,11 @@ public sealed partial class GifTrimmerWindow : Window
 
     private void OnDone(object sender, RoutedEventArgs e)
     {
+        if (_isDeletingSource)
+        {
+            return;
+        }
+
         Completed?.Invoke(this, null);
         Close();
     }
@@ -557,8 +562,10 @@ public sealed partial class GifTrimmerWindow : Window
             return;
         }
 
+        // Every path that raises Completed stays disabled until the delete resolves, so a save can
+        // never race the deletion.
         _isDeletingSource = true;
-        DeleteGifButton.IsEnabled = false;
+        SetCompletionActionsEnabled(false);
 
         // Frames are decoded into memory from a stream that is closed by LoadAsync, but a decode
         // still in flight holds the file open; cancel it and let it settle before deleting.
@@ -576,13 +583,26 @@ public sealed partial class GifTrimmerWindow : Window
         if (error is not null)
         {
             await EditorSourceDeletion.ShowFailureAsync(RootGrid, _filePath, error);
-            DeleteGifButton.IsEnabled = true;
             _isDeletingSource = false;
+            SetCompletionActionsEnabled(true);
+
+            // Decoding was cancelled above, so any frames that had not landed yet never will and a
+            // trimmed export would fail. Keep that action disabled; Delete, Cancel and Keep
+            // original all still work.
+            SaveTrimmedButton.IsEnabled = false;
             return;
         }
 
         Discarded?.Invoke(this, EventArgs.Empty);
         Close();
+    }
+
+    private void SetCompletionActionsEnabled(bool enabled)
+    {
+        DeleteGifButton.IsEnabled = enabled;
+        CancelButton.IsEnabled = enabled;
+        SaveOriginalButton.IsEnabled = enabled;
+        SaveTrimmedButton.IsEnabled = enabled;
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs e)

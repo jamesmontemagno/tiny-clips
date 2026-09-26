@@ -213,10 +213,12 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="CancelButton"
                     AutomationProperties.AutomationId="GifTrimmerCloseButton"
                     Click="OnDone"
                     Content="Cancel" />
                 <Button
+                    x:Name="SaveOriginalButton"
                     AutomationProperties.AutomationId="GifSaveOriginalButton"
                     Click="OnDone"
                     Content="Keep original" />
