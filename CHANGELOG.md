@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- macOS video and GIF trimmers now offer a confirmed Delete action that permanently deletes the recording, removes it from Recent Captures, and closes the trimmer immediately so nothing is saved.
 - macOS screenshot editor now offers a confirmed Delete Screenshot action in its toolbar and File menu, including a clear warning when unsaved edits will be discarded.
 - macOS screenshot editor now lets you click the output resolution to set a 10%–100% scale for copied and saved images.
 

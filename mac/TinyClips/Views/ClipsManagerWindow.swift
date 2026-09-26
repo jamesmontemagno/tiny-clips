@@ -939,7 +939,7 @@ private class ClipsViewModel: ObservableObject {
             .appendingPathExtension("gif")
 
         var windowRef: GifTrimmerWindow?
-        let window = GifTrimmerWindow(gifData: gifData, outputURL: outputURL) { [weak self] _ in
+        let window = GifTrimmerWindow(gifData: gifData, outputURL: outputURL, sourceURL: item.url) { [weak self] _ in
             DispatchQueue.main.async {
                 if let windowRef {
                     self?.releaseEditorWindow(windowRef)
