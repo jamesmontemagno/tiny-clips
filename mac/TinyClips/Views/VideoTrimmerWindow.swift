@@ -905,7 +905,14 @@ private class TrimmerViewModel: ObservableObject {
                     )
                 }
 
-                guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
+                let formatDescriptions = try await track.load(.formatDescriptions)
+                let codec: VideoCodec = formatDescriptions.first.map {
+                    CMFormatDescriptionGetMediaSubType($0) == kCMVideoCodecType_HEVC ? .hevc : .h264
+                } ?? .h264
+                guard let session = AVAssetExportSession(
+                    asset: composition,
+                    presetName: RecordingVideoCodecResolver.exportPreset(for: codec)
+                ) else {
                     self.isExporting = false
                     completion(nil)
                     return

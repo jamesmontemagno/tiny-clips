@@ -1402,6 +1402,7 @@ class CaptureManager: ObservableObject {
         let webcamCornerRadiusSetting = CaptureSettings.shared.webcamCornerRadius
         let webcamOverlaySelection = activeWebcamOverlaySelection
         let webcamPositionEvents = self.webcamPositionEvents
+        let videoCodec = videoRecorderAtStop?.videoCodecForCompanionWriters ?? .h264
 
         var savedVideoURL: URL?
         var savedWebcamURL: URL?
@@ -1458,6 +1459,7 @@ class CaptureManager: ObservableObject {
                         events: capturedMouseClickData.events,
                         outputURL: overlayOutputURL,
                         style: videoOverlayStyle,
+                        codec: videoCodec,
                         onProgress: { [weak self] overlayProgress in
                             guard let self else { return }
                             // Map exporter 0...1 progress into the overlay phase range.
@@ -1519,6 +1521,7 @@ class CaptureManager: ObservableObject {
                             outputURL: brandingOutputURL,
                             includeBranding: showBrandingOverlay,
                             webcamOverlay: webcamOverlayOptions,
+                            codec: videoCodec,
                             onProgress: { [weak self] overlayProgress in
                                 guard let self else { return }
                                 let normalized = min(max(overlayProgress, 0), 1)
@@ -2581,6 +2584,7 @@ class CaptureManager: ObservableObject {
         events: [MouseClickEvent],
         outputURL: URL,
         style: MouseClickOverlayStyle,
+        codec: VideoCodec,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
@@ -2590,6 +2594,7 @@ class CaptureManager: ObservableObject {
                 events: events,
                 outputURL: outputURL,
                 style: style,
+                codec: codec,
                 onProgress: onProgress
             )
         }.value
@@ -2600,6 +2605,7 @@ class CaptureManager: ObservableObject {
         outputURL: URL,
         includeBranding: Bool,
         webcamOverlay: BrandingOverlayProcessor.WebcamOverlayOptions?,
+        codec: VideoCodec,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
@@ -2608,6 +2614,7 @@ class CaptureManager: ObservableObject {
                 outputURL: outputURL,
                 includeBranding: includeBranding,
                 webcamOverlay: webcamOverlay,
+                codec: codec,
                 onProgress: onProgress
             )
         }.value

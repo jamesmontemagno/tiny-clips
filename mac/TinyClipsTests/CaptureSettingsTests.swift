@@ -65,6 +65,7 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(resolved.actual, .hevc)
         XCTAssertFalse(resolved.didFallback)
         XCTAssertNil(resolved.fallbackMessage())
+        XCTAssertEqual(RecordingVideoCodecResolver.exportPreset(for: resolved.actual), AVAssetExportPresetHEVCHighestQuality)
     }
 
     func testRecordingVideoCodecResolverFallsBackWhenHevcUnavailable() {
@@ -72,6 +73,7 @@ final class CaptureSettingsTests: XCTestCase {
 
         XCTAssertEqual(resolved.actual, .h264)
         XCTAssertTrue(resolved.didFallback)
+        XCTAssertEqual(RecordingVideoCodecResolver.exportPreset(for: resolved.actual), AVAssetExportPresetHighestQuality)
         XCTAssertEqual(
             resolved.fallbackMessage(context: "the webcam overlay"),
             "H.265 / HEVC is not available for the webcam overlay. TinyClips is recording with H.264 instead."

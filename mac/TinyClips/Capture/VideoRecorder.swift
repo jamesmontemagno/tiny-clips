@@ -156,6 +156,10 @@ enum RecordingVideoCodecResolver {
         return RecordingVideoCodec(requested: requested, actual: hevcAvailable ? .hevc : .h264)
     }
 
+    static func exportPreset(for codec: VideoCodec) -> String {
+        codec == .hevc ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality
+    }
+
     static func makeVideoInput(codec: VideoCodec, width: Int, height: Int) -> AVAssetWriterInput {
         AVAssetWriterInput(mediaType: .video, outputSettings: videoOutputSettings(
             codec: codec,
@@ -214,8 +218,10 @@ enum RecordingVideoCodecResolver {
             VTCompressionSessionInvalidate(compressionSession)
         }
         let isSupported = status == noErr
-        hardwareEncoderSupportCacheQueue.sync {
-            hardwareEncoderSupportCache[cacheKey] = isSupported
+        if isSupported {
+            hardwareEncoderSupportCacheQueue.sync {
+                hardwareEncoderSupportCache[cacheKey] = true
+            }
         }
         return isSupported
     }
