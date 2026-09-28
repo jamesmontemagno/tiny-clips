@@ -1,8 +1,10 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using TinyClips.Core.Capture;
 using Windows.Graphics;
+using Windows.System;
 
 namespace TinyClips.App;
 
@@ -27,6 +29,7 @@ public sealed partial class ScreenPickerWindow : Window
     {
         InitializeComponent();
         ConfigurePresenter();
+        RootGrid.KeyDown += OnKeyDown;
         Activated += OnActivated;
 
         var items = new List<ScreenPickerItem>();
@@ -69,6 +72,15 @@ public sealed partial class ScreenPickerWindow : Window
         OverlayWindowHelpers.ApplyRoundedRegion(
             WinRT.Interop.WindowNative.GetWindowHandle(this),
             _windowWidth, _windowHeight, _windowScale, CornerRadiusDip);
+        RootGrid.Focus(FocusState.Programmatic);
+    }
+
+    private void OnKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape)
+        {
+            Complete(null);
+        }
     }
 
     private void ConfigurePresenter()
