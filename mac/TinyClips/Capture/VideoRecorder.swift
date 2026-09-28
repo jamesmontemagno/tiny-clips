@@ -125,7 +125,7 @@ struct RecordingVideoCodec {
 enum RecordingVideoCodecResolver {
     static func resolve(requested: VideoCodec, width: Int, height: Int) -> RecordingVideoCodec {
         guard requested == .hevc else {
-            return resolved(requested: requested, hevcAvailable: false)
+            return RecordingVideoCodec(requested: requested, actual: requested)
         }
 
         return resolved(
@@ -167,6 +167,11 @@ enum RecordingVideoCodecResolver {
     }
 
     private static func canCreateHardwareEncoder(codec: VideoCodec, width: Int, height: Int) -> Bool {
+        let cacheKey = "\(codec.rawValue)-\(width)x\(height)"
+        if let cachedResult = hardwareEncoderSupportCacheQueue.sync(execute: { hardwareEncoderSupportCache[cacheKey] }) {
+            return cachedResult
+        }
+
         let codecType: CMVideoCodecType
         switch codec {
         case .h264:
@@ -194,8 +199,17 @@ enum RecordingVideoCodecResolver {
         if let compressionSession {
             VTCompressionSessionInvalidate(compressionSession)
         }
-        return status == noErr
+        let isSupported = status == noErr
+        hardwareEncoderSupportCacheQueue.sync {
+            hardwareEncoderSupportCache[cacheKey] = isSupported
+        }
+        return isSupported
     }
+
+    private static let hardwareEncoderSupportCacheQueue = DispatchQueue(
+        label: "com.tinyclips.video-codec-hardware-support-cache"
+    )
+    private static var hardwareEncoderSupportCache: [String: Bool] = [:]
 
     private static func videoOutputSettings(codec: VideoCodec, width: Int, height: Int) -> [String: Any] {
         [
