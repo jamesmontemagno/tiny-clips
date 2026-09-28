@@ -38,6 +38,25 @@ final class CaptureMathTests: XCTestCase {
                 atOrAfter: origin
             )
         )
+        XCTAssertTrue(
+            RecordingTimelineMath.shouldWriteAudioTimestamp(
+                timestamp,
+                atOrAfter: nil
+            )
+        )
+        XCTAssertTrue(
+            RecordingTimelineMath.shouldWriteAudioTimestamp(
+                .invalid,
+                atOrAfter: origin
+            )
+        )
+        XCTAssertEqual(
+            RecordingTimelineMath.shiftedAudioTimestamp(
+                .invalid,
+                offset: RecordingTimelineMath.audioOffsetTime(milliseconds: 200)
+            ),
+            .invalid
+        )
     }
 
     func testCaptureRegionConvertsPointsToRetinaPixels() {
