@@ -14,6 +14,17 @@ struct VideoSettingsSection: View {
                 Text("60 fps").tag(60)
             }
             .help("Choose the target frame rate for video recordings.")
+
+            Picker("Video codec:", selection: $settings.videoCodec) {
+                ForEach(VideoCodec.allCases, id: \.self) { codec in
+                    Text(codec.label).tag(codec)
+                }
+            }
+            .help("Choose the video encoder used for MP4 recordings.")
+
+            Text("H.265 / HEVC requires a hardware encoder. TinyClips falls back to H.264 if the encoder is unavailable.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
 
         Section("Audio") {

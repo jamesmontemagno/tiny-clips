@@ -193,6 +193,18 @@ enum ImageFormat: String, CaseIterable {
     }
 }
 
+enum VideoCodec: String, CaseIterable {
+    case h264 = "h264"
+    case hevc = "hevc"
+
+    var label: String {
+        switch self {
+        case .h264: return "H.264"
+        case .hevc: return "H.265 / HEVC"
+        }
+    }
+}
+
 enum MultiMonitorCaptureMode: String, CaseIterable {
     case askEveryTime
     case displayUnderCursor
@@ -253,6 +265,10 @@ extension MouseClickOverlayStyle {
     }
 }
 
+private enum CaptureSettingsDefaultsKey {
+    static let videoCodec = "videoCodec"
+}
+
 extension NSColor {
     convenience init?(hexRGBString: String) {
         var value = hexRGBString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -286,6 +302,7 @@ extension NSColor {
 
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
+    static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
     static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
@@ -337,6 +354,8 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifFrameRate") var gifFrameRate: Double = 10
     @AppStorage("gifMaxWidth") var gifMaxWidth: Int = 640
     @AppStorage("videoFrameRate") var videoFrameRate: Int = 30
+    // AppStorage-backed user-facing settings use UserDefaults.standard; helpers below accept explicit stores for tests.
+    @AppStorage(CaptureSettingsDefaultsKey.videoCodec) var videoCodec: VideoCodec = .h264
     @AppStorage("showMouseClickVisualsInVideo") var showMouseClickVisualsInVideo: Bool = false
     @AppStorage("showMouseClickVisualsInGif") var showMouseClickVisualsInGif: Bool = false
     @AppStorage("gifMouseClicksUseVideoSettings") var gifMouseClicksUseVideoSettings: Bool = false
@@ -546,6 +565,19 @@ class CaptureSettings: ObservableObject {
         ImageFormat(rawValue: rawValue) ?? .jpeg
     }
 
+    static func videoCodec(from rawValue: String?) -> VideoCodec {
+        guard let rawValue else { return .h264 }
+        return VideoCodec(rawValue: rawValue) ?? .h264
+    }
+
+    static func videoCodec(in defaults: UserDefaults) -> VideoCodec {
+        videoCodec(from: defaults.string(forKey: videoCodecKey))
+    }
+
+    static func setVideoCodec(_ codec: VideoCodec, in defaults: UserDefaults) {
+        defaults.set(codec.rawValue, forKey: videoCodecKey)
+    }
+
     static func clampedAudioOffsetMs(_ offset: Int) -> Int {
         min(audioOffsetRangeMs.upperBound, max(audioOffsetRangeMs.lowerBound, offset))
     }
@@ -707,67 +739,7 @@ class CaptureSettings: ObservableObject {
     }
 
     func resetToDefaults(preservingHotKeys: Bool = false) {
-        // Remove all keys in one pass so only a single objectWillChange fires
-        let keys: [String] = [
-            "saveDirectory", "screenshotSaveDirectory", "videoSaveDirectory", "gifSaveDirectory",
-            "videoGifSaveDirectory", "useDefaultSaveDirectories",
-            "copyToClipboard", "copyScreenshotToClipboard", "copyVideoToClipboard", "copyGifToClipboard",
-            "showInFinder", "showSaveNotifications", "showInDock",
-            "autoUpdateEnabled",
-            "fileNameTemplate",
-            "uploadcareEnabled", "clipsManagerShowAutoTags", "clipsManagerShowNotesPreview", "clipsManagerShowQuickActions",
-            "clipsManagerShowUploadStatus", "clipsManagerConfirmDelete", "clipsManagerCompactListDensity",
-            "clipsManagerSelectionRowTapSelects", "clipsManagerIgnoreNonTinyClipsFiles", "clipsManagerRememberLastState",
-            "clipsManagerDefaultViewMode", "clipsManagerDefaultSortOption", "clipsManagerDefaultFilterType", "clipsManagerDefaultDateFilter",
-            "clipsManagerAutoRefreshSeconds", "clipsManagerArchiveOldClips", "clipsManagerArchiveAfterDays",
-            "clipsManagerAutoUploadAfterSave", "clipsManagerAutoCopyUploadLink", "clipsManagerShowInspector",
-            "clipsManagerLastViewMode", "clipsManagerLastSortOption", "clipsManagerLastFilterType", "clipsManagerLastDateFilter",
-            "clipsManagerLastSmartCollection", "clipsManagerLastSearchText", "clipsManagerLastSelectedTag", "clipsManagerLastSelectedCollection",
-            "gifFrameRate", "gifMaxWidth", "videoFrameRate", "showMouseClickVisualsInVideo", "showMouseClickVisualsInGif",
-            "gifMouseClicksUseVideoSettings",
-            "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
-            "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
-            "showTrimmer",
-            "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
-            "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
-            "showScreenshotEditor", "showGifTrimmer",
-            "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
-            "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
-            "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
-            "showGifCapturePicker", "showGifCapturePickerAfterCapture",
-            "screenshotFormat", "screenshotScale", "jpegQuality",
-            "videoCountdownEnabled", "videoCountdownDuration",
-            "videoRecordingTimeLimitMinutes",
-            "gifCountdownEnabled", "gifCountdownDuration",
-            "screenshotCountdownEnabled", "screenshotCountdownDuration",
-            "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "multiMonitorCaptureMode", "showRegionIndicator",
-            "includeTinyClipsInCapture", "showBrandingOverlay",
-            "teleprompterEnabled", "teleprompterTranscript", "teleprompterScrollSpeed", "teleprompterFontSize", "teleprompterPanelHeight",
-            "teleprompterPanelX", "teleprompterPanelY",
-            "appStoreClipCountForReview", "appStoreReviewRequested"
-        ]
-        let hotKeyKeys = [
-            "screenshotHotKeyCode", "screenshotHotKeyModifiers",
-            "videoHotKeyCode", "videoHotKeyModifiers",
-            "gifHotKeyCode", "gifHotKeyModifiers",
-            "copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers",
-            "screenshotRegionHotKeyCode", "screenshotRegionHotKeyModifiers",
-            "screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers"
-        ]
-#if APPSTORE
-        let masKeys: [String] = [
-            "saveDirectoryBookmark", "saveDirectoryDisplayPath",
-            "screenshotSaveDirectoryBookmark", "screenshotSaveDirectoryDisplayPath",
-            "videoSaveDirectoryBookmark", "videoSaveDirectoryDisplayPath",
-            "gifSaveDirectoryBookmark", "gifSaveDirectoryDisplayPath",
-            "videoGifSaveDirectoryBookmark", "videoGifSaveDirectoryDisplayPath"
-        ]
-#else
-        let masKeys: [String] = []
-#endif
-        for key in keys + (preservingHotKeys ? [] : hotKeyKeys) + masKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        Self.resetStoredDefaults(.standard, preservingHotKeys: preservingHotKeys)
         screenshotSaveDirectory = Self.defaultSaveDirectoryURL(for: .screenshot).path
         videoSaveDirectory = Self.defaultSaveDirectoryURL(for: .video).path
         gifSaveDirectory = Self.defaultSaveDirectoryURL(for: .gif).path
@@ -785,6 +757,72 @@ class CaptureSettings: ObservableObject {
         }
         objectWillChange.send()
     }
+
+    static func resetStoredDefaults(_ defaults: UserDefaults, preservingHotKeys: Bool = false) {
+        for key in resettableDefaultsKeys + (preservingHotKeys ? [] : resetHotKeyDefaultsKeys) + appStoreDefaultsKeys {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    static let resettableDefaultsKeys: [String] = [
+        "saveDirectory", "screenshotSaveDirectory", "videoSaveDirectory", "gifSaveDirectory",
+        "videoGifSaveDirectory", "useDefaultSaveDirectories",
+        "copyToClipboard", "copyScreenshotToClipboard", "copyVideoToClipboard", "copyGifToClipboard",
+        "showInFinder", "showSaveNotifications", "showInDock",
+        "autoUpdateEnabled",
+        "fileNameTemplate",
+        "uploadcareEnabled", "clipsManagerShowAutoTags", "clipsManagerShowNotesPreview", "clipsManagerShowQuickActions",
+        "clipsManagerShowUploadStatus", "clipsManagerConfirmDelete", "clipsManagerCompactListDensity",
+        "clipsManagerSelectionRowTapSelects", "clipsManagerIgnoreNonTinyClipsFiles", "clipsManagerRememberLastState",
+        "clipsManagerDefaultViewMode", "clipsManagerDefaultSortOption", "clipsManagerDefaultFilterType", "clipsManagerDefaultDateFilter",
+        "clipsManagerAutoRefreshSeconds", "clipsManagerArchiveOldClips", "clipsManagerArchiveAfterDays",
+        "clipsManagerAutoUploadAfterSave", "clipsManagerAutoCopyUploadLink", "clipsManagerShowInspector",
+        "clipsManagerLastViewMode", "clipsManagerLastSortOption", "clipsManagerLastFilterType", "clipsManagerLastDateFilter",
+        "clipsManagerLastSmartCollection", "clipsManagerLastSearchText", "clipsManagerLastSelectedTag", "clipsManagerLastSelectedCollection",
+        "gifFrameRate", "gifMaxWidth", "videoFrameRate", videoCodecKey, "showMouseClickVisualsInVideo", "showMouseClickVisualsInGif",
+        "gifMouseClicksUseVideoSettings",
+        "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
+        "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
+        "showTrimmer",
+        "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
+        "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
+        "showScreenshotEditor", "showGifTrimmer",
+        "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
+        "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
+        "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
+        "showGifCapturePicker", "showGifCapturePickerAfterCapture",
+        "screenshotFormat", "screenshotScale", "jpegQuality",
+        "videoCountdownEnabled", "videoCountdownDuration",
+        "videoRecordingTimeLimitMinutes",
+        "gifCountdownEnabled", "gifCountdownDuration",
+        "screenshotCountdownEnabled", "screenshotCountdownDuration",
+        "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "multiMonitorCaptureMode", "showRegionIndicator",
+        "includeTinyClipsInCapture", "showBrandingOverlay",
+        "teleprompterEnabled", "teleprompterTranscript", "teleprompterScrollSpeed", "teleprompterFontSize", "teleprompterPanelHeight",
+        "teleprompterPanelX", "teleprompterPanelY",
+        "appStoreClipCountForReview", "appStoreReviewRequested"
+    ]
+
+    static let resetHotKeyDefaultsKeys = [
+        "screenshotHotKeyCode", "screenshotHotKeyModifiers",
+        "videoHotKeyCode", "videoHotKeyModifiers",
+        "gifHotKeyCode", "gifHotKeyModifiers",
+        "copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers",
+        "screenshotRegionHotKeyCode", "screenshotRegionHotKeyModifiers",
+        "screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers"
+    ]
+
+#if APPSTORE
+    static let appStoreDefaultsKeys: [String] = [
+        "saveDirectoryBookmark", "saveDirectoryDisplayPath",
+        "screenshotSaveDirectoryBookmark", "screenshotSaveDirectoryDisplayPath",
+        "videoSaveDirectoryBookmark", "videoSaveDirectoryDisplayPath",
+        "gifSaveDirectoryBookmark", "gifSaveDirectoryDisplayPath",
+        "videoGifSaveDirectoryBookmark", "videoGifSaveDirectoryDisplayPath"
+    ]
+#else
+    static let appStoreDefaultsKeys: [String] = []
+#endif
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults

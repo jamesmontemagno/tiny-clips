@@ -158,11 +158,18 @@ class CaptureManager: ObservableObject {
             || scrollingCapturePanel != nil
     }
 
+    private func showVideoCodecFallbackNoticeOnce(_ message: String) {
+        guard !didShowVideoCodecFallbackNotice else { return }
+        didShowVideoCodecFallbackNotice = true
+        SaveService.shared.showNotice(message)
+    }
+
     private var videoRecorder: VideoRecorder?
     private var webcamRecorder: WebcamRecorder?
     private var gifWriter: GifWriter?
     private let idleSleepAssertion = IdleSleepAssertion()
     private(set) var lastVideoRecordingArtifacts: VideoRecordingArtifacts?
+    private var didShowVideoCodecFallbackNotice = false
     @Published private var screenshotPickerPanel: CapturePickerPanel?
     private var screenshotPickerPosition: NSPoint?
     @Published private var recordingPickerPanel: CapturePickerPanel?
@@ -890,6 +897,7 @@ class CaptureManager: ObservableObject {
                 do {
                     let sessionID = self.nextRecordingSessionID()
                     self.activeRecordingSessionID = sessionID
+                    self.didShowVideoCodecFallbackNotice = false
                     self.debugRecordingLifecycle("Starting video session \(sessionID)")
                     recorder.onStreamFailure = { [weak self] error in
                         let message = error.localizedDescription
@@ -922,6 +930,11 @@ class CaptureManager: ObservableObject {
                             SaveService.shared.showError("Microphone error: \(message)")
                         }
                     }
+                    recorder.onVideoCodecFallback = { message in
+                        Task { @MainActor [weak self] in
+                            self?.showVideoCodecFallbackNoticeOnce(message)
+                        }
+                    }
                     webcamRecorder.onWebcamDeviceName = { [weak self] name in
                         DispatchQueue.main.async {
                             self?.activeWebcamName = name.isEmpty ? nil : name
@@ -930,6 +943,11 @@ class CaptureManager: ObservableObject {
                     webcamRecorder.onWebcamError = { message in
                         DispatchQueue.main.async {
                             SaveService.shared.showError("Webcam error: \(message)")
+                        }
+                    }
+                    webcamRecorder.onVideoCodecFallback = { message in
+                        Task { @MainActor [weak self] in
+                            self?.showVideoCodecFallbackNoticeOnce(message)
                         }
                     }
 
@@ -998,9 +1016,12 @@ class CaptureManager: ObservableObject {
 
                     if webcamEnabled, let webcamOutputURL {
                         do {
+                            let companionVideoCodec = recorder.videoCodecForCompanionWriters
                             try await webcamRecorder.start(
                                 outputURL: webcamOutputURL,
-                                selectedWebcamID: webcamSelection.deviceID
+                                selectedWebcamID: webcamSelection.deviceID,
+                                // Keep the companion webcam track aligned with the completed screen writer setup.
+                                videoCodec: companionVideoCodec
                             )
                             guard self.activeRecordingSessionID == sessionID else {
                                 await webcamRecorder.cancel()
@@ -1381,6 +1402,7 @@ class CaptureManager: ObservableObject {
         let webcamCornerRadiusSetting = CaptureSettings.shared.webcamCornerRadius
         let webcamOverlaySelection = activeWebcamOverlaySelection
         let webcamPositionEvents = self.webcamPositionEvents
+        let videoCodec = videoRecorderAtStop?.videoCodecForCompanionWriters ?? .h264
 
         var savedVideoURL: URL?
         var savedWebcamURL: URL?
@@ -1437,6 +1459,7 @@ class CaptureManager: ObservableObject {
                         events: capturedMouseClickData.events,
                         outputURL: overlayOutputURL,
                         style: videoOverlayStyle,
+                        codec: videoCodec,
                         onProgress: { [weak self] overlayProgress in
                             guard let self else { return }
                             // Map exporter 0...1 progress into the overlay phase range.
@@ -1498,6 +1521,7 @@ class CaptureManager: ObservableObject {
                             outputURL: brandingOutputURL,
                             includeBranding: showBrandingOverlay,
                             webcamOverlay: webcamOverlayOptions,
+                            codec: videoCodec,
                             onProgress: { [weak self] overlayProgress in
                                 guard let self else { return }
                                 let normalized = min(max(overlayProgress, 0), 1)
@@ -2560,6 +2584,7 @@ class CaptureManager: ObservableObject {
         events: [MouseClickEvent],
         outputURL: URL,
         style: MouseClickOverlayStyle,
+        codec: VideoCodec,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
@@ -2569,6 +2594,7 @@ class CaptureManager: ObservableObject {
                 events: events,
                 outputURL: outputURL,
                 style: style,
+                codec: codec,
                 onProgress: onProgress
             )
         }.value
@@ -2579,6 +2605,7 @@ class CaptureManager: ObservableObject {
         outputURL: URL,
         includeBranding: Bool,
         webcamOverlay: BrandingOverlayProcessor.WebcamOverlayOptions?,
+        codec: VideoCodec,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
@@ -2587,6 +2614,7 @@ class CaptureManager: ObservableObject {
                 outputURL: outputURL,
                 includeBranding: includeBranding,
                 webcamOverlay: webcamOverlay,
+                codec: codec,
                 onProgress: onProgress
             )
         }.value

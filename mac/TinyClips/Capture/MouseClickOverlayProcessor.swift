@@ -65,6 +65,7 @@ enum MouseClickOverlayProcessor {
         events: [MouseClickEvent],
         outputURL: URL,
         style: MouseClickOverlayStyle,
+        codec: VideoCodec = .h264,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> URL {
         let mappedEvents = mapMouseClickEvents(events, for: region)
@@ -160,7 +161,10 @@ enum MouseClickOverlayProcessor {
 
         try? FileManager.default.removeItem(at: outputURL)
 
-        guard let exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
+        guard let exportSession = AVAssetExportSession(
+            asset: composition,
+            presetName: RecordingVideoCodecResolver.exportPreset(for: codec)
+        ) else {
             return sourceURL
         }
 

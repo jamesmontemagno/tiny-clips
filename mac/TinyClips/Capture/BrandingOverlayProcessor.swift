@@ -148,6 +148,7 @@ enum BrandingOverlayProcessor {
         outputURL: URL,
         includeBranding: Bool = true,
         webcamOverlay: WebcamOverlayOptions? = nil,
+        codec: VideoCodec = .h264,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
@@ -339,7 +340,10 @@ enum BrandingOverlayProcessor {
 
         try? FileManager.default.removeItem(at: outputURL)
 
-        guard let exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
+        guard let exportSession = AVAssetExportSession(
+            asset: composition,
+            presetName: RecordingVideoCodecResolver.exportPreset(for: codec)
+        ) else {
             throw CompositionError.exportSessionCreationFailed
         }
         exportSession.outputURL = outputURL

@@ -214,6 +214,7 @@ final class AccessibilityAnnouncementService {
 class SaveService: NSObject, UNUserNotificationCenterDelegate {
     static let shared = SaveService()
     private let notificationURLKey = "savedFileURL"
+    @MainActor private var noticePanel: NSPanel?
 
     override init() {
         super.init()
@@ -645,6 +646,92 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    @MainActor
+    func showNotice(_ message: String) {
+        AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
+
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            guard settings.authorizationStatus == .authorized ||
+                    settings.authorizationStatus == .provisional else {
+                Task { @MainActor in self?.showInAppNotice(message) }
+                return
+            }
+            let showsBanner = settings.authorizationStatus == .authorized && settings.alertStyle != .none
+            if !showsBanner {
+                Task { @MainActor in self?.showInAppNotice(message) }
+            }
+
+            let content = UNMutableNotificationContent()
+            content.title = "TinyClips"
+            content.body = message
+
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString,
+                content: content,
+                trigger: nil
+            )
+            UNUserNotificationCenter.current().add(request) { [weak self] error in
+                if error != nil && showsBanner {
+                    Task { @MainActor in self?.showInAppNotice(message) }
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func showInAppNotice(_ message: String) {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else {
+            return
+        }
+        noticePanel?.orderOut(nil)
+
+        let width = min(480, screen.visibleFrame.width - 32)
+        let label = NSTextField(wrappingLabelWithString: message)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.preferredMaxLayoutWidth = width - 32
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let size = NSSize(width: width, height: max(64, ceil(label.fittingSize.height) + 32))
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isReleasedWhenClosed = false
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+
+        let background = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
+        background.material = .popover
+        background.state = .active
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 12
+        background.layer?.masksToBounds = true
+
+        background.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 16),
+            label.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -16),
+            label.centerYAnchor.constraint(equalTo: background.centerYAnchor)
+        ])
+        panel.contentView = background
+        panel.setFrameOrigin(NSPoint(
+            x: screen.visibleFrame.maxX - width - 16,
+            y: screen.visibleFrame.maxY - size.height - 16
+        ))
+        noticePanel = panel
+        panel.orderFrontRegardless()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self, weak panel] in
+            guard let panel, self?.noticePanel === panel else { return }
+            panel.orderOut(nil)
+            self?.noticePanel = nil
+        }
     }
 }
 
