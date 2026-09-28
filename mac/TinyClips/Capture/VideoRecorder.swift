@@ -578,7 +578,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.microphoneLimiterEnabled = settings.microphoneLimiterEnabled
         self.windNoiseRemovalEnabled = settings.windNoiseRemovalEnabled
         self.audioOffsetTime = RecordingTimelineMath.audioOffsetTime(
-            milliseconds: CaptureSettings.clampedAudioOffsetMs(settings.audioOffsetMs)
+            milliseconds: settings.audioOffsetMs
         )
         self.selectedMicrophoneID = selectedMicrophoneID
 
@@ -719,7 +719,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         writingQueue.async { [weak self] in
             guard let self, !self.isPaused, !self.microphoneMuted, self.hasStartedWriting, let micAudioInput = self.micAudioInput, micAudioInput.isReadyForMoreMediaData else { return }
             let offsetSampleBuffer = self.offsetAudioSampleBuffer(sampleBuffer)
-            let pauseAdjustedSampleBuffer = self.adjustedSampleBuffer(offsetSampleBuffer) ?? offsetSampleBuffer
+            let pauseAdjustedSampleBuffer = self.adjustedSampleBuffer(offsetSampleBuffer)
             guard self.shouldWriteAudioSampleBuffer(pauseAdjustedSampleBuffer) else {
                 self.debugLifecycle("dropped microphone sample before writer session origin")
                 return
@@ -1216,7 +1216,7 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
 
             guard let videoInput else { return }
 
-            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer)
             var proposedLastPresentationTime = lastVideoPresentationTime
             guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
                 pauseAdjustedSampleBuffer,
@@ -1248,7 +1248,7 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
         case .audio:
             guard !systemAudioMuted, hasStartedWriting, let systemAudioInput, systemAudioInput.isReadyForMoreMediaData else { return }
             let offsetSampleBuffer = offsetAudioSampleBuffer(sampleBuffer)
-            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(offsetSampleBuffer) ?? offsetSampleBuffer
+            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(offsetSampleBuffer)
             guard shouldWriteAudioSampleBuffer(pauseAdjustedSampleBuffer) else {
                 debugLifecycle("dropped system-audio sample before writer session origin")
                 return
@@ -1277,7 +1277,7 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    private func adjustedSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
+    private func adjustedSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer {
         guard totalPausedDuration > .zero else { return sampleBuffer }
         return sampleBufferByAdjustingTiming(sampleBuffer) {
             if $0.presentationTimeStamp.isValid {
