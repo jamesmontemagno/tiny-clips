@@ -35,15 +35,16 @@
                         SelectedIndex="{x:Bind ViewModel.ScreenshotFormatIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="PNG" />
                         <ComboBoxItem Content="JPEG" />
+                        <ComboBoxItem Content="WebP" />
                     </ComboBox>
                     <controls:SettingsExpander.Items>
                         <controls:SettingsCard
-                            Description="Only used when the image format is JPEG."
-                            Header="JPEG quality">
+                            Description="Used when the image format is JPEG or WebP."
+                            Header="JPEG / WebP quality">
                             <Slider
                                 Width="220"
                                 AutomationProperties.AutomationId="JpegQualitySlider"
-                                AutomationProperties.Name="JPEG quality"
+                                AutomationProperties.Name="JPEG or WebP quality"
                                 Maximum="1.0"
                                 Minimum="0.1"
                                 StepFrequency="0.05"

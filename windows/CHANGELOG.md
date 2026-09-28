@@ -6,6 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **WebP screenshot saving.** Choose WebP in Screenshot settings to save captures as `.webp`
+  with the configured scale and quality; the screenshot editor can also Save a copy as WebP,
+  and the Clips Library recognizes WebP screenshots.
 - **Video and GIF trimmer delete.** Both trimmers now have a confirmed **Delete** action that
   permanently deletes the recording, removes it from Recent captures, and closes the trimmer
   immediately without saving, copying to the clipboard, or showing a save notification.

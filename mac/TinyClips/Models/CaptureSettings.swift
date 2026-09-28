@@ -174,11 +174,13 @@ enum CaptureError: LocalizedError {
 enum ImageFormat: String, CaseIterable {
     case png = "png"
     case jpeg = "jpg"
+    case webp = "webp"
 
     var label: String {
         switch self {
         case .png: return "PNG"
         case .jpeg: return "JPEG"
+        case .webp: return "WebP"
         }
     }
 
@@ -186,6 +188,7 @@ enum ImageFormat: String, CaseIterable {
         switch self {
         case .png: return .png
         case .jpeg: return .jpeg
+        case .webp: return .webP
         }
     }
 }

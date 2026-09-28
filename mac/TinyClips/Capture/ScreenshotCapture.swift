@@ -2,6 +2,7 @@ import ScreenCaptureKit
 import ImageIO
 import UniformTypeIdentifiers
 import AppKit
+import libwebp
 
 struct CaptureDisplayGeometry {
     let frame: CGRect
@@ -187,6 +188,14 @@ struct ScreenshotCapture {
             ? BrandingOverlayProcessor.applyToImage(image)
             : image
 
+        if settings.imageFormat == .webp {
+            guard let data = WebPImageEncoder.encode(imageToSave, quality: settings.jpegQuality) else {
+                throw CaptureError.saveFailed
+            }
+            try data.write(to: outputURL, options: .atomic)
+            return outputURL
+        }
+
         guard let destination = CGImageDestinationCreateWithURL(
             outputURL as CFURL,
             imageType.identifier as CFString,
@@ -195,6 +204,7 @@ struct ScreenshotCapture {
         ) else {
             throw CaptureError.saveFailed
         }
+
         CGImageDestinationAddImage(destination, imageToSave, destinationProperties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else {
             throw CaptureError.saveFailed
@@ -215,5 +225,51 @@ struct ScreenshotCapture {
             primaryDisplayHeight: primaryHeight,
             displays: displays
         )
+    }
+}
+
+enum WebPImageEncoder {
+    static func encode(_ image: CGImage, quality: Double) -> Data? {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0, width <= Int(Int32.max) / 4,
+              height <= Int(Int32.max), height <= Int.max / (width * 4) else {
+            return nil
+        }
+        let stride = width * 4
+        var pixels = [UInt8](repeating: 0, count: stride * height)
+        let rendered = pixels.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(
+                data: bytes.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: stride,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+            ) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard rendered else { return nil }
+
+        // Core Graphics supplies premultiplied RGBA; libwebp expects straight alpha.
+        for offset in Swift.stride(from: 0, to: pixels.count, by: 4) {
+            let alpha = Int(pixels[offset + 3])
+            if alpha > 0 && alpha < 255 {
+                for channel in 0..<3 {
+                    pixels[offset + channel] = UInt8(min(255, Int(pixels[offset + channel]) * 255 / alpha))
+                }
+            }
+        }
+
+        var output: UnsafeMutablePointer<UInt8>?
+        let length = pixels.withUnsafeBufferPointer { bytes in
+            WebPEncodeRGBA(bytes.baseAddress, Int32(width), Int32(height), Int32(stride),
+                           Float(max(0, min(1, quality)) * 100), &output)
+        }
+        guard length > 0, let output else { return nil }
+        defer { WebPFree(output) }
+        return Data(bytes: output, count: length)
     }
 }

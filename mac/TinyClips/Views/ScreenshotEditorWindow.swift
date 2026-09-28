@@ -1173,9 +1173,9 @@ struct ScreenshotEditorView: View {
                     .monospacedDigit()
             }
 
-            if viewModel.saveFormat == .jpeg {
+            if viewModel.saveFormat == .jpeg || viewModel.saveFormat == .webp {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("JPEG quality: \(Int(viewModel.saveJpegQuality * 100))%")
+                    Text("\(viewModel.saveFormat.label) quality: \(Int(viewModel.saveJpegQuality * 100))%")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Slider(value: $viewModel.saveJpegQuality, in: 0.1...1.0, step: 0.05)
@@ -1275,7 +1275,13 @@ struct ScreenshotEditorView: View {
         isSaving = true
 
         DispatchQueue.main.async {
-            if let url = viewModel.save(to: currentSaveURL) {
+            let saveURL = currentSaveURL.pathExtension.lowercased() == viewModel.saveFormat.rawValue
+                ? currentSaveURL
+                : SaveService.uniqueURL(
+                    in: currentSaveURL.deletingLastPathComponent(),
+                    filename: "\(currentSaveURL.deletingPathExtension().lastPathComponent).\(viewModel.saveFormat.rawValue)"
+                )
+            if let url = viewModel.save(to: saveURL) {
                 currentSaveURL = url
                 lastSavedURL = url
                 viewModel.markSaved()
