@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.8.0-windows] - 2026-09-28
+
 ### Added
 - **WebP screenshot saving.** Choose WebP in Screenshot settings to save captures as `.webp`
   with the configured scale and quality; the screenshot editor can also Save a copy as WebP,
