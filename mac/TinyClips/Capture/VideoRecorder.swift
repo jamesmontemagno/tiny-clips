@@ -108,7 +108,7 @@ private func monotonicSampleBuffer(
     return (correctedSampleBuffer, true)
 }
 
-private struct RecordingVideoCodec {
+struct RecordingVideoCodec {
     let requested: VideoCodec
     let actual: VideoCodec
 
@@ -116,24 +116,30 @@ private struct RecordingVideoCodec {
         requested != actual
     }
 
-    var fallbackMessage: String? {
+    func fallbackMessage(context: String = "this recording") -> String? {
         guard didFallback else { return nil }
-        return "\(requested.label) is not available for this recording. TinyClips is recording with \(actual.label) instead."
+        return "\(requested.label) is not available for \(context). TinyClips is recording with \(actual.label) instead."
     }
 }
 
-private enum RecordingVideoCodecResolver {
+enum RecordingVideoCodecResolver {
     static func resolve(requested: VideoCodec, width: Int, height: Int) -> RecordingVideoCodec {
+        guard requested == .hevc else {
+            return resolved(requested: requested, hevcAvailable: false)
+        }
+
+        resolved(
+            requested: requested,
+            hevcAvailable: canCreateHardwareEncoder(codec: .hevc, width: width, height: height)
+        )
+    }
+
+    static func resolved(requested: VideoCodec, hevcAvailable: Bool) -> RecordingVideoCodec {
         guard requested == .hevc else {
             return RecordingVideoCodec(requested: requested, actual: .h264)
         }
 
-        guard canCreateHardwareEncoder(codec: .hevc, width: width, height: height),
-              canCreateVideoInput(codec: .hevc, width: width, height: height) else {
-            return RecordingVideoCodec(requested: requested, actual: .h264)
-        }
-
-        return RecordingVideoCodec(requested: requested, actual: .hevc)
+        return RecordingVideoCodec(requested: requested, actual: hevcAvailable ? .hevc : .h264)
     }
 
     static func makeVideoInput(codec: VideoCodec, width: Int, height: Int) -> AVAssetWriterInput {
@@ -142,30 +148,6 @@ private enum RecordingVideoCodecResolver {
             width: width,
             height: height
         ))
-    }
-
-    private static func canCreateVideoInput(codec: VideoCodec, width: Int, height: Int) -> Bool {
-        let probeURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("mp4")
-        defer {
-            try? FileManager.default.removeItem(at: probeURL)
-        }
-
-        do {
-            let writer = try AVAssetWriter(url: probeURL, fileType: .mp4)
-            let outputSettings = videoOutputSettings(codec: codec, width: width, height: height)
-            guard writer.canApply(outputSettings: outputSettings, forMediaType: .video) else {
-                writer.cancelWriting()
-                return false
-            }
-            let input = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
-            let canAdd = writer.canAdd(input)
-            writer.cancelWriting()
-            return canAdd
-        } catch {
-            return false
-        }
     }
 
     private static func canCreateHardwareEncoder(codec: VideoCodec, width: Int, height: Int) -> Bool {
@@ -334,14 +316,16 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
                 width: width,
                 height: height
             )
-            if webcamVideoCodec.didFallback {
-                onVideoCodecFallback?("H.265 / HEVC is not available for the webcam overlay. TinyClips is recording the webcam with H.264 instead.")
+            if let fallbackMessage = webcamVideoCodec.fallbackMessage(context: "the webcam overlay") {
+                onVideoCodecFallback?(fallbackMessage)
             }
             var input = RecordingVideoCodecResolver.makeVideoInput(codec: webcamVideoCodec.actual, width: width, height: height)
             if !writer.canAdd(input), webcamVideoCodec.actual == .hevc {
                 input = RecordingVideoCodecResolver.makeVideoInput(codec: .h264, width: width, height: height)
-                if writer.canAdd(input) {
-                    onVideoCodecFallback?("H.265 / HEVC is not available for the webcam overlay. TinyClips is recording the webcam with H.264 instead.")
+                let fallbackCodec = RecordingVideoCodec(requested: .hevc, actual: .h264)
+                if writer.canAdd(input),
+                   let fallbackMessage = fallbackCodec.fallbackMessage(context: "the webcam overlay") {
+                    onVideoCodecFallback?(fallbackMessage)
                 }
             }
             input.expectsMediaDataInRealTime = true
@@ -693,7 +677,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
             height: preparedTarget.pixelHeight
         )
         self.resolvedVideoCodec = recordingVideoCodec.actual
-        if let fallbackMessage = recordingVideoCodec.fallbackMessage {
+        if let fallbackMessage = recordingVideoCodec.fallbackMessage() {
             onVideoCodecFallback?(fallbackMessage)
         }
 
@@ -706,11 +690,24 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.outputURL = outputURL
 
         let writer = try AVAssetWriter(url: outputURL, fileType: .mp4)
-        let videoInput = RecordingVideoCodecResolver.makeVideoInput(
-            codec: recordingVideoCodec.actual,
+        var actualVideoCodec = recordingVideoCodec.actual
+        var videoInput = RecordingVideoCodecResolver.makeVideoInput(
+            codec: actualVideoCodec,
             width: preparedTarget.pixelWidth,
             height: preparedTarget.pixelHeight
         )
+        if !writer.canAdd(videoInput), actualVideoCodec == .hevc {
+            actualVideoCodec = .h264
+            self.resolvedVideoCodec = actualVideoCodec
+            if let fallbackMessage = RecordingVideoCodec(requested: .hevc, actual: .h264).fallbackMessage() {
+                onVideoCodecFallback?(fallbackMessage)
+            }
+            videoInput = RecordingVideoCodecResolver.makeVideoInput(
+                codec: actualVideoCodec,
+                width: preparedTarget.pixelWidth,
+                height: preparedTarget.pixelHeight
+            )
+        }
         videoInput.expectsMediaDataInRealTime = true
         guard writer.canAdd(videoInput) else {
             throw CaptureError.saveFailed
