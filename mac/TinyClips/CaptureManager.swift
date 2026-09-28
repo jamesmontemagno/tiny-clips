@@ -1014,11 +1014,12 @@ class CaptureManager: ObservableObject {
 
                     if webcamEnabled, let webcamOutputURL {
                         do {
+                            let companionVideoCodec = recorder.videoCodecForCompanionWriters
                             try await webcamRecorder.start(
                                 outputURL: webcamOutputURL,
                                 selectedWebcamID: webcamSelection.deviceID,
-                                // Keep the companion webcam track aligned with the screen writer's resolved codec.
-                                videoCodec: recorder.videoCodecForCompanionWriters
+                                // Keep the companion webcam track aligned with the completed screen writer setup.
+                                videoCodec: companionVideoCodec
                             )
                             guard self.activeRecordingSessionID == sessionID else {
                                 await webcamRecorder.cancel()

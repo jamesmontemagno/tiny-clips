@@ -746,7 +746,6 @@ class CaptureSettings: ObservableObject {
     }
 
     static func resetStoredDefaults(_ defaults: UserDefaults, preservingHotKeys: Bool = false) {
-        // Remove all keys in one pass so only a single objectWillChange fires.
         for key in resettableDefaultsKeys + (preservingHotKeys ? [] : resetHotKeyDefaultsKeys) + appStoreDefaultsKeys {
             defaults.removeObject(forKey: key)
         }

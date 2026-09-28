@@ -150,6 +150,24 @@ enum RecordingVideoCodecResolver {
         ))
     }
 
+    static func makeVideoInput(
+        codec: VideoCodec,
+        width: Int,
+        height: Int,
+        writer: AVAssetWriter
+    ) -> (input: AVAssetWriterInput, codec: VideoCodec, fallback: RecordingVideoCodec?) {
+        let input = makeVideoInput(codec: codec, width: width, height: height)
+        guard codec == .hevc, !writer.canAdd(input) else {
+            return (input, codec, nil)
+        }
+
+        let fallbackInput = makeVideoInput(codec: .h264, width: width, height: height)
+        let fallback = writer.canAdd(fallbackInput)
+            ? RecordingVideoCodec(requested: .hevc, actual: .h264)
+            : nil
+        return (fallbackInput, .h264, fallback)
+    }
+
     private static func canCreateHardwareEncoder(codec: VideoCodec, width: Int, height: Int) -> Bool {
         let codecType: CMVideoCodecType
         switch codec {
@@ -319,14 +337,15 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
             if let fallbackMessage = webcamVideoCodec.fallbackMessage(context: "the webcam overlay") {
                 onVideoCodecFallback?(fallbackMessage)
             }
-            var input = RecordingVideoCodecResolver.makeVideoInput(codec: webcamVideoCodec.actual, width: width, height: height)
-            if !writer.canAdd(input), webcamVideoCodec.actual == .hevc {
-                input = RecordingVideoCodecResolver.makeVideoInput(codec: .h264, width: width, height: height)
-                let fallbackCodec = RecordingVideoCodec(requested: .hevc, actual: .h264)
-                if writer.canAdd(input),
-                   let fallbackMessage = fallbackCodec.fallbackMessage(context: "the webcam overlay") {
-                    onVideoCodecFallback?(fallbackMessage)
-                }
+            let videoInputResult = RecordingVideoCodecResolver.makeVideoInput(
+                codec: webcamVideoCodec.actual,
+                width: width,
+                height: height,
+                writer: writer
+            )
+            let input = videoInputResult.input
+            if let fallbackMessage = videoInputResult.fallback?.fallbackMessage(context: "the webcam overlay") {
+                onVideoCodecFallback?(fallbackMessage)
             }
             input.expectsMediaDataInRealTime = true
             guard writer.canAdd(input) else {
@@ -690,24 +709,17 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.outputURL = outputURL
 
         let writer = try AVAssetWriter(url: outputURL, fileType: .mp4)
-        var actualVideoCodec = recordingVideoCodec.actual
-        var videoInput = RecordingVideoCodecResolver.makeVideoInput(
-            codec: actualVideoCodec,
+        let videoInputResult = RecordingVideoCodecResolver.makeVideoInput(
+            codec: recordingVideoCodec.actual,
             width: preparedTarget.pixelWidth,
-            height: preparedTarget.pixelHeight
+            height: preparedTarget.pixelHeight,
+            writer: writer
         )
-        if !writer.canAdd(videoInput), actualVideoCodec == .hevc {
-            actualVideoCodec = .h264
-            self.resolvedVideoCodec = actualVideoCodec
-            if let fallbackMessage = RecordingVideoCodec(requested: .hevc, actual: .h264).fallbackMessage() {
-                onVideoCodecFallback?(fallbackMessage)
-            }
-            videoInput = RecordingVideoCodecResolver.makeVideoInput(
-                codec: actualVideoCodec,
-                width: preparedTarget.pixelWidth,
-                height: preparedTarget.pixelHeight
-            )
+        self.resolvedVideoCodec = videoInputResult.codec
+        if let fallbackMessage = videoInputResult.fallback?.fallbackMessage() {
+            onVideoCodecFallback?(fallbackMessage)
         }
+        let videoInput = videoInputResult.input
         videoInput.expectsMediaDataInRealTime = true
         guard writer.canAdd(videoInput) else {
             throw CaptureError.saveFailed
