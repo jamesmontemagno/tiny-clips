@@ -79,6 +79,7 @@ public sealed partial class ScreenPickerWindow : Window
     {
         if (e.Key == VirtualKey.Escape)
         {
+            e.Handled = true;
             Complete(null);
         }
     }

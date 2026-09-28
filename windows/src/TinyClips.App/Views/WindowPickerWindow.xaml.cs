@@ -70,6 +70,7 @@ public sealed partial class WindowPickerWindow : Window
     {
         if (e.Key == VirtualKey.Escape)
         {
+            e.Handled = true;
             Complete(null);
         }
     }
