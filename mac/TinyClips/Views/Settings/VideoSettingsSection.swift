@@ -54,6 +54,8 @@ struct VideoSettingsSection: View {
                     settings.audioOffsetMs = 0
                 }
                 .disabled(settings.audioOffsetMs == 0)
+                .accessibilityLabel("Reset audio offset")
+                .help("Reset the audio offset to 0 ms.")
             }
         }
 
