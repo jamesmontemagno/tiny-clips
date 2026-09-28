@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v1.8.0.0-mac - 2026-09-28
+
 ### Added
 - macOS video settings now offer a Video codec picker with H.264 and H.265 / HEVC, falling back to H.264 with a user-visible notice when HEVC cannot be created.
 - macOS video recording now has an Audio offset setting to delay or advance both system and microphone audio by up to 500 ms for A/V synchronization.
