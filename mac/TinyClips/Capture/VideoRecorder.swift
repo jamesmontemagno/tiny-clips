@@ -1308,6 +1308,8 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
     private func shouldWriteAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> Bool {
         guard CMTimeCompare(audioOffsetTime, .zero) < 0,
               let firstScreenSampleTime else { return true }
+        // Dropping the complete leading buffer avoids retaining pre-session samples or
+        // introducing duplicate audio by retimestamping a partially leading buffer.
         return RecordingTimelineMath.shouldWriteAudioTimestamp(
             CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
             atOrAfter: firstScreenSampleTime
