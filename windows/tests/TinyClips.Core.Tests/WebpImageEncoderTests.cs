@@ -10,6 +10,13 @@ public sealed class WebpImageEncoderTests
     [InlineData(50, 1, 1)]
     public void Encode_WritesDecodableWebpWithRequestedScale(int scale, int expectedWidth, int expectedHeight)
     {
+        // The Windows-only native codec ships with the app; Windows CI exercises this path.
+        // Do not try loading the Win32 native library when Core tests are run on Linux.
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         // Premultiplied BGRA: transparent, red, green, blue.
         byte[] pixels =
         [
