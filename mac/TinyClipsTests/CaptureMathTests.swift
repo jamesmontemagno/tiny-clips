@@ -7,7 +7,7 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertTrue(TinyClipsRuntime.isRunningUnitTests)
     }
 
-    func testAudioOffsetMovesTimestampsAndClampsToVideoSessionOrigin() {
+    func testAudioOffsetMovesTimestampsAndDropsAudioBeforeVideoSessionOrigin() {
         let timestamp = CMTime(value: 2_000, timescale: 1_000)
         let origin = CMTime(value: 1_800, timescale: 1_000)
 
@@ -26,11 +26,17 @@ final class CaptureMathTests: XCTestCase {
             CMTime(value: 1_500, timescale: 1_000)
         )
         XCTAssertEqual(
-            RecordingTimelineMath.audioTimestamp(
+            RecordingTimelineMath.shouldWriteAudioTimestamp(
                 CMTime(value: 1_500, timescale: 1_000),
-                notBefore: origin
+                atOrAfter: origin
             ),
-            origin
+            false
+        )
+        XCTAssertTrue(
+            RecordingTimelineMath.shouldWriteAudioTimestamp(
+                origin,
+                atOrAfter: origin
+            )
         )
     }
 
