@@ -922,6 +922,11 @@ class CaptureManager: ObservableObject {
                             SaveService.shared.showError("Microphone error: \(message)")
                         }
                     }
+                    recorder.onVideoCodecFallback = { message in
+                        DispatchQueue.main.async {
+                            SaveService.shared.showError(message)
+                        }
+                    }
                     webcamRecorder.onWebcamDeviceName = { [weak self] name in
                         DispatchQueue.main.async {
                             self?.activeWebcamName = name.isEmpty ? nil : name
@@ -1000,7 +1005,8 @@ class CaptureManager: ObservableObject {
                         do {
                             try await webcamRecorder.start(
                                 outputURL: webcamOutputURL,
-                                selectedWebcamID: webcamSelection.deviceID
+                                selectedWebcamID: webcamSelection.deviceID,
+                                videoCodec: recorder.videoCodecForCompanionWriters
                             )
                             guard self.activeRecordingSessionID == sessionID else {
                                 await webcamRecorder.cancel()

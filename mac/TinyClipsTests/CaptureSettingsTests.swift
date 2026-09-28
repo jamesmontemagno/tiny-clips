@@ -23,6 +23,31 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
     }
 
+    func testVideoCodecDefaultsAndFallsBackToH264() {
+        XCTAssertEqual(CaptureSettings.videoCodec(from: nil), .h264)
+        XCTAssertEqual(CaptureSettings.videoCodec(from: "h264"), .h264)
+        XCTAssertEqual(CaptureSettings.videoCodec(from: "hevc"), .hevc)
+        XCTAssertEqual(CaptureSettings.videoCodec(from: "invalid"), .h264)
+    }
+
+    func testVideoCodecPersistsInDefaults() {
+        XCTAssertEqual(CaptureSettings.videoCodec(in: defaults), .h264)
+
+        CaptureSettings.setVideoCodec(.hevc, in: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: CaptureSettings.videoCodecKey), VideoCodec.hevc.rawValue)
+        XCTAssertEqual(CaptureSettings.videoCodec(in: defaults), .hevc)
+    }
+
+    func testVideoCodecIsResetWithStoredSettings() {
+        CaptureSettings.setVideoCodec(.hevc, in: defaults)
+
+        CaptureSettings.resetStoredDefaults(defaults)
+
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.videoCodecKey))
+        XCTAssertEqual(CaptureSettings.videoCodec(in: defaults), .h264)
+    }
+
     func testActivationPolicyIsRegularWhenDockPreferenceIsEnabled() {
         XCTAssertEqual(
             TinyClipsActivationPolicy.resolve(showInDock: true, hasOpenScreenshotEditors: false),

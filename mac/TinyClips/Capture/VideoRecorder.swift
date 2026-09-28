@@ -107,6 +107,81 @@ private func monotonicSampleBuffer(
     return (correctedSampleBuffer, true)
 }
 
+private struct RecordingVideoCodec {
+    let requested: VideoCodec
+    let actual: VideoCodec
+
+    var didFallback: Bool {
+        requested != actual
+    }
+
+    var fallbackMessage: String? {
+        guard didFallback else { return nil }
+        return "\(requested.label) is not available for this recording. TinyClips is recording with \(actual.label) instead."
+    }
+}
+
+private enum RecordingVideoCodecResolver {
+    static func resolve(requested: VideoCodec, width: Int, height: Int) -> RecordingVideoCodec {
+        guard requested == .hevc else {
+            return RecordingVideoCodec(requested: requested, actual: .h264)
+        }
+
+        guard canCreateVideoInput(codec: .hevc, width: width, height: height) else {
+            return RecordingVideoCodec(requested: requested, actual: .h264)
+        }
+
+        return RecordingVideoCodec(requested: requested, actual: .hevc)
+    }
+
+    static func makeVideoInput(codec: VideoCodec, width: Int, height: Int) -> AVAssetWriterInput {
+        AVAssetWriterInput(mediaType: .video, outputSettings: videoOutputSettings(
+            codec: codec,
+            width: width,
+            height: height
+        ))
+    }
+
+    private static func canCreateVideoInput(codec: VideoCodec, width: Int, height: Int) -> Bool {
+        let probeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp4")
+        defer {
+            try? FileManager.default.removeItem(at: probeURL)
+        }
+
+        do {
+            let writer = try AVAssetWriter(url: probeURL, fileType: .mp4)
+            let outputSettings = videoOutputSettings(codec: codec, width: width, height: height)
+            guard writer.canApply(outputSettings: outputSettings, forMediaType: .video) else {
+                writer.cancelWriting()
+                return false
+            }
+            let input = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
+            let canAdd = writer.canAdd(input)
+            writer.cancelWriting()
+            return canAdd
+        } catch {
+            return false
+        }
+    }
+
+    private static func videoOutputSettings(codec: VideoCodec, width: Int, height: Int) -> [String: Any] {
+        [
+            AVVideoCodecKey: avVideoCodec(for: codec),
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height,
+        ]
+    }
+
+    private static func avVideoCodec(for codec: VideoCodec) -> AVVideoCodecType {
+        switch codec {
+        case .h264: return .h264
+        case .hevc: return .hevc
+        }
+    }
+}
+
 struct MicrophoneDeviceOption: Identifiable, Hashable {
     let id: String
     let name: String
@@ -179,7 +254,7 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
     var onWebcamError: ((String) -> Void)?
     var previewSession: AVCaptureSession? { session }
 
-    func start(outputURL: URL, selectedWebcamID: String) async throws {
+    func start(outputURL: URL, selectedWebcamID: String, videoCodec: VideoCodec) async throws {
         guard await PermissionManager.shared.requestCameraPermission() else {
             throw CaptureError.webcamPermissionDenied
         }
@@ -220,11 +295,7 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
             if isPositiveNumericTime(activeFrameDuration) {
                 fallbackFrameDuration = activeFrameDuration
             }
-            let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-                AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: width,
-                AVVideoHeightKey: height,
-            ])
+            let input = RecordingVideoCodecResolver.makeVideoInput(codec: videoCodec, width: width, height: height)
             input.expectsMediaDataInRealTime = true
             guard writer.canAdd(input) else {
                 throw CaptureError.saveFailed
@@ -496,6 +567,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var systemAudioMuted = false
     private var microphoneMuted = false
     private var selectedMicrophoneID = ""
+    private var resolvedVideoCodec: VideoCodec = .h264
     private var outputURL: URL?
     private var recordingStartedAtUptime: TimeInterval?
     private var didReportStreamFailure = false
@@ -510,6 +582,11 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     var onMicrophoneDeviceName: ((String) -> Void)?
     var onMicrophoneError: ((String) -> Void)?
     var onStreamFailure: ((Error) -> Void)?
+    var onVideoCodecFallback: ((String) -> Void)?
+
+    var videoCodecForCompanionWriters: VideoCodec {
+        resolvedVideoCodec
+    }
 
     var isMicrophoneCaptureActive: Bool {
         microphoneSession != nil && recordMicrophone
@@ -562,6 +639,15 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.microphoneLimiterEnabled = settings.microphoneLimiterEnabled
         self.windNoiseRemovalEnabled = settings.windNoiseRemovalEnabled
         self.selectedMicrophoneID = selectedMicrophoneID
+        let recordingVideoCodec = RecordingVideoCodecResolver.resolve(
+            requested: settings.videoCodec,
+            width: preparedTarget.pixelWidth,
+            height: preparedTarget.pixelHeight
+        )
+        self.resolvedVideoCodec = recordingVideoCodec.actual
+        if let fallbackMessage = recordingVideoCodec.fallbackMessage {
+            onVideoCodecFallback?(fallbackMessage)
+        }
 
         if recordSystemAudio {
             config.capturesAudio = true
@@ -572,12 +658,15 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.outputURL = outputURL
 
         let writer = try AVAssetWriter(url: outputURL, fileType: .mp4)
-        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: preparedTarget.pixelWidth,
-            AVVideoHeightKey: preparedTarget.pixelHeight,
-        ])
+        let videoInput = RecordingVideoCodecResolver.makeVideoInput(
+            codec: recordingVideoCodec.actual,
+            width: preparedTarget.pixelWidth,
+            height: preparedTarget.pixelHeight
+        )
         videoInput.expectsMediaDataInRealTime = true
+        guard writer.canAdd(videoInput) else {
+            throw CaptureError.saveFailed
+        }
         writer.add(videoInput)
 
         if recordSystemAudio {
@@ -1128,6 +1217,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         systemAudioMuted = false
         microphoneMuted = false
         selectedMicrophoneID = ""
+        resolvedVideoCodec = .h264
         onMicrophoneWarning?(nil)
         onMicrophoneLevel?(0)
         onMicrophoneDeviceName?("")
