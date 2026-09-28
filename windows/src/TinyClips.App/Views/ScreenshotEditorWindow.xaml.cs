@@ -454,7 +454,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         picker.FileTypeChoices.Add("PNG image", new[] { ".png" });
         picker.FileTypeChoices.Add("JPEG image", new[] { ".jpg" });
         picker.FileTypeChoices.Add("WebP image", new[] { ".webp" });
-        picker.DefaultFileExtension = System.IO.Path.GetExtension(_activeSavePath).ToLowerInvariant() switch
+        picker.DefaultFileExtension = System.IO.Path.GetExtension(_activeSavePath ?? string.Empty).ToLowerInvariant() switch
         {
             ".jpg" or ".jpeg" => ".jpg",
             ".webp" => ".webp",
