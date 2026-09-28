@@ -17,6 +17,9 @@ own `CHANGELOG.md` at the repository root.
   displayed resolution tracks padding and frame-preset changes.
 
 ### Fixed
+- **Screen and window pickers can now be dismissed with Esc.** The "choose a screen" and "choose a
+  window" prompts that appear when capturing a specific monitor or window now close and cancel the
+  capture when Esc is pressed, in addition to the existing **Cancel** button.
 - **Smaller Windows App SDK dependency footprint.** Tiny Clips now consumes the modular WinUI
   components it uses and suppresses legacy metapackage assets required only by third-party package
   declarations, avoiding unused AI and ML packages while preserving framework-dependent Store
