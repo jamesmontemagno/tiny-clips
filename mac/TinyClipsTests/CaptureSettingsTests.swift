@@ -1,4 +1,5 @@
 import Carbon.HIToolbox
+import AVFoundation
 import XCTest
 @testable import TinyClips
 
@@ -73,6 +74,28 @@ final class CaptureSettingsTests: XCTestCase {
             resolved.fallbackMessage(context: "the webcam overlay"),
             "H.265 / HEVC is not available for the webcam overlay. TinyClips is recording with H.264 instead."
         )
+    }
+
+    func testRecordingVideoCodecResolverCreatesH264InputWithoutFallback() throws {
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp4")
+        defer {
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+
+        let writer = try AVAssetWriter(url: outputURL, fileType: .mp4)
+        let result = RecordingVideoCodecResolver.makeVideoInput(
+            codec: .h264,
+            width: 16,
+            height: 16,
+            writer: writer
+        )
+
+        XCTAssertEqual(result.codec, .h264)
+        XCTAssertNil(result.fallback)
+        let outputSettings = try XCTUnwrap(result.input.outputSettings)
+        XCTAssertEqual(outputSettings[AVVideoCodecKey] as? AVVideoCodecType, .h264)
     }
 
     func testActivationPolicyIsRegularWhenDockPreferenceIsEnabled() {
