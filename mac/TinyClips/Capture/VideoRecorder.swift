@@ -518,6 +518,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     /// Presentation timestamp (host-clock based) of the first screen frame written.
     /// Used to align the separately-recorded webcam track to the audio timeline.
     private(set) var firstScreenSampleTime: CMTime?
+    private var writerSessionStartTime: CMTime?
     private let writingQueue = DispatchQueue(label: "com.tinyclips.video-writing")
     private let microphoneQueue = DispatchQueue(label: "com.tinyclips.microphone-capture")
     var onMicrophoneLevel: ((Double) -> Void)?
@@ -630,6 +631,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.lastVideoPresentationTime = nil
         self.lastSystemAudioPresentationTime = nil
         self.lastMicrophonePresentationTime = nil
+        self.writerSessionStartTime = nil
 
         do {
             let stream = SCStream(filter: filter, configuration: config, delegate: self)
@@ -1149,6 +1151,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         microphoneLimiterEnabled = true
         windNoiseRemovalEnabled = false
         audioOffsetTime = .zero
+        writerSessionStartTime = nil
         systemAudioMuted = false
         microphoneMuted = false
         selectedMicrophoneID = ""
@@ -1231,6 +1234,7 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
                 guard writer.startWriting() else { return }
                 writer.startSession(atSourceTime: adjustedSampleBuffer.presentationTimeStamp)
                 firstScreenSampleTime = adjustedSampleBuffer.presentationTimeStamp
+                writerSessionStartTime = adjustedSampleBuffer.presentationTimeStamp
                 hasStartedWriting = true
             }
 
@@ -1307,12 +1311,12 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
 
     private func shouldWriteAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> Bool {
         guard CMTimeCompare(audioOffsetTime, .zero) < 0,
-              let firstScreenSampleTime else { return true }
+              let writerSessionStartTime else { return true }
         // Dropping the complete leading buffer avoids retaining pre-session samples or
         // introducing duplicate audio by retimestamping a partially leading buffer.
         return RecordingTimelineMath.shouldWriteAudioTimestamp(
             CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
-            atOrAfter: firstScreenSampleTime
+            atOrAfter: writerSessionStartTime
         )
     }
 

@@ -350,13 +350,10 @@ class CaptureSettings: ObservableObject {
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
     @AppStorage("recordAudio") var recordAudio: Bool = false
     @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
-    @AppStorage("audioOffsetMs") var audioOffsetMs: Int = 0 {
-        didSet {
-            let clampedOffset = Self.clampedAudioOffsetMs(audioOffsetMs)
-            if audioOffsetMs != clampedOffset {
-                audioOffsetMs = clampedOffset
-            }
-        }
+    @AppStorage("audioOffsetMs") private var storedAudioOffsetMs: Int = 0
+    var audioOffsetMs: Int {
+        get { Self.clampedAudioOffsetMs(storedAudioOffsetMs) }
+        set { storedAudioOffsetMs = Self.clampedAudioOffsetMs(newValue) }
     }
     @AppStorage("microphoneLimiterEnabled") var microphoneLimiterEnabled: Bool = true
     @AppStorage("windNoiseRemovalEnabled") var windNoiseRemovalEnabled: Bool = false
@@ -788,7 +785,7 @@ class CaptureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults
-        audioOffsetMs = Self.clampedAudioOffsetMs(audioOffsetMs)
+        audioOffsetMs = audioOffsetMs
         guard performMigrations else { return }
 
         migrateSaveDirectorySettings(defaults)
