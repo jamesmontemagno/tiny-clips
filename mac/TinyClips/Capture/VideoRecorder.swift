@@ -162,9 +162,7 @@ enum RecordingVideoCodecResolver {
         }
 
         let fallbackInput = makeVideoInput(codec: .h264, width: width, height: height)
-        let fallback = writer.canAdd(fallbackInput)
-            ? RecordingVideoCodec(requested: .hevc, actual: .h264)
-            : nil
+        let fallback = RecordingVideoCodec(requested: .hevc, actual: .h264)
         return (fallbackInput, .h264, fallback)
     }
 
@@ -329,16 +327,8 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
             if isPositiveNumericTime(activeFrameDuration) {
                 fallbackFrameDuration = activeFrameDuration
             }
-            let webcamVideoCodec = RecordingVideoCodecResolver.resolve(
-                requested: videoCodec,
-                width: width,
-                height: height
-            )
-            if let fallbackMessage = webcamVideoCodec.fallbackMessage(context: "the webcam overlay") {
-                onVideoCodecFallback?(fallbackMessage)
-            }
             let videoInputResult = RecordingVideoCodecResolver.makeVideoInput(
-                codec: webcamVideoCodec.actual,
+                codec: videoCodec,
                 width: width,
                 height: height,
                 writer: writer

@@ -158,6 +158,12 @@ class CaptureManager: ObservableObject {
             || scrollingCapturePanel != nil
     }
 
+    private func showVideoCodecFallbackNoticeOnce(_ message: String) {
+        guard !didShowVideoCodecFallbackNotice else { return }
+        didShowVideoCodecFallbackNotice = true
+        SaveService.shared.showNotice(message)
+    }
+
     private var videoRecorder: VideoRecorder?
     private var webcamRecorder: WebcamRecorder?
     private var gifWriter: GifWriter?
@@ -891,6 +897,7 @@ class CaptureManager: ObservableObject {
                 do {
                     let sessionID = self.nextRecordingSessionID()
                     self.activeRecordingSessionID = sessionID
+                    self.didShowVideoCodecFallbackNotice = false
                     self.debugRecordingLifecycle("Starting video session \(sessionID)")
                     recorder.onStreamFailure = { [weak self] error in
                         let message = error.localizedDescription
@@ -925,9 +932,7 @@ class CaptureManager: ObservableObject {
                     }
                     recorder.onVideoCodecFallback = { message in
                         Task { @MainActor [weak self] in
-                            guard let self, !self.didShowVideoCodecFallbackNotice else { return }
-                            self.didShowVideoCodecFallbackNotice = true
-                            SaveService.shared.showNotice(message)
+                            self?.showVideoCodecFallbackNoticeOnce(message)
                         }
                     }
                     webcamRecorder.onWebcamDeviceName = { [weak self] name in
@@ -942,9 +947,7 @@ class CaptureManager: ObservableObject {
                     }
                     webcamRecorder.onVideoCodecFallback = { message in
                         Task { @MainActor [weak self] in
-                            guard let self, !self.didShowVideoCodecFallbackNotice else { return }
-                            self.didShowVideoCodecFallbackNotice = true
-                            SaveService.shared.showNotice(message)
+                            self?.showVideoCodecFallbackNoticeOnce(message)
                         }
                     }
 
@@ -974,7 +977,6 @@ class CaptureManager: ObservableObject {
                     self.activeMicrophoneName = nil
                     self.activeWebcamName = nil
                     self.lastVideoRecordingArtifacts = nil
-                    self.didShowVideoCodecFallbackNotice = false
 
                     let teleprompterWindow = await self.prepareTeleprompterIfNeeded(
                         region: target.region,
