@@ -653,9 +653,14 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
 
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            guard settings.authorizationStatus == .authorized, settings.alertStyle != .none else {
+            guard settings.authorizationStatus == .authorized ||
+                    settings.authorizationStatus == .provisional else {
                 Task { @MainActor in self?.showInAppNotice(message) }
                 return
+            }
+            let showsBanner = settings.authorizationStatus == .authorized && settings.alertStyle != .none
+            if !showsBanner {
+                Task { @MainActor in self?.showInAppNotice(message) }
             }
 
             let content = UNMutableNotificationContent()
@@ -668,7 +673,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
                 trigger: nil
             )
             UNUserNotificationCenter.current().add(request) { [weak self] error in
-                if error != nil {
+                if error != nil && showsBanner {
                     Task { @MainActor in self?.showInAppNotice(message) }
                 }
             }
@@ -683,7 +688,11 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         noticePanel?.orderOut(nil)
 
         let width = min(480, screen.visibleFrame.width - 32)
-        let size = NSSize(width: width, height: 100)
+        let label = NSTextField(wrappingLabelWithString: message)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.preferredMaxLayoutWidth = width - 32
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let size = NSSize(width: width, height: max(64, ceil(label.fittingSize.height) + 32))
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -704,9 +713,6 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         background.layer?.cornerRadius = 12
         background.layer?.masksToBounds = true
 
-        let label = NSTextField(wrappingLabelWithString: message)
-        label.font = .systemFont(ofSize: 13, weight: .medium)
-        label.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(label)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 16),
