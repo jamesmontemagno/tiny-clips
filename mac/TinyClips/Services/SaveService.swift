@@ -651,16 +651,23 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     func showNotice(_ message: String) {
         AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
 
-        let content = UNMutableNotificationContent()
-        content.title = "TinyClips"
-        content.body = message
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized ||
+                    settings.authorizationStatus == .provisional else {
+                return
+            }
 
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
+            let content = UNMutableNotificationContent()
+            content.title = "TinyClips"
+            content.body = message
+
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString,
+                content: content,
+                trigger: nil
+            )
+            UNUserNotificationCenter.current().add(request)
+        }
     }
 }
 

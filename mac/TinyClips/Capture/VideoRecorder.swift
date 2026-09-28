@@ -128,7 +128,7 @@ enum RecordingVideoCodecResolver {
             return resolved(requested: requested, hevcAvailable: false)
         }
 
-        resolved(
+        return resolved(
             requested: requested,
             hevcAvailable: canCreateHardwareEncoder(codec: .hevc, width: width, height: height)
         )

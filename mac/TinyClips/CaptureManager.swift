@@ -163,6 +163,7 @@ class CaptureManager: ObservableObject {
     private var gifWriter: GifWriter?
     private let idleSleepAssertion = IdleSleepAssertion()
     private(set) var lastVideoRecordingArtifacts: VideoRecordingArtifacts?
+    private var didShowVideoCodecFallbackNotice = false
     @Published private var screenshotPickerPanel: CapturePickerPanel?
     private var screenshotPickerPosition: NSPoint?
     @Published private var recordingPickerPanel: CapturePickerPanel?
@@ -923,7 +924,9 @@ class CaptureManager: ObservableObject {
                         }
                     }
                     recorder.onVideoCodecFallback = { message in
-                        DispatchQueue.main.async {
+                        Task { @MainActor [weak self] in
+                            guard let self, !self.didShowVideoCodecFallbackNotice else { return }
+                            self.didShowVideoCodecFallbackNotice = true
                             SaveService.shared.showNotice(message)
                         }
                     }
@@ -938,7 +941,9 @@ class CaptureManager: ObservableObject {
                         }
                     }
                     webcamRecorder.onVideoCodecFallback = { message in
-                        DispatchQueue.main.async {
+                        Task { @MainActor [weak self] in
+                            guard let self, !self.didShowVideoCodecFallbackNotice else { return }
+                            self.didShowVideoCodecFallbackNotice = true
                             SaveService.shared.showNotice(message)
                         }
                     }
@@ -969,6 +974,7 @@ class CaptureManager: ObservableObject {
                     self.activeMicrophoneName = nil
                     self.activeWebcamName = nil
                     self.lastVideoRecordingArtifacts = nil
+                    self.didShowVideoCodecFallbackNotice = false
 
                     let teleprompterWindow = await self.prepareTeleprompterIfNeeded(
                         region: target.region,
