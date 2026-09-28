@@ -43,7 +43,7 @@ struct VideoSettingsSection: View {
 
             HStack {
                 Stepper(
-                    "Audio offset: \(settings.audioOffsetMs >= 0 ? "+" : "")\(settings.audioOffsetMs) ms",
+                    "Audio offset: \(settings.audioOffsetMs > 0 ? "+" : "")\(settings.audioOffsetMs) ms",
                     value: $settings.audioOffsetMs,
                     in: CaptureSettings.audioOffsetRangeMs,
                     step: 10
