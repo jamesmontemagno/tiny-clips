@@ -313,6 +313,14 @@ public sealed class CaptureSettingsTests
 
         Assert.Equal("jpg", settings.ScreenshotFormat);
         Assert.Equal(ImageFormat.Jpeg, settings.ImageFormat);
+
+        settings.ImageFormat = ImageFormat.Webp;
+
+        Assert.Equal("webp", settings.ScreenshotFormat);
+        Assert.Equal(ImageFormat.Webp, settings.ImageFormat);
+
+        settings.ScreenshotFormat = "WEBP";
+        Assert.Equal(ImageFormat.Webp, settings.ImageFormat);
     }
 
     [Fact]

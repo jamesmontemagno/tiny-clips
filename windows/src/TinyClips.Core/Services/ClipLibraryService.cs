@@ -15,6 +15,7 @@ public sealed class ClipLibraryService : IClipLibraryService
             ["png"]  = CaptureType.Screenshot,
             ["jpg"]  = CaptureType.Screenshot,
             ["jpeg"] = CaptureType.Screenshot,
+            ["webp"] = CaptureType.Screenshot,
             ["mp4"]  = CaptureType.Video,
             ["gif"]  = CaptureType.Gif,
         };

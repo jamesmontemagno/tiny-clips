@@ -20,6 +20,8 @@ final class CaptureSettingsTests: XCTestCase {
 
     func testImageFormatFallsBackToJpeg() {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "png"), .png)
+        XCTAssertEqual(CaptureSettings.imageFormat(from: "webp"), .webp)
+        XCTAssertEqual(ImageFormat.webp.utType.preferredFilenameExtension, "webp")
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
     }
 
@@ -29,6 +31,13 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(0), 0)
         XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(500), 500)
         XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(501), 500)
+    }
+
+    func testWebPFormatPersists() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.imageFormat = .webp
+        XCTAssertEqual(settings.screenshotFormat, "webp")
+        XCTAssertEqual(settings.imageFormat, .webp)
     }
 
     func testActivationPolicyIsRegularWhenDockPreferenceIsEnabled() {

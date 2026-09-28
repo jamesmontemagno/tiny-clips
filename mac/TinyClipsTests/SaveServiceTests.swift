@@ -1,4 +1,6 @@
 import XCTest
+import AppKit
+import ImageIO
 @testable import TinyClips
 
 final class SaveServiceTests: XCTestCase {
@@ -87,6 +89,24 @@ final class SaveServiceTests: XCTestCase {
         let unique = SaveService.uniqueURL(in: directoryURL, filename: "capture.png")
 
         XCTAssertEqual(unique.lastPathComponent, "capture 3.png")
+    }
+
+    func testWebPEncoderProducesDecodableScreenshot() throws {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(NSColor.red.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        let image = try XCTUnwrap(context.makeImage())
+        let data = try XCTUnwrap(WebPImageEncoder.encode(image, quality: 0.85))
+        XCTAssertEqual(String(data: data.prefix(4), encoding: .ascii), "RIFF")
+        XCTAssertEqual(String(data: data.dropFirst(8).prefix(4), encoding: .ascii), "WEBP")
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+        let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        XCTAssertEqual(decoded.width, 2)
+        XCTAssertEqual(decoded.height, 2)
     }
 
     @MainActor
