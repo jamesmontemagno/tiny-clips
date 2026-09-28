@@ -691,8 +691,18 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public ImageFormat ImageFormat
     {
-        get => string.Equals(ScreenshotFormat, "png", StringComparison.OrdinalIgnoreCase) ? Models.ImageFormat.Png : Models.ImageFormat.Jpeg;
-        set => ScreenshotFormat = value == Models.ImageFormat.Png ? "png" : "jpg";
+        get => ScreenshotFormat.ToLowerInvariant() switch
+        {
+            "png" => Models.ImageFormat.Png,
+            "webp" => Models.ImageFormat.Webp,
+            _ => Models.ImageFormat.Jpeg,
+        };
+        set => ScreenshotFormat = value switch
+        {
+            Models.ImageFormat.Png => "png",
+            Models.ImageFormat.Webp => "webp",
+            _ => "jpg",
+        };
     }
 
     public bool ShouldCopyToClipboard(CaptureType type) => type switch

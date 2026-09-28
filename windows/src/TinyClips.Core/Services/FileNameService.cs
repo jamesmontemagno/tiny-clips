@@ -40,7 +40,12 @@ public sealed class FileNameService : IFileNameService
 
     public string FileExtensionFor(CaptureType type) => type switch
     {
-        CaptureType.Screenshot => _settings.ImageFormat == ImageFormat.Png ? "png" : "jpg",
+        CaptureType.Screenshot => _settings.ImageFormat switch
+        {
+            ImageFormat.Png => "png",
+            ImageFormat.Webp => "webp",
+            _ => "jpg",
+        },
         CaptureType.Video => "mp4",
         CaptureType.Gif => "gif",
         _ => string.Empty,

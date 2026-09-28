@@ -16,7 +16,7 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
 
 - **Capture picker** — choose **Region**, **Screen**, or **Window** (R / S / W) before any capture,
   mirroring the macOS picker. Video/GIF captures then show a pre-record setup panel before countdown.
-- **Screenshot** (PNG/JPEG, scale, quality) — full screen, a specific window, or a drag-selected **region**.
+- **Screenshot** (PNG/JPEG/WebP, scale, JPEG/WebP quality) — full screen, a specific window, or a drag-selected **region**.
   The region selector shows a live snapshot of the screen and dims only outside the selection.
 - **Scrolling capture** — pick **Scroll** (P) in the Screenshot picker, select a region, then scroll
   the page; a floating panel shows the frame count with **Done** (Enter) to stitch everything into

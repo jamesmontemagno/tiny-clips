@@ -7,7 +7,7 @@ namespace TinyClips.Core.Capture;
 
 /// <summary>
 /// Coordinates a screenshot: capture the primary monitor, encode to the configured
-/// image format (with optional scaling and JPEG quality) and write it to disk.
+/// image format (with optional scaling and JPEG/WebP quality) and write it to disk.
 /// </summary>
 public sealed class ScreenshotService : IScreenshotService
 {
@@ -80,6 +80,13 @@ public sealed class ScreenshotService : IScreenshotService
 
     private async Task<byte[]> EncodeAsync(CapturedFrame frame)
     {
+        if (_settings.ImageFormat == ImageFormat.Webp)
+        {
+            return await Task.Run(() => WebpImageEncoder.Encode(
+                frame.BgraPixels, frame.Width, frame.Height, _settings.ScreenshotScale, _settings.JpegQuality))
+                .ConfigureAwait(false);
+        }
+
         var isPng = _settings.ImageFormat == ImageFormat.Png;
         var encoderId = isPng ? BitmapEncoder.PngEncoderId : BitmapEncoder.JpegEncoderId;
 

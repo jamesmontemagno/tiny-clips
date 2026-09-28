@@ -13,15 +13,15 @@ struct ScreenshotSettingsSection: View {
             }
             .help("Choose the default file format for screenshots.")
 
-            if settings.imageFormat == .jpeg {
+            if settings.imageFormat == .jpeg || settings.imageFormat == .webp {
                 HStack {
-                    Text("JPEG quality:")
+                    Text("\(settings.imageFormat.label) quality:")
                     Slider(value: $settings.jpegQuality, in: 0.1...1.0, step: 0.05)
                     Text("\(Int(settings.jpegQuality * 100))%")
                         .monospacedDigit()
                         .frame(width: 40, alignment: .trailing)
                 }
-                .help("Adjust JPEG compression quality. Higher values keep more detail but create larger files.")
+                .help("Adjust compression quality. Higher values keep more detail but create larger files.")
             }
 
             Picker("Default scale:", selection: $settings.screenshotScale) {
