@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- macOS video recording now has an Audio offset setting to delay or advance both system and microphone audio by up to 500 ms for A/V synchronization.
 - macOS screenshots can now be saved as WebP from the default format setting or screenshot editor, with adjustable compression quality.
 - macOS video and GIF trimmers now offer a confirmed Delete action that permanently deletes the recording, removes it from Recent Captures, and closes the trimmer immediately so nothing is saved.
 - macOS screenshot editor now offers a confirmed Delete Screenshot action in its toolbar and File menu, including a clear warning when unsaved edits will be discarded.

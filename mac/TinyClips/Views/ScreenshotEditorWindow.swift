@@ -1275,7 +1275,9 @@ struct ScreenshotEditorView: View {
         isSaving = true
 
         DispatchQueue.main.async {
-            let saveURL = currentSaveURL.pathExtension.lowercased() == viewModel.saveFormat.rawValue
+            let currentExtension = currentSaveURL.pathExtension.lowercased()
+            let saveURL = currentExtension == viewModel.saveFormat.rawValue
+                || (viewModel.saveFormat == .jpeg && currentExtension == "jpeg")
                 ? currentSaveURL
                 : SaveService.uniqueURL(
                     in: currentSaveURL.deletingLastPathComponent(),

@@ -25,6 +25,14 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
     }
 
+    func testAudioOffsetIsClampedToSupportedRange() {
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(-501), -500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(-500), -500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(0), 0)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(500), 500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(501), 500)
+    }
+
     func testWebPFormatPersists() {
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
         settings.imageFormat = .webp

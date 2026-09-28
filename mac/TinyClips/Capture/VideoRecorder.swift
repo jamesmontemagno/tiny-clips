@@ -37,6 +37,20 @@ enum RecordingTimelineMath {
         guard timestamp.isValid else { return timestamp }
         return CMTimeSubtract(timestamp, totalPausedDuration)
     }
+
+    static func audioOffsetTime(milliseconds: Int) -> CMTime {
+        CMTime(value: CMTimeValue(milliseconds), timescale: 1_000)
+    }
+
+    static func shiftedAudioTimestamp(_ timestamp: CMTime, offset: CMTime) -> CMTime {
+        guard timestamp.isNumeric, offset.isNumeric else { return timestamp }
+        return CMTimeAdd(timestamp, offset)
+    }
+
+    static func shouldWriteAudioTimestamp(_ timestamp: CMTime, atOrAfter origin: CMTime?) -> Bool {
+        guard timestamp.isNumeric, let origin, origin.isNumeric else { return true }
+        return CMTimeCompare(timestamp, origin) >= 0
+    }
 }
 
 private func isPositiveNumericTime(_ time: CMTime) -> Bool {
@@ -493,6 +507,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     private var recordMicrophone = false
     private var microphoneLimiterEnabled = true
     private var windNoiseRemovalEnabled = false
+    private var audioOffsetTime = CMTime.zero
     private var systemAudioMuted = false
     private var microphoneMuted = false
     private var selectedMicrophoneID = ""
@@ -503,6 +518,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     /// Presentation timestamp (host-clock based) of the first screen frame written.
     /// Used to align the separately-recorded webcam track to the audio timeline.
     private(set) var firstScreenSampleTime: CMTime?
+    private var writerSessionStartTime: CMTime?
     private let writingQueue = DispatchQueue(label: "com.tinyclips.video-writing")
     private let microphoneQueue = DispatchQueue(label: "com.tinyclips.microphone-capture")
     var onMicrophoneLevel: ((Double) -> Void)?
@@ -561,6 +577,9 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.recordMicrophone = recordMicrophone
         self.microphoneLimiterEnabled = settings.microphoneLimiterEnabled
         self.windNoiseRemovalEnabled = settings.windNoiseRemovalEnabled
+        self.audioOffsetTime = RecordingTimelineMath.audioOffsetTime(
+            milliseconds: settings.audioOffsetMs
+        )
         self.selectedMicrophoneID = selectedMicrophoneID
 
         if recordSystemAudio {
@@ -612,6 +631,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         self.lastVideoPresentationTime = nil
         self.lastSystemAudioPresentationTime = nil
         self.lastMicrophonePresentationTime = nil
+        self.writerSessionStartTime = nil
 
         do {
             let stream = SCStream(filter: filter, configuration: config, delegate: self)
@@ -698,7 +718,12 @@ class VideoRecorder: NSObject, @unchecked Sendable {
 
         writingQueue.async { [weak self] in
             guard let self, !self.isPaused, !self.microphoneMuted, self.hasStartedWriting, let micAudioInput = self.micAudioInput, micAudioInput.isReadyForMoreMediaData else { return }
-            let pauseAdjustedSampleBuffer = self.adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+            let offsetSampleBuffer = self.offsetAudioSampleBuffer(sampleBuffer)
+            let pauseAdjustedSampleBuffer = self.adjustedSampleBuffer(offsetSampleBuffer)
+            guard self.shouldWriteAudioSampleBuffer(pauseAdjustedSampleBuffer) else {
+                self.debugLifecycle("dropped microphone sample before writer session origin")
+                return
+            }
             let limitedSampleBuffer = self.limitedMicrophoneSampleBuffer(from: pauseAdjustedSampleBuffer)
             var proposedLastPresentationTime = self.lastMicrophonePresentationTime
             guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
@@ -1125,6 +1150,8 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         recordMicrophone = false
         microphoneLimiterEnabled = true
         windNoiseRemovalEnabled = false
+        audioOffsetTime = .zero
+        writerSessionStartTime = nil
         systemAudioMuted = false
         microphoneMuted = false
         selectedMicrophoneID = ""
@@ -1189,7 +1216,7 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
 
             guard let videoInput else { return }
 
-            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer)
             var proposedLastPresentationTime = lastVideoPresentationTime
             guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
                 pauseAdjustedSampleBuffer,
@@ -1207,6 +1234,7 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
                 guard writer.startWriting() else { return }
                 writer.startSession(atSourceTime: adjustedSampleBuffer.presentationTimeStamp)
                 firstScreenSampleTime = adjustedSampleBuffer.presentationTimeStamp
+                writerSessionStartTime = adjustedSampleBuffer.presentationTimeStamp
                 hasStartedWriting = true
             }
 
@@ -1219,7 +1247,12 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
 
         case .audio:
             guard !systemAudioMuted, hasStartedWriting, let systemAudioInput, systemAudioInput.isReadyForMoreMediaData else { return }
-            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(sampleBuffer) ?? sampleBuffer
+            let offsetSampleBuffer = offsetAudioSampleBuffer(sampleBuffer)
+            let pauseAdjustedSampleBuffer = adjustedSampleBuffer(offsetSampleBuffer)
+            guard shouldWriteAudioSampleBuffer(pauseAdjustedSampleBuffer) else {
+                debugLifecycle("dropped system-audio sample before writer session origin")
+                return
+            }
             var proposedLastPresentationTime = lastSystemAudioPresentationTime
             guard let (adjustedSampleBuffer, didClamp) = monotonicSampleBuffer(
                 pauseAdjustedSampleBuffer,
@@ -1244,9 +1277,53 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    private func adjustedSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
+    private func adjustedSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer {
         guard totalPausedDuration > .zero else { return sampleBuffer }
+        return sampleBufferByAdjustingTiming(sampleBuffer) {
+            if $0.presentationTimeStamp.isValid {
+                $0.presentationTimeStamp = RecordingTimelineMath.adjustedTimestamp(
+                    $0.presentationTimeStamp,
+                    totalPausedDuration: totalPausedDuration
+                )
+            }
+            if $0.decodeTimeStamp.isValid {
+                $0.decodeTimeStamp = RecordingTimelineMath.adjustedTimestamp(
+                    $0.decodeTimeStamp,
+                    totalPausedDuration: totalPausedDuration
+                )
+            }
+        }
+    }
 
+    private func offsetAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer {
+        guard CMTimeCompare(audioOffsetTime, .zero) != 0 else { return sampleBuffer }
+        return sampleBufferByAdjustingTiming(sampleBuffer) {
+            $0.presentationTimeStamp = RecordingTimelineMath.shiftedAudioTimestamp(
+                $0.presentationTimeStamp,
+                offset: audioOffsetTime
+            )
+            $0.decodeTimeStamp = RecordingTimelineMath.shiftedAudioTimestamp(
+                $0.decodeTimeStamp,
+                offset: audioOffsetTime
+            )
+        }
+    }
+
+    private func shouldWriteAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        guard CMTimeCompare(audioOffsetTime, .zero) < 0,
+              let writerSessionStartTime else { return true }
+        // Dropping the complete leading buffer avoids retaining pre-session samples or
+        // introducing duplicate audio by retimestamping a partially leading buffer.
+        return RecordingTimelineMath.shouldWriteAudioTimestamp(
+            CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
+            atOrAfter: writerSessionStartTime
+        )
+    }
+
+    private func sampleBufferByAdjustingTiming(
+        _ sampleBuffer: CMSampleBuffer,
+        adjust: (inout CMSampleTimingInfo) -> Void
+    ) -> CMSampleBuffer {
         let count = CMSampleBufferGetNumSamples(sampleBuffer)
         var timing = Array(repeating: CMSampleTimingInfo(), count: max(1, count))
         var timingCount = 0
@@ -1256,21 +1333,10 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
             arrayToFill: &timing,
             entriesNeededOut: &timingCount
         )
-        guard status == noErr else { return sampleBuffer }
+        guard status == noErr, timingCount > 0 else { return sampleBuffer }
 
         for index in 0..<timingCount {
-            if timing[index].presentationTimeStamp.isValid {
-                timing[index].presentationTimeStamp = RecordingTimelineMath.adjustedTimestamp(
-                    timing[index].presentationTimeStamp,
-                    totalPausedDuration: totalPausedDuration
-                )
-            }
-            if timing[index].decodeTimeStamp.isValid {
-                timing[index].decodeTimeStamp = RecordingTimelineMath.adjustedTimestamp(
-                    timing[index].decodeTimeStamp,
-                    totalPausedDuration: totalPausedDuration
-                )
-            }
+            adjust(&timing[index])
         }
 
         var adjusted: CMSampleBuffer?
@@ -1281,7 +1347,7 @@ extension VideoRecorder: SCStreamOutput, SCStreamDelegate {
             sampleTimingArray: timing,
             sampleBufferOut: &adjusted
         )
-        return copyStatus == noErr ? adjusted : sampleBuffer
+        return copyStatus == noErr ? (adjusted ?? sampleBuffer) : sampleBuffer
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {

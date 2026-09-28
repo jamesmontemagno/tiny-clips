@@ -7,6 +7,58 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertTrue(TinyClipsRuntime.isRunningUnitTests)
     }
 
+    func testAudioOffsetMovesTimestampsAndDropsAudioBeforeVideoSessionOrigin() {
+        let timestamp = CMTime(value: 2_000, timescale: 1_000)
+        let origin = CMTime(value: 1_800, timescale: 1_000)
+
+        XCTAssertEqual(
+            RecordingTimelineMath.shiftedAudioTimestamp(
+                timestamp,
+                offset: RecordingTimelineMath.audioOffsetTime(milliseconds: 200)
+            ),
+            CMTime(value: 2_200, timescale: 1_000)
+        )
+        XCTAssertEqual(
+            RecordingTimelineMath.shiftedAudioTimestamp(
+                timestamp,
+                offset: RecordingTimelineMath.audioOffsetTime(milliseconds: -500)
+            ),
+            CMTime(value: 1_500, timescale: 1_000)
+        )
+        XCTAssertEqual(
+            RecordingTimelineMath.shouldWriteAudioTimestamp(
+                CMTime(value: 1_500, timescale: 1_000),
+                atOrAfter: origin
+            ),
+            false
+        )
+        XCTAssertTrue(
+            RecordingTimelineMath.shouldWriteAudioTimestamp(
+                origin,
+                atOrAfter: origin
+            )
+        )
+        XCTAssertTrue(
+            RecordingTimelineMath.shouldWriteAudioTimestamp(
+                timestamp,
+                atOrAfter: nil
+            )
+        )
+        XCTAssertTrue(
+            RecordingTimelineMath.shouldWriteAudioTimestamp(
+                .invalid,
+                atOrAfter: origin
+            )
+        )
+        XCTAssertEqual(
+            RecordingTimelineMath.shiftedAudioTimestamp(
+                .invalid,
+                offset: RecordingTimelineMath.audioOffsetTime(milliseconds: 200)
+            ),
+            .invalid
+        )
+    }
+
     func testCaptureRegionConvertsPointsToRetinaPixels() {
         let region = CaptureRegion(
             sourceRect: CGRect(x: 10, y: 20, width: 100.25, height: 50.75),
