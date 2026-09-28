@@ -45,7 +45,7 @@ struct VideoSettingsSection: View {
                 Stepper(
                     "Audio offset: \(settings.audioOffsetMs >= 0 ? "+" : "")\(settings.audioOffsetMs) ms",
                     value: $settings.audioOffsetMs,
-                    in: -500...500,
+                    in: CaptureSettings.audioOffsetRangeMs,
                     step: 10
                 )
                 .help("Delay all recording audio with a positive value or play it earlier with a negative value.")

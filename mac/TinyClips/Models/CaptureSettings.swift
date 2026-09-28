@@ -283,6 +283,7 @@ extension NSColor {
 
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
+    static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
     @AppStorage("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
@@ -546,7 +547,7 @@ class CaptureSettings: ObservableObject {
     }
 
     static func clampedAudioOffsetMs(_ offset: Int) -> Int {
-        min(500, max(-500, offset))
+        min(audioOffsetRangeMs.upperBound, max(audioOffsetRangeMs.lowerBound, offset))
     }
 
     static func hotKeyBinding(for action: HotKeyAction, defaults: UserDefaults) -> HotKeyBinding {
