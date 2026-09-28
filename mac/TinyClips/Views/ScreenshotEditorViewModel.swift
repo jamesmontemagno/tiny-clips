@@ -1203,6 +1203,8 @@ class ScreenshotEditorViewModel: ObservableObject {
             imageData = outputBitmap.representation(using: .png, properties: [:])
         case .jpeg:
             imageData = outputBitmap.representation(using: .jpeg, properties: [.compressionFactor: saveJpegQuality])
+        case .webp:
+            imageData = outputBitmap.cgImage.flatMap { WebPImageEncoder.encode($0, quality: saveJpegQuality) }
         }
 
         guard let data = imageData else { return nil }

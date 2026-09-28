@@ -794,7 +794,12 @@ public sealed partial class SettingsViewModel : ObservableObject
                 _ => 0,
             };
 
-            ScreenshotFormatIndex = _settings.ImageFormat == ImageFormat.Png ? 0 : 1;
+            ScreenshotFormatIndex = _settings.ImageFormat switch
+            {
+                ImageFormat.Png => 0,
+                ImageFormat.Webp => 2,
+                _ => 1,
+            };
             ScreenshotScale = _settings.ScreenshotScale;
             JpegQuality = _settings.JpegQuality;
             ScreenshotCountdownEnabled = _settings.ScreenshotCountdownEnabled;
@@ -1153,7 +1158,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     });
 
     partial void OnScreenshotFormatIndexChanged(int value) =>
-        Persist(() => _settings.ImageFormat = value == 0 ? ImageFormat.Png : ImageFormat.Jpeg);
+        Persist(() => _settings.ImageFormat = value switch
+        {
+            0 => ImageFormat.Png,
+            2 => ImageFormat.Webp,
+            _ => ImageFormat.Jpeg,
+        });
 
     partial void OnScreenshotScaleChanged(double value) => Persist(() => _settings.ScreenshotScale = (int)Math.Round(value));
 

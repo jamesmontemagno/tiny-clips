@@ -21,6 +21,8 @@ final class CaptureSettingsTests: XCTestCase {
 
     func testImageFormatFallsBackToJpeg() {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "png"), .png)
+        XCTAssertEqual(CaptureSettings.imageFormat(from: "webp"), .webp)
+        XCTAssertEqual(ImageFormat.webp.utType.preferredFilenameExtension, "webp")
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
     }
 
@@ -96,6 +98,29 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertNil(result.fallback)
         let outputSettings = try XCTUnwrap(result.input.outputSettings)
         XCTAssertEqual(outputSettings[AVVideoCodecKey] as? AVVideoCodecType, .h264)
+    }
+
+    func testAudioOffsetIsClampedToSupportedRange() {
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(-501), -500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(-500), -500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(0), 0)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(500), 500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(501), 500)
+    }
+
+    func testAudioOffsetIsResetWithStoredSettings() {
+        defaults.set(250, forKey: "audioOffsetMs")
+
+        CaptureSettings.resetStoredDefaults(defaults)
+
+        XCTAssertNil(defaults.object(forKey: "audioOffsetMs"))
+    }
+
+    func testWebPFormatPersists() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.imageFormat = .webp
+        XCTAssertEqual(settings.screenshotFormat, "webp")
+        XCTAssertEqual(settings.imageFormat, .webp)
     }
 
     func testActivationPolicyIsRegularWhenDockPreferenceIsEnabled() {

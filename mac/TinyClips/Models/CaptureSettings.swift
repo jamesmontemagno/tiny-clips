@@ -174,11 +174,13 @@ enum CaptureError: LocalizedError {
 enum ImageFormat: String, CaseIterable {
     case png = "png"
     case jpeg = "jpg"
+    case webp = "webp"
 
     var label: String {
         switch self {
         case .png: return "PNG"
         case .jpeg: return "JPEG"
+        case .webp: return "WebP"
         }
     }
 
@@ -186,6 +188,7 @@ enum ImageFormat: String, CaseIterable {
         switch self {
         case .png: return .png
         case .jpeg: return .jpeg
+        case .webp: return .webP
         }
     }
 }
@@ -300,6 +303,7 @@ extension NSColor {
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
     static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
+    static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
     @AppStorage("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
@@ -368,6 +372,11 @@ class CaptureSettings: ObservableObject {
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
     @AppStorage("recordAudio") var recordAudio: Bool = false
     @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
+    @AppStorage("audioOffsetMs") private var storedAudioOffsetMs: Int = 0
+    var audioOffsetMs: Int {
+        get { Self.clampedAudioOffsetMs(storedAudioOffsetMs) }
+        set { storedAudioOffsetMs = Self.clampedAudioOffsetMs(newValue) }
+    }
     @AppStorage("microphoneLimiterEnabled") var microphoneLimiterEnabled: Bool = true
     @AppStorage("windNoiseRemovalEnabled") var windNoiseRemovalEnabled: Bool = false
     @AppStorage("selectedMicrophoneID") var selectedMicrophoneID: String = ""
@@ -567,6 +576,10 @@ class CaptureSettings: ObservableObject {
 
     static func setVideoCodec(_ codec: VideoCodec, in defaults: UserDefaults) {
         defaults.set(codec.rawValue, forKey: videoCodecKey)
+    }
+
+    static func clampedAudioOffsetMs(_ offset: Int) -> Int {
+        min(audioOffsetRangeMs.upperBound, max(audioOffsetRangeMs.lowerBound, offset))
     }
 
     static func hotKeyBinding(for action: HotKeyAction, defaults: UserDefaults) -> HotKeyBinding {
@@ -771,7 +784,7 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer",
-        "recordAudio", "recordMicrophone", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
+        "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", "showGifTrimmer",
         "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
@@ -813,6 +826,7 @@ class CaptureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults
+        audioOffsetMs = audioOffsetMs
         guard performMigrations else { return }
 
         migrateSaveDirectorySettings(defaults)

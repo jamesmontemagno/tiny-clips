@@ -126,6 +126,8 @@
 		B2000000000000000000002C /* MouseClicksSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002F /* MouseClicksSettingsSection.swift */; };
 		B2000000000000000000002D /* SettingsViewHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000030 /* SettingsViewHelpers.swift */; };
 		B3EB92CF2F3FCA0B002723CD /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B3EB92CE2F3FCA0B002723CD /* Sparkle */; };
+		B4EB92CF2F3FCA0B002723CD /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = B4EB92CE2F3FCA0B002723CD /* libwebp */; };
+		B4EB92CF2F3FCA0B002723CE /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = B4EB92CE2F3FCA0B002723CD /* libwebp */; };
 		B30000000000000000000001 /* CaptureMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* CaptureMathTests.swift */; };
 		B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* HotKeyBindingTests.swift */; };
 		B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* CaptureSettingsTests.swift */; };
@@ -223,6 +225,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B3EB92CF2F3FCA0B002723CD /* Sparkle in Frameworks */,
+				B4EB92CF2F3FCA0B002723CD /* libwebp in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -230,6 +233,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B4EB92CF2F3FCA0B002723CE /* libwebp in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -402,6 +406,9 @@
 			name = TinyClips;
 			productName = TinyClips;
 			productReference = A1000000000000000000000E /* TinyClips.app */;
+			packageProductDependencies = (
+				B4EB92CE2F3FCA0B002723CD /* libwebp */,
+			);
 			productType = "com.apple.product-type.application";
 		};
 		E20000000000000000000001 /* TinyClipsMAS */ = {
@@ -419,6 +426,9 @@
 			name = TinyClipsMAS;
 			productName = TinyClipsMAS;
 			productReference = A2000000000000000000000E /* TinyClipsMAS.app */;
+			packageProductDependencies = (
+				B4EB92CE2F3FCA0B002723CD /* libwebp */,
+			);
 			productType = "com.apple.product-type.application";
 		};
 		E30000000000000000000001 /* TinyClipsTests */ = {
@@ -471,6 +481,7 @@
 			mainGroup = C10000000000000000000001;
 			packageReferences = (
 				B3EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "Sparkle" */,
+				B4EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "libwebp-Xcode" */,
 			);
 			productRefGroup = C10000000000000000000007 /* Products */;
 			projectDirPath = "";
@@ -971,6 +982,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		B4EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "libwebp-Xcode" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SDWebImage/libwebp-Xcode";
+			requirement = {
+				kind = exactVersion;
+				version = 1.6.0;
+			};
+		};
 		B3EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -982,6 +1001,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		B4EB92CE2F3FCA0B002723CD /* libwebp */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B4EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "libwebp-Xcode" */;
+			productName = libwebp;
+		};
 		B3EB92CE2F3FCA0B002723CD /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B3EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "Sparkle" */;

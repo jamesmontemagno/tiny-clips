@@ -453,6 +453,13 @@ public sealed partial class ScreenshotEditorWindow : Window
         var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary };
         picker.FileTypeChoices.Add("PNG image", new[] { ".png" });
         picker.FileTypeChoices.Add("JPEG image", new[] { ".jpg" });
+        picker.FileTypeChoices.Add("WebP image", new[] { ".webp" });
+        picker.DefaultFileExtension = System.IO.Path.GetExtension(_activeSavePath ?? string.Empty).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => ".jpg",
+            ".webp" => ".webp",
+            _ => ".png",
+        };
         picker.SuggestedFileName = (string.IsNullOrEmpty(_activeSavePath)
             ? "Screenshot"
             : System.IO.Path.GetFileNameWithoutExtension(_activeSavePath)) + " (edited)";
@@ -663,6 +670,17 @@ public sealed partial class ScreenshotEditorWindow : Window
         {
             using var flattened = await _controller.RenderToBitmapAsync();
             using var scaled = ScaleBitmap(flattened, _outputScalePercent);
+            if (path.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
+            {
+                var pixels = new byte[checked(scaled.PixelWidth * scaled.PixelHeight * 4)];
+                scaled.CopyToBuffer(pixels.AsBuffer());
+                var quality = App.Services.GetRequiredService<ICaptureSettings>().JpegQuality;
+                var encoded = await Task.Run(() => WebpImageEncoder.Encode(
+                    pixels, scaled.PixelWidth, scaled.PixelHeight, 100, quality));
+                await System.IO.File.WriteAllBytesAsync(path, encoded);
+                return true;
+            }
+
             var isPng = path.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
             var encoderId = isPng ? BitmapEncoder.PngEncoderId : BitmapEncoder.JpegEncoderId;
 

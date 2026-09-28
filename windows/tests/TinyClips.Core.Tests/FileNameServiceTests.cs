@@ -70,6 +70,19 @@ public sealed class FileNameServiceTests
         Assert.EndsWith(".png", name, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void FileExtensionFor_WebpScreenshot_MatchesNamingPreview()
+    {
+        var settings = CreateSettings();
+        settings.ImageFormat = ImageFormat.Webp;
+        var service = new FileNameService(settings);
+
+        Assert.Equal("webp", service.FileExtensionFor(CaptureType.Screenshot));
+        Assert.EndsWith(".webp", service.NamingPreview(CaptureType.Screenshot));
+        Assert.Equal("mp4", service.FileExtensionFor(CaptureType.Video));
+        Assert.Equal("gif", service.FileExtensionFor(CaptureType.Gif));
+    }
+
     private static ICaptureSettings CreateSettings() => new CaptureSettings(new TestSettingsService());
 
     private sealed class TestSettingsService : ISettingsService

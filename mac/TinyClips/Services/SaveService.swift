@@ -795,6 +795,7 @@ final class UploadcareService {
         switch url.pathExtension.lowercased() {
         case "png": return "image/png"
         case "jpg", "jpeg": return "image/jpeg"
+        case "webp": return "image/webp"
         case "gif": return "image/gif"
         case "mp4": return "video/mp4"
         default: return "application/octet-stream"

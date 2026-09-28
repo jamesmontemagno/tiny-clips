@@ -30,7 +30,7 @@ struct ClipItem: Identifiable {
     init?(url: URL) {
         let ext = url.pathExtension.lowercased()
         switch ext {
-        case "png", "jpg", "jpeg": self.type = .screenshot
+        case "png", "jpg", "jpeg", "webp": self.type = .screenshot
         case "mp4": self.type = .video
         case "gif": self.type = .gif
         default: return nil
@@ -461,7 +461,7 @@ private class ClipsViewModel: ObservableObject {
             let ext = $0.pathExtension.lowercased()
             guard isRegularFile,
                   fileSize > 0,
-                  ["png", "jpg", "jpeg", "mp4", "gif"].contains(ext) else { return false }
+                  ["png", "jpg", "jpeg", "webp", "mp4", "gif"].contains(ext) else { return false }
             if settings.clipsManagerIgnoreNonTinyClipsFiles {
                 return $0.lastPathComponent.hasPrefix("TinyClips ")
             }

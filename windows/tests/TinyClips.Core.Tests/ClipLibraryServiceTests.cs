@@ -15,6 +15,7 @@ public sealed class ClipLibraryServiceTests
         libFs.Files[CapturesDir] =
         [
             Path.Combine(CapturesDir, "shot.png"),
+            Path.Combine(CapturesDir, "website.webp"),
             Path.Combine(CapturesDir, "video.mp4"),
             Path.Combine(CapturesDir, "anim.gif"),
             Path.Combine(CapturesDir, "readme.txt"),   // ignored
@@ -24,8 +25,9 @@ public sealed class ClipLibraryServiceTests
         var service = new ClipLibraryService(storage, libFs);
         var clips = await service.GetClipsAsync();
 
-        Assert.Equal(3, clips.Count);
+        Assert.Equal(4, clips.Count);
         Assert.Contains(clips, c => c.FileName == "shot.png"  && c.Type == CaptureType.Screenshot);
+        Assert.Contains(clips, c => c.FileName == "website.webp" && c.Type == CaptureType.Screenshot);
         Assert.Contains(clips, c => c.FileName == "video.mp4" && c.Type == CaptureType.Video);
         Assert.Contains(clips, c => c.FileName == "anim.gif"  && c.Type == CaptureType.Gif);
     }
