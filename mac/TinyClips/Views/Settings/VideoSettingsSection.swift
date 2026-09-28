@@ -40,6 +40,21 @@ struct VideoSettingsSection: View {
                 }
             }
             .help("Choose which microphone to use for recordings.")
+
+            HStack {
+                Stepper(
+                    "Audio offset: \(settings.audioOffsetMs >= 0 ? "+" : "")\(settings.audioOffsetMs) ms",
+                    value: $settings.audioOffsetMs,
+                    in: -500...500,
+                    step: 10
+                )
+                .help("Delay all recording audio with a positive value or play it earlier with a negative value.")
+
+                Button("Reset") {
+                    settings.audioOffsetMs = 0
+                }
+                .disabled(settings.audioOffsetMs == 0)
+            }
         }
 
         Section("Webcam Overlay") {

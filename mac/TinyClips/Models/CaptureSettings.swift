@@ -349,6 +349,14 @@ class CaptureSettings: ObservableObject {
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
     @AppStorage("recordAudio") var recordAudio: Bool = false
     @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
+    @AppStorage("audioOffsetMs") var audioOffsetMs: Int = 0 {
+        didSet {
+            let clampedOffset = Self.clampedAudioOffsetMs(audioOffsetMs)
+            if audioOffsetMs != clampedOffset {
+                audioOffsetMs = clampedOffset
+            }
+        }
+    }
     @AppStorage("microphoneLimiterEnabled") var microphoneLimiterEnabled: Bool = true
     @AppStorage("windNoiseRemovalEnabled") var windNoiseRemovalEnabled: Bool = false
     @AppStorage("selectedMicrophoneID") var selectedMicrophoneID: String = ""
@@ -537,6 +545,10 @@ class CaptureSettings: ObservableObject {
         ImageFormat(rawValue: rawValue) ?? .jpeg
     }
 
+    static func clampedAudioOffsetMs(_ offset: Int) -> Int {
+        min(500, max(-500, offset))
+    }
+
     static func hotKeyBinding(for action: HotKeyAction, defaults: UserDefaults) -> HotKeyBinding {
         let fallback = HotKeyBinding.defaultBinding(for: action)
         let keys = hotKeyDefaultsKeys(for: action)
@@ -715,7 +727,7 @@ class CaptureSettings: ObservableObject {
             "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
             "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
             "showTrimmer",
-            "recordAudio", "recordMicrophone", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
+            "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
             "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
             "showScreenshotEditor", "showGifTrimmer",
             "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
@@ -775,6 +787,7 @@ class CaptureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults
+        audioOffsetMs = Self.clampedAudioOffsetMs(audioOffsetMs)
         guard performMigrations else { return }
 
         migrateSaveDirectorySettings(defaults)

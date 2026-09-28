@@ -23,6 +23,14 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
     }
 
+    func testAudioOffsetIsClampedToSupportedRange() {
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(-501), -500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(-500), -500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(0), 0)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(500), 500)
+        XCTAssertEqual(CaptureSettings.clampedAudioOffsetMs(501), 500)
+    }
+
     func testActivationPolicyIsRegularWhenDockPreferenceIsEnabled() {
         XCTAssertEqual(
             TinyClipsActivationPolicy.resolve(showInDock: true, hasOpenScreenshotEditors: false),
