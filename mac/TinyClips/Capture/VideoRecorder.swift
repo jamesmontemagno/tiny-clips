@@ -361,10 +361,16 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
             if isPositiveNumericTime(activeFrameDuration) {
                 fallbackFrameDuration = activeFrameDuration
             }
-            // The screen recorder passes the session's resolved codec; the webcam writer only
-            // verifies that codec against its own dimensions and falls back if this writer rejects it.
+            let resolvedVideoCodec = RecordingVideoCodecResolver.resolve(
+                requested: videoCodec,
+                width: width,
+                height: height
+            )
+            if let fallbackMessage = resolvedVideoCodec.fallbackMessage(context: "the webcam overlay") {
+                onVideoCodecFallback?(fallbackMessage)
+            }
             let videoInputResult = RecordingVideoCodecResolver.makeVideoInput(
-                codec: videoCodec,
+                codec: resolvedVideoCodec.actual,
                 width: width,
                 height: height,
                 writer: writer
