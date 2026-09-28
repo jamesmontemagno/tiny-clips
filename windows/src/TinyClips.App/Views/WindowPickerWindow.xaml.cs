@@ -2,7 +2,9 @@ using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Windows.Graphics;
+using Windows.System;
 using WinRT.Interop;
 
 namespace TinyClips.App;
@@ -25,6 +27,7 @@ public sealed partial class WindowPickerWindow : Window
     {
         InitializeComponent();
         ConfigurePresenter();
+        RootGrid.KeyDown += OnKeyDown;
         Activated += OnActivated;
 
         var ownHwnd = WindowNative.GetWindowHandle(this);
@@ -60,6 +63,16 @@ public sealed partial class WindowPickerWindow : Window
         OverlayWindowHelpers.ApplyRoundedRegion(
             WindowNative.GetWindowHandle(this),
             _windowWidth, _windowHeight, _windowScale, CornerRadiusDip);
+        RootGrid.Focus(FocusState.Programmatic);
+    }
+
+    private void OnKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            Complete(null);
+        }
     }
 
     private void ConfigurePresenter()
