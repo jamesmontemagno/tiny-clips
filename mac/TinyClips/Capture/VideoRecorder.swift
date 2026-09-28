@@ -136,7 +136,7 @@ enum RecordingVideoCodecResolver {
 
     static func resolved(requested: VideoCodec, hevcAvailable: Bool) -> RecordingVideoCodec {
         guard requested == .hevc else {
-            return RecordingVideoCodec(requested: requested, actual: .h264)
+            return RecordingVideoCodec(requested: requested, actual: requested)
         }
 
         return RecordingVideoCodec(requested: requested, actual: hevcAvailable ? .hevc : .h264)

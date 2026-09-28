@@ -350,6 +350,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifFrameRate") var gifFrameRate: Double = 10
     @AppStorage("gifMaxWidth") var gifMaxWidth: Int = 640
     @AppStorage("videoFrameRate") var videoFrameRate: Int = 30
+    // AppStorage-backed user-facing settings use UserDefaults.standard; helpers below accept explicit stores for tests.
     @AppStorage(CaptureSettingsDefaultsKey.videoCodec) var videoCodec: VideoCodec = .h264
     @AppStorage("showMouseClickVisualsInVideo") var showMouseClickVisualsInVideo: Bool = false
     @AppStorage("showMouseClickVisualsInGif") var showMouseClickVisualsInGif: Bool = false

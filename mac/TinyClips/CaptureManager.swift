@@ -1017,6 +1017,7 @@ class CaptureManager: ObservableObject {
                             try await webcamRecorder.start(
                                 outputURL: webcamOutputURL,
                                 selectedWebcamID: webcamSelection.deviceID,
+                                // Keep the companion webcam track aligned with the screen writer's resolved codec.
                                 videoCodec: recorder.videoCodecForCompanionWriters
                             )
                             guard self.activeRecordingSessionID == sessionID else {
