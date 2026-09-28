@@ -646,6 +646,18 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }
+
+    @MainActor
+    func showNotice(_ message: String) {
+        AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
+
+        let alert = NSAlert()
+        alert.messageText = "TinyClips"
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 }
 
 // MARK: - Uploadcare

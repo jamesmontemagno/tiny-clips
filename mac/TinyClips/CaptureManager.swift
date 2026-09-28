@@ -924,7 +924,7 @@ class CaptureManager: ObservableObject {
                     }
                     recorder.onVideoCodecFallback = { message in
                         DispatchQueue.main.async {
-                            SaveService.shared.showError(message)
+                            SaveService.shared.showNotice(message)
                         }
                     }
                     webcamRecorder.onWebcamDeviceName = { [weak self] name in
@@ -935,6 +935,11 @@ class CaptureManager: ObservableObject {
                     webcamRecorder.onWebcamError = { message in
                         DispatchQueue.main.async {
                             SaveService.shared.showError("Webcam error: \(message)")
+                        }
+                    }
+                    webcamRecorder.onVideoCodecFallback = { message in
+                        DispatchQueue.main.async {
+                            SaveService.shared.showNotice(message)
                         }
                     }
 

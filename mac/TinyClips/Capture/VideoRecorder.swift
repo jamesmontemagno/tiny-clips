@@ -285,6 +285,7 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
 
     var onWebcamDeviceName: ((String) -> Void)?
     var onWebcamError: ((String) -> Void)?
+    var onVideoCodecFallback: ((String) -> Void)?
     var previewSession: AVCaptureSession? { session }
 
     func start(outputURL: URL, selectedWebcamID: String, videoCodec: VideoCodec) async throws {
@@ -328,7 +329,21 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
             if isPositiveNumericTime(activeFrameDuration) {
                 fallbackFrameDuration = activeFrameDuration
             }
-            let input = RecordingVideoCodecResolver.makeVideoInput(codec: videoCodec, width: width, height: height)
+            let webcamVideoCodec = RecordingVideoCodecResolver.resolve(
+                requested: videoCodec,
+                width: width,
+                height: height
+            )
+            if webcamVideoCodec.didFallback {
+                onVideoCodecFallback?("H.265 / HEVC is not available for the webcam overlay. TinyClips is recording the webcam with H.264 instead.")
+            }
+            var input = RecordingVideoCodecResolver.makeVideoInput(codec: webcamVideoCodec.actual, width: width, height: height)
+            if !writer.canAdd(input), webcamVideoCodec.actual == .hevc {
+                input = RecordingVideoCodecResolver.makeVideoInput(codec: .h264, width: width, height: height)
+                if writer.canAdd(input) {
+                    onVideoCodecFallback?("H.265 / HEVC is not available for the webcam overlay. TinyClips is recording the webcam with H.264 instead.")
+                }
+            }
             input.expectsMediaDataInRealTime = true
             guard writer.canAdd(input) else {
                 throw CaptureError.saveFailed
