@@ -262,6 +262,10 @@ extension MouseClickOverlayStyle {
     }
 }
 
+private enum CaptureSettingsDefaultsKey {
+    static let videoCodec = "videoCodec"
+}
+
 extension NSColor {
     convenience init?(hexRGBString: String) {
         var value = hexRGBString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -295,7 +299,7 @@ extension NSColor {
 
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
-    static let videoCodecKey = "videoCodec"
+    static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
     private let defaults: UserDefaults
 
     @AppStorage("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
@@ -346,7 +350,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifFrameRate") var gifFrameRate: Double = 10
     @AppStorage("gifMaxWidth") var gifMaxWidth: Int = 640
     @AppStorage("videoFrameRate") var videoFrameRate: Int = 30
-    @AppStorage("videoCodec") var videoCodec: VideoCodec = .h264
+    @AppStorage(CaptureSettingsDefaultsKey.videoCodec) var videoCodec: VideoCodec = .h264
     @AppStorage("showMouseClickVisualsInVideo") var showMouseClickVisualsInVideo: Bool = false
     @AppStorage("showMouseClickVisualsInGif") var showMouseClickVisualsInGif: Bool = false
     @AppStorage("gifMouseClicksUseVideoSettings") var gifMouseClicksUseVideoSettings: Bool = false
@@ -721,7 +725,7 @@ class CaptureSettings: ObservableObject {
     }
 
     func resetToDefaults(preservingHotKeys: Bool = false) {
-        Self.resetStoredDefaults(defaults, preservingHotKeys: preservingHotKeys)
+        Self.resetStoredDefaults(.standard, preservingHotKeys: preservingHotKeys)
         screenshotSaveDirectory = Self.defaultSaveDirectoryURL(for: .screenshot).path
         videoSaveDirectory = Self.defaultSaveDirectoryURL(for: .video).path
         gifSaveDirectory = Self.defaultSaveDirectoryURL(for: .gif).path
@@ -741,12 +745,12 @@ class CaptureSettings: ObservableObject {
     }
 
     static func resetStoredDefaults(_ defaults: UserDefaults, preservingHotKeys: Bool = false) {
+        // Remove all keys in one pass so only a single objectWillChange fires.
         for key in resettableDefaultsKeys + (preservingHotKeys ? [] : resetHotKeyDefaultsKeys) + appStoreDefaultsKeys {
             defaults.removeObject(forKey: key)
         }
     }
 
-    // Remove all keys in one pass so only a single objectWillChange fires.
     static let resettableDefaultsKeys: [String] = [
         "saveDirectory", "screenshotSaveDirectory", "videoSaveDirectory", "gifSaveDirectory",
         "videoGifSaveDirectory", "useDefaultSaveDirectories",

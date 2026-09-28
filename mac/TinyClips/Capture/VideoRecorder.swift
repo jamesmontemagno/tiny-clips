@@ -3,6 +3,7 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import AudioToolbox
+import VideoToolbox
 
 enum RecordingTimelineMath {
     static func accumulatedPauseDuration(
@@ -127,7 +128,8 @@ private enum RecordingVideoCodecResolver {
             return RecordingVideoCodec(requested: requested, actual: .h264)
         }
 
-        guard canCreateVideoInput(codec: .hevc, width: width, height: height) else {
+        guard canCreateHardwareEncoder(codec: .hevc, width: width, height: height),
+              canCreateVideoInput(codec: .hevc, width: width, height: height) else {
             return RecordingVideoCodec(requested: requested, actual: .h264)
         }
 
@@ -164,6 +166,37 @@ private enum RecordingVideoCodecResolver {
         } catch {
             return false
         }
+    }
+
+    private static func canCreateHardwareEncoder(codec: VideoCodec, width: Int, height: Int) -> Bool {
+        let codecType: CMVideoCodecType
+        switch codec {
+        case .h264:
+            codecType = kCMVideoCodecType_H264
+        case .hevc:
+            codecType = kCMVideoCodecType_HEVC
+        }
+
+        let encoderSpecification = [
+            kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true
+        ] as CFDictionary
+        var compressionSession: VTCompressionSession?
+        let status = VTCompressionSessionCreate(
+            allocator: kCFAllocatorDefault,
+            width: Int32(width),
+            height: Int32(height),
+            codecType: codecType,
+            encoderSpecification: encoderSpecification,
+            imageBufferAttributes: nil,
+            compressedDataAllocator: nil,
+            outputCallback: nil,
+            refcon: nil,
+            compressionSessionOut: &compressionSession
+        )
+        if let compressionSession {
+            VTCompressionSessionInvalidate(compressionSession)
+        }
+        return status == noErr
     }
 
     private static func videoOutputSettings(codec: VideoCodec, width: Int, height: Int) -> [String: Any] {
