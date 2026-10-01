@@ -5,6 +5,10 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- Stable Windows releases now automatically open a winget manifest PR after publishing; alpha and
+  beta releases are excluded, and the PR still requires maintainer review and merge.
+
 ## [v1.8.0-windows] - 2026-09-28
 
 ### Added

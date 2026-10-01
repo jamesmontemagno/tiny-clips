@@ -129,24 +129,20 @@ Required repository secrets:
 - `AZURE_ARTIFACT_SIGNING_ENDPOINT` (for example, `https://wus2.codesigning.azure.net/`)
 - `AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME` (for example, `Refractored`)
 - `AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME` (for example, `tinyclips-release`)
+- `WINGET_CREATE_GITHUB_TOKEN` (classic `public_repo` PAT that can fork `microsoft/winget-pkgs`;
+   used to open the winget manifest PR after a stable Windows release)
 
 The Azure identity must have the **Artifact Signing Certificate Profile Signer** role on the
 certificate profile.
 
 ## 2. Publish to winget
 
-The three-file manifest in this folder (`*.yaml`) is the winget submission. After a signed
-release exists:
-
-1. Fill in the installer manifest:
-   - `InstallerUrl` → the Release asset URL
-   - `InstallerSha256` → `winget hash <path-to.msix>`
-   - `SignatureSha256` → `winget hash --msix <path-to.msix>`
-   - `PackageFamilyName` → from `Get-AppxPackage Refractored.TinyClips | Select PackageFamilyName`
-2. Validate: `winget validate --manifest windows/packaging/winget`
-3. Test locally: `winget install --manifest windows/packaging/winget`
-4. Submit a PR to [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) (or use
-   `wingetcreate submit`). This can be automated in CI on each tagged release.
+The three-file manifest in this folder (`*.yaml`) is the winget submission. After each stable
+Windows release is published, the release workflow validates the generated manifest and opens a
+PR to `microsoft/winget-pkgs` using `wingetcreate`. Maintainers still review and merge that PR;
+alpha and beta releases are not submitted. The `WinGet Submission` workflow can also be run
+manually for an existing release by providing its Windows tag. It downloads the signed packages,
+regenerates and validates the manifest, then opens the PR for maintainer review and merge.
 
 The locale manifest already includes:
 - `PrivacyUrl: https://tinyclips.app/privacy.html`

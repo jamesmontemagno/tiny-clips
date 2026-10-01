@@ -1,7 +1,8 @@
 name: WinGet Submission
 
-# Manually-gated submission of a published Windows release to the winget community
-# repository (microsoft/winget-pkgs). Run this AFTER you've eyeballed the GitHub release.
+# Submits a published Windows release to the winget community repository
+# (microsoft/winget-pkgs). The release workflow calls this after publishing the release;
+# maintainers still review and merge the generated PR.
 #
 # Unlike the PowerToys "wingetcreate update" approach, this regenerates our full multi-file
 # manifest from source (windows/packaging/winget) so it cannot inherit stale runtime
@@ -13,6 +14,15 @@ name: WinGet Submission
 # See https://aka.ms/winget-create-token.
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Windows release tag to submit
+        required: true
+        type: string
+    secrets:
+      WINGET_CREATE_GITHUB_TOKEN:
+        required: true
   workflow_dispatch:
     inputs:
       tag:
