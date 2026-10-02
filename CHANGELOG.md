@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- macOS screenshot editor cropping is easier to find and control. The toolbar now has a labeled **Apply Crop** button, and choosing the Crop tool shows a Crop section in the sidebar with the selection size in pixels plus Apply Crop and Clear buttons.
+- The macOS crop selection can now be adjusted instead of redrawn: drag any corner or edge handle to resize it (hold Shift on a corner to keep its shape), drag inside it to move it, hold Shift while drawing for a square, and click outside it to dismiss it. The pointer shows what a drag will do.
+- In the macOS screenshot editor, Return applies the crop and Esc clears the selection before it offers to close the editor.
+- Applying a crop in the macOS screenshot editor can now be undone and redone, restoring the uncropped image together with its annotations.
+- A crop selection in the macOS screenshot editor now only changes the image once it is applied, matching Windows. Save, Copy, and the output size ignore an unapplied selection, and switching tools clears it.
+
+### Fixed
+- Fixed the macOS screenshot editor silently cropping saved and copied images to a selection that was no longer visible after switching to another tool.
+- Fixed crop selection drags in the macOS screenshot editor filling the undo history and leaving the editor marked as changed after the selection was removed.
+
 ## v1.8.0.0-mac - 2026-09-28
 
 ### Added

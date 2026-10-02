@@ -9,6 +9,8 @@ struct ScreenshotEditorCanvasView: View {
     let zoomScale: CGFloat
     let panOffset: CGSize
 
+    @State private var cropHover: CropDragMode?
+
     var body: some View {
         let exportLayout = viewModel.displayLayout(in: containerSize, zoomScale: zoomScale)
         let imageSize = exportLayout.imageRect.size
@@ -120,11 +122,23 @@ struct ScreenshotEditorCanvasView: View {
                         context.fill(dimPath, with: .color(.black.opacity(0.5)), style: FillStyle(eoFill: true))
                         // Crop border
                         context.stroke(Path(scaled), with: .color(.white), lineWidth: 2)
-                        // Corner handles
-                        let handleSize: CGFloat = 8
-                        for corner in corners(of: scaled) {
-                            let handleRect = CGRect(x: corner.x - handleSize/2, y: corner.y - handleSize/2, width: handleSize, height: handleSize)
-                            context.fill(Path(handleRect), with: .color(.white))
+                        // Resize handles; edge handles are skipped when the side is too short to fit them.
+                        let handleSize: CGFloat = 10
+                        let minimumSideForEdgeHandle = handleSize * 4
+                        for handle in CropHandle.allCases {
+                            if !handle.isCorner {
+                                let side = handle.movesLeftEdge || handle.movesRightEdge ? scaled.height : scaled.width
+                                if side < minimumSideForEdgeHandle { continue }
+                            }
+                            let center = ScreenshotEditorCropMath.handlePoint(handle, in: scaled)
+                            let handlePath = Path(CGRect(
+                                x: center.x - handleSize / 2,
+                                y: center.y - handleSize / 2,
+                                width: handleSize,
+                                height: handleSize
+                            ))
+                            context.fill(handlePath, with: .color(.white))
+                            context.stroke(handlePath, with: .color(.accentColor), lineWidth: 1.5)
                         }
                     }
                 }
@@ -254,13 +268,13 @@ struct ScreenshotEditorCanvasView: View {
                                 let normalizedStart = viewModel.normalizePoint(value.startLocation, imageSize: imageSize)
                                 let normalizedCurrent = viewModel.normalizePoint(value.location, imageSize: imageSize)
                                 let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
-                                viewModel.handleDrag(start: normalizedStart, current: normalizedCurrent, isAspectLocked: isShiftPressed)
+                                viewModel.handleDrag(start: normalizedStart, current: normalizedCurrent, isAspectLocked: isShiftPressed, displaySize: imageSize)
                             }
                             .onEnded { value in
                                 let normalizedStart = viewModel.normalizePoint(value.startLocation, imageSize: imageSize)
                                 let normalizedEnd = viewModel.normalizePoint(value.location, imageSize: imageSize)
                                 let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
-                                viewModel.handleDragEnd(start: normalizedStart, end: normalizedEnd, isAspectLocked: isShiftPressed)
+                                viewModel.handleDragEnd(start: normalizedStart, end: normalizedEnd, isAspectLocked: isShiftPressed, displaySize: imageSize)
                             }
                     )
                     .simultaneousGesture(
@@ -275,6 +289,8 @@ struct ScreenshotEditorCanvasView: View {
                                     viewModel.placeNumberAnnotation(at: normalized)
                                 } else if viewModel.selectedTool == .emoji {
                                     viewModel.placeEmojiAnnotation(at: normalized)
+                                } else if viewModel.selectedTool == .crop {
+                                    viewModel.handleCropTap(at: normalized, displaySize: imageSize)
                                 } else if viewModel.selectedTool == .move {
                                     // Tap to select/deselect annotations
                                     if let idx = viewModel.annotationIndex(at: normalized) {
@@ -285,15 +301,68 @@ struct ScreenshotEditorCanvasView: View {
                                 }
                             }
                     )
+                    .onContinuousHover { phase in
+                        guard viewModel.selectedTool == .crop else {
+                            if cropHover != nil { cropHover = nil }
+                            return
+                        }
+                        switch phase {
+                        case .active(let location):
+                            let hover = viewModel.cropInteraction(
+                                at: viewModel.normalizePoint(location, imageSize: imageSize),
+                                displaySize: imageSize
+                            )
+                            if cropHover != hover { cropHover = hover }
+                        case .ended:
+                            if cropHover != nil { cropHover = nil }
+                        }
+                    }
+                    .pointerStyle(cropPointerStyle)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Screenshot annotation canvas")
-                    .accessibilityHint(viewModel.selectedTool == .move
-                        ? "Select an annotation, drag inside it to move, drag a corner handle to resize, or drag the rotation grip above it to rotate."
-                        : viewModel.selectedTool == .emoji
-                            ? "Click to place the selected emoji."
-                            : "Use the selected tool to edit the screenshot.")
+                    .accessibilityHint(canvasAccessibilityHint)
                     .position(x: origin.x + imageSize.width / 2, y: origin.y + imageSize.height / 2)
             }
+        }
+    }
+
+    private var canvasAccessibilityHint: String {
+        switch viewModel.selectedTool {
+        case .move:
+            return "Select an annotation, drag inside it to move, drag a corner handle to resize, or drag the rotation grip above it to rotate."
+        case .emoji:
+            return "Click to place the selected emoji."
+        case .crop:
+            return "Drag to select the area to keep. Drag a handle to resize the selection or drag inside it to move it, then press Return to apply the crop."
+        default:
+            return "Use the selected tool to edit the screenshot."
+        }
+    }
+
+    /// Pointer feedback for the Crop tool: resize arrows on handles, a hand inside the selection.
+    private var cropPointerStyle: PointerStyle? {
+        guard viewModel.selectedTool == .crop else { return nil }
+        guard let cropHover else { return PointerStyle.rectSelection }
+        switch cropHover {
+        case .create:
+            return PointerStyle.rectSelection
+        case .move:
+            return viewModel.isAdjustingCropSelection ? PointerStyle.grabActive : PointerStyle.grabIdle
+        case .resize(let handle):
+            return PointerStyle.frameResize(position: frameResizePosition(for: handle))
+        }
+    }
+
+    private func frameResizePosition(for handle: CropHandle) -> FrameResizePosition {
+        switch handle {
+        case .topLeft: return .topLeading
+        case .top: return .top
+        case .topRight: return .topTrailing
+        case .left: return .leading
+        case .right: return .trailing
+        case .bottomLeft: return .bottomLeading
+        case .bottom: return .bottom
+        case .bottomRight: return .bottomTrailing
         }
     }
 

@@ -517,7 +517,203 @@ enum ScreenshotEditorZoomMath {
     }
 }
 
+/// Grab points on the crop selection: four corners plus the four edges.
+enum CropHandle: CaseIterable {
+    case topLeft
+    case top
+    case topRight
+    case left
+    case right
+    case bottomLeft
+    case bottom
+    case bottomRight
+
+    var movesLeftEdge: Bool { self == .topLeft || self == .left || self == .bottomLeft }
+    var movesRightEdge: Bool { self == .topRight || self == .right || self == .bottomRight }
+    var movesTopEdge: Bool { self == .topLeft || self == .top || self == .topRight }
+    var movesBottomEdge: Bool { self == .bottomLeft || self == .bottom || self == .bottomRight }
+
+    var isCorner: Bool {
+        (movesLeftEdge || movesRightEdge) && (movesTopEdge || movesBottomEdge)
+    }
+}
+
+/// What a drag that starts at a given point does to the crop selection.
+enum CropDragMode: Equatable {
+    case create
+    case move
+    case resize(CropHandle)
+}
+
+/// Crop selection geometry. Rects and points are normalized to the image (0...1 on both axes,
+/// y-down) unless a parameter says otherwise.
 enum ScreenshotEditorCropMath {
+    /// Selections smaller than this on screen are treated as accidental drags.
+    static let minimumSelectionDisplayPoints: CGFloat = 4
+    /// Half-size of the square hit area around each handle and edge, in screen points.
+    static let handleHitRadiusPoints: CGFloat = 8
+
+    static func handlePoint(_ handle: CropHandle, in rect: CGRect) -> CGPoint {
+        let x: CGFloat
+        if handle.movesLeftEdge {
+            x = rect.minX
+        } else if handle.movesRightEdge {
+            x = rect.maxX
+        } else {
+            x = rect.midX
+        }
+
+        let y: CGFloat
+        if handle.movesTopEdge {
+            y = rect.minY
+        } else if handle.movesBottomEdge {
+            y = rect.maxY
+        } else {
+            y = rect.midY
+        }
+
+        return CGPoint(x: x, y: y)
+    }
+
+    /// Converts the on-screen handle hit radius into normalized units for an image drawn at `displaySize`.
+    static func hitTolerance(forDisplaySize displaySize: CGSize) -> CGSize {
+        guard displaySize.width > 0, displaySize.height > 0 else {
+            return CGSize(width: 0.02, height: 0.02)
+        }
+        return CGSize(
+            width: handleHitRadiusPoints / displaySize.width,
+            height: handleHitRadiusPoints / displaySize.height
+        )
+    }
+
+    /// Corners win over edges, edges over the interior; anywhere else starts a new selection.
+    static func dragMode(at point: CGPoint, selection: CGRect?, tolerance: CGSize) -> CropDragMode {
+        guard let selection, selection.width > 0, selection.height > 0 else { return .create }
+
+        let leftDistance = abs(point.x - selection.minX)
+        let rightDistance = abs(point.x - selection.maxX)
+        let topDistance = abs(point.y - selection.minY)
+        let bottomDistance = abs(point.y - selection.maxY)
+
+        // A selection narrower than the tolerance matches both sides; keep the closer one.
+        let nearLeft = leftDistance <= tolerance.width && leftDistance <= rightDistance
+        let nearRight = rightDistance <= tolerance.width && !nearLeft
+        let nearTop = topDistance <= tolerance.height && topDistance <= bottomDistance
+        let nearBottom = bottomDistance <= tolerance.height && !nearTop
+
+        if nearTop && nearLeft { return .resize(.topLeft) }
+        if nearTop && nearRight { return .resize(.topRight) }
+        if nearBottom && nearLeft { return .resize(.bottomLeft) }
+        if nearBottom && nearRight { return .resize(.bottomRight) }
+
+        let spansX = point.x >= selection.minX && point.x <= selection.maxX
+        let spansY = point.y >= selection.minY && point.y <= selection.maxY
+        if nearLeft && spansY { return .resize(.left) }
+        if nearRight && spansY { return .resize(.right) }
+        if nearTop && spansX { return .resize(.top) }
+        if nearBottom && spansX { return .resize(.bottom) }
+
+        return spansX && spansY ? .move : .create
+    }
+
+    /// A new selection dragged from `start` to `end`. `square` keeps it square in image pixels.
+    static func created(from start: CGPoint, to end: CGPoint, square: Bool, imageSize: CGSize) -> CGRect {
+        let start = clampedToImage(start)
+        var end = clampedToImage(end)
+
+        if square, imageSize.width > 0, imageSize.height > 0 {
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let availableX = (dx >= 0 ? 1 - start.x : start.x) * imageSize.width
+            let availableY = (dy >= 0 ? 1 - start.y : start.y) * imageSize.height
+            let side = min(
+                max(abs(dx) * imageSize.width, abs(dy) * imageSize.height),
+                availableX,
+                availableY
+            )
+            end = CGPoint(
+                x: start.x + (dx >= 0 ? side : -side) / imageSize.width,
+                y: start.y + (dy >= 0 ? side : -side) / imageSize.height
+            )
+        }
+
+        return CGRect(
+            x: min(start.x, end.x),
+            y: min(start.y, end.y),
+            width: abs(end.x - start.x),
+            height: abs(end.y - start.y)
+        )
+    }
+
+    /// Moves the selection without resizing it, stopping at the image edges.
+    static func moved(_ rect: CGRect, by delta: CGSize) -> CGRect {
+        let width = min(1, rect.width)
+        let height = min(1, rect.height)
+        return CGRect(
+            x: min(max(0, rect.minX + delta.width), 1 - width),
+            y: min(max(0, rect.minY + delta.height), 1 - height),
+            width: width,
+            height: height
+        )
+    }
+
+    /// Moves the edges owned by `handle` to `point`. Dragging past the opposite edge flips the
+    /// selection instead of collapsing it. `lockedAspect` (normalized width / height) keeps the
+    /// shape for corner handles.
+    static func resized(_ rect: CGRect, handle: CropHandle, to point: CGPoint, lockedAspect: CGFloat? = nil) -> CGRect {
+        let point = clampedToImage(point)
+
+        if let lockedAspect, lockedAspect > 0, handle.isCorner {
+            let anchor = CGPoint(
+                x: handle.movesLeftEdge ? rect.maxX : rect.minX,
+                y: handle.movesTopEdge ? rect.maxY : rect.minY
+            )
+            let dx = point.x - anchor.x
+            let dy = point.y - anchor.y
+            let growsRight = dx == 0 ? handle.movesRightEdge : dx > 0
+            let growsDown = dy == 0 ? handle.movesBottomEdge : dy > 0
+            let availableWidth = growsRight ? 1 - anchor.x : anchor.x
+            let availableHeight = growsDown ? 1 - anchor.y : anchor.y
+
+            var width = max(abs(dx), abs(dy) * lockedAspect)
+            width = min(width, availableWidth, availableHeight * lockedAspect)
+            let height = width / lockedAspect
+
+            return CGRect(
+                x: growsRight ? anchor.x : anchor.x - width,
+                y: growsDown ? anchor.y : anchor.y - height,
+                width: width,
+                height: height
+            )
+        }
+
+        var left = rect.minX
+        var right = rect.maxX
+        var top = rect.minY
+        var bottom = rect.maxY
+        if handle.movesLeftEdge { left = point.x }
+        if handle.movesRightEdge { right = point.x }
+        if handle.movesTopEdge { top = point.y }
+        if handle.movesBottomEdge { bottom = point.y }
+
+        return CGRect(
+            x: min(left, right),
+            y: min(top, bottom),
+            width: abs(right - left),
+            height: abs(bottom - top)
+        )
+    }
+
+    /// Whether the selection is big enough on screen to be a deliberate crop.
+    static func isUsableSelection(_ rect: CGRect, displaySize: CGSize) -> Bool {
+        rect.width * displaySize.width >= minimumSelectionDisplayPoints
+            && rect.height * displaySize.height >= minimumSelectionDisplayPoints
+    }
+
+    private static func clampedToImage(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: min(1, max(0, point.x)), y: min(1, max(0, point.y)))
+    }
+
     static func pixelRect(for normalizedRect: CGRect, imageSize: CGSize) -> CGRect? {
         guard imageSize.width > 0, imageSize.height > 0 else { return nil }
 

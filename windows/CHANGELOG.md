@@ -5,6 +5,11 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- **Screenshot editor opens with the Select tool.** The editor previously started on Crop; it now
+  starts on Select, matching macOS. Press **C** or choose **Crop** in the tool rail to crop, then
+  **Apply crop** as before.
+
 ## [v1.8.0-windows] - 2026-09-28
 
 ### Added
