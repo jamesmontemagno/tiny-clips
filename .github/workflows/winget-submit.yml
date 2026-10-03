@@ -64,7 +64,7 @@ jobs:
             --dir packages
           Get-ChildItem packages | Format-Table Name, Length
 
-      - name: Verify self-contained NativeAOT packages
+      - name: Verify self-contained packages
         shell: pwsh
         run: |
           foreach ($architecture in @("x64", "arm64")) {
@@ -97,8 +97,8 @@ jobs:
 
           @"
           # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
-          # Installer manifest for the signed, NativeAOT self-contained MSIX produced by the
-          # Windows Release workflow. The package bundles .NET native code and Windows App SDK,
+          # Installer manifest for the signed, self-contained MSIX produced by the
+          # Windows Release workflow. The package bundles the .NET runtime and Windows App SDK,
           # so winget runtime package dependencies are intentionally unnecessary.
           PackageIdentifier: Refractored.TinyClips
           PackageVersion: $env:PACKAGE_VERSION

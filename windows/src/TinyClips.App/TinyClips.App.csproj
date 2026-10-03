@@ -33,7 +33,7 @@
       - true: Microsoft Store distribution
     -->
     <TinyClipsStoreBuild Condition="'$(TinyClipsStoreBuild)' == ''">false</TinyClipsStoreBuild>
-    <!-- Enables the NativeAOT, .NET self-contained, and Windows App SDK self-contained direct release profile. -->
+    <!-- Enables the direct release profile: bundled .NET runtime and Windows App SDK, no runtime prerequisites. -->
     <TinyClipsDirectReleaseBuild Condition="'$(TinyClipsDirectReleaseBuild)' == ''">false</TinyClipsDirectReleaseBuild>
   </PropertyGroup>
 
@@ -42,15 +42,17 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TinyClipsDirectReleaseBuild)' == 'true'">
-    <PublishAot>true</PublishAot>
+    <!--
+      Direct releases run on CoreCLR, the same code path as the Store flavor. 1.8.0 and 1.8.1
+      shipped NativeAOT and failed at runtime in the screenshot editor, recording setup, and
+      Clips Library (WinRT collection, cast, and binding paths that only break under NativeAOT
+      and that the build does not flag). Do not re-enable PublishAot or PublishTrimmed without
+      exercising every window in the packaged build.
+    -->
+    <PublishAot>false</PublishAot>
     <SelfContained>true</SelfContained>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <PublishTrimmed>true</PublishTrimmed>
-    <PublishReadyToRun>false</PublishReadyToRun>
-    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
-    <TrimmerSingleWarn>false</TrimmerSingleWarn>
-    <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL3050</WarningsAsErrors>
-    <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);WMC1510</MSBuildWarningsAsErrors>
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TinyClipsStoreBuild)' == 'true'">
@@ -138,8 +140,7 @@
   <PropertyGroup>
     <!--
       ReadyToRun pre-compiles IL so the first capture after launch doesn't pay JIT cost for every
-      overlay window type in ordinary Release builds. Direct release packages use NativeAOT
-      instead and explicitly disable ReadyToRun above.
+      overlay window type. It applies to Release builds, including direct release packages.
     -->
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == '' and '$(Configuration)' == 'Release'">True</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">False</PublishReadyToRun>
