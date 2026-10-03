@@ -13,6 +13,10 @@ own `CHANGELOG.md` at the repository root.
   **Apply crop** as before.
 
 ### Fixed
+- **The screenshot editor opens again in direct and winget installs.** In the 1.8.0 direct build
+  the editor never appeared after a capture or **Open with**, and Tiny Clips could then crash.
+  The emoji quick-pick list was handed to the UI in a form the NativeAOT build cannot expose to
+  XAML. Microsoft Store installs were not affected.
 - **Direct and winget installs no longer crash on their first launch.** The 1.8.0 direct MSIX
   embedded its App Installer auto-update configuration, and the first launch after installing
   exited immediately (`0xC0000409`) on x64 and ARM64; launching again worked. This also failed

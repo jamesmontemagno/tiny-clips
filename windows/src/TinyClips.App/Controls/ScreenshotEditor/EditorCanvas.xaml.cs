@@ -302,6 +302,13 @@ public sealed partial class EditorCanvas : UserControl
 
     private void OnImageHostSizeChanged(object sender, SizeChangedEventArgs e)
     {
+        // XAML lays out a window's content even when the window's constructor threw before
+        // Attach ran, so this can fire with no controller. Crashing here hid the real failure.
+        if (_controller is null)
+        {
+            return;
+        }
+
         LayoutCanvas();
         RepositionAll();
     }
