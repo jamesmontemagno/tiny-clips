@@ -5,10 +5,11 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
-- macOS Screenshot settings have a new **Confirm before closing editor with Esc** option, on by default. Turn it off to close screenshot editors with a single Esc press, which discards anything unsaved.
+- macOS General settings have a new **Confirm before closing editors with Esc** option, on by default, covering the screenshot editor, video trimmer, and GIF trimmer. Turn it off to close them with a single Esc press, which discards anything unsaved.
 
 ### Changed
 - Pressing Esc in the macOS screenshot editor now asks before closing it, and warns when closing would discard a capture that has not been saved yet.
+- Pressing Esc in the macOS video and GIF trimmers now asks before closing them too, and warns when closing would discard a recording that has not been saved yet or trim changes that have not been exported.
 - macOS screenshot editor cropping is easier to find and control. The toolbar now has a labeled **Apply Crop** button, and choosing the Crop tool shows a Crop section in the sidebar with the selection size in pixels plus Apply Crop and Clear buttons.
 - The macOS crop selection can now be adjusted instead of redrawn: drag any corner or edge handle to resize it (hold Shift on a corner to keep its shape), drag inside it to move it, hold Shift while drawing for a square, and click outside it to dismiss it. The pointer shows what a drag will do.
 - In the macOS screenshot editor, Return applies the crop and Esc clears the selection before it offers to close the editor.

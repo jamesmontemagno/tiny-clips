@@ -385,6 +385,46 @@ final class CaptureMathTests: XCTestCase {
         }
     }
 
+    func testTrimmerEscapeConfirmsEveryCloseWhenEnabled() {
+        func escape(unsaved: Bool, discardsCapture: Bool) -> TrimmerEscapePrompt? {
+            TrimmerEscapePrompt.resolve(
+                confirmOnEscape: true,
+                hasUnsavedChanges: unsaved,
+                discardsUnsavedCapture: discardsCapture
+            )
+        }
+
+        XCTAssertEqual(escape(unsaved: false, discardsCapture: false), .closeTrimmer)
+        XCTAssertEqual(escape(unsaved: true, discardsCapture: false), .discardChanges)
+        XCTAssertEqual(escape(unsaved: false, discardsCapture: true), .discardUnsavedCapture)
+        XCTAssertEqual(escape(unsaved: true, discardsCapture: true), .discardUnsavedCapture)
+        XCTAssertFalse(TrimmerEscapePrompt.closeTrimmer.isDestructive)
+        XCTAssertTrue(TrimmerEscapePrompt.discardChanges.isDestructive)
+        XCTAssertTrue(TrimmerEscapePrompt.discardUnsavedCapture.isDestructive)
+    }
+
+    func testTrimmerEscapeClosesWithoutPromptWhenConfirmationIsOff() {
+        for unsaved in [false, true] {
+            for discardsCapture in [false, true] {
+                XCTAssertNil(
+                    TrimmerEscapePrompt.resolve(
+                        confirmOnEscape: false,
+                        hasUnsavedChanges: unsaved,
+                        discardsUnsavedCapture: discardsCapture
+                    )
+                )
+            }
+        }
+    }
+
+    func testTrimmerEscapePromptNamesWhatIsDiscarded() {
+        let prompt = TrimmerEscapePrompt.discardUnsavedCapture
+        XCTAssertEqual(prompt.title(for: .video), "Discard recording?")
+        XCTAssertEqual(prompt.confirmTitle(for: .video), "Discard Recording")
+        XCTAssertEqual(prompt.title(for: .gif), "Discard GIF?")
+        XCTAssertEqual(prompt.confirmTitle(for: .gif), "Discard GIF")
+    }
+
     func testScreenshotEditorZoomClampsAndStepsThroughPresets() {
         XCTAssertEqual(ScreenshotEditorZoomMath.clamp(0.1), 0.25)
         XCTAssertEqual(ScreenshotEditorZoomMath.clamp(8), 4)

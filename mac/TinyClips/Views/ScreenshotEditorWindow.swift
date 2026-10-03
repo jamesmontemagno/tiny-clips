@@ -439,7 +439,7 @@ struct ScreenshotEditorView: View {
     @State private var isBackgroundSectionExpanded = true
     @State private var showExitConfirmation = false
     @State private var closePrompt: ScreenshotEditorClosePrompt = .discardChanges
-    @AppStorage(CaptureSettings.confirmScreenshotEditorEscapeKey) private var confirmOnEscape = true
+    @AppStorage(CaptureSettings.confirmEditorEscapeKey) private var confirmOnEscape = true
     @State private var showDeleteConfirmation = false
     @State private var showClearAnnotationsConfirmation = false
     @State private var currentSaveURL: URL
