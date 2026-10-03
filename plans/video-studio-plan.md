@@ -200,7 +200,8 @@ This section records what was built and how it differs from the plan above. It i
 | Project format, store, cleanup rules, layout resolver, time map | Done. Passes the shared fixtures | Done. Passes the shared fixtures |
 | Studio capture mode | Done | Done. Checked with the recording benchmark |
 | Renderer and exporter | Done | In progress |
-| Studio window | Done | Not started |
+| Live preview | Done (part of the renderer) | Not started. The design is settled by the engine spike |
+| Studio window | Done | In progress |
 | Settings, Record for Studio, reopening projects | Done | Settings, the Record for Studio toggle, and cleanup are done. Opening a project waits for the window |
 
 Nothing on macOS has been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. Capture, the compositor, the preview, export, and the whole Studio window are unverified at runtime. Until someone has run them, Studio stays off on macOS.
@@ -223,6 +224,8 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **Events during pauses.** Clicks and cursor samples from before the first frame or during a pause are not recorded. Cursor samples are capped at 60 per second, drop consecutive duplicates, and are steps, not points to interpolate between.
 - **Drawing rules** are in section 6.7 of `docs/studio-project-format.md`: sRGB with gamma-space blending, no color conversion of screen pixels, the shadow model, where the border goes, and the click ring geometry.
 - **Camera size on Windows.** The camera track is recorded at the camera's own aspect, fitted inside 1920×1080 and never enlarged.
+- **Where projects are kept on Windows.** The installed app is packaged, so its projects are in the package's own folder, `%LOCALAPPDATA%\Packages\<package family>\LocalState\TinyClips\Projects`. Only an unpackaged run uses `%LOCALAPPDATA%\TinyClips\Projects`.
+- **Windows editor behavior lives in Core.** `StudioEditorModel` (edits and undo) and the preview and export contracts are in `TinyClips.Core`, so the editor's rules are unit tested and the window only binds to them.
 - **macOS preview.** The preview always plays the whole recording. Trim and mute are applied by the transport and by export, so changing them does not rebuild the player. Only a change of canvas shape does.
 - **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
 - **Editor windows get a Dock icon.** While a Studio window is open on macOS, Tiny Clips shows its Dock icon and menu bar, as it does for the screenshot editor.
@@ -233,7 +236,10 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **Windows** (`windows/spikes/StudioEngineSpike`, findings in its `FINDINGS.md`):
   - Preview: two frame-server `MediaPlayer`s on one `MediaTimelineController` delivered every frame of both clips at 1x and kept them on matching frames 98.6 to 99.95 percent of the time, never more than one frame apart. A paused seek occasionally delivers no frame, so every paused position change goes through a one-at-a-time seek policy that detects a lost seek and repairs it.
   - Export: Media Foundation source readers with the shared Direct3D device give textures Direct2D can draw without a copy. With offline encoder settings a 2560×1440 export ran at 131 to 238 frames per second on the test machine.
-  - Presenting in WinUI 3, two encoders while recording, and NativeAOT were still being measured when this was written.
+  - Presenting: a plain `SwapChainPanel` with a DXGI composition swap chain and Win2D's `CanvasSwapChainPanel` behaved alike. The plain panel is used, because the one shared renderer draws straight into its back buffer.
+  - Recording: a second hardware encoder for a 1920×1080 camera track cost the screen track nothing measurable, with no dropped frames.
+  - NativeAOT: every mode ran from the AOT build without changes.
+  - Not measured: sound from the preview players, real recordings as input, a real change of monitor DPI, and a packaged AOT build.
 - **macOS**: not run. It needs a Mac.
 
 ### Changes outside Studio
