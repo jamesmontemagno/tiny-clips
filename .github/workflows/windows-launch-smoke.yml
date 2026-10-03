@@ -21,11 +21,11 @@ on:
       release_tag:
         description: "Release tag holding the MSIX assets (source=release)"
         required: false
-        default: "v1.8.0-windows"
+        default: "v1.8.1-windows"
       asset_version:
         description: "Version embedded in the asset name (e.g. 1.7.1)"
         required: true
-        default: "1.8.0"
+        default: "1.8.1"
       wait_seconds:
         description: "How long the app must stay alive to count as a pass"
         required: false
@@ -49,8 +49,8 @@ jobs:
 
     env:
       SOURCE: ${{ inputs.source || 'release' }}
-      RELEASE_TAG: ${{ inputs.release_tag || 'v1.8.0-windows' }}
-      ASSET_VERSION: ${{ inputs.asset_version || '1.8.0' }}
+      RELEASE_TAG: ${{ inputs.release_tag || 'v1.8.1-windows' }}
+      ASSET_VERSION: ${{ inputs.asset_version || '1.8.1' }}
       WAIT_SECONDS: ${{ inputs.wait_seconds || '60' }}
       ARCH: ${{ matrix.arch }}
       GH_TOKEN: ${{ github.token }}

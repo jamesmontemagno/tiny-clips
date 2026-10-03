@@ -33,18 +33,18 @@ From the repository root:
 
 ```pwsh
 # Validate a published release (Azure-signed, no certificate juggling)
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.0
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.1
 
 # Validate the current working tree: builds the MSIX with the release recipe and signs it with a
 # throwaway self-signed certificate that only the Sandbox trusts
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.0
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.1
 ```
 
 The Welcome window appears, gets clicked through, and the script prints the result:
 
 ```
 18:05:28   installed
-18:05:31   Refractored.TinyClips_1.8.0.0_x64__vmshqmcyy894t
+18:05:31   Refractored.TinyClips_1.8.1.0_x64__vmshqmcyy894t
 18:05:32 Launching C:\Program Files\WindowsApps\...\TinyClips.App.exe (cwd C:\Windows\Temp)
 18:05:52 Activating 'Welcome to Tiny Clips' and clicking through onboarding (3x Enter)
 18:06:34 RESULT: PASS - alive after 60s

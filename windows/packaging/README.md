@@ -111,8 +111,8 @@ exchange for clean-machine installation.
 #### Verifying locally in Windows Sandbox (recommended before every release)
 
 ```pwsh
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.0     # working tree
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.0   # published tag
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.1     # working tree
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.1   # published tag
 ```
 
 This starts an **offline** fresh Sandbox, installs no .NET or Windows App Runtime prerequisites,
