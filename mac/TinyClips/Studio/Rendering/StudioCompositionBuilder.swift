@@ -19,6 +19,7 @@ enum StudioCompositionBuilder {
         case screenCompositionTrackCreationFailed
         case cameraCompositionTrackCreationFailed
         case cameraVideoTrackMissing(URL)
+        case emptyTimeline
         case unsupportedInstruction
         case outputBufferUnavailable
 
@@ -32,6 +33,8 @@ enum StudioCompositionBuilder {
                 return "Could not create the Studio camera composition track."
             case let .cameraVideoTrackMissing(url):
                 return "Studio camera video track is missing or invalid: \(url.lastPathComponent)."
+            case .emptyTimeline:
+                return "Nothing is left to show after trimming."
             case .unsupportedInstruction:
                 return "The Studio compositor received an instruction it does not understand."
             case .outputBufferUnavailable:
@@ -64,16 +67,22 @@ enum StudioCompositionBuilder {
         }
         compositionScreenTrack.preferredTransform = try await screenTrack.load(.preferredTransform)
 
+        // Each kept piece of the source timeline is placed with exact CMTime arithmetic and clamped
+        // to the media that really exists, so no track ever runs past another one. A track that
+        // ended a frame early would otherwise leave the last frames without a picture.
+        let screenTrackRange = try await screenTrack.load(.timeRange)
+        var placements: [(source: CMTimeRange, at: CMTime)] = []
         var cursor = CMTime.zero
         for segment in timeMap.segments {
-            let duration = cmTime(segment.end - segment.start)
-            guard duration > .zero else { continue }
-            try compositionScreenTrack.insertTimeRange(
-                CMTimeRange(start: cmTime(segment.start), duration: duration),
-                of: screenTrack,
-                at: cursor
-            )
-            cursor = CMTimeAdd(cursor, duration)
+            let wanted = CMTimeRange(start: cmTime(segment.start), end: cmTime(segment.end))
+            let source = wanted.intersection(screenTrackRange)
+            guard source.duration > .zero else { continue }
+            try compositionScreenTrack.insertTimeRange(source, of: screenTrack, at: cursor)
+            placements.append((source: source, at: cursor))
+            cursor = CMTimeAdd(cursor, source.duration)
+        }
+        guard cursor > .zero else {
+            throw Error.emptyTimeline
         }
 
         if !project.audio.muted {
@@ -84,16 +93,15 @@ enum StudioCompositionBuilder {
                 ) else {
                     continue
                 }
-                var audioCursor = CMTime.zero
-                for segment in timeMap.segments {
-                    let duration = cmTime(segment.end - segment.start)
-                    guard duration > .zero else { continue }
+                let audioTrackRange = try await audioTrack.load(.timeRange)
+                for placement in placements {
+                    let source = placement.source.intersection(audioTrackRange)
+                    guard source.duration > .zero else { continue }
                     try compositionAudioTrack.insertTimeRange(
-                        CMTimeRange(start: cmTime(segment.start), duration: duration),
+                        source,
                         of: audioTrack,
-                        at: audioCursor
+                        at: CMTimeAdd(placement.at, CMTimeSubtract(source.start, placement.source.start))
                     )
-                    audioCursor = CMTimeAdd(audioCursor, duration)
                 }
             }
         }
@@ -115,25 +123,26 @@ enum StudioCompositionBuilder {
             compositionCameraTrack.preferredTransform = try await cameraTrack.load(.preferredTransform)
             cameraTrackID = compositionCameraTrack.trackID
 
-            var outputCursor = 0.0
-            for segment in timeMap.segments {
-                let overlapStart = max(segment.start, camera.startOffset)
-                let overlapEnd = min(segment.end, camera.startOffset + camera.duration)
-                if overlapEnd > overlapStart {
-                    try compositionCameraTrack.insertTimeRange(
-                        CMTimeRange(
-                            start: cmTime(overlapStart - camera.startOffset),
-                            duration: cmTime(overlapEnd - overlapStart)
-                        ),
-                        of: cameraTrack,
-                        at: cmTime(outputCursor + overlapStart - segment.start)
-                    )
-                }
-                outputCursor += segment.end - segment.start
+            // The camera's own time 0 sits at `startOffset` on the source timeline (it can be
+            // negative). `onTimeline` is the camera media expressed in source time.
+            let cameraTrackRange = try await cameraTrack.load(.timeRange)
+            let startOffset = CMTime(seconds: camera.startOffset.isFinite ? camera.startOffset : 0, preferredTimescale: 600)
+            let onTimeline = CMTimeRange(
+                start: CMTimeAdd(cameraTrackRange.start, startOffset),
+                duration: cameraTrackRange.duration
+            )
+            for placement in placements {
+                let overlap = placement.source.intersection(onTimeline)
+                guard overlap.duration > .zero else { continue }
+                try compositionCameraTrack.insertTimeRange(
+                    CMTimeRange(start: CMTimeSubtract(overlap.start, startOffset), duration: overlap.duration),
+                    of: cameraTrack,
+                    at: CMTimeAdd(placement.at, CMTimeSubtract(overlap.start, placement.source.start))
+                )
             }
         }
 
-        let outputDuration = cmTime(timeMap.outputDuration)
+        let outputDuration = cursor
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = try await frameDuration(project: project, track: screenTrack)
