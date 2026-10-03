@@ -534,7 +534,7 @@ enum ScreenshotEditorClosePrompt: Equatable {
         case .discardUnsavedCapture:
             "This screenshot has not been saved. Closing the editor discards it."
         case .closeEditor:
-            "This screenshot is saved and has no unsaved changes. You can turn off this confirmation in Screenshot settings."
+            "This screenshot is saved and has no unsaved changes. You can turn off this confirmation in General settings."
         }
     }
 

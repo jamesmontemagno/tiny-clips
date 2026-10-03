@@ -120,12 +120,12 @@ final class CaptureSettingsTests: XCTestCase {
 
     func testEscapeConfirmationDefaultsOnAndResets() {
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
-        XCTAssertTrue(settings.confirmScreenshotEditorEscape)
+        XCTAssertTrue(settings.confirmEditorEscape)
 
-        defaults.set(false, forKey: CaptureSettings.confirmScreenshotEditorEscapeKey)
+        defaults.set(false, forKey: CaptureSettings.confirmEditorEscapeKey)
         CaptureSettings.resetStoredDefaults(defaults)
 
-        XCTAssertNil(defaults.object(forKey: CaptureSettings.confirmScreenshotEditorEscapeKey))
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.confirmEditorEscapeKey))
     }
 
     func testWebPFormatPersists() {
