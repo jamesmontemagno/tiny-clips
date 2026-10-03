@@ -40,7 +40,7 @@ The skill automatically updates the following files with the new version number:
 
 When asked to bump the Swift version:
 
-1. **Run the script** from the repository root. It validates the version format, updates all three files, and fails if any of them did not end up on the new version:
+1. **Run the script** from the repository root. It validates the version format and updates all three files together: if any of them cannot be updated, it fails and leaves all three untouched:
    ```bash
    .github/skills/bump-swift-version/bump-swift-version.sh 1.9.0
    ```
