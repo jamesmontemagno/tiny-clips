@@ -2,7 +2,7 @@
 
 # Bump the version for the Swift app across all version files
 # Usage: ./bump-swift-version.sh <new-version>
-# Example: ./bump-swift-version.sh 1.6
+# Example: ./bump-swift-version.sh 1.9.0
 
 set -e
 
@@ -13,16 +13,16 @@ fi
 
 if [ -z "$1" ]; then
     echo "Usage: $0 <new-version>"
-    echo "Example: $0 1.6"
+    echo "Example: $0 1.9.0"
     exit 1
 fi
 
 NEW_VERSION="$1"
 
-# Validate version format (X.Y)
-if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+# Validate version format (X.Y.Z or X.Y)
+if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
     echo "❌ Invalid version format: $NEW_VERSION"
-    echo "Version must be in format: X.Y (e.g., 1.5, 2.0)"
+    echo "Version must be in format: X.Y.Z or X.Y (e.g., 1.9.0, 2.0)"
     exit 1
 fi
 
@@ -39,28 +39,43 @@ PROJECT_PBXPROJ="$MAC_DIR/TinyClips.xcodeproj/project.pbxproj"
 echo "Bumping Swift app version to $NEW_VERSION..."
 echo ""
 
-# Update Info.plist
-if [ -f "$INFO_PLIST" ]; then
-    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$INFO_PLIST"
-    echo "✓ Updated $INFO_PLIST"
-else
-    echo "❌ File not found: $INFO_PLIST"
-    exit 1
-fi
+# Rewrite only the version line. PlistBuddy "Set" and plutil re-serialize the
+# whole plist and reorder its keys, which buries the bump in an unrelated diff.
+update_plist() {
+    local plist="$1"
+    local actual
 
-# Update Info-MAS.plist
-if [ -f "$INFO_MAS_PLIST" ]; then
-    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$INFO_MAS_PLIST"
-    echo "✓ Updated $INFO_MAS_PLIST"
-else
-    echo "❌ File not found: $INFO_MAS_PLIST"
-    exit 1
-fi
+    if [ ! -f "$plist" ]; then
+        echo "❌ File not found: $plist"
+        exit 1
+    fi
+
+    sed -i '' "/<key>CFBundleShortVersionString<\/key>/{n;s|<string>[^<]*</string>|<string>$NEW_VERSION</string>|;}" "$plist"
+
+    actual="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$plist")"
+    if [ "$actual" != "$NEW_VERSION" ]; then
+        echo "❌ Could not update $plist (CFBundleShortVersionString is $actual)"
+        exit 1
+    fi
+
+    echo "✓ Updated $plist"
+}
+
+update_plist "$INFO_PLIST"
+update_plist "$INFO_MAS_PLIST"
 
 # Update project.pbxproj
 if [ -f "$PROJECT_PBXPROJ" ]; then
-    sed -E -i '' "s/(MARKETING_VERSION = )[0-9]+\.[0-9]+/\1$NEW_VERSION/g" "$PROJECT_PBXPROJ"
-    echo "✓ Updated $PROJECT_PBXPROJ"
+    sed -E -i '' "s/(MARKETING_VERSION = )[0-9]+(\.[0-9]+)*;/\1$NEW_VERSION;/g" "$PROJECT_PBXPROJ"
+
+    TOTAL_COUNT="$(grep -c "MARKETING_VERSION = " "$PROJECT_PBXPROJ" || true)"
+    UPDATED_COUNT="$(grep -cF "MARKETING_VERSION = $NEW_VERSION;" "$PROJECT_PBXPROJ" || true)"
+    if [ "$TOTAL_COUNT" -eq 0 ] || [ "$UPDATED_COUNT" -ne "$TOTAL_COUNT" ]; then
+        echo "❌ Could not update $PROJECT_PBXPROJ ($UPDATED_COUNT of $TOTAL_COUNT MARKETING_VERSION entries are $NEW_VERSION)"
+        exit 1
+    fi
+
+    echo "✓ Updated $PROJECT_PBXPROJ ($UPDATED_COUNT MARKETING_VERSION entries)"
 else
     echo "❌ File not found: $PROJECT_PBXPROJ"
     exit 1
