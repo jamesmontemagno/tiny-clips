@@ -83,6 +83,16 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Build Mac App Store variant
+        run: |
+          xcodebuild build \
+            -project mac/${{ env.SCHEME }}.xcodeproj \
+            -scheme TinyClipsMAS \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
   no-macos-changes:
     name: Build skipped (no macOS changes)
     needs: changes
