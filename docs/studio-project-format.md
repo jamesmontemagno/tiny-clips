@@ -398,7 +398,7 @@ outputToSource(u):   u is clamped to [0, outputDuration]
 - One scene at 0: `bubble` at the corner the recording used, size 0.24, when there is a camera; otherwise `screen`.
 - `trimStart = max(0, camera.startOffset)` with a camera, otherwise 0. This reproduces the leading trim macOS applies today.
 - Click overlay values and branding come from the app's settings at the moment the project is created.
-- When the user saves a look as the default, its canvas, background, and layer styling replace the first three bullets.
+- When the user saves a look as the default, it replaces the first two bullets. A look is the canvas (aspect, padding, background), the screen style, and the camera style. It never carries a crop, because a crop belongs to one recording.
 
 The classic look, matching a recording made without Studio, is background `none`, padding 0, screen `cornerRadius` 0, and screen `shadow` 0.
 
