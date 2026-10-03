@@ -189,6 +189,58 @@ Each milestone lands on both platforms before the next one starts. Studio is lab
 | `m4-mac-person-cutout` | macOS | Vision person segmentation in the compositor |
 | `m4-win-person-cutout` | Windows | Evaluate the options, get a decision on the added dependency, then implement |
 
+## Implementation status
+
+This section records what was built and how it differs from the plan above. It is updated as milestones land.
+
+### Where each platform stands
+
+| Milestone 1 piece | macOS | Windows |
+|---|---|---|
+| Project format, store, cleanup rules, layout resolver, time map | Done. Passes the shared fixtures | Done. Passes the shared fixtures |
+| Studio capture mode | Done | Done. Checked with the recording benchmark |
+| Renderer and exporter | Done | In progress |
+| Studio window | Done | Not started |
+| Settings, Record for Studio, reopening projects | Done | Settings, the Record for Studio toggle, and cleanup are done. Opening a project waits for the window |
+
+Nothing on macOS has been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. Capture, the compositor, the preview, export, and the whole Studio window are unverified at runtime. Until someone has run them, Studio stays off on macOS.
+
+### Hidden switch
+
+Studio is off by default on both platforms until it has been verified there.
+
+- macOS: `defaults write com.tinyclips.app studioPreviewEnabled -bool YES` (`com.refractored.tinyclips` for the Mac App Store build).
+- Windows: the `studioPreviewEnabled` setting, or the environment variable `TINYCLIPS_STUDIO_PREVIEW=1`. A packaged launch does not pass the caller's environment to the app, so start it with `winapp run <output folder> --manifest <output folder>\AppxManifest.xml --output-appx-directory <output folder>\AppX --with-alias`.
+
+With the switch off, no Studio UI is visible and recordings follow the existing path unchanged.
+
+### Decisions made while building
+
+- **A failed project save keeps the recording.** If the project cannot be saved when a Studio recording stops, the screen track is kept as an ordinary video.
+- **Drafts.** A recording kept as a draft has no exported file, so it does not appear in the Clips Manager. On macOS the drafts are listed in Settings › Video, where they can be opened or deleted. Windows needs the same list before Studio is switched on there.
+- **Deleting an exported video leaves its export link in place.** The project then still counts as exported, so the cleanup rules remove its sources later. Removing the link would turn it back into a draft that is never cleaned up.
+- **Cleanup can be switched off.** Zero days keeps projects until they are deleted by hand, and zero gigabytes means no storage limit.
+- **Events during pauses.** Clicks and cursor samples from before the first frame or during a pause are not recorded. Cursor samples are capped at 60 per second, drop consecutive duplicates, and are steps, not points to interpolate between.
+- **Drawing rules** are in section 6.7 of `docs/studio-project-format.md`: sRGB with gamma-space blending, no color conversion of screen pixels, the shadow model, where the border goes, and the click ring geometry.
+- **Camera size on Windows.** The camera track is recorded at the camera's own aspect, fitted inside 1920×1080 and never enlarged.
+- **macOS preview.** The preview always plays the whole recording. Trim and mute are applied by the transport and by export, so changing them does not rebuild the player. Only a change of canvas shape does.
+- **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
+- **Editor windows get a Dock icon.** While a Studio window is open on macOS, Tiny Clips shows its Dock icon and menu bar, as it does for the screenshot editor.
+- **macOS layout.** Files directly inside `mac/TinyClips/Studio/` use Foundation only so their logic can be unit tested anywhere. Rendering is in `Studio/Rendering/` and the UI in `Views/Studio/`.
+
+### Engine spikes
+
+- **Windows** (`windows/spikes/StudioEngineSpike`, findings in its `FINDINGS.md`):
+  - Preview: two frame-server `MediaPlayer`s on one `MediaTimelineController` delivered every frame of both clips at 1x and kept them on matching frames 98.6 to 99.95 percent of the time, never more than one frame apart. A paused seek occasionally delivers no frame, so every paused position change goes through a one-at-a-time seek policy that detects a lost seek and repairs it.
+  - Export: Media Foundation source readers with the shared Direct3D device give textures Direct2D can draw without a copy. With offline encoder settings a 2560×1440 export ran at 131 to 238 frames per second on the test machine.
+  - Presenting in WinUI 3, two encoders while recording, and NativeAOT were still being measured when this was written.
+- **macOS**: not run. It needs a Mac.
+
+### Changes outside Studio
+
+- The macOS `Build` workflow also builds the `TinyClipsMAS` scheme, and both workflows run when `shared/studio/**` changes.
+- `TinyClipsActivationPolicy.resolve` takes `hasOpenEditors`, which covers screenshot editors and Studio windows.
+- On Windows, `ShowTextRecognitionNotification` was renamed `ShowMessageNotification` because Studio reuses it.
 ## Risks and how the plan handles them
 
 | Risk | Handling |
