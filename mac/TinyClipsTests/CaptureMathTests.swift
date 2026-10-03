@@ -313,6 +313,118 @@ final class CaptureMathTests: XCTestCase {
         )
     }
 
+    func testScreenshotEditorEscapeTakesOneStepAtATimeBeforeClosing() {
+        func action(annotation: Bool, textField: Bool, crop: Bool) -> ScreenshotEditorEscapeAction {
+            ScreenshotEditorEscapeAction.resolve(
+                isEditingTextAnnotation: annotation,
+                textFieldHasFocus: textField,
+                hasCropSelection: crop
+            )
+        }
+
+        XCTAssertEqual(action(annotation: true, textField: true, crop: true), .cancelTextAnnotation)
+        XCTAssertEqual(action(annotation: true, textField: false, crop: false), .cancelTextAnnotation)
+        XCTAssertEqual(action(annotation: false, textField: true, crop: true), .leaveTextField)
+        XCTAssertEqual(action(annotation: false, textField: true, crop: false), .leaveTextField)
+        XCTAssertEqual(action(annotation: false, textField: false, crop: true), .clearCropSelection)
+        XCTAssertEqual(action(annotation: false, textField: false, crop: false), .close)
+    }
+
+    func testScreenshotEditorEscapeConfirmsEveryCloseWhenEnabled() {
+        func escape(unsaved: Bool, discardsCapture: Bool) -> ScreenshotEditorClosePrompt? {
+            ScreenshotEditorClosePrompt.resolve(
+                trigger: .escapeKey,
+                confirmOnEscape: true,
+                hasUnsavedChanges: unsaved,
+                discardsUnsavedCapture: discardsCapture
+            )
+        }
+
+        XCTAssertEqual(escape(unsaved: false, discardsCapture: false), .closeEditor)
+        XCTAssertEqual(escape(unsaved: true, discardsCapture: false), .discardChanges)
+        XCTAssertEqual(escape(unsaved: false, discardsCapture: true), .discardUnsavedCapture)
+        XCTAssertEqual(escape(unsaved: true, discardsCapture: true), .discardUnsavedCapture)
+        XCTAssertFalse(ScreenshotEditorClosePrompt.closeEditor.isDestructive)
+        XCTAssertTrue(ScreenshotEditorClosePrompt.discardUnsavedCapture.isDestructive)
+    }
+
+    func testScreenshotEditorEscapeClosesWithoutPromptWhenConfirmationIsOff() {
+        for unsaved in [false, true] {
+            for discardsCapture in [false, true] {
+                XCTAssertNil(
+                    ScreenshotEditorClosePrompt.resolve(
+                        trigger: .escapeKey,
+                        confirmOnEscape: false,
+                        hasUnsavedChanges: unsaved,
+                        discardsUnsavedCapture: discardsCapture
+                    )
+                )
+            }
+        }
+    }
+
+    func testScreenshotEditorCloseCommandOnlyPromptsForUnsavedChanges() {
+        for confirmOnEscape in [false, true] {
+            XCTAssertNil(
+                ScreenshotEditorClosePrompt.resolve(
+                    trigger: .closeCommand,
+                    confirmOnEscape: confirmOnEscape,
+                    hasUnsavedChanges: false,
+                    discardsUnsavedCapture: true
+                )
+            )
+            XCTAssertEqual(
+                ScreenshotEditorClosePrompt.resolve(
+                    trigger: .closeCommand,
+                    confirmOnEscape: confirmOnEscape,
+                    hasUnsavedChanges: true,
+                    discardsUnsavedCapture: false
+                ),
+                .discardChanges
+            )
+        }
+    }
+
+    func testTrimmerEscapeConfirmsEveryCloseWhenEnabled() {
+        func escape(unsaved: Bool, discardsCapture: Bool) -> TrimmerEscapePrompt? {
+            TrimmerEscapePrompt.resolve(
+                confirmOnEscape: true,
+                hasUnsavedChanges: unsaved,
+                discardsUnsavedCapture: discardsCapture
+            )
+        }
+
+        XCTAssertEqual(escape(unsaved: false, discardsCapture: false), .closeTrimmer)
+        XCTAssertEqual(escape(unsaved: true, discardsCapture: false), .discardChanges)
+        XCTAssertEqual(escape(unsaved: false, discardsCapture: true), .discardUnsavedCapture)
+        XCTAssertEqual(escape(unsaved: true, discardsCapture: true), .discardUnsavedCapture)
+        XCTAssertFalse(TrimmerEscapePrompt.closeTrimmer.isDestructive)
+        XCTAssertTrue(TrimmerEscapePrompt.discardChanges.isDestructive)
+        XCTAssertTrue(TrimmerEscapePrompt.discardUnsavedCapture.isDestructive)
+    }
+
+    func testTrimmerEscapeClosesWithoutPromptWhenConfirmationIsOff() {
+        for unsaved in [false, true] {
+            for discardsCapture in [false, true] {
+                XCTAssertNil(
+                    TrimmerEscapePrompt.resolve(
+                        confirmOnEscape: false,
+                        hasUnsavedChanges: unsaved,
+                        discardsUnsavedCapture: discardsCapture
+                    )
+                )
+            }
+        }
+    }
+
+    func testTrimmerEscapePromptNamesWhatIsDiscarded() {
+        let prompt = TrimmerEscapePrompt.discardUnsavedCapture
+        XCTAssertEqual(prompt.title(for: .video), "Discard recording?")
+        XCTAssertEqual(prompt.confirmTitle(for: .video), "Discard Recording")
+        XCTAssertEqual(prompt.title(for: .gif), "Discard GIF?")
+        XCTAssertEqual(prompt.confirmTitle(for: .gif), "Discard GIF")
+    }
+
     func testScreenshotEditorZoomClampsAndStepsThroughPresets() {
         XCTAssertEqual(ScreenshotEditorZoomMath.clamp(0.1), 0.25)
         XCTAssertEqual(ScreenshotEditorZoomMath.clamp(8), 4)
@@ -362,6 +474,256 @@ final class CaptureMathTests: XCTestCase {
                 imageSize: CGSize(width: 1_000, height: 800)
             )
         )
+    }
+
+    func testCropDragModePrefersHandlesThenInteriorThenNewSelection() {
+        let selection = CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.4)
+        let tolerance = CGSize(width: 0.02, height: 0.02)
+        func mode(_ x: CGFloat, _ y: CGFloat) -> CropDragMode {
+            ScreenshotEditorCropMath.dragMode(at: CGPoint(x: x, y: y), selection: selection, tolerance: tolerance)
+        }
+
+        XCTAssertEqual(mode(0.21, 0.19), .resize(.topLeft))
+        XCTAssertEqual(mode(0.61, 0.59), .resize(.bottomRight))
+        XCTAssertEqual(mode(0.4, 0.21), .resize(.top))
+        XCTAssertEqual(mode(0.19, 0.4), .resize(.left))
+        XCTAssertEqual(mode(0.4, 0.4), .move)
+        XCTAssertEqual(mode(0.8, 0.8), .create)
+        // Level with the left edge but well below the selection: not a handle.
+        XCTAssertEqual(mode(0.19, 0.9), .create)
+        XCTAssertEqual(
+            ScreenshotEditorCropMath.dragMode(at: CGPoint(x: 0.4, y: 0.4), selection: nil, tolerance: tolerance),
+            .create
+        )
+    }
+
+    func testCropDragModePicksCloserEdgeWhenSelectionIsSmallerThanTolerance() {
+        let selection = CGRect(x: 0.5, y: 0.5, width: 0.01, height: 0.01)
+        let tolerance = CGSize(width: 0.02, height: 0.02)
+
+        XCTAssertEqual(
+            ScreenshotEditorCropMath.dragMode(at: CGPoint(x: 0.512, y: 0.512), selection: selection, tolerance: tolerance),
+            .resize(.bottomRight)
+        )
+        XCTAssertEqual(
+            ScreenshotEditorCropMath.dragMode(at: CGPoint(x: 0.498, y: 0.498), selection: selection, tolerance: tolerance),
+            .resize(.topLeft)
+        )
+    }
+
+    func testCropHitToleranceIsMeasuredInScreenPoints() {
+        let tolerance = ScreenshotEditorCropMath.hitTolerance(forDisplaySize: CGSize(width: 400, height: 200))
+        XCTAssertEqual(tolerance.width, 0.02, accuracy: 1e-9)
+        XCTAssertEqual(tolerance.height, 0.04, accuracy: 1e-9)
+
+        let fallback = ScreenshotEditorCropMath.hitTolerance(forDisplaySize: .zero)
+        XCTAssertGreaterThan(fallback.width, 0)
+        XCTAssertGreaterThan(fallback.height, 0)
+    }
+
+    func testCropResizeMovesOnlyTheHandleEdgesFlipsAndClamps() {
+        let selection = CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.4)
+
+        assertRect(
+            ScreenshotEditorCropMath.resized(selection, handle: .right, to: CGPoint(x: 0.8, y: 0.9)),
+            CGRect(x: 0.2, y: 0.2, width: 0.6, height: 0.4)
+        )
+        assertRect(
+            ScreenshotEditorCropMath.resized(selection, handle: .topLeft, to: CGPoint(x: 0.1, y: 0.3)),
+            CGRect(x: 0.1, y: 0.3, width: 0.5, height: 0.3)
+        )
+        // Dragging the left edge past the right edge flips the selection.
+        assertRect(
+            ScreenshotEditorCropMath.resized(selection, handle: .left, to: CGPoint(x: 0.9, y: 0.5)),
+            CGRect(x: 0.6, y: 0.2, width: 0.3, height: 0.4)
+        )
+        // Targets outside the image stop at its edges.
+        assertRect(
+            ScreenshotEditorCropMath.resized(selection, handle: .bottomRight, to: CGPoint(x: 1.5, y: -0.5)),
+            CGRect(x: 0.2, y: 0, width: 0.8, height: 0.2)
+        )
+    }
+
+    func testCropResizeWithLockedAspectKeepsShapeInsideImage() {
+        let selection = CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.2)
+
+        // The pointer asks for more height than fits; the result is the largest 2:1 rect available.
+        assertRect(
+            ScreenshotEditorCropMath.resized(
+                selection,
+                handle: .bottomRight,
+                to: CGPoint(x: 0.5, y: 0.9),
+                lockedAspect: 2
+            ),
+            CGRect(x: 0.2, y: 0.2, width: 0.8, height: 0.4)
+        )
+        assertRect(
+            ScreenshotEditorCropMath.resized(
+                selection,
+                handle: .topLeft,
+                to: CGPoint(x: 0.5, y: 0.3),
+                lockedAspect: 2
+            ),
+            CGRect(x: 0.4, y: 0.3, width: 0.2, height: 0.1)
+        )
+    }
+
+    func testCropMoveKeepsSizeAndStopsAtImageEdges() {
+        let selection = CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.4)
+
+        assertRect(
+            ScreenshotEditorCropMath.moved(selection, by: CGSize(width: 0.1, height: -0.1)),
+            CGRect(x: 0.3, y: 0.1, width: 0.4, height: 0.4)
+        )
+        assertRect(
+            ScreenshotEditorCropMath.moved(selection, by: CGSize(width: 0.9, height: 0.9)),
+            CGRect(x: 0.6, y: 0.6, width: 0.4, height: 0.4)
+        )
+        assertRect(
+            ScreenshotEditorCropMath.moved(selection, by: CGSize(width: -1, height: -1)),
+            CGRect(x: 0, y: 0, width: 0.4, height: 0.4)
+        )
+    }
+
+    func testCropCreateNormalizesDirectionAndClampsToImage() {
+        let imageSize = CGSize(width: 1_000, height: 500)
+
+        assertRect(
+            ScreenshotEditorCropMath.created(
+                from: CGPoint(x: 0.6, y: 0.7),
+                to: CGPoint(x: 0.2, y: 0.1),
+                square: false,
+                imageSize: imageSize
+            ),
+            CGRect(x: 0.2, y: 0.1, width: 0.4, height: 0.6)
+        )
+        assertRect(
+            ScreenshotEditorCropMath.created(
+                from: CGPoint(x: -0.5, y: 0.5),
+                to: CGPoint(x: 2, y: 0.75),
+                square: false,
+                imageSize: imageSize
+            ),
+            CGRect(x: 0, y: 0.5, width: 1, height: 0.25)
+        )
+    }
+
+    func testCropCreateWithShiftIsSquareInImagePixels() {
+        let imageSize = CGSize(width: 1_000, height: 500)
+
+        let square = ScreenshotEditorCropMath.created(
+            from: CGPoint(x: 0.1, y: 0.1),
+            to: CGPoint(x: 0.3, y: 0.2),
+            square: true,
+            imageSize: imageSize
+        )
+        assertRect(square, CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.4))
+        XCTAssertEqual(square.width * imageSize.width, square.height * imageSize.height, accuracy: 1e-6)
+
+        // Only 100 px remain below the start point, so the square stops growing there.
+        let clamped = ScreenshotEditorCropMath.created(
+            from: CGPoint(x: 0.1, y: 0.8),
+            to: CGPoint(x: 0.9, y: 0.9),
+            square: true,
+            imageSize: imageSize
+        )
+        assertRect(clamped, CGRect(x: 0.1, y: 0.8, width: 0.1, height: 0.2))
+    }
+
+    func testCropSelectionUsabilityDependsOnOnScreenSize() {
+        let displaySize = CGSize(width: 300, height: 200)
+
+        XCTAssertFalse(
+            ScreenshotEditorCropMath.isUsableSelection(
+                CGRect(x: 0, y: 0, width: 0.01, height: 0.5),
+                displaySize: displaySize
+            )
+        )
+        XCTAssertTrue(
+            ScreenshotEditorCropMath.isUsableSelection(
+                CGRect(x: 0, y: 0, width: 0.02, height: 0.5),
+                displaySize: displaySize
+            )
+        )
+    }
+
+    func testCropHandlePointsSitOnCornersAndEdgeMidpoints() {
+        let selection = CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.4)
+
+        let top = ScreenshotEditorCropMath.handlePoint(.top, in: selection)
+        XCTAssertEqual(top.x, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(top.y, 0.2, accuracy: 1e-9)
+
+        let bottomRight = ScreenshotEditorCropMath.handlePoint(.bottomRight, in: selection)
+        XCTAssertEqual(bottomRight.x, 0.6, accuracy: 1e-9)
+        XCTAssertEqual(bottomRight.y, 0.6, accuracy: 1e-9)
+
+        XCTAssertEqual(CropHandle.allCases.filter(\.isCorner).count, 4)
+    }
+
+    func testCropKeyboardAdjustmentMovesAndGrowsInWholePixels() {
+        // Dimensions that do not divide evenly, so normalized edges never land exactly on a pixel.
+        let imageSize = CGSize(width: 1_237, height: 733)
+        var selection = CGRect(x: 100.0 / 1_237, y: 50.0 / 733, width: 300.0 / 1_237, height: 200.0 / 733)
+        func pixels() -> CGRect? {
+            ScreenshotEditorCropMath.pixelRect(for: selection, imageSize: imageSize)
+        }
+
+        XCTAssertEqual(pixels(), CGRect(x: 100, y: 50, width: 300, height: 200))
+
+        // Repeated one-pixel steps must not drift or widen the selection.
+        for _ in 0..<50 {
+            selection = ScreenshotEditorCropMath.adjusted(
+                selection,
+                movingBy: CGSize(width: 1, height: 0),
+                imageSize: imageSize
+            )
+        }
+        XCTAssertEqual(pixels(), CGRect(x: 150, y: 50, width: 300, height: 200))
+
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            growingBy: CGSize(width: -10, height: 5),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 150, y: 50, width: 290, height: 205))
+    }
+
+    func testCropKeyboardAdjustmentStaysInsideImageAndKeepsOnePixel() {
+        let imageSize = CGSize(width: 1_237, height: 733)
+        var selection = CGRect(x: 150.0 / 1_237, y: 50.0 / 733, width: 290.0 / 1_237, height: 205.0 / 733)
+        func pixels() -> CGRect? {
+            ScreenshotEditorCropMath.pixelRect(for: selection, imageSize: imageSize)
+        }
+
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            movingBy: CGSize(width: 5_000, height: 5_000),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 947, y: 528, width: 290, height: 205))
+
+        // Growing against the bottom-right corner pushes the origin back instead of stopping.
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            growingBy: CGSize(width: 10, height: 10),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 937, y: 518, width: 300, height: 215))
+
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            growingBy: CGSize(width: 5_000, height: 5_000),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 0, y: 0, width: 1_237, height: 733))
+
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            growingBy: CGSize(width: -5_000, height: -5_000),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 0, y: 0, width: 1, height: 1))
     }
 
     func testEmojiAnnotationRectIsSquareInPixelsAndCentered() {
@@ -821,6 +1183,19 @@ final class CaptureMathTests: XCTestCase {
             maxMemoryBytes: 2_000_000,
             noMovementTimeout: 8
         )
+    }
+
+    private func assertRect(
+        _ actual: CGRect,
+        _ expected: CGRect,
+        accuracy: CGFloat = 1e-9,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(actual.origin.x, expected.origin.x, accuracy: accuracy, "x", file: file, line: line)
+        XCTAssertEqual(actual.origin.y, expected.origin.y, accuracy: accuracy, "y", file: file, line: line)
+        XCTAssertEqual(actual.width, expected.width, accuracy: accuracy, "width", file: file, line: line)
+        XCTAssertEqual(actual.height, expected.height, accuracy: accuracy, "height", file: file, line: line)
     }
 
     private func redValue(in image: CGImage, x: Int, y: Int) -> UInt8? {

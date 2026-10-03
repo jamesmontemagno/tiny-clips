@@ -8,6 +8,25 @@ All notable changes to this project will be documented in this file.
 - **Tiny Clips Studio (early preview, off by default).** Studio records the screen and the camera as separate layers and opens an editor when the recording ends. Pick a background and padding, round the screen card, choose a camera shape and one of four layouts (screen only, camera bubble, side by side, camera only), drag the bubble where you want it, trim the start and end, and export an MP4. The project stays editable afterward: reopen it from **Open in Studio…** in the Clips Manager, from Recent Captures, or from the drafts list in Settings › Video. Settings › Video also sets how long projects are kept and how much disk space they may use.
   - To try it, quit Tiny Clips and run `defaults write com.tinyclips.app studioPreviewEnabled -bool YES` (use `com.refractored.tinyclips` for the Mac App Store build). Then choose **After recording: Open in Studio** in Settings › Video, or switch on **Record for Studio** in the Record panel.
   - Known limits: window recordings keep no click or cursor data, and the cursor is part of the screen layer.
+- macOS General settings have a new **Confirm before closing editors with Esc** option, on by default, covering the screenshot editor, video trimmer, and GIF trimmer. Turn it off to close them with a single Esc press, which discards anything unsaved.
+
+### Changed
+- Pressing Esc in the macOS screenshot editor now asks before closing it, and warns when closing would discard a capture that has not been saved yet.
+- Pressing Esc in the macOS video and GIF trimmers now asks before closing them too, and warns when closing would discard a recording that has not been saved yet or trim changes that have not been exported.
+- macOS screenshot editor cropping is easier to find and control. The toolbar now has a labeled **Apply Crop** button, and choosing the Crop tool shows a Crop section in the sidebar with the selection size in pixels plus Apply Crop and Clear buttons.
+- The macOS crop selection can now be adjusted instead of redrawn: drag any corner or edge handle to resize it (hold Shift on a corner to keep its shape), drag inside it to move it, hold Shift while drawing for a square, and click outside it to dismiss it. The pointer shows what a drag will do.
+- In the macOS screenshot editor, Return applies the crop and Esc clears the selection before it offers to close the editor.
+- The macOS crop selection can be positioned without a pointer. With the selection focused, the arrow keys move it one pixel (ten with Shift) and Option-arrow keys resize it; **Select All** in the Crop section starts from the whole image. VoiceOver reads the selection's size and position and offers actions to move and resize it.
+- Applying a crop in the macOS screenshot editor can now be undone and redone, restoring the uncropped image together with its annotations.
+- A crop selection in the macOS screenshot editor now only changes the image once it is applied, matching Windows. Save, Copy, and the output size ignore an unapplied selection, and switching tools clears it.
+
+### Fixed
+- Fixed Esc doing nothing in the macOS screenshot editor unless one of its controls had keyboard focus. Esc now closes the editor it is pressed in without quitting Tiny Clips.
+- Fixed Esc closing the macOS screenshot editor while typing in one of its text fields, such as the custom emoji field. Esc now leaves the field, and a second press closes the editor.
+- Fixed Command-W doing nothing in macOS Tiny Clips windows because the File menu had no Close item. Close is back in the File menu, and in the screenshot editor it still asks before discarding unsaved changes.
+- Fixed the macOS screenshot editor staying open after confirming **Delete Screenshot** or **Discard Changes**; the editor now closes as soon as the confirmation is accepted.
+- Fixed the macOS screenshot editor silently cropping saved and copied images to a selection that was no longer visible after switching to another tool.
+- Fixed crop selection drags in the macOS screenshot editor filling the undo history and leaving the editor marked as changed after the selection was removed.
 
 ## v1.8.0.0-mac - 2026-09-28
 

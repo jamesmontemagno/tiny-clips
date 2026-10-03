@@ -3147,7 +3147,10 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            // A constructor failure used to be invisible outside a debugger; record it so a
+            // packaged (NativeAOT) build leaves evidence in crash.log.
             Debug.WriteLine($"OpenScreenshotEditor failed: {ex}");
+            CrashDiagnostics.Log("OpenScreenshotEditor", ex, handled: true);
             if (createdWindow is not null)
             {
                 _editorWindows.Remove(createdWindow);

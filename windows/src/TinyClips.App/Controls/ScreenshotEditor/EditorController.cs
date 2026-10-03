@@ -106,7 +106,7 @@ internal sealed class EditorController : IDisposable
 
     public Annotation? ActiveAnnotation { get; private set; }
 
-    public EditTool Tool { get; private set; } = EditTool.Crop;
+    public EditTool Tool { get; private set; } = EditTool.Select;
 
     public Color StrokeColor { get; private set; } = Colors.Red;
 

@@ -118,6 +118,16 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: "audioOffsetMs"))
     }
 
+    func testEscapeConfirmationDefaultsOnAndResets() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        XCTAssertTrue(settings.confirmEditorEscape)
+
+        defaults.set(false, forKey: CaptureSettings.confirmEditorEscapeKey)
+        CaptureSettings.resetStoredDefaults(defaults)
+
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.confirmEditorEscapeKey))
+    }
+
     func testWebPFormatPersists() {
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
         settings.imageFormat = .webp

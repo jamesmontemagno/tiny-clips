@@ -15,6 +15,8 @@ final class TrimmerMenuActions {
     var previousFrame: (() -> Void)?
     var nextFrame: (() -> Void)?
     var stopPlayback: (() -> Void)?
+    /// Esc, or Command-Period, was pressed in the trimmer window.
+    var closeWithEscape: (() -> Void)?
 
     func handles(_ action: Selector?) -> Bool {
         switch action {
@@ -65,6 +67,93 @@ final class TrimmerMenuActions {
         previousFrame = nil
         nextFrame = nil
         stopPlayback = nil
+        closeWithEscape = nil
+    }
+}
+
+/// What a trimmer has to confirm before Esc closes it.
+enum TrimmerEscapePrompt: Equatable {
+    /// The recording has not been written to its final location, so closing throws it away.
+    case discardUnsavedCapture
+    case discardChanges
+    case closeTrimmer
+
+    enum Media {
+        case video
+        case gif
+
+        fileprivate var name: String {
+            switch self {
+            case .video: "recording"
+            case .gif: "GIF"
+            }
+        }
+    }
+
+    static func resolve(
+        confirmOnEscape: Bool,
+        hasUnsavedChanges: Bool,
+        discardsUnsavedCapture: Bool
+    ) -> TrimmerEscapePrompt? {
+        guard confirmOnEscape else { return nil }
+        if discardsUnsavedCapture { return .discardUnsavedCapture }
+        return hasUnsavedChanges ? .discardChanges : .closeTrimmer
+    }
+
+    func title(for media: Media) -> String {
+        switch self {
+        case .discardUnsavedCapture: "Discard \(media.name)?"
+        case .discardChanges: "Discard changes?"
+        case .closeTrimmer: "Close the trimmer?"
+        }
+    }
+
+    func message(for media: Media) -> String {
+        switch self {
+        case .discardUnsavedCapture:
+            "This \(media.name) has not been saved. Closing the trimmer discards it."
+        case .discardChanges:
+            "Your changes in the trimmer have not been saved. Closing discards them and keeps the original \(media.name)."
+        case .closeTrimmer:
+            "This \(media.name) is saved and has no unsaved changes. You can turn off this confirmation in General settings."
+        }
+    }
+
+    func confirmTitle(for media: Media) -> String {
+        switch self {
+        case .discardUnsavedCapture:
+            switch media {
+            case .video: "Discard Recording"
+            case .gif: "Discard GIF"
+            }
+        case .discardChanges: "Discard Changes"
+        case .closeTrimmer: "Close Trimmer"
+        }
+    }
+
+    var isDestructive: Bool {
+        self != .closeTrimmer
+    }
+}
+
+extension View {
+    func trimmerEscapeConfirmation(
+        _ prompt: TrimmerEscapePrompt,
+        media: TrimmerEscapePrompt.Media,
+        isPresented: Binding<Bool>,
+        onConfirm: @escaping () -> Void
+    ) -> some View {
+        confirmationDialog(prompt.title(for: media), isPresented: isPresented, titleVisibility: .visible) {
+            if prompt.isDestructive {
+                Button(prompt.confirmTitle(for: media), role: .destructive, action: onConfirm)
+            } else {
+                Button(prompt.confirmTitle(for: media), action: onConfirm)
+                    .keyboardShortcut(.defaultAction)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(prompt.message(for: media))
+        }
     }
 }
 
@@ -111,7 +200,13 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     private var didComplete = false
     private let menuActions = TrimmerMenuActions()
 
-    convenience init(videoURL: URL, onComplete: @escaping (URL?) -> Void) {
+    /// - Parameter discardsCaptureOnCancel: The recording is still a temporary file that is thrown
+    ///   away when the trimmer closes without saving.
+    convenience init(
+        videoURL: URL,
+        discardsCaptureOnCancel: Bool = false,
+        onComplete: @escaping (URL?) -> Void
+    ) {
         self.init(
             contentRect: NSRect(x: 0, y: 0, width: 700, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -128,6 +223,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
 
         let trimmerView = VideoTrimmerView(
             videoURL: videoURL,
+            discardsCaptureOnCancel: discardsCaptureOnCancel,
             menuActions: menuActions,
             onDone: { [weak self] resultURL in
                 self?.completeWith(resultURL)
@@ -148,6 +244,12 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         completeWith(nil)
         return true
+    }
+
+    /// Esc reaches the window because no control in the trimmer uses it as a key equivalent.
+    override func cancelOperation(_ sender: Any?) {
+        guard attachedSheet == nil else { return }
+        menuActions.closeWithEscape?()
     }
 
     @objc func trimmerSaveFrame(_ sender: Any?) { menuActions.saveFrame?() }
@@ -177,6 +279,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
 
 private struct VideoTrimmerView: View {
     let videoURL: URL
+    let discardsCaptureOnCancel: Bool
     let menuActions: TrimmerMenuActions
     let onDone: (URL?) -> Void
 
@@ -184,9 +287,17 @@ private struct VideoTrimmerView: View {
     @State private var keyMonitor: Any?
     @State private var trimmerWindow: NSWindow?
     @State private var showDeleteConfirmation = false
+    @State private var showEscapeConfirmation = false
+    @State private var escapePrompt: TrimmerEscapePrompt = .closeTrimmer
 
-    init(videoURL: URL, menuActions: TrimmerMenuActions, onDone: @escaping (URL?) -> Void) {
+    init(
+        videoURL: URL,
+        discardsCaptureOnCancel: Bool,
+        menuActions: TrimmerMenuActions,
+        onDone: @escaping (URL?) -> Void
+    ) {
         self.videoURL = videoURL
+        self.discardsCaptureOnCancel = discardsCaptureOnCancel
         self.menuActions = menuActions
         self.onDone = onDone
         _viewModel = StateObject(wrappedValue: TrimmerViewModel(url: videoURL))
@@ -397,10 +508,8 @@ private struct VideoTrimmerView: View {
                 .disabled(viewModel.isExporting)
 
                 Button("Done") {
-                    viewModel.cleanup()
-                    onDone(nil)
+                    closeWithoutSaving()
                 }
-                .keyboardShortcut(.cancelAction)
                 .help("Close the trimmer.")
                 .tint(.accentColor)
                 .buttonStyle(.borderedProminent)
@@ -408,6 +517,12 @@ private struct VideoTrimmerView: View {
             .padding()
         }
         .frame(minWidth: 660, minHeight: 540)
+        .trimmerEscapeConfirmation(
+            escapePrompt,
+            media: .video,
+            isPresented: $showEscapeConfirmation,
+            onConfirm: closeWithoutSaving
+        )
         .confirmationDialog(
             "Delete \(videoURL.lastPathComponent)?",
             isPresented: $showDeleteConfirmation,
@@ -456,7 +571,29 @@ private struct VideoTrimmerView: View {
         onDone(nil)
     }
 
+    private func closeWithoutSaving() {
+        viewModel.cleanup()
+        onDone(nil)
+    }
+
+    private func handleEscape() {
+        guard !viewModel.isExporting else { return }
+        let prompt = TrimmerEscapePrompt.resolve(
+            confirmOnEscape: CaptureSettings.shared.confirmEditorEscape,
+            hasUnsavedChanges: viewModel.hasUnsavedChanges,
+            discardsUnsavedCapture: discardsCaptureOnCancel
+        )
+        guard let prompt else {
+            closeWithoutSaving()
+            return
+        }
+        viewModel.stopPlayback()
+        escapePrompt = prompt
+        showEscapeConfirmation = true
+    }
+
     private func configureMenuActions() {
+        menuActions.closeWithEscape = handleEscape
         menuActions.saveFrame = { [viewModel] in
             guard !viewModel.isExporting else { return }
             viewModel.exportCurrentFrame()
@@ -678,6 +815,11 @@ private class TrimmerViewModel: ObservableObject {
 
     var trimmedOutputDuration: Double {
         max(0, (trimEnd - trimStart) / speed)
+    }
+
+    /// Whether the trim range, speed, or audio choice differs from the recording as it was opened.
+    var hasUnsavedChanges: Bool {
+        trimStart > 0 || trimEnd < duration || speed != 1.0 || removeAudio
     }
 
     var totalFrameCount: Int {

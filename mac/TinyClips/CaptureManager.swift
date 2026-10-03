@@ -1748,6 +1748,7 @@ class CaptureManager: ObservableObject {
                     showGifTrimmer(
                         gifData: gifData,
                         outputURL: url,
+                        discardsCaptureOnCancel: !shouldSaveImmediately,
                         reopenPickerAfterClose: shouldReturnToPickerAfterRecording
                     )
                 } else {
@@ -2007,7 +2008,10 @@ class CaptureManager: ObservableObject {
     }
 
     private func showTrimmer(for url: URL, saveImmediately: Bool, reopenPickerAfterClose: Bool = false) {
-        let window = VideoTrimmerWindow(videoURL: url) { [weak self] resultURL in
+        let window = VideoTrimmerWindow(
+            videoURL: url,
+            discardsCaptureOnCancel: !saveImmediately
+        ) { [weak self] resultURL in
             guard let self else { return }
             if let resultURL {
                 if saveImmediately {
@@ -2050,9 +2054,14 @@ class CaptureManager: ObservableObject {
     private func showGifTrimmer(
         gifData: GifCaptureData,
         outputURL: URL,
+        discardsCaptureOnCancel: Bool = false,
         reopenPickerAfterClose: Bool = false
     ) {
-        let window = GifTrimmerWindow(gifData: gifData, outputURL: outputURL) { [weak self] resultURL in
+        let window = GifTrimmerWindow(
+            gifData: gifData,
+            outputURL: outputURL,
+            discardsCaptureOnCancel: discardsCaptureOnCancel
+        ) { [weak self] resultURL in
             guard let self else { return }
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .gif)

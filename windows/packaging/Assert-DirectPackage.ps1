@@ -41,6 +41,17 @@ try {
         throw "Direct package still declares a Windows App Runtime framework dependency."
     }
 
+    # With an embedded App Installer declaration, Windows validates the package on first launch
+    # and that first process crashes activating WinUI (CLASS_E_CLASSNOTAVAILABLE, exit code
+    # 0xC0000409), which failed microsoft/winget-pkgs#442954. Auto-updating installs use the
+    # standalone .appinstaller release asset instead.
+    if ($manifest.SelectNodes("//*[local-name()='AutoUpdate']").Count -gt 0) {
+        throw "Direct package declares uap13:AutoUpdate; the App Installer configuration must not be embedded."
+    }
+    if (Get-ChildItem $verifyDirectory -Recurse -File -Filter *.appinstaller | Select-Object -First 1) {
+        throw "Direct package contains an embedded .appinstaller file."
+    }
+
     $appRuntime = Require-File 'Microsoft.WindowsAppRuntime.dll'
     $xamlRuntime = Require-File 'Microsoft.UI.Xaml.dll'
     $appExecutable = Require-File 'TinyClips.App.exe'

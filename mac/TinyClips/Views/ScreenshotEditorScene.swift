@@ -39,9 +39,10 @@ private struct ScreenshotEditorMenuCommands: Commands {
     @FocusedValue(\.screenshotEditorCommandActions) private var editor
 
     var body: some Commands {
-        // Replacing `.saveItem` below removes SwiftUI's default Close item app-wide, so restore it
-        // here. The editor routes through its unsaved-changes prompt; other windows close normally.
-        CommandGroup(before: .saveItem) {
+        CommandGroup(replacing: .saveItem) {
+            // Replacing `.saveItem` removes SwiftUI's default Close item app-wide, and a separate
+            // `before: .saveItem` group never reaches the menu, so Close has to live in this group.
+            // The editor routes through its unsaved-changes prompt; other windows close normally.
             Button("Close") {
                 if let editor {
                     editor.close()
@@ -50,9 +51,9 @@ private struct ScreenshotEditorMenuCommands: Commands {
                 }
             }
             .keyboardShortcut("w", modifiers: .command)
-        }
 
-        CommandGroup(replacing: .saveItem) {
+            Divider()
+
             Button("Save") {
                 editor?.save()
             }
@@ -195,7 +196,11 @@ private struct ScreenshotEditorSceneRoot: View {
                     deleteSourceAfterSave: session.deleteSourceAfterSave
                 ) { resultURL in
                     completionResult = resultURL
-                    dismissWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
+                    // `dismissWindow` is ignored while a sheet is attached, and a confirmation dialog
+                    // runs its button action before detaching, so close on the next main-loop turn.
+                    DispatchQueue.main.async {
+                        dismissWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
+                    }
                 }
             } else {
                 Color(NSColor.windowBackgroundColor)

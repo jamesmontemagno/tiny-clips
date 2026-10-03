@@ -5,8 +5,11 @@ import SwiftUI
 
 private struct EditorCanvasState {
     let annotations: [ScreenshotAnnotation]
-    let cropRect: CGRect?
     let nextNumberLabel: Int
+    /// The image the annotations are normalized against. Applying a crop replaces it, so history
+    /// keeps the reference (not a copy) to restore the pre-crop pixels on undo.
+    let image: NSImage?
+    let imagePixelSize: CGSize
 }
 
 private enum AnnotationResizeHandle {
@@ -20,13 +23,23 @@ private enum AnnotationResizeHandle {
 class ScreenshotEditorViewModel: ObservableObject {
     let sourceURL: URL
     @Published var originalImage: NSImage?
-    @Published var selectedTool: EditTool = .move
+    @Published var selectedTool: EditTool = .move {
+        didSet {
+            // The crop selection belongs to the Crop tool; it never lingers hidden behind another tool.
+            if oldValue == .crop, selectedTool != .crop {
+                clearCropSelection()
+            }
+        }
+    }
     @Published var selectedColor: Color = .red
     @Published var selectedFillColor: Color = .clear
     @Published var lineWidth: CGFloat = 4
     @Published var annotations: [ScreenshotAnnotation] = []
     @Published var currentAnnotation: ScreenshotAnnotation?
-    @Published var cropRect: CGRect?
+    /// Pending crop selection (normalized). It only changes the image once `applyCrop()` runs.
+    @Published private(set) var cropRect: CGRect?
+    /// True while a crop drag is in flight, so Apply stays off until the selection settles.
+    @Published private(set) var isAdjustingCropSelection = false
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
     @Published var isEditingText = false
@@ -73,6 +86,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var isDraggingEndpoint = false // true = dragging arrowhead/line end
     private var isDraggingStartpoint = false // true = dragging arrow tail/line start
     private var activeResizeHandle: AnnotationResizeHandle?
+    private var cropDragMode: CropDragMode?
+    private var cropDragOriginalRect: CGRect = .zero
     private var undoStack: [EditorCanvasState] = []
     private var redoStack: [EditorCanvasState] = []
     private var pendingDragHistoryState: EditorCanvasState?
@@ -483,13 +498,31 @@ class ScreenshotEditorViewModel: ObservableObject {
         !annotations.isEmpty
     }
 
+    var hasCropSelection: Bool {
+        cropRect != nil
+    }
+
+    /// The pending selection in image pixels, exactly as Apply Crop would cut it.
+    var cropSelectionPixelRect: CGRect? {
+        guard let cropRect else { return nil }
+        return ScreenshotEditorCropMath.pixelRect(for: cropRect, imageSize: imagePixelSize)
+    }
+
+    var cropSelectionPixelSize: CGSize? {
+        cropSelectionPixelRect?.size
+    }
+
+    /// Step for VoiceOver actions, which are too slow to repeat one pixel at a time.
+    var cropCoarseStepPixels: CGFloat {
+        max(10, (max(imagePixelSize.width, imagePixelSize.height) * 0.02).rounded())
+    }
+
     var canApplyCrop: Bool {
-        guard !isEditingText, let cropRect else { return false }
-        return ScreenshotEditorCropMath.pixelRect(for: cropRect, imageSize: imagePixelSize) != nil
+        !isEditingText && !isAdjustingCropSelection && cropSelectionPixelSize != nil
     }
 
     var hasUnsavedChanges: Bool {
-        if hasPendingChanges {
+        if hasPendingChanges || hasCropSelection {
             return true
         }
 
@@ -616,7 +649,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         return true
     }
 
-    func handleDrag(start: CGPoint, current: CGPoint, isAspectLocked: Bool = false) {
+    func handleDrag(start: CGPoint, current: CGPoint, isAspectLocked: Bool = false, displaySize: CGSize = .zero) {
         switch selectedTool {
         case .move:
             if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && !isRotatingAnnotation && activeResizeHandle == nil {
@@ -709,13 +742,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             }
 
         case .crop:
-            let rect = makeRect(from: start, to: current)
-            beginDragHistory()
-            if cropRect != rect {
-                didChangePendingDrag = true
-            }
-            cropRect = rect
-            markDirty()
+            updateCropSelection(start: start, current: current, isAspectLocked: isAspectLocked, displaySize: displaySize)
 
         case .pencil:
             pencilPoints.append(current)
@@ -748,7 +775,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
     }
 
-    func handleDragEnd(start: CGPoint, end: CGPoint, isAspectLocked: Bool = false) {
+    func handleDragEnd(start: CGPoint, end: CGPoint, isAspectLocked: Bool = false, displaySize: CGSize = .zero) {
         switch selectedTool {
         case .move:
             isDraggingAnnotation = false
@@ -759,7 +786,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             commitDragHistory()
 
         case .crop:
-            commitDragHistory()
+            finishCropSelectionDrag(displaySize: displaySize)
 
         case .pencil:
             if pencilPoints.count > 1 {
@@ -1058,7 +1085,8 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     @discardableResult
     func applyCrop() -> Bool {
-        guard let selectedCropRect = cropRect,
+        guard canApplyCrop,
+              let selectedCropRect = cropRect,
               let cropPixelRect = ScreenshotEditorCropMath.pixelRect(for: selectedCropRect, imageSize: imagePixelSize),
               let flattenedCrop = renderFinalImage(
                 croppingTo: cropPixelRect,
@@ -1066,6 +1094,11 @@ class ScreenshotEditorViewModel: ObservableObject {
               ) else {
             return false
         }
+
+        // Snapshot the uncropped image together with its annotations so Undo can bring both back.
+        pendingDragHistoryState = nil
+        didChangePendingDrag = false
+        recordHistory()
 
         let croppedImage = NSImage(
             size: NSSize(width: flattenedCrop.pixelsWide, height: flattenedCrop.pixelsHigh)
@@ -1077,19 +1110,106 @@ class ScreenshotEditorViewModel: ObservableObject {
         annotations.removeAll()
         currentAnnotation = nil
         selectedAnnotationIndex = nil
-        cropRect = nil
         pencilPoints = []
+        clearCropSelection()
         selectedTool = .move
         cancelTextAnnotation()
-
-        // Previous states reference the image before its pixels and coordinate space changed.
-        undoStack.removeAll()
-        redoStack.removeAll()
-        pendingDragHistoryState = nil
-        didChangePendingDrag = false
-        updateHistoryAvailability()
         markDirty()
         return true
+    }
+
+    // MARK: - Crop selection
+
+    func clearCropSelection() {
+        cropDragMode = nil
+        cropDragOriginalRect = .zero
+        if cropRect != nil {
+            cropRect = nil
+        }
+        if isAdjustingCropSelection {
+            isAdjustingCropSelection = false
+        }
+    }
+
+    /// Selects the whole image so the selection can be shaped without a pointer.
+    func selectEntireImageForCrop() {
+        guard selectedTool == .crop, cropDragMode == nil, fullImagePixelRect != nil else { return }
+        cropRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+    }
+
+    /// Keyboard and VoiceOver adjustment of the selection, in whole image pixels.
+    func adjustCropSelection(movingBy offset: CGSize = .zero, growingBy growth: CGSize = .zero) {
+        guard selectedTool == .crop, cropDragMode == nil, let rect = cropRect else { return }
+        cropRect = ScreenshotEditorCropMath.adjusted(
+            rect,
+            movingBy: offset,
+            growingBy: growth,
+            imageSize: imagePixelSize
+        )
+    }
+
+    /// What a drag starting at `point` would do, for pointer feedback while hovering.
+    func cropInteraction(at point: CGPoint, displaySize: CGSize) -> CropDragMode {
+        ScreenshotEditorCropMath.dragMode(
+            at: point,
+            selection: cropRect,
+            tolerance: ScreenshotEditorCropMath.hitTolerance(forDisplaySize: displaySize)
+        )
+    }
+
+    /// A click outside the selection dismisses it, like clicking away from a selection in Preview.
+    func handleCropTap(at point: CGPoint, displaySize: CGSize) {
+        guard selectedTool == .crop, cropRect != nil, cropDragMode == nil else { return }
+        if cropInteraction(at: point, displaySize: displaySize) == .create {
+            clearCropSelection()
+        }
+    }
+
+    private func updateCropSelection(start: CGPoint, current: CGPoint, isAspectLocked: Bool, displaySize: CGSize) {
+        if cropDragMode == nil {
+            cropDragMode = cropInteraction(at: start, displaySize: displaySize)
+            cropDragOriginalRect = cropRect ?? .zero
+            isAdjustingCropSelection = true
+        }
+        guard let mode = cropDragMode else { return }
+
+        let original = cropDragOriginalRect
+        switch mode {
+        case .create:
+            cropRect = ScreenshotEditorCropMath.created(
+                from: start,
+                to: current,
+                square: isAspectLocked,
+                imageSize: imagePixelSize
+            )
+        case .move:
+            cropRect = ScreenshotEditorCropMath.moved(
+                original,
+                by: CGSize(width: current.x - start.x, height: current.y - start.y)
+            )
+        case .resize(let handle):
+            // Keep the offset between the pointer and the handle it grabbed so the edge doesn't jump.
+            let grip = ScreenshotEditorCropMath.handlePoint(handle, in: original)
+            let target = CGPoint(x: current.x + grip.x - start.x, y: current.y + grip.y - start.y)
+            let lockedAspect: CGFloat? = isAspectLocked && original.height > 0
+                ? original.width / original.height
+                : nil
+            cropRect = ScreenshotEditorCropMath.resized(original, handle: handle, to: target, lockedAspect: lockedAspect)
+        }
+    }
+
+    private func finishCropSelectionDrag(displaySize: CGSize) {
+        cropDragMode = nil
+        cropDragOriginalRect = .zero
+        if let rect = cropRect {
+            let isLargeEnough = displaySize.width > 0 && displaySize.height > 0
+                ? ScreenshotEditorCropMath.isUsableSelection(rect, displaySize: displaySize)
+                : true
+            if !isLargeEnough || ScreenshotEditorCropMath.pixelRect(for: rect, imageSize: imagePixelSize) == nil {
+                cropRect = nil
+            }
+        }
+        isAdjustingCropSelection = false
     }
 
     func copyToClipboard() {
@@ -1136,18 +1256,24 @@ class ScreenshotEditorViewModel: ObservableObject {
     private func canvasState() -> EditorCanvasState {
         EditorCanvasState(
             annotations: annotations,
-            cropRect: cropRect,
-            nextNumberLabel: nextNumberLabel
+            nextNumberLabel: nextNumberLabel,
+            image: originalImage,
+            imagePixelSize: imagePixelSize
         )
     }
 
     private func restoreCanvasState(_ state: EditorCanvasState) {
+        // Annotations are normalized to the image they were drawn on, so both are restored together.
+        if originalImage !== state.image {
+            imagePixelSize = state.imagePixelSize
+            originalImage = state.image
+        }
         annotations = state.annotations
-        cropRect = state.cropRect
         nextNumberLabel = state.nextNumberLabel
         selectedAnnotationIndex = nil
         currentAnnotation = nil
         pencilPoints = []
+        clearCropSelection()
     }
 
     private func recordHistory() {
@@ -1248,8 +1374,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     // MARK: - Private
 
     private func exportBasePixelSize() -> CGSize {
-        guard let cropPixelRect = resolvedCropPixelRect(for: cropRect) else { return .zero }
-        return exportLayout(for: cropPixelRect.size).frameSize
+        guard let imagePixelRect = fullImagePixelRect else { return .zero }
+        return exportLayout(for: imagePixelRect.size).frameSize
     }
 
     private func originalLinePoints() -> LinePoints {
@@ -1467,7 +1593,8 @@ class ScreenshotEditorViewModel: ObservableObject {
 
         let pixelH = imagePixelSize.height
 
-        guard let cropPixelRect = explicitCropPixelRect ?? resolvedCropPixelRect(for: cropRect) else {
+        // A pending crop selection never changes the output; only an applied crop does.
+        guard let cropPixelRect = explicitCropPixelRect ?? fullImagePixelRect else {
             return nil
         }
         let layout = includesExportDecorations
@@ -1797,16 +1924,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
     }
 
-    private var exportImageSize: CGSize {
-        resolvedCropPixelRect(for: cropRect)?.size ?? .zero
-    }
-
-    private func resolvedCropPixelRect(for normalizedCrop: CGRect?) -> CGRect? {
+    private var fullImagePixelRect: CGRect? {
         guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return nil }
-        guard let normalizedCrop else {
-            return CGRect(origin: .zero, size: imagePixelSize)
-        }
-        return ScreenshotEditorCropMath.pixelRect(for: normalizedCrop, imageSize: imagePixelSize)
+        return CGRect(origin: .zero, size: imagePixelSize)
     }
 
     private func exportLayout(for imageSize: CGSize) -> ExportFrameLayout {

@@ -20,7 +20,7 @@
              throwaway self-signed certificate that the Sandbox trusts.
 
 .PARAMETER Version
-  Asset version, e.g. 1.8.0 (used for the download name or to stamp the build).
+  Asset version, e.g. 1.8.1 (used for the download name or to stamp the build).
 
 .PARAMETER WaitSeconds
   How long the app must stay alive to pass. Default 60.
@@ -29,9 +29,9 @@
   Host folder mapped into the Sandbox as C:\share. Default: %TEMP%\tinyclips-sandbox.
 
 .EXAMPLE
-  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.0
+  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.1
 .EXAMPLE
-  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.0
+  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.1
 #>
 [CmdletBinding()]
 param(

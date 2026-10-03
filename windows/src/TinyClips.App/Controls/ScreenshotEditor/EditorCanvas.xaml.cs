@@ -152,8 +152,7 @@ public sealed partial class EditorCanvas : UserControl
         _controller.ActiveAnnotationDiscarded += OnControllerActiveAnnotationDiscarded;
         _controller.BackgroundChanged += OnControllerBackgroundChanged;
 
-        // Sync the hint text to the controller's initial tool (Crop) — mirrors the original
-        // window's ctor calling SelectTool(EditTool.Crop) right after wiring everything up.
+        // Sync the hint text to the controller's initial tool (Select).
         OnControllerToolChanged(this, _controller.Tool);
     }
 
@@ -303,6 +302,13 @@ public sealed partial class EditorCanvas : UserControl
 
     private void OnImageHostSizeChanged(object sender, SizeChangedEventArgs e)
     {
+        // XAML lays out a window's content even when the window's constructor threw before
+        // Attach ran, so this can fire with no controller. Crashing here hid the real failure.
+        if (_controller is null)
+        {
+            return;
+        }
+
         LayoutCanvas();
         RepositionAll();
     }
