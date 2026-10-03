@@ -10,6 +10,14 @@ own `CHANGELOG.md` at the repository root.
   starts on Select, matching macOS. Press **C** or choose **Crop** in the tool rail to crop, then
   **Apply crop** as before.
 
+### Fixed
+- **Direct and winget installs no longer crash on their first launch.** The 1.8.0 direct MSIX
+  embedded its App Installer auto-update configuration, and the first launch after installing
+  exited immediately (`0xC0000409`) on x64 and ARM64; launching again worked. This also failed
+  winget validation. The MSIX no longer embeds that configuration. Installing through the
+  `.appinstaller` still updates automatically; installs from the MSIX file or winget update
+  through `winget upgrade` or the in-app update check.
+
 ## [v1.8.0-windows] - 2026-09-28
 
 ### Added

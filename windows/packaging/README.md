@@ -38,21 +38,27 @@ workflow also generates architecture-specific `.appinstaller` files for auto-upd
 `.github/workflows/windows-release.yml` runs for tags like `v1.0.1-windows` and maps them to
 MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 as NativeAOT self-contained MSIX
 packages, signs them with Azure Artifact Signing, runs WACK, computes winget hashes, generates a
-versioned winget manifest artifact, and creates the GitHub Release. Direct release packages embed
-their generated App Installer configuration; Store packages use their separate manifest and never
-include it.
+versioned winget manifest artifact, and creates the GitHub Release. The generated App Installer
+configuration is published only as standalone `.appinstaller` release assets; neither direct nor
+Store packages embed it.
 
 #### Direct install auto-updates
 
 Each versioned Windows release publishes `TinyClips-x64.appinstaller` and
-`TinyClips-arm64.appinstaller` beside the signed MSIX files. The direct MSIX itself embeds the
-App Installer configuration, so installing it by any route—including double-click, `Add-AppxPackage`,
-or winget—opts the package into Windows App Installer updates. The `.appinstaller` is a stable
-bootstrap that lets new users install the current version without knowing its versioned asset URL.
-Windows checks in the background approximately every eight hours and also checks on launch when
-24 hours have passed since the previous launch check.
+`TinyClips-arm64.appinstaller` beside the signed MSIX files. Installing through the `.appinstaller`
+opts that install into Windows App Installer updates and lets new users install the current version
+without knowing its versioned asset URL. Windows checks in the background approximately every eight
+hours and also checks on launch when 24 hours have passed since the previous launch check.
 
-The App Installer files and embedded `uap13:AutoUpdate` metadata use a dedicated rolling GitHub
+The MSIX itself must not embed the App Installer configuration (`uap13:AutoUpdate`). With it
+embedded, Windows validates the package on first launch and that first process crashed activating
+WinUI (`CLASS_E_CLASSNOTAVAILABLE`, exit code `0xC0000409`) on x64 and ARM64; the second launch
+worked. This failed winget validation for 1.8.0 (microsoft/winget-pkgs#442954).
+`Assert-DirectPackage.ps1` rejects packages that embed it. Installs made by double-clicking the
+MSIX, `Add-AppxPackage`, or winget therefore do not receive App Installer updates; they update
+through `winget upgrade` or the in-app update check.
+
+The App Installer files use a dedicated rolling GitHub
 Release at `windows-latest`. Its stable App Installer URLs do not change when a new version tag is
 published:
 
@@ -70,8 +76,8 @@ channel; only the `.appinstaller` assets represent current channel state.
 
 Direct packages remain NativeAOT and self-contained, including the Windows App SDK runtime, so a
 clean machine needs no separate .NET or Windows App Runtime installation. `winget` and App Installer
-install the same direct MSIX, so both routes receive App Installer updates. `winget upgrade` and
-App Installer operate on the same package family; either can advance its installed version.
+install the same direct MSIX and operate on the same package family, so either can advance its
+installed version; only installs made through the `.appinstaller` update automatically.
 
 #### Direct release runtime model
 

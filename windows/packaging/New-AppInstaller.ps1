@@ -4,9 +4,6 @@ param(
     [string] $ManifestPath,
 
     [Parameter(Mandatory)]
-    [string] $ManifestOutputPath,
-
-    [Parameter(Mandatory)]
     [string] $AppInstallerPath,
 
     [Parameter(Mandatory)]
@@ -29,42 +26,16 @@ foreach ($uriValue in @($PackageUri, $AppInstallerUri)) {
     }
 }
 
+# Only the standalone .appinstaller is generated. The MSIX must not embed this configuration
+# (uap13:AutoUpdate): with it embedded, Windows validates the package on first launch and that
+# first process crashes activating WinUI (microsoft/winget-pkgs#442954).
 $manifestDocument = [Xml.XmlDocument]::new()
-$manifestDocument.PreserveWhitespace = $true
 $manifestDocument.Load((Resolve-Path $ManifestPath))
 
-$package = $manifestDocument.DocumentElement
-$identity = $package.SelectSingleNode("*[local-name()='Identity']")
-$properties = $package.SelectSingleNode("*[local-name()='Properties']")
-if (-not $identity -or -not $properties) {
-    throw "The package manifest must contain Identity and Properties elements."
+$identity = $manifestDocument.DocumentElement.SelectSingleNode("*[local-name()='Identity']")
+if (-not $identity) {
+    throw "The package manifest must contain an Identity element."
 }
-
-$uap13Namespace = 'http://schemas.microsoft.com/appx/manifest/uap/windows10/13'
-$xmlNamespace = 'http://www.w3.org/2000/xmlns/'
-if (-not $package.GetAttribute('uap13', $xmlNamespace)) {
-    $namespaceAttribute = $manifestDocument.CreateAttribute('xmlns', 'uap13', $xmlNamespace)
-    $namespaceAttribute.Value = $uap13Namespace
-    [void] $package.Attributes.Append($namespaceAttribute)
-}
-
-$ignorableNamespaces = @($package.GetAttribute('IgnorableNamespaces') -split '\s+' | Where-Object { $_ })
-if ($ignorableNamespaces -notcontains 'uap13') {
-    $package.SetAttribute('IgnorableNamespaces', (($ignorableNamespaces + 'uap13') -join ' '))
-}
-
-$namespaceManager = [Xml.XmlNamespaceManager]::new($manifestDocument.NameTable)
-$namespaceManager.AddNamespace('uap13', $uap13Namespace)
-$existingAutoUpdate = $properties.SelectSingleNode('uap13:AutoUpdate', $namespaceManager)
-if ($existingAutoUpdate) {
-    [void] $properties.RemoveChild($existingAutoUpdate)
-}
-
-$autoUpdate = $manifestDocument.CreateElement('uap13', 'AutoUpdate', $uap13Namespace)
-$appInstallerDeclaration = $manifestDocument.CreateElement('uap13', 'AppInstaller', $uap13Namespace)
-$appInstallerDeclaration.SetAttribute('File', 'install.appinstaller')
-[void] $autoUpdate.AppendChild($appInstallerDeclaration)
-[void] $properties.AppendChild($autoUpdate)
 
 function Save-XmlDocument {
     param(
@@ -94,8 +65,6 @@ function Save-XmlDocument {
         $writer.Dispose()
     }
 }
-
-Save-XmlDocument -Document $manifestDocument -Path $ManifestOutputPath
 
 $appInstallerNamespace = 'http://schemas.microsoft.com/appx/appinstaller/2018'
 $appInstallerDocument = [Xml.XmlDocument]::new()

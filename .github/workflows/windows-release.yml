@@ -120,15 +120,16 @@ jobs:
             $stableReleaseBase = "https://github.com/jamesmontemagno/tiny-clips/releases/download/windows-latest"
             $packageUri = "https://github.com/jamesmontemagno/tiny-clips/releases/download/$env:RELEASE_TAG/TinyClips-$env:ASSET_VERSION-$($p.Asset).msix"
             $appInstallerUri = "$stableReleaseBase/TinyClips-$($p.Asset).appinstaller"
+            $appInstallerPath = "artifacts/windows/TinyClips-$($p.Asset).appinstaller"
 
+            # The App Installer configuration ships only as a standalone release asset. It is not
+            # embedded in the MSIX; Assert-DirectPackage.ps1 rejects packages that embed it.
             & ./windows/packaging/New-AppInstaller.ps1 `
               -ManifestPath windows/src/TinyClips.App/Package.appxmanifest `
-              -ManifestOutputPath windows/src/TinyClips.App/Package.AutoUpdate.appxmanifest `
-              -AppInstallerPath windows/src/TinyClips.App/install.appinstaller `
+              -AppInstallerPath $appInstallerPath `
               -Architecture $p.Asset `
               -PackageUri $packageUri `
               -AppInstallerUri $appInstallerUri
-            Copy-Item windows/src/TinyClips.App/install.appinstaller "artifacts/windows/TinyClips-$($p.Asset).appinstaller" -Force
 
             dotnet build $env:APP_PROJECT `
               -c Release `
@@ -146,7 +147,6 @@ jobs:
               -p:AppxBundle=Never `
               -p:UapAppxPackageBuildMode=SideloadOnly `
               -p:AppxPackageSigningEnabled=false `
-              -p:TinyClipsAutoUpdateBuild=true `
               -v:minimal
             if ($LASTEXITCODE -ne 0) { throw "MSIX build failed for $($p.Platform)." }
 
@@ -159,39 +159,13 @@ jobs:
               -MsixPath $produced.FullName `
               -Architecture $p.Asset
 
-            # Assert-DirectPackage validates the NativeAOT/self-contained payload. Unpack it again
-            # here to validate the release-specific App Installer metadata.
-            $verifyDir = Join-Path $packageDir "verify"
-            Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
-            $zipCopy = "$($produced.FullName).zip"
-            Copy-Item $produced.FullName $zipCopy -Force
-            Expand-Archive $zipCopy -DestinationPath $verifyDir -Force
-
-            $appxManifest = Get-Content (Join-Path $verifyDir "AppxManifest.xml") -Raw
-            [xml]$packagedManifest = $appxManifest
-            $manifestNamespaces = [Xml.XmlNamespaceManager]::new($packagedManifest.NameTable)
-            $manifestNamespaces.AddNamespace("foundation", "http://schemas.microsoft.com/appx/manifest/foundation/windows10")
-            $manifestNamespaces.AddNamespace("uap13", "http://schemas.microsoft.com/appx/manifest/uap/windows10/13")
-            $appInstallerDeclaration = $packagedManifest.SelectSingleNode(
-              "/foundation:Package/foundation:Properties/uap13:AutoUpdate/uap13:AppInstaller",
-              $manifestNamespaces
-            )
-            if (-not $appInstallerDeclaration -or $appInstallerDeclaration.File -ne "install.appinstaller") {
-              throw "Direct MSIX for $($p.Platform) is missing the uap13 AutoUpdate declaration."
-            }
-
-            $embeddedAppInstallerPath = Join-Path $verifyDir "install.appinstaller"
-            if (-not (Test-Path $embeddedAppInstallerPath)) {
-              throw "Direct MSIX for $($p.Platform) does not contain install.appinstaller."
-            }
-
-            [xml]$embeddedAppInstaller = Get-Content $embeddedAppInstallerPath -Raw
-            $appInstallerNamespaces = [Xml.XmlNamespaceManager]::new($embeddedAppInstaller.NameTable)
+            [xml]$appInstallerDocument = Get-Content $appInstallerPath -Raw
+            $appInstallerNamespaces = [Xml.XmlNamespaceManager]::new($appInstallerDocument.NameTable)
             $appInstallerNamespaces.AddNamespace("ai", "http://schemas.microsoft.com/appx/appinstaller/2018")
-            $appInstallerRoot = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller", $appInstallerNamespaces)
-            $mainPackage = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller/ai:MainPackage", $appInstallerNamespaces)
-            $onLaunch = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller/ai:UpdateSettings/ai:OnLaunch", $appInstallerNamespaces)
-            $backgroundTask = $embeddedAppInstaller.SelectSingleNode("/ai:AppInstaller/ai:UpdateSettings/ai:AutomaticBackgroundTask", $appInstallerNamespaces)
+            $appInstallerRoot = $appInstallerDocument.SelectSingleNode("/ai:AppInstaller", $appInstallerNamespaces)
+            $mainPackage = $appInstallerDocument.SelectSingleNode("/ai:AppInstaller/ai:MainPackage", $appInstallerNamespaces)
+            $onLaunch = $appInstallerDocument.SelectSingleNode("/ai:AppInstaller/ai:UpdateSettings/ai:OnLaunch", $appInstallerNamespaces)
+            $backgroundTask = $appInstallerDocument.SelectSingleNode("/ai:AppInstaller/ai:UpdateSettings/ai:AutomaticBackgroundTask", $appInstallerNamespaces)
 
             if ($appInstallerRoot.Version -ne $env:PACKAGE_VERSION -or $mainPackage.Version -ne $env:PACKAGE_VERSION) {
               throw "App Installer version for $($p.Platform) does not match $env:PACKAGE_VERSION."
@@ -209,13 +183,6 @@ jobs:
             if (-not $backgroundTask) {
               throw "App Installer for $($p.Platform) must check for updates in the background."
             }
-
-            $standaloneAppInstallerPath = "artifacts/windows/TinyClips-$($p.Asset).appinstaller"
-            if ((Get-FileHash $embeddedAppInstallerPath).Hash -ne (Get-FileHash $standaloneAppInstallerPath).Hash) {
-              throw "Embedded and standalone App Installer files differ for $($p.Platform)."
-            }
-            Remove-Item $zipCopy -Force -ErrorAction SilentlyContinue
-            Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
 
             $releasePackage = "artifacts/windows/TinyClips-$env:ASSET_VERSION-$($p.Asset).msix"
             Copy-Item $produced.FullName $releasePackage -Force
