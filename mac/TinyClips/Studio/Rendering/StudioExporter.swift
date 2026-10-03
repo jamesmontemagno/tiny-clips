@@ -59,18 +59,12 @@ enum StudioExporter {
         exportSession.videoComposition = build.videoComposition
         exportSession.shouldOptimizeForNetworkUse = true
 
-        // Polls until the session reaches a final state. The session starts as `.unknown`, so that
-        // state has to keep the loop alive or progress would stop before the export begins.
+        // The sequence ends by itself when the export finishes, fails, or is cancelled.
         let progressTask = Task {
-            while !Task.isCancelled {
-                switch exportSession.status {
-                case .completed, .failed, .cancelled:
-                    return
-                default:
-                    break
+            for await state in exportSession.states(updateInterval: 0.1) {
+                if case .exporting(let progress) = state {
+                    onProgress?(progress.fractionCompleted)
                 }
-                onProgress?(Double(exportSession.progress))
-                try? await Task.sleep(nanoseconds: 100_000_000)
             }
         }
 

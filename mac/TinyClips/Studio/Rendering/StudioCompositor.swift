@@ -119,13 +119,13 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     private let lock = NSLock()
     private var renderContext: AVVideoCompositionRenderContext?
 
-    var sourcePixelBufferAttributes: [String: Any]? {
+    var sourcePixelBufferAttributes: [String: any Sendable]? {
         [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
         ]
     }
 
-    var requiredPixelBufferAttributesForRenderContext: [String: Any] {
+    var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
         [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
         ]
