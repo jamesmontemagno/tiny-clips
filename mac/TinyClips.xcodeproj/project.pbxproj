@@ -133,6 +133,25 @@
 		B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* CaptureSettingsTests.swift */; };
 		B30000000000000000000004 /* SaveServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SaveServiceTests.swift */; };
 		B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */; };
+		B40000000000000000000001 /* StudioJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000001 /* StudioJSON.swift */; };
+		B40000000000000000000002 /* StudioProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000002 /* StudioProject.swift */; };
+		B40000000000000000000003 /* StudioEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000003 /* StudioEvents.swift */; };
+		B40000000000000000000004 /* StudioProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* StudioProjectStore.swift */; };
+		B40000000000000000000005 /* StudioCleanupPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000005 /* StudioCleanupPolicy.swift */; };
+		B40000000000000000000006 /* StudioCanvasMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000006 /* StudioCanvasMath.swift */; };
+		B40000000000000000000007 /* StudioLayoutResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000007 /* StudioLayoutResolver.swift */; };
+		B40000000000000000000008 /* StudioTimeMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000008 /* StudioTimeMap.swift */; };
+		B50000000000000000000001 /* StudioJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000001 /* StudioJSON.swift */; };
+		B50000000000000000000002 /* StudioProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000002 /* StudioProject.swift */; };
+		B50000000000000000000003 /* StudioEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000003 /* StudioEvents.swift */; };
+		B50000000000000000000004 /* StudioProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* StudioProjectStore.swift */; };
+		B50000000000000000000005 /* StudioCleanupPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000005 /* StudioCleanupPolicy.swift */; };
+		B50000000000000000000006 /* StudioCanvasMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000006 /* StudioCanvasMath.swift */; };
+		B50000000000000000000007 /* StudioLayoutResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000007 /* StudioLayoutResolver.swift */; };
+		B50000000000000000000008 /* StudioTimeMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000008 /* StudioTimeMap.swift */; };
+		B60000000000000000000001 /* StudioProjectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000001 /* StudioProjectTests.swift */; };
+		B60000000000000000000002 /* StudioLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000002 /* StudioLayoutTests.swift */; };
+		B60000000000000000000003 /* StudioFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000003 /* StudioFixtureTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -208,6 +227,14 @@
 		A1000000000000000000002E /* MouseClickOverlayControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseClickOverlayControls.swift; sourceTree = "<group>"; };
 		A1000000000000000000002F /* MouseClicksSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseClicksSettingsSection.swift; sourceTree = "<group>"; };
 		A10000000000000000000030 /* SettingsViewHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewHelpers.swift; sourceTree = "<group>"; };
+		A40000000000000000000001 /* StudioJSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioJSON.swift; sourceTree = "<group>"; };
+		A40000000000000000000002 /* StudioProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProject.swift; sourceTree = "<group>"; };
+		A40000000000000000000003 /* StudioEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioEvents.swift; sourceTree = "<group>"; };
+		A40000000000000000000004 /* StudioProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProjectStore.swift; sourceTree = "<group>"; };
+		A40000000000000000000005 /* StudioCleanupPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCleanupPolicy.swift; sourceTree = "<group>"; };
+		A40000000000000000000006 /* StudioCanvasMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCanvasMath.swift; sourceTree = "<group>"; };
+		A40000000000000000000007 /* StudioLayoutResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioLayoutResolver.swift; sourceTree = "<group>"; };
+		A40000000000000000000008 /* StudioTimeMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioTimeMap.swift; sourceTree = "<group>"; };
 		A2000000000000000000000C /* Info-MAS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-MAS.plist"; sourceTree = "<group>"; };
 		A2000000000000000000000D /* TinyClipsMAS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TinyClipsMAS.entitlements; sourceTree = "<group>"; };
 		A2000000000000000000000E /* TinyClipsMAS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TinyClipsMAS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -217,6 +244,9 @@
 		A30000000000000000000004 /* SaveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveServiceTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAnalyticsStoreTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000006 /* TinyClipsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinyClipsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A50000000000000000000001 /* StudioProjectTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProjectTests.swift; sourceTree = "<group>"; };
+		A50000000000000000000002 /* StudioLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioLayoutTests.swift; sourceTree = "<group>"; };
+		A50000000000000000000003 /* StudioFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioFixtureTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -265,6 +295,7 @@
 				C10000000000000000000004 /* Views */,
 				C10000000000000000000005 /* Capture */,
 				C10000000000000000000006 /* Services */,
+				C40000000000000000000001 /* Studio */,
 				A1000000000000000000000B /* Assets.xcassets */,
 				A1000000000000000000000C /* Info.plist */,
 				A2000000000000000000000C /* Info-MAS.plist */,
@@ -366,6 +397,21 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		C40000000000000000000001 /* Studio */ = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000001 /* StudioJSON.swift */,
+				A40000000000000000000002 /* StudioProject.swift */,
+				A40000000000000000000003 /* StudioEvents.swift */,
+				A40000000000000000000004 /* StudioProjectStore.swift */,
+				A40000000000000000000005 /* StudioCleanupPolicy.swift */,
+				A40000000000000000000006 /* StudioCanvasMath.swift */,
+				A40000000000000000000007 /* StudioLayoutResolver.swift */,
+				A40000000000000000000008 /* StudioTimeMap.swift */,
+			);
+			path = Studio;
+			sourceTree = "<group>";
+		};
 		C10000000000000000000007 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -384,6 +430,9 @@
 				A30000000000000000000003 /* CaptureSettingsTests.swift */,
 				A30000000000000000000004 /* SaveServiceTests.swift */,
 				A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */,
+				A50000000000000000000001 /* StudioProjectTests.swift */,
+				A50000000000000000000002 /* StudioLayoutTests.swift */,
+				A50000000000000000000003 /* StudioFixtureTests.swift */,
 			);
 			path = TinyClipsTests;
 			sourceTree = "<group>";
@@ -576,6 +625,14 @@
 				B10000000000000000000033 /* AnalyticsSettingsSection.swift in Sources */,
 				B1000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */,
 				B1000000000000000000003F /* ScrollingCapturePanel.swift in Sources */,
+				B40000000000000000000001 /* StudioJSON.swift in Sources */,
+				B40000000000000000000002 /* StudioProject.swift in Sources */,
+				B40000000000000000000003 /* StudioEvents.swift in Sources */,
+				B40000000000000000000004 /* StudioProjectStore.swift in Sources */,
+				B40000000000000000000005 /* StudioCleanupPolicy.swift in Sources */,
+				B40000000000000000000006 /* StudioCanvasMath.swift in Sources */,
+				B40000000000000000000007 /* StudioLayoutResolver.swift in Sources */,
+				B40000000000000000000008 /* StudioTimeMap.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -641,6 +698,14 @@
 				B20000000000000000000033 /* AnalyticsSettingsSection.swift in Sources */,
 				B2000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */,
 				B2000000000000000000003F /* ScrollingCapturePanel.swift in Sources */,
+				B50000000000000000000001 /* StudioJSON.swift in Sources */,
+				B50000000000000000000002 /* StudioProject.swift in Sources */,
+				B50000000000000000000003 /* StudioEvents.swift in Sources */,
+				B50000000000000000000004 /* StudioProjectStore.swift in Sources */,
+				B50000000000000000000005 /* StudioCleanupPolicy.swift in Sources */,
+				B50000000000000000000006 /* StudioCanvasMath.swift in Sources */,
+				B50000000000000000000007 /* StudioLayoutResolver.swift in Sources */,
+				B50000000000000000000008 /* StudioTimeMap.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -653,6 +718,9 @@
 				B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */,
 				B30000000000000000000004 /* SaveServiceTests.swift in Sources */,
 				B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */,
+				B60000000000000000000001 /* StudioProjectTests.swift in Sources */,
+				B60000000000000000000002 /* StudioLayoutTests.swift in Sources */,
+				B60000000000000000000003 /* StudioFixtureTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
