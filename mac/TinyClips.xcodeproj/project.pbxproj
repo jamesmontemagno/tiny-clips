@@ -170,6 +170,15 @@
 		0DBC2497957460ED836EDEBF /* StudioRecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6AA390A4D115AC20BFCFD0F /* StudioRecordingCoordinator.swift */; };
 		FA0BE82E7B443BF2C65E796B /* StudioRenderGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F398D2F36A0A31E3BB060B /* StudioRenderGeometryTests.swift */; };
 		2919C387E06C78C948A7CC3A /* StudioCaptureEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C575E8A9C0896B153E9401C5 /* StudioCaptureEventsTests.swift */; };
+		78CB893FB694DBB2AB0D69BF /* StudioEditorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9480C5581B78FF4DF1C4F5A /* StudioEditorModel.swift */; };
+		59D9F7FA5F0544AC13C31D86 /* StudioEditorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9480C5581B78FF4DF1C4F5A /* StudioEditorModel.swift */; };
+		7D6C5244078A7C08A36FD1B7 /* StudioWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D4FA68D6AF6A1F04BF5DCE7 /* StudioWindow.swift */; };
+		1812D91E77C2447A9F28A8E6 /* StudioWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D4FA68D6AF6A1F04BF5DCE7 /* StudioWindow.swift */; };
+		41BEDED91D8C5A21C2E09BA4 /* StudioViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A443B55CDD8679016D298256 /* StudioViewModel.swift */; };
+		FA537778CB43E2CA149BC770 /* StudioViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A443B55CDD8679016D298256 /* StudioViewModel.swift */; };
+		AD6EB0440F1B76B9EDB36906 /* StudioViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB2E4AB53A0A1412FBC5054 /* StudioViews.swift */; };
+		E5A1E7C1806510E0455B5B8A /* StudioViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB2E4AB53A0A1412FBC5054 /* StudioViews.swift */; };
+		310BEF95C98A3DB925F6340B /* StudioEditorModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F676443B16E6FDA9590DD77 /* StudioEditorModelTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -275,6 +284,11 @@
 		F6AA390A4D115AC20BFCFD0F /* StudioRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRecordingCoordinator.swift; sourceTree = "<group>"; };
 		F3F398D2F36A0A31E3BB060B /* StudioRenderGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRenderGeometryTests.swift; sourceTree = "<group>"; };
 		C575E8A9C0896B153E9401C5 /* StudioCaptureEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptureEventsTests.swift; sourceTree = "<group>"; };
+		A9480C5581B78FF4DF1C4F5A /* StudioEditorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioEditorModel.swift; sourceTree = "<group>"; };
+		2D4FA68D6AF6A1F04BF5DCE7 /* StudioWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioWindow.swift; sourceTree = "<group>"; };
+		A443B55CDD8679016D298256 /* StudioViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioViewModel.swift; sourceTree = "<group>"; };
+		3AB2E4AB53A0A1412FBC5054 /* StudioViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioViews.swift; sourceTree = "<group>"; };
+		9F676443B16E6FDA9590DD77 /* StudioEditorModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioEditorModelTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -370,6 +384,7 @@
 				A10000000000000000000025 /* MenuBarViews.swift */,
 				A10000000000000000000026 /* ProcessingIndicatorWindow.swift */,
 				A1000000000000000000003F /* ScrollingCapturePanel.swift */,
+				47A10D0BE1E07E395AB67438 /* Studio */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -440,6 +455,7 @@
 				F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */,
 				D1C92E15965D592980D7254C /* StudioCaptureEvents.swift */,
 				536FC4823D4E273D9E5841E6 /* Rendering */,
+				A9480C5581B78FF4DF1C4F5A /* StudioEditorModel.swift */,
 			);
 			path = Studio;
 			sourceTree = "<group>";
@@ -467,6 +483,7 @@
 				A50000000000000000000003 /* StudioFixtureTests.swift */,
 				F3F398D2F36A0A31E3BB060B /* StudioRenderGeometryTests.swift */,
 				C575E8A9C0896B153E9401C5 /* StudioCaptureEventsTests.swift */,
+				9F676443B16E6FDA9590DD77 /* StudioEditorModelTests.swift */,
 			);
 			path = TinyClipsTests;
 			sourceTree = "<group>";
@@ -481,6 +498,16 @@
 				8570D0C6EFBF2099DAE2F7E3 /* StudioPlayback.swift */,
 			);
 			path = Rendering;
+			sourceTree = "<group>";
+		};
+		47A10D0BE1E07E395AB67438 /* Studio */ = {
+			isa = PBXGroup;
+			children = (
+				2D4FA68D6AF6A1F04BF5DCE7 /* StudioWindow.swift */,
+				A443B55CDD8679016D298256 /* StudioViewModel.swift */,
+				3AB2E4AB53A0A1412FBC5054 /* StudioViews.swift */,
+			);
+			path = Studio;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -687,6 +714,10 @@
 				3E2067888B99235F7647F19F /* StudioExporter.swift in Sources */,
 				F8CFD962B25E6731B8E26193 /* StudioPlayback.swift in Sources */,
 				75EAE17CAD57EB4AC17976E3 /* StudioRecordingCoordinator.swift in Sources */,
+				78CB893FB694DBB2AB0D69BF /* StudioEditorModel.swift in Sources */,
+				7D6C5244078A7C08A36FD1B7 /* StudioWindow.swift in Sources */,
+				41BEDED91D8C5A21C2E09BA4 /* StudioViewModel.swift in Sources */,
+				AD6EB0440F1B76B9EDB36906 /* StudioViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -768,6 +799,10 @@
 				07CED5D8E70FC72F8BFDD16A /* StudioExporter.swift in Sources */,
 				1DA46A23D7166ABB620684BA /* StudioPlayback.swift in Sources */,
 				0DBC2497957460ED836EDEBF /* StudioRecordingCoordinator.swift in Sources */,
+				59D9F7FA5F0544AC13C31D86 /* StudioEditorModel.swift in Sources */,
+				1812D91E77C2447A9F28A8E6 /* StudioWindow.swift in Sources */,
+				FA537778CB43E2CA149BC770 /* StudioViewModel.swift in Sources */,
+				E5A1E7C1806510E0455B5B8A /* StudioViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -785,6 +820,7 @@
 				B60000000000000000000003 /* StudioFixtureTests.swift in Sources */,
 				FA0BE82E7B443BF2C65E796B /* StudioRenderGeometryTests.swift in Sources */,
 				2919C387E06C78C948A7CC3A /* StudioCaptureEventsTests.swift in Sources */,
+				310BEF95C98A3DB925F6340B /* StudioEditorModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

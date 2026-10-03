@@ -93,7 +93,8 @@ final class StudioRecordingCoordinator {
         cameraCornerChanges: [BrandingOverlayProcessor.WebcamPositionEvent],
         clickOverlayStyle: MouseClickOverlayStyle,
         branding: Bool,
-        appVersion: String
+        appVersion: String,
+        look: StudioLook?
     ) async throws -> String {
         stopCursorSampling()
 
@@ -136,7 +137,8 @@ final class StudioRecordingCoordinator {
             bubbleAnchor: initialCameraCorner,
             clickOverlay: Self.clickOverlay(from: clickOverlayStyle, enabled: clickVisualsEnabled),
             branding: branding,
-            appVersion: appVersion
+            appVersion: appVersion,
+            look: look
         )
 
         _ = try store.completeRecording(id: paths.id, request: request)

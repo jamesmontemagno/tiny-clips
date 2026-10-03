@@ -400,6 +400,12 @@ class CaptureSettings: ObservableObject {
     var isStudioVideoRecordingEnabled: Bool {
         studioPreviewEnabled && videoAfterRecording == .studio
     }
+    @AppStorage("studioDefaultLook") private var storedStudioDefaultLook: String = ""
+    /// The look new Studio recordings start with, or nil for the built-in one.
+    var studioDefaultLook: StudioLook? {
+        get { StudioLook(settingsText: storedStudioDefaultLook) }
+        set { storedStudioDefaultLook = newValue?.settingsText() ?? "" }
+    }
     @AppStorage("recordAudio") var recordAudio: Bool = false
     @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
     @AppStorage("audioOffsetMs") private var storedAudioOffsetMs: Int = 0
@@ -813,7 +819,7 @@ class CaptureSettings: ObservableObject {
         "gifMouseClicksUseVideoSettings",
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
-        "showTrimmer", "studioPreviewEnabled", "videoAfterRecording",
+        "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", "showGifTrimmer",

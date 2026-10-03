@@ -553,6 +553,35 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertNil(project.camera.crop)
     }
 
+    func testLookSettingsTextRoundTripsWithoutCrops() throws {
+        let look = StudioLook(
+            canvas: StudioCanvas(aspect: .portrait9x16, padding: 0.1, background: StudioBackground(style: .solid, preset: "ink", primary: "#141719", secondary: nil)),
+            screen: StudioScreenStyle(cornerRadius: 0.05, shadow: 0.8, crop: StudioRect(x: 0.1, y: 0.1, width: 0.5, height: 0.5)),
+            camera: StudioCameraStyle(shape: .squircle, mirror: false, borderWidth: 0.01, shadow: 0.6, crop: StudioRect(x: 0.2, y: 0.2, width: 0.5, height: 0.5))
+        )
+
+        let text = try XCTUnwrap(look.settingsText())
+        let restored = try XCTUnwrap(StudioLook(settingsText: text))
+
+        XCTAssertEqual(restored, look.withoutCrops)
+        XCTAssertNil(restored.screen.crop)
+        XCTAssertNil(restored.camera.crop)
+        XCTAssertEqual(restored.canvas.aspect, .portrait9x16)
+        XCTAssertEqual(restored.camera.shape, .squircle)
+    }
+
+    func testLookSettingsTextFillsMissingPartsAndRejectsOtherText() throws {
+        let partial = try XCTUnwrap(StudioLook(settingsText: #"{"canvas":{"padding":0.2}}"#))
+        XCTAssertEqual(partial.canvas.padding, 0.2)
+        XCTAssertEqual(partial.canvas.background, StudioBackground())
+        XCTAssertEqual(partial.screen, StudioScreenStyle())
+        XCTAssertEqual(partial.camera, StudioCameraStyle())
+
+        XCTAssertNil(StudioLook(settingsText: ""))
+        XCTAssertNil(StudioLook(settingsText: "not json"))
+        XCTAssertNil(StudioLook(settingsText: "[1, 2]"))
+    }
+
     func testGenericNullAndMissingGuardForProjectsAndEvents() throws {
         let projectData = try StudioJSON.makeEncoder().encode(fullyPopulatedProject())
         let eventData = try StudioJSON.makeEncoder().encode(StudioEvents())

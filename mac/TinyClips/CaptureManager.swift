@@ -1616,7 +1616,8 @@ class CaptureManager: ObservableObject {
                         cameraCornerChanges: webcamPositionEvents,
                         clickOverlayStyle: videoOverlayStyle,
                         branding: showBrandingOverlay,
-                        appVersion: Self.appVersionString()
+                        appVersion: Self.appVersionString(),
+                        look: CaptureSettings.shared.studioDefaultLook
                     )
                 } catch {
                     // Keep the screen recording as an ordinary video instead of losing it with the project.
@@ -2031,8 +2032,7 @@ class CaptureManager: ObservableObject {
     }
 
     private func openStudio(projectID: String) {
-        _ = projectID
-        SaveService.shared.showNotice("Recording saved as a Tiny Clips Studio project.")
+        StudioWindowRegistry.shared.open(projectID: projectID)
     }
 
     private func showGifTrimmer(

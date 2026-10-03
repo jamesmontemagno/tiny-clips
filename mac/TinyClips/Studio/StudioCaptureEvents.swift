@@ -160,7 +160,8 @@ enum StudioCaptureEvents {
         bubbleAnchor: StudioAnchor,
         clickOverlay: StudioClickOverlay,
         branding: Bool,
-        appVersion: String
+        appVersion: String,
+        look: StudioLook? = nil
     ) -> StudioProjectCreationRequest {
         StudioProjectCreationRequest(
             name: name,
@@ -179,7 +180,8 @@ enum StudioCaptureEvents {
             bubbleAnchor: bubbleAnchor,
             clickOverlay: clickOverlay,
             branding: branding,
-            appVersion: appVersion
+            appVersion: appVersion,
+            look: look
         )
     }
 }

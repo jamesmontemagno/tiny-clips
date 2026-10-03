@@ -87,6 +87,7 @@ final class StudioCaptureEventsTests: XCTestCase {
             opacity: 0.5,
             duration: 0.6
         )
+        let look = StudioLook(canvas: StudioCanvas(aspect: .square, padding: 0.2))
         let request = StudioCaptureEvents.makeProjectCreationRequest(
             name: "TinyClips 2026-10-03 at 07.26.39",
             screen: StudioCaptureMediaInfo(width: 1920, height: 1080, duration: 5, frameRate: 60),
@@ -95,7 +96,8 @@ final class StudioCaptureEventsTests: XCTestCase {
             bubbleAnchor: .topRight,
             clickOverlay: overlay,
             branding: true,
-            appVersion: "1.2.3"
+            appVersion: "1.2.3",
+            look: look
         )
 
         XCTAssertEqual(request.name, "TinyClips 2026-10-03 at 07.26.39")
@@ -106,6 +108,7 @@ final class StudioCaptureEventsTests: XCTestCase {
         XCTAssertEqual(request.clickOverlay, overlay)
         XCTAssertTrue(request.branding)
         XCTAssertEqual(request.appVersion, "1.2.3")
+        XCTAssertEqual(request.look, look)
     }
 
     func testEventsDocumentCarriesCaptureMetadata() {

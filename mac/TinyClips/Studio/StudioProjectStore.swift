@@ -16,7 +16,9 @@ struct StudioCameraCreationInfo: Equatable, Sendable {
     }
 }
 
-struct StudioLook: Equatable, Sendable {
+/// The styling a new project starts with: the `canvas`, `screen`, and `camera` objects of
+/// project.json. A look is shared by every new project, so it never keeps a crop.
+struct StudioLook: Codable, Equatable, Sendable {
     var canvas: StudioCanvas
     var screen: StudioScreenStyle
     var camera: StudioCameraStyle
@@ -29,6 +31,42 @@ struct StudioLook: Equatable, Sendable {
         self.canvas = canvas
         self.screen = screen
         self.camera = camera
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        canvas = try container.decodeIfPresent(StudioCanvas.self, forKey: .canvas) ?? StudioCanvas()
+        screen = try container.decodeIfPresent(StudioScreenStyle.self, forKey: .screen) ?? StudioScreenStyle()
+        camera = try container.decodeIfPresent(StudioCameraStyle.self, forKey: .camera) ?? StudioCameraStyle()
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case canvas
+        case screen
+        case camera
+    }
+
+    var withoutCrops: StudioLook {
+        var copy = self
+        copy.screen.crop = nil
+        copy.camera.crop = nil
+        return copy
+    }
+
+    /// The look as JSON text, for keeping in app settings.
+    func settingsText() -> String? {
+        guard let data = try? JSONEncoder().encode(withoutCrops) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Reads text written by `settingsText()`. Nil when there is no text or it is not a look.
+    init?(settingsText: String) {
+        guard !settingsText.isEmpty,
+              let look = try? StudioJSON.makeDecoder().decode(StudioLook.self, from: Data(settingsText.utf8))
+        else {
+            return nil
+        }
+        self = look.withoutCrops
     }
 }
 
