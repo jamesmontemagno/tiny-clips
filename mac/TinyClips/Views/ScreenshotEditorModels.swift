@@ -471,6 +471,86 @@ private extension CGFloat {
     }
 }
 
+/// What Esc does in the editor. Each press takes only the first step that applies.
+enum ScreenshotEditorEscapeAction: Equatable {
+    case cancelTextAnnotation
+    /// Esc in a sidebar text field leaves the field; it never closes the editor.
+    case leaveTextField
+    case clearCropSelection
+    case close
+
+    static func resolve(
+        isEditingTextAnnotation: Bool,
+        textFieldHasFocus: Bool,
+        hasCropSelection: Bool
+    ) -> ScreenshotEditorEscapeAction {
+        if isEditingTextAnnotation { return .cancelTextAnnotation }
+        if textFieldHasFocus { return .leaveTextField }
+        if hasCropSelection { return .clearCropSelection }
+        return .close
+    }
+}
+
+/// What the editor has to confirm before it closes.
+enum ScreenshotEditorClosePrompt: Equatable {
+    case discardChanges
+    /// The capture only exists as a temporary file, so closing throws it away.
+    case discardUnsavedCapture
+    case closeEditor
+
+    enum Trigger {
+        case closeCommand
+        case escapeKey
+    }
+
+    static func resolve(
+        trigger: Trigger,
+        confirmOnEscape: Bool,
+        hasUnsavedChanges: Bool,
+        discardsUnsavedCapture: Bool
+    ) -> ScreenshotEditorClosePrompt? {
+        switch trigger {
+        case .closeCommand:
+            return hasUnsavedChanges ? .discardChanges : nil
+        case .escapeKey:
+            guard confirmOnEscape else { return nil }
+            if discardsUnsavedCapture { return .discardUnsavedCapture }
+            return hasUnsavedChanges ? .discardChanges : .closeEditor
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .discardChanges: "Discard changes?"
+        case .discardUnsavedCapture: "Discard screenshot?"
+        case .closeEditor: "Close the editor?"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .discardChanges:
+            "You have unsaved changes. Are you sure you want to exit?"
+        case .discardUnsavedCapture:
+            "This screenshot has not been saved. Closing the editor discards it."
+        case .closeEditor:
+            "This screenshot is saved and has no unsaved changes. You can turn off this confirmation in Screenshot settings."
+        }
+    }
+
+    var confirmTitle: String {
+        switch self {
+        case .discardChanges: "Discard Changes"
+        case .discardUnsavedCapture: "Discard Screenshot"
+        case .closeEditor: "Close Editor"
+        }
+    }
+
+    var isDestructive: Bool {
+        self != .closeEditor
+    }
+}
+
 enum ScreenshotEditorZoomMath {
     static let minimumScale: CGFloat = 0.25
     static let maximumScale: CGFloat = 4

@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- macOS Screenshot settings have a new **Confirm before closing editor with Esc** option, on by default. Turn it off to close screenshot editors with a single Esc press, which discards anything unsaved.
+
 ### Changed
+- Pressing Esc in the macOS screenshot editor now asks before closing it, and warns when closing would discard a capture that has not been saved yet.
 - macOS screenshot editor cropping is easier to find and control. The toolbar now has a labeled **Apply Crop** button, and choosing the Crop tool shows a Crop section in the sidebar with the selection size in pixels plus Apply Crop and Clear buttons.
 - The macOS crop selection can now be adjusted instead of redrawn: drag any corner or edge handle to resize it (hold Shift on a corner to keep its shape), drag inside it to move it, hold Shift while drawing for a square, and click outside it to dismiss it. The pointer shows what a drag will do.
 - In the macOS screenshot editor, Return applies the crop and Esc clears the selection before it offers to close the editor.
@@ -13,6 +17,9 @@ All notable changes to this project will be documented in this file.
 - A crop selection in the macOS screenshot editor now only changes the image once it is applied, matching Windows. Save, Copy, and the output size ignore an unapplied selection, and switching tools clears it.
 
 ### Fixed
+- Fixed Esc doing nothing in the macOS screenshot editor unless one of its controls had keyboard focus. Esc now closes the editor it is pressed in without quitting Tiny Clips.
+- Fixed Esc closing the macOS screenshot editor while typing in one of its text fields, such as the custom emoji field. Esc now leaves the field, and a second press closes the editor.
+- Fixed Command-W doing nothing in macOS Tiny Clips windows because the File menu had no Close item. Close is back in the File menu, and in the screenshot editor it still asks before discarding unsaved changes.
 - Fixed the macOS screenshot editor staying open after confirming **Delete Screenshot** or **Discard Changes**; the editor now closes as soon as the confirmation is accepted.
 - Fixed the macOS screenshot editor silently cropping saved and copied images to a selection that was no longer visible after switching to another tool.
 - Fixed crop selection drags in the macOS screenshot editor filling the undo history and leaving the editor marked as changed after the selection was removed.

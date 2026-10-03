@@ -8,9 +8,13 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
     let onPan: (CGSize) -> Void
     /// Called for an unmodified Return/Enter outside text input; returns whether it was handled.
     let onReturn: () -> Bool
+    /// Called for an unmodified Esc unless a sheet, popover, or input method needs it. The argument
+    /// says whether a text field has focus. Returns whether Esc was acted on; when it was not, the
+    /// focused text field just gives up focus.
+    let onEscape: (Bool) -> Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(isEnabled: isEnabled, onZoom: onZoom, onPan: onPan, onReturn: onReturn)
+        Coordinator(isEnabled: isEnabled, onZoom: onZoom, onPan: onPan, onReturn: onReturn, onEscape: onEscape)
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -27,6 +31,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         context.coordinator.onZoom = onZoom
         context.coordinator.onPan = onPan
         context.coordinator.onReturn = onReturn
+        context.coordinator.onEscape = onEscape
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -38,6 +43,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         var onZoom: (CGFloat, CGPoint) -> Void
         var onPan: (CGSize) -> Void
         var onReturn: () -> Bool
+        var onEscape: (Bool) -> Bool
 
         private weak var monitoredView: NSView?
         private var eventMonitor: Any?
@@ -49,12 +55,14 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             isEnabled: Bool,
             onZoom: @escaping (CGFloat, CGPoint) -> Void,
             onPan: @escaping (CGSize) -> Void,
-            onReturn: @escaping () -> Bool
+            onReturn: @escaping () -> Bool,
+            onEscape: @escaping (Bool) -> Bool
         ) {
             self.isEnabled = isEnabled
             self.onZoom = onZoom
             self.onPan = onPan
             self.onReturn = onReturn
+            self.onEscape = onEscape
         }
 
         func install(for view: NSView) {
@@ -92,10 +100,16 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
 
         private func handle(_ event: NSEvent) -> NSEvent? {
             guard let view = monitoredView,
-                  event.window === view.window,
-                  isEnabled else {
+                  event.window === view.window else {
                 return event
             }
+
+            // Esc is handled even while text input has the rest of the monitor switched off.
+            if event.type == .keyDown, event.keyCode == 53, let window = view.window {
+                return handleEscapeKey(event, in: window)
+            }
+
+            guard isEnabled else { return event }
 
             switch event.type {
             case .keyDown where event.keyCode == 49:
@@ -144,6 +158,28 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             default:
                 return event
             }
+        }
+
+        /// SwiftUI's `onExitCommand` only fires while one of the editor's controls has keyboard
+        /// focus, which a freshly opened editor does not, so Esc is taken here for the whole window.
+        private func handleEscapeKey(_ event: NSEvent, in window: NSWindow) -> NSEvent? {
+            guard !event.isARepeat,
+                  event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]),
+                  window.attachedSheet == nil,
+                  !(window.childWindows ?? []).contains(where: \.isVisible) else {
+                return event
+            }
+
+            let textView = window.firstResponder as? NSTextView
+            // An input method uses Esc to cancel its composition.
+            if textView?.hasMarkedText() == true {
+                return event
+            }
+
+            if !onEscape(textView != nil), textView != nil {
+                window.makeFirstResponder(nil)
+            }
+            return nil
         }
 
         private func contains(_ event: NSEvent, in view: NSView) -> Bool {
@@ -402,6 +438,8 @@ struct ScreenshotEditorView: View {
     @State private var activePopover: EditorPopover?
     @State private var isBackgroundSectionExpanded = true
     @State private var showExitConfirmation = false
+    @State private var closePrompt: ScreenshotEditorClosePrompt = .discardChanges
+    @AppStorage(CaptureSettings.confirmScreenshotEditorEscapeKey) private var confirmOnEscape = true
     @State private var showDeleteConfirmation = false
     @State private var showClearAnnotationsConfirmation = false
     @State private var currentSaveURL: URL
@@ -590,7 +628,8 @@ struct ScreenshotEditorView: View {
                                 setZoom(zoomScale * multiplier, focalPoint: focalPoint)
                             },
                             onPan: panCanvas,
-                            onReturn: applyCropFromKeyboard
+                            onReturn: applyCropFromKeyboard,
+                            onEscape: handleEscape
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
@@ -646,16 +685,20 @@ struct ScreenshotEditorView: View {
                 canZoomOut: !isTextInputActive && zoomScale > ScreenshotEditorZoomMath.minimumScale
             )
         )
-        .onExitCommand {
-            handleEscape()
-        }
-        .confirmationDialog("Discard changes?", isPresented: $showExitConfirmation, titleVisibility: .visible) {
-            Button("Discard Changes", role: .destructive) {
-                onDone(lastSavedURL)
+        .confirmationDialog(closePrompt.title, isPresented: $showExitConfirmation, titleVisibility: .visible) {
+            if closePrompt.isDestructive {
+                Button(closePrompt.confirmTitle, role: .destructive) {
+                    onDone(lastSavedURL)
+                }
+            } else {
+                Button(closePrompt.confirmTitle) {
+                    onDone(lastSavedURL)
+                }
+                .keyboardShortcut(.defaultAction)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("You have unsaved changes. Are you sure you want to exit?")
+            Text(closePrompt.message)
         }
         .confirmationDialog("Delete \(imageURL.lastPathComponent)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete Screenshot", role: .destructive) {
@@ -1447,7 +1490,19 @@ struct ScreenshotEditorView: View {
     }
 
     private func requestClose() {
-        if viewModel.hasUnsavedChanges {
+        close(trigger: .closeCommand)
+    }
+
+    private func close(trigger: ScreenshotEditorClosePrompt.Trigger) {
+        guard !isSaving else { return }
+        let prompt = ScreenshotEditorClosePrompt.resolve(
+            trigger: trigger,
+            confirmOnEscape: confirmOnEscape,
+            hasUnsavedChanges: viewModel.hasUnsavedChanges,
+            discardsUnsavedCapture: deleteSourceAfterSave && lastSavedURL == nil
+        )
+        if let prompt {
+            closePrompt = prompt
             showExitConfirmation = true
         } else {
             onDone(lastSavedURL)
@@ -1470,17 +1525,23 @@ struct ScreenshotEditorView: View {
         onDone(lastSavedURL)
     }
 
-    private func handleEscape() {
-        if viewModel.textEditPosition != nil {
+    private func handleEscape(textFieldHasFocus: Bool) -> Bool {
+        guard !isSaving else { return true }
+
+        switch ScreenshotEditorEscapeAction.resolve(
+            isEditingTextAnnotation: viewModel.textEditPosition != nil,
+            textFieldHasFocus: textFieldHasFocus,
+            hasCropSelection: viewModel.hasCropSelection
+        ) {
+        case .cancelTextAnnotation:
             viewModel.cancelTextAnnotation()
-            return
-        }
-
-        if viewModel.hasCropSelection {
+        case .leaveTextField:
+            return false
+        case .clearCropSelection:
             viewModel.clearCropSelection()
-            return
+        case .close:
+            close(trigger: .escapeKey)
         }
-
-        requestClose()
+        return true
     }
 }

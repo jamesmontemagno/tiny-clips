@@ -267,6 +267,7 @@ extension MouseClickOverlayStyle {
 
 private enum CaptureSettingsDefaultsKey {
     static let videoCodec = "videoCodec"
+    static let confirmScreenshotEditorEscape = "confirmScreenshotEditorEscape"
 }
 
 extension NSColor {
@@ -303,6 +304,7 @@ extension NSColor {
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
     static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
+    static let confirmScreenshotEditorEscapeKey = CaptureSettingsDefaultsKey.confirmScreenshotEditorEscape
     static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
@@ -388,6 +390,7 @@ class CaptureSettings: ObservableObject {
     // Negative values indicate no explicit corner radius/factor is set.
     @AppStorage("webcamCornerRadius") var webcamCornerRadius: Double = -1
     @AppStorage("showScreenshotEditor") var showScreenshotEditor: Bool = true
+    @AppStorage(CaptureSettingsDefaultsKey.confirmScreenshotEditorEscape) var confirmScreenshotEditorEscape: Bool = true
     @AppStorage("showGifTrimmer") var showGifTrimmer: Bool = true
     @AppStorage("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
     @AppStorage("saveImmediatelyVideo") var saveImmediatelyVideo: Bool = true
@@ -786,7 +789,7 @@ class CaptureSettings: ObservableObject {
         "showTrimmer",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
-        "showScreenshotEditor", "showGifTrimmer",
+        "showScreenshotEditor", confirmScreenshotEditorEscapeKey, "showGifTrimmer",
         "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
         "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
         "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
