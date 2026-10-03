@@ -1,6 +1,115 @@
 import AppKit
 import SwiftUI
 
+// MARK: - Crop keyboard and VoiceOver target
+
+/// The crop handles are only drawn into a canvas, so this invisible element over the selection is
+/// what takes keyboard focus, arrow keys, and accessibility actions.
+private struct CropSelectionKeyboardTarget: View {
+    @ObservedObject var viewModel: ScreenshotEditorViewModel
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .overlay {
+                if isFocused {
+                    Rectangle()
+                        .stroke(Color.accentColor, lineWidth: 2)
+                        .padding(-4)
+                }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Crop selection")
+            .accessibilityValue(selectionDescription)
+            .accessibilityHint(viewModel.hasCropSelection
+                ? "Arrow keys move the selection one pixel, or ten with Shift. Hold Option to resize it. Press Return to apply the crop."
+                : "Use the Select entire image action to start a selection.")
+            .focusable()
+            .focused($isFocused)
+            .focusEffectDisabled()
+            .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                handleKeyPress(press)
+            }
+            .accessibilityAdjustableAction { direction in
+                let step = viewModel.cropCoarseStepPixels
+                switch direction {
+                case .increment:
+                    viewModel.adjustCropSelection(growingBy: CGSize(width: step, height: step))
+                case .decrement:
+                    viewModel.adjustCropSelection(growingBy: CGSize(width: -step, height: -step))
+                @unknown default:
+                    break
+                }
+            }
+            .accessibilityActions {
+                if viewModel.hasCropSelection {
+                    Button("Move left") { move(x: -1, y: 0) }
+                    Button("Move right") { move(x: 1, y: 0) }
+                    Button("Move up") { move(x: 0, y: -1) }
+                    Button("Move down") { move(x: 0, y: 1) }
+                    Button("Make wider") { grow(width: 1, height: 0) }
+                    Button("Make narrower") { grow(width: -1, height: 0) }
+                    Button("Make taller") { grow(width: 0, height: 1) }
+                    Button("Make shorter") { grow(width: 0, height: -1) }
+                } else {
+                    Button("Select entire image") { viewModel.selectEntireImageForCrop() }
+                }
+            }
+            // Take focus once a selection settles so the arrow keys act on it straight away.
+            .onChange(of: viewModel.hasCropSelection) { _, hasSelection in
+                if hasSelection && !viewModel.isAdjustingCropSelection {
+                    isFocused = true
+                }
+            }
+            .onChange(of: viewModel.isAdjustingCropSelection) { _, isAdjusting in
+                if !isAdjusting && viewModel.hasCropSelection {
+                    isFocused = true
+                }
+            }
+    }
+
+    private var selectionDescription: String {
+        guard let rect = viewModel.cropSelectionPixelRect else { return "No selection" }
+        return "\(Int(rect.width)) by \(Int(rect.height)) pixels, \(Int(rect.minX)) pixels from the left, \(Int(rect.minY)) pixels from the top"
+    }
+
+    private func move(x: CGFloat, y: CGFloat) {
+        let step = viewModel.cropCoarseStepPixels
+        viewModel.adjustCropSelection(movingBy: CGSize(width: x * step, height: y * step))
+    }
+
+    private func grow(width: CGFloat, height: CGFloat) {
+        let step = viewModel.cropCoarseStepPixels
+        viewModel.adjustCropSelection(growingBy: CGSize(width: width * step, height: height * step))
+    }
+
+    private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
+        guard viewModel.hasCropSelection,
+              !viewModel.isAdjustingCropSelection,
+              press.modifiers.isDisjoint(with: [.command, .control]) else {
+            return .ignored
+        }
+
+        let step: CGFloat = press.modifiers.contains(.shift) ? 10 : 1
+        let delta: CGSize
+        switch press.key {
+        case .leftArrow: delta = CGSize(width: -step, height: 0)
+        case .rightArrow: delta = CGSize(width: step, height: 0)
+        case .upArrow: delta = CGSize(width: 0, height: -step)
+        case .downArrow: delta = CGSize(width: 0, height: step)
+        default: return .ignored
+        }
+
+        if press.modifiers.contains(.option) {
+            viewModel.adjustCropSelection(growingBy: delta)
+        } else {
+            viewModel.adjustCropSelection(movingBy: delta)
+        }
+        return .handled
+    }
+}
+
 // MARK: - Canvas View
 
 struct ScreenshotEditorCanvasView: View {
@@ -143,6 +252,16 @@ struct ScreenshotEditorCanvasView: View {
                     }
                 }
                 .allowsHitTesting(false)
+
+                // Sits below the interaction overlay so pointer input still reaches the drag gestures.
+                if viewModel.selectedTool == .crop {
+                    let keyboardFrame = viewModel.cropRect.map {
+                        viewModel.scaledRect($0, imageSize: imageSize, origin: origin)
+                    } ?? CGRect(origin: origin, size: imageSize)
+                    CropSelectionKeyboardTarget(viewModel: viewModel)
+                        .frame(width: max(1, keyboardFrame.width), height: max(1, keyboardFrame.height))
+                        .position(x: keyboardFrame.midX, y: keyboardFrame.midY)
+                }
 
                 // Inline text editing field
                 if let textPos = viewModel.textEditPosition {
@@ -333,7 +452,7 @@ struct ScreenshotEditorCanvasView: View {
         case .emoji:
             return "Click to place the selected emoji."
         case .crop:
-            return "Drag to select the area to keep. Drag a handle to resize the selection or drag inside it to move it, then press Return to apply the crop."
+            return "Drag to select the area to keep, or move to the Crop selection element to position it with the arrow keys or VoiceOver actions. Press Return to apply the crop."
         default:
             return "Use the selected tool to edit the screenshot."
         }

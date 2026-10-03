@@ -549,6 +549,71 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(CropHandle.allCases.filter(\.isCorner).count, 4)
     }
 
+    func testCropKeyboardAdjustmentMovesAndGrowsInWholePixels() {
+        // Dimensions that do not divide evenly, so normalized edges never land exactly on a pixel.
+        let imageSize = CGSize(width: 1_237, height: 733)
+        var selection = CGRect(x: 100.0 / 1_237, y: 50.0 / 733, width: 300.0 / 1_237, height: 200.0 / 733)
+        func pixels() -> CGRect? {
+            ScreenshotEditorCropMath.pixelRect(for: selection, imageSize: imageSize)
+        }
+
+        XCTAssertEqual(pixels(), CGRect(x: 100, y: 50, width: 300, height: 200))
+
+        // Repeated one-pixel steps must not drift or widen the selection.
+        for _ in 0..<50 {
+            selection = ScreenshotEditorCropMath.adjusted(
+                selection,
+                movingBy: CGSize(width: 1, height: 0),
+                imageSize: imageSize
+            )
+        }
+        XCTAssertEqual(pixels(), CGRect(x: 150, y: 50, width: 300, height: 200))
+
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            growingBy: CGSize(width: -10, height: 5),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 150, y: 50, width: 290, height: 205))
+    }
+
+    func testCropKeyboardAdjustmentStaysInsideImageAndKeepsOnePixel() {
+        let imageSize = CGSize(width: 1_237, height: 733)
+        var selection = CGRect(x: 150.0 / 1_237, y: 50.0 / 733, width: 290.0 / 1_237, height: 205.0 / 733)
+        func pixels() -> CGRect? {
+            ScreenshotEditorCropMath.pixelRect(for: selection, imageSize: imageSize)
+        }
+
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            movingBy: CGSize(width: 5_000, height: 5_000),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 947, y: 528, width: 290, height: 205))
+
+        // Growing against the bottom-right corner pushes the origin back instead of stopping.
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            growingBy: CGSize(width: 10, height: 10),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 937, y: 518, width: 300, height: 215))
+
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            growingBy: CGSize(width: 5_000, height: 5_000),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 0, y: 0, width: 1_237, height: 733))
+
+        selection = ScreenshotEditorCropMath.adjusted(
+            selection,
+            growingBy: CGSize(width: -5_000, height: -5_000),
+            imageSize: imageSize
+        )
+        XCTAssertEqual(pixels(), CGRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
     func testEmojiAnnotationRectIsSquareInPixelsAndCentered() {
         let imageSize = CGSize(width: 2_000, height: 1_000)
         let side = EmojiAnnotationMath.defaultSidePixels(forImageSize: imageSize)

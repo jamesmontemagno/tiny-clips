@@ -833,8 +833,8 @@ struct ScreenshotEditorView: View {
     private var cropControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(viewModel.hasCropSelection
-                ? "Drag a handle to resize the selection, or drag inside it to move it."
-                : "Drag on the image to select the area to keep.")
+                ? "Drag a handle to resize the selection, or drag inside it to move it. Arrow keys move it, and Option-arrow keys resize it."
+                : "Drag on the image to select the area to keep, or choose Select All and adjust from there.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -845,14 +845,21 @@ struct ScreenshotEditorView: View {
             }
             .accessibilityElement(children: .combine)
 
+            Button(action: applyCrop) {
+                Label("Apply Crop", systemImage: "crop")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canApplyCrop)
+            .help("Crop the image to the selection (Return).")
+            .accessibilityHint("Crops the image to the selected area and flattens existing annotations.")
+
             HStack(spacing: 8) {
-                Button(action: applyCrop) {
-                    Label("Apply Crop", systemImage: "crop")
+                Button("Select All") {
+                    viewModel.selectEntireImageForCrop()
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.canApplyCrop)
-                .help("Crop the image to the selection (Return).")
-                .accessibilityHint("Crops the image to the selected area and flattens existing annotations.")
+                .buttonStyle(.bordered)
+                .help("Select the whole image, then adjust the selection with the arrow keys.")
+                .accessibilityLabel("Select entire image for cropping")
 
                 Button("Clear") {
                     viewModel.clearCropSelection()

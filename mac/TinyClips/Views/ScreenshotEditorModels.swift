@@ -714,13 +714,44 @@ enum ScreenshotEditorCropMath {
         CGPoint(x: min(1, max(0, point.x)), y: min(1, max(0, point.y)))
     }
 
+    /// Moves and/or grows the selection by whole image pixels, for keyboard and VoiceOver control.
+    /// It works on the pixel rect Apply Crop would cut, so each step changes the readout exactly.
+    /// Growth keeps the top-left corner in place until the selection reaches an image edge.
+    static func adjusted(
+        _ rect: CGRect,
+        movingBy offset: CGSize = .zero,
+        growingBy growth: CGSize = .zero,
+        imageSize: CGSize
+    ) -> CGRect {
+        guard let pixels = pixelRect(for: rect, imageSize: imageSize) else { return rect }
+
+        let width = min(imageSize.width, max(1, pixels.width + growth.width))
+        let height = min(imageSize.height, max(1, pixels.height + growth.height))
+        let x = min(max(0, pixels.minX + offset.width), imageSize.width - width)
+        let y = min(max(0, pixels.minY + offset.height), imageSize.height - height)
+
+        return CGRect(
+            x: x / imageSize.width,
+            y: y / imageSize.height,
+            width: width / imageSize.width,
+            height: height / imageSize.height
+        )
+    }
+
+    /// Normalized edges that sit on a pixel boundary come back a hair off after the round trip
+    /// through 0...1; without this, rounding outward would widen such a selection by a pixel.
+    private static func snappedToPixelBoundary(_ value: CGFloat) -> CGFloat {
+        let nearest = value.rounded()
+        return abs(value - nearest) < 0.001 ? nearest : value
+    }
+
     static func pixelRect(for normalizedRect: CGRect, imageSize: CGSize) -> CGRect? {
         guard imageSize.width > 0, imageSize.height > 0 else { return nil }
 
-        let left = max(0, min(imageSize.width, normalizedRect.minX * imageSize.width))
-        let top = max(0, min(imageSize.height, normalizedRect.minY * imageSize.height))
-        let right = max(0, min(imageSize.width, normalizedRect.maxX * imageSize.width))
-        let bottom = max(0, min(imageSize.height, normalizedRect.maxY * imageSize.height))
+        let left = snappedToPixelBoundary(max(0, min(imageSize.width, normalizedRect.minX * imageSize.width)))
+        let top = snappedToPixelBoundary(max(0, min(imageSize.height, normalizedRect.minY * imageSize.height)))
+        let right = snappedToPixelBoundary(max(0, min(imageSize.width, normalizedRect.maxX * imageSize.width)))
+        let bottom = snappedToPixelBoundary(max(0, min(imageSize.height, normalizedRect.maxY * imageSize.height)))
         let width = abs(right - left)
         let height = abs(bottom - top)
         guard width > 0, height > 0 else { return nil }

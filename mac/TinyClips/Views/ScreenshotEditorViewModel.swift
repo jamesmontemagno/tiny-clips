@@ -502,10 +502,19 @@ class ScreenshotEditorViewModel: ObservableObject {
         cropRect != nil
     }
 
-    /// Size of the pending selection in image pixels, exactly as Apply Crop would cut it.
-    var cropSelectionPixelSize: CGSize? {
+    /// The pending selection in image pixels, exactly as Apply Crop would cut it.
+    var cropSelectionPixelRect: CGRect? {
         guard let cropRect else { return nil }
-        return ScreenshotEditorCropMath.pixelRect(for: cropRect, imageSize: imagePixelSize)?.size
+        return ScreenshotEditorCropMath.pixelRect(for: cropRect, imageSize: imagePixelSize)
+    }
+
+    var cropSelectionPixelSize: CGSize? {
+        cropSelectionPixelRect?.size
+    }
+
+    /// Step for VoiceOver actions, which are too slow to repeat one pixel at a time.
+    var cropCoarseStepPixels: CGFloat {
+        max(10, (max(imagePixelSize.width, imagePixelSize.height) * 0.02).rounded())
     }
 
     var canApplyCrop: Bool {
@@ -1120,6 +1129,23 @@ class ScreenshotEditorViewModel: ObservableObject {
         if isAdjustingCropSelection {
             isAdjustingCropSelection = false
         }
+    }
+
+    /// Selects the whole image so the selection can be shaped without a pointer.
+    func selectEntireImageForCrop() {
+        guard selectedTool == .crop, cropDragMode == nil, fullImagePixelRect != nil else { return }
+        cropRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+    }
+
+    /// Keyboard and VoiceOver adjustment of the selection, in whole image pixels.
+    func adjustCropSelection(movingBy offset: CGSize = .zero, growingBy growth: CGSize = .zero) {
+        guard selectedTool == .crop, cropDragMode == nil, let rect = cropRect else { return }
+        cropRect = ScreenshotEditorCropMath.adjusted(
+            rect,
+            movingBy: offset,
+            growingBy: growth,
+            imageSize: imagePixelSize
+        )
     }
 
     /// What a drag starting at `point` would do, for pointer feedback while hovering.
