@@ -10,6 +10,8 @@ final class StudioWindowRegistry {
     static let shared = StudioWindowRegistry()
 
     private var windows: [String: StudioWindow] = [:]
+    /// Run once when a project's window closes. Set for a window opened straight after a recording.
+    private var closeHandlers: [String: @MainActor () -> Void] = [:]
 
     /// Projects open in an editor. Storage cleanup must leave these alone.
     var openProjectIDs: Set<String> {
@@ -33,9 +35,12 @@ final class StudioWindowRegistry {
         return true
     }
 
-    func open(projectID: String) {
+    /// Opens the editor for a project, or brings its window forward when it is already open.
+    /// `onClose` runs once after that window has closed.
+    func open(projectID: String, onClose: (@MainActor () -> Void)? = nil) {
         guard CaptureSettings.shared.studioPreviewEnabled else {
             SaveService.shared.showNotice("Recording saved as a Tiny Clips Studio project.")
+            onClose?()
             return
         }
 
@@ -50,6 +55,9 @@ final class StudioWindowRegistry {
             // An editor window gets a Dock icon and the menu bar, as the screenshot editor does.
             TinyClipsActivationPolicy.applyCurrent()
         }
+        if let onClose {
+            closeHandlers[projectID] = onClose
+        }
 
         // Shown on the next run loop turn so it does not fight menu tracking or a closing panel.
         DispatchQueue.main.async {
@@ -62,11 +70,13 @@ final class StudioWindowRegistry {
 
     private func windowDidClose(projectID: String) {
         guard let closed = windows.removeValue(forKey: projectID) else { return }
+        let closeHandler = closeHandlers.removeValue(forKey: projectID)
         // Finished on the next run loop turn, so the window is not deallocated while it is closing.
         DispatchQueue.main.async {
             _ = closed
             TinyClipsActivationPolicy.applyCurrent()
             StudioMaintenance.cleanUp()
+            closeHandler?()
         }
     }
 }

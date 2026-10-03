@@ -1676,7 +1676,10 @@ class CaptureManager: ObservableObject {
             } else {
                 lastVideoRecordingArtifacts = nil
             }
-            openStudio(projectID: completedStudioProjectID)
+            openStudio(
+                projectID: completedStudioProjectID,
+                reopenPickerAfterClose: shouldReturnToPickerAfterRecording
+            )
         } else if let savedVideoURL {
             CaptureAnalyticsStore.shared.recordCapture(.video)
             lastVideoRecordingArtifacts = VideoRecordingArtifacts(
@@ -2047,8 +2050,13 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    private func openStudio(projectID: String) {
-        StudioWindowRegistry.shared.open(projectID: projectID)
+    private func openStudio(projectID: String, reopenPickerAfterClose: Bool = false) {
+        StudioWindowRegistry.shared.open(projectID: projectID) { [weak self] in
+            if reopenPickerAfterClose,
+               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
+                self?.showRecordingPicker(for: .video)
+            }
+        }
     }
 
     private func showGifTrimmer(
