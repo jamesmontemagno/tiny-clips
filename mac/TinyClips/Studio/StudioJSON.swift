@@ -138,6 +138,36 @@ enum StudioJSON {
         return value
     }
 
+    static func requirePositive(_ value: Int, _ name: String) throws -> Int {
+        guard value >= 1 else {
+            throw StudioProjectError.invalidProject("\(name) must be at least 1")
+        }
+        return value
+    }
+
+    static func requireNonNegative(_ value: Double, _ name: String) throws -> Double {
+        let finite = try requireFinite(value, name)
+        guard finite >= 0 else {
+            throw StudioProjectError.invalidProject("\(name) must be non-negative")
+        }
+        return finite
+    }
+
+    static func isPlainFileName(_ value: String) -> Bool {
+        !value.isEmpty
+            && value != "."
+            && value != ".."
+            && !value.contains("/")
+            && !value.contains("\\")
+    }
+
+    static func requirePlainFileName(_ value: String, _ name: String) throws -> String {
+        guard isPlainFileName(value) else {
+            throw StudioProjectError.invalidProject("\(name) must be a plain file name")
+        }
+        return value
+    }
+
     private static let wholeSecondFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -212,6 +242,10 @@ extension KeyedDecodingContainer where Key == StudioJSONKey {
         guard contains(codingKey) else { return defaultValue }
         if try decodeNil(forKey: codingKey) { return nil }
         return try decode(String.self, forKey: codingKey)
+    }
+
+    func decodeCompactArray<T: Decodable>(_ key: String, default defaultValue: [T]) throws -> [T] {
+        try decodeIfPresent([T?].self, forKey: StudioJSONKey(key))?.compactMap { $0 } ?? defaultValue
     }
 
     func decodeEnum<T: StudioStringEnum>(_ key: String, default defaultValue: T) throws -> T {

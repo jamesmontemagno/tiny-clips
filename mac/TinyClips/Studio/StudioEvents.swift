@@ -55,10 +55,10 @@ struct StudioEvents: Codable, Equatable, Sendable {
             throw StudioProjectError.unsupportedVersion(schemaVersion)
         }
         capture = try container.decodeIfPresent(StudioCaptureInfo.self, forKey: StudioJSONKey("capture")) ?? StudioCaptureInfo()
-        clicks = try container.decodeIfPresent([StudioClickEvent].self, forKey: StudioJSONKey("clicks")) ?? []
-        cursor = try container.decodeIfPresent([StudioCursorSample].self, forKey: StudioJSONKey("cursor")) ?? []
-        cameraCorners = try container.decodeIfPresent([StudioCameraCornerEvent].self, forKey: StudioJSONKey("cameraCorners")) ?? []
-        markers = try container.decodeIfPresent([StudioJSONValue].self, forKey: StudioJSONKey("markers")) ?? []
+        clicks = try container.decodeCompactArray("clicks", default: [])
+        cursor = try container.decodeCompactArray("cursor", default: [])
+        cameraCorners = try container.decodeCompactArray("cameraCorners", default: [])
+        markers = try container.decodeCompactArray("markers", default: [])
         extra = try StudioJSON.decodeExtra(from: container, excluding: ["schemaVersion", "capture", "clicks", "cursor", "cameraCorners", "markers"])
     }
 

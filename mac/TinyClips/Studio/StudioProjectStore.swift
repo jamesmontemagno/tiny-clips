@@ -16,6 +16,22 @@ struct StudioCameraCreationInfo: Equatable, Sendable {
     }
 }
 
+struct StudioLook: Equatable, Sendable {
+    var canvas: StudioCanvas
+    var screen: StudioScreenStyle
+    var camera: StudioCameraStyle
+
+    init(
+        canvas: StudioCanvas = StudioCanvas(),
+        screen: StudioScreenStyle = StudioScreenStyle(),
+        camera: StudioCameraStyle = StudioCameraStyle()
+    ) {
+        self.canvas = canvas
+        self.screen = screen
+        self.camera = camera
+    }
+}
+
 struct StudioProjectCreationRequest: Equatable, Sendable {
     var name: String
     var screenWidth: Int
@@ -27,6 +43,7 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
     var clickOverlay: StudioClickOverlay
     var branding: Bool
     var appVersion: String
+    var look: StudioLook?
 
     init(
         name: String = "",
@@ -38,7 +55,8 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
         bubbleAnchor: StudioAnchor = .bottomRight,
         clickOverlay: StudioClickOverlay = StudioClickOverlay(),
         branding: Bool = false,
-        appVersion: String
+        appVersion: String,
+        look: StudioLook? = nil
     ) {
         self.name = name
         self.screenWidth = screenWidth
@@ -50,6 +68,7 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
         self.clickOverlay = clickOverlay
         self.branding = branding
         self.appVersion = appVersion
+        self.look = look
     }
 }
 
@@ -73,12 +92,14 @@ struct StudioFlatProjectRequest: Equatable, Sendable {
     }
 }
 
-struct StudioRecordingProjectURLs: Equatable, Sendable {
+struct StudioProjectPaths: Equatable, Sendable {
     var id: String
     var projectDirectory: URL
+    var projectJSONURL: URL
     var screenURL: URL
-    var cameraURL: URL
+    var cameraURL: URL?
     var eventsURL: URL
+    var posterURL: URL
 }
 
 struct StudioProjectSummary: Equatable, Sendable {
@@ -104,6 +125,8 @@ final class StudioProjectStore {
     let rootURL: URL
     private let now: () -> Date
     private let fileManager: FileManager
+    private let folderDateProvider: ((URL) -> Date?)?
+    private let lock = NSLock()
 
     init(
         rootURL: URL? = nil,
@@ -113,6 +136,19 @@ final class StudioProjectStore {
         self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
         self.now = now
         self.fileManager = fileManager
+        self.folderDateProvider = nil
+    }
+
+    init(
+        rootURL: URL? = nil,
+        now: @escaping () -> Date = Date.init,
+        fileManager: FileManager = .default,
+        folderDateProvider: @escaping (URL) -> Date?
+    ) {
+        self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
+        self.now = now
+        self.fileManager = fileManager
+        self.folderDateProvider = folderDateProvider
     }
 
     static func defaultRootURL(fileManager: FileManager = .default) -> URL {
@@ -123,25 +159,304 @@ final class StudioProjectStore {
             .appendingPathComponent("Projects", isDirectory: true)
     }
 
-    func createRecordingProjectFolder(id: String = UUID().uuidString.lowercased()) throws -> StudioRecordingProjectURLs {
-        let directory = projectDirectory(for: id)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        return StudioRecordingProjectURLs(
-            id: id,
-            projectDirectory: directory,
-            screenURL: directory.appendingPathComponent("screen.mp4"),
-            cameraURL: directory.appendingPathComponent("camera.mp4"),
-            eventsURL: directory.appendingPathComponent("events.json")
-        )
+    func beginRecording() throws -> StudioProjectPaths {
+        try withLock {
+            let id = UUID().uuidString.lowercased()
+            let paths = try pathsUnlocked(forID: id)
+            try fileManager.createDirectory(at: paths.projectDirectory, withIntermediateDirectories: true)
+            return paths
+        }
     }
 
-    func buildDefaultProject(id: String, request: StudioProjectCreationRequest) -> StudioProject {
+    func completeRecording(id: String, request: StudioProjectCreationRequest) throws -> StudioProject {
+        try withLock {
+            let project = try buildDefaultProject(id: id, request: request)
+            return try saveUnlocked(project, updatingModifiedAt: false)
+        }
+    }
+
+    func paths(forID id: String) throws -> StudioProjectPaths {
+        try withLock {
+            try pathsUnlocked(forID: id)
+        }
+    }
+
+    func paths(for project: StudioProject) throws -> StudioProjectPaths {
+        try withLock {
+            try pathsUnlocked(for: project)
+        }
+    }
+
+    func exists(id: String) -> Bool {
+        guard Self.isValidProjectID(id) else { return false }
+        return withLock {
+            fileManager.fileExists(atPath: projectDirectoryUnchecked(for: id).path)
+        }
+    }
+
+    func load(id: String) throws -> StudioProject {
+        try withLock {
+            try loadUnlocked(id: id)
+        }
+    }
+
+    @discardableResult
+    func save(_ project: StudioProject) throws -> StudioProject {
+        try withLock {
+            try saveUnlocked(project, updatingModifiedAt: true)
+        }
+    }
+
+    func delete(id: String) throws {
+        try withLock {
+            try deleteUnlocked(id: id)
+        }
+    }
+
+    @discardableResult
+    func markOpened(id: String) throws -> StudioProject {
+        try withLock {
+            var project = try loadUnlocked(id: id)
+            project.lastOpenedAt = now()
+            return try saveUnlocked(project, updatingModifiedAt: false)
+        }
+    }
+
+    func listSummaries() throws -> [StudioProjectSummary] {
+        try withLock {
+            try listSummariesUnlocked()
+        }
+    }
+
+    func storageSummary() throws -> StudioStorageSummary {
+        try withLock {
+            let summaries = try listSummariesUnlocked()
+            return StudioStorageSummary(
+                projectCount: summaries.count,
+                totalBytes: summaries.reduce(Int64(0)) { $0 + $1.sizeOnDisk }
+            )
+        }
+    }
+
+    @discardableResult
+    func recordExport(id: String, path: String) throws -> StudioProject {
+        try withLock {
+            var targetProject = try loadUnlocked(id: id)
+            let normalized = normalizedPath(path)
+            for summary in try listSummariesUnlocked() {
+                guard summary.id != id else { continue }
+                var project = try loadUnlocked(id: summary.id)
+                let oldCount = project.exports.count
+                project.exports.removeAll { normalizedPath($0.path) == normalized }
+                if project.exports.count != oldCount {
+                    _ = try saveUnlocked(project, updatingModifiedAt: true)
+                }
+            }
+
+            targetProject.exports.removeAll { normalizedPath($0.path) == normalized }
+            targetProject.exports.append(StudioExport(path: path, exportedAt: now()))
+            return try saveUnlocked(targetProject, updatingModifiedAt: true)
+        }
+    }
+
+    func findProjectID(exportedPath: String) throws -> String? {
+        try withLock {
+            let needle = normalizedPath(exportedPath)
+            for summary in try listSummariesUnlocked() {
+                let project = try loadUnlocked(id: summary.id)
+                if project.exports.contains(where: { normalizedPath($0.path) == needle }) {
+                    return project.id
+                }
+            }
+            return nil
+        }
+    }
+
+    @discardableResult
+    func updateExportPath(from oldPath: String, to newPath: String) throws -> Bool {
+        try withLock {
+            let oldNeedle = normalizedPath(oldPath)
+            let newNeedle = normalizedPath(newPath)
+            var changed = false
+            for summary in try listSummariesUnlocked() {
+                var project = try loadUnlocked(id: summary.id)
+                var matchedExport: StudioExport?
+                var exports: [StudioExport] = []
+                for export in project.exports {
+                    let normalized = normalizedPath(export.path)
+                    if normalized == oldNeedle {
+                        matchedExport = StudioExport(path: newPath, exportedAt: export.exportedAt, extra: export.extra)
+                    } else if normalized != newNeedle {
+                        exports.append(export)
+                    }
+                }
+                if let matchedExport {
+                    exports.append(matchedExport)
+                    project.exports = exports
+                    _ = try saveUnlocked(project, updatingModifiedAt: true)
+                    changed = true
+                } else if exports.count != project.exports.count {
+                    project.exports = exports
+                    _ = try saveUnlocked(project, updatingModifiedAt: true)
+                    changed = true
+                }
+            }
+            return changed
+        }
+    }
+
+    @discardableResult
+    func removeExportPath(_ path: String) throws -> Bool {
+        try withLock {
+            let needle = normalizedPath(path)
+            var changed = false
+            for summary in try listSummariesUnlocked() {
+                var project = try loadUnlocked(id: summary.id)
+                let oldCount = project.exports.count
+                project.exports.removeAll { normalizedPath($0.path) == needle }
+                if project.exports.count != oldCount {
+                    _ = try saveUnlocked(project, updatingModifiedAt: true)
+                    changed = true
+                }
+            }
+            return changed
+        }
+    }
+
+    func getOrCreateFlatProject(request: StudioFlatProjectRequest) throws -> StudioProject {
+        try withLock {
+            _ = try StudioJSON.requirePositive(request.width, "sources.screen.width")
+            _ = try StudioJSON.requirePositive(request.height, "sources.screen.height")
+            _ = try StudioJSON.requireNonNegative(request.duration, "sources.screen.duration")
+            let needle = normalizedPath(request.videoURL.path)
+            for summary in try listSummariesUnlocked() {
+                let project = try loadUnlocked(id: summary.id)
+                if project.sources.screen.external && normalizedPath(project.sources.screen.file) == needle {
+                    return project
+                }
+            }
+
+            let id = UUID().uuidString.lowercased()
+            let date = now()
+            let project = StudioProject(
+                id: id,
+                name: request.name.isEmpty ? request.videoURL.deletingPathExtension().lastPathComponent : request.name,
+                createdAt: date,
+                modifiedAt: date,
+                lastOpenedAt: date,
+                app: StudioAppInfo(platform: "macos", version: request.appVersion),
+                sources: StudioSources(
+                    screen: StudioScreenSource(
+                        file: request.videoURL.path,
+                        width: request.width,
+                        height: request.height,
+                        frameRate: request.frameRate,
+                        duration: request.duration,
+                        external: true
+                    ),
+                    camera: nil,
+                    events: nil
+                ),
+                scenes: [StudioScene(start: 0, layout: .screen)]
+            )
+            return try saveUnlocked(project, updatingModifiedAt: false)
+        }
+    }
+
+    func loadEvents(id: String) throws -> StudioEvents {
+        try withLock {
+            let url = try pathsUnlocked(forID: id).eventsURL
+            guard fileManager.fileExists(atPath: url.path) else { return StudioEvents() }
+            let data = try Data(contentsOf: url)
+            return try StudioJSON.makeDecoder().decode(StudioEvents.self, from: data)
+        }
+    }
+
+    func saveEvents(_ events: StudioEvents, id: String) throws {
+        try withLock {
+            let paths = try pathsUnlocked(forID: id)
+            try fileManager.createDirectory(at: paths.projectDirectory, withIntermediateDirectories: true)
+            let data = try StudioJSON.makeEncoder().encode(events)
+            try data.write(to: paths.eventsURL, options: .atomic)
+        }
+    }
+
+    @discardableResult
+    func cleanup(options: StudioCleanupOptions = StudioCleanupOptions(), inUseProjectIDs: Set<String> = []) throws -> [String] {
+        try withLock {
+            let inUse = Set(inUseProjectIDs.filter(Self.isValidProjectID))
+            var candidateIDs = StudioCleanupPolicy.plan(
+                summaries: try listSummariesUnlocked(),
+                currentDate: now(),
+                options: options,
+                inUseProjectIDs: inUse
+            )
+            candidateIDs.append(contentsOf: try unfinishedRecordingIDsUnlocked(inUseProjectIDs: inUse))
+
+            var deletedIDs: [String] = []
+            for id in candidateIDs where !deletedIDs.contains(id) {
+                do {
+                    try deleteUnlocked(id: id)
+                    deletedIDs.append(id)
+                } catch {
+                    continue
+                }
+            }
+            return deletedIDs
+        }
+    }
+
+    // MARK: - Private
+
+    private func withLock<T>(_ body: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body()
+    }
+
+    private static func isValidProjectID(_ id: String) -> Bool {
+        guard id.count == 36 else { return false }
+        for (index, character) in id.enumerated() {
+            switch index {
+            case 8, 13, 18, 23:
+                guard character == "-" else { return false }
+            default:
+                guard ("0"..."9").contains(character) || ("a"..."f").contains(character) else { return false }
+            }
+        }
+        return true
+    }
+
+    private static func validateProjectID(_ id: String) throws {
+        guard isValidProjectID(id) else {
+            throw StudioProjectError.invalidProject("Invalid project id")
+        }
+    }
+
+    private func buildDefaultProject(id: String, request: StudioProjectCreationRequest) throws -> StudioProject {
+        try Self.validateProjectID(id)
+        _ = try StudioJSON.requirePositive(request.screenWidth, "sources.screen.width")
+        _ = try StudioJSON.requirePositive(request.screenHeight, "sources.screen.height")
+        _ = try StudioJSON.requireNonNegative(request.screenDuration, "sources.screen.duration")
+        if let camera = request.camera {
+            _ = try StudioJSON.requirePositive(camera.width, "sources.camera.width")
+            _ = try StudioJSON.requirePositive(camera.height, "sources.camera.height")
+            _ = try StudioJSON.requireNonNegative(camera.duration, "sources.camera.duration")
+        }
         let date = now()
         let cameraSource = request.camera.map {
             StudioCameraSource(width: $0.width, height: $0.height, duration: $0.duration, startOffset: $0.startOffset)
         }
         let layout: StudioLayout = cameraSource == nil ? .screen : .bubble
         let trimStart = max(0, request.camera?.startOffset ?? 0)
+
+        var canvas = request.look?.canvas ?? StudioCanvas()
+        var screen = request.look?.screen ?? StudioScreenStyle()
+        var camera = request.look?.camera ?? StudioCameraStyle()
+        screen.crop = nil
+        camera.crop = nil
+        canvas.background.image = validBackgroundImage(canvas.background.image)
+
         return StudioProject(
             id: id,
             name: request.name,
@@ -159,6 +474,9 @@ final class StudioProjectStore {
                 camera: cameraSource,
                 events: "events.json"
             ),
+            canvas: canvas,
+            screen: screen,
+            camera: camera,
             scenes: [
                 StudioScene(
                     start: 0,
@@ -171,28 +489,67 @@ final class StudioProjectStore {
         )
     }
 
-    func createProject(request: StudioProjectCreationRequest) throws -> StudioRecordingProjectURLs {
-        let urls = try createRecordingProjectFolder()
-        try save(buildDefaultProject(id: urls.id, request: request), updatingModifiedAt: false)
-        return urls
+    private func pathsUnlocked(forID id: String) throws -> StudioProjectPaths {
+        try Self.validateProjectID(id)
+        let directory = projectDirectoryUnchecked(for: id)
+        return StudioProjectPaths(
+            id: id,
+            projectDirectory: directory,
+            projectJSONURL: directory.appendingPathComponent("project.json"),
+            screenURL: directory.appendingPathComponent("screen.mp4"),
+            cameraURL: directory.appendingPathComponent("camera.mp4"),
+            eventsURL: directory.appendingPathComponent("events.json"),
+            posterURL: directory.appendingPathComponent("poster.jpg")
+        )
     }
 
-    func load(id: String) throws -> StudioProject {
-        try load(at: projectDirectory(for: id).appendingPathComponent("project.json"))
+    private func pathsUnlocked(for project: StudioProject) throws -> StudioProjectPaths {
+        try Self.validateProjectID(project.id)
+        let directory = projectDirectoryUnchecked(for: project.id)
+        let screenURL: URL
+        if project.sources.screen.external {
+            screenURL = URL(fileURLWithPath: project.sources.screen.file).standardizedFileURL
+        } else {
+            let file = try StudioJSON.requirePlainFileName(project.sources.screen.file, "sources.screen.file")
+            screenURL = directory.appendingPathComponent(file)
+        }
+        let cameraURL = try project.sources.camera.map {
+            directory.appendingPathComponent(try StudioJSON.requirePlainFileName($0.file, "sources.camera.file"))
+        }
+        let eventsFile = try StudioJSON.requirePlainFileName(project.sources.events ?? "events.json", "sources.events")
+        return StudioProjectPaths(
+            id: project.id,
+            projectDirectory: directory,
+            projectJSONURL: directory.appendingPathComponent("project.json"),
+            screenURL: screenURL,
+            cameraURL: cameraURL,
+            eventsURL: directory.appendingPathComponent(eventsFile),
+            posterURL: directory.appendingPathComponent("poster.jpg")
+        )
     }
 
-    func save(_ project: StudioProject, updatingModifiedAt: Bool = true) throws {
+    private func loadUnlocked(id: String) throws -> StudioProject {
+        let paths = try pathsUnlocked(forID: id)
+        let data = try Data(contentsOf: paths.projectJSONURL)
+        var project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: data)
+        project.id = id
+        return project
+    }
+
+    private func saveUnlocked(_ project: StudioProject, updatingModifiedAt: Bool) throws -> StudioProject {
         var projectToSave = project
+        try Self.validateProjectID(projectToSave.id)
         if updatingModifiedAt {
             projectToSave.modifiedAt = now()
         }
-        let directory = projectDirectory(for: projectToSave.id)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let paths = try pathsUnlocked(for: projectToSave)
+        try fileManager.createDirectory(at: paths.projectDirectory, withIntermediateDirectories: true)
         let data = try StudioJSON.makeEncoder().encode(projectToSave)
-        try data.write(to: directory.appendingPathComponent("project.json"), options: .atomic)
+        try data.write(to: paths.projectJSONURL, options: .atomic)
+        return projectToSave
     }
 
-    func listSummaries() throws -> [StudioProjectSummary] {
+    private func listSummariesUnlocked() throws -> [StudioProjectSummary] {
         guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
         let contents = try fileManager.contentsOfDirectory(
             at: rootURL,
@@ -202,10 +559,11 @@ final class StudioProjectStore {
         var summaries: [StudioProjectSummary] = []
         for directory in contents {
             let values = try directory.resourceValues(forKeys: [.isDirectoryKey])
-            guard values.isDirectory == true else { continue }
+            let id = directory.lastPathComponent
+            guard values.isDirectory == true, Self.isValidProjectID(id) else { continue }
             let projectURL = directory.appendingPathComponent("project.json")
             guard fileManager.fileExists(atPath: projectURL.path),
-                  let project = try? load(at: projectURL) else {
+                  let project = try? loadUnlocked(id: id) else {
                 continue
             }
             summaries.append(summary(for: project, directory: directory))
@@ -213,140 +571,45 @@ final class StudioProjectStore {
         return summaries.sorted { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
     }
 
-    func delete(id: String) throws {
-        let directory = projectDirectory(for: id)
+    private func deleteUnlocked(id: String) throws {
+        try Self.validateProjectID(id)
+        let directory = projectDirectoryUnchecked(for: id)
         if fileManager.fileExists(atPath: directory.path) {
             try fileManager.removeItem(at: directory)
         }
     }
 
-    func markOpened(id: String) throws {
-        var project = try load(id: id)
-        project.lastOpenedAt = now()
-        try save(project)
-    }
-
-    func recordExport(id: String, path: String, exportedAt: Date? = nil) throws {
-        var project = try load(id: id)
-        project.exports.append(StudioExport(path: path, exportedAt: exportedAt ?? now()))
-        try save(project)
-    }
-
-    func findProject(exportedPath: String) throws -> StudioProject? {
-        let needle = normalizedPath(exportedPath)
-        for summary in try listSummaries() {
-            let project = try load(id: summary.id)
-            if project.exports.contains(where: { normalizedPath($0.path) == needle }) {
-                return project
-            }
-        }
-        return nil
-    }
-
-    func updateExportPath(from oldPath: String, to newPath: String) throws {
-        let needle = normalizedPath(oldPath)
-        for summary in try listSummaries() {
-            var project = try load(id: summary.id)
-            var changed = false
-            for index in project.exports.indices where normalizedPath(project.exports[index].path) == needle {
-                project.exports[index].path = newPath
-                changed = true
-            }
-            if changed {
-                try save(project)
-            }
-        }
-    }
-
-    func removeExportPath(_ path: String) throws {
-        let needle = normalizedPath(path)
-        for summary in try listSummaries() {
-            var project = try load(id: summary.id)
-            let oldCount = project.exports.count
-            project.exports.removeAll { normalizedPath($0.path) == needle }
-            if project.exports.count != oldCount {
-                try save(project)
-            }
-        }
-    }
-
-    func getOrCreateFlatProject(request: StudioFlatProjectRequest) throws -> StudioProject {
-        let needle = normalizedPath(request.videoURL.path)
-        for summary in try listSummaries() {
-            let project = try load(id: summary.id)
-            if project.sources.screen.external && normalizedPath(project.sources.screen.file) == needle {
-                return project
-            }
-        }
-
-        let id = UUID().uuidString.lowercased()
-        let date = now()
-        let project = StudioProject(
-            id: id,
-            name: request.name.isEmpty ? request.videoURL.deletingPathExtension().lastPathComponent : request.name,
-            createdAt: date,
-            modifiedAt: date,
-            lastOpenedAt: date,
-            app: StudioAppInfo(platform: "macos", version: request.appVersion),
-            sources: StudioSources(
-                screen: StudioScreenSource(
-                    file: request.videoURL.path,
-                    width: request.width,
-                    height: request.height,
-                    frameRate: request.frameRate,
-                    duration: request.duration,
-                    external: true
-                ),
-                camera: nil,
-                events: nil
-            ),
-            scenes: [StudioScene(start: 0, layout: .screen)]
+    private func unfinishedRecordingIDsUnlocked(inUseProjectIDs: Set<String>) throws -> [String] {
+        guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
+        let contents = try fileManager.contentsOfDirectory(
+            at: rootURL,
+            includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles]
         )
-        try save(project, updatingModifiedAt: false)
-        return project
-    }
-
-    func storageSummary() throws -> StudioStorageSummary {
-        let summaries = try listSummaries()
-        return StudioStorageSummary(
-            projectCount: summaries.count,
-            totalBytes: summaries.reduce(Int64(0)) { $0 + $1.sizeOnDisk }
-        )
-    }
-
-    func loadEvents(id: String) throws -> StudioEvents {
-        let data = try Data(contentsOf: projectDirectory(for: id).appendingPathComponent("events.json"))
-        return try StudioJSON.makeDecoder().decode(StudioEvents.self, from: data)
-    }
-
-    func saveEvents(_ events: StudioEvents, id: String) throws {
-        let directory = projectDirectory(for: id)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try StudioJSON.makeEncoder().encode(events)
-        try data.write(to: directory.appendingPathComponent("events.json"), options: .atomic)
-    }
-
-    @discardableResult
-    func cleanup(options: StudioCleanupOptions = StudioCleanupOptions()) throws -> [String] {
-        let ids = StudioCleanupPolicy.plan(
-            summaries: try listSummaries(),
-            currentDate: now(),
-            options: options
-        )
-        for id in ids {
-            try delete(id: id)
+        let cutoff = now().addingTimeInterval(-24 * 60 * 60)
+        var ids: [String] = []
+        for directory in contents {
+            let id = directory.lastPathComponent
+            let values = try directory.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey, .isDirectoryKey])
+            guard values.isDirectory == true,
+                  Self.isValidProjectID(id),
+                  !inUseProjectIDs.contains(id) else {
+                continue
+            }
+            let projectJSONURL = directory.appendingPathComponent("project.json")
+            guard !fileManager.fileExists(atPath: projectJSONURL.path) else { continue }
+            let folderDate = folderDateProvider?(directory)
+                ?? values.creationDate
+                ?? values.contentModificationDate
+                ?? Date(timeIntervalSince1970: 0)
+            if folderDate < cutoff {
+                ids.append(id)
+            }
         }
-        return ids
+        return ids.sorted()
     }
 
-    // MARK: - Private
-
-    private func load(at url: URL) throws -> StudioProject {
-        let data = try Data(contentsOf: url)
-        return try StudioJSON.makeDecoder().decode(StudioProject.self, from: data)
-    }
-
-    private func projectDirectory(for id: String) -> URL {
+    private func projectDirectoryUnchecked(for id: String) -> URL {
         rootURL.appendingPathComponent(id, isDirectory: true)
     }
 
@@ -354,7 +617,7 @@ final class StudioProjectStore {
         let isFlat = project.sources.screen.external
         let sourceExists: Bool
         if isFlat {
-            sourceExists = fileManager.fileExists(atPath: project.sources.screen.file)
+            sourceExists = fileManager.fileExists(atPath: URL(fileURLWithPath: project.sources.screen.file).standardizedFileURL.path)
         } else {
             sourceExists = fileManager.fileExists(atPath: directory.appendingPathComponent(project.sources.screen.file).path)
         }
@@ -392,6 +655,11 @@ final class StudioProjectStore {
     }
 
     private func normalizedPath(_ path: String) -> String {
-        path.lowercased()
+        URL(fileURLWithPath: path).standardizedFileURL.path.lowercased()
+    }
+
+    private func validBackgroundImage(_ image: String?) -> String? {
+        guard let image else { return nil }
+        return StudioJSON.isPlainFileName(image) ? image : nil
     }
 }

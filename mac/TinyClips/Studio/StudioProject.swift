@@ -173,13 +173,13 @@ struct StudioProject: Codable, Equatable, Sendable {
         canvas = try container.decodeIfPresent(StudioCanvas.self, forKey: StudioJSONKey("canvas")) ?? StudioCanvas()
         screen = try container.decodeIfPresent(StudioScreenStyle.self, forKey: StudioJSONKey("screen")) ?? StudioScreenStyle()
         camera = try container.decodeIfPresent(StudioCameraStyle.self, forKey: StudioJSONKey("camera")) ?? StudioCameraStyle()
-        scenes = try container.decodeIfPresent([StudioScene].self, forKey: StudioJSONKey("scenes")) ?? [StudioScene()]
+        scenes = try container.decodeCompactArray("scenes", default: [StudioScene()])
         if scenes.isEmpty { scenes = [StudioScene()] }
-        zooms = try container.decodeIfPresent([StudioZoom].self, forKey: StudioJSONKey("zooms")) ?? []
+        zooms = try container.decodeCompactArray("zooms", default: [])
         edits = try container.decodeIfPresent(StudioEdits.self, forKey: StudioJSONKey("edits")) ?? StudioEdits()
         audio = try container.decodeIfPresent(StudioAudio.self, forKey: StudioJSONKey("audio")) ?? StudioAudio()
         overlays = try container.decodeIfPresent(StudioOverlays.self, forKey: StudioJSONKey("overlays")) ?? StudioOverlays()
-        exports = try container.decodeIfPresent([StudioExport].self, forKey: StudioJSONKey("exports")) ?? []
+        exports = try container.decodeCompactArray("exports", default: [])
         extra = try StudioJSON.decodeExtra(from: container, excluding: Self.knownKeys)
     }
 
@@ -267,6 +267,9 @@ struct StudioSources: Codable, Equatable, Sendable {
         screen = decodedScreen
         camera = try container.decodeIfPresent(StudioCameraSource.self, forKey: StudioJSONKey("camera"))
         events = try container.decodeIfPresent(String.self, forKey: StudioJSONKey("events"))
+        if let events {
+            self.events = try StudioJSON.requirePlainFileName(events, "sources.events")
+        }
         extra = try StudioJSON.decodeExtra(from: container, excluding: ["screen", "camera", "events"])
     }
 
@@ -317,11 +320,14 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         file = try container.decodeString("file", default: "screen.mp4")
-        width = try container.decodeRequiredInt("width")
-        height = try container.decodeRequiredInt("height")
+        width = try StudioJSON.requirePositive(container.decodeRequiredInt("width"), "sources.screen.width")
+        height = try StudioJSON.requirePositive(container.decodeRequiredInt("height"), "sources.screen.height")
         frameRate = try container.decodeDouble("frameRate", default: 30)
-        duration = try container.decodeRequiredDouble("duration")
+        duration = try StudioJSON.requireNonNegative(container.decodeRequiredDouble("duration"), "sources.screen.duration")
         external = try container.decodeBool("external", default: false)
+        if !external {
+            file = try StudioJSON.requirePlainFileName(file, "sources.screen.file")
+        }
         extra = try StudioJSON.decodeExtra(from: container, excluding: ["file", "width", "height", "frameRate", "duration", "external"])
     }
 
@@ -364,9 +370,10 @@ struct StudioCameraSource: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         file = try container.decodeString("file", default: "camera.mp4")
-        width = try container.decodeRequiredInt("width")
-        height = try container.decodeRequiredInt("height")
-        duration = try container.decodeRequiredDouble("duration")
+        file = try StudioJSON.requirePlainFileName(file, "sources.camera.file")
+        width = try StudioJSON.requirePositive(container.decodeRequiredInt("width"), "sources.camera.width")
+        height = try StudioJSON.requirePositive(container.decodeRequiredInt("height"), "sources.camera.height")
+        duration = try StudioJSON.requireNonNegative(container.decodeRequiredDouble("duration"), "sources.camera.duration")
         startOffset = try container.decodeDouble("startOffset", default: 0)
         extra = try StudioJSON.decodeExtra(from: container, excluding: ["file", "width", "height", "duration", "startOffset"])
     }
@@ -775,8 +782,8 @@ struct StudioEdits: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         trimStart = try container.decodeDouble("trimStart", default: 0)
         trimEnd = try container.decodeIfPresent(Double.self, forKey: StudioJSONKey("trimEnd"))
-        cuts = try container.decodeIfPresent([StudioTimeRange].self, forKey: StudioJSONKey("cuts")) ?? []
-        speed = try container.decodeIfPresent([StudioSpeedRange].self, forKey: StudioJSONKey("speed")) ?? []
+        cuts = try container.decodeCompactArray("cuts", default: [])
+        speed = try container.decodeCompactArray("speed", default: [])
         extra = try StudioJSON.decodeExtra(from: container, excluding: ["trimStart", "trimEnd", "cuts", "speed"])
     }
 

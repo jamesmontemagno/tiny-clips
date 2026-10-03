@@ -16,19 +16,20 @@ enum StudioCleanupPolicy {
     static func plan(
         summaries: [StudioProjectSummary],
         currentDate: Date,
-        options: StudioCleanupOptions = StudioCleanupOptions()
+        options: StudioCleanupOptions = StudioCleanupOptions(),
+        inUseProjectIDs: Set<String> = []
     ) -> [String] {
         var ids: [String] = []
         var deleted = Set<String>()
 
-        for summary in summaries where summary.isFlat && !summary.sourceExists {
+        for summary in summaries where !inUseProjectIDs.contains(summary.id) && summary.isFlat && !summary.sourceExists {
             ids.append(summary.id)
             deleted.insert(summary.id)
         }
 
         if options.retentionDays > 0 {
             let cutoff = currentDate.addingTimeInterval(-Double(options.retentionDays) * 24 * 60 * 60)
-            for summary in summaries where !deleted.contains(summary.id) {
+            for summary in summaries where !deleted.contains(summary.id) && !inUseProjectIDs.contains(summary.id) {
                 if isEligible(summary), summary.lastOpenedAt < cutoff {
                     ids.append(summary.id)
                     deleted.insert(summary.id)
@@ -37,9 +38,11 @@ enum StudioCleanupPolicy {
         }
 
         if options.sizeCapBytes > 0 {
-            var totalBytes = summaries.reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
+            var totalBytes = summaries
+                .filter { !deleted.contains($0.id) }
+                .reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
             let candidates = summaries
-                .filter { !deleted.contains($0.id) && isEligible($0) }
+                .filter { !deleted.contains($0.id) && !inUseProjectIDs.contains($0.id) && isEligible($0) }
                 .sorted {
                     if $0.lastOpenedAt == $1.lastOpenedAt { return $0.id < $1.id }
                     return $0.lastOpenedAt < $1.lastOpenedAt
