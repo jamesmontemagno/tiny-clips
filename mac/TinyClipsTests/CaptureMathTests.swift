@@ -313,6 +313,23 @@ final class CaptureMathTests: XCTestCase {
         )
     }
 
+    func testScreenshotEditorEscapeTakesOneStepAtATimeBeforeClosing() {
+        func action(annotation: Bool, textField: Bool, crop: Bool) -> ScreenshotEditorEscapeAction {
+            ScreenshotEditorEscapeAction.resolve(
+                isEditingTextAnnotation: annotation,
+                textFieldHasFocus: textField,
+                hasCropSelection: crop
+            )
+        }
+
+        XCTAssertEqual(action(annotation: true, textField: true, crop: true), .cancelTextAnnotation)
+        XCTAssertEqual(action(annotation: true, textField: false, crop: false), .cancelTextAnnotation)
+        XCTAssertEqual(action(annotation: false, textField: true, crop: true), .leaveTextField)
+        XCTAssertEqual(action(annotation: false, textField: true, crop: false), .leaveTextField)
+        XCTAssertEqual(action(annotation: false, textField: false, crop: true), .clearCropSelection)
+        XCTAssertEqual(action(annotation: false, textField: false, crop: false), .close)
+    }
+
     func testScreenshotEditorEscapeConfirmsEveryCloseWhenEnabled() {
         func escape(unsaved: Bool, discardsCapture: Bool) -> ScreenshotEditorClosePrompt? {
             ScreenshotEditorClosePrompt.resolve(

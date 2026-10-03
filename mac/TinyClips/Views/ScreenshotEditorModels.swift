@@ -471,6 +471,26 @@ private extension CGFloat {
     }
 }
 
+/// What Esc does in the editor. Each press takes only the first step that applies.
+enum ScreenshotEditorEscapeAction: Equatable {
+    case cancelTextAnnotation
+    /// Esc in a sidebar text field leaves the field; it never closes the editor.
+    case leaveTextField
+    case clearCropSelection
+    case close
+
+    static func resolve(
+        isEditingTextAnnotation: Bool,
+        textFieldHasFocus: Bool,
+        hasCropSelection: Bool
+    ) -> ScreenshotEditorEscapeAction {
+        if isEditingTextAnnotation { return .cancelTextAnnotation }
+        if textFieldHasFocus { return .leaveTextField }
+        if hasCropSelection { return .clearCropSelection }
+        return .close
+    }
+}
+
 /// What the editor has to confirm before it closes.
 enum ScreenshotEditorClosePrompt: Equatable {
     case discardChanges

@@ -8,8 +8,10 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
     let onPan: (CGSize) -> Void
     /// Called for an unmodified Return/Enter outside text input; returns whether it was handled.
     let onReturn: () -> Bool
-    /// Called for an unmodified Esc that no text field, sheet, or popover is in a position to take.
-    let onEscape: () -> Void
+    /// Called for an unmodified Esc unless a sheet, popover, or input method needs it. The argument
+    /// says whether a text field has focus. Returns whether Esc was acted on; when it was not, the
+    /// focused text field just gives up focus.
+    let onEscape: (Bool) -> Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(isEnabled: isEnabled, onZoom: onZoom, onPan: onPan, onReturn: onReturn, onEscape: onEscape)
@@ -41,7 +43,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         var onZoom: (CGFloat, CGPoint) -> Void
         var onPan: (CGSize) -> Void
         var onReturn: () -> Bool
-        var onEscape: () -> Void
+        var onEscape: (Bool) -> Bool
 
         private weak var monitoredView: NSView?
         private var eventMonitor: Any?
@@ -54,7 +56,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             onZoom: @escaping (CGFloat, CGPoint) -> Void,
             onPan: @escaping (CGSize) -> Void,
             onReturn: @escaping () -> Bool,
-            onEscape: @escaping () -> Void
+            onEscape: @escaping (Bool) -> Bool
         ) {
             self.isEnabled = isEnabled
             self.onZoom = onZoom
@@ -98,10 +100,16 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
 
         private func handle(_ event: NSEvent) -> NSEvent? {
             guard let view = monitoredView,
-                  event.window === view.window,
-                  isEnabled else {
+                  event.window === view.window else {
                 return event
             }
+
+            // Esc is handled even while text input has the rest of the monitor switched off.
+            if event.type == .keyDown, event.keyCode == 53, let window = view.window {
+                return handleEscapeKey(event, in: window)
+            }
+
+            guard isEnabled else { return event }
 
             switch event.type {
             case .keyDown where event.keyCode == 49:
@@ -124,20 +132,6 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
                       onReturn() else {
                     return event
                 }
-                return nil
-            case .keyDown where event.keyCode == 53:
-                // Esc. SwiftUI's `onExitCommand` only fires while one of the editor's controls has
-                // keyboard focus, which a freshly opened editor does not, so take the key here.
-                // Text fields keep it to cancel their edit; open popovers keep it to dismiss.
-                guard !event.isARepeat,
-                      event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]),
-                      let window = view.window,
-                      !(window.firstResponder is NSTextView),
-                      window.attachedSheet == nil,
-                      !(window.childWindows ?? []).contains(where: \.isVisible) else {
-                    return event
-                }
-                onEscape()
                 return nil
             case .leftMouseDown where isSpacePressed:
                 guard contains(event, in: view) else { return event }
@@ -164,6 +158,28 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             default:
                 return event
             }
+        }
+
+        /// SwiftUI's `onExitCommand` only fires while one of the editor's controls has keyboard
+        /// focus, which a freshly opened editor does not, so Esc is taken here for the whole window.
+        private func handleEscapeKey(_ event: NSEvent, in window: NSWindow) -> NSEvent? {
+            guard !event.isARepeat,
+                  event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]),
+                  window.attachedSheet == nil,
+                  !(window.childWindows ?? []).contains(where: \.isVisible) else {
+                return event
+            }
+
+            let textView = window.firstResponder as? NSTextView
+            // An input method uses Esc to cancel its composition.
+            if textView?.hasMarkedText() == true {
+                return event
+            }
+
+            if !onEscape(textView != nil), textView != nil {
+                window.makeFirstResponder(nil)
+            }
+            return nil
         }
 
         private func contains(_ event: NSEvent, in view: NSView) -> Bool {
@@ -669,9 +685,6 @@ struct ScreenshotEditorView: View {
                 canZoomOut: !isTextInputActive && zoomScale > ScreenshotEditorZoomMath.minimumScale
             )
         )
-        .onExitCommand {
-            handleEscape()
-        }
         .confirmationDialog(closePrompt.title, isPresented: $showExitConfirmation, titleVisibility: .visible) {
             if closePrompt.isDestructive {
                 Button(closePrompt.confirmTitle, role: .destructive) {
@@ -1512,17 +1525,23 @@ struct ScreenshotEditorView: View {
         onDone(lastSavedURL)
     }
 
-    private func handleEscape() {
-        if viewModel.textEditPosition != nil {
+    private func handleEscape(textFieldHasFocus: Bool) -> Bool {
+        guard !isSaving else { return true }
+
+        switch ScreenshotEditorEscapeAction.resolve(
+            isEditingTextAnnotation: viewModel.textEditPosition != nil,
+            textFieldHasFocus: textFieldHasFocus,
+            hasCropSelection: viewModel.hasCropSelection
+        ) {
+        case .cancelTextAnnotation:
             viewModel.cancelTextAnnotation()
-            return
-        }
-
-        if viewModel.hasCropSelection {
+        case .leaveTextField:
+            return false
+        case .clearCropSelection:
             viewModel.clearCropSelection()
-            return
+        case .close:
+            close(trigger: .escapeKey)
         }
-
-        close(trigger: .escapeKey)
+        return true
     }
 }
