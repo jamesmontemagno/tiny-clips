@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - A crop selection in the macOS screenshot editor now only changes the image once it is applied, matching Windows. Save, Copy, and the output size ignore an unapplied selection, and switching tools clears it.
 
 ### Fixed
+- Fixed the macOS screenshot editor staying open after confirming **Delete Screenshot** or **Discard Changes**; the editor now closes as soon as the confirmation is accepted.
 - Fixed the macOS screenshot editor silently cropping saved and copied images to a selection that was no longer visible after switching to another tool.
 - Fixed crop selection drags in the macOS screenshot editor filling the undo history and leaving the editor marked as changed after the selection was removed.
 

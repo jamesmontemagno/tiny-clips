@@ -1,7 +1,7 @@
 ---
 name: bump-swift-version
-description: Bump the version for the TinyClips Swift app across Info.plist, Info-MAS.plist, and project.pbxproj. Use this skill when you need to update the app version (e.g., from 1.4 to 1.5).
-argument-hint: "[version] (e.g., 1.5)"
+description: Bump the version for the TinyClips Swift app across Info.plist, Info-MAS.plist, and project.pbxproj. Use this skill when you need to update the app version (e.g., from 1.8.0 to 1.9.0).
+argument-hint: "[version] (e.g., 1.9.0)"
 user-invocable: true
 ---
 
@@ -27,10 +27,10 @@ The skill automatically updates the following files with the new version number:
 
 1. Request the version bump in chat:
    ```
-   /bump-swift-version 1.5
+   /bump-swift-version 1.9.0
    ```
 
-2. Provide the new version in format `X.Y` (e.g., `1.5`, `2.0`)
+2. Provide the new version in format `X.Y.Z` (e.g., `1.9.0`, `2.0.0`). `X.Y` (e.g., `2.0`) is also accepted.
 
 ## Files included
 
@@ -40,27 +40,30 @@ The skill automatically updates the following files with the new version number:
 
 When asked to bump the Swift version:
 
-1. **Validate the version format** - Ensure it follows the pattern `X.Y` (major.minor)
-2. **Update Info.plist** - Replace `CFBundleShortVersionString` value
-3. **Update Info-MAS.plist** - Replace `CFBundleShortVersionString` value for the Mac App Store build
-4. **Update project.pbxproj** - Replace all 4 `MARKETING_VERSION` entries (one for each build configuration)
-5. **Verify changes** - Display the updated values to confirm all files were modified correctly
+1. **Run the script** from the repository root. It validates the version format and updates all three files together: if any of them cannot be updated, it fails and leaves all three untouched:
+   ```bash
+   .github/skills/bump-swift-version/bump-swift-version.sh 1.9.0
+   ```
+2. **Verify changes** - `git diff --stat` should show exactly the three files above with 6 changed lines (one per plist, four in `project.pbxproj`)
+3. **Open a pull request, if one was requested** - Validate both mac schemes as described in `.github/copilot-instructions.md`, commit the three files as `Bump macOS version to X.Y.Z`, and create the PR
+
+Always use the script instead of editing the plists with `PlistBuddy -c "Set ..."` or `plutil -replace`. Those rewrite the whole file and reorder its keys; the script changes only the version line.
 
 ## Example
 
 **Request:**
 ```
-Bump the Swift app version to 1.6
+Bump the Swift app version to 1.9.0
 ```
 
 **Result:**
-- Info.plist: CFBundleShortVersionString = 1.6
-- Info-MAS.plist: CFBundleShortVersionString = 1.6
-- project.pbxproj: All MARKETING_VERSION = 1.6
+- Info.plist: CFBundleShortVersionString = 1.9.0
+- Info-MAS.plist: CFBundleShortVersionString = 1.9.0
+- project.pbxproj: All MARKETING_VERSION = 1.9.0
 
 ## Notes
 
-- The version format must be `X.Y` (e.g., 1.5, 2.0, 1.10)
+- The version format must be `X.Y.Z` or `X.Y` (e.g., 1.9.0, 1.10.2, 2.0)
 - This updates both the direct distribution and Mac App Store variant
 - All 4 build configurations (Debug Direct, Release Direct, Debug MAS, Release MAS) are updated
 - Changes are made directly to the files; no commit is created automatically
