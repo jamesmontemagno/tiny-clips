@@ -105,7 +105,10 @@ public sealed partial class EditorInspector : UserControl
 
     private void InitializeEmojiControls()
     {
-        CommonEmojiGrid.ItemsSource = EmojiAnnotationMath.Common;
+        // Hand XAML a List<string>, not EmojiAnnotationMath.Common itself: that is a collection
+        // expression typed as IReadOnlyList<string>, whose compiler-generated runtime type has no
+        // WinRT collection interfaces under NativeAOT, so the ItemsSource setter throws.
+        CommonEmojiGrid.ItemsSource = EmojiAnnotationMath.Common.ToList();
         SyncEmojiSelection(_controller.EmojiDefault);
     }
 

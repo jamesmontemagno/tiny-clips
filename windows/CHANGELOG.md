@@ -5,10 +5,25 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.8.1-windows] - 2026-10-03
+
 ### Changed
 - **Screenshot editor opens with the Select tool.** The editor previously started on Crop; it now
   starts on Select, matching macOS. Press **C** or choose **Crop** in the tool rail to crop, then
   **Apply crop** as before.
+
+### Fixed
+- **The screenshot editor opens again in direct and winget installs.** In the 1.8.0 direct build
+  the editor never appeared after a capture or **Open with**, and Tiny Clips could then crash.
+  The emoji quick-pick list was handed to the UI in a form the NativeAOT build cannot expose to
+  XAML. Microsoft Store installs were not affected. The Clips Library default view, sort, and
+  filter lists in Settings used the same pattern and were changed the same way.
+- **Direct and winget installs no longer crash on their first launch.** The 1.8.0 direct MSIX
+  embedded its App Installer auto-update configuration, and the first launch after installing
+  exited immediately (`0xC0000409`) on x64 and ARM64; launching again worked. This also failed
+  winget validation. The MSIX no longer embeds that configuration. Installing through the
+  `.appinstaller` still updates automatically; installs from the MSIX file or winget update
+  through `winget upgrade` or the in-app update check.
 
 ## [v1.8.0-windows] - 2026-09-28
 

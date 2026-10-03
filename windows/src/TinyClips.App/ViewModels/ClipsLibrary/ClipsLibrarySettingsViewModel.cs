@@ -22,13 +22,16 @@ public sealed partial class ClipsLibrarySettingsViewModel : ObservableObject
         Load();
     }
 
-    public IReadOnlyList<string> ViewModeOptions { get; } = ["Grid", "List"];
+    // Typed as string[] on purpose. These are bound to ComboBox.ItemsSource, and a collection
+    // expression typed as IReadOnlyList<string> produces a compiler-generated list that exposes no
+    // WinRT collection interfaces under NativeAOT, so the binding would throw.
+    public string[] ViewModeOptions { get; } = ["Grid", "List"];
 
-    public IReadOnlyList<string> SortOptions { get; } = ["Newest first", "Oldest first", "Largest first", "Name", "Favorites first"];
+    public string[] SortOptions { get; } = ["Newest first", "Oldest first", "Largest first", "Name", "Favorites first"];
 
-    public IReadOnlyList<string> TypeFilterOptions { get; } = ["All types", "Screenshots", "Videos", "GIFs", "Favorites"];
+    public string[] TypeFilterOptions { get; } = ["All types", "Screenshots", "Videos", "GIFs", "Favorites"];
 
-    public IReadOnlyList<string> DateFilterOptions { get; } = ["Any date", "Today", "Last 7 days", "Last 30 days"];
+    public string[] DateFilterOptions { get; } = ["Any date", "Today", "Last 7 days", "Last 30 days"];
 
     [ObservableProperty]
     private int _defaultViewModeIndex;
