@@ -570,6 +570,10 @@ private class ClipsViewModel: ObservableObject {
         guard settings.clipsManagerArchiveAfterDays > 0 else { return }
 
         let cutoff = Calendar.current.date(byAdding: .day, value: -settings.clipsManagerArchiveAfterDays, to: Date()) ?? .distantPast
+        // Videos exported from Studio keep their project link when they are moved to the archive.
+        let studioLinks = settings.studioPreviewEnabled
+            ? ((try? StudioProjectStore.shared.exportedPathIndex()) ?? [:])
+            : [:]
 
         for directory in directories {
             let archiveDirectory = directory.appendingPathComponent("Archive", isDirectory: true)
@@ -584,6 +588,9 @@ private class ClipsViewModel: ObservableObject {
                 let targetURL = uniqueArchivedURL(in: archiveDirectory, originalName: url.lastPathComponent)
                 do {
                     try FileManager.default.moveItem(at: url, to: targetURL)
+                    if studioLinks[StudioProjectStore.exportKey(forPath: url.path)] != nil {
+                        _ = try? StudioProjectStore.shared.updateExportPath(from: url.path, to: targetURL.path)
+                    }
                 } catch {
                     SaveService.shared.showError("Could not archive \(url.lastPathComponent): \(error.localizedDescription)")
                 }
