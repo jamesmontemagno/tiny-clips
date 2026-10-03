@@ -39,10 +39,14 @@ PROJECT_PBXPROJ="$MAC_DIR/TinyClips.xcodeproj/project.pbxproj"
 echo "Bumping Swift app version to $NEW_VERSION..."
 echo ""
 
-# Rewrite only the version line. PlistBuddy "Set" and plutil re-serialize the
-# whole plist and reorder its keys, which buries the bump in an unrelated diff.
-update_plist() {
+# Stage every edit in a temporary copy and validate it there, so that a problem
+# with any one file leaves all three untouched.
+STAGING_DIR="$(mktemp -d)"
+trap 'rm -rf "$STAGING_DIR"' EXIT
+
+stage_plist() {
     local plist="$1"
+    local staged="$2"
     local actual
 
     if [ ! -f "$plist" ]; then
@@ -50,36 +54,44 @@ update_plist() {
         exit 1
     fi
 
-    sed -i '' "/<key>CFBundleShortVersionString<\/key>/{n;s|<string>[^<]*</string>|<string>$NEW_VERSION</string>|;}" "$plist"
+    # Rewrite only the version line. PlistBuddy "Set" and plutil re-serialize the
+    # whole plist and reorder its keys, which buries the bump in an unrelated diff.
+    sed "/<key>CFBundleShortVersionString<\/key>/{n;s|<string>[^<]*</string>|<string>$NEW_VERSION</string>|;}" "$plist" > "$staged"
 
-    actual="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$plist")"
+    if ! actual="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$staged" 2>/dev/null)"; then
+        echo "❌ Could not read CFBundleShortVersionString from $plist"
+        exit 1
+    fi
     if [ "$actual" != "$NEW_VERSION" ]; then
         echo "❌ Could not update $plist (CFBundleShortVersionString is $actual)"
         exit 1
     fi
-
-    echo "✓ Updated $plist"
 }
 
-update_plist "$INFO_PLIST"
-update_plist "$INFO_MAS_PLIST"
+stage_plist "$INFO_PLIST" "$STAGING_DIR/Info.plist"
+stage_plist "$INFO_MAS_PLIST" "$STAGING_DIR/Info-MAS.plist"
 
-# Update project.pbxproj
-if [ -f "$PROJECT_PBXPROJ" ]; then
-    sed -E -i '' "s/(MARKETING_VERSION = )[0-9]+(\.[0-9]+)*;/\1$NEW_VERSION;/g" "$PROJECT_PBXPROJ"
-
-    TOTAL_COUNT="$(grep -c "MARKETING_VERSION = " "$PROJECT_PBXPROJ" || true)"
-    UPDATED_COUNT="$(grep -cF "MARKETING_VERSION = $NEW_VERSION;" "$PROJECT_PBXPROJ" || true)"
-    if [ "$TOTAL_COUNT" -eq 0 ] || [ "$UPDATED_COUNT" -ne "$TOTAL_COUNT" ]; then
-        echo "❌ Could not update $PROJECT_PBXPROJ ($UPDATED_COUNT of $TOTAL_COUNT MARKETING_VERSION entries are $NEW_VERSION)"
-        exit 1
-    fi
-
-    echo "✓ Updated $PROJECT_PBXPROJ ($UPDATED_COUNT MARKETING_VERSION entries)"
-else
+if [ ! -f "$PROJECT_PBXPROJ" ]; then
     echo "❌ File not found: $PROJECT_PBXPROJ"
     exit 1
 fi
+
+sed -E "s/(MARKETING_VERSION = )[0-9]+(\.[0-9]+)*;/\1$NEW_VERSION;/g" "$PROJECT_PBXPROJ" > "$STAGING_DIR/project.pbxproj"
+
+TOTAL_COUNT="$(grep -c "MARKETING_VERSION = " "$STAGING_DIR/project.pbxproj" || true)"
+UPDATED_COUNT="$(grep -cF "MARKETING_VERSION = $NEW_VERSION;" "$STAGING_DIR/project.pbxproj" || true)"
+if [ "$TOTAL_COUNT" -eq 0 ] || [ "$UPDATED_COUNT" -ne "$TOTAL_COUNT" ]; then
+    echo "❌ Could not update $PROJECT_PBXPROJ ($UPDATED_COUNT of $TOTAL_COUNT MARKETING_VERSION entries are $NEW_VERSION)"
+    exit 1
+fi
+
+# All three staged copies are valid, so write them back.
+cat "$STAGING_DIR/Info.plist" > "$INFO_PLIST"
+echo "✓ Updated $INFO_PLIST"
+cat "$STAGING_DIR/Info-MAS.plist" > "$INFO_MAS_PLIST"
+echo "✓ Updated $INFO_MAS_PLIST"
+cat "$STAGING_DIR/project.pbxproj" > "$PROJECT_PBXPROJ"
+echo "✓ Updated $PROJECT_PBXPROJ ($UPDATED_COUNT MARKETING_VERSION entries)"
 
 echo ""
 echo "✅ Version bump complete! Updated to $NEW_VERSION"
