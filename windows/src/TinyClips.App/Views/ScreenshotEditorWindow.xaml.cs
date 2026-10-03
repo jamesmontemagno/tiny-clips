@@ -52,6 +52,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     private bool _hasPendingCropSelection;
     private bool _closeConfirmed;
     private bool _isDeletingSource;
+    private bool _isClosed;
     private int _outputScalePercent = 100;
 
     public ScreenshotEditorWindow(string filePath)
@@ -165,6 +166,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        _isClosed = true;
         _controller.Dispose();
         UpdateOutputResolutionText();
     }
@@ -214,6 +216,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private async Task LoadAsync()
     {
+        if (_isClosed) return;
         try
         {
             if (_initialFrame is { } frame)
@@ -226,6 +229,7 @@ public sealed partial class ScreenshotEditorWindow : Window
                     frame.Height,
                     BitmapAlphaMode.Premultiplied));
                 await _controller.SetBitmapFromCaptureAsync(bitmap);
+                if (_isClosed) return;
                 CaptureFlowTrace.Mark("editor: image visible (from memory)");
                 MarkChangesSaved();
                 if (string.IsNullOrEmpty(_filePath))
@@ -236,11 +240,13 @@ public sealed partial class ScreenshotEditorWindow : Window
             }
 
             await _controller.LoadAsync(_filePath);
+            if (_isClosed) return;
             CaptureFlowTrace.Mark("editor: image visible (from file)");
             MarkChangesSaved();
         }
         catch (Exception ex)
         {
+            if (_isClosed) return;
             System.Diagnostics.Debug.WriteLine($"Editor load failed: {ex}");
             App.ShowImageLoadFailureNotification(System.IO.Path.GetFileName(_filePath));
             Close();

@@ -9,9 +9,23 @@
     Run with no screenshot editors open. Also checks live output-resolution metadata on initial
     load, scale/focus return, and padding changes. Reset is a consistency smoke check because it
     retains scale/padding; manually check crop -> reset for changing source dimensions.
-    The no-bitmap fallback needs a Windows debugger check after UpdateOutputResolutionText in
-    OnClosed: ImageSizeText.Text is empty and AutomationProperties.GetName(OutputScaleButton)
-    is "Output resolution". Closed UIA elements cannot be queried reliably.
+    Also smoke-checks immediate close after capture and Reset. These timing-sensitive UI checks
+    cannot prove late bitmap disposal; closed UIA elements cannot be queried reliably.
+
+    Deterministic Windows debugger regression matrix (run each case with a fresh editor):
+    - File-backed open / Reset: pause before GetSoftwareBitmapAsync completes, close the editor
+      while the operation is pending, then resume its UI-thread continuation.
+    - Captured-frame open / Reset: pause before the Task.Run copy completes, close, then resume.
+    - Both paths: pause the SoftwareBitmapSource.SetBitmapAsync completion, close, then resume.
+    For each case, after the load task finishes verify controller Bitmap and PreviewSource remain
+    null, no ImageChanged or AnnotationsStructureChanged is raised after closure, and the late
+    SoftwareBitmap and staged CanvasBitmap (if created) are disposed exactly once. No load-failure
+    notification or second Close should occur. Check ImageSizeText.Text is empty and the scale
+    button's AutomationProperties.Name remains "Output resolution", including after completion.
+    With a redaction preview pending, close before its queued invalidation runs; verify its
+    temporary SoftwareBitmap is disposed and AnnotationVisualInvalidated is not raised.
+    Controls: repeat each load / Reset without closing; dimensions and preview must populate,
+    annotations must reset, and output scale/padding must remain unchanged.
 
 .EXAMPLE
     .\ScreenshotEditor.Tests.ps1 -AppPid 12345 -ShotDir .\screenshots
@@ -190,6 +204,18 @@ Test-UI "No discard prompt from second capture" {
 }
 Shot "multiple-editors"
 
+Test-UI "Immediate Reset then close does not reopen the clean second editor" {
+    $second = @(Get-EditorWindows | Where-Object { $_.hwnd -ne $first.hwnd })
+    if ($second.Count -ne 1) { throw "Expected one clean second editor." }
+    $secondTarget = @("-w", "$($second[0].hwnd)")
+    Invoke-UI invoke "EditorResetButton" @secondTarget
+    Invoke-UI invoke "EditorCloseButton" @secondTarget
+    Invoke-UI wait-for "ScreenshotEditorTitleBar" @secondTarget --gone -t 5000
+    Start-Sleep -Milliseconds 1000
+    if (@(Get-EditorWindows).Count -ne 1) { throw "Only the first editor should remain." }
+    Invoke-UI wait-for "ScreenshotEditorTitleBar" @firstTarget -t 3000
+}
+
 # Reset and close each editor so the test leaves the running app usable.
 foreach ($editor in @(Get-EditorWindows)) {
     $target = @("-w", "$($editor.hwnd)")
@@ -204,6 +230,19 @@ foreach ($editor in @(Get-EditorWindows)) {
 }
 Test-UI "Screenshot editors close" {
     winapp ui wait-for "ScreenshotEditorTitleBar" -a $AppPid --gone -t 5000
+}
+
+Test-UI "Immediate close after captured-frame editor opens leaves no editor" {
+    Invoke-UI send-keys "ctrl+shift+5" -a $AppPid --via send-input
+    Invoke-UI wait-for "CaptureScreenButton" -a $AppPid -t 5000
+    Invoke-UI invoke "CaptureScreenButton" -a $AppPid
+    $capturedEditor = @(Wait-EditorCount -Expected 1)
+    $captureTarget = @("-w", "$($capturedEditor[0].hwnd)")
+    Invoke-UI invoke "EditorCloseButton" @captureTarget
+    Invoke-UI wait-for "ScreenshotEditorTitleBar" -a $AppPid --gone -t 5000
+    Start-Sleep -Milliseconds 1000
+    if (@(Get-EditorWindows).Count -ne 0) { throw "A closed capture editor reappeared." }
+    if (-not (Get-Process -Id $AppPid -ErrorAction SilentlyContinue)) { throw "Tiny Clips exited." }
 }
 
 Write-Host "`nPassed: $pass | Failed: $fail"

@@ -9,6 +9,8 @@ own `CHANGELOG.md` at the repository root.
 - **Screenshot editor output resolution is accessible to screen readers.** The output-resolution
   button now includes the current export dimensions in its accessible name, without opening the
   scale flyout, and stays in sync when the image, crop, padding, frame, or output scale changes.
+  Closing during file loading, captured-frame copying, or Reset now discards late bitmap results
+  without restoring dimensions or previews on the closed editor.
 
 ## [v1.8.1-windows] - 2026-10-03
 
