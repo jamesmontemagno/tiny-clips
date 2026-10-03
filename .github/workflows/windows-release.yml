@@ -394,7 +394,7 @@ jobs:
           $notes += 'winget install Refractored.TinyClips'
           $notes += '```'
           $notes += ""
-          $notes += 'winget installs the same auto-updating direct MSIX. `winget upgrade` and App Installer can both update its package family.'
+          $notes += 'winget installs the same direct MSIX, but winget installs do not receive App Installer updates. Update them with `winget upgrade Refractored.TinyClips` or the in-app update check.'
 
           $notes += ""
           $notes += "## Release validation"
