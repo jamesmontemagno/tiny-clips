@@ -53,6 +53,26 @@
                         Glyph="&#xE962;" />
                 </ToggleButton>
 
+                <!--  Video only, and only while the Studio preview is switched on.  -->
+                <ToggleButton
+                    x:Name="RecordForStudioToggle"
+                    Width="34"
+                    Height="34"
+                    MinWidth="0"
+                    Padding="0"
+                    AutomationProperties.AutomationId="SetupRecordForStudioButton"
+                    AutomationProperties.HelpText="Keeps the screen and camera as separate tracks in an editable Tiny Clips Studio project."
+                    AutomationProperties.Name="Record for Studio"
+                    Checked="OnRecordForStudioToggled"
+                    Unchecked="OnRecordForStudioToggled"
+                    ToolTipService.ToolTip="Record for Studio"
+                    Visibility="Collapsed">
+                    <FontIcon
+                        FontFamily="Segoe Fluent Icons"
+                        FontSize="16"
+                        Glyph="&#xE81E;" />
+                </ToggleButton>
+
                 <Rectangle
                     Width="1"
                     Height="24"

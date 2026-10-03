@@ -178,6 +178,72 @@
                 </controls:SettingsCard>
             </StackPanel>
 
+            <!--  Shown only while the Studio preview is switched on.  -->
+            <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}">
+                <TextBlock
+                    Margin="4,16,0,0"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Studio projects" />
+
+                <StackPanel Spacing="2">
+                    <controls:SettingsCard
+                        Header="Project storage"
+                        HeaderIcon="{ui:FontIcon Glyph=&#xEDA2;}">
+                        <controls:SettingsCard.Description>
+                            <StackPanel>
+                                <TextBlock
+                                    AutomationProperties.AutomationId="StudioStorageSummaryText"
+                                    Text="{x:Bind ViewModel.StudioStorageDisplay, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="The sources of exported projects are deleted by the two rules below. Drafts that were never exported are never deleted automatically, and exported videos are never touched."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="StudioCleanupStatusText"
+                                    AutomationProperties.AutomationId="StudioCleanupStatusText"
+                                    AutomationProperties.LiveSetting="Polite"
+                                    Text="{x:Bind ViewModel.StudioCleanupStatus, Mode=OneWay}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{x:Bind ViewModel.StudioCleanupStatusVisibility, Mode=OneWay}" />
+                            </StackPanel>
+                        </controls:SettingsCard.Description>
+                        <Button
+                            AutomationProperties.AutomationId="StudioCleanUpNowButton"
+                            AutomationProperties.Name="Clean up now: Studio projects"
+                            Click="OnCleanUpStudioProjects"
+                            Content="Clean up now" />
+                    </controls:SettingsCard>
+
+                    <controls:SettingsCard
+                        Description="Days since an exported project was last opened. 0 keeps them until you delete the project."
+                        Header="Delete sources after"
+                        HeaderIcon="{ui:FontIcon Glyph=&#xE823;}">
+                        <NumberBox
+                            Width="120"
+                            AutomationProperties.AutomationId="StudioSourceRetentionDaysNumberBox"
+                            AutomationProperties.Name="Delete Studio sources after, in days"
+                            Maximum="365"
+                            Minimum="0"
+                            SpinButtonPlacementMode="Inline"
+                            Value="{x:Bind ViewModel.StudioSourceRetentionDays, Mode=TwoWay}" />
+                    </controls:SettingsCard>
+
+                    <controls:SettingsCard
+                        Description="Gigabytes all projects may use. Past that, the exported projects opened longest ago are deleted first. 0 means no limit."
+                        Header="Storage limit"
+                        HeaderIcon="{ui:FontIcon Glyph=&#xE7B8;}">
+                        <NumberBox
+                            Width="120"
+                            AutomationProperties.AutomationId="StudioStorageCapNumberBox"
+                            AutomationProperties.Name="Studio storage limit in gigabytes"
+                            Maximum="500"
+                            Minimum="0"
+                            SpinButtonPlacementMode="Inline"
+                            Value="{x:Bind ViewModel.StudioStorageCapGigabytes, Mode=TwoWay}" />
+                    </controls:SettingsCard>
+                </StackPanel>
+            </StackPanel>
+
             <TextBlock
                 Margin="4,16,0,0"
                 Style="{StaticResource BodyStrongTextBlockStyle}"

@@ -1,4 +1,5 @@
 using TinyClips.Core.Models;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Services;
 
@@ -58,6 +59,43 @@ public interface ICaptureSettings
     double GifMouseClickOpacity { get; set; }
     double GifMouseClickDuration { get; set; }
     bool ShowTrimmer { get; set; }
+
+    /// <summary>
+    /// What a video recording does when it stops. Until a choice has been stored this follows
+    /// <see cref="ShowTrimmer"/> (on is Trimmer, off is Save), and storing one keeps
+    /// <see cref="ShowTrimmer"/> in step (true only for Trimmer). A stored Studio choice only takes
+    /// effect while <see cref="StudioPreviewEnabled"/> is on, so decide with
+    /// <see cref="IsStudioRecordingEnabled"/> rather than by comparing this value.
+    /// </summary>
+    VideoAfterRecording VideoAfterRecording { get; set; }
+
+    /// <summary>
+    /// Hidden switch for Tiny Clips Studio while it is in preview. Default false, and no UI sets it.
+    /// Also reads as true when the <c>TINYCLIPS_STUDIO_PREVIEW</c> environment variable is <c>1</c>.
+    /// </summary>
+    bool StudioPreviewEnabled { get; set; }
+
+    /// <summary>True when a new video recording should be captured as a Studio project by default.</summary>
+    bool IsStudioRecordingEnabled { get; }
+
+    /// <summary>
+    /// Days after an exported Studio project was last opened before its sources are deleted.
+    /// Default 30, clamped to 0 through 365. Zero keeps them until the project is deleted by hand.
+    /// </summary>
+    int StudioSourceRetentionDays { get; set; }
+
+    /// <summary>
+    /// Total Studio project storage, in gigabytes, allowed before the oldest exported projects are
+    /// deleted. Default 10, clamped to 0 through 500. Zero means no limit.
+    /// </summary>
+    int StudioStorageCapGigabytes { get; set; }
+
+    /// <summary>
+    /// The look (canvas, screen style, camera style) new Studio projects start with, or null for the
+    /// built-in default. A look never carries a crop, because a crop belongs to one recording.
+    /// </summary>
+    StudioLook? StudioDefaultLook { get; set; }
+
     bool RecordAudio { get; set; }
     bool RecordMicrophone { get; set; }
     string SelectedMicrophoneId { get; set; }

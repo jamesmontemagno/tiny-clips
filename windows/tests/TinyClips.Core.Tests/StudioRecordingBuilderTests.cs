@@ -170,5 +170,41 @@ public sealed class StudioRecordingBuilderTests
         Assert.Equal("#FF0000", request.ClickOverlay.Color);
         Assert.True(request.Branding);
         Assert.Equal("1.2.3", request.AppVersion);
+        Assert.Null(request.Look);
+    }
+
+    [Fact]
+    public void BuildCreationRequest_CarriesTheLookIntoTheNewProject()
+    {
+        var look = new StudioLook(
+            new StudioCanvas { Padding = 0.1, Background = new StudioBackground { Style = StudioBackgroundStyle.Solid, Primary = "#101820" } },
+            new StudioScreenStyle { CornerRadius = 0.04, Shadow = 0.2 },
+            new StudioCameraStyle { Shape = StudioCameraShape.Rectangle, Mirror = false });
+
+        var request = StudioRecordingBuilder.BuildCreationRequest(
+            "Clip",
+            new StudioRecordingSourceInfo(1920, 1080, 5, 30),
+            null,
+            WebcamCornerPosition.BottomRight,
+            new MouseClickOverlayStyle("#FF0000", 44, 4, 0.5, 0.6),
+            clickVisualsEnabled: true,
+            branding: false,
+            appVersion: "1.2.3",
+            look: look);
+
+        Assert.Same(look, request.Look);
+
+        var project = StudioProjectStore.BuildDefaultProjectForRecording(
+            "3f0013cf-ba10-4453-af91-792b7882dae6",
+            request,
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(0.1, project.Canvas.Padding);
+        Assert.Equal(StudioBackgroundStyle.Solid, project.Canvas.Background.Style);
+        Assert.Equal("#101820", project.Canvas.Background.Primary);
+        Assert.Equal(0.04, project.Screen.CornerRadius);
+        Assert.Equal(0.2, project.Screen.Shadow);
+        Assert.Equal(StudioCameraShape.Rectangle, project.Camera.Shape);
+        Assert.False(project.Camera.Mirror);
     }
 }

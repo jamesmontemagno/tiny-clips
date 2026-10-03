@@ -619,6 +619,7 @@ public static class StudioProjectJson
     ])]
 [JsonSerializable(typeof(StudioProject))]
 [JsonSerializable(typeof(StudioEvents))]
+[JsonSerializable(typeof(StudioLook))]
 internal sealed partial class StudioJsonContext : JsonSerializerContext;
 
 internal sealed class StudioNullAsDefaultInt32JsonConverter : JsonConverter<int>

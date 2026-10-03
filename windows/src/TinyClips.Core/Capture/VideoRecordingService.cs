@@ -131,6 +131,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     public event EventHandler<string>? StudioRecordingCompleted;
 
+    public string? ActiveStudioProjectId => Volatile.Read(ref _studioPaths)?.ProjectId;
+
     public event EventHandler<string>? WebcamCaptureFailed;
 
     public RecordingPerformanceReport? LastPerformanceReport { get; private set; }
@@ -2122,7 +2124,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 clickStyle,
                 _settings.ShouldShowMouseClickVisuals(CaptureType.Video),
                 _settings.ShowBrandingOverlay,
-                _activeOptions.AppVersion ?? typeof(VideoRecordingService).Assembly.GetName().Version?.ToString() ?? string.Empty);
+                _activeOptions.AppVersion ?? typeof(VideoRecordingService).Assembly.GetName().Version?.ToString() ?? string.Empty,
+                _activeOptions.Look);
 
             _studioProjects.CompleteRecording(paths.ProjectId, request);
             SaveStudioEvents(paths.ProjectId, screen, timeline);

@@ -121,7 +121,8 @@ internal static class StudioRecordingBuilder
         MouseClickOverlayStyle clickStyle,
         bool clickVisualsEnabled,
         bool branding,
-        string appVersion)
+        string appVersion,
+        StudioLook? look = null)
     {
         return new StudioProjectCreationRequest(
             name,
@@ -138,7 +139,8 @@ internal static class StudioRecordingBuilder
                 Duration = clickStyle.DurationSeconds,
             },
             branding,
-            appVersion);
+            appVersion,
+            look);
     }
 
     public static StudioCaptureKind ToCaptureKind(CaptureTarget target, PixelRect? region) =>

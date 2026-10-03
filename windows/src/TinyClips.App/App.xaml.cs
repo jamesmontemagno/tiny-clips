@@ -16,6 +16,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
 using TinyClips.App.Services.ClipsLibrary;
+using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.Views.ClipsLibrary;
 using TinyClips.Core.Capture;
@@ -76,6 +77,7 @@ public partial class App : Application
     private TimeSpan _recordingElapsedBeforePause;
     private TargetSelection? _activeRecordingSelection;
     private CaptureType? _activeRecordingType;
+    private VideoRecordingOptions _activeVideoRecordingOptions = VideoRecordingOptions.Default;
     private bool _activeRecordingWasPickerInitiated;
     private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
@@ -97,6 +99,8 @@ public partial class App : Application
     private static readonly TimeSpan TrayIconInitialRetryDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TrayIconMaxRetryDelay = TimeSpan.FromSeconds(40);
     private const int TrayIconMaxRetryAttempts = 6; // 5 + 10 + 20 + 40 + 40 + 40 s ≈ 2.5 min
+    // Studio project cleanup waits until launch work has settled. Nothing at startup depends on it.
+    private static readonly TimeSpan StudioCleanupStartupDelay = TimeSpan.FromSeconds(15);
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -115,6 +119,8 @@ public partial class App : Application
             .AddSingleton<IThumbnailCache, ThumbnailCacheService>()
             .AddSingleton<IMediaDevicePermissionService, MediaDevicePermissionService>()
             .AddSingleton<IDisplaySleepAssertion, WindowsDisplaySleepAssertion>()
+            .AddSingleton<StudioProjectTracker>()
+            .AddSingleton<StudioProjectCleanupService>()
             .BuildServiceProvider();
 
         ApplyTheme();
@@ -141,7 +147,26 @@ public partial class App : Application
 #if !TINYCLIPS_STORE_BUILD
         RunStartupStep(nameof(RunStartupUpdateCheckAsync), () => _ = RunStartupUpdateCheckAsync());
 #endif
+        RunStartupStep(nameof(ScheduleStudioProjectCleanup), ScheduleStudioProjectCleanup);
         RunStartupStep(nameof(EndStartupPhaseAfterFirstDispatcherPass), EndStartupPhaseAfterFirstDispatcherPass);
+    }
+
+    /// <summary>
+    /// Queues the Studio project cleanup for a short while after launch, on a background thread.
+    /// Does nothing while the Studio preview is switched off.
+    /// </summary>
+    private static void ScheduleStudioProjectCleanup()
+    {
+        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(StudioCleanupStartupDelay).ConfigureAwait(false);
+            await Services.GetRequiredService<StudioProjectCleanupService>().RunAsync().ConfigureAwait(false);
+        });
     }
 
     private static void RunStartupStep(string name, Action step)
@@ -866,6 +891,7 @@ public partial class App : Application
 
             RecordingSetupResult? recordingSetup = null;
             Task? recorderPrepare = null;
+            var videoOptions = VideoRecordingOptions.Default;
             if (type is CaptureType.Video or CaptureType.Gif)
             {
                 recordingSetup = await ShowRecordingSetupAsync(type, selection, settings);
@@ -878,9 +904,13 @@ public partial class App : Application
 
                 ApplyRecordingSetup(type, recordingSetup, settings);
 
+                // The pre-warm below and the start after the countdown get this same value: the
+                // recorder only reuses a prepared pipeline for a start with matching options.
+                videoOptions = BuildVideoRecordingOptions(type, recordingSetup, settings);
+
                 // Pre-warm the whole recording pipeline (capture session, encoder, webcam, audio)
                 // while the countdown runs so the recording starts the instant it hits zero.
-                recorderPrepare = PrepareRecorderAsync(type, selection, captureFlowCts.Token);
+                recorderPrepare = PrepareRecorderAsync(type, selection, videoOptions, captureFlowCts.Token);
             }
 
             var showDisabledStopDuringCountdown = type is CaptureType.Video or CaptureType.Gif
@@ -924,18 +954,18 @@ public partial class App : Application
                             .RecognizeAsync(selection.Target, selection.Region, captureFlowCts.Token);
                         if (string.IsNullOrWhiteSpace(text))
                         {
-                            ShowTextRecognitionNotification("No text recognized");
+                            ShowMessageNotification("No text recognized");
                         }
                         else
                         {
                             await ClipboardService.CopyTextAsync(text);
-                            ShowTextRecognitionNotification("Text copied to clipboard");
+                            ShowMessageNotification("Text copied to clipboard");
                         }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         Debug.WriteLine($"Text recognition failed: {ex}");
-                        ShowTextRecognitionNotification("Couldn't recognize text");
+                        ShowMessageNotification("Couldn't recognize text");
                     }
 
                     break;
@@ -955,6 +985,7 @@ public partial class App : Application
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection with { Backdrop = null };
                     _activeRecordingType = CaptureType.Video;
+                    _activeVideoRecordingOptions = videoOptions;
                     _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
@@ -964,7 +995,7 @@ public partial class App : Application
                     AcquireDisplaySleepAssertionIfEnabled();
                     await AwaitRecorderPrepareAsync(recorderPrepare);
                     await Services.GetRequiredService<IVideoRecordingService>()
-                        .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
+                        .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, videoOptions, captureFlowCts.Token);
                     CaptureFlowTrace.Mark("video: StartAsync returned");
                     ActivateRecordingIndicatorForStartedCapture(CaptureType.Video);
                     UpdateRecordingState();
@@ -1058,18 +1089,44 @@ public partial class App : Application
             && monitors.Zip(Monitors).All(pair => pair.First.HMonitor == pair.Second.HMonitor);
     }
 
-    private Task PrepareRecorderAsync(CaptureType type, TargetSelection selection, CancellationToken cancellationToken)
+    private Task PrepareRecorderAsync(
+        CaptureType type,
+        TargetSelection selection,
+        VideoRecordingOptions videoOptions,
+        CancellationToken cancellationToken)
     {
         try
         {
             return type == CaptureType.Video
-                ? Services.GetRequiredService<IVideoRecordingService>().PrepareAsync(selection.Target, selection.Region, cancellationToken)
+                ? Services.GetRequiredService<IVideoRecordingService>().PrepareAsync(selection.Target, selection.Region, videoOptions, cancellationToken)
                 : Services.GetRequiredService<IGifRecordingService>().PrepareAsync(selection.Target, selection.Region, cancellationToken);
         }
         catch (Exception ex)
         {
             return Task.FromException(ex);
         }
+    }
+
+    /// <summary>
+    /// The per-recording options for a video. Anything other than a recording made for Studio gets
+    /// <see cref="VideoRecordingOptions.Default"/>, which is the ordinary recording path.
+    /// </summary>
+    private static VideoRecordingOptions BuildVideoRecordingOptions(
+        CaptureType type,
+        RecordingSetupResult setup,
+        ICaptureSettings settings)
+    {
+        if (type != CaptureType.Video || !setup.RecordForStudio || !settings.StudioPreviewEnabled)
+        {
+            return VideoRecordingOptions.Default;
+        }
+
+        return new VideoRecordingOptions
+        {
+            RecordForStudio = true,
+            AppVersion = AppVersionInfo.GetCurrentVersionText(),
+            Look = settings.StudioDefaultLook,
+        };
     }
 
     /// <summary>
@@ -1700,6 +1757,7 @@ public partial class App : Application
         var video = Services.GetRequiredService<IVideoRecordingService>();
         var gif = Services.GetRequiredService<IGifRecordingService>();
         video.RecordingCompleted += OnRecordingCompleted;
+        video.StudioRecordingCompleted += OnStudioRecordingCompleted;
         gif.RecordingCompleted += OnRecordingCompleted;
         video.WebcamCaptureFailed += OnWebcamCaptureFailed;
     }
@@ -1837,6 +1895,37 @@ public partial class App : Application
                 ReopenPickerAfterCaptureIfNeeded(type, wasPickerInitiated);
             }
         });
+    }
+
+    private void OnStudioRecordingCompleted(object? sender, string projectId)
+    {
+        // The recorder raises RecordingCompleted(null) just before this, so OnRecordingCompleted
+        // has already queued the recording UI cleanup ahead of this callback.
+        _dispatcher?.TryEnqueue(() =>
+        {
+            if (_isExiting)
+            {
+                return;
+            }
+
+            OpenStudioProject(projectId);
+        });
+    }
+
+    /// <summary>
+    /// Opens a Studio project for editing. This is the seam the Studio window replaces: until that
+    /// window exists the project stays in the store as a draft and the user is only told that it
+    /// was saved. Must be called on the UI thread.
+    /// </summary>
+    private void OpenStudioProject(string projectId)
+    {
+        Debug.WriteLine($"Studio project ready: {projectId}");
+        Announce(
+            AutomationNotificationKind.ActionCompleted,
+            AutomationNotificationProcessing.MostRecent,
+            "Video saved as a Tiny Clips Studio project.",
+            "StudioProjectSaved");
+        ShowMessageNotification("Saved as a Tiny Clips Studio project");
     }
 
     private async Task StopActiveRecordingAsync()
@@ -1988,8 +2077,9 @@ public partial class App : Application
             {
                 var settings = Services.GetRequiredService<ICaptureSettings>();
                 AcquireDisplaySleepAssertionIfEnabled();
+                // A restart records the same kind of video again, so a Studio recording stays one.
                 await Services.GetRequiredService<IVideoRecordingService>()
-                    .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes);
+                    .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes, _activeVideoRecordingOptions);
             }
             else
             {
@@ -2559,7 +2649,8 @@ public partial class App : Application
         ShowSaveNotification(path);
     }
 
-    private static void ShowTextRecognitionNotification(string message)
+    /// <summary>Shows a one-line toast whether or not save notifications are turned on.</summary>
+    private static void ShowMessageNotification(string message)
     {
         try
         {
@@ -2569,7 +2660,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to show text recognition notification: {ex}");
+            Debug.WriteLine($"Failed to show notification '{message}': {ex}");
         }
     }
 

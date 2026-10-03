@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.Core.Models;
 
@@ -8,11 +9,12 @@ namespace TinyClips.App.Settings.Sections;
 
 /// <summary>
 /// General settings: theme, save location, file naming, launch-at-login, and capture behavior
-/// toggles.
+/// toggles. While the Studio preview is switched on it also shows Studio project storage.
 /// </summary>
-public sealed partial class GeneralSettingsSection : UserControl
+public sealed partial class GeneralSettingsSection : UserControl, ISettingsSectionLifecycle
 {
     private readonly IDisposable _realizationScope;
+    private bool _closed;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -29,7 +31,12 @@ public sealed partial class GeneralSettingsSection : UserControl
         _realizationScope = viewModel.BeginSectionRealization();
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
+
+        // Never faults, and does nothing while the Studio preview is switched off.
+        _ = viewModel.EnsureStudioStorageInitializedAsync();
     }
+
+    public void NotifyWindowClosed() => _closed = true;
 
     private void OnBrowseScreenshotSaveDirectory(object sender, RoutedEventArgs e) =>
         BrowseSaveDirectoryRequested?.Invoke(CaptureType.Screenshot);
@@ -41,6 +48,20 @@ public sealed partial class GeneralSettingsSection : UserControl
         BrowseSaveDirectoryRequested?.Invoke(CaptureType.Gif);
 
     private void OnOpenTempFolder(object sender, RoutedEventArgs e) => ViewModel.OpenTempFolder();
+
+    private async void OnCleanUpStudioProjects(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.CleanUpStudioProjectsAsync();
+        if (_closed)
+        {
+            return;
+        }
+
+        // The status line is a live region, so screen readers need to be told its text changed.
+        var peer = FrameworkElementAutomationPeer.FromElement(StudioCleanupStatusText)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(StudioCleanupStatusText);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
 
     private async void OnPurgeTempFiles(object sender, RoutedEventArgs e)
     {

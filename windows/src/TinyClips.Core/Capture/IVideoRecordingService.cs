@@ -11,6 +11,12 @@ public interface IVideoRecordingService
 {
     bool IsRecording { get; }
 
+    /// <summary>
+    /// The id of the Studio project the current recording is being written into, or null when no
+    /// Studio recording is in progress. Project cleanup must leave that folder alone.
+    /// </summary>
+    string? ActiveStudioProjectId { get; }
+
     bool IsPaused { get; }
 
     bool CanMuteSystemAudio { get; }
