@@ -1,0 +1,124 @@
+{
+  "description": "Unsorted cuts that overlap or touch merge before mapping.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 1,
+    "trimEnd": 19,
+    "cuts": [
+      {
+        "start": 9,
+        "end": 12
+      },
+      {
+        "start": 4,
+        "end": 6
+      },
+      {
+        "start": 6,
+        "end": 8
+      },
+      {
+        "start": 11,
+        "end": 14
+      }
+    ],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 9,
+    "segments": [
+      {
+        "start": 1,
+        "end": 4
+      },
+      {
+        "start": 8,
+        "end": 9
+      },
+      {
+        "start": 14,
+        "end": 19
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 1,
+        "output": 0
+      },
+      {
+        "source": 3,
+        "output": 2
+      },
+      {
+        "source": 4,
+        "output": 3
+      },
+      {
+        "source": 7,
+        "output": 3
+      },
+      {
+        "source": 8,
+        "output": 3
+      },
+      {
+        "source": 10,
+        "output": 4
+      },
+      {
+        "source": 14,
+        "output": 4
+      },
+      {
+        "source": 19,
+        "output": 9
+      },
+      {
+        "source": 21,
+        "output": 9
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 1
+      },
+      {
+        "output": 0,
+        "source": 1
+      },
+      {
+        "output": 2,
+        "source": 3
+      },
+      {
+        "output": 3,
+        "source": 8
+      },
+      {
+        "output": 5,
+        "source": 15
+      },
+      {
+        "output": 8,
+        "source": 18
+      },
+      {
+        "output": 10,
+        "source": 19
+      },
+      {
+        "output": 11,
+        "source": 19
+      },
+      {
+        "output": 12,
+        "source": 19
+      }
+    ]
+  }
+}

@@ -24,6 +24,7 @@ Both platforms implement sections 5 to 7 as pure functions, and both test suites
 - **Unknown properties survive a save.** Every object type keeps the properties it does not recognize and writes them back unchanged.
 - **Missing properties take their default.** A reader never fails because an optional property is absent. A missing timestamp reads as `1970-01-01T00:00:00Z`.
 - **Required properties** have no default: `id`, `sources.screen.width`, `sources.screen.height`, `sources.screen.duration`, and, when `sources.camera` is present, its `width`, `height`, and `duration`. A project missing one of these is invalid and is not opened.
+- **`null` counts as missing** unless the property's type below says "or null". So a `null` optional property takes its default, and a `null` required property makes the project invalid.
 - A reader refuses to open a project whose `schemaVersion` is greater than the version it supports.
 - Enumerations are camelCase strings. An unrecognized value reads as the field's default.
 - Times are seconds as finite doubles. Unless stated otherwise they are **source time**: seconds on the pause-adjusted recording timeline, where 0 is the first screen frame.
@@ -211,6 +212,8 @@ The layout resolver accepts any `(W, H)` and is scale invariant: doubling the ca
 ## 6. Layout resolution
 
 Inputs: a project, a source time `t`, and a canvas size `(W, H)`. Output: a resolved frame (section 6.6). All arithmetic is in doubles with no rounding.
+
+`W` and `H` are positive doubles. They need not be integers, and they need not match the natural canvas aspect: a preview resolves at whatever size its view happens to be.
 
 ### 6.1 Scene selection
 
@@ -448,4 +451,19 @@ Time map fixtures, in `timemap/`:
 }
 ```
 
-Tests compare every number with an absolute tolerance of 1e-6.
+Canvas fixtures, in `canvas/`:
+
+```json
+{
+  "description": "what this case covers",
+  "cases": [
+    { "natural": { "width": 3440, "height": 1440 }, "limit": 1920, "expected": { "width": 1920, "height": 804 } }
+  ]
+}
+```
+
+Each case is the export size of section 5 for a natural canvas size and a long-side limit.
+
+Tests compare every number with an absolute tolerance of 1e-6. Strings, booleans, and whether `screen` or `camera` is null are compared exactly.
+
+Fixtures only sit on a decision boundary (a rounding midpoint, or either side of a comparison) when the inputs make the outcome exact in double arithmetic. That keeps them independent of the order in which an implementation multiplies and divides.

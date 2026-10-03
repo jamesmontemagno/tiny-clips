@@ -1,0 +1,67 @@
+{
+  "description": "Trim start and end with boundary, before-start, and after-end queries.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 2,
+    "trimEnd": 18,
+    "cuts": [],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 16,
+    "segments": [
+      {
+        "start": 2,
+        "end": 18
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": -1,
+        "output": 0
+      },
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 2,
+        "output": 0
+      },
+      {
+        "source": 10,
+        "output": 8
+      },
+      {
+        "source": 18,
+        "output": 16
+      },
+      {
+        "source": 20,
+        "output": 16
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 2
+      },
+      {
+        "output": 0,
+        "source": 2
+      },
+      {
+        "output": 8,
+        "source": 10
+      },
+      {
+        "output": 16,
+        "source": 18
+      },
+      {
+        "output": 20,
+        "source": 18
+      }
+    ]
+  }
+}

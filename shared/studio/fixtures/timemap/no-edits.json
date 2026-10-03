@@ -1,0 +1,63 @@
+{
+  "description": "No trim or cuts maps the full source directly.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 20,
+    "segments": [
+      {
+        "start": 0,
+        "end": 20
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": -1,
+        "output": 0
+      },
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 7.5,
+        "output": 7.5
+      },
+      {
+        "source": 20,
+        "output": 20
+      },
+      {
+        "source": 25,
+        "output": 20
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 0
+      },
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 7.5,
+        "source": 7.5
+      },
+      {
+        "output": 20,
+        "source": 20
+      },
+      {
+        "output": 25,
+        "source": 20
+      }
+    ]
+  }
+}

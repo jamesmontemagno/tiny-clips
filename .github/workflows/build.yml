@@ -31,6 +31,7 @@ jobs:
           filters: |
             mac:
               - 'mac/**'
+              - 'shared/studio/**'
               - '.github/workflows/build.yml'
           base: ${{ github.ref }}
 

@@ -1,0 +1,38 @@
+{
+  "description": "Limit 0 and negative limits do not scale, and a limit above the long side never upscales.",
+  "cases": [
+    {
+      "natural": {
+        "width": 1920,
+        "height": 1080
+      },
+      "limit": 0,
+      "expected": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    {
+      "natural": {
+        "width": 1920,
+        "height": 1080
+      },
+      "limit": -1,
+      "expected": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    {
+      "natural": {
+        "width": 1920,
+        "height": 1080
+      },
+      "limit": 4000,
+      "expected": {
+        "width": 1920,
+        "height": 1080
+      }
+    }
+  ]
+}

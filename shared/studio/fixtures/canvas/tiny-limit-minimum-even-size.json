@@ -1,0 +1,16 @@
+{
+  "description": "Tiny long-side limits floor both export dimensions at the minimum even size of 2.",
+  "cases": [
+    {
+      "natural": {
+        "width": 1000,
+        "height": 500
+      },
+      "limit": 1,
+      "expected": {
+        "width": 2,
+        "height": 2
+      }
+    }
+  ]
+}
