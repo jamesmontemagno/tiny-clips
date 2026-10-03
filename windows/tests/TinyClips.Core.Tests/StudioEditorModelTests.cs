@@ -197,7 +197,7 @@ public sealed class StudioEditorModelTests
     }
 
     [Fact]
-    public void Layouts_ThatNeedACameraAreIgnoredWithoutOne()
+    public void LayoutChoices_AreIgnoredWithoutACamera()
     {
         var model = new StudioEditorModel(MakeProject(camera: false));
         Assert.False(model.HasCamera);
@@ -206,6 +206,16 @@ public sealed class StudioEditorModelTests
         model.SetLayout(StudioLayout.SideBySide);
         Assert.False(model.CanUndo);
         Assert.Equal(StudioLayout.Screen, model.EffectiveLayout);
+
+        // The stored layout can be one that needs a camera. Choosing Screen then changes nothing
+        // that is drawn, so it is not an edit and not an undo step.
+        var storedBubble = new StudioEditorModel(MakeProject(camera: false) with
+        {
+            Scenes = [new StudioScene { Start = 0, Layout = StudioLayout.Bubble }],
+        });
+        storedBubble.SetLayout(StudioLayout.Screen);
+        Assert.False(storedBubble.CanUndo);
+        Assert.Equal(StudioLayout.Bubble, storedBubble.Project.Scenes[0].Layout);
 
         var withCamera = new StudioEditorModel(MakeProject());
         withCamera.SetLayout(StudioLayout.Camera);

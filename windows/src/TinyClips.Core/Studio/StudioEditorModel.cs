@@ -310,7 +310,8 @@ public sealed class StudioEditorModel
     /// <summary>Sets the layout of the edited scene. Layouts that need a camera are ignored without one.</summary>
     public void SetLayout(StudioLayout layout)
     {
-        if (!HasCamera && layout != StudioLayout.Screen)
+        // Without a camera the screen is always shown alone, so no choice changes what is drawn.
+        if (!HasCamera)
         {
             return;
         }

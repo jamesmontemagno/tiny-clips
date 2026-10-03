@@ -142,7 +142,7 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertNil(model.project.canvas.background.image)
     }
 
-    func testLayoutsThatNeedACameraAreIgnoredWithoutOne() {
+    func testLayoutChoicesAreIgnoredWithoutACamera() {
         var model = StudioEditorModel(project: makeProject(camera: false))
         XCTAssertFalse(model.hasCamera)
         XCTAssertEqual(model.effectiveLayout, .screen)
@@ -150,6 +150,15 @@ final class StudioEditorModelTests: XCTestCase {
         model.setLayout(.sideBySide)
         XCTAssertFalse(model.canUndo)
         XCTAssertEqual(model.effectiveLayout, .screen)
+
+        // The stored layout can be one that needs a camera. Choosing Screen then changes nothing
+        // that is drawn, so it is not an edit and not an undo step.
+        var project = makeProject(camera: false)
+        project.scenes = [StudioScene(start: 0, layout: .bubble)]
+        var storedBubble = StudioEditorModel(project: project)
+        storedBubble.setLayout(.screen)
+        XCTAssertFalse(storedBubble.canUndo)
+        XCTAssertEqual(storedBubble.project.scenes[0].layout, .bubble)
 
         var withCamera = StudioEditorModel(project: makeProject())
         withCamera.setLayout(.camera)

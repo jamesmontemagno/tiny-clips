@@ -211,7 +211,8 @@ struct StudioEditorModel: Equatable, Sendable {
 
     /// Sets the layout of the edited scene. Layouts that need a camera are ignored without one.
     mutating func setLayout(_ layout: StudioLayout) {
-        guard hasCamera || layout == .screen else { return }
+        // Without a camera the screen is always shown alone, so no choice changes what is drawn.
+        guard hasCamera else { return }
         mutate { $0.scenes[0].layout = layout }
     }
 
