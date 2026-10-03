@@ -137,21 +137,21 @@ final class CaptureSettingsTests: XCTestCase {
 
     func testActivationPolicyIsRegularWhenDockPreferenceIsEnabled() {
         XCTAssertEqual(
-            TinyClipsActivationPolicy.resolve(showInDock: true, hasOpenScreenshotEditors: false),
+            TinyClipsActivationPolicy.resolve(showInDock: true, hasOpenEditors: false),
             .regular
         )
     }
 
-    func testActivationPolicyIsRegularWhileScreenshotEditorIsOpen() {
+    func testActivationPolicyIsRegularWhileAnEditorIsOpen() {
         XCTAssertEqual(
-            TinyClipsActivationPolicy.resolve(showInDock: false, hasOpenScreenshotEditors: true),
+            TinyClipsActivationPolicy.resolve(showInDock: false, hasOpenEditors: true),
             .regular
         )
     }
 
-    func testActivationPolicyIsAccessoryWithoutDockPreferenceOrScreenshotEditor() {
+    func testActivationPolicyIsAccessoryWithoutDockPreferenceOrOpenEditor() {
         XCTAssertEqual(
-            TinyClipsActivationPolicy.resolve(showInDock: false, hasOpenScreenshotEditors: false),
+            TinyClipsActivationPolicy.resolve(showInDock: false, hasOpenEditors: false),
             .accessory
         )
     }

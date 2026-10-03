@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Studio;
 using Windows.Graphics.Imaging;
 using Windows.Media.Core;
 using Windows.Media.MediaProperties;
@@ -23,6 +24,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private readonly ICaptureSettings _settings;
     private readonly IClipAnalyticsService _analytics;
     private readonly IWebcamCaptureService _webcamCapture;
+    private readonly IStudioProjectStore _studioProjects;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     // MF_MT_MPEG2_PROFILE attribute + eAVEncH264VProfile values.
@@ -50,6 +52,19 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private int _stopping;
     private int _discardRequested;
     private PreparedPipeline? _prepared;
+    private VideoRecordingOptions _activeOptions = VideoRecordingOptions.Default;
+    private StudioProjectPaths? _studioPaths;
+    private StudioCameraRecorder? _studioCameraRecorder;
+    private readonly object _studioCursorGate = new();
+    private readonly List<StudioPointSample> _studioCursorSamples = [];
+    private IReadOnlyList<MouseClickSample> _studioClickSamples = [];
+    private int _studioCaptureOriginX;
+    private int _studioCaptureOriginY;
+    private double _studioCaptureScale = 1;
+    private WebcamCornerPosition _studioInitialCorner;
+    private bool _studioRecordPointerEvents;
+    private CaptureTarget? _activeTarget;
+    private PixelRect? _activeRegion;
 
     private MouseClickMonitor? _clickMonitor;
     private MouseClickOverlayStyle _clickStyle;
@@ -89,13 +104,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
         IClipStorageService storage,
         ICaptureSettings settings,
         IClipAnalyticsService analytics,
-        IWebcamCaptureService webcamCapture)
+        IWebcamCaptureService webcamCapture,
+        IStudioProjectStore studioProjects)
     {
         _monitors = monitors;
         _storage = storage;
         _settings = settings;
         _analytics = analytics;
         _webcamCapture = webcamCapture;
+        _studioProjects = studioProjects;
     }
 
     public bool IsRecording { get; private set; }
@@ -112,6 +129,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     public event EventHandler<string?>? RecordingCompleted;
 
+    public event EventHandler<string>? StudioRecordingCompleted;
+
+    public string? ActiveStudioProjectId => Volatile.Read(ref _studioPaths)?.ProjectId;
+
     public event EventHandler<string>? WebcamCaptureFailed;
 
     public RecordingPerformanceReport? LastPerformanceReport { get; private set; }
@@ -121,9 +142,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     public async Task PrepareAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default)
     {
+        await PrepareAsync(target, region, VideoRecordingOptions.Default, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task PrepareAsync(CaptureTarget? target, PixelRect? region, VideoRecordingOptions options, CancellationToken cancellationToken = default)
+    {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            options ??= VideoRecordingOptions.Default;
             if (IsRecording)
             {
                 throw new InvalidOperationException("A recording is already in progress.");
@@ -132,7 +159,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             var captureTarget = ResolveTarget(target);
             if (_prepared is { } existing)
             {
-                if (existing.Matches(captureTarget, region))
+                if (existing.Matches(captureTarget, region, options))
                 {
                     return;
                 }
@@ -142,7 +169,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             try
             {
-                await PrepareCoreAsync(captureTarget, region, cancellationToken).ConfigureAwait(false);
+                await PrepareCoreAsync(captureTarget, region, options, cancellationToken).ConfigureAwait(false);
             }
             catch
             {
@@ -174,9 +201,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     public async Task StartAsync(CaptureTarget? target = null, PixelRect? region = null, double? timeLimitMinutesOverride = null, CancellationToken cancellationToken = default)
     {
+        await StartAsync(target, region, timeLimitMinutesOverride, VideoRecordingOptions.Default, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task StartAsync(CaptureTarget? target, PixelRect? region, double? timeLimitMinutesOverride, VideoRecordingOptions options, CancellationToken cancellationToken = default)
+    {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            options ??= VideoRecordingOptions.Default;
             if (IsRecording)
             {
                 throw new InvalidOperationException("A recording is already in progress.");
@@ -185,14 +218,14 @@ public sealed class VideoRecordingService : IVideoRecordingService
             var captureTarget = ResolveTarget(target);
             try
             {
-                if (_prepared is null || !_prepared.Matches(captureTarget, region))
+                if (_prepared is null || !_prepared.Matches(captureTarget, region, options))
                 {
                     if (_prepared is not null)
                     {
                         await CleanupFailedStartAsync().ConfigureAwait(false);
                     }
 
-                    await PrepareCoreAsync(captureTarget, region, cancellationToken).ConfigureAwait(false);
+                    await PrepareCoreAsync(captureTarget, region, options, cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
@@ -222,9 +255,18 @@ public sealed class VideoRecordingService : IVideoRecordingService
     /// emitting), webcam, audio devices, output file and a prepared transcoder. Safe to run during
     /// the countdown because nothing is written to the timeline until <see cref="BeginPreparedAsync"/>.
     /// </summary>
-    private async Task PrepareCoreAsync(CaptureTarget captureTarget, PixelRect? region, CancellationToken cancellationToken)
+    private async Task PrepareCoreAsync(CaptureTarget captureTarget, PixelRect? region, VideoRecordingOptions options, CancellationToken cancellationToken)
     {
         Interlocked.Exchange(ref _discardRequested, 0);
+        _activeOptions = options;
+        _activeTarget = captureTarget;
+        _activeRegion = region;
+        _studioInitialCorner = _settings.WebcamCornerPosition;
+        _studioClickSamples = [];
+        lock (_studioCursorGate)
+        {
+            _studioCursorSamples.Clear();
+        }
 
         var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
         _frameDuration = TimeSpan.FromSeconds(1.0 / fps);
@@ -249,8 +291,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
             CaptureFlowTrace.Mark("video: capture session started");
         }
 
+        InitializeStudioCaptureGeometry(captureTarget, region, width, height);
         StartMouseClickOverlay(captureTarget, region);
-        _branding = _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
+        _branding = !options.RecordForStudio && _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
         if (_branding is not null && _gpuOverlay is not null)
         {
             _gpuOverlay.EnableBranding(_branding);
@@ -259,7 +302,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
         await StartWebcamOverlayAsync(cancellationToken).ConfigureAwait(false);
         CaptureFlowTrace.Mark("video: webcam overlay started");
 
-        _outputPath = _storage.GenerateFilePath(CaptureType.Video);
+        _outputPath = options.RecordForStudio
+            ? BeginStudioRecording().ScreenPath
+            : _storage.GenerateFilePath(CaptureType.Video);
         var directory = Path.GetDirectoryName(_outputPath);
         if (!string.IsNullOrEmpty(directory))
         {
@@ -284,7 +329,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             TryCreateSinkWriter(width, height, fps, codec, includeAudio))
         {
             CaptureFlowTrace.Mark("video: sink writer prepared");
-            _prepared = new PreparedPipeline(captureTarget, region, null);
+            _prepared = new PreparedPipeline(captureTarget, region, _activeOptions, null);
             return;
         }
 
@@ -386,7 +431,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
 
         CaptureFlowTrace.Mark("video: transcoder prepared");
-        _prepared = new PreparedPipeline(captureTarget, region, prepare);
+        _prepared = new PreparedPipeline(captureTarget, region, _activeOptions, prepare);
     }
 
     /// <summary>
@@ -459,8 +504,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
         // bounded frame channel so real frames near the end were dropped.
         await WaitForFirstWebcamFrameAsync(cancellationToken).ConfigureAwait(false);
         _recordingTimeline = RecordingTimeline.StartNow();
-        _webcamPlacements = new WebcamPlacementTimeline(_settings.WebcamCornerPosition);
+        _studioInitialCorner = _settings.WebcamCornerPosition;
+        _webcamPlacements = new WebcamPlacementTimeline(_studioInitialCorner);
         _audio?.BeginTimeline(_recordingTimeline);
+        if (_activeOptions.RecordForStudio && _webcamCapture.IsRunning && _studioPaths?.CameraPath is { } cameraPath)
+        {
+            _studioCameraRecorder = new StudioCameraRecorder(cameraPath, _recordingTimeline, Math.Min(30, Math.Clamp(_settings.VideoFrameRate, 1, 60)));
+            _webcamCapture.FrameArrived += _studioCameraRecorder.OnFrameArrived;
+        }
+
         _perf?.Start();
         _capture?.BeginEmitting(_recordingTimeline);
         _gpuCapture?.BeginEmitting(_recordingTimeline);
@@ -488,10 +540,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
     }
 
-    private sealed record PreparedPipeline(CaptureTarget Target, PixelRect? Region, PrepareTranscodeResult? Transcode)
+    private sealed record PreparedPipeline(CaptureTarget Target, PixelRect? Region, VideoRecordingOptions Options, PrepareTranscodeResult? Transcode)
     {
-        public bool Matches(CaptureTarget target, PixelRect? region) =>
-            Target.HMonitor == target.HMonitor && Target.Hwnd == target.Hwnd && Region == region;
+        public bool Matches(CaptureTarget target, PixelRect? region, VideoRecordingOptions options) =>
+            Target.HMonitor == target.HMonitor &&
+            Target.Hwnd == target.Hwnd &&
+            Region == region &&
+            Options.RecordForStudio == options.RecordForStudio;
     }
 
     private void OnFrameReady(CapturedFrame frame, TimeSpan pts)
@@ -502,6 +557,14 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
 
         var compose = RecordingPerformanceMonitor.Begin();
+        if (_activeOptions.RecordForStudio)
+        {
+            CollectStudioCursorSample(pts);
+            _perf?.End(RecordingStage.Composite, compose);
+            WriteCpuFrame(frame, pts);
+            return;
+        }
+
         var clicks = RecordingPerformanceMonitor.Begin();
         DrawClickOverlay(frame, pts);
         _perf?.End(RecordingStage.OverlayClicks, clicks);
@@ -532,6 +595,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         _perf?.End(RecordingStage.Composite, compose);
 
+        WriteCpuFrame(frame, pts);
+    }
+
+    private void WriteCpuFrame(CapturedFrame frame, TimeSpan pts)
+    {
         // Encoder back-pressure: the frame is dropped (counted by the channel's item-dropped
         // callback) but PTS stays wall-clock, so the video simply has a lower effective frame rate
         // here and never slides against audio.
@@ -677,6 +745,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     private void OnGpuCompose(GpuFrame frame)
     {
+        if (_activeOptions.RecordForStudio)
+        {
+            return;
+        }
+
         var overlay = _gpuOverlay;
         if (overlay is null)
         {
@@ -753,6 +826,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
+        if (_activeOptions.RecordForStudio)
+        {
+            CollectStudioCursorSample(frame.Pts);
+        }
+
         if (_sinkWriter is { } sink)
         {
             // Push model: write on the pump thread, then drop our reference — Media Foundation
@@ -793,11 +871,41 @@ public sealed class VideoRecordingService : IVideoRecordingService
     /// </summary>
     private static int GpuPoolMaxCapacity(int fps) => Math.Clamp(fps / 2, 8, 30);
 
+    private StudioProjectPaths BeginStudioRecording()
+    {
+        _studioPaths = _studioProjects.BeginRecording();
+        return _studioPaths;
+    }
+
+    private void InitializeStudioCaptureGeometry(CaptureTarget target, PixelRect? region, int width, int height)
+    {
+        _studioCaptureOriginX = 0;
+        _studioCaptureOriginY = 0;
+        _studioCaptureScale = 1;
+        _studioRecordPointerEvents = !target.IsWindow;
+
+        if (target.IsWindow)
+        {
+            return;
+        }
+
+        var monitor = _monitors.GetMonitors().FirstOrDefault(m => m.HMonitor == target.HMonitor)
+            ?? _monitors.GetPrimaryMonitor();
+        if (monitor is null)
+        {
+            return;
+        }
+
+        _studioCaptureOriginX = monitor.X + (region?.X ?? 0);
+        _studioCaptureOriginY = monitor.Y + (region?.Y ?? 0);
+        _studioCaptureScale = monitor.ScaleFactor;
+    }
+
     private void StartMouseClickOverlay(CaptureTarget target, PixelRect? region)
     {
         // Mouse-click visuals only map reliably onto a (possibly cropped) monitor;
         // window targets move/resize, so skip them — matching the mac restriction.
-        if (target.IsWindow || !_settings.ShouldShowMouseClickVisuals(CaptureType.Video))
+        if (target.IsWindow || (!_activeOptions.RecordForStudio && !_settings.ShouldShowMouseClickVisuals(CaptureType.Video)))
         {
             return;
         }
@@ -1006,6 +1114,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         _transcodeTask = null;
         _fileStream?.Dispose();
         _fileStream = null;
+        CleanupStudioRecording(deleteProject: true);
 
         if (!string.IsNullOrEmpty(_outputPath))
         {
@@ -1023,6 +1132,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
         _recordingTimeline = null;
         _webcamPlacements = null;
         _lastTimelineWebcamFrame = null;
+        _activeOptions = VideoRecordingOptions.Default;
+        _activeTarget = null;
+        _activeRegion = null;
         IsRecording = false;
         WebcamDiagnostics.EndRecording();
     }
@@ -1094,15 +1206,21 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
-        _webcamOverlay = new WebcamOverlayCompositor(
-            _settings.WebcamCornerPosition,
-            _settings.WebcamSizePreset,
-            _settings.WebcamShape,
-            _settings.WebcamCornerRadius);
+        if (!_activeOptions.RecordForStudio)
+        {
+            _webcamOverlay = new WebcamOverlayCompositor(
+                _settings.WebcamCornerPosition,
+                _settings.WebcamSizePreset,
+                _settings.WebcamShape,
+                _settings.WebcamCornerRadius);
+        }
 
         // On the GPU pipeline the camera frames stay in video memory and the Direct2D compositor
         // draws them directly; the CPU pipeline needs pixel buffers.
-        _webcamCapture.SetPreferredDirect3DDevice(_gpuCapture is not null ? WgcInterop.GetSharedDevice().WinRT : null);
+        // A Studio recording encodes the camera to its own file from pixel buffers, at the camera's
+        // own shape instead of the overlay preset's.
+        _webcamCapture.SetPreferredDirect3DDevice(!_activeOptions.RecordForStudio && _gpuCapture is not null ? WgcInterop.GetSharedDevice().WinRT : null);
+        _webcamCapture.SetPreserveSourceAspect(_activeOptions.RecordForStudio);
 
         if (_webcamCapture.IsRunning)
         {
@@ -1121,7 +1239,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _webcamCapture.CaptureFailed += OnWebcamCaptureFailed;
             _webcamCaptureSubscribed = true;
             await _webcamCapture
-                .StartAsync(_settings.SelectedWebcamId, ResolveRequestedWebcamSize(_settings.WebcamSizePreset), cancellationToken)
+                .StartAsync(_settings.SelectedWebcamId, _activeOptions.RecordForStudio ? StudioWebcamSize() : ResolveRequestedWebcamSize(_settings.WebcamSizePreset), cancellationToken)
                 .ConfigureAwait(false);
             WebcamDiagnostics.Log($"StartWebcamOverlay: webcam capture start returned, IsRunning={_webcamCapture.IsRunning}");
         }
@@ -1135,8 +1253,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     private async Task WaitForFirstWebcamFrameAsync(CancellationToken cancellationToken)
     {
-        // Only relevant when a webcam overlay is active and capture actually started.
-        if (_webcamOverlay is null || !_webcamCapture.IsRunning)
+        // Only relevant when the camera is drawn or recorded and capture actually started. A Studio
+        // recording has no overlay but still wants the camera track to start with the screen.
+        if ((_webcamOverlay is null && !_activeOptions.RecordForStudio) || !_webcamCapture.IsRunning)
         {
             return;
         }
@@ -1209,6 +1328,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
         WebcamSizePreset.Large => new BitmapSize { Width = 1280, Height = 720 },
         _ => new BitmapSize { Width = 960, Height = 540 },
     };
+
+    private static BitmapSize StudioWebcamSize() => new() { Width = 1920, Height = 1080 };
 
     private bool IsWebcamFrameReady(WebcamFrame frame, TimeSpan screenPts)
     {
@@ -1780,6 +1901,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _limitTimer = null;
             IsPaused = false;
 
+            if (_activeOptions.RecordForStudio)
+            {
+                _studioClickSamples = _clickMonitor?.GetClicks() ?? [];
+            }
+
             _clickMonitor?.Dispose();
             _clickMonitor = null;
             if (_settings.WebcamEnabled)
@@ -1787,6 +1913,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 WebcamDiagnostics.Log($"Recording stopping — webcam composite summary: composited={Interlocked.Read(ref _webcamCompositedFrames)} noFrameYet={Interlocked.Read(ref _webcamNoFrameFrames)} overlayDisabled={Interlocked.Read(ref _webcamOverlayNullFrames)}");
             }
             await StopWebcamOverlayAsync().ConfigureAwait(false);
+            if (_studioCameraRecorder is { } cameraRecorder)
+            {
+                _webcamCapture.FrameArrived -= cameraRecorder.OnFrameArrived;
+                await Task.Run(cameraRecorder.Finish).ConfigureAwait(false);
+            }
 
             // Stop the audio devices first, then let the muxer drain the audio already captured
             // (so the track ends where the video does) before it ends the stream. Only then stop
@@ -1831,15 +1962,37 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _channel = null;
             _perf = null;
             _transcodeTask = null;
-            _recordingTimeline = null;
-            _webcamPlacements = null;
             _lastTimelineWebcamFrame = null;
             DetachMediaStreamSource();
 
             IsRecording = false;
             var path = _outputPath;
             var shouldDiscard = ConsumeDiscardRequested(discard);
-            if (shouldDiscard && !string.IsNullOrEmpty(path))
+            var wasStudioRecording = _activeOptions.RecordForStudio;
+            string? studioProjectId = null;
+            if (wasStudioRecording)
+            {
+                // A finished project replaces the output path. If the project cannot be saved, the
+                // path becomes the screen track kept as an ordinary recording, or null.
+                studioProjectId = FinishStudioRecording(path, shouldDiscard, out path);
+            }
+
+            _recordingTimeline = null;
+            _webcamPlacements = null;
+            _activeOptions = VideoRecordingOptions.Default;
+            _activeTarget = null;
+            _activeRegion = null;
+
+            if (studioProjectId is not null)
+            {
+                _outputPath = null;
+                _analytics.RecordCapture(CaptureType.Video);
+                RecordingCompleted?.Invoke(this, null);
+                StudioRecordingCompleted?.Invoke(this, studioProjectId);
+                return null;
+            }
+
+            if (shouldDiscard && (wasStudioRecording || !string.IsNullOrEmpty(path)))
             {
                 DeleteOutputFileIfPresent(path);
                 path = null;
@@ -1935,6 +2088,184 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
     }
 
+    /// <summary>
+    /// Turns the finished screen and camera tracks into a Studio project and returns its id. Returns
+    /// null when the recording was discarded or the project could not be saved; in the second case
+    /// <paramref name="fallbackPath"/> is the screen track moved into the normal save folder, when
+    /// that worked, so the capture is kept as an ordinary recording.
+    /// </summary>
+    private string? FinishStudioRecording(string? screenPath, bool discard, out string? fallbackPath)
+    {
+        fallbackPath = null;
+        var paths = _studioPaths;
+        var timeline = _recordingTimeline;
+        if (paths is null)
+        {
+            CleanupStudioRecording(deleteProject: false);
+            return null;
+        }
+
+        if (discard || !HasNonEmptyOutputFile(screenPath))
+        {
+            CleanupStudioRecording(deleteProject: true);
+            return null;
+        }
+
+        try
+        {
+            var screen = MediaFileProbe.Probe(paths.ScreenPath, Math.Clamp(_settings.VideoFrameRate, 1, 60));
+            var camera = BuildStudioCameraSource(paths);
+            var clickStyle = _settings.MouseClickOverlayStyleFor(CaptureType.Video);
+            var request = StudioRecordingBuilder.BuildCreationRequest(
+                Path.GetFileNameWithoutExtension(_storage.GenerateFilePath(CaptureType.Video)),
+                screen,
+                camera,
+                _studioInitialCorner,
+                clickStyle,
+                _settings.ShouldShowMouseClickVisuals(CaptureType.Video),
+                _settings.ShowBrandingOverlay,
+                _activeOptions.AppVersion ?? typeof(VideoRecordingService).Assembly.GetName().Version?.ToString() ?? string.Empty,
+                _activeOptions.Look);
+
+            _studioProjects.CompleteRecording(paths.ProjectId, request);
+            SaveStudioEvents(paths.ProjectId, screen, timeline);
+            CleanupStudioRecording(deleteProject: false);
+            return paths.ProjectId;
+        }
+        catch (Exception ex)
+        {
+            WebcamDiagnostics.Log($"Studio project could not be saved; keeping the screen track as a regular recording (0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}).");
+            fallbackPath = TryKeepScreenTrackAsRecording(paths.ScreenPath);
+            CleanupStudioRecording(deleteProject: true);
+            return null;
+        }
+    }
+
+    private void SaveStudioEvents(string projectId, StudioRecordingSourceInfo screen, RecordingTimeline? timeline)
+    {
+        if (timeline is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _studioProjects.SaveEvents(projectId, BuildStudioEvents(screen, timeline));
+        }
+        catch (Exception ex)
+        {
+            // Events are optional: the project opens without them, it only loses click and cursor data.
+            WebcamDiagnostics.Log($"Studio events could not be saved: 0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private string? TryKeepScreenTrackAsRecording(string screenPath)
+    {
+        try
+        {
+            if (!HasNonEmptyOutputFile(screenPath))
+            {
+                return null;
+            }
+
+            var destination = _storage.GenerateFilePath(CaptureType.Video);
+            File.Move(screenPath, destination);
+            return destination;
+        }
+        catch (Exception ex)
+        {
+            WebcamDiagnostics.Log($"Studio screen track could not be kept as a recording: 0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private StudioCameraSourceInfo? BuildStudioCameraSource(StudioProjectPaths paths)
+    {
+        var recorder = _studioCameraRecorder;
+        if (recorder is null || !recorder.HasFrames || paths.CameraPath is null || !HasNonEmptyOutputFile(paths.CameraPath))
+        {
+            DeleteOutputFileIfPresent(paths.CameraPath);
+            return null;
+        }
+
+        try
+        {
+            var probed = MediaFileProbe.Probe(paths.CameraPath, 30);
+            return new StudioCameraSourceInfo(
+                probed.Width,
+                probed.Height,
+                probed.Duration > 0 ? probed.Duration : recorder.DurationSeconds,
+                recorder.StartOffset?.TotalSeconds ?? 0);
+        }
+        catch (Exception ex)
+        {
+            // A camera track that cannot be read is left out; the project is still a screen recording.
+            WebcamDiagnostics.Log($"Studio camera track is unreadable and was left out of the project: 0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}");
+            DeleteOutputFileIfPresent(paths.CameraPath);
+            return null;
+        }
+    }
+
+    private StudioEvents BuildStudioEvents(StudioRecordingSourceInfo screen, RecordingTimeline timeline)
+    {
+        var pointerEventsEnabled = _studioRecordPointerEvents;
+        StudioPointSample[] cursorSamples;
+        lock (_studioCursorGate)
+        {
+            cursorSamples = _studioCursorSamples.ToArray();
+        }
+
+        return new StudioEvents
+        {
+            Capture = new StudioCaptureInfo
+            {
+                Width = screen.Width,
+                Height = screen.Height,
+                Scale = _studioCaptureScale,
+                Kind = _activeTarget is null ? StudioCaptureKind.Display : StudioRecordingBuilder.ToCaptureKind(_activeTarget, _activeRegion),
+            },
+            Clicks = pointerEventsEnabled
+                ? StudioRecordingBuilder.BuildClickEvents(_studioClickSamples, timeline, _studioCaptureOriginX, _studioCaptureOriginY, screen.Width, screen.Height)
+                : [],
+            Cursor = pointerEventsEnabled
+                ? StudioRecordingBuilder.BuildCursorSamples(cursorSamples, _studioCaptureOriginX, _studioCaptureOriginY, screen.Width, screen.Height)
+                : [],
+            CameraCorners = _webcamPlacements is null
+                ? [new StudioCameraCornerEvent { T = 0, Corner = StudioRecordingBuilder.ToStudioAnchor(_studioInitialCorner) }]
+                : StudioRecordingBuilder.BuildCameraCornerEvents(_webcamPlacements.Events),
+        };
+    }
+
+    private void CleanupStudioRecording(bool deleteProject)
+    {
+        if (_studioCameraRecorder is { } cameraRecorder)
+        {
+            _webcamCapture.FrameArrived -= cameraRecorder.OnFrameArrived;
+            cameraRecorder.Dispose();
+            _studioCameraRecorder = null;
+        }
+
+        if (deleteProject && _studioPaths is { } paths)
+        {
+            try
+            {
+                _studioProjects.Delete(paths.ProjectId);
+            }
+            catch
+            {
+                // Best-effort cleanup of abandoned Studio source files.
+            }
+        }
+
+        _studioPaths = null;
+        lock (_studioCursorGate)
+        {
+            _studioCursorSamples.Clear();
+        }
+
+        _studioClickSamples = [];
+    }
+
     private static void DeleteOutputFileIfPresent(string? path)
     {
         if (string.IsNullOrEmpty(path))
@@ -1969,6 +2300,44 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return false;
         }
     }
+
+    private void CollectStudioCursorSample(TimeSpan pts)
+    {
+        if (!_activeOptions.RecordForStudio || !_studioRecordPointerEvents || pts < TimeSpan.Zero)
+        {
+            return;
+        }
+
+        if (!GetCursorPos(out var point))
+        {
+            return;
+        }
+
+        lock (_studioCursorGate)
+        {
+            // A resting pointer adds nothing: samples are steps, so the last one still applies.
+            if (_studioCursorSamples.Count > 0 &&
+                _studioCursorSamples[^1] is var last &&
+                last.X == point.X &&
+                last.Y == point.Y)
+            {
+                return;
+            }
+
+            _studioCursorSamples.Add(new StudioPointSample(pts, point.X, point.Y));
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out POINT point);
 
     private readonly record struct TimestampedFrame(byte[] Pixels, TimeSpan Pts);
 }

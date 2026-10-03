@@ -1,16 +1,30 @@
 using TinyClips.Core.Models;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Services;
 
 public sealed class CaptureSettings : ICaptureSettings
 {
+    /// <summary>Set to <c>1</c> to turn the Studio preview on for a run without editing settings.</summary>
+    public const string StudioPreviewEnvironmentVariable = "TINYCLIPS_STUDIO_PREVIEW";
+
+    private const string VideoAfterRecordingKey = "videoAfterRecording";
+    private const string StudioDefaultLookKey = "studioDefaultLook";
+
     private readonly ISettingsService _settings;
     private readonly IClipAnalyticsService? _analytics;
+    private readonly bool _studioPreviewForcedOn;
 
     public CaptureSettings(ISettingsService settings, IClipAnalyticsService? analytics = null)
+        : this(settings, analytics, Environment.GetEnvironmentVariable(StudioPreviewEnvironmentVariable))
+    {
+    }
+
+    internal CaptureSettings(ISettingsService settings, IClipAnalyticsService? analytics, string? studioPreviewEnvironmentValue)
     {
         _settings = settings;
         _analytics = analytics;
+        _studioPreviewForcedOn = string.Equals(studioPreviewEnvironmentValue?.Trim(), "1", StringComparison.Ordinal);
         MigrateLegacySaveDirectory();
     }
 
@@ -285,7 +299,74 @@ public sealed class CaptureSettings : ICaptureSettings
     public bool ShowTrimmer
     {
         get => _settings.Get("showTrimmer", true);
-        set => _settings.Set("showTrimmer", value);
+        set
+        {
+            _settings.Set("showTrimmer", value);
+
+            // A stored after-recording choice wins over this toggle when read, so keep it in step.
+            var stored = ParseVideoAfterRecording(_settings.Get(VideoAfterRecordingKey, string.Empty));
+            if (stored is { } choice && (choice == VideoAfterRecording.Trimmer) != value)
+            {
+                _settings.Set(
+                    VideoAfterRecordingKey,
+                    ToPersistedVideoAfterRecording(value ? VideoAfterRecording.Trimmer : VideoAfterRecording.Save));
+            }
+        }
+    }
+
+    public VideoAfterRecording VideoAfterRecording
+    {
+        get => ParseVideoAfterRecording(_settings.Get(VideoAfterRecordingKey, string.Empty))
+            ?? (ShowTrimmer ? VideoAfterRecording.Trimmer : VideoAfterRecording.Save);
+        set
+        {
+            _settings.Set(VideoAfterRecordingKey, ToPersistedVideoAfterRecording(value));
+            _settings.Set("showTrimmer", value == VideoAfterRecording.Trimmer);
+        }
+    }
+
+    public bool StudioPreviewEnabled
+    {
+        get => _studioPreviewForcedOn || _settings.Get("studioPreviewEnabled", false);
+        set => _settings.Set("studioPreviewEnabled", value);
+    }
+
+    public bool IsStudioRecordingEnabled => StudioPreviewEnabled && VideoAfterRecording == VideoAfterRecording.Studio;
+
+    public const int DefaultStudioSourceRetentionDays = 30;
+    public const int MinStudioSourceRetentionDays = 0;
+    public const int MaxStudioSourceRetentionDays = 365;
+
+    public int StudioSourceRetentionDays
+    {
+        get => Math.Clamp(
+            _settings.Get("studioSourceRetentionDays", DefaultStudioSourceRetentionDays),
+            MinStudioSourceRetentionDays,
+            MaxStudioSourceRetentionDays);
+        set => _settings.Set(
+            "studioSourceRetentionDays",
+            Math.Clamp(value, MinStudioSourceRetentionDays, MaxStudioSourceRetentionDays));
+    }
+
+    public const int DefaultStudioStorageCapGigabytes = 10;
+    public const int MinStudioStorageCapGigabytes = 0;
+    public const int MaxStudioStorageCapGigabytes = 500;
+
+    public int StudioStorageCapGigabytes
+    {
+        get => Math.Clamp(
+            _settings.Get("studioStorageCapGigabytes", DefaultStudioStorageCapGigabytes),
+            MinStudioStorageCapGigabytes,
+            MaxStudioStorageCapGigabytes);
+        set => _settings.Set(
+            "studioStorageCapGigabytes",
+            Math.Clamp(value, MinStudioStorageCapGigabytes, MaxStudioStorageCapGigabytes));
+    }
+
+    public StudioLook? StudioDefaultLook
+    {
+        get => StudioLookText.Read(_settings.Get(StudioDefaultLookKey, string.Empty));
+        set => _settings.Set(StudioDefaultLookKey, value is null ? string.Empty : StudioLookText.Write(value));
     }
 
     public bool RecordAudio
@@ -806,6 +887,11 @@ public sealed class CaptureSettings : ICaptureSettings
         GifMouseClickOpacity = 0.85;
         GifMouseClickDuration = 0.45;
         ShowTrimmer = true;
+        VideoAfterRecording = VideoAfterRecording.Trimmer;
+        StudioPreviewEnabled = false;
+        StudioSourceRetentionDays = DefaultStudioSourceRetentionDays;
+        StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
+        StudioDefaultLook = null;
         RecordAudio = false;
         RecordMicrophone = false;
         SelectedMicrophoneId = string.Empty;
@@ -917,6 +1003,24 @@ public sealed class CaptureSettings : ICaptureSettings
             "circle" => WebcamShape.Circle,
             _ => WebcamShape.Circle,
         };
+
+    // Null for a value that was never written or that this build does not know.
+    private static VideoAfterRecording? ParseVideoAfterRecording(string value) =>
+        (value ?? string.Empty).ToLowerInvariant() switch
+        {
+            "save" => VideoAfterRecording.Save,
+            "trimmer" => VideoAfterRecording.Trimmer,
+            "studio" => VideoAfterRecording.Studio,
+            _ => null,
+        };
+
+    private static string ToPersistedVideoAfterRecording(VideoAfterRecording value) => value switch
+    {
+        VideoAfterRecording.Trimmer => "trimmer",
+        VideoAfterRecording.Studio => "studio",
+        _ => "save",
+    };
+
 
     private static string ToPersistedWebcamShape(WebcamShape value) => value switch
     {

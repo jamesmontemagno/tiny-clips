@@ -99,6 +99,8 @@ mac/TinyClips/
 │   ├── ScreenshotCapture.swift # SCScreenshotManager → PNG
 │   ├── VideoRecorder.swift     # SCStream → AVAssetWriter → MP4
 │   └── GifWriter.swift         # SCStream → CGImageDestination → GIF
+├── Studio/                     # Tiny Clips Studio: project format, store, layout engine, editor model
+│   └── Rendering/              # Core Image compositor, AVFoundation composition, preview, export
 ├── Services/
 │   ├── SaveService.swift       # File saving, clipboard, Finder, notifications
 │   ├── PermissionManager.swift # Screen recording permission handling
@@ -114,6 +116,7 @@ mac/TinyClips/
     ├── RegionIndicatorPanel.swift # Red region outline overlay
     ├── StartRecordingPanel.swift  # Floating record panel
     ├── StopRecordingPanel.swift   # Floating stop panel
+    ├── Studio/                    # Studio editor window, view model, and views
     └── ...
 docs/                           # Additional setup guides
 ```
@@ -151,6 +154,12 @@ Accessibility is treated as a release gate. When adding or changing UI:
 
 1. **Screenshot:** permission → picker (region/screen/window + countdown) → optional screen picker for multi-display → optional region indicator → capture → optional editor → save.
 2. **Video/GIF:** permission → picker → optional region indicator → start panel → optional countdown → record → stop panel → optional trimmer → save.
+3. **Video for Studio** (behind the `studioPreviewEnabled` default): as video, but the screen and camera are written as separate tracks into a project folder with the click and cursor data, and the Studio editor opens instead of the trimmer. Nothing is rendered until export.
+
+### Tiny Clips Studio
+
+- The project format is shared with the Windows app and specified in [docs/studio-project-format.md](docs/studio-project-format.md). The fixtures in `shared/studio/fixtures/` are run by both platforms' tests, so change the spec, the fixtures, and both implementations together.
+- Files directly inside `Studio/` use Foundation only (no AppKit, AVFoundation, or SwiftUI) so their logic is covered by plain unit tests. Rendering lives in `Studio/Rendering/` and UI in `Views/Studio/`.
 
 ---
 

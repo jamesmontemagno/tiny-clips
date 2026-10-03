@@ -98,7 +98,8 @@ internal sealed class MfSinkWriterEncoder : IDisposable
         int audioSampleRate,
         int audioChannels,
         int audioBitsPerSample,
-        uint audioBitrate)
+        uint audioBitrate,
+        bool enableHardwareTransforms = true)
     {
         MediaFactory.MFStartup(true).CheckError();
 
@@ -112,7 +113,10 @@ internal sealed class MfSinkWriterEncoder : IDisposable
             deviceManager.ResetDevice(device).CheckError();
 
             using var attributes = MediaFactory.MFCreateAttributes(5);
-            attributes.Set(SinkWriterAttributeKeys.ReadwriteEnableHardwareTransforms, 1u);
+            if (enableHardwareTransforms)
+            {
+                attributes.Set(SinkWriterAttributeKeys.ReadwriteEnableHardwareTransforms, 1u);
+            }
             attributes.Set(SinkWriterAttributeKeys.D3DManager, deviceManager);
             attributes.Set(SinkWriterAttributeKeys.LowLatency, 1u);
             // Both streams are produced in real time and paced by their own capture clocks, so the
@@ -188,7 +192,7 @@ internal sealed class MfSinkWriterEncoder : IDisposable
 
             writer.BeginWriting();
 
-            var description = $"{(codec == VideoCodec.Hevc ? "HEVC Main" : "H.264 High")} via IMFSinkWriter (hardware, low-latency, no B-frames)";
+            var description = $"{(codec == VideoCodec.Hevc ? "HEVC Main" : "H.264 High")} via IMFSinkWriter ({(enableHardwareTransforms ? "hardware" : "software fallback")}, low-latency, no B-frames)";
             var encoder = new MfSinkWriterEncoder(writer, deviceManager, videoIn, videoStream, audioStream, width, height, description)
             {
                 _began = true,

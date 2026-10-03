@@ -7,6 +7,7 @@ import QuartzCore
 struct MouseClickEvent: Sendable {
     let timeOffset: TimeInterval
     let globalLocation: CGPoint
+    let button: StudioMouseButton
 }
 
 private struct MappedMouseClickEvent: Sendable {
@@ -19,11 +20,15 @@ final class MouseClickMonitor {
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var startTimestamp: TimeInterval = 0
+    private var timelineTimeProvider: (() -> TimeInterval?)?
     private var events: [MouseClickEvent] = []
 
-    func start() {
+    /// - Parameter timelineTimeProvider: When set, each click is stamped with the time it returns
+    ///   instead of the time since `start()`. Returning nil drops the click.
+    func start(timelineTimeProvider: (() -> TimeInterval?)? = nil) {
         stop()
         startTimestamp = ProcessInfo.processInfo.systemUptime
+        self.timelineTimeProvider = timelineTimeProvider
         events = []
 
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
@@ -48,13 +53,38 @@ final class MouseClickMonitor {
 
         let captured = events
         events = []
+        timelineTimeProvider = nil
         return captured
     }
 
     private func record(_ event: NSEvent) {
-        let offset = max(0, event.timestamp - startTimestamp)
+        let offset: TimeInterval
+        if let timelineTimeProvider {
+            guard let timelineTime = timelineTimeProvider() else { return }
+            offset = max(0, timelineTime)
+        } else {
+            offset = max(0, event.timestamp - startTimestamp)
+        }
         let location = NSEvent.mouseLocation
-        events.append(MouseClickEvent(timeOffset: offset, globalLocation: location))
+        events.append(MouseClickEvent(timeOffset: offset, globalLocation: location, button: mouseButton(for: event)))
+    }
+
+    private func mouseButton(for event: NSEvent) -> StudioMouseButton {
+        switch event.type {
+        case .leftMouseDown:
+            return .left
+        case .rightMouseDown:
+            return .right
+        case .otherMouseDown:
+            switch event.buttonNumber {
+            case 2:
+                return .middle
+            default:
+                return .other
+            }
+        default:
+            return .other
+        }
     }
 }
 

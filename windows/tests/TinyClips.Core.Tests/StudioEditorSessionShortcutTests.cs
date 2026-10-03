@@ -1,0 +1,160 @@
+using TinyClips.Core.Studio.Editing;
+
+namespace TinyClips.Core.Tests;
+
+/// <summary>The Studio editor's keys. The window cannot be driven with a real keyboard in tests, so the rules are here.</summary>
+public sealed class StudioEditorSessionShortcutTests
+{
+    [Theory]
+    [InlineData(StudioShortcutKey.Space, StudioShortcutAction.TogglePlayback)]
+    [InlineData(StudioShortcutKey.Left, StudioShortcutAction.PreviousFrame)]
+    [InlineData(StudioShortcutKey.Right, StudioShortcutAction.NextFrame)]
+    [InlineData(StudioShortcutKey.I, StudioShortcutAction.SetTrimStartAtPlayhead)]
+    [InlineData(StudioShortcutKey.O, StudioShortcutAction.SetTrimEndAtPlayhead)]
+    [InlineData(StudioShortcutKey.Digit1, StudioShortcutAction.ShowScreenLayout)]
+    [InlineData(StudioShortcutKey.Digit2, StudioShortcutAction.ShowBubbleLayout)]
+    [InlineData(StudioShortcutKey.Digit3, StudioShortcutAction.ShowSideBySideLayout)]
+    [InlineData(StudioShortcutKey.Digit4, StudioShortcutAction.ShowCameraLayout)]
+    [InlineData(StudioShortcutKey.Z, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Y, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.E, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Escape, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Other, StudioShortcutAction.None)]
+    public void PlainKeys(StudioShortcutKey key, StudioShortcutAction expected)
+    {
+        Assert.Equal(expected, StudioShortcuts.Resolve(Press(key)));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.Z, false, StudioShortcutAction.Undo)]
+    [InlineData(StudioShortcutKey.Z, true, StudioShortcutAction.Redo)]
+    [InlineData(StudioShortcutKey.Y, false, StudioShortcutAction.Redo)]
+    [InlineData(StudioShortcutKey.Y, true, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.E, false, StudioShortcutAction.Export)]
+    [InlineData(StudioShortcutKey.E, true, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Space, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Left, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Digit1, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.I, false, StudioShortcutAction.None)]
+    public void ControlKeys(StudioShortcutKey key, bool shift, StudioShortcutAction expected)
+    {
+        Assert.Equal(expected, StudioShortcuts.Resolve(Press(key) with { IsControlDown = true, IsShiftDown = shift }));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.Space)]
+    [InlineData(StudioShortcutKey.Left)]
+    [InlineData(StudioShortcutKey.I)]
+    [InlineData(StudioShortcutKey.Digit2)]
+    public void ShiftOrAlt_TurnsAPlainKeyIntoNothing(StudioShortcutKey key)
+    {
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(key) with { IsShiftDown = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(key) with { IsAltDown = true }));
+        Assert.Equal(
+            StudioShortcutAction.None,
+            StudioShortcuts.Resolve(Press(StudioShortcutKey.Z) with { IsControlDown = true, IsAltDown = true }));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.Left, false, StudioShortcutAction.PreviousFrame)]
+    [InlineData(StudioShortcutKey.Right, false, StudioShortcutAction.NextFrame)]
+    [InlineData(StudioShortcutKey.Space, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.I, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.O, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Digit3, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Z, true, StudioShortcutAction.Undo)]
+    [InlineData(StudioShortcutKey.Y, true, StudioShortcutAction.Redo)]
+    [InlineData(StudioShortcutKey.E, true, StudioShortcutAction.None)]
+    public void HoldingAKey_RepeatsOnlySteppingUndoAndRedo(StudioShortcutKey key, bool control, StudioShortcutAction expected)
+    {
+        Assert.Equal(expected, StudioShortcuts.Resolve(Press(key) with { IsControlDown = control, IsRepeat = true }));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.Space, false)]
+    [InlineData(StudioShortcutKey.Left, false)]
+    [InlineData(StudioShortcutKey.I, false)]
+    [InlineData(StudioShortcutKey.O, false)]
+    [InlineData(StudioShortcutKey.Digit1, false)]
+    [InlineData(StudioShortcutKey.Z, true)]
+    [InlineData(StudioShortcutKey.Y, true)]
+    [InlineData(StudioShortcutKey.E, true)]
+    public void ATextBox_KeepsEveryKey(StudioShortcutKey key, bool control)
+    {
+        Assert.Equal(
+            StudioShortcutAction.None,
+            StudioShortcuts.Resolve(Press(key) with { IsControlDown = control, IsTextInputFocused = true }));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.Space, false)]
+    [InlineData(StudioShortcutKey.Right, false)]
+    [InlineData(StudioShortcutKey.O, false)]
+    [InlineData(StudioShortcutKey.Digit4, false)]
+    [InlineData(StudioShortcutKey.Z, true)]
+    [InlineData(StudioShortcutKey.E, true)]
+    public void NothingActs_UntilTheProjectIsOpen_OrWhileItIsExporting(StudioShortcutKey key, bool control)
+    {
+        var press = Press(key) with { IsControlDown = control };
+
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press with { IsReady = false }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press with { IsExporting = true }));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.Space)]
+    [InlineData(StudioShortcutKey.Left)]
+    [InlineData(StudioShortcutKey.Right)]
+    [InlineData(StudioShortcutKey.I)]
+    [InlineData(StudioShortcutKey.O)]
+    [InlineData(StudioShortcutKey.Digit1)]
+    [InlineData(StudioShortcutKey.Digit4)]
+    public void AListThatSearchesAsYouType_KeepsThePlainKeys(StudioShortcutKey key)
+    {
+        Assert.Equal(
+            StudioShortcutAction.None,
+            StudioShortcuts.Resolve(Press(key) with { IsTypeToSearchFocused = true }));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.Z, false, StudioShortcutAction.Undo)]
+    [InlineData(StudioShortcutKey.Z, true, StudioShortcutAction.Redo)]
+    [InlineData(StudioShortcutKey.Y, false, StudioShortcutAction.Redo)]
+    [InlineData(StudioShortcutKey.E, false, StudioShortcutAction.Export)]
+    public void AListThatSearchesAsYouType_LeavesTheControlShortcuts(StudioShortcutKey key, bool shift, StudioShortcutAction expected)
+    {
+        var press = Press(key) with { IsControlDown = true, IsShiftDown = shift, IsTypeToSearchFocused = true };
+
+        Assert.Equal(expected, StudioShortcuts.Resolve(press));
+    }
+
+    [Fact]
+    public void Escape_StopsARunningExport_AndOtherwiseDoesNothing()
+    {
+        var escape = Press(StudioShortcutKey.Escape);
+
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsReady = false }));
+        Assert.Equal(StudioShortcutAction.CancelExport, StudioShortcuts.Resolve(escape with { IsExporting = true }));
+        Assert.Equal(
+            StudioShortcutAction.CancelExport,
+            StudioShortcuts.Resolve(escape with { IsExporting = true, IsTextInputFocused = true, IsRepeat = true }));
+        Assert.Equal(
+            StudioShortcutAction.CancelExport,
+            StudioShortcuts.Resolve(escape with { IsExporting = true, IsTypeToSearchFocused = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsExporting = true, IsControlDown = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsExporting = true, IsShiftDown = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsExporting = true, IsAltDown = true }));
+    }
+
+    /// <summary>A first press with no modifier, in an open project that is not exporting.</summary>
+    private static StudioShortcutInput Press(StudioShortcutKey key) => new(
+        key,
+        IsControlDown: false,
+        IsShiftDown: false,
+        IsAltDown: false,
+        IsRepeat: false,
+        IsTextInputFocused: false,
+        IsReady: true,
+        IsExporting: false);
+}

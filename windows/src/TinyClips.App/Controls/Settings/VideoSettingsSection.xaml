@@ -348,11 +348,29 @@
                 <controls:SettingsCard
                     Description="Review and trim the start and end before saving."
                     Header="Open trimmer after recording"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}"
+                    Visibility="{x:Bind ViewModel.ShowTrimmerToggleVisibility, Mode=OneWay}">
                     <ToggleSwitch
                         AutomationProperties.AutomationId="ShowVideoTrimmerToggle"
                         AutomationProperties.Name="Open video trimmer after recording"
                         IsOn="{x:Bind ViewModel.ShowTrimmer, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <!--  Takes the place of the trimmer toggle while the Studio preview is switched on.  -->
+                <controls:SettingsCard
+                    Description="Save the video as recorded, trim it first, or arrange it in Tiny Clips Studio."
+                    Header="After recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}"
+                    Visibility="{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}">
+                    <ComboBox
+                        MinWidth="220"
+                        AutomationProperties.AutomationId="VideoAfterRecordingCombo"
+                        AutomationProperties.Name="After recording"
+                        SelectedIndex="{x:Bind ViewModel.VideoAfterRecordingIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="Save" />
+                        <ComboBoxItem Content="Open trimmer" />
+                        <ComboBoxItem Content="Open in Studio (Preview)" />
+                    </ComboBox>
                 </controls:SettingsCard>
 
                 <controls:SettingsCard

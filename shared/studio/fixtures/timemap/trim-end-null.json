@@ -1,0 +1,84 @@
+{
+  "description": "Null trimEnd uses the screen source duration.",
+  "sourceDuration": 12,
+  "edits": {
+    "trimStart": 3,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 5,
+        "end": 6
+      }
+    ],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 8,
+    "segments": [
+      {
+        "start": 3,
+        "end": 5
+      },
+      {
+        "start": 6,
+        "end": 12
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 2,
+        "output": 0
+      },
+      {
+        "source": 3,
+        "output": 0
+      },
+      {
+        "source": 5.5,
+        "output": 2
+      },
+      {
+        "source": 6,
+        "output": 2
+      },
+      {
+        "source": 12,
+        "output": 8
+      },
+      {
+        "source": 13,
+        "output": 8
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 3
+      },
+      {
+        "output": 0,
+        "source": 3
+      },
+      {
+        "output": 2,
+        "source": 6
+      },
+      {
+        "output": 3,
+        "source": 7
+      },
+      {
+        "output": 8,
+        "source": 12
+      },
+      {
+        "output": 9,
+        "source": 12
+      },
+      {
+        "output": 10,
+        "source": 12
+      }
+    ]
+  }
+}

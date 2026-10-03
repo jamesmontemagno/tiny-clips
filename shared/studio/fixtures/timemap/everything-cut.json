@@ -1,0 +1,55 @@
+{
+  "description": "Cuts remove the entire trimmed range.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 2,
+    "trimEnd": 18,
+    "cuts": [
+      {
+        "start": 0,
+        "end": 20
+      }
+    ],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 0,
+    "segments": [],
+    "sourceToOutput": [
+      {
+        "source": -1,
+        "output": 0
+      },
+      {
+        "source": 2,
+        "output": 0
+      },
+      {
+        "source": 10,
+        "output": 0
+      },
+      {
+        "source": 18,
+        "output": 0
+      },
+      {
+        "source": 21,
+        "output": 0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 2
+      },
+      {
+        "output": 0,
+        "source": 2
+      },
+      {
+        "output": 1,
+        "source": 2
+      }
+    ]
+  }
+}

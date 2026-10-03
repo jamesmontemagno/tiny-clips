@@ -698,6 +698,21 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Like `currentTimelineTime()`, but nil until the first screen frame has been written, so
+    /// callers can ignore events that happened before the recording has any content.
+    func currentTimelineTimeIfStarted() -> CMTime? {
+        writingQueue.sync { () -> CMTime? in
+            guard let firstSampleTime = self.firstScreenSampleTime else { return nil }
+            let now = CMClockGetTime(CMClockGetHostTimeClock())
+            return RecordingTimelineMath.timelineTime(
+                now: now,
+                firstSampleTime: firstSampleTime,
+                totalPausedDuration: self.totalPausedDuration,
+                pauseStartedAt: self.pauseStartedAt
+            )
+        }
+    }
+
     func start(
         target: CaptureTarget,
         alwaysExcludedWindows: [SCWindow],

@@ -31,6 +31,7 @@ jobs:
           filters: |
             mac:
               - 'mac/**'
+              - 'shared/studio/**'
               - '.github/workflows/build.yml'
           base: ${{ github.ref }}
 
@@ -77,6 +78,16 @@ jobs:
           xcodebuild test \
             -project mac/${{ env.SCHEME }}.xcodeproj \
             -scheme ${{ env.SCHEME }} \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build Mac App Store variant
+        run: |
+          xcodebuild build \
+            -project mac/${{ env.SCHEME }}.xcodeproj \
+            -scheme TinyClipsMAS \
             -configuration Debug \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \

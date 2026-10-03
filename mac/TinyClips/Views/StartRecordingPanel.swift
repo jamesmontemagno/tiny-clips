@@ -16,12 +16,14 @@ class StartRecordingPanel: NSPanel {
         let size: String
     }
 
-    private var onStart: ((Bool, MicrophoneSelection, WebcamSelection, Bool, Int) -> Void)?
+    /// The arguments are: output audio, microphone, webcam, mouse click visuals, the video time
+    /// limit in minutes, and whether to record for Tiny Clips Studio.
+    private var onStart: ((Bool, MicrophoneSelection, WebcamSelection, Bool, Int, Bool) -> Void)?
     private var onCancel: (() -> Void)?
 
     convenience init(
         captureType: CaptureType,
-        onStart: @escaping (Bool, MicrophoneSelection, WebcamSelection, Bool, Int) -> Void,
+        onStart: @escaping (Bool, MicrophoneSelection, WebcamSelection, Bool, Int, Bool) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.init(
@@ -82,11 +84,13 @@ class StartRecordingPanel: NSPanel {
             availableWebcams: availableWebcams,
             mouseClicksEnabled: defaultMouseClicksEnabled,
             allowsMouseClickToggle: allowsMouseClickToggle,
-            onStart: { [weak self] systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes in
+            recordForStudio: settings.isStudioVideoRecordingEnabled,
+            allowsStudioToggle: captureType == .video && settings.studioPreviewEnabled,
+            onStart: { [weak self] systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes, recordForStudio in
                 guard let panel = self, let onStart = panel.onStart else { return }
                 panel.onStart = nil
                 panel.onCancel = nil
-                onStart(systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes)
+                onStart(systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes, recordForStudio)
             },
             onCancel: { [weak self] in
                 guard let panel = self, let onCancel = panel.onCancel else { return }
@@ -132,7 +136,9 @@ private struct StartRecordingView: View {
     let availableWebcams: [WebcamDeviceOption]
     @State var mouseClicksEnabled: Bool
     let allowsMouseClickToggle: Bool
-    let onStart: (Bool, StartRecordingPanel.MicrophoneSelection, StartRecordingPanel.WebcamSelection, Bool, Int) -> Void
+    @State var recordForStudio: Bool
+    let allowsStudioToggle: Bool
+    let onStart: (Bool, StartRecordingPanel.MicrophoneSelection, StartRecordingPanel.WebcamSelection, Bool, Int, Bool) -> Void
     let onCancel: () -> Void
 
     /// Tracks that the user tried to enable an input but was blocked by a denied
@@ -323,6 +329,24 @@ private struct StartRecordingView: View {
                 .accessibilityHint("Toggles mouse click visuals for this recording.")
             }
 
+            if allowsStudioToggle {
+                Button {
+                    recordForStudio.toggle()
+                } label: {
+                    Image(systemName: "square.stack.3d.up.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(recordForStudio ? .white : .primary.opacity(0.5))
+                        .frame(width: 28, height: 28)
+                        .background(recordForStudio ? .blue : .primary.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help(recordForStudio ? "Record for Studio: ON" : "Record for Studio: OFF")
+                .accessibilityLabel("Record for Studio")
+                .accessibilityValue(recordForStudio ? "On" : "Off")
+                .accessibilityHint("Keeps the screen and camera as separate layers and opens Tiny Clips Studio when recording ends.")
+            }
+
             Divider()
                 .frame(height: 20)
                 .overlay(.primary.opacity(0.2))
@@ -340,7 +364,8 @@ private struct StartRecordingView: View {
                         size: webcamSize
                     ),
                     mouseClicksEnabled,
-                    CaptureSettings.shared.videoRecordingTimeLimitMinutes
+                    CaptureSettings.shared.videoRecordingTimeLimitMinutes,
+                    allowsStudioToggle && recordForStudio
                 )
             } label: {
                 HStack(spacing: 5) {

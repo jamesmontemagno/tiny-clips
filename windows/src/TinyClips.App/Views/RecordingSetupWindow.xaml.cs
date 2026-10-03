@@ -24,7 +24,8 @@ public sealed record RecordingSetupResult(
     WebcamSizePreset WebcamSizePreset,
     WebcamCornerPosition WebcamCornerPosition,
     double? WebcamCornerRadius,
-    bool ShowMouseClicks);
+    bool ShowMouseClicks,
+    bool RecordForStudio = false);
 
 /// <summary>
 /// Pre-recording setup panel shown after target selection and before countdown.
@@ -58,6 +59,8 @@ public sealed partial class RecordingSetupWindow : Window
     private RecordingSetupResult? _pendingResult;
     private bool _suppressEvents;
     private bool _showMouseClicks;
+    private readonly bool _isStudioAvailable;
+    private bool _recordForStudio;
     private bool _microphonePermissionPending;
     private bool _webcamPermissionPending;
 
@@ -77,6 +80,8 @@ public sealed partial class RecordingSetupWindow : Window
         _webcamDevices = webcamDevices;
         _mediaPermissions = mediaPermissions;
         _showMouseClicks = settings.ShouldShowMouseClickVisuals(captureType);
+        _isStudioAvailable = captureType == CaptureType.Video && settings.StudioPreviewEnabled;
+        _recordForStudio = _isStudioAvailable && settings.IsStudioRecordingEnabled;
 
         AudioDevices.MicrophoneToggleRequested += OnMicrophoneToggleRequested;
         WebcamOptions.WebcamToggleRequested += OnWebcamToggleRequested;
@@ -98,6 +103,7 @@ public sealed partial class RecordingSetupWindow : Window
         _dragger = new FloatingWindowDragger(AppWindow);
         ConfigureForCaptureType();
         UpdateMouseClicksVisual();
+        UpdateRecordForStudioVisual();
         UpdateStartButtonEnabled();
 
         Closed += OnClosed;
@@ -134,6 +140,7 @@ public sealed partial class RecordingSetupWindow : Window
         var isVideo = _captureType != CaptureType.Gif;
         AudioDevices.SetVisibleForVideo(isVideo);
         WebcamOptions.SetVisibleForVideo(isVideo);
+        RecordForStudioToggle.Visibility = _isStudioAvailable ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async Task LoadMicrophonesAsync()
@@ -339,6 +346,17 @@ public sealed partial class RecordingSetupWindow : Window
         UpdateMouseClicksVisual();
     }
 
+    private void OnRecordForStudioToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        _recordForStudio = RecordForStudioToggle.IsChecked == true;
+        UpdateRecordForStudioVisual();
+    }
+
     private void OnSelectionReadinessChanged(object? sender, EventArgs e) => UpdateStartButtonEnabled();
 
     private void OnPreviewSourceChanged(object? sender, EventArgs e) => _ = RefreshSetupPreviewAsync();
@@ -473,7 +491,8 @@ public sealed partial class RecordingSetupWindow : Window
             WebcamOptions.WebcamSizePreset,
             WebcamOptions.WebcamCornerPosition,
             WebcamOptions.WebcamCornerRadiusOrNull,
-            _showMouseClicks));
+            _showMouseClicks,
+            _isStudioAvailable && _recordForStudio));
     }
 
     private void OnCancel(object sender, RoutedEventArgs e) => Complete(null);
@@ -572,6 +591,23 @@ public sealed partial class RecordingSetupWindow : Window
         var state = _showMouseClicks ? "On" : "Off";
         ToolTipService.SetToolTip(MouseClicksToggle, $"Mouse click visuals: {state}");
         AutomationProperties.SetName(MouseClicksToggle, $"Mouse click visuals {state}");
+    }
+
+    private void UpdateRecordForStudioVisual()
+    {
+        _suppressEvents = true;
+        try
+        {
+            RecordForStudioToggle.IsChecked = _recordForStudio;
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+
+        var state = _recordForStudio ? "On" : "Off";
+        ToolTipService.SetToolTip(RecordForStudioToggle, $"Record for Studio: {state}");
+        AutomationProperties.SetName(RecordForStudioToggle, $"Record for Studio {state}");
     }
 
     // Drag-anywhere support: interactive controls mark pointer events handled; dragging

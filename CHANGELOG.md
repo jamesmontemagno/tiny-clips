@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- **Tiny Clips Studio (early preview, off by default).** Studio records the screen and the camera as separate layers and opens an editor when the recording ends. Pick a background and padding, round the screen card, choose a camera shape and one of four layouts (screen only, camera bubble, side by side, camera only), drag the bubble where you want it, trim the start and end, and export an MP4. The project stays editable afterward: reopen it from **Open in Studio…** in the Clips Manager, from Recent Captures, or from the drafts list in Settings › Video. Settings › Video also sets how long projects are kept and how much disk space they may use.
+  - To try it, quit Tiny Clips and run `defaults write com.tinyclips.app studioPreviewEnabled -bool YES` (use `com.refractored.tinyclips` for the Mac App Store build). Then choose **After recording: Open in Studio** in Settings › Video, or switch on **Record for Studio** in the Record panel.
+  - Known limits: window recordings keep no click or cursor data, and the cursor is part of the screen layer.
 - macOS General settings have a new **Confirm before closing editors with Esc** option, on by default, covering the screenshot editor, video trimmer, and GIF trimmer. Turn it off to close them with a single Esc press, which discards anything unsaved.
 
 ### Changed

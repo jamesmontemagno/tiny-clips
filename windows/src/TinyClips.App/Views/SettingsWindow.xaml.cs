@@ -4,12 +4,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.Settings.Sections;
 using TinyClips.App.ViewModels.ClipsLibrary;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
+using TinyClips.Core.Studio;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -45,7 +47,9 @@ public sealed partial class SettingsWindow : Window
             App.Services.GetRequiredService<IWebcamDeviceEnumerator>(),
             App.Services.GetRequiredService<IClipStorageService>(),
             App.Services.GetRequiredService<IClipAnalyticsService>(),
-            App.Services.GetRequiredService<IUploadcareCredentialStore>());
+            App.Services.GetRequiredService<IUploadcareCredentialStore>(),
+            App.Services.GetRequiredService<IStudioProjectStore>(),
+            App.Services.GetRequiredService<StudioProjectCleanupService>());
 
         InitializeComponent();
 

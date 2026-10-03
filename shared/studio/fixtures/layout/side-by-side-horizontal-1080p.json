@@ -1,0 +1,240 @@
+{
+  "description": "Horizontal side-by-side trailing and leading on 1080p screen content.",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-4000-8000-00000000012",
+    "name": "Side by side 1080p",
+    "createdAt": "2026-10-02T22:41:00Z",
+    "modifiedAt": "2026-10-02T22:41:00Z",
+    "lastOpenedAt": "2026-10-02T22:41:00Z",
+    "app": {
+      "platform": "windows",
+      "version": "1.9.0"
+    },
+    "keepSources": false,
+    "sources": {
+      "screen": {
+        "file": "screen.mp4",
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "duration": 20,
+        "external": false
+      },
+      "camera": {
+        "file": "camera.mp4",
+        "width": 1280,
+        "height": 720,
+        "duration": 20,
+        "startOffset": 0
+      },
+      "events": "events.json"
+    },
+    "canvas": {
+      "aspect": "auto",
+      "padding": 0.06,
+      "background": {
+        "style": "gradient",
+        "preset": "ocean",
+        "primary": "#2687E8",
+        "secondary": "#2EE0BF",
+        "image": null
+      }
+    },
+    "screen": {
+      "cornerRadius": 0.02,
+      "shadow": 0.5,
+      "crop": null
+    },
+    "camera": {
+      "shape": "circle",
+      "cornerRadius": 0.12,
+      "mirror": true,
+      "borderWidth": 0,
+      "borderColor": "#FFFFFF",
+      "shadow": 0.35,
+      "crop": null,
+      "cutout": "none"
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "sideBySide",
+        "bubble": {
+          "anchor": "bottomRight",
+          "size": 0.24,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "split": {
+          "cameraSide": "trailing",
+          "cameraFraction": 0.3
+        },
+        "transition": {
+          "kind": "cut",
+          "duration": 0.35
+        }
+      },
+      {
+        "start": 2,
+        "layout": "sideBySide",
+        "bubble": {
+          "anchor": "bottomRight",
+          "size": 0.24,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "split": {
+          "cameraSide": "leading",
+          "cameraFraction": 0.3
+        },
+        "transition": {
+          "kind": "cut",
+          "duration": 0.35
+        }
+      }
+    ],
+    "zooms": [],
+    "edits": {
+      "trimStart": 0,
+      "trimEnd": null,
+      "cuts": [],
+      "speed": []
+    },
+    "audio": {
+      "muted": false,
+      "systemVolume": 1,
+      "microphoneVolume": 1
+    },
+    "overlays": {
+      "clicks": {
+        "enabled": true,
+        "color": "#0A84FF",
+        "size": 40,
+        "strokeWidth": 3,
+        "opacity": 0.85,
+        "duration": 0.45
+      },
+      "branding": false
+    },
+    "exports": []
+  },
+  "naturalCanvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "cases": [
+    {
+      "time": 0,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "sideBySide",
+        "screen": {
+          "rect": {
+            "x": 64.8,
+            "y": 191.76749999999987,
+            "width": 1238.1600000000003,
+            "height": 696.4650000000003
+          },
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 1
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          }
+        },
+        "camera": {
+          "rect": {
+            "x": 1324.5600000000002,
+            "y": 191.76749999999987,
+            "width": 530.64,
+            "height": 696.4650000000003
+          },
+          "source": {
+            "x": 0.2857142857142858,
+            "y": 0,
+            "width": 0.42857142857142844,
+            "height": 1
+          },
+          "shape": "roundedRectangle",
+          "cornerRadius": 21.6,
+          "mirror": true,
+          "borderWidth": 0,
+          "shadow": {
+            "blur": 15.12,
+            "offsetY": 4.536,
+            "opacity": 0.175
+          },
+          "sourceTime": 0,
+          "visible": true
+        }
+      }
+    },
+    {
+      "time": 2,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 1,
+        "layout": "sideBySide",
+        "screen": {
+          "rect": {
+            "x": 617.04,
+            "y": 191.76749999999987,
+            "width": 1238.1600000000003,
+            "height": 696.4650000000003
+          },
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 1
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          }
+        },
+        "camera": {
+          "rect": {
+            "x": 64.8,
+            "y": 191.76749999999987,
+            "width": 530.64,
+            "height": 696.4650000000003
+          },
+          "source": {
+            "x": 0.2857142857142858,
+            "y": 0,
+            "width": 0.42857142857142844,
+            "height": 1
+          },
+          "shape": "roundedRectangle",
+          "cornerRadius": 21.6,
+          "mirror": true,
+          "borderWidth": 0,
+          "shadow": {
+            "blur": 15.12,
+            "offsetY": 4.536,
+            "opacity": 0.175
+          },
+          "sourceTime": 2,
+          "visible": true
+        }
+      }
+    }
+  ]
+}
