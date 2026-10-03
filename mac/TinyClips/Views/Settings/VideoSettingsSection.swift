@@ -141,19 +141,37 @@ struct VideoSettingsSection: View {
         }
 
         Section("After Capture") {
-            Toggle("Open trimmer after recording", isOn: $settings.showTrimmer)
-                .help("Open the trimmer when recording ends so you can trim before saving.")
-                .onChange(of: settings.showTrimmer) { _, isEnabled in
-                    if !isEnabled {
+            if settings.studioPreviewEnabled {
+                Picker("After recording:", selection: $settings.videoAfterRecording) {
+                    Text("Save").tag(VideoAfterRecording.save)
+                    Text("Open trimmer").tag(VideoAfterRecording.trimmer)
+                    Text("Open in Studio (Preview)").tag(VideoAfterRecording.studio)
+                }
+                .help("Choose what happens when a video recording ends. Studio keeps the screen and camera as separate layers that you arrange before exporting.")
+                .onChange(of: settings.videoAfterRecording) { _, choice in
+                    if choice != .trimmer {
                         settings.saveImmediatelyVideo = true
                     }
                 }
+            } else {
+                Toggle("Open trimmer after recording", isOn: $settings.showTrimmer)
+                    .help("Open the trimmer when recording ends so you can trim before saving.")
+                    .onChange(of: settings.showTrimmer) { _, isEnabled in
+                        if !isEnabled {
+                            settings.saveImmediatelyVideo = true
+                        }
+                    }
+            }
 
             Toggle("Save immediately", isOn: $settings.saveImmediatelyVideo)
                 .help("Save immediately instead of waiting for actions in the trimmer.")
                 .disabled(!settings.showTrimmer)
             Toggle("Copy to clipboard", isOn: $settings.copyVideoToClipboard)
                 .help("Copy saved videos to the clipboard as a file URL.")
+        }
+
+        if settings.studioPreviewEnabled {
+            StudioSettingsSection(settings: settings)
         }
 
         Section("Countdown") {

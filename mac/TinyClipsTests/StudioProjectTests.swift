@@ -398,6 +398,43 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertNil(try secondStore.findProjectID(exportedPath: "D:\\Moved.mp4"))
     }
 
+    func testExportedPathIndexListsEveryLinkUnderItsComparisonKey() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        XCTAssertTrue(try store.exportedPathIndex().isEmpty)
+
+        _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
+        _ = try store.completeRecording(id: otherID, request: creationRequest(camera: nil))
+        XCTAssertTrue(try store.exportedPathIndex().isEmpty)
+
+        let firstPath = directoryURL.appendingPathComponent("Clip One.MP4").path
+        let secondPath = directoryURL.appendingPathComponent("Clip Two.mp4").path
+        let thirdPath = directoryURL.appendingPathComponent("Clip Three.mp4").path
+        _ = try store.recordExport(id: validID, path: firstPath)
+        _ = try store.recordExport(id: validID, path: secondPath)
+        _ = try store.recordExport(id: otherID, path: thirdPath)
+
+        let index = try store.exportedPathIndex()
+        XCTAssertEqual(index.count, 3)
+        let firstPathInOtherCase = directoryURL.appendingPathComponent("CLIP ONE.mp4").path
+        XCTAssertEqual(index[StudioProjectStore.exportKey(forPath: firstPathInOtherCase)], validID)
+        XCTAssertEqual(index[StudioProjectStore.exportKey(forPath: secondPath)], validID)
+        XCTAssertEqual(index[StudioProjectStore.exportKey(forPath: thirdPath)], otherID)
+        XCTAssertNil(index[StudioProjectStore.exportKey(forPath: directoryURL.appendingPathComponent("Other.mp4").path)])
+    }
+
+    func testCleanupOptionsFromSettingsValuesTurnRulesOffAtZero() {
+        let defaults = StudioCleanupOptions(retentionDays: 30, sizeCapGigabytes: 10)
+        XCTAssertEqual(defaults, StudioCleanupOptions())
+        XCTAssertEqual(defaults.sizeCapBytes, 10_737_418_240)
+
+        let off = StudioCleanupOptions(retentionDays: 0, sizeCapGigabytes: 0)
+        XCTAssertEqual(off.retentionDays, 0)
+        XCTAssertEqual(off.sizeCapBytes, 0)
+
+        let negative = StudioCleanupOptions(retentionDays: -5, sizeCapGigabytes: -1)
+        XCTAssertEqual(negative, off)
+    }
+
     func testFlatProjectsAreUniquePerExternalVideo() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         let videoURL = directoryURL.appendingPathComponent("external.mp4")

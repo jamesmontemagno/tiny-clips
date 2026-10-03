@@ -238,6 +238,14 @@ class CaptureManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.showOnboardingIfNeeded()
         }
+
+        if CaptureSettings.shared.studioPreviewEnabled {
+            // Old Studio project sources are removed by the storage settings, shortly after launch.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                StudioMaintenance.cleanUp()
+            }
+        }
     }
 
     private func bringWindowToFront(_ window: NSWindow) {
@@ -1984,6 +1992,10 @@ class CaptureManager: ObservableObject {
                 reopenPickerAfterClose: false
             )
         case .video:
+            // A video exported from Studio reopens its project, which is still editable.
+            if StudioWindowRegistry.shared.openProject(forExportedVideoAt: item.url) {
+                return
+            }
             showTrimmer(for: item.url, saveImmediately: true)
         case .gif:
             guard let gifData = try? GifCaptureData(contentsOf: item.url) else {
@@ -2062,7 +2074,7 @@ class CaptureManager: ObservableObject {
     private func showStartPanel() {
         let panel = StartRecordingPanel(
             captureType: pendingRecordingType ?? .video,
-            onStart: { [weak self] systemAudio, microphoneSelection, webcamSelection, mouseClicksEnabled, _ in
+            onStart: { [weak self] systemAudio, microphoneSelection, webcamSelection, mouseClicksEnabled, _, recordForStudio in
                 guard
                     let self,
                     let target = self.pendingRecordingTarget,
@@ -2088,7 +2100,8 @@ class CaptureManager: ObservableObject {
                         mouseClicksEnabled: mouseClicksEnabled,
                         timeLimitMinutes: videoTimeLimitMinutes,
                         countdownEnabled: countdownEnabled,
-                        countdownDuration: countdownDuration
+                        countdownDuration: countdownDuration,
+                        studioModeEnabled: recordForStudio
                     )
                 case .gif:
                     self.beginGifRecording(

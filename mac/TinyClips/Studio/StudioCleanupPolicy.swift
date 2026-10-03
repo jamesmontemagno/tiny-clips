@@ -10,6 +10,14 @@ struct StudioCleanupOptions: Equatable, Sendable {
         self.retentionDays = retentionDays
         self.sizeCapBytes = sizeCapBytes
     }
+
+    /// Builds the rules from the two Settings values. Zero or less turns that rule off.
+    init(retentionDays: Int, sizeCapGigabytes: Int) {
+        self.init(
+            retentionDays: max(0, retentionDays),
+            sizeCapBytes: Int64(max(0, sizeCapGigabytes)) * 1_024 * 1_024 * 1_024
+        )
+    }
 }
 
 enum StudioCleanupPolicy {

@@ -239,7 +239,7 @@ struct SettingsView: View {
         NSApplication.shared.setActivationPolicy(
             TinyClipsActivationPolicy.resolve(
                 showInDock: showInDock,
-                hasOpenScreenshotEditors: ScreenshotEditorRegistry.shared.hasOpenSessions
+                hasOpenEditors: TinyClipsActivationPolicy.hasOpenEditors
             )
         )
         if showInDock {

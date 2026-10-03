@@ -48,7 +48,7 @@ final class StudioViewModel: ObservableObject {
     private var deletesOnClose = false
     private var isTornDown = false
 
-    init(projectID: String, store: StudioProjectStore = StudioProjectStore()) {
+    init(projectID: String, store: StudioProjectStore = .shared) {
         self.projectID = projectID
         self.store = store
     }

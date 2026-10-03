@@ -16,6 +16,23 @@ final class StudioWindowRegistry {
         Set(windows.keys)
     }
 
+    var hasOpenWindows: Bool {
+        !windows.isEmpty
+    }
+
+    /// Opens the project a video was exported from. Returns false when Studio is off, or the video
+    /// did not come from a project that is still stored.
+    @discardableResult
+    func openProject(forExportedVideoAt url: URL) -> Bool {
+        guard CaptureSettings.shared.studioPreviewEnabled,
+              let projectID = try? StudioProjectStore.shared.findProjectID(exportedPath: url.path)
+        else {
+            return false
+        }
+        open(projectID: projectID)
+        return true
+    }
+
     func open(projectID: String) {
         guard CaptureSettings.shared.studioPreviewEnabled else {
             SaveService.shared.showNotice("Recording saved as a Tiny Clips Studio project.")
@@ -30,6 +47,8 @@ final class StudioWindowRegistry {
                 self?.windowDidClose(projectID: id)
             }
             windows[projectID] = window
+            // An editor window gets a Dock icon and the menu bar, as the screenshot editor does.
+            TinyClipsActivationPolicy.applyCurrent()
         }
 
         // Shown on the next run loop turn so it does not fight menu tracking or a closing panel.
@@ -43,9 +62,11 @@ final class StudioWindowRegistry {
 
     private func windowDidClose(projectID: String) {
         guard let closed = windows.removeValue(forKey: projectID) else { return }
-        // Released on the next run loop turn, so the window is not deallocated while it is closing.
+        // Finished on the next run loop turn, so the window is not deallocated while it is closing.
         DispatchQueue.main.async {
             _ = closed
+            TinyClipsActivationPolicy.applyCurrent()
+            StudioMaintenance.cleanUp()
         }
     }
 }

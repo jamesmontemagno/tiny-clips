@@ -160,6 +160,9 @@ struct StudioStorageSummary: Equatable, Sendable {
 // MARK: - Store
 
 final class StudioProjectStore {
+    /// The store the app uses. One shared instance means its lock covers every caller.
+    static let shared = StudioProjectStore()
+
     let rootURL: URL
     private let now: () -> Date
     private let fileManager: FileManager
@@ -311,6 +314,26 @@ final class StudioProjectStore {
     }
 
     @discardableResult
+    /// Every exported video the store knows about, keyed by `exportKey(forPath:)`, with the id of
+    /// the project it came from. Use this instead of `findProjectID` when checking many videos.
+    func exportedPathIndex() throws -> [String: String] {
+        try withLock {
+            var index: [String: String] = [:]
+            for summary in try listSummariesUnlocked() {
+                guard let project = try? loadUnlocked(id: summary.id) else { continue }
+                for export in project.exports {
+                    index[normalizedPath(export.path)] = project.id
+                }
+            }
+            return index
+        }
+    }
+
+    /// The form of a path that export links are compared in.
+    static func exportKey(forPath path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path.lowercased()
+    }
+
     func updateExportPath(from oldPath: String, to newPath: String) throws -> Bool {
         try withLock {
             let oldNeedle = normalizedPath(oldPath)
@@ -693,7 +716,7 @@ final class StudioProjectStore {
     }
 
     private func normalizedPath(_ path: String) -> String {
-        URL(fileURLWithPath: path).standardizedFileURL.path.lowercased()
+        Self.exportKey(forPath: path)
     }
 
     private func validBackgroundImage(_ image: String?) -> String? {

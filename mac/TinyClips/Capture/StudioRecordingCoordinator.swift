@@ -22,7 +22,7 @@ final class StudioRecordingCoordinator {
     private var completedProjectID: String?
 
     init(
-        store: StudioProjectStore = StudioProjectStore(),
+        store: StudioProjectStore = .shared,
         captureRegion: CaptureRegion,
         captureKind: StudioCaptureKind,
         initialCameraCorner: StudioAnchor,
@@ -34,6 +34,7 @@ final class StudioRecordingCoordinator {
         self.initialCameraCorner = initialCameraCorner
         self.clickVisualsEnabled = clickVisualsEnabled
         self.paths = try store.beginRecording()
+        StudioMaintenance.recordingDidBegin(projectID: paths.id)
     }
 
     var screenURL: URL {
@@ -144,6 +145,8 @@ final class StudioRecordingCoordinator {
         _ = try store.completeRecording(id: paths.id, request: request)
         completedProjectID = paths.id
         cursorSamples = []
+        // A finished project is a draft, which cleanup never removes by itself.
+        StudioMaintenance.recordingDidEnd(projectID: paths.id)
 
         do {
             try store.saveEvents(events, id: paths.id)
@@ -157,6 +160,7 @@ final class StudioRecordingCoordinator {
     /// Deletes the project folder unless the recording was completed. Safe to call more than once.
     func deleteUnfinishedProject() {
         stopCursorSampling()
+        StudioMaintenance.recordingDidEnd(projectID: paths.id)
         guard completedProjectID == nil else { return }
         try? store.delete(id: paths.id)
     }

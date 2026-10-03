@@ -11,8 +11,22 @@ enum TinyClipsRuntime {
 }
 
 enum TinyClipsActivationPolicy {
-    static func resolve(showInDock: Bool, hasOpenScreenshotEditors: Bool) -> NSApplication.ActivationPolicy {
-        showInDock || hasOpenScreenshotEditors ? .regular : .accessory
+    static func resolve(showInDock: Bool, hasOpenEditors: Bool) -> NSApplication.ActivationPolicy {
+        showInDock || hasOpenEditors ? .regular : .accessory
+    }
+
+    /// Whether a screenshot editor or Studio window is open. While one is, Tiny Clips shows its
+    /// Dock icon and menu bar so the window can be found again and its menus can be used.
+    @MainActor
+    static var hasOpenEditors: Bool {
+        ScreenshotEditorRegistry.shared.hasOpenSessions || StudioWindowRegistry.shared.hasOpenWindows
+    }
+
+    @MainActor
+    static func applyCurrent() {
+        NSApplication.shared.setActivationPolicy(
+            resolve(showInDock: CaptureSettings.shared.showInDock, hasOpenEditors: hasOpenEditors)
+        )
     }
 }
 
@@ -58,7 +72,7 @@ struct TinyClipsApp: App {
             NSApplication.shared.setActivationPolicy(
                 TinyClipsActivationPolicy.resolve(
                     showInDock: CaptureSettings.shared.showInDock,
-                    hasOpenScreenshotEditors: false
+                    hasOpenEditors: false
                 )
             )
         case .alreadyRunning:

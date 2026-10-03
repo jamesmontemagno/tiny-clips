@@ -203,6 +203,9 @@ final class ClipMetadataStore {
 @MainActor
 private class ClipsViewModel: ObservableObject {
     @Published var clips: [ClipItem] = []
+    /// Videos exported from a Tiny Clips Studio project, keyed by
+    /// `StudioProjectStore.exportKey(forPath:)`, with the id of that project.
+    @Published private(set) var studioProjectIDs: [String: String] = [:]
     @Published var thumbnails: [String: NSImage] = [:]
     @Published var isLoading = false
     @Published var sortOption: SortOption = .newest { didSet { persistUIStateIfNeeded() } }
@@ -424,7 +427,30 @@ private class ClipsViewModel: ObservableObject {
             self.clips = urls.compactMap { ClipItem(url: $0) }
             self.isLoading = false
             loadThumbnails()
+            await loadStudioLinks()
         }
+    }
+
+    private func loadStudioLinks() async {
+        guard CaptureSettings.shared.studioPreviewEnabled else {
+            studioProjectIDs = [:]
+            return
+        }
+        // Reads every project file, so it stays off the main thread.
+        studioProjectIDs = await Task.detached(priority: .utility) {
+            (try? StudioProjectStore.shared.exportedPathIndex()) ?? [:]
+        }.value
+    }
+
+    /// The Studio project a video was exported from, when it is still stored.
+    func studioProjectID(for item: ClipItem) -> String? {
+        guard item.type == .video else { return nil }
+        return studioProjectIDs[StudioProjectStore.exportKey(forPath: item.url.path)]
+    }
+
+    func openInStudio(_ item: ClipItem) {
+        guard let projectID = studioProjectID(for: item) else { return }
+        StudioWindowRegistry.shared.open(projectID: projectID)
     }
 
     private func scanForClips() async -> [URL] {
@@ -1501,6 +1527,12 @@ private struct ClipsManagerContentView: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// The action for a video that came from a Studio project, or nil when it did not.
+    private func openInStudioAction(for item: ClipItem) -> (() -> Void)? {
+        guard viewModel.studioProjectID(for: item) != nil else { return nil }
+        return { viewModel.openInStudio(item) }
+    }
+
     // MARK: - Grid View
 
     private var gridContent: some View {
@@ -1535,6 +1567,7 @@ private struct ClipsManagerContentView: View {
                         onEditCollection: { collectionClip = item },
                         onOpenDetails: { openDetails(for: item) },
                         onEditMedia: { viewModel.editClip(item) },
+                        onOpenInStudio: openInStudioAction(for: item),
                         onCopyUploadcareLink: { viewModel.copyUploadcareLink(item) },
                         onUpload: {
                             if viewModel.canUploadToUploadcare {
@@ -1587,6 +1620,7 @@ private struct ClipsManagerContentView: View {
                 onEditCollection: { collectionClip = item },
                 onOpenDetails: { openDetails(for: item) },
                 onEditMedia: { viewModel.editClip(item) },
+                onOpenInStudio: openInStudioAction(for: item),
                 onCopyUploadcareLink: { viewModel.copyUploadcareLink(item) },
                 onUpload: {
                     if viewModel.canUploadToUploadcare {
@@ -1634,6 +1668,7 @@ private struct ClipGridCell: View {
     let onEditCollection: () -> Void
     let onOpenDetails: () -> Void
     let onEditMedia: () -> Void
+    let onOpenInStudio: (() -> Void)?
     let onCopyUploadcareLink: () -> Void
     let onUpload: () -> Void
     let canUpload: Bool
@@ -1793,6 +1828,9 @@ private struct ClipGridCell: View {
             Button("Set Collection…") { onEditCollection() }
             Button("Details…") { onOpenDetails() }
             Button(item.type == .screenshot ? "Edit Screenshot…" : "Trim Clip…") { onEditMedia() }
+            if let onOpenInStudio {
+                Button("Open in Studio…") { onOpenInStudio() }
+            }
             Divider()
             Button("Open in Finder") { onReveal() }
             Button("Copy") { onCopy() }
@@ -1857,6 +1895,7 @@ private struct ClipListRow: View {
     let onEditCollection: () -> Void
     let onOpenDetails: () -> Void
     let onEditMedia: () -> Void
+    let onOpenInStudio: (() -> Void)?
     let onCopyUploadcareLink: () -> Void
     let onUpload: () -> Void
     let canUpload: Bool
@@ -2071,6 +2110,9 @@ private struct ClipListRow: View {
             Button("Set Collection…") { onEditCollection() }
             Button("Details…") { onOpenDetails() }
             Button(item.type == .screenshot ? "Edit Screenshot…" : "Trim Clip…") { onEditMedia() }
+            if let onOpenInStudio {
+                Button("Open in Studio…") { onOpenInStudio() }
+            }
             Divider()
             Button("Open in Finder") { onReveal() }
             Button("Copy") { onCopy() }
@@ -2405,6 +2447,18 @@ private struct ClipInspectorView: View {
             .controlSize(.small)
             .help(viewModel.isFavorite(item) ? "Remove from favorites" : "Add to favorites")
             .accessibilityLabel(viewModel.isFavorite(item) ? "Remove favorite" : "Add favorite")
+
+            if viewModel.studioProjectID(for: item) != nil {
+                Button {
+                    viewModel.openInStudio(item)
+                } label: {
+                    Label("Studio", systemImage: "square.stack.3d.up")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Open the Studio project this video was exported from")
+                .accessibilityLabel("Open in Studio")
+            }
 
             Menu {
                 Button("Upload to Uploadcare") { onUpload(item) }
