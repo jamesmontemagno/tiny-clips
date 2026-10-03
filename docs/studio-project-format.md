@@ -171,8 +171,9 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 
 - `capture.width` and `capture.height` are the captured rectangle in pixels. `scale` is pixels per point. `kind` is `display`, `region`, or `window`.
 - Points are normalized to the captured rectangle at record time. Clicks outside it are not recorded. Cursor samples may fall outside 0 to 1 when the pointer leaves the rectangle.
+- Clicks and cursor samples from before the first screen frame, or from while the recording was paused, are not recorded, because no moment in the video corresponds to them.
 - `clicks[].button` is `left`, `right`, `middle`, or `other`.
-- `cursor` holds at most 60 samples per second, sorted by `t`, with consecutive duplicates removed.
+- `cursor` holds at most 60 samples per second, sorted by `t`, with consecutive duplicates removed. Samples are steps (section 6.7).
 - `cameraCorners` uses the bubble anchor names.
 - `markers` is reserved for live layout switches.
 - Section 2 applies here too: unknown properties survive, missing or `null` properties take their default (`scale` 1, `kind` `display`, empty lists), and a `schemaVersion` above 1 is refused.
@@ -362,6 +363,28 @@ Draw order: background, screen shadow, screen, click rings (clipped to the scree
 ```
 
 `screen` is null in the `camera` layout. `camera` is null when the effective layout is `screen`. `sceneIndex` indexes the normalized scene list, and `layout` is the effective layout.
+
+### 6.7 Drawing rules
+
+These are not covered by fixtures, because they describe pixels rather than geometry. Both renderers follow them so an export looks the same on either platform.
+
+- **Color.** Colors are sRGB. Gradients are interpolated, and layers are blended, on the encoded (gamma) values, as the screenshot editors do. Screen pixels are not color-converted.
+- **Shadow.** The layer's shape, moved down by `offsetY`, is blurred with a Gaussian whose standard deviation is `blur` pixels, then drawn in black at `opacity` under the layer.
+- **Layer edges.** A renderer may move a layer's edges to the nearest whole pixel before drawing.
+- **Camera border.** A stroke of `borderWidth` pixels (at least 1 when the width is above 0) drawn inside the camera shape, in `camera.borderColor`.
+- **Click rings.** A click at time `tc` is drawn while `0 <= t - tc <= overlays.clicks.duration`, with `p = (t - tc) / duration`:
+
+  ```
+  k        = capture.scale * (sources.screen.width / capture.width) * (screenRect.width / (source.width * sources.screen.width))
+  diameter = overlays.clicks.size * k
+  radius   = diameter / 2 + diameter * 0.58 * p        the center line of the stroke
+  stroke   = overlays.clicks.strokeWidth * k
+  alpha    = (1 - p) * clamp(overlays.clicks.opacity, 0, 1)
+  center   = screenRect origin + ((click - source origin) / source size) * screenRect size
+  ```
+
+  `k` is canvas pixels per point of the captured screen. `source` is the resolved screen source rect. When `capture.width` is missing or 0 the ratio `sources.screen.width / capture.width` is 1. A click whose center falls outside the visible source rect is not drawn.
+- **Cursor samples** are steps, not line segments: at time `t` the pointer is at the latest sample at or before `t`. That is why a resting pointer needs no repeated samples.
 
 ## 7. Time map
 
