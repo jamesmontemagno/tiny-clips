@@ -1,11 +1,17 @@
 <#
 .SYNOPSIS
-    UI automation regression test for multiple simultaneous screenshot editors.
+    UI automation regression tests for output resolution and simultaneous screenshot editors.
 
 .DESCRIPTION
     Drives the already-running Tiny Clips app by PID. It opens a screenshot editor, adds an
     unsaved text annotation, captures a second screenshot, and verifies the first editor remains
     open without a discard prompt.
+    Run with no screenshot editors open. Also checks live output-resolution metadata on initial
+    load, scale/focus return, and padding changes. Reset is a consistency smoke check because it
+    retains scale/padding; manually check crop -> reset for changing source dimensions.
+    The no-bitmap fallback needs a Windows debugger check after UpdateOutputResolutionText in
+    OnClosed: ImageSizeText.Text is empty and AutomationProperties.GetName(OutputScaleButton)
+    is "Output resolution". Closed UIA elements cannot be queried reliably.
 
 .EXAMPLE
     .\ScreenshotEditor.Tests.ps1 -AppPid 12345 -ShotDir .\screenshots
@@ -32,6 +38,31 @@ function Test-UI {
         $script:fail++
         $script:results += @{ name = $Name; status = "FAIL"; detail = "$_" }
     }
+}
+
+function Invoke-UI {
+    $output = & winapp ui @args
+    if ($LASTEXITCODE -ne 0) { throw "winapp ui $args failed (exit $LASTEXITCODE)." }
+    $output
+}
+
+function Assert-OutputResolution {
+    param([string]$ExpectedText)
+
+    if ($ExpectedText) {
+        Invoke-UI wait-for "EditorImageSizeText" @firstTarget -p Name --value $ExpectedText -t 5000 | Out-Null
+    }
+    else {
+        Invoke-UI wait-for "EditorImageSizeText" @firstTarget -p Name --value " px" --contains -t 10000 | Out-Null
+    }
+    $labels = @((Invoke-UI search "EditorImageSizeText" @firstTarget --json | ConvertFrom-Json).matches |
+        Where-Object { $_.automationId -eq 'EditorImageSizeText' })
+    if ($labels.Count -ne 1 -or $labels[0].name -notmatch '^([1-9]\d*) × ([1-9]\d*) px$') {
+        throw "Expected one visible output-dimension label, found: $($labels.name)"
+    }
+    $expectedName = "Output resolution, $($Matches[1]) by $($Matches[2]) pixels"
+    Invoke-UI wait-for "EditorOutputScaleButton" @firstTarget -p Name --value $expectedName -t 5000 | Out-Null
+    $labels[0].name
 }
 
 function Get-EditorWindows {
@@ -77,6 +108,40 @@ if (-not $first) {
     exit 1
 }
 $firstTarget = @("-w", "$($first.hwnd)")
+
+Test-UI "Output-resolution name matches visible dimensions with flyout closed" {
+    Invoke-UI wait-for "EditorOutputScaleSlider" -a $AppPid --gone -t 3000
+    $script:initialOutputResolution = Assert-OutputResolution
+}
+Test-UI "Scale updates resolution and dismissing flyout restores button focus" {
+    # Derive expectations from the live label, not a fixed monitor resolution or DPI.
+    $dimensions = $initialOutputResolution -split ' × | px'
+    $halfWidth = [Math]::Max(1, [Math]::Round([int]$dimensions[0] / 2.0))
+    $halfHeight = [Math]::Max(1, [Math]::Round([int]$dimensions[1] / 2.0))
+    $script:scaledOutputResolution = "$halfWidth × $halfHeight px"
+    Invoke-UI focus "EditorOutputScaleButton" @firstTarget
+    Invoke-UI send-keys "enter" @firstTarget --via send-input
+    Invoke-UI wait-for "EditorOutputScaleSlider" -a $AppPid -t 3000
+    Invoke-UI set-value "EditorOutputScaleSlider" 50 -a $AppPid
+    Invoke-UI focus "EditorOutputScaleSlider" -a $AppPid
+    Invoke-UI send-keys "escape" -a $AppPid --via send-input
+    Invoke-UI wait-for "EditorOutputScaleSlider" -a $AppPid --gone -t 3000
+    Invoke-UI wait-for "EditorOutputScaleButton" @firstTarget -p HasKeyboardFocus --value True -t 3000
+    Assert-OutputResolution $scaledOutputResolution | Out-Null
+}
+Test-UI "Padding updates the output-resolution name" {
+    # Padding adds 64 source pixels to each dimension, hence 32 output pixels at 50%.
+    $dimensions = $scaledOutputResolution -split ' × | px'
+    $script:paddedOutputResolution = "$([int]$dimensions[0] + 32) × $([int]$dimensions[1] + 32) px"
+    Invoke-UI invoke "EditorBackgroundExpander" @firstTarget
+    Invoke-UI wait-for "EditorPaddingSlider" @firstTarget -t 3000
+    Invoke-UI set-value "EditorPaddingSlider" 32 @firstTarget
+    Assert-OutputResolution $paddedOutputResolution | Out-Null
+}
+Test-UI "Removing padding restores scaled output-resolution metadata" {
+    Invoke-UI set-value "EditorPaddingSlider" 0 @firstTarget
+    Assert-OutputResolution $scaledOutputResolution | Out-Null
+}
 
 Test-UI "Select text tool in first editor" {
     winapp ui invoke "EditorToolText" @firstTarget
@@ -130,7 +195,15 @@ foreach ($editor in @(Get-EditorWindows)) {
     $target = @("-w", "$($editor.hwnd)")
     winapp ui invoke "EditorResetButton" @target 2>$null | Out-Null
     Start-Sleep -Milliseconds 500
+    if ($editor.hwnd -eq $first.hwnd) {
+        Test-UI "Reset preserves output-resolution metadata" {
+            Assert-OutputResolution $scaledOutputResolution | Out-Null
+        }
+    }
     winapp ui invoke "EditorCloseButton" @target 2>$null | Out-Null
+}
+Test-UI "Screenshot editors close" {
+    winapp ui wait-for "ScreenshotEditorTitleBar" -a $AppPid --gone -t 5000
 }
 
 Write-Host "`nPassed: $pass | Failed: $fail"

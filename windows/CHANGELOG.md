@@ -5,6 +5,11 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- **Screenshot editor output resolution is accessible to screen readers.** The output-resolution
+  button now includes the current export dimensions in its accessible name, without opening the
+  scale flyout, and stays in sync when the image, crop, padding, frame, or output scale changes.
+
 ## [v1.8.1-windows] - 2026-10-03
 
 ### Changed
