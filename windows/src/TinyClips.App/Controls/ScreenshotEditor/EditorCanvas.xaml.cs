@@ -152,8 +152,7 @@ public sealed partial class EditorCanvas : UserControl
         _controller.ActiveAnnotationDiscarded += OnControllerActiveAnnotationDiscarded;
         _controller.BackgroundChanged += OnControllerBackgroundChanged;
 
-        // Sync the hint text to the controller's initial tool (Crop) — mirrors the original
-        // window's ctor calling SelectTool(EditTool.Crop) right after wiring everything up.
+        // Sync the hint text to the controller's initial tool (Select).
         OnControllerToolChanged(this, _controller.Tool);
     }
 
