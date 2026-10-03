@@ -17,9 +17,18 @@ namespace TinyClips.Core.Studio.Preview;
 /// </remarks>
 public interface IStudioPreview : IAsyncDisposable
 {
-    /// <summary>The start time of the frame being shown.</summary>
+    /// <summary>
+    /// The start time of the frame being shown. After <see cref="Seek"/> returns it is the start of
+    /// the frame that was asked for until that frame is shown, and never again a frame from before
+    /// the call. A caller that seeks and then plays therefore cannot read a stale position.
+    /// </summary>
     double Position { get; }
 
+    /// <summary>
+    /// Whether playback was asked for. It changes inside <see cref="Play"/> and <see cref="Pause"/>,
+    /// before they return, and becomes false when playback stops by itself. A caller can therefore
+    /// tell a stop it did not ask for from a late notice about its own pause.
+    /// </summary>
     bool IsPlaying { get; }
 
     /// <summary>

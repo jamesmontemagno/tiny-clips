@@ -1,0 +1,1022 @@
+using System.Diagnostics;
+using TinyClips.Core.Models;
+using TinyClips.Core.Services;
+using TinyClips.Core.Studio.Preview;
+
+namespace TinyClips.Core.Studio.Editing;
+
+/// <summary>
+/// Everything one Studio editor window does that is not user interface: opening the project,
+/// editing it, the transport, autosave, export, and what closing means.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A session belongs to one thread, the one that created it, which is the UI thread in the app.
+/// Every member is called there and every event is raised there. The preview and the exporter
+/// answer on other threads, and so do timers, so the session comes back through the <c>post</c>
+/// delegate it was given.
+/// </para>
+/// <para>
+/// The preview always plays the whole recording, so <see cref="Playhead"/> is in source time. The
+/// trim is applied here, by deciding where playback starts and where it stops.
+/// </para>
+/// </remarks>
+public sealed class StudioEditorSession
+{
+    /// <summary>Shown when the project is there but its screen recording is not.</summary>
+    public const string MissingRecordingMessage =
+        "The original recording for this project is no longer on this PC, so it cannot be previewed or exported here.";
+
+    /// <summary>How long after the last edit the project is saved.</summary>
+    public static readonly TimeSpan AutosaveDelay = TimeSpan.FromMilliseconds(600);
+
+    private const int DeleteAttempts = 5;
+    private static readonly TimeSpan DeleteRetryDelay = TimeSpan.FromMilliseconds(120);
+
+    private readonly IStudioProjectStore _store;
+    private readonly IStudioPreviewFactory _previewFactory;
+    private readonly IStudioExportService _exporter;
+    private readonly ICaptureSettings _settings;
+    private readonly Action<Action> _post;
+    private readonly TimeProvider _timeProvider;
+    private readonly CancellationTokenSource _lifetime = new();
+
+    private StudioEvents _events = new();
+    private StudioProjectPaths? _paths;
+    private IStudioPreview? _preview;
+    private EventHandler? _positionHandler;
+    private EventHandler? _isPlayingHandler;
+    private EventHandler<StudioPreviewFailedEventArgs>? _failedHandler;
+    private ITimer? _saveTimer;
+    private int _saveGeneration;
+    private CancellationTokenSource? _exportCancellation;
+    private Task _exportTask = Task.CompletedTask;
+    private int _exportGeneration;
+    private Task? _loadTask;
+    private Task? _closeTask;
+    private bool _hasUnsavedEdits;
+    private bool _isClosed;
+
+    // Read on the threads the preview raises its events on.
+    private int _playGeneration;
+    private int _isPositionPosted;
+
+    /// <param name="projectId">The project to edit.</param>
+    /// <param name="store">Where the project is kept.</param>
+    /// <param name="previewFactory">Opens the live preview.</param>
+    /// <param name="exporter">Renders the video and the poster image.</param>
+    /// <param name="settings">Where a look saved as the default goes.</param>
+    /// <param name="post">Runs an action on the session's thread, later. It may be called from any thread.</param>
+    /// <param name="timeProvider">The clock behind the autosave delay. Tests pass one they control.</param>
+    public StudioEditorSession(
+        string projectId,
+        IStudioProjectStore store,
+        IStudioPreviewFactory previewFactory,
+        IStudioExportService exporter,
+        ICaptureSettings settings,
+        Action<Action> post,
+        TimeProvider? timeProvider = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(projectId);
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(previewFactory);
+        ArgumentNullException.ThrowIfNull(exporter);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(post);
+
+        ProjectId = projectId;
+        _store = store;
+        _previewFactory = previewFactory;
+        _exporter = exporter;
+        _settings = settings;
+        _post = post;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    // Events
+
+    /// <summary>Raised after anything a window shows has changed. The arguments say which part.</summary>
+    public event EventHandler<StudioEditorChangedEventArgs>? Changed;
+
+    /// <summary>Raised once an export has finished and its link is recorded in the project.</summary>
+    public event EventHandler<StudioExportedEventArgs>? Exported;
+
+    /// <summary>Raised with a sentence for the user when saving, exporting or deleting failed.</summary>
+    public event EventHandler<StudioEditorErrorEventArgs>? ErrorReported;
+
+    // State
+
+    public string ProjectId { get; }
+
+    public StudioEditorLoadState State { get; private set; } = StudioEditorLoadState.Loading;
+
+    /// <summary>Why the project cannot be shown. Empty unless <see cref="State"/> is Unavailable.</summary>
+    public string UnavailableMessage { get; private set; } = string.Empty;
+
+    /// <summary>The editor state. Null until the project has been read.</summary>
+    public StudioEditorModel? Model { get; private set; }
+
+    public StudioProject? Project => Model?.Project;
+
+    /// <summary>The live preview, for the view that shows it. Null until the session is ready.</summary>
+    public IStudioPreview? Preview => _preview;
+
+    /// <summary>
+    /// Where the editor is in the recording, in source time. It moves at once when the user seeks,
+    /// steps or scrubs, and follows the preview only while that is playing.
+    /// </summary>
+    public double Playhead { get; private set; }
+
+    public bool IsPlaying { get; private set; }
+
+    public bool IsExporting { get; private set; }
+
+    /// <summary>How far the running export is, from 0 to 1.</summary>
+    public double ExportProgress { get; private set; }
+
+    public bool IsReady => State == StudioEditorLoadState.Ready;
+
+    /// <summary>Whether edits, the transport and export are accepted: ready, not exporting, not closed.</summary>
+    public bool IsEditable => IsReady && !IsExporting && !_isClosed;
+
+    public bool CanUndo => IsEditable && Model is { CanUndo: true };
+
+    public bool CanRedo => IsEditable && Model is { CanRedo: true };
+
+    public bool CanExport => IsEditable && Model is { OutputDuration: > 0 };
+
+    public bool HasCamera => Model?.HasCamera ?? false;
+
+    public bool HasNeverExported => Model?.HasNeverExported ?? false;
+
+    /// <summary>True from an edit until it has been written to the project on disk.</summary>
+    public bool HasUnsavedEdits => _hasUnsavedEdits;
+
+    /// <summary>True once <see cref="CloseAsync"/> has been called.</summary>
+    public bool IsClosed => _isClosed;
+
+    // Text
+
+    /// <summary>The project name, or "Untitled recording".</summary>
+    public string ClipName => StudioEditorText.GetClipName(Project?.Name);
+
+    /// <summary>The playhead and the length of the video, in output time: <c>0:02.5 / 0:10.0</c>.</summary>
+    public string TimeText => Model is { } model
+        ? StudioEditorText.GetTimeText(model.GetOutputTime(Playhead), model.OutputDuration)
+        : StudioEditorText.GetTimeText(0, 0);
+
+    /// <summary>The pixel size the project exports at.</summary>
+    public StudioSize ExportSize => Project is { } project
+        ? StudioExportLimits.GetExportSize(project)
+        : new StudioSize(1920, 1080);
+
+    public string ExportSizeText => StudioEditorText.GetExportSizeText(ExportSize);
+
+    /// <summary>The camera bubble on a canvas of the given size, while the bubble layout is showing.</summary>
+    public StudioFrameRect? GetBubbleRect(double canvasWidth, double canvasHeight) =>
+        Model is { EffectiveLayout: StudioLayout.Bubble } model ? model.GetBubbleRect(canvasWidth, canvasHeight) : null;
+
+    // Loading
+
+    /// <summary>
+    /// Opens the project and its preview. The returned task finishes when the session is ready or
+    /// unavailable. It never fails. Calling it again returns the same task.
+    /// </summary>
+    public Task LoadAsync() => _loadTask ??= LoadCoreAsync();
+
+    private async Task LoadCoreAsync()
+    {
+        if (_isClosed)
+        {
+            return;
+        }
+
+        StudioEditorModel model;
+        StudioProjectPaths paths;
+        try
+        {
+            var opened = _store.MarkOpened(ProjectId);
+            paths = _store.GetPaths(opened);
+            model = new StudioEditorModel(opened);
+        }
+        catch (Exception ex)
+        {
+            SetUnavailable(ex.Message);
+            return;
+        }
+
+        _paths = paths;
+        Model = model;
+
+        if (!File.Exists(paths.ScreenPath))
+        {
+            SetUnavailable(MissingRecordingMessage);
+            return;
+        }
+
+        _events = LoadEvents();
+
+        IStudioPreview preview;
+        try
+        {
+            preview = await _previewFactory.OpenAsync(model.Project, _events, paths, _lifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await PostAsync(() =>
+            {
+                if (!_isClosed)
+                {
+                    SetUnavailable(ex.Message);
+                }
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        await PostAsync(() => AttachPreview(preview, model)).ConfigureAwait(false);
+    }
+
+    /// <summary>Clicks and cursor samples are optional: a project without readable events has none.</summary>
+    private StudioEvents LoadEvents()
+    {
+        try
+        {
+            return _store.LoadEvents(ProjectId);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio events could not be read for {ProjectId}: {ex.Message}");
+            return new StudioEvents();
+        }
+    }
+
+    private void AttachPreview(IStudioPreview preview, StudioEditorModel model)
+    {
+        if (_isClosed)
+        {
+            _ = DisposeQuietlyAsync(preview);
+            return;
+        }
+
+        _preview = preview;
+        _positionHandler = (_, _) => OnPreviewPositionRaised(preview);
+        _isPlayingHandler = (_, _) => OnPreviewIsPlayingRaised(preview);
+        _failedHandler = (_, e) => OnPreviewFailedRaised(preview, e.Message);
+        preview.PositionChanged += _positionHandler;
+        preview.IsPlayingChanged += _isPlayingHandler;
+        preview.Failed += _failedHandler;
+
+        // The contract has no separate mute call: muting is part of the project the preview draws.
+        preview.UpdateProject(model.Project);
+        State = StudioEditorLoadState.Ready;
+        Seek(model.TrimStart);
+        RaiseChanged(StudioEditorChanges.All);
+    }
+
+    private void SetUnavailable(string? message)
+    {
+        State = StudioEditorLoadState.Unavailable;
+        UnavailableMessage = string.IsNullOrWhiteSpace(message) ? "The project could not be opened." : message;
+        IsPlaying = false;
+        RaiseChanged(StudioEditorChanges.All);
+    }
+
+    // Edits
+
+    /// <summary>Starts a gesture such as a drag. Everything until <see cref="EndGesture"/> is one undo step.</summary>
+    public void BeginGesture()
+    {
+        if (IsEditable)
+        {
+            Model?.BeginEditingGroup();
+        }
+    }
+
+    public void EndGesture()
+    {
+        if (Model is not { IsGroupingEdits: true } model)
+        {
+            return;
+        }
+
+        var couldUndo = model.CanUndo;
+        var couldRedo = model.CanRedo;
+        model.CommitEditingGroup();
+        if (model.CanUndo != couldUndo || model.CanRedo != couldRedo)
+        {
+            RaiseChanged(StudioEditorChanges.Project);
+        }
+    }
+
+    public void Undo() => Edit(static model => model.Undo());
+
+    public void Redo() => Edit(static model => model.Redo());
+
+    public void SetLayout(StudioLayout layout) => Edit(model => model.SetLayout(layout));
+
+    public void SetCanvasAspect(StudioCanvasAspect aspect) => Edit(model => model.SetCanvasAspect(aspect));
+
+    public void SetCanvasPadding(double value) => Edit(model => model.SetCanvasPadding(value));
+
+    /// <summary>
+    /// Fills the canvas with a solid or gradient preset. The preset's id is stored next to the
+    /// colors, which are <c>#RRGGBB</c>. A solid uses <paramref name="primary"/> only. Other
+    /// styles are ignored.
+    /// </summary>
+    public void SetBackgroundPreset(StudioBackgroundStyle style, string presetId, string primary, string? secondary = null)
+    {
+        switch (style)
+        {
+            case StudioBackgroundStyle.Solid:
+                Edit(model => model.SetBackground(StudioBackgroundStyle.Solid, presetId, primary));
+                break;
+            case StudioBackgroundStyle.Gradient:
+                Edit(model => model.SetBackground(StudioBackgroundStyle.Gradient, presetId, primary, secondary));
+                break;
+        }
+    }
+
+    /// <summary>
+    /// No background: the canvas is black, as in a recording made without Studio. The colors stay
+    /// in the project.
+    /// </summary>
+    public void RemoveBackground() => Edit(static model =>
+    {
+        var current = model.Project.Canvas.Background;
+        model.SetBackground(StudioBackgroundStyle.None, null, current.Primary, current.Secondary);
+    });
+
+    public void SetScreenCornerRadius(double value) => Edit(model => model.SetScreenCornerRadius(value));
+
+    public void SetScreenShadow(double value) => Edit(model => model.SetScreenShadow(value));
+
+    public void SetCameraShape(StudioCameraShape shape) => Edit(model => model.SetCameraShape(shape));
+
+    public void SetCameraCornerRadius(double value) => Edit(model => model.SetCameraCornerRadius(value));
+
+    public void SetCameraBubbleSize(double value) => Edit(model => model.SetCameraBubbleSize(value));
+
+    /// <summary>Snaps the bubble to a corner, clearing its offsets.</summary>
+    public void SetCameraAnchor(StudioAnchor anchor) => Edit(model => model.SetCameraAnchor(anchor));
+
+    public void SetCameraBubbleOffsets(double x, double y) => Edit(model => model.SetCameraBubbleOffsets(x, y));
+
+    /// <summary>Moves the bubble so its top-left corner is at a point in canvas pixels.</summary>
+    public void MoveBubbleTopLeft(double x, double y, double canvasWidth, double canvasHeight) =>
+        Edit(model => model.MoveBubbleTopLeft(x, y, canvasWidth, canvasHeight));
+
+    public void SetCameraMirror(bool isMirrored) => Edit(model => model.SetCameraMirror(isMirrored));
+
+    public void SetCameraBorderWidth(double value) => Edit(model => model.SetCameraBorderWidth(value));
+
+    public void SetCameraShadow(double value) => Edit(model => model.SetCameraShadow(value));
+
+    public void SetSideBySide(StudioCameraSide cameraSide, double fraction) =>
+        Edit(model => model.SetSideBySide(cameraSide, fraction));
+
+    public void SetMuted(bool isMuted) => Edit(model => model.SetMuted(isMuted));
+
+    public void SetClickRingsEnabled(bool isEnabled) => Edit(model => model.SetClickRingsEnabled(isEnabled));
+
+    public void SetBrandingEnabled(bool isEnabled) => Edit(model => model.SetBrandingEnabled(isEnabled));
+
+    /// <summary>Moves the trim start, from a handle, and shows the frame the video now starts on.</summary>
+    public void SetTrimStart(double sourceTime)
+    {
+        Edit(model => model.SetTrimStart(sourceTime));
+        if (IsEditable && Model is { } model)
+        {
+            Scrub(model.TrimStart);
+        }
+    }
+
+    /// <summary>Moves the trim end, from a handle, and shows the frame the video now ends on.</summary>
+    public void SetTrimEnd(double sourceTime)
+    {
+        Edit(model => model.SetTrimEnd(sourceTime));
+        if (IsEditable && Model is { } model)
+        {
+            Scrub(model.TrimEnd);
+        }
+    }
+
+    /// <summary>Starts the video at the playhead. The playhead stays where it is.</summary>
+    public void SetTrimStartAtPlayhead()
+    {
+        var time = Playhead;
+        Edit(model => model.SetTrimStart(time));
+    }
+
+    /// <summary>Ends the video at the playhead. The playhead stays where it is.</summary>
+    public void SetTrimEndAtPlayhead()
+    {
+        var time = Playhead;
+        Edit(model => model.SetTrimEnd(time));
+    }
+
+    /// <summary>Makes the project's canvas, screen and camera styling the look new recordings start with.</summary>
+    public void SaveDefaultLook()
+    {
+        if (Model is { } model)
+        {
+            _settings.StudioDefaultLook = model.CurrentLook;
+        }
+    }
+
+    private void Edit(Action<StudioEditorModel> change)
+    {
+        if (!IsEditable || Model is not { } model)
+        {
+            return;
+        }
+
+        var before = model.EditableState;
+        change(model);
+        if (model.EditableState.ContentEquals(before))
+        {
+            return;
+        }
+
+        _hasUnsavedEdits = true;
+        ScheduleSave();
+        _preview?.UpdateProject(model.Project);
+        if (IsPlaying && model.IsAtPlaybackEnd(Playhead))
+        {
+            PausePreview();
+        }
+
+        RaiseChanged(StudioEditorChanges.Project | StudioEditorChanges.Playback);
+    }
+
+    // Transport
+
+    /// <summary>
+    /// Pauses when playing. Otherwise plays from the playhead, or from the trim start when the
+    /// playhead is outside the kept range or at its end.
+    /// </summary>
+    public void TogglePlayback()
+    {
+        if (!IsEditable || Model is not { } model || _preview is not { } preview)
+        {
+            return;
+        }
+
+        if (IsPlaying)
+        {
+            Pause();
+            return;
+        }
+
+        var start = model.GetPlaybackStart(Playhead);
+        if (Math.Abs(start - Playhead) > model.FrameDuration / 2)
+        {
+            Seek(start);
+        }
+
+        Interlocked.Increment(ref _playGeneration);
+        preview.Play();
+        IsPlaying = true;
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    public void Pause()
+    {
+        var wasPlaying = IsPlaying;
+        PausePreview();
+        if (wasPlaying)
+        {
+            RaiseChanged(StudioEditorChanges.Playback);
+        }
+    }
+
+    /// <summary>Pauses and moves the playhead by a number of frames. Negative steps go back.</summary>
+    public void StepFrames(int count)
+    {
+        if (!IsEditable || Model is not { } model)
+        {
+            return;
+        }
+
+        PausePreview();
+        Seek(Playhead + count * model.FrameDuration);
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    /// <summary>Pauses and moves the playhead to a source time, for dragging along the timeline.</summary>
+    public void Scrub(double sourceTime)
+    {
+        if (!IsEditable)
+        {
+            return;
+        }
+
+        PausePreview();
+        Seek(sourceTime);
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    private void PausePreview()
+    {
+        _preview?.Pause();
+        IsPlaying = false;
+    }
+
+    private void Seek(double sourceTime)
+    {
+        if (Model is not { } model)
+        {
+            return;
+        }
+
+        var time = model.ClampSourceTime(sourceTime);
+        Playhead = time;
+        _preview?.Seek(time);
+    }
+
+    // Preview events. These three arrive on a worker thread.
+
+    private void OnPreviewPositionRaised(IStudioPreview preview)
+    {
+        // A playing preview raises this for every frame, so only one notice waits at a time.
+        if (Interlocked.Exchange(ref _isPositionPosted, 1) != 0)
+        {
+            return;
+        }
+
+        _post(() =>
+        {
+            Volatile.Write(ref _isPositionPosted, 0);
+            HandlePreviewPosition(preview);
+        });
+    }
+
+    private void OnPreviewIsPlayingRaised(IStudioPreview preview)
+    {
+        var generation = Volatile.Read(ref _playGeneration);
+        _post(() => HandlePreviewIsPlayingChanged(preview, generation));
+    }
+
+    private void OnPreviewFailedRaised(IStudioPreview preview, string message) =>
+        _post(() => HandlePreviewFailed(preview, message));
+
+    private void HandlePreviewPosition(IStudioPreview preview)
+    {
+        if (!ReferenceEquals(preview, _preview) || !IsPlaying || Model is not { } model)
+        {
+            return;
+        }
+
+        var position = preview.Position;
+        if (!double.IsFinite(position))
+        {
+            return;
+        }
+
+        Playhead = model.ClampSourceTime(position);
+        if (model.IsAtPlaybackEnd(position))
+        {
+            PausePreview();
+            Seek(model.TrimEnd);
+        }
+
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    private void HandlePreviewIsPlayingChanged(IStudioPreview preview, int generation)
+    {
+        // A notice raised before the latest Play is about an earlier pause.
+        if (!ReferenceEquals(preview, _preview)
+            || !IsPlaying
+            || generation != Volatile.Read(ref _playGeneration)
+            || preview.IsPlaying
+            || Model is not { } model)
+        {
+            return;
+        }
+
+        // The preview stopped by itself: the end of the recording, or an interruption.
+        IsPlaying = false;
+        var position = preview.Position;
+        if (double.IsFinite(position))
+        {
+            Playhead = model.ClampSourceTime(position);
+
+            // A preview reports the start of the frame it shows, so at the end of the recording it
+            // stops one frame short of the trim end. That is the end of playback all the same, and
+            // the playhead goes to the trim end as it does when playback is stopped there.
+            if (model.IsAtPlaybackEnd(Playhead + model.FrameDuration))
+            {
+                Seek(model.TrimEnd);
+            }
+        }
+
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    private void HandlePreviewFailed(IStudioPreview preview, string message)
+    {
+        if (ReferenceEquals(preview, _preview))
+        {
+            SetUnavailable(message);
+        }
+    }
+
+    // Autosave
+
+    /// <summary>
+    /// Writes the edits into the project on disk now. Only the edited parts are replaced, so export
+    /// links or a name changed elsewhere are kept. Returns false, after reporting the error, when
+    /// the project could not be saved.
+    /// </summary>
+    public bool SaveNow()
+    {
+        CancelScheduledSave();
+        if (!_hasUnsavedEdits || Model is not { } model)
+        {
+            return true;
+        }
+
+        try
+        {
+            var onDisk = _store.Load(ProjectId);
+            var saved = _store.Save(model.EditableState.ApplyTo(onDisk));
+            model.RefreshBookkeeping(saved);
+            _hasUnsavedEdits = false;
+            RaiseChanged(StudioEditorChanges.Project);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ReportError(StudioEditorErrorKind.Save, $"Studio could not save this project: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void ScheduleSave()
+    {
+        CancelScheduledSave();
+        var generation = _saveGeneration;
+        _saveTimer = _timeProvider.CreateTimer(
+            _ => _post(() => OnSaveTimer(generation)),
+            null,
+            AutosaveDelay,
+            Timeout.InfiniteTimeSpan);
+    }
+
+    private void CancelScheduledSave()
+    {
+        _saveGeneration++;
+        _saveTimer?.Dispose();
+        _saveTimer = null;
+    }
+
+    private void OnSaveTimer(int generation)
+    {
+        if (!_isClosed && generation == _saveGeneration)
+        {
+            SaveNow();
+        }
+    }
+
+    // Export
+
+    /// <summary>
+    /// Renders the project to a video. Does nothing unless <see cref="CanExport"/>. The edits are
+    /// saved first, because the export link is written into the saved project.
+    /// </summary>
+    /// <param name="createOutputPath">
+    /// Returns the full path to write, in the folder and with the name the app gives a saved video.
+    /// Called on the session's thread.
+    /// </param>
+    /// <param name="codec">The video codec chosen in settings.</param>
+    /// <returns>How the export ended. The task itself never fails.</returns>
+    public Task<StudioExportOutcome> ExportAsync(Func<string> createOutputPath, VideoCodec codec)
+    {
+        ArgumentNullException.ThrowIfNull(createOutputPath);
+        if (!CanExport || Model is not { } model || _paths is not { } paths)
+        {
+            return Task.FromResult(StudioExportOutcome.NotStarted);
+        }
+
+        Pause();
+        if (!SaveNow())
+        {
+            return Task.FromResult(StudioExportOutcome.NotStarted);
+        }
+
+        var task = ExportCoreAsync(model, paths, createOutputPath, codec);
+        _exportTask = task;
+        return task;
+    }
+
+    /// <summary>Stops the running export. The session goes back to idle without a message.</summary>
+    public void CancelExport() => _exportCancellation?.Cancel();
+
+    private async Task<StudioExportOutcome> ExportCoreAsync(
+        StudioEditorModel model,
+        StudioProjectPaths paths,
+        Func<string> createOutputPath,
+        VideoCodec codec)
+    {
+        var generation = ++_exportGeneration;
+        var cancellation = new CancellationTokenSource();
+        _exportCancellation = cancellation;
+        IsExporting = true;
+        ExportProgress = 0;
+        RaiseChanged(StudioEditorChanges.All);
+
+        var project = model.Project;
+        var rendered = model.EditableState;
+        var events = _events;
+        string? outputPath = null;
+        string? failure = null;
+        var isWritten = false;
+        try
+        {
+            outputPath = createOutputPath();
+            var progress = new ExportProgressRelay(this, generation);
+            await _exporter
+                .ExportAsync(project, events, paths, outputPath, codec, progress, cancellation.Token)
+                .ConfigureAwait(false);
+            isWritten = true;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            failure = ex.Message;
+        }
+
+        if (isWritten)
+        {
+            // The Clips Library thumbnail. The video is what matters, so a failure here is ignored.
+            await WritePosterQuietlyAsync(project, events, paths, cancellation.Token).ConfigureAwait(false);
+        }
+
+        var outcome = StudioExportOutcome.Cancelled;
+        await PostAsync(() =>
+        {
+            outcome = FinishExport(cancellation, isWritten ? outputPath : null, rendered, failure);
+        }).ConfigureAwait(false);
+        return outcome;
+    }
+
+    private StudioExportOutcome FinishExport(
+        CancellationTokenSource cancellation,
+        string? writtenPath,
+        StudioEditableState rendered,
+        string? failure)
+    {
+        if (ReferenceEquals(_exportCancellation, cancellation))
+        {
+            _exportCancellation = null;
+        }
+
+        cancellation.Dispose();
+
+        var isExported = false;
+        if (writtenPath is not null)
+        {
+            try
+            {
+                var saved = _store.RecordExport(ProjectId, writtenPath);
+                Model?.RefreshBookkeeping(saved);
+                Model?.MarkExported(rendered);
+                isExported = true;
+            }
+            catch (Exception ex)
+            {
+                failure = ex.Message;
+            }
+        }
+
+        IsExporting = false;
+        ExportProgress = isExported ? 1 : 0;
+        RaiseChanged(StudioEditorChanges.All);
+
+        if (isExported)
+        {
+            Exported?.Invoke(this, new StudioExportedEventArgs(ProjectId, writtenPath!));
+            return StudioExportOutcome.Exported;
+        }
+
+        if (failure is null)
+        {
+            return StudioExportOutcome.Cancelled;
+        }
+
+        if (!_isClosed)
+        {
+            ReportError(StudioEditorErrorKind.Export, $"Studio export failed: {failure}");
+        }
+
+        return StudioExportOutcome.Failed;
+    }
+
+    private void ApplyExportProgress(int generation, double value)
+    {
+        if (!IsExporting || generation != _exportGeneration || !double.IsFinite(value))
+        {
+            return;
+        }
+
+        ExportProgress = Math.Min(Math.Max(value, 0), 1);
+        RaiseChanged(StudioEditorChanges.Export);
+    }
+
+    private async Task WritePosterQuietlyAsync(
+        StudioProject project,
+        StudioEvents events,
+        StudioProjectPaths paths,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _exporter.WritePosterAsync(project, events, paths, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio poster could not be written for {project.Id}: {ex.Message}");
+        }
+    }
+
+    /// <summary>Brings export progress, reported on the exporter's thread, to the session's thread.</summary>
+    private sealed class ExportProgressRelay(StudioEditorSession session, int generation) : IProgress<double>
+    {
+        private double _latest;
+        private int _isPosted;
+
+        public void Report(double value)
+        {
+            Volatile.Write(ref _latest, value);
+            if (Interlocked.Exchange(ref _isPosted, 1) != 0)
+            {
+                return;
+            }
+
+            session._post(() =>
+            {
+                Volatile.Write(ref _isPosted, 0);
+                session.ApplyExportProgress(generation, Volatile.Read(ref _latest));
+            });
+        }
+    }
+
+    // Closing
+
+    /// <summary>What to ask before the window closes. The window shows the question.</summary>
+    public StudioClosePrompt GetClosePrompt()
+    {
+        if (IsExporting)
+        {
+            return StudioClosePrompt.ExportRunning;
+        }
+
+        return IsReady && HasNeverExported ? StudioClosePrompt.NeverExported : StudioClosePrompt.None;
+    }
+
+    /// <summary>
+    /// Ends the session, when its window is closing for good. A running export is stopped, the
+    /// edits are saved, the preview is disposed, and then the poster image is written. The save has
+    /// happened by the time this returns; the task finishes when the rest has. Calling it again
+    /// returns the same task.
+    /// </summary>
+    /// <param name="deleteProject">
+    /// True to delete the project instead of saving it. The preview is disposed first, and waited
+    /// for, because it holds the media files open.
+    /// </param>
+    public Task CloseAsync(bool deleteProject = false) => _closeTask ??= CloseCoreAsync(deleteProject);
+
+    private async Task CloseCoreAsync(bool deleteProject)
+    {
+        var wasReady = IsReady;
+        _isClosed = true;
+        _lifetime.Cancel();
+        _exportCancellation?.Cancel();
+        var exportTask = _exportTask;
+        var preview = DetachPreview();
+
+        if (deleteProject)
+        {
+            CancelScheduledSave();
+        }
+        else
+        {
+            SaveNow();
+        }
+
+        var project = Model?.Project;
+        var paths = _paths;
+        var events = _events;
+
+        if (preview is not null)
+        {
+            await DisposeQuietlyAsync(preview).ConfigureAwait(false);
+        }
+
+        if (deleteProject)
+        {
+            // An export reads the same files, so it has to have let go of them as well.
+            await WaitQuietlyAsync(exportTask).ConfigureAwait(false);
+            await DeleteProjectAsync().ConfigureAwait(false);
+            return;
+        }
+
+        if (wasReady && project is not null && paths is not null)
+        {
+            await WritePosterQuietlyAsync(project, events, paths, CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private IStudioPreview? DetachPreview()
+    {
+        if (_preview is not { } preview)
+        {
+            return null;
+        }
+
+        _preview = null;
+        preview.PositionChanged -= _positionHandler;
+        preview.IsPlayingChanged -= _isPlayingHandler;
+        preview.Failed -= _failedHandler;
+        preview.Pause();
+        IsPlaying = false;
+        return preview;
+    }
+
+    private async Task DeleteProjectAsync()
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                _store.Delete(ProjectId);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= DeleteAttempts)
+                {
+                    var message = $"The project could not be deleted: {ex.Message}";
+                    _post(() => ReportError(StudioEditorErrorKind.Delete, message));
+                    return;
+                }
+            }
+
+            // A decoder can keep a file open for a moment after it was told to let go.
+            await Task.Delay(DeleteRetryDelay, _timeProvider).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task DisposeQuietlyAsync(IStudioPreview preview)
+    {
+        try
+        {
+            await preview.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio preview could not be disposed: {ex.Message}");
+        }
+    }
+
+    private static async Task WaitQuietlyAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio export ended with an error while closing: {ex.Message}");
+        }
+    }
+
+    // Helpers
+
+    /// <summary>Runs <paramref name="action"/> on the session's thread and finishes when it has run.</summary>
+    private Task PostAsync(Action action)
+    {
+        var completion = new TaskCompletionSource();
+        _post(() =>
+        {
+            try
+            {
+                action();
+                completion.SetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.SetException(ex);
+            }
+        });
+        return completion.Task;
+    }
+
+    private void RaiseChanged(StudioEditorChanges changes) =>
+        Changed?.Invoke(this, new StudioEditorChangedEventArgs(changes));
+
+    private void ReportError(StudioEditorErrorKind kind, string message) =>
+        ErrorReported?.Invoke(this, new StudioEditorErrorEventArgs(kind, message));
+}
