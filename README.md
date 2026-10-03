@@ -78,6 +78,7 @@ TinyClips requires **Screen Recording** permission. On first launch, macOS will 
 | Record GIF | ⌃⌥⌘7 |
 | Picker: Region / Screen / Window | R / S / W |
 | Picker: Cancel | Esc |
+| Screenshot editor: Close | Esc / ⌘W |
 | Stop Recording | ⌘. |
 | Settings | ⌘, |
 

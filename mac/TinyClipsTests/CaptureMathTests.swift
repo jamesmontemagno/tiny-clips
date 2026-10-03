@@ -313,6 +313,78 @@ final class CaptureMathTests: XCTestCase {
         )
     }
 
+    func testScreenshotEditorEscapeTakesOneStepAtATimeBeforeClosing() {
+        func action(annotation: Bool, textField: Bool, crop: Bool) -> ScreenshotEditorEscapeAction {
+            ScreenshotEditorEscapeAction.resolve(
+                isEditingTextAnnotation: annotation,
+                textFieldHasFocus: textField,
+                hasCropSelection: crop
+            )
+        }
+
+        XCTAssertEqual(action(annotation: true, textField: true, crop: true), .cancelTextAnnotation)
+        XCTAssertEqual(action(annotation: true, textField: false, crop: false), .cancelTextAnnotation)
+        XCTAssertEqual(action(annotation: false, textField: true, crop: true), .leaveTextField)
+        XCTAssertEqual(action(annotation: false, textField: true, crop: false), .leaveTextField)
+        XCTAssertEqual(action(annotation: false, textField: false, crop: true), .clearCropSelection)
+        XCTAssertEqual(action(annotation: false, textField: false, crop: false), .close)
+    }
+
+    func testScreenshotEditorEscapeConfirmsEveryCloseWhenEnabled() {
+        func escape(unsaved: Bool, discardsCapture: Bool) -> ScreenshotEditorClosePrompt? {
+            ScreenshotEditorClosePrompt.resolve(
+                trigger: .escapeKey,
+                confirmOnEscape: true,
+                hasUnsavedChanges: unsaved,
+                discardsUnsavedCapture: discardsCapture
+            )
+        }
+
+        XCTAssertEqual(escape(unsaved: false, discardsCapture: false), .closeEditor)
+        XCTAssertEqual(escape(unsaved: true, discardsCapture: false), .discardChanges)
+        XCTAssertEqual(escape(unsaved: false, discardsCapture: true), .discardUnsavedCapture)
+        XCTAssertEqual(escape(unsaved: true, discardsCapture: true), .discardUnsavedCapture)
+        XCTAssertFalse(ScreenshotEditorClosePrompt.closeEditor.isDestructive)
+        XCTAssertTrue(ScreenshotEditorClosePrompt.discardUnsavedCapture.isDestructive)
+    }
+
+    func testScreenshotEditorEscapeClosesWithoutPromptWhenConfirmationIsOff() {
+        for unsaved in [false, true] {
+            for discardsCapture in [false, true] {
+                XCTAssertNil(
+                    ScreenshotEditorClosePrompt.resolve(
+                        trigger: .escapeKey,
+                        confirmOnEscape: false,
+                        hasUnsavedChanges: unsaved,
+                        discardsUnsavedCapture: discardsCapture
+                    )
+                )
+            }
+        }
+    }
+
+    func testScreenshotEditorCloseCommandOnlyPromptsForUnsavedChanges() {
+        for confirmOnEscape in [false, true] {
+            XCTAssertNil(
+                ScreenshotEditorClosePrompt.resolve(
+                    trigger: .closeCommand,
+                    confirmOnEscape: confirmOnEscape,
+                    hasUnsavedChanges: false,
+                    discardsUnsavedCapture: true
+                )
+            )
+            XCTAssertEqual(
+                ScreenshotEditorClosePrompt.resolve(
+                    trigger: .closeCommand,
+                    confirmOnEscape: confirmOnEscape,
+                    hasUnsavedChanges: true,
+                    discardsUnsavedCapture: false
+                ),
+                .discardChanges
+            )
+        }
+    }
+
     func testScreenshotEditorZoomClampsAndStepsThroughPresets() {
         XCTAssertEqual(ScreenshotEditorZoomMath.clamp(0.1), 0.25)
         XCTAssertEqual(ScreenshotEditorZoomMath.clamp(8), 4)
