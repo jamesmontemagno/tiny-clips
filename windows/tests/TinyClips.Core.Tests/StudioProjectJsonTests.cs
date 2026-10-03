@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Tests;
@@ -187,6 +188,114 @@ public sealed class StudioProjectJsonTests
         Assert.Throws<StudioProjectInvalidException>(() => StudioProjectJson.ReadProject(json));
     }
 
+    [Theory]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "width": 0, "height": 1, "duration": 1 } } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "width": 1.5, "height": 1, "duration": 1 } } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": -0.1 } } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 }, "camera": { "width": 0, "height": 1, "duration": 1 } } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 }, "camera": { "width": 1, "height": 1, "duration": -1 } } }""")]
+    public void ReadProject_InvalidRequiredDimensionsAndDurationsThrowInvalidException(string json)
+    {
+        Assert.Throws<StudioProjectInvalidException>(() => StudioProjectJson.ReadProject(json));
+    }
+
+    [Theory]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "file": "..\\screen.mp4", "width": 1, "height": 1, "duration": 1 } } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "file": "C:\\videos\\screen.mp4", "width": 1, "height": 1, "duration": 1 } } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 }, "camera": { "file": "camera\\track.mp4", "width": 1, "height": 1, "duration": 1 } } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 }, "events": "events\\bad.json" } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "file": "..", "width": 1, "height": 1, "duration": 1 } } }""")]
+    [InlineData("""{ "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 }, "events": "." } }""")]
+    public void ReadProject_SourceFileNamesWithDirectoriesThrowInvalidException(string json)
+    {
+        Assert.Throws<StudioProjectInvalidException>(() => StudioProjectJson.ReadProject(json));
+    }
+
+    [Fact]
+    public void ReadProject_AllowsExternalScreenPathAndTreatsBackgroundImageWithDirectoryAsMissing()
+    {
+        var project = StudioProjectJson.ReadProject("""
+            {
+              "id": "p",
+              "sources": { "screen": { "file": "C:\\videos\\screen.mp4", "width": 1, "height": 1, "duration": 1, "external": true } },
+              "canvas": { "background": { "style": "image", "image": "folder\\background.png" } }
+            }
+            """);
+
+        Assert.True(project.Sources.Screen.External);
+        Assert.Equal("C:\\videos\\screen.mp4", project.Sources.Screen.File);
+        Assert.Null(project.Canvas.Background.Image);
+    }
+
+    [Fact]
+    public void ReadProject_DropsNullArrayElements()
+    {
+        var project = StudioProjectJson.ReadProject("""
+            {
+              "id": "p",
+              "sources": { "screen": { "width": 1920, "height": 1080, "duration": 5 } },
+              "scenes": [ null, { "layout": "screen" } ],
+              "zooms": [ null, { "start": 1 } ],
+              "exports": [ null, { "path": "C:\\out.mp4" } ],
+              "edits": {
+                "cuts": [ null, { "start": 1, "end": 2 } ],
+                "speed": [ null, { "start": 1, "end": 2, "rate": 2 } ]
+              }
+            }
+            """);
+
+        Assert.Single(project.Scenes);
+        Assert.Single(project.Zooms);
+        Assert.Single(project.Exports);
+        Assert.Single(project.Edits.Cuts);
+        Assert.Single(project.Edits.Speed);
+        Assert.Equal(1, project.Edits.Cuts[0].Start);
+        Assert.Equal(1, project.Zooms[0].Start);
+    }
+
+    [Fact]
+    public void ReadEvents_AppliesDefaultsAndDropsNullArrayElements()
+    {
+        var events = StudioProjectJson.ReadEvents("""
+            {
+              "schemaVersion": null,
+              "capture": { "width": null, "height": null, "scale": null, "kind": null },
+              "clicks": [ null, { "t": 1, "x": 0.2, "y": 0.3, "button": null } ],
+              "cursor": [ null, { "t": 2, "x": 0.4, "y": 0.5 } ],
+              "cameraCorners": [ null, { "t": 3, "corner": null } ],
+              "markers": [ null, { "name": "m" } ]
+            }
+            """);
+
+        Assert.Equal(1, events.SchemaVersion);
+        Assert.Equal(0, events.Capture.Width);
+        Assert.Equal(0, events.Capture.Height);
+        Assert.Equal(1, events.Capture.Scale);
+        Assert.Equal(StudioCaptureKind.Display, events.Capture.Kind);
+        Assert.Single(events.Clicks);
+        Assert.Single(events.Cursor);
+        Assert.Single(events.CameraCorners);
+        Assert.Single(events.Markers);
+        Assert.Equal(StudioMouseButton.Left, events.Clicks[0].Button);
+        Assert.Equal(StudioAnchor.BottomRight, events.CameraCorners[0].Corner);
+    }
+
+    [Fact]
+    public void ReadProject_NullArrayElementsDoNotBreakTimeMap()
+    {
+        var project = StudioProjectJson.ReadProject("""
+            {
+              "id": "p",
+              "sources": { "screen": { "width": 1920, "height": 1080, "duration": 5 } },
+              "edits": { "cuts": [ null ] }
+            }
+            """);
+
+        var map = StudioTimeMap.FromProject(project);
+
+        Assert.Equal(5, map.OutputDuration);
+    }
+
     [Fact]
     public void ReadProject_RefusesNewerSchemaVersion()
     {
@@ -235,5 +344,194 @@ public sealed class StudioProjectJsonTests
         Assert.Equal(99, roundTripped.Canvas.Padding);
         Assert.Equal(-3, roundTripped.Screen.CornerRadius);
         Assert.Equal(42, roundTripped.Scenes[0].Bubble.Size);
+    }
+
+    [Fact]
+    public void ReadProjectAndEvents_NullAndMissingDefaultsStayInSyncForEveryDocumentedProperty()
+    {
+        VerifyNullAndMissingDefaults(
+            JsonNode.Parse(StudioProjectJson.WriteProject(FullyPopulatedProject()))!,
+            node => StudioProjectJson.WriteProject(StudioProjectJson.ReadProject(node.ToJsonString())),
+            RequiredProjectPaths(),
+            ExplicitNullProjectPaths());
+
+        VerifyNullAndMissingDefaults(
+            JsonNode.Parse(StudioProjectJson.WriteEvents(FullyPopulatedEvents()))!,
+            node => StudioProjectJson.WriteEvents(StudioProjectJson.ReadEvents(node.ToJsonString())),
+            [],
+            []);
+    }
+
+    private static void VerifyNullAndMissingDefaults(
+        JsonNode root,
+        Func<JsonNode, string> readAndWrite,
+        HashSet<string> requiredPaths,
+        HashSet<string> explicitNullPaths)
+    {
+        foreach (var fullPath in EnumeratePropertyPaths(root))
+        {
+            var path = PathKey(fullPath);
+            var nullDocument = root.DeepClone();
+            SetProperty(nullDocument, fullPath, null);
+            var missingDocument = root.DeepClone();
+            RemoveProperty(missingDocument, fullPath);
+
+            if (requiredPaths.Contains(path))
+            {
+                Assert.ThrowsAny<Exception>(() => readAndWrite(nullDocument));
+                Assert.ThrowsAny<Exception>(() => readAndWrite(missingDocument));
+                continue;
+            }
+
+            var nullJson = readAndWrite(nullDocument);
+            var missingJson = readAndWrite(missingDocument);
+
+            if (explicitNullPaths.Contains(path))
+            {
+                Assert.NotEqual(nullJson, missingJson);
+                Assert.Contains($"\"{fullPath[^1]}\": null", nullJson, StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.True(string.Equals(missingJson, nullJson, StringComparison.Ordinal), path);
+            }
+        }
+    }
+
+    private static StudioProject FullyPopulatedProject() =>
+        new()
+        {
+            Id = "00000000-0000-0000-0000-000000000001",
+            Name = "Project",
+            CreatedAt = new DateTimeOffset(2026, 10, 2, 22, 41, 0, TimeSpan.Zero),
+            ModifiedAt = new DateTimeOffset(2026, 10, 2, 22, 42, 0, TimeSpan.Zero),
+            LastOpenedAt = new DateTimeOffset(2026, 10, 2, 22, 43, 0, TimeSpan.Zero),
+            App = new StudioAppInfo { Platform = "windows", Version = "1.9.0" },
+            KeepSources = true,
+            Sources = new StudioSources
+            {
+                Screen = new StudioScreenSource { File = "screen.mp4", Width = 1920, Height = 1080, Duration = 10, FrameRate = 60 },
+                Camera = new StudioCameraSource { File = "camera.mp4", Width = 1280, Height = 720, Duration = 9, StartOffset = 0.25 },
+                Events = "events.json",
+            },
+            Canvas = new StudioCanvas
+            {
+                Aspect = StudioCanvasAspect.Landscape16X9,
+                Padding = 0.1,
+                Background = new StudioBackground { Style = StudioBackgroundStyle.Gradient, Preset = "ocean", Primary = "#111111", Secondary = "#222222", Image = "background.jpg" },
+            },
+            Screen = new StudioScreenStyle { CornerRadius = 0.1, Shadow = 0.4, Crop = new StudioRect(0.1, 0.1, 0.8, 0.8) },
+            Camera = new StudioCameraStyle { Shape = StudioCameraShape.RoundedRectangle, CornerRadius = 0.2, Mirror = false, BorderWidth = 0.01, BorderColor = "#ABCDEF", Shadow = 0.2, Crop = new StudioRect(0.2, 0.2, 0.6, 0.6), Cutout = StudioCameraCutout.Blur },
+            Scenes = [new StudioScene { Start = 1, Layout = StudioLayout.SideBySide }],
+            Zooms = [new StudioZoom { Start = 1, End = 2, Scale = 1.5, Focus = new StudioZoomFocus { Mode = StudioZoomFocusMode.Cursor, X = 0.2, Y = 0.3 }, EaseIn = 0.1, EaseOut = 0.2, Origin = StudioZoomOrigin.Auto }],
+            Edits = new StudioEdits
+            {
+                TrimStart = 0.25,
+                TrimEnd = 9,
+                Cuts = [new StudioTimeRange { Start = 2, End = 3 }],
+                Speed = [new StudioSpeedRange { Start = 4, End = 5, Rate = 2 }],
+            },
+            Audio = new StudioAudio { Muted = true, SystemVolume = 0.5, MicrophoneVolume = 0.25 },
+            Overlays = new StudioOverlays
+            {
+                Clicks = new StudioClickOverlay { Enabled = false, Color = "#123456", Size = 20, StrokeWidth = 4, Opacity = 0.4, Duration = 0.2 },
+                Branding = true,
+            },
+            Exports = [new StudioExport { Path = "C:\\exports\\clip.mp4", ExportedAt = new DateTimeOffset(2026, 10, 2, 22, 44, 0, TimeSpan.Zero) }],
+        };
+
+    private static StudioEvents FullyPopulatedEvents() =>
+        new()
+        {
+            Capture = new StudioCaptureInfo { Width = 1920, Height = 1080, Scale = 2, Kind = StudioCaptureKind.Region },
+            Clicks = [new StudioClickEvent { T = 1, X = 0.2, Y = 0.3, Button = StudioMouseButton.Right }],
+            Cursor = [new StudioCursorSample { T = 1, X = 0.2, Y = 0.3 }],
+            CameraCorners = [new StudioCameraCornerEvent { T = 1, Corner = StudioAnchor.TopLeft }],
+        };
+
+    private static HashSet<string> RequiredProjectPaths() =>
+        [
+            "id",
+            "sources",
+            "sources.screen",
+            "sources.screen.width",
+            "sources.screen.height",
+            "sources.screen.duration",
+            "sources.camera.width",
+            "sources.camera.height",
+            "sources.camera.duration",
+        ];
+
+    private static HashSet<string> ExplicitNullProjectPaths() =>
+        [
+            "canvas.background.preset",
+            "canvas.background.secondary",
+        ];
+
+    private static IEnumerable<string[]> EnumeratePropertyPaths(JsonNode node)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var property in obj)
+            {
+                var current = new[] { property.Key };
+                yield return current;
+                if (property.Value is not null)
+                {
+                    foreach (var child in EnumeratePropertyPaths(property.Value))
+                    {
+                        yield return [.. current, .. child];
+                    }
+                }
+            }
+        }
+        else if (node is JsonArray array && array.Count > 0 && array[0] is not null)
+        {
+            foreach (var child in EnumeratePropertyPaths(array[0]!))
+            {
+                yield return ["0", .. child];
+            }
+        }
+    }
+
+    private static string PathKey(string[] path) =>
+        string.Join('.', path.Where(segment => !int.TryParse(segment, out _)));
+
+    private static void SetProperty(JsonNode root, string[] path, JsonNode? value)
+    {
+        var parent = GetParent(root, path);
+        parent[path[^1]] = value;
+    }
+
+    private static void RemoveProperty(JsonNode root, string[] path)
+    {
+        var parent = GetParent(root, path);
+        parent.Remove(path[^1]);
+    }
+
+    private static JsonNode? GetProperty(JsonNode root, string[] path)
+    {
+        JsonNode? current = root;
+        foreach (var segment in path)
+        {
+            current = int.TryParse(segment, out var index)
+                ? current?.AsArray()[index]
+                : current?[segment];
+        }
+
+        return current;
+    }
+
+    private static JsonObject GetParent(JsonNode root, string[] segments)
+    {
+        var current = root;
+        for (var i = 0; i < segments.Length - 1; i++)
+        {
+            current = int.TryParse(segments[i], out var index)
+                ? current.AsArray()[index]!
+                : current[segments[i]]!;
+        }
+
+        return current.AsObject();
     }
 }

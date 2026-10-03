@@ -131,10 +131,11 @@ public sealed class StudioFixtureTests
         }
 
         Assert.True(actual is not null, $"{file} case {caseIndex} field screen expected non-null.");
-        CompareRect(file, caseIndex, "screen.rect", expected.GetProperty("rect"), actual.Rect);
-        CompareRect(file, caseIndex, "screen.source", expected.GetProperty("source"), actual.Source);
-        CompareNumber(file, caseIndex, "screen.cornerRadius", expected.GetProperty("cornerRadius").GetDouble(), actual.CornerRadius);
-        CompareShadow(file, caseIndex, "screen.shadow", expected.GetProperty("shadow"), actual.Shadow);
+        var screen = actual.Value;
+        CompareRect(file, caseIndex, "screen.rect", expected.GetProperty("rect"), screen.Rect);
+        CompareRect(file, caseIndex, "screen.source", expected.GetProperty("source"), screen.Source);
+        CompareNumber(file, caseIndex, "screen.cornerRadius", expected.GetProperty("cornerRadius").GetDouble(), screen.CornerRadius);
+        CompareShadow(file, caseIndex, "screen.shadow", expected.GetProperty("shadow"), screen.Shadow);
     }
 
     private static void CompareCamera(string file, int caseIndex, JsonElement expected, StudioResolvedCamera? actual)
@@ -146,18 +147,19 @@ public sealed class StudioFixtureTests
         }
 
         Assert.True(actual is not null, $"{file} case {caseIndex} field camera expected non-null.");
-        CompareRect(file, caseIndex, "camera.rect", expected.GetProperty("rect"), actual.Rect);
-        CompareRect(file, caseIndex, "camera.source", expected.GetProperty("source"), actual.Source);
-        CompareString(file, caseIndex, "camera.shape", expected.GetProperty("shape").GetString(), ShapeString(actual.Shape));
-        CompareNumber(file, caseIndex, "camera.cornerRadius", expected.GetProperty("cornerRadius").GetDouble(), actual.CornerRadius);
-        CompareBool(file, caseIndex, "camera.mirror", expected.GetProperty("mirror").GetBoolean(), actual.Mirror);
-        CompareNumber(file, caseIndex, "camera.borderWidth", expected.GetProperty("borderWidth").GetDouble(), actual.BorderWidth);
-        CompareShadow(file, caseIndex, "camera.shadow", expected.GetProperty("shadow"), actual.Shadow);
-        CompareNumber(file, caseIndex, "camera.sourceTime", expected.GetProperty("sourceTime").GetDouble(), actual.SourceTime);
-        CompareBool(file, caseIndex, "camera.visible", expected.GetProperty("visible").GetBoolean(), actual.Visible);
+        var camera = actual.Value;
+        CompareRect(file, caseIndex, "camera.rect", expected.GetProperty("rect"), camera.Rect);
+        CompareRect(file, caseIndex, "camera.source", expected.GetProperty("source"), camera.Source);
+        CompareString(file, caseIndex, "camera.shape", expected.GetProperty("shape").GetString(), ShapeString(camera.Shape));
+        CompareNumber(file, caseIndex, "camera.cornerRadius", expected.GetProperty("cornerRadius").GetDouble(), camera.CornerRadius);
+        CompareBool(file, caseIndex, "camera.mirror", expected.GetProperty("mirror").GetBoolean(), camera.Mirror);
+        CompareNumber(file, caseIndex, "camera.borderWidth", expected.GetProperty("borderWidth").GetDouble(), camera.BorderWidth);
+        CompareShadow(file, caseIndex, "camera.shadow", expected.GetProperty("shadow"), camera.Shadow);
+        CompareNumber(file, caseIndex, "camera.sourceTime", expected.GetProperty("sourceTime").GetDouble(), camera.SourceTime);
+        CompareBool(file, caseIndex, "camera.visible", expected.GetProperty("visible").GetBoolean(), camera.Visible);
     }
 
-    private static void CompareRect(string file, int caseIndex, string field, JsonElement expected, StudioRect actual)
+    private static void CompareRect(string file, int caseIndex, string field, JsonElement expected, StudioFrameRect actual)
     {
         CompareNumber(file, caseIndex, $"{field}.x", expected.GetProperty("x").GetDouble(), actual.X);
         CompareNumber(file, caseIndex, $"{field}.y", expected.GetProperty("y").GetDouble(), actual.Y);

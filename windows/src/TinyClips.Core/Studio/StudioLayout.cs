@@ -2,21 +2,23 @@ namespace TinyClips.Core.Studio;
 
 public readonly record struct StudioSize(double Width, double Height);
 
-public sealed record StudioResolvedFrame(
+public readonly record struct StudioFrameRect(double X, double Y, double Width, double Height);
+
+public readonly record struct StudioResolvedFrame(
     int SceneIndex,
     StudioLayout Layout,
     StudioResolvedScreen? Screen,
     StudioResolvedCamera? Camera);
 
-public sealed record StudioResolvedScreen(
-    StudioRect Rect,
-    StudioRect Source,
+public readonly record struct StudioResolvedScreen(
+    StudioFrameRect Rect,
+    StudioFrameRect Source,
     double CornerRadius,
     StudioResolvedShadow Shadow);
 
-public sealed record StudioResolvedCamera(
-    StudioRect Rect,
-    StudioRect Source,
+public readonly record struct StudioResolvedCamera(
+    StudioFrameRect Rect,
+    StudioFrameRect Source,
     StudioCameraShape Shape,
     double CornerRadius,
     bool Mirror,
@@ -25,7 +27,7 @@ public sealed record StudioResolvedCamera(
     double SourceTime,
     bool Visible);
 
-public sealed record StudioResolvedShadow(double Blur, double OffsetY, double Opacity);
+public readonly record struct StudioResolvedShadow(double Blur, double OffsetY, double Opacity);
 
 public sealed record StudioTimeSegment(double Start, double End);
 
@@ -98,25 +100,53 @@ public static class StudioCanvasMath
         };
 }
 
-public static class StudioLayoutResolver
+public sealed class StudioLayoutPlan
 {
-    public static StudioResolvedFrame Resolve(StudioProject project, double time, double canvasWidth, double canvasHeight)
+    private readonly StudioProject _project;
+    private readonly StudioScene[] _scenes;
+    private readonly StudioFrameRect _screenSourceRect;
+    private readonly StudioRect? _cameraCrop;
+    private readonly double _screenAspect;
+    private readonly double _cameraAspect;
+    private readonly bool _hasCamera;
+
+    private StudioLayoutPlan(StudioProject project, StudioScene[] scenes)
+    {
+        _project = project;
+        _scenes = scenes;
+        var screenCrop = StudioCanvasMath.ValidCropOrNull(project.Screen.Crop);
+        _screenSourceRect = ToFrameRect(screenCrop ?? new StudioRect(0, 0, 1, 1));
+        _screenAspect = (project.Sources.Screen.Width * (screenCrop?.Width ?? 1)) / (project.Sources.Screen.Height * (screenCrop?.Height ?? 1));
+        _hasCamera = project.Sources.Camera is not null;
+        _cameraCrop = StudioCanvasMath.ValidCropOrNull(project.Camera.Crop);
+        if (_hasCamera)
+        {
+            var camera = project.Sources.Camera!;
+            _cameraAspect = (camera.Width * (_cameraCrop?.Width ?? 1)) / (camera.Height * (_cameraCrop?.Height ?? 1));
+        }
+    }
+
+    public IReadOnlyList<StudioScene> Scenes => _scenes;
+
+    public static StudioLayoutPlan Create(StudioProject project)
     {
         ArgumentNullException.ThrowIfNull(project);
+        return new StudioLayoutPlan(project, NormalizeScenes(project.Scenes));
+    }
 
-        var scenes = NormalizeScenes(project.Scenes);
-        var sceneIndex = ActiveSceneIndex(scenes, time);
-        var scene = scenes[sceneIndex];
-        var layout = project.Sources.Camera is null ? StudioLayout.Screen : scene.Layout;
+    public StudioResolvedFrame Resolve(double time, double canvasWidth, double canvasHeight)
+    {
+        var sceneIndex = ActiveSceneIndex(_scenes, time);
+        var scene = _scenes[sceneIndex];
+        var layout = !_hasCamera ? StudioLayout.Screen : scene.Layout;
 
         var shortSide = Math.Min(canvasWidth, canvasHeight);
-        var padding = Clamp(project.Canvas.Padding, 0, 0.4) * shortSide;
-        var content = new StudioRect(padding, padding, canvasWidth - (2 * padding), canvasHeight - (2 * padding));
-        var screenAspect = ScreenAspect(project);
-        var screenRadiusBase = Clamp(project.Screen.CornerRadius, 0, 0.2) * shortSide;
+        var padding = Clamp(_project.Canvas.Padding, 0, 0.4) * shortSide;
+        var content = new StudioFrameRect(padding, padding, canvasWidth - (2 * padding), canvasHeight - (2 * padding));
+        var screenRadiusBase = Clamp(_project.Screen.CornerRadius, 0, 0.2) * shortSide;
 
-        StudioRect? screenRect = null;
-        StudioRect? cameraRect = null;
+        StudioFrameRect? screenRect = null;
+        StudioFrameRect? cameraRect = null;
 
         switch (layout)
         {
@@ -124,28 +154,28 @@ public static class StudioLayoutResolver
                 cameraRect = content;
                 break;
             case StudioLayout.Bubble:
-                screenRect = Fit(screenAspect, content);
-                cameraRect = BubbleRect(project, scene, canvasWidth, canvasHeight, shortSide);
+                screenRect = Fit(_screenAspect, content);
+                cameraRect = BubbleRect(scene, canvasWidth, canvasHeight, shortSide);
                 break;
             case StudioLayout.SideBySide:
-                (screenRect, cameraRect) = SideBySideRects(project, scene, content, canvasWidth, canvasHeight, shortSide, screenAspect);
+                (screenRect, cameraRect) = SideBySideRects(scene, content, canvasWidth, canvasHeight, shortSide);
                 break;
             default:
-                screenRect = Fit(screenAspect, content);
+                screenRect = Fit(_screenAspect, content);
                 break;
         }
 
-        var screen = layout == StudioLayout.Camera
+        StudioResolvedScreen? screen = layout == StudioLayout.Camera
             ? null
             : new StudioResolvedScreen(
-                screenRect!,
-                StudioCanvasMath.ValidCropOrNull(project.Screen.Crop) ?? new StudioRect(0, 0, 1, 1),
-                Math.Min(screenRadiusBase, Math.Min(screenRect!.Width, screenRect.Height) / 2),
-                Shadow(project.Screen.Shadow, shortSide));
+                screenRect!.Value,
+                _screenSourceRect,
+                Math.Min(screenRadiusBase, Math.Min(screenRect.Value.Width, screenRect.Value.Height) / 2),
+                Shadow(_project.Screen.Shadow, shortSide));
 
-        var camera = cameraRect is null || project.Sources.Camera is null
+        StudioResolvedCamera? camera = cameraRect is null || !_hasCamera
             ? null
-            : ResolveCamera(project, scene, layout, cameraRect, screenRadiusBase, shortSide, time);
+            : ResolveCamera(scene, layout, cameraRect.Value, screenRadiusBase, shortSide, time);
 
         return new StudioResolvedFrame(sceneIndex, layout, screen, camera);
     }
@@ -157,13 +187,19 @@ public static class StudioLayoutResolver
             return [new StudioScene { Start = 0 }];
         }
 
-        var sorted = scenes
-            .Select((scene, index) => (Scene: scene with { Start = Math.Max(0, scene.Start) }, Index: index))
-            .OrderBy(item => item.Scene.Start)
-            .ThenBy(item => item.Index)
-            .ToArray();
+        var sorted = new (StudioScene Scene, int Index)[scenes.Count];
+        for (var i = 0; i < scenes.Count; i++)
+        {
+            sorted[i] = (scenes[i] with { Start = Math.Max(0, scenes[i].Start) }, i);
+        }
 
-        var normalized = new List<StudioScene>();
+        Array.Sort(sorted, static (left, right) =>
+        {
+            var start = left.Scene.Start.CompareTo(right.Scene.Start);
+            return start != 0 ? start : left.Index.CompareTo(right.Index);
+        });
+
+        var normalized = new List<StudioScene>(sorted.Length);
         foreach (var item in sorted)
         {
             if (normalized.Count > 0 && normalized[^1].Start == item.Scene.Start)
@@ -199,29 +235,12 @@ public static class StudioLayoutResolver
         return active;
     }
 
-    private static double ScreenAspect(StudioProject project)
-    {
-        var crop = StudioCanvasMath.ValidCropOrNull(project.Screen.Crop);
-        var width = project.Sources.Screen.Width * (crop?.Width ?? 1);
-        var height = project.Sources.Screen.Height * (crop?.Height ?? 1);
-        return width / height;
-    }
-
-    private static double CameraAspect(StudioProject project)
-    {
-        var camera = project.Sources.Camera!;
-        var crop = StudioCanvasMath.ValidCropOrNull(project.Camera.Crop);
-        var width = camera.Width * (crop?.Width ?? 1);
-        var height = camera.Height * (crop?.Height ?? 1);
-        return width / height;
-    }
-
-    private static StudioRect BubbleRect(StudioProject project, StudioScene scene, double canvasWidth, double canvasHeight, double shortSide)
+    private StudioFrameRect BubbleRect(StudioScene scene, double canvasWidth, double canvasHeight, double shortSide)
     {
         var d = Clamp(scene.Bubble.Size, 0.08, 0.6) * shortSide;
         double bw;
         double bh;
-        if (project.Camera.Shape is StudioCameraShape.Circle or StudioCameraShape.Squircle)
+        if (_project.Camera.Shape is StudioCameraShape.Circle or StudioCameraShape.Squircle)
         {
             bw = d;
             bh = d;
@@ -229,7 +248,7 @@ public static class StudioLayoutResolver
         else
         {
             bh = d;
-            bw = d * Clamp(CameraAspect(project), 0.5, 2);
+            bw = d * Clamp(_cameraAspect, 0.5, 2);
         }
 
         if (bw > 0.9 * canvasWidth)
@@ -244,17 +263,15 @@ public static class StudioLayoutResolver
         var y = scene.Bubble.Anchor is StudioAnchor.TopLeft or StudioAnchor.TopRight ? gap : canvasHeight - gap - bh;
         x = Clamp(x + (scene.Bubble.OffsetX * canvasWidth), 0, canvasWidth - bw);
         y = Clamp(y + (scene.Bubble.OffsetY * canvasHeight), 0, canvasHeight - bh);
-        return new StudioRect(x, y, bw, bh);
+        return new StudioFrameRect(x, y, bw, bh);
     }
 
-    private static (StudioRect Screen, StudioRect Camera) SideBySideRects(
-        StudioProject project,
+    private (StudioFrameRect Screen, StudioFrameRect Camera) SideBySideRects(
         StudioScene scene,
-        StudioRect content,
+        StudioFrameRect content,
         double canvasWidth,
         double canvasHeight,
-        double shortSide,
-        double screenAspect)
+        double shortSide)
     {
         var gap = 0.02 * shortSide;
         var fraction = Clamp(scene.Split.CameraFraction, 0.15, 0.6);
@@ -262,30 +279,29 @@ public static class StudioLayoutResolver
         if (canvasWidth >= canvasHeight)
         {
             var cameraWidth = fraction * (content.Width - gap);
-            var screen = Fit(screenAspect, new StudioRect(0, 0, content.Width - gap - cameraWidth, content.Height));
+            var screen = Fit(_screenAspect, new StudioFrameRect(0, 0, content.Width - gap - cameraWidth, content.Height));
             var x0 = content.X + (content.Width - (screen.Width + gap + cameraWidth)) / 2;
             var y0 = content.Y + (content.Height - screen.Height) / 2;
             return scene.Split.CameraSide == StudioCameraSide.Trailing
-                ? (new StudioRect(x0, y0, screen.Width, screen.Height), new StudioRect(x0 + screen.Width + gap, y0, cameraWidth, screen.Height))
-                : (new StudioRect(x0 + cameraWidth + gap, y0, screen.Width, screen.Height), new StudioRect(x0, y0, cameraWidth, screen.Height));
+                ? (new StudioFrameRect(x0, y0, screen.Width, screen.Height), new StudioFrameRect(x0 + screen.Width + gap, y0, cameraWidth, screen.Height))
+                : (new StudioFrameRect(x0 + cameraWidth + gap, y0, screen.Width, screen.Height), new StudioFrameRect(x0, y0, cameraWidth, screen.Height));
         }
         else
         {
             var cameraHeight = fraction * (content.Height - gap);
-            var screen = Fit(screenAspect, new StudioRect(0, 0, content.Width, content.Height - gap - cameraHeight));
+            var screen = Fit(_screenAspect, new StudioFrameRect(0, 0, content.Width, content.Height - gap - cameraHeight));
             var x0 = content.X + (content.Width - screen.Width) / 2;
             var y0 = content.Y + (content.Height - (screen.Height + gap + cameraHeight)) / 2;
             return scene.Split.CameraSide == StudioCameraSide.Trailing
-                ? (new StudioRect(x0, y0, screen.Width, screen.Height), new StudioRect(x0, y0 + screen.Height + gap, screen.Width, cameraHeight))
-                : (new StudioRect(x0, y0 + cameraHeight + gap, screen.Width, screen.Height), new StudioRect(x0, y0, screen.Width, cameraHeight));
+                ? (new StudioFrameRect(x0, y0, screen.Width, screen.Height), new StudioFrameRect(x0, y0 + screen.Height + gap, screen.Width, cameraHeight))
+                : (new StudioFrameRect(x0, y0 + cameraHeight + gap, screen.Width, screen.Height), new StudioFrameRect(x0, y0, screen.Width, cameraHeight));
         }
     }
 
-    private static StudioResolvedCamera ResolveCamera(
-        StudioProject project,
+    private StudioResolvedCamera ResolveCamera(
         StudioScene scene,
         StudioLayout layout,
-        StudioRect rect,
+        StudioFrameRect rect,
         double screenRadiusBase,
         double shortSide,
         double time)
@@ -294,11 +310,11 @@ public static class StudioLayoutResolver
         double cornerRadius;
         if (layout == StudioLayout.Bubble)
         {
-            shape = project.Camera.Shape;
+            shape = _project.Camera.Shape;
             cornerRadius = shape switch
             {
                 StudioCameraShape.Circle or StudioCameraShape.Squircle => Math.Min(rect.Width, rect.Height) / 2,
-                StudioCameraShape.RoundedRectangle => Clamp(project.Camera.CornerRadius, 0, 0.5) * Math.Min(rect.Width, rect.Height),
+                StudioCameraShape.RoundedRectangle => Clamp(_project.Camera.CornerRadius, 0, 0.5) * Math.Min(rect.Width, rect.Height),
                 _ => 0,
             };
         }
@@ -308,38 +324,37 @@ public static class StudioLayoutResolver
             shape = cornerRadius > 0 ? StudioCameraShape.RoundedRectangle : StudioCameraShape.Rectangle;
         }
 
-        var cameraSource = project.Sources.Camera!;
+        var cameraSource = _project.Sources.Camera!;
         var sourceTime = Clamp(time - cameraSource.StartOffset, 0, cameraSource.Duration);
         return new StudioResolvedCamera(
             rect,
-            CameraSourceRect(project, rect),
+            CameraSourceRect(rect),
             shape,
             cornerRadius,
-            project.Camera.Mirror,
-            Clamp(project.Camera.BorderWidth, 0, 0.02) * shortSide,
-            Shadow(project.Camera.Shadow, shortSide),
+            _project.Camera.Mirror,
+            Clamp(_project.Camera.BorderWidth, 0, 0.02) * shortSide,
+            Shadow(_project.Camera.Shadow, shortSide),
             sourceTime,
             time - cameraSource.StartOffset >= 0 && time - cameraSource.StartOffset <= cameraSource.Duration);
     }
 
-    private static StudioRect CameraSourceRect(StudioProject project, StudioRect cameraRect)
+    private StudioFrameRect CameraSourceRect(StudioFrameRect cameraRect)
     {
-        var crop = StudioCanvasMath.ValidCropOrNull(project.Camera.Crop) ?? new StudioRect(0, 0, 1, 1);
-        var cameraAspect = CameraAspect(project);
+        var crop = _cameraCrop ?? new StudioRect(0, 0, 1, 1);
         var destinationAspect = cameraRect.Width / cameraRect.Height;
-        if (cameraAspect > destinationAspect)
+        if (_cameraAspect > destinationAspect)
         {
-            var k = destinationAspect / cameraAspect;
-            return new StudioRect(crop.X + (crop.Width * (1 - k) / 2), crop.Y, crop.Width * k, crop.Height);
+            var k = destinationAspect / _cameraAspect;
+            return new StudioFrameRect(crop.X + (crop.Width * (1 - k) / 2), crop.Y, crop.Width * k, crop.Height);
         }
         else
         {
-            var k = cameraAspect / destinationAspect;
-            return new StudioRect(crop.X, crop.Y + (crop.Height * (1 - k) / 2), crop.Width, crop.Height * k);
+            var k = _cameraAspect / destinationAspect;
+            return new StudioFrameRect(crop.X, crop.Y + (crop.Height * (1 - k) / 2), crop.Width, crop.Height * k);
         }
     }
 
-    private static StudioRect Fit(double aspect, StudioRect rect)
+    private static StudioFrameRect Fit(double aspect, StudioFrameRect rect)
     {
         double width;
         double height;
@@ -354,7 +369,7 @@ public static class StudioLayoutResolver
             height = width / aspect;
         }
 
-        return new StudioRect(rect.X + ((rect.Width - width) / 2), rect.Y + ((rect.Height - height) / 2), width, height);
+        return new StudioFrameRect(rect.X + ((rect.Width - width) / 2), rect.Y + ((rect.Height - height) / 2), width, height);
     }
 
     private static StudioResolvedShadow Shadow(double intensity, double shortSide)
@@ -363,8 +378,20 @@ public static class StudioLayoutResolver
         return new StudioResolvedShadow(s * 0.04 * shortSide, s * 0.012 * shortSide, s * 0.5);
     }
 
+    private static StudioFrameRect ToFrameRect(StudioRect rect) =>
+        new(rect.X, rect.Y, rect.Width, rect.Height);
+
     private static double Clamp(double value, double min, double max) =>
         Math.Min(max, Math.Max(min, value));
+}
+
+public static class StudioLayoutResolver
+{
+    public static StudioResolvedFrame Resolve(StudioProject project, double time, double canvasWidth, double canvasHeight) =>
+        StudioLayoutPlan.Create(project).Resolve(time, canvasWidth, canvasHeight);
+
+    internal static StudioScene[] NormalizeScenes(IReadOnlyList<StudioScene>? scenes) =>
+        StudioLayoutPlan.NormalizeScenes(scenes);
 }
 
 public sealed class StudioTimeMap
@@ -378,7 +405,7 @@ public sealed class StudioTimeMap
         edits ??= new StudioEdits();
         _start = Clamp(edits.TrimStart, 0, sourceDuration);
         var end = Clamp(edits.TrimEnd ?? sourceDuration, _start, sourceDuration);
-        _segments = BuildSegments(_start, end, edits.Cuts);
+        _segments = BuildSegments(_start, end, edits.Cuts ?? []);
         _cumulative = new double[_segments.Length];
         double current = 0;
         for (var i = 0; i < _segments.Length; i++)
@@ -452,6 +479,7 @@ public sealed class StudioTimeMap
     private static StudioTimeSegment[] BuildSegments(double start, double end, IReadOnlyList<StudioTimeRange> cuts)
     {
         var mergedCuts = cuts
+            .Where(static cut => cut is not null)
             .Select(cut => new StudioTimeRange { Start = Clamp(cut.Start, start, end), End = Clamp(cut.End, start, end) })
             .Where(cut => cut.End > cut.Start)
             .OrderBy(cut => cut.Start)

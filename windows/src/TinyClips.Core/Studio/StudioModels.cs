@@ -220,6 +220,8 @@ public sealed record StudioCameraStyle
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
 }
 
+public sealed record StudioLook(StudioCanvas Canvas, StudioScreenStyle Screen, StudioCameraStyle Camera);
+
 public sealed record StudioScene
 {
     public double Start { get; init; }
@@ -432,4 +434,3 @@ public sealed record StudioCameraCornerEvent
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
 }
-

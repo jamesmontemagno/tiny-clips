@@ -67,7 +67,8 @@ public static class StudioProjectJson
 
         try
         {
-            return JsonSerializer.Deserialize(json, StudioJsonContext.Default.StudioEvents) ?? new StudioEvents();
+            var events = JsonSerializer.Deserialize(json, StudioJsonContext.Default.StudioEvents) ?? new StudioEvents();
+            return ApplyEventDefaults(events, json);
         }
         catch (JsonException ex)
         {
@@ -97,9 +98,9 @@ public static class StudioProjectJson
         var sources = root.GetProperty("sources");
         RequireObject(sources, "screen", "sources.screen");
         var screen = sources.GetProperty("screen");
-        RequireNumber(screen, "width", "sources.screen.width");
-        RequireNumber(screen, "height", "sources.screen.height");
-        RequireNumber(screen, "duration", "sources.screen.duration");
+        RequirePositiveInt(screen, "width", "sources.screen.width");
+        RequirePositiveInt(screen, "height", "sources.screen.height");
+        RequireNonNegativeFiniteNumber(screen, "duration", "sources.screen.duration");
 
         if (sources.TryGetProperty("camera", out var camera) && camera.ValueKind != JsonValueKind.Null)
         {
@@ -108,9 +109,9 @@ public static class StudioProjectJson
                 throw new StudioProjectInvalidException("Required property sources.camera must be an object or null.");
             }
 
-            RequireNumber(camera, "width", "sources.camera.width");
-            RequireNumber(camera, "height", "sources.camera.height");
-            RequireNumber(camera, "duration", "sources.camera.duration");
+            RequirePositiveInt(camera, "width", "sources.camera.width");
+            RequirePositiveInt(camera, "height", "sources.camera.height");
+            RequireNonNegativeFiniteNumber(camera, "duration", "sources.camera.duration");
         }
 
         return new ProjectJsonDefaults(
@@ -172,11 +173,26 @@ public static class StudioProjectJson
         }
     }
 
-    private static void RequireNumber(JsonElement element, string propertyName, string path)
+    private static void RequirePositiveInt(JsonElement element, string propertyName, string path)
     {
-        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.Number)
+        if (!element.TryGetProperty(propertyName, out var property)
+            || property.ValueKind != JsonValueKind.Number
+            || !property.TryGetInt32(out var value)
+            || value < 1)
         {
-            throw new StudioProjectInvalidException($"Required property {path} is missing.");
+            throw new StudioProjectInvalidException($"Required property {path} must be an integer of at least 1.");
+        }
+    }
+
+    private static void RequireNonNegativeFiniteNumber(JsonElement element, string propertyName, string path)
+    {
+        if (!element.TryGetProperty(propertyName, out var property)
+            || property.ValueKind != JsonValueKind.Number
+            || !property.TryGetDouble(out var value)
+            || !double.IsFinite(value)
+            || value < 0)
+        {
+            throw new StudioProjectInvalidException($"Required property {path} must be a non-negative finite number.");
         }
     }
 
@@ -202,8 +218,15 @@ public static class StudioProjectJson
             FrameRate = HasNonNull(root, "sources", "screen", "frameRate") ? screenSource.FrameRate : defaultSources.Screen.FrameRate,
             External = HasNonNull(root, "sources", "screen", "external") && screenSource.External,
         };
+        ValidateSourceFileName(screenSource.File, "sources.screen.file", allowExternal: screenSource.External);
 
         var cameraSource = NormalizeCameraSource(sources.Camera, root);
+        var eventsFile = Has(root, "sources", "events") ? sources.Events : defaultSources.Events;
+        if (eventsFile is not null)
+        {
+            ValidateSourceFileName(eventsFile, "sources.events", allowExternal: false);
+        }
+
         canvas = canvas with
         {
             Aspect = HasNonNull(root, "canvas", "aspect") ? canvas.Aspect : defaultProject.Canvas.Aspect,
@@ -214,6 +237,7 @@ public static class StudioProjectJson
                 Preset = Has(root, "canvas", "background", "preset") ? background.Preset : defaultProject.Canvas.Background.Preset,
                 Primary = HasNonNull(root, "canvas", "background", "primary") ? background.Primary : defaultProject.Canvas.Background.Primary,
                 Secondary = Has(root, "canvas", "background", "secondary") ? background.Secondary : defaultProject.Canvas.Background.Secondary,
+                Image = Has(root, "canvas", "background", "image") ? PlainFileNameOrNull(background.Image) : defaultProject.Canvas.Background.Image,
             },
         };
 
@@ -256,7 +280,7 @@ public static class StudioProjectJson
                 Platform = HasNonNull(root, "app", "platform") ? app.Platform : defaultProject.App.Platform,
                 Version = HasNonNull(root, "app", "version") ? app.Version : defaultProject.App.Version,
             },
-            Sources = sources with { Screen = screenSource, Camera = cameraSource },
+            Sources = sources with { Screen = screenSource, Camera = cameraSource, Events = eventsFile },
             Canvas = canvas,
             Screen = screenStyle,
             Camera = cameraStyle,
@@ -282,10 +306,12 @@ public static class StudioProjectJson
         }
 
         cameraSource ??= new StudioCameraSource();
-        return cameraSource with
+        cameraSource = cameraSource with
         {
             File = HasNonNull(root, "sources", "camera", "file") ? cameraSource.File : new StudioCameraSource().File,
         };
+        ValidateSourceFileName(cameraSource.File, "sources.camera.file", allowExternal: false);
+        return cameraSource;
     }
 
     private static StudioScene[] NormalizeSceneDefaults(StudioScene[]? scenes, JsonElement root)
@@ -295,22 +321,26 @@ public static class StudioProjectJson
             return [new StudioScene()];
         }
 
-        var elements = scenesElement.EnumerateArray().ToArray();
-        var result = new StudioScene[scenes.Length];
-        for (var i = 0; i < scenes.Length; i++)
+        var elements = NonNullArrayElements(scenesElement);
+        var values = NonNullItems(scenes);
+        var result = new StudioScene[values.Length];
+        for (var i = 0; i < values.Length; i++)
         {
-            var scene = scenes[i] ?? new StudioScene();
+            var scene = values[i];
             var element = i < elements.Length ? elements[i] : default;
             var bubble = scene.Bubble ?? new StudioBubble();
             var split = scene.Split ?? new StudioSplit();
             var transition = scene.Transition ?? new StudioTransition();
             result[i] = scene with
             {
+                Start = HasNonNull(element, "start") ? scene.Start : 0,
                 Layout = HasNonNull(element, "layout") ? scene.Layout : StudioLayout.Bubble,
                 Bubble = bubble with
                 {
                     Anchor = HasNonNull(element, "bubble", "anchor") ? bubble.Anchor : StudioAnchor.BottomRight,
                     Size = HasNonNull(element, "bubble", "size") ? bubble.Size : 0.24,
+                    OffsetX = HasNonNull(element, "bubble", "offsetX") ? bubble.OffsetX : 0,
+                    OffsetY = HasNonNull(element, "bubble", "offsetY") ? bubble.OffsetY : 0,
                 },
                 Split = split with
                 {
@@ -333,8 +363,10 @@ public static class StudioProjectJson
         edits ??= new StudioEdits();
         return edits with
         {
-            Cuts = edits.Cuts ?? [],
-            Speed = edits.Speed ?? [],
+            TrimStart = HasNonNull(root, "edits", "trimStart") ? edits.TrimStart : 0,
+            TrimEnd = Has(root, "edits", "trimEnd") ? edits.TrimEnd : null,
+            Cuts = HasNonNull(root, "edits", "cuts") ? NonNullItems(edits.Cuts) : [],
+            Speed = HasNonNull(root, "edits", "speed") ? NonNullItems(edits.Speed) : [],
         };
     }
 
@@ -345,15 +377,18 @@ public static class StudioProjectJson
             return [];
         }
 
-        var elements = zoomsElement.EnumerateArray().ToArray();
-        var result = new StudioZoom[zooms.Length];
-        for (var i = 0; i < zooms.Length; i++)
+        var elements = NonNullArrayElements(zoomsElement);
+        var values = NonNullItems(zooms);
+        var result = new StudioZoom[values.Length];
+        for (var i = 0; i < values.Length; i++)
         {
-            var zoom = zooms[i] ?? new StudioZoom();
+            var zoom = values[i];
             var element = i < elements.Length ? elements[i] : default;
             var focus = zoom.Focus ?? new StudioZoomFocus();
             result[i] = zoom with
             {
+                Start = HasNonNull(element, "start") ? zoom.Start : 0,
+                End = HasNonNull(element, "end") ? zoom.End : 0,
                 Scale = HasNonNull(element, "scale") ? zoom.Scale : 1,
                 Focus = focus with
                 {
@@ -373,6 +408,7 @@ public static class StudioProjectJson
         audio ??= new StudioAudio();
         return audio with
         {
+            Muted = HasNonNull(root, "audio", "muted") && audio.Muted,
             SystemVolume = HasNonNull(root, "audio", "systemVolume") ? audio.SystemVolume : 1,
             MicrophoneVolume = HasNonNull(root, "audio", "microphoneVolume") ? audio.MicrophoneVolume : 1,
         };
@@ -385,11 +421,12 @@ public static class StudioProjectJson
             return [];
         }
 
-        var elements = exportsElement.EnumerateArray().ToArray();
-        var result = new StudioExport[exports.Length];
-        for (var i = 0; i < exports.Length; i++)
+        var elements = NonNullArrayElements(exportsElement);
+        var values = NonNullItems(exports);
+        var result = new StudioExport[values.Length];
+        for (var i = 0; i < values.Length; i++)
         {
-            var export = exports[i] ?? new StudioExport();
+            var export = values[i];
             var element = i < elements.Length ? elements[i] : default;
             result[i] = export with
             {
@@ -400,6 +437,135 @@ public static class StudioProjectJson
 
         return result;
     }
+
+    private static StudioEvents ApplyEventDefaults(StudioEvents events, string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var capture = events.Capture ?? new StudioCaptureInfo();
+
+        return events with
+        {
+            SchemaVersion = HasNonNull(root, "schemaVersion") ? events.SchemaVersion : StudioProject.CurrentSchemaVersion,
+            Capture = capture with
+            {
+                Width = HasNonNull(root, "capture", "width") ? capture.Width : 0,
+                Height = HasNonNull(root, "capture", "height") ? capture.Height : 0,
+                Scale = HasNonNull(root, "capture", "scale") ? capture.Scale : 1,
+                Kind = HasNonNull(root, "capture", "kind") ? capture.Kind : StudioCaptureKind.Display,
+            },
+            Clicks = NormalizeClickEvents(events.Clicks, root),
+            Cursor = NormalizeCursorSamples(events.Cursor, root),
+            CameraCorners = NormalizeCameraCornerEvents(events.CameraCorners, root),
+            Markers = HasNonNull(root, "markers") ? events.Markers.Where(marker => marker.ValueKind != JsonValueKind.Null).ToArray() : [],
+        };
+    }
+
+    private static StudioClickEvent[] NormalizeClickEvents(StudioClickEvent[]? clicks, JsonElement root)
+    {
+        if (clicks is null || clicks.Length == 0 || !root.TryGetProperty("clicks", out var clicksElement) || clicksElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var elements = NonNullArrayElements(clicksElement);
+        var values = NonNullItems(clicks);
+        var result = new StudioClickEvent[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            var click = values[i];
+            var element = i < elements.Length ? elements[i] : default;
+            result[i] = click with
+            {
+                T = HasNonNull(element, "t") ? click.T : 0,
+                X = HasNonNull(element, "x") ? click.X : 0,
+                Y = HasNonNull(element, "y") ? click.Y : 0,
+                Button = HasNonNull(element, "button") ? click.Button : StudioMouseButton.Left,
+            };
+        }
+
+        return result;
+    }
+
+    private static StudioCursorSample[] NormalizeCursorSamples(StudioCursorSample[]? cursor, JsonElement root)
+    {
+        if (cursor is null || cursor.Length == 0 || !root.TryGetProperty("cursor", out var cursorElement) || cursorElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var elements = NonNullArrayElements(cursorElement);
+        var values = NonNullItems(cursor);
+        var result = new StudioCursorSample[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            var sample = values[i];
+            var element = i < elements.Length ? elements[i] : default;
+            result[i] = sample with
+            {
+                T = HasNonNull(element, "t") ? sample.T : 0,
+                X = HasNonNull(element, "x") ? sample.X : 0,
+                Y = HasNonNull(element, "y") ? sample.Y : 0,
+            };
+        }
+
+        return result;
+    }
+
+    private static StudioCameraCornerEvent[] NormalizeCameraCornerEvents(StudioCameraCornerEvent[]? cameraCorners, JsonElement root)
+    {
+        if (cameraCorners is null || cameraCorners.Length == 0 || !root.TryGetProperty("cameraCorners", out var cameraCornersElement) || cameraCornersElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var elements = NonNullArrayElements(cameraCornersElement);
+        var values = NonNullItems(cameraCorners);
+        var result = new StudioCameraCornerEvent[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            var corner = values[i];
+            var element = i < elements.Length ? elements[i] : default;
+            result[i] = corner with
+            {
+                T = HasNonNull(element, "t") ? corner.T : 0,
+                Corner = HasNonNull(element, "corner") ? corner.Corner : StudioAnchor.BottomRight,
+            };
+        }
+
+        return result;
+    }
+
+    private static T[] NonNullItems<T>(T[]? items)
+        where T : class =>
+        items?.Where(static item => item is not null).ToArray() ?? [];
+
+    private static JsonElement[] NonNullArrayElements(JsonElement array) =>
+        array.ValueKind == JsonValueKind.Array
+            ? array.EnumerateArray().Where(static element => element.ValueKind != JsonValueKind.Null).ToArray()
+            : [];
+
+    private static void ValidateSourceFileName(string fileName, string path, bool allowExternal)
+    {
+        if (allowExternal)
+        {
+            return;
+        }
+
+        if (!IsPlainFileName(fileName))
+        {
+            throw new StudioProjectInvalidException($"Property {path} must be a file name.");
+        }
+    }
+
+    private static string? PlainFileNameOrNull(string? fileName) =>
+        fileName is not null && IsPlainFileName(fileName) ? fileName : null;
+
+    internal static bool IsPlainFileName(string? fileName) =>
+        !string.IsNullOrWhiteSpace(fileName)
+        && fileName is not ("." or "..")
+        && !Path.IsPathRooted(fileName)
+        && fileName.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) < 0;
 
     private static bool Has(JsonElement element, params ReadOnlySpan<string> path)
     {
@@ -522,7 +688,7 @@ internal abstract class StudioEnumJsonConverter<TEnum> : JsonConverter<TEnum>
     where TEnum : struct, Enum
 {
     protected abstract TEnum DefaultValue { get; }
-    protected abstract bool TryRead(string value, out TEnum result);
+    protected abstract TEnum? ReadValue(string value);
     protected abstract string Write(TEnum value);
 
     public override TEnum Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -533,7 +699,7 @@ internal abstract class StudioEnumJsonConverter<TEnum> : JsonConverter<TEnum>
         }
 
         var value = reader.GetString();
-        return value is not null && TryRead(value, out var result) ? result : DefaultValue;
+        return value is not null ? ReadValue(value) ?? DefaultValue : DefaultValue;
     }
 
     public override void Write(Utf8JsonWriter writer, TEnum value, JsonSerializerOptions options) =>
@@ -543,7 +709,7 @@ internal abstract class StudioEnumJsonConverter<TEnum> : JsonConverter<TEnum>
 internal sealed class StudioCanvasAspectJsonConverter : StudioEnumJsonConverter<StudioCanvasAspect>
 {
     protected override StudioCanvasAspect DefaultValue => StudioCanvasAspect.Auto;
-    protected override bool TryRead(string value, out StudioCanvasAspect result) => (result = value switch
+    protected override StudioCanvasAspect? ReadValue(string value) => value switch
     {
         "auto" => StudioCanvasAspect.Auto,
         "square" => StudioCanvasAspect.Square,
@@ -551,8 +717,8 @@ internal sealed class StudioCanvasAspectJsonConverter : StudioEnumJsonConverter<
         "landscape16x9" => StudioCanvasAspect.Landscape16X9,
         "portrait3x4" => StudioCanvasAspect.Portrait3X4,
         "portrait9x16" => StudioCanvasAspect.Portrait9X16,
-        _ => default,
-    }) != default || value == "auto";
+        _ => null,
+    };
     protected override string Write(StudioCanvasAspect value) => value switch
     {
         StudioCanvasAspect.Square => "square",
@@ -567,14 +733,14 @@ internal sealed class StudioCanvasAspectJsonConverter : StudioEnumJsonConverter<
 internal sealed class StudioBackgroundStyleJsonConverter : StudioEnumJsonConverter<StudioBackgroundStyle>
 {
     protected override StudioBackgroundStyle DefaultValue => StudioBackgroundStyle.Gradient;
-    protected override bool TryRead(string value, out StudioBackgroundStyle result) => (result = value switch
+    protected override StudioBackgroundStyle? ReadValue(string value) => value switch
     {
         "none" => StudioBackgroundStyle.None,
         "solid" => StudioBackgroundStyle.Solid,
         "gradient" => StudioBackgroundStyle.Gradient,
         "image" => StudioBackgroundStyle.Image,
-        _ => default,
-    }) != default || value == "none";
+        _ => null,
+    };
     protected override string Write(StudioBackgroundStyle value) => value switch
     {
         StudioBackgroundStyle.None => "none",
@@ -587,14 +753,14 @@ internal sealed class StudioBackgroundStyleJsonConverter : StudioEnumJsonConvert
 internal sealed class StudioCameraShapeJsonConverter : StudioEnumJsonConverter<StudioCameraShape>
 {
     protected override StudioCameraShape DefaultValue => StudioCameraShape.Circle;
-    protected override bool TryRead(string value, out StudioCameraShape result) => (result = value switch
+    protected override StudioCameraShape? ReadValue(string value) => value switch
     {
         "circle" => StudioCameraShape.Circle,
         "roundedRectangle" => StudioCameraShape.RoundedRectangle,
         "squircle" => StudioCameraShape.Squircle,
         "rectangle" => StudioCameraShape.Rectangle,
-        _ => default,
-    }) != default || value == "circle";
+        _ => null,
+    };
     protected override string Write(StudioCameraShape value) => value switch
     {
         StudioCameraShape.RoundedRectangle => "roundedRectangle",
@@ -607,13 +773,13 @@ internal sealed class StudioCameraShapeJsonConverter : StudioEnumJsonConverter<S
 internal sealed class StudioCameraCutoutJsonConverter : StudioEnumJsonConverter<StudioCameraCutout>
 {
     protected override StudioCameraCutout DefaultValue => StudioCameraCutout.None;
-    protected override bool TryRead(string value, out StudioCameraCutout result) => (result = value switch
+    protected override StudioCameraCutout? ReadValue(string value) => value switch
     {
         "none" => StudioCameraCutout.None,
         "blur" => StudioCameraCutout.Blur,
         "remove" => StudioCameraCutout.Remove,
-        _ => default,
-    }) != default || value == "none";
+        _ => null,
+    };
     protected override string Write(StudioCameraCutout value) => value switch
     {
         StudioCameraCutout.Blur => "blur",
@@ -625,14 +791,14 @@ internal sealed class StudioCameraCutoutJsonConverter : StudioEnumJsonConverter<
 internal sealed class StudioLayoutJsonConverter : StudioEnumJsonConverter<StudioLayout>
 {
     protected override StudioLayout DefaultValue => StudioLayout.Bubble;
-    protected override bool TryRead(string value, out StudioLayout result) => (result = value switch
+    protected override StudioLayout? ReadValue(string value) => value switch
     {
         "screen" => StudioLayout.Screen,
         "bubble" => StudioLayout.Bubble,
         "sideBySide" => StudioLayout.SideBySide,
         "camera" => StudioLayout.Camera,
-        _ => default,
-    }) != default || value == "screen";
+        _ => null,
+    };
     protected override string Write(StudioLayout value) => value switch
     {
         StudioLayout.Screen => "screen",
@@ -645,14 +811,14 @@ internal sealed class StudioLayoutJsonConverter : StudioEnumJsonConverter<Studio
 internal sealed class StudioAnchorJsonConverter : StudioEnumJsonConverter<StudioAnchor>
 {
     protected override StudioAnchor DefaultValue => StudioAnchor.BottomRight;
-    protected override bool TryRead(string value, out StudioAnchor result) => (result = value switch
+    protected override StudioAnchor? ReadValue(string value) => value switch
     {
         "topLeft" => StudioAnchor.TopLeft,
         "topRight" => StudioAnchor.TopRight,
         "bottomLeft" => StudioAnchor.BottomLeft,
         "bottomRight" => StudioAnchor.BottomRight,
-        _ => default,
-    }) != default || value == "topLeft";
+        _ => null,
+    };
     protected override string Write(StudioAnchor value) => value switch
     {
         StudioAnchor.TopLeft => "topLeft",
@@ -665,62 +831,62 @@ internal sealed class StudioAnchorJsonConverter : StudioEnumJsonConverter<Studio
 internal sealed class StudioCameraSideJsonConverter : StudioEnumJsonConverter<StudioCameraSide>
 {
     protected override StudioCameraSide DefaultValue => StudioCameraSide.Trailing;
-    protected override bool TryRead(string value, out StudioCameraSide result) => (result = value switch
+    protected override StudioCameraSide? ReadValue(string value) => value switch
     {
         "leading" => StudioCameraSide.Leading,
         "trailing" => StudioCameraSide.Trailing,
-        _ => default,
-    }) != default || value == "leading";
+        _ => null,
+    };
     protected override string Write(StudioCameraSide value) => value == StudioCameraSide.Leading ? "leading" : "trailing";
 }
 
 internal sealed class StudioTransitionKindJsonConverter : StudioEnumJsonConverter<StudioTransitionKind>
 {
     protected override StudioTransitionKind DefaultValue => StudioTransitionKind.Cut;
-    protected override bool TryRead(string value, out StudioTransitionKind result) => (result = value switch
+    protected override StudioTransitionKind? ReadValue(string value) => value switch
     {
         "cut" => StudioTransitionKind.Cut,
         "morph" => StudioTransitionKind.Morph,
-        _ => default,
-    }) != default || value == "cut";
+        _ => null,
+    };
     protected override string Write(StudioTransitionKind value) => value == StudioTransitionKind.Morph ? "morph" : "cut";
 }
 
 internal sealed class StudioZoomFocusModeJsonConverter : StudioEnumJsonConverter<StudioZoomFocusMode>
 {
     protected override StudioZoomFocusMode DefaultValue => StudioZoomFocusMode.Point;
-    protected override bool TryRead(string value, out StudioZoomFocusMode result) => (result = value switch
+    protected override StudioZoomFocusMode? ReadValue(string value) => value switch
     {
         "point" => StudioZoomFocusMode.Point,
         "cursor" => StudioZoomFocusMode.Cursor,
-        _ => default,
-    }) != default || value == "point";
+        _ => null,
+    };
     protected override string Write(StudioZoomFocusMode value) => value == StudioZoomFocusMode.Cursor ? "cursor" : "point";
 }
 
 internal sealed class StudioZoomOriginJsonConverter : StudioEnumJsonConverter<StudioZoomOrigin>
 {
     protected override StudioZoomOrigin DefaultValue => StudioZoomOrigin.Manual;
-    protected override bool TryRead(string value, out StudioZoomOrigin result) => (result = value switch
+    protected override StudioZoomOrigin? ReadValue(string value) => value switch
     {
         "manual" => StudioZoomOrigin.Manual,
         "auto" => StudioZoomOrigin.Auto,
-        _ => default,
-    }) != default || value == "manual";
+        _ => null,
+    };
     protected override string Write(StudioZoomOrigin value) => value == StudioZoomOrigin.Auto ? "auto" : "manual";
 }
 
 internal sealed class StudioMouseButtonJsonConverter : StudioEnumJsonConverter<StudioMouseButton>
 {
     protected override StudioMouseButton DefaultValue => StudioMouseButton.Left;
-    protected override bool TryRead(string value, out StudioMouseButton result) => (result = value switch
+    protected override StudioMouseButton? ReadValue(string value) => value switch
     {
         "left" => StudioMouseButton.Left,
         "right" => StudioMouseButton.Right,
         "middle" => StudioMouseButton.Middle,
         "other" => StudioMouseButton.Other,
-        _ => default,
-    }) != default || value == "left";
+        _ => null,
+    };
     protected override string Write(StudioMouseButton value) => value switch
     {
         StudioMouseButton.Right => "right",
@@ -733,13 +899,13 @@ internal sealed class StudioMouseButtonJsonConverter : StudioEnumJsonConverter<S
 internal sealed class StudioCaptureKindJsonConverter : StudioEnumJsonConverter<StudioCaptureKind>
 {
     protected override StudioCaptureKind DefaultValue => StudioCaptureKind.Display;
-    protected override bool TryRead(string value, out StudioCaptureKind result) => (result = value switch
+    protected override StudioCaptureKind? ReadValue(string value) => value switch
     {
         "display" => StudioCaptureKind.Display,
         "region" => StudioCaptureKind.Region,
         "window" => StudioCaptureKind.Window,
-        _ => default,
-    }) != default || value == "display";
+        _ => null,
+    };
     protected override string Write(StudioCaptureKind value) => value switch
     {
         StudioCaptureKind.Region => "region",

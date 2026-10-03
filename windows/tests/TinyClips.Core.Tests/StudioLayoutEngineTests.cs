@@ -36,10 +36,10 @@ public sealed class StudioLayoutEngineTests
         Assert.Equal(StudioLayout.Screen, frame.Layout);
         Assert.Null(frame.Camera);
         Assert.NotNull(frame.Screen);
-        AssertClose(48, frame.Screen.Rect.X);
-        AssertClose(145.75, frame.Screen.Rect.Y);
-        AssertClose(904, frame.Screen.Rect.Width);
-        AssertClose(508.5, frame.Screen.Rect.Height);
+        AssertClose(48, frame.Screen!.Value.Rect.X);
+        AssertClose(145.75, frame.Screen!.Value.Rect.Y);
+        AssertClose(904, frame.Screen!.Value.Rect.Width);
+        AssertClose(508.5, frame.Screen!.Value.Rect.Height);
     }
 
     [Fact]
@@ -60,12 +60,12 @@ public sealed class StudioLayoutEngineTests
         var frame = StudioLayoutResolver.Resolve(project, 0, 1000, 800);
 
         Assert.NotNull(frame.Camera);
-        AssertClose(800, frame.Camera.Rect.X);
-        AssertClose(600, frame.Camera.Rect.Y);
-        AssertClose(200, frame.Camera.Rect.Width);
-        AssertClose(200, frame.Camera.Rect.Height);
-        Assert.Equal(StudioCameraShape.Circle, frame.Camera.Shape);
-        AssertClose(100, frame.Camera.CornerRadius);
+        AssertClose(800, frame.Camera!.Value.Rect.X);
+        AssertClose(600, frame.Camera!.Value.Rect.Y);
+        AssertClose(200, frame.Camera!.Value.Rect.Width);
+        AssertClose(200, frame.Camera!.Value.Rect.Height);
+        Assert.Equal(StudioCameraShape.Circle, frame.Camera!.Value.Shape);
+        AssertClose(100, frame.Camera!.Value.CornerRadius);
     }
 
     [Theory]
@@ -82,10 +82,10 @@ public sealed class StudioLayoutEngineTests
 
         Assert.NotNull(frame.Screen);
         Assert.NotNull(frame.Camera);
-        AssertClose(expectedScreenX, frame.Screen.Rect.X);
-        AssertClose(expectedCameraX, frame.Camera.Rect.X);
-        AssertClose(621.6, frame.Screen.Rect.Width);
-        AssertClose(266.4, frame.Camera.Rect.Width);
+        AssertClose(expectedScreenX, frame.Screen!.Value.Rect.X);
+        AssertClose(expectedCameraX, frame.Camera!.Value.Rect.X);
+        AssertClose(621.6, frame.Screen!.Value.Rect.Width);
+        AssertClose(266.4, frame.Camera!.Value.Rect.Width);
     }
 
     [Fact]
@@ -100,12 +100,12 @@ public sealed class StudioLayoutEngineTests
 
         Assert.NotNull(frame.Screen);
         Assert.NotNull(frame.Camera);
-        AssertClose(48, frame.Camera.Rect.X);
-        AssertClose(183, frame.Camera.Rect.Y);
-        AssertClose(704, frame.Camera.Rect.Width);
-        AssertClose(222, frame.Camera.Rect.Height);
-        AssertClose(48, frame.Screen.Rect.X);
-        AssertClose(421, frame.Screen.Rect.Y);
+        AssertClose(48, frame.Camera!.Value.Rect.X);
+        AssertClose(183, frame.Camera!.Value.Rect.Y);
+        AssertClose(704, frame.Camera!.Value.Rect.Width);
+        AssertClose(222, frame.Camera!.Value.Rect.Height);
+        AssertClose(48, frame.Screen!.Value.Rect.X);
+        AssertClose(421, frame.Screen!.Value.Rect.Y);
     }
 
     [Fact]
@@ -116,11 +116,11 @@ public sealed class StudioLayoutEngineTests
         Assert.Null(frame.Screen);
         Assert.NotNull(frame.Camera);
         Assert.Equal(StudioLayout.Camera, frame.Layout);
-        AssertClose(48, frame.Camera.Rect.X);
-        AssertClose(48, frame.Camera.Rect.Y);
-        AssertClose(904, frame.Camera.Rect.Width);
-        AssertClose(704, frame.Camera.Rect.Height);
-        Assert.Equal(StudioCameraShape.RoundedRectangle, frame.Camera.Shape);
+        AssertClose(48, frame.Camera!.Value.Rect.X);
+        AssertClose(48, frame.Camera!.Value.Rect.Y);
+        AssertClose(904, frame.Camera!.Value.Rect.Width);
+        AssertClose(704, frame.Camera!.Value.Rect.Height);
+        Assert.Equal(StudioCameraShape.RoundedRectangle, frame.Camera!.Value.Shape);
     }
 
     [Fact]
@@ -182,16 +182,16 @@ public sealed class StudioLayoutEngineTests
 
         Assert.NotNull(frame.Screen);
         Assert.NotNull(frame.Camera);
-        AssertRect(new StudioRect(0.1, 0.2, 0.5, 0.5), frame.Screen.Source);
-        AssertClose(160, frame.Screen.CornerRadius);
-        AssertClose(8, frame.Screen.Shadow.Blur);
-        AssertClose(2.4, frame.Screen.Shadow.OffsetY);
-        AssertClose(0.125, frame.Screen.Shadow.Opacity);
-        Assert.Equal(StudioCameraShape.RoundedRectangle, frame.Camera.Shape);
-        AssertClose(50, frame.Camera.CornerRadius);
-        AssertClose(16, frame.Camera.BorderWidth);
-        AssertClose(32, frame.Camera.Shadow.Blur);
-        AssertClose(0.5, frame.Camera.Shadow.Opacity);
+        AssertRect(new StudioRect(0.1, 0.2, 0.5, 0.5), frame.Screen!.Value.Source);
+        AssertClose(160, frame.Screen!.Value.CornerRadius);
+        AssertClose(8, frame.Screen!.Value.Shadow.Blur);
+        AssertClose(2.4, frame.Screen!.Value.Shadow.OffsetY);
+        AssertClose(0.125, frame.Screen!.Value.Shadow.Opacity);
+        Assert.Equal(StudioCameraShape.RoundedRectangle, frame.Camera!.Value.Shape);
+        AssertClose(50, frame.Camera!.Value.CornerRadius);
+        AssertClose(16, frame.Camera!.Value.BorderWidth);
+        AssertClose(32, frame.Camera!.Value.Shadow.Blur);
+        AssertClose(0.5, frame.Camera!.Value.Shadow.Opacity);
     }
 
     [Fact]
@@ -210,12 +210,12 @@ public sealed class StudioLayoutEngineTests
         var during = StudioLayoutResolver.Resolve(project, 4, 1000, 800);
         var after = StudioLayoutResolver.Resolve(project, 6, 1000, 800);
 
-        Assert.False(before.Camera!.Visible);
-        AssertClose(0, before.Camera.SourceTime);
-        Assert.True(during.Camera!.Visible);
-        AssertClose(2, during.Camera.SourceTime);
-        Assert.False(after.Camera!.Visible);
-        AssertClose(3, after.Camera.SourceTime);
+        Assert.False(before.Camera!.Value.Visible);
+        AssertClose(0, before.Camera!.Value.SourceTime);
+        Assert.True(during.Camera!.Value.Visible);
+        AssertClose(2, during.Camera!.Value.SourceTime);
+        Assert.False(after.Camera!.Value.Visible);
+        AssertClose(3, after.Camera!.Value.SourceTime);
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public sealed class StudioLayoutEngineTests
     private static void AssertClose(double expected, double actual) =>
         Assert.True(Math.Abs(expected - actual) <= 1e-6, $"Expected {expected}, actual {actual}.");
 
-    private static void AssertRect(StudioRect expected, StudioRect actual)
+    private static void AssertRect(StudioRect expected, StudioFrameRect actual)
     {
         AssertClose(expected.X, actual.X);
         AssertClose(expected.Y, actual.Y);

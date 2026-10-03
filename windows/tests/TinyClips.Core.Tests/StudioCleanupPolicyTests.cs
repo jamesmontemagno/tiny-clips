@@ -42,6 +42,21 @@ public sealed class StudioCleanupPolicyTests
     }
 
     [Fact]
+    public void Plan_SizeRuleStartsFromProjectsRemainingAfterAgeRule()
+    {
+        var plan = StudioCleanupPolicy.Plan(
+            [
+                Eligible("a", Now - TimeSpan.FromDays(40), sizeBytes: 5L * 1024 * 1024 * 1024),
+                Eligible("b", Now - TimeSpan.FromDays(2), sizeBytes: 4L * 1024 * 1024 * 1024),
+                Eligible("c", Now - TimeSpan.FromDays(1), sizeBytes: 3L * 1024 * 1024 * 1024),
+            ],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 10L * 1024 * 1024 * 1024));
+
+        Assert.Equal(["a"], plan.ProjectIdsToDelete);
+    }
+
+    [Fact]
     public void Plan_DraftsAndPinnedProjectsAreExempt()
     {
         var plan = StudioCleanupPolicy.Plan(
@@ -75,6 +90,40 @@ public sealed class StudioCleanupPolicyTests
             new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 0));
 
         Assert.Equal(["flat"], plan.ProjectIdsToDelete);
+    }
+
+    [Theory]
+    [InlineData("old")]
+    [InlineData("large")]
+    [InlineData("flat")]
+    public void Plan_InUseProjectsAreExcludedFromEveryRuleButStillCountTowardSize(string inUseId)
+    {
+        var plan = StudioCleanupPolicy.Plan(
+            [
+                Eligible("old", Now - TimeSpan.FromDays(90), sizeBytes: 60),
+                Eligible("large", Now - TimeSpan.FromDays(3), sizeBytes: 60),
+                Eligible("flat", Now, isFlat: true, externalVideoExists: false, sizeBytes: 60),
+                Eligible("candidate", Now - TimeSpan.FromDays(2), sizeBytes: 60),
+            ],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 100),
+            [inUseId]);
+
+        Assert.DoesNotContain(inUseId, plan.ProjectIdsToDelete);
+    }
+
+    [Fact]
+    public void Plan_SizeRuleBreaksLastOpenedTiesByOrdinalId()
+    {
+        var plan = StudioCleanupPolicy.Plan(
+            [
+                Eligible("b", Now, sizeBytes: 60),
+                Eligible("a", Now, sizeBytes: 60),
+            ],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 60));
+
+        Assert.Equal(["a"], plan.ProjectIdsToDelete);
     }
 
     private static StudioProjectSummary Eligible(
