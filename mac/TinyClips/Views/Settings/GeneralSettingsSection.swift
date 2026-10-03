@@ -65,6 +65,11 @@ struct GeneralSettingsSection: View {
             Toggle("Show notification after save", isOn: $settings.showSaveNotifications)
         }
 
+        Section("Editors") {
+            Toggle("Confirm before closing editors with Esc", isOn: $settings.confirmEditorEscape)
+                .help("Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. Turn off to close them right away, discarding anything unsaved.")
+        }
+
         Section("Advanced") {
             Toggle("Launch at login", isOn: Binding(
                 get: { launchAtLogin.isEnabled },

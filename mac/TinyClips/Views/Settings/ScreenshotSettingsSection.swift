@@ -60,9 +60,6 @@ struct ScreenshotSettingsSection: View {
                 .help("Save immediately instead of waiting for actions in the editor.")
                 .disabled(!settings.showScreenshotEditor)
 
-            Toggle("Confirm before closing editor with Esc", isOn: $settings.confirmScreenshotEditorEscape)
-                .help("Ask before Esc closes the screenshot editor. Turn off to close it right away, discarding anything unsaved.")
-
             Toggle("Copy to clipboard", isOn: $settings.copyScreenshotToClipboard)
                 .help("Copy saved screenshots to the clipboard as an image.")
         }

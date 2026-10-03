@@ -58,10 +58,13 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
     ///   - outputURL: Destination for a trimmed export, which may not exist yet.
     ///   - sourceURL: The GIF being edited. Defaults to `outputURL` for capture flows where the
     ///     trimmer writes back over the recorded file. Deleting always targets this URL.
+    ///   - discardsCaptureOnCancel: The GIF has not been written to disk yet, so it is thrown away
+    ///     when the trimmer closes without saving.
     convenience init(
         gifData: GifCaptureData,
         outputURL: URL,
         sourceURL: URL? = nil,
+        discardsCaptureOnCancel: Bool = false,
         onComplete: @escaping (URL?) -> Void
     ) {
         self.init(
@@ -82,6 +85,7 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
             gifData: gifData,
             outputURL: outputURL,
             sourceURL: sourceURL ?? outputURL,
+            discardsCaptureOnCancel: discardsCaptureOnCancel,
             menuActions: menuActions,
             onDone: { [weak self] resultURL in
                 self?.completeWith(resultURL)
@@ -101,6 +105,12 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         completeWith(nil)
         return true
+    }
+
+    /// Esc reaches the window because no control in the trimmer uses it as a key equivalent.
+    override func cancelOperation(_ sender: Any?) {
+        guard attachedSheet == nil else { return }
+        menuActions.closeWithEscape?()
     }
 
     @objc func trimmerSaveFrame(_ sender: Any?) { menuActions.saveFrame?() }
@@ -132,23 +142,28 @@ private struct GifTrimmerView: View {
     let gifData: GifCaptureData
     let outputURL: URL
     let sourceURL: URL
+    let discardsCaptureOnCancel: Bool
     let menuActions: TrimmerMenuActions
     let onDone: (URL?) -> Void
 
     @StateObject private var viewModel: GifTrimmerViewModel
     @State private var isSaving = false
     @State private var showDeleteConfirmation = false
+    @State private var showEscapeConfirmation = false
+    @State private var escapePrompt: TrimmerEscapePrompt = .closeTrimmer
 
     init(
         gifData: GifCaptureData,
         outputURL: URL,
         sourceURL: URL,
+        discardsCaptureOnCancel: Bool,
         menuActions: TrimmerMenuActions,
         onDone: @escaping (URL?) -> Void
     ) {
         self.gifData = gifData
         self.outputURL = outputURL
         self.sourceURL = sourceURL
+        self.discardsCaptureOnCancel = discardsCaptureOnCancel
         self.menuActions = menuActions
         self.onDone = onDone
         _viewModel = StateObject(wrappedValue: GifTrimmerViewModel(gifData: gifData))
@@ -347,7 +362,6 @@ private struct GifTrimmerView: View {
                 Button("Done") {
                     onDone(nil)
                 }
-                .keyboardShortcut(.cancelAction)
                 .help("Close the trimmer.")
                 .tint(.accentColor)
                 .buttonStyle(.borderedProminent)
@@ -355,6 +369,12 @@ private struct GifTrimmerView: View {
             .padding()
         }
         .frame(minWidth: 560, minHeight: 420)
+        .trimmerEscapeConfirmation(
+            escapePrompt,
+            media: .gif,
+            isPresented: $showEscapeConfirmation,
+            onConfirm: { onDone(nil) }
+        )
         .confirmationDialog(
             "Delete \(sourceURL.lastPathComponent)?",
             isPresented: $showDeleteConfirmation,
@@ -381,6 +401,7 @@ private struct GifTrimmerView: View {
     }
 
     private func configureMenuActions() {
+        menuActions.closeWithEscape = handleEscape
         menuActions.saveFrame = saveCurrentFrame
         menuActions.copyFrame = copyCurrentFrame
         menuActions.saveTrimmed = saveTrimmedGif
@@ -403,6 +424,24 @@ private struct GifTrimmerView: View {
 
         RecentCaptureStore.shared.remove(url: sourceURL)
         onDone(nil)
+    }
+
+    private func handleEscape() {
+        guard !isSaving else { return }
+        let prompt = TrimmerEscapePrompt.resolve(
+            confirmOnEscape: CaptureSettings.shared.confirmEditorEscape,
+            hasUnsavedChanges: viewModel.hasUnsavedChanges,
+            discardsUnsavedCapture: discardsCaptureOnCancel
+        )
+        guard let prompt else {
+            onDone(nil)
+            return
+        }
+        if viewModel.isPlaying {
+            viewModel.togglePlayback()
+        }
+        escapePrompt = prompt
+        showEscapeConfirmation = true
     }
 
     private func saveTrimmedGif() {
@@ -642,6 +681,11 @@ private class GifTrimmerViewModel: ObservableObject {
     var effectiveFrameDelay: Double { max(0.01, gifData.frameDelay / speed) }
     var totalDurationSeconds: Double { Double(totalFrames) * effectiveFrameDelay }
     var trimmedDurationSeconds: Double { Double(trimmedFrameCount) * effectiveFrameDelay }
+
+    /// Whether the frame range or speed differs from the GIF as it was opened.
+    var hasUnsavedChanges: Bool {
+        trimStartFrame > 0 || trimEndFrame < totalFrames - 1 || speed != 1.0
+    }
 
     var currentFrameImage: NSImage? {
         guard currentFrameIndex >= 0, currentFrameIndex < gifData.frames.count else { return nil }
