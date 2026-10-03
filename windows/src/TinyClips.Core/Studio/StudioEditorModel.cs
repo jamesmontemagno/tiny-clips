@@ -1,0 +1,749 @@
+using System.Globalization;
+
+namespace TinyClips.Core.Studio;
+
+/// <summary>
+/// The parts of a project the Studio editor changes. Undo, redo, and "changed since export" work on
+/// this, so they never touch the project's bookkeeping (exports, dates, name, sources).
+/// </summary>
+public sealed class StudioEditableState
+{
+    private static readonly StudioProject ComparisonShell = new();
+    private string? _comparisonText;
+
+    private StudioEditableState(StudioProject project)
+    {
+        Canvas = project.Canvas;
+        Screen = project.Screen;
+        Camera = project.Camera;
+        Scenes = project.Scenes;
+        Zooms = project.Zooms;
+        Edits = project.Edits;
+        Audio = project.Audio;
+        Overlays = project.Overlays;
+    }
+
+    public StudioCanvas Canvas { get; }
+
+    public StudioScreenStyle Screen { get; }
+
+    public StudioCameraStyle Camera { get; }
+
+    public StudioScene[] Scenes { get; }
+
+    public StudioZoom[] Zooms { get; }
+
+    public StudioEdits Edits { get; }
+
+    public StudioAudio Audio { get; }
+
+    public StudioOverlays Overlays { get; }
+
+    public static StudioEditableState From(StudioProject project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        return new StudioEditableState(project);
+    }
+
+    /// <summary>Returns <paramref name="project"/> with its editable parts replaced by these.</summary>
+    public StudioProject ApplyTo(StudioProject project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        return project with
+        {
+            Canvas = Canvas,
+            Screen = Screen,
+            Camera = Camera,
+            Scenes = Scenes,
+            Zooms = Zooms,
+            Edits = Edits,
+            Audio = Audio,
+            Overlays = Overlays,
+        };
+    }
+
+    /// <summary>
+    /// True when both describe the same composition. The project records compare their arrays by
+    /// reference, so equal content in different arrays needs this instead of <c>==</c>.
+    /// </summary>
+    public bool ContentEquals(StudioEditableState? other)
+    {
+        if (other is null)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(this, other))
+        {
+            return true;
+        }
+
+        // Cheap and sufficient when nothing was replaced. It is never true for different content.
+        if (Canvas == other.Canvas
+            && Screen == other.Screen
+            && Camera == other.Camera
+            && ReferenceEquals(Scenes, other.Scenes)
+            && ReferenceEquals(Zooms, other.Zooms)
+            && Edits == other.Edits
+            && Audio == other.Audio
+            && Overlays == other.Overlays)
+        {
+            return true;
+        }
+
+        return string.Equals(ComparisonText, other.ComparisonText, StringComparison.Ordinal);
+    }
+
+    private string ComparisonText => _comparisonText ??= StudioProjectJson.WriteProject(ApplyTo(ComparisonShell));
+}
+
+/// <summary>
+/// Where the canvas sits inside the preview control, and how to convert between the two. Both
+/// spaces have their origin at the top left.
+/// </summary>
+public readonly record struct StudioEditorCanvasGeometry(StudioSize ViewSize, StudioSize CanvasSize, StudioFrameRect CanvasRectInView)
+{
+    /// <summary>Canvas pixels per unit of the view.</summary>
+    public double CanvasPixelsPerViewUnit => CanvasRectInView.Width > 0 ? CanvasSize.Width / CanvasRectInView.Width : 1;
+
+    /// <summary>The canvas point under a view point. False when the view point is outside the canvas.</summary>
+    public bool TryGetCanvasPoint(double viewX, double viewY, out double canvasX, out double canvasY)
+    {
+        canvasX = 0;
+        canvasY = 0;
+        if (!(CanvasRectInView.Width > 0) || !(CanvasRectInView.Height > 0))
+        {
+            return false;
+        }
+
+        var x = (viewX - CanvasRectInView.X) / CanvasRectInView.Width * CanvasSize.Width;
+        var y = (viewY - CanvasRectInView.Y) / CanvasRectInView.Height * CanvasSize.Height;
+        if (!(x >= 0 && x <= CanvasSize.Width && y >= 0 && y <= CanvasSize.Height))
+        {
+            return false;
+        }
+
+        canvasX = x;
+        canvasY = y;
+        return true;
+    }
+
+    public (double X, double Y) GetViewPoint(double canvasX, double canvasY) => (
+        CanvasRectInView.X + canvasX / Math.Max(1, CanvasSize.Width) * CanvasRectInView.Width,
+        CanvasRectInView.Y + canvasY / Math.Max(1, CanvasSize.Height) * CanvasRectInView.Height);
+}
+
+/// <summary>
+/// The Studio editor's state and every edit it can make, with undo. It has no UI or media types in
+/// it so it can be unit tested. Not thread-safe: use it from one thread.
+/// <para>The first version edits one scene, <c>Scenes[0]</c>. Any further scenes are left as they are.</para>
+/// </summary>
+public sealed class StudioEditorModel
+{
+    public const double MinimumDuration = 0.1;
+    public const int MaximumUndoDepth = 100;
+
+    private readonly List<StudioEditableState> _undoStack = [];
+    private readonly List<StudioEditableState> _redoStack = [];
+    private StudioEditableState? _groupedSnapshot;
+    private StudioEditableState? _exportedState;
+
+    public StudioEditorModel(StudioProject project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        Project = project;
+        if (Project.Scenes is not { Length: > 0 })
+        {
+            Project = Project with
+            {
+                Scenes = [new StudioScene { Start = 0, Layout = HasCamera ? StudioLayout.Bubble : StudioLayout.Screen }],
+            };
+        }
+
+        Project = Project with { Edits = ClampedEdits(Project.Edits, Project.Edits.TrimStart, Project.Edits.TrimEnd) };
+        _exportedState = project.Exports is { Length: > 0 } ? EditableState : null;
+    }
+
+    // State
+
+    public StudioProject Project { get; private set; }
+
+    public StudioEditableState EditableState => StudioEditableState.From(Project);
+
+    public bool CanUndo => _undoStack.Count > 0;
+
+    public bool CanRedo => _redoStack.Count > 0;
+
+    public bool IsGroupingEdits => _groupedSnapshot is not null;
+
+    public bool HasCamera => Project.Sources.Camera is not null;
+
+    public bool HasNeverExported => Project.Exports is not { Length: > 0 };
+
+    /// <summary>
+    /// True when the composition differs from what was last exported, or nothing was exported yet.
+    /// A project reopened after an export counts as unchanged until it is edited.
+    /// </summary>
+    public bool HasUnexportedChanges => _exportedState is null || !_exportedState.ContentEquals(EditableState);
+
+    public StudioScene CurrentScene => Project.Scenes[0];
+
+    /// <summary>The layout that is drawn: a project without a camera always shows the screen alone.</summary>
+    public StudioLayout EffectiveLayout => HasCamera ? CurrentScene.Layout : StudioLayout.Screen;
+
+    /// <summary>The styling to save as a default. A look never carries a crop.</summary>
+    public StudioLook CurrentLook => new(
+        Project.Canvas,
+        Project.Screen with { Crop = null },
+        Project.Camera with { Crop = null });
+
+    // Time
+
+    public double SourceDuration => Math.Max(0, Project.Sources.Screen.Duration);
+
+    public double FrameDuration
+    {
+        get
+        {
+            var frameRate = Project.Sources.Screen.FrameRate;
+            return double.IsFinite(frameRate) && frameRate > 0 ? 1 / frameRate : 1.0 / 30;
+        }
+    }
+
+    public StudioTimeMap TimeMap => new(SourceDuration, Project.Edits);
+
+    public double OutputDuration => TimeMap.OutputDuration;
+
+    public double TrimStart => Clamp(Project.Edits.TrimStart, 0, SourceDuration);
+
+    public double TrimEnd => Clamp(Project.Edits.TrimEnd ?? SourceDuration, TrimStart, SourceDuration);
+
+    public double GetSourceTime(double outputTime) => TimeMap.OutputToSource(outputTime);
+
+    public double GetOutputTime(double sourceTime) => TimeMap.SourceToOutput(sourceTime);
+
+    public double ClampSourceTime(double sourceTime) =>
+        double.IsFinite(sourceTime) ? Clamp(sourceTime, 0, SourceDuration) : 0;
+
+    /// <summary>
+    /// Where playback starts when Play is pressed at <paramref name="sourceTime"/>: the same spot, or
+    /// the trim start when the playhead is outside the kept range or already at its end.
+    /// </summary>
+    public double GetPlaybackStart(double sourceTime)
+    {
+        var time = ClampSourceTime(sourceTime);
+        return time < TrimStart || time >= TrimEnd - FrameDuration / 2 ? TrimStart : time;
+    }
+
+    /// <summary>Whether a playing preview has reached the end of the kept range and should stop.</summary>
+    public bool IsAtPlaybackEnd(double sourceTime) => sourceTime >= TrimEnd - 1e-6;
+
+    /// <summary>Formats seconds as minutes, seconds and tenths, such as <c>1:02.5</c>.</summary>
+    public static string FormatTime(double seconds)
+    {
+        if (!double.IsFinite(seconds))
+        {
+            return "0:00.0";
+        }
+
+        var tenths = (long)Math.Floor(Math.Min(Math.Max(0, seconds), 359_999) * 10);
+        return string.Create(CultureInfo.InvariantCulture, $"{tenths / 600}:{tenths / 10 % 60:00}.{tenths % 10}");
+    }
+
+    // Undo
+
+    /// <summary>Starts a gesture. Every edit until <see cref="CommitEditingGroup"/> becomes one undo step.</summary>
+    public void BeginEditingGroup() => _groupedSnapshot ??= EditableState;
+
+    public void CommitEditingGroup()
+    {
+        if (_groupedSnapshot is not { } snapshot)
+        {
+            return;
+        }
+
+        _groupedSnapshot = null;
+        PushUndo(snapshot);
+    }
+
+    public void CancelEditingGroup()
+    {
+        if (_groupedSnapshot is not { } snapshot)
+        {
+            return;
+        }
+
+        _groupedSnapshot = null;
+        Project = snapshot.ApplyTo(Project);
+    }
+
+    public void Undo()
+    {
+        CommitEditingGroup();
+        if (_undoStack.Count == 0)
+        {
+            return;
+        }
+
+        var previous = _undoStack[^1];
+        _undoStack.RemoveAt(_undoStack.Count - 1);
+        _redoStack.Add(EditableState);
+        Project = previous.ApplyTo(Project);
+    }
+
+    public void Redo()
+    {
+        CommitEditingGroup();
+        if (_redoStack.Count == 0)
+        {
+            return;
+        }
+
+        var next = _redoStack[^1];
+        _redoStack.RemoveAt(_redoStack.Count - 1);
+        _undoStack.Add(EditableState);
+        Project = next.ApplyTo(Project);
+    }
+
+    // Layout and canvas
+
+    /// <summary>Sets the layout of the edited scene. Layouts that need a camera are ignored without one.</summary>
+    public void SetLayout(StudioLayout layout)
+    {
+        if (!HasCamera && layout != StudioLayout.Screen)
+        {
+            return;
+        }
+
+        MutateScene(scene => scene with { Layout = layout });
+    }
+
+    public void SetCanvasAspect(StudioCanvasAspect aspect) =>
+        Mutate(project => project with { Canvas = project.Canvas with { Aspect = aspect } });
+
+    public void SetCanvasPadding(double padding)
+    {
+        if (double.IsFinite(padding))
+        {
+            Mutate(project => project with { Canvas = project.Canvas with { Padding = Clamp(padding, 0, 0.4) } });
+        }
+    }
+
+    /// <summary>Colors are <c>#RRGGBB</c>; anything else keeps the color that was there.</summary>
+    public void SetBackground(StudioBackgroundStyle style, string? preset, string primary, string? secondary = null, string? image = null)
+    {
+        var current = Project.Canvas.Background;
+        var newPrimary = NormalizeHex(primary) ?? current.Primary;
+        var newSecondary = secondary is null ? null : NormalizeHex(secondary) ?? current.Secondary ?? newPrimary;
+        var newImage = image is not null && IsPlainFileName(image) ? image : null;
+        Mutate(project => project with
+        {
+            Canvas = project.Canvas with
+            {
+                Background = project.Canvas.Background with
+                {
+                    Style = style,
+                    Preset = preset,
+                    Primary = newPrimary,
+                    Secondary = newSecondary,
+                    Image = newImage,
+                },
+            },
+        });
+    }
+
+    // Screen and camera
+
+    public void SetScreenCornerRadius(double value)
+    {
+        if (double.IsFinite(value))
+        {
+            Mutate(project => project with { Screen = project.Screen with { CornerRadius = Clamp(value, 0, 0.2) } });
+        }
+    }
+
+    public void SetScreenShadow(double value)
+    {
+        if (double.IsFinite(value))
+        {
+            Mutate(project => project with { Screen = project.Screen with { Shadow = Clamp(value, 0, 1) } });
+        }
+    }
+
+    public void SetCameraShape(StudioCameraShape shape) =>
+        Mutate(project => project with { Camera = project.Camera with { Shape = shape } });
+
+    public void SetCameraCornerRadius(double value)
+    {
+        if (double.IsFinite(value))
+        {
+            Mutate(project => project with { Camera = project.Camera with { CornerRadius = Clamp(value, 0, 0.5) } });
+        }
+    }
+
+    public void SetCameraMirror(bool isMirrored) =>
+        Mutate(project => project with { Camera = project.Camera with { Mirror = isMirrored } });
+
+    public void SetCameraBorderWidth(double value)
+    {
+        if (double.IsFinite(value))
+        {
+            Mutate(project => project with { Camera = project.Camera with { BorderWidth = Clamp(value, 0, 0.02) } });
+        }
+    }
+
+    public void SetCameraBorderColor(string value)
+    {
+        if (NormalizeHex(value) is { } color)
+        {
+            Mutate(project => project with { Camera = project.Camera with { BorderColor = color } });
+        }
+    }
+
+    public void SetCameraShadow(double value)
+    {
+        if (double.IsFinite(value))
+        {
+            Mutate(project => project with { Camera = project.Camera with { Shadow = Clamp(value, 0, 1) } });
+        }
+    }
+
+    public void SetCameraBubbleSize(double value)
+    {
+        if (double.IsFinite(value))
+        {
+            MutateScene(scene => scene with { Bubble = scene.Bubble with { Size = Clamp(value, 0.08, 0.6) } });
+        }
+    }
+
+    /// <summary>Snaps the bubble to a corner, clearing any offset from dragging.</summary>
+    public void SetCameraAnchor(StudioAnchor anchor) =>
+        MutateScene(scene => scene with { Bubble = scene.Bubble with { Anchor = anchor, OffsetX = 0, OffsetY = 0 } });
+
+    public void SetCameraBubbleOffsets(double x, double y) =>
+        MutateScene(scene => scene with
+        {
+            Bubble = scene.Bubble with
+            {
+                OffsetX = double.IsFinite(x) ? Clamp(x, -1, 1) : 0,
+                OffsetY = double.IsFinite(y) ? Clamp(y, -1, 1) : 0,
+            },
+        });
+
+    public void SetSideBySide(StudioCameraSide cameraSide, double fraction)
+    {
+        if (double.IsFinite(fraction))
+        {
+            MutateScene(scene => scene with
+            {
+                Split = scene.Split with { CameraSide = cameraSide, CameraFraction = Clamp(fraction, 0.15, 0.6) },
+            });
+        }
+    }
+
+    // Bubble dragging
+
+    /// <summary>
+    /// Moves the camera bubble so its top-left corner is at the given point in canvas pixels, kept
+    /// on the canvas. This inverts section 6.3 of the format spec: the bubble is anchored to the
+    /// corner nearest its center and the rest becomes the offset.
+    /// </summary>
+    public void MoveBubbleTopLeft(double x, double y, double canvasWidth, double canvasHeight)
+    {
+        if (!HasCamera || !(canvasWidth > 0) || !(canvasHeight > 0) || !double.IsFinite(x) || !double.IsFinite(y))
+        {
+            return;
+        }
+
+        if (GetBubbleRect(Project, canvasWidth, canvasHeight) is not { } size)
+        {
+            return;
+        }
+
+        var left = Clamp(x, 0, Math.Max(0, canvasWidth - size.Width));
+        var top = Clamp(y, 0, Math.Max(0, canvasHeight - size.Height));
+        var isLeft = left + size.Width / 2 < canvasWidth / 2;
+        var isTop = top + size.Height / 2 < canvasHeight / 2;
+        var anchor = isTop
+            ? (isLeft ? StudioAnchor.TopLeft : StudioAnchor.TopRight)
+            : (isLeft ? StudioAnchor.BottomLeft : StudioAnchor.BottomRight);
+
+        var anchored = WithScene(Project, scene => scene with
+        {
+            Bubble = scene.Bubble with { Anchor = anchor, OffsetX = 0, OffsetY = 0 },
+        });
+        if (GetBubbleRect(anchored, canvasWidth, canvasHeight) is not { } origin)
+        {
+            return;
+        }
+
+        MutateScene(scene => scene with
+        {
+            Bubble = scene.Bubble with
+            {
+                Anchor = anchor,
+                OffsetX = (left - origin.X) / canvasWidth,
+                OffsetY = (top - origin.Y) / canvasHeight,
+            },
+        });
+    }
+
+    public void MoveBubbleCenter(double x, double y, double canvasWidth, double canvasHeight)
+    {
+        if (HasCamera && canvasWidth > 0 && canvasHeight > 0 && GetBubbleRect(Project, canvasWidth, canvasHeight) is { } size)
+        {
+            MoveBubbleTopLeft(x - size.Width / 2, y - size.Height / 2, canvasWidth, canvasHeight);
+        }
+    }
+
+    /// <summary>The bubble's rectangle on a canvas of the given size, whatever layout is current.</summary>
+    public StudioFrameRect? GetBubbleRect(double canvasWidth, double canvasHeight) =>
+        canvasWidth > 0 && canvasHeight > 0 ? GetBubbleRect(Project, canvasWidth, canvasHeight) : null;
+
+    // Trim, audio, overlays
+
+    /// <summary>
+    /// Sets the trim in source time. The kept range stays inside the recording, in order, and at
+    /// least <see cref="MinimumDuration"/> long (or the whole recording when it is shorter).
+    /// </summary>
+    public void SetTrim(double start, double? end)
+    {
+        var edits = ClampedEdits(Project.Edits, start, end);
+        Mutate(project => project with { Edits = edits });
+    }
+
+    /// <summary>Moves the trim start, leaving the end where it is.</summary>
+    public void SetTrimStart(double value)
+    {
+        var latest = Math.Max(0, TrimEnd - Math.Min(MinimumDuration, SourceDuration));
+        SetTrim(double.IsFinite(value) ? Math.Min(value, latest) : 0, Project.Edits.TrimEnd);
+    }
+
+    /// <summary>Moves the trim end, leaving the start where it is.</summary>
+    public void SetTrimEnd(double value)
+    {
+        var start = TrimStart;
+        var earliest = Math.Min(SourceDuration, start + Math.Min(MinimumDuration, SourceDuration));
+        SetTrim(start, double.IsFinite(value) ? Math.Max(value, earliest) : SourceDuration);
+    }
+
+    public void SetMuted(bool isMuted) =>
+        Mutate(project => project with { Audio = project.Audio with { Muted = isMuted } });
+
+    public void SetClickRingsEnabled(bool isEnabled) =>
+        Mutate(project => project with
+        {
+            Overlays = project.Overlays with { Clicks = project.Overlays.Clicks with { Enabled = isEnabled } },
+        });
+
+    public void SetBrandingEnabled(bool isEnabled) =>
+        Mutate(project => project with { Overlays = project.Overlays with { Branding = isEnabled } });
+
+    // Looks
+
+    /// <summary>Applies a saved look. Crops belong to one recording, so the project's own crops stay.</summary>
+    public void ApplyLook(StudioLook look)
+    {
+        ArgumentNullException.ThrowIfNull(look);
+        Mutate(project => project with
+        {
+            Canvas = look.Canvas ?? new StudioCanvas(),
+            Screen = (look.Screen ?? new StudioScreenStyle()) with { Crop = project.Screen.Crop },
+            Camera = (look.Camera ?? new StudioCameraStyle()) with { Crop = project.Camera.Crop },
+        });
+    }
+
+    // Bookkeeping
+
+    /// <summary>Records that <paramref name="exported"/> (the state that was rendered) is now saved as a video.</summary>
+    public void MarkExported(StudioEditableState exported)
+    {
+        ArgumentNullException.ThrowIfNull(exported);
+        _exportedState = exported;
+    }
+
+    /// <summary>Takes the fields the store or other windows own from the saved project, leaving edits alone.</summary>
+    public void RefreshBookkeeping(StudioProject saved)
+    {
+        ArgumentNullException.ThrowIfNull(saved);
+        Project = Project with
+        {
+            Exports = saved.Exports,
+            ModifiedAt = saved.ModifiedAt,
+            LastOpenedAt = saved.LastOpenedAt,
+            KeepSources = saved.KeepSources,
+            Name = saved.Name,
+        };
+    }
+
+    // Geometry
+
+    /// <summary>The canvas aspect-fitted and centered in a view.</summary>
+    public static StudioEditorCanvasGeometry GetCanvasGeometry(double viewWidth, double viewHeight, double canvasWidth, double canvasHeight)
+    {
+        var view = new StudioSize(viewWidth, viewHeight);
+        var canvas = new StudioSize(canvasWidth, canvasHeight);
+        if (!(viewWidth > 0) || !(viewHeight > 0) || !(canvasWidth > 0) || !(canvasHeight > 0))
+        {
+            return new StudioEditorCanvasGeometry(view, canvas, default);
+        }
+
+        var scale = Math.Min(viewWidth / canvasWidth, viewHeight / canvasHeight);
+        var width = canvasWidth * scale;
+        var height = canvasHeight * scale;
+        return new StudioEditorCanvasGeometry(
+            view,
+            canvas,
+            new StudioFrameRect((viewWidth - width) / 2, (viewHeight - height) / 2, width, height));
+    }
+
+    // Text for screen readers
+
+    public static string GetSecondsText(double seconds) =>
+        string.Create(CultureInfo.InvariantCulture, $"{(double.IsFinite(seconds) ? seconds : 0):0.0} seconds");
+
+    public static string GetLayoutName(StudioLayout layout) => layout switch
+    {
+        StudioLayout.Screen => "Screen only",
+        StudioLayout.Bubble => "Screen with camera bubble",
+        StudioLayout.SideBySide => "Side by side",
+        _ => "Camera only",
+    };
+
+    public static string GetAnchorName(StudioAnchor anchor) => anchor switch
+    {
+        StudioAnchor.TopLeft => "Top left",
+        StudioAnchor.TopRight => "Top right",
+        StudioAnchor.BottomLeft => "Bottom left",
+        _ => "Bottom right",
+    };
+
+    public static string GetShapeName(StudioCameraShape shape) => shape switch
+    {
+        StudioCameraShape.Circle => "Circle",
+        StudioCameraShape.RoundedRectangle => "Rounded rectangle",
+        StudioCameraShape.Squircle => "Squircle",
+        _ => "Rectangle",
+    };
+
+    public static string GetAspectName(StudioCanvasAspect aspect) => aspect switch
+    {
+        StudioCanvasAspect.Square => "1:1",
+        StudioCanvasAspect.Landscape4X3 => "4:3",
+        StudioCanvasAspect.Landscape16X9 => "16:9",
+        StudioCanvasAspect.Portrait3X4 => "3:4",
+        StudioCanvasAspect.Portrait9X16 => "9:16",
+        _ => "Auto",
+    };
+
+    /// <summary>For example "0:02.5 of 0:10.0".</summary>
+    public string GetPlayheadText(double sourceTime) =>
+        $"{FormatTime(GetOutputTime(sourceTime))} of {FormatTime(OutputDuration)}";
+
+    // Private
+
+    private void Mutate(Func<StudioProject, StudioProject> change)
+    {
+        var before = EditableState;
+        var candidate = change(Project);
+        if (before.ContentEquals(StudioEditableState.From(candidate)))
+        {
+            return;
+        }
+
+        Project = candidate;
+        if (_groupedSnapshot is null)
+        {
+            PushUndo(before);
+        }
+    }
+
+    private void MutateScene(Func<StudioScene, StudioScene> change) => Mutate(project => WithScene(project, change));
+
+    private static StudioProject WithScene(StudioProject project, Func<StudioScene, StudioScene> change)
+    {
+        var scenes = (StudioScene[])project.Scenes.Clone();
+        scenes[0] = change(scenes[0]);
+        return project with { Scenes = scenes };
+    }
+
+    private void PushUndo(StudioEditableState snapshot)
+    {
+        if (snapshot.ContentEquals(EditableState))
+        {
+            return;
+        }
+
+        _undoStack.Add(snapshot);
+        if (_undoStack.Count > MaximumUndoDepth)
+        {
+            _undoStack.RemoveRange(0, _undoStack.Count - MaximumUndoDepth);
+        }
+
+        _redoStack.Clear();
+    }
+
+    private StudioEdits ClampedEdits(StudioEdits edits, double trimStart, double? trimEnd)
+    {
+        var duration = SourceDuration;
+        if (!(duration > 0))
+        {
+            return edits with { TrimStart = 0, TrimEnd = null };
+        }
+
+        var minimum = Math.Min(MinimumDuration, duration);
+        var startInput = double.IsFinite(trimStart) ? trimStart : 0;
+        var endInput = trimEnd is { } requested && double.IsFinite(requested) ? requested : duration;
+        var start = Clamp(startInput, 0, duration - minimum);
+        var end = Clamp(endInput, minimum, duration);
+        if (end - start < minimum)
+        {
+            if (start + minimum <= duration)
+            {
+                end = start + minimum;
+            }
+            else
+            {
+                start = Math.Max(0, end - minimum);
+            }
+        }
+
+        return edits with { TrimStart = start, TrimEnd = Math.Abs(end - duration) < 1e-9 ? null : end };
+    }
+
+    /// <summary>
+    /// The bubble rectangle the layout resolver produces for <paramref name="project"/>, forcing the
+    /// bubble layout so the answer does not depend on the layout currently shown.
+    /// </summary>
+    private static StudioFrameRect? GetBubbleRect(StudioProject project, double width, double height)
+    {
+        if (project.Scenes is not { Length: > 0 })
+        {
+            return null;
+        }
+
+        var scene = project.Scenes[0] with { Start = 0, Layout = StudioLayout.Bubble };
+        return StudioLayoutResolver.Resolve(project with { Scenes = [scene] }, 0, width, height).Camera?.Rect;
+    }
+
+    private static string? NormalizeHex(string? value)
+    {
+        var text = (value ?? string.Empty).Trim().ToUpperInvariant();
+        if (text.StartsWith('#'))
+        {
+            text = text[1..];
+        }
+
+        if (text.Length is not (6 or 8) || !text.All(Uri.IsHexDigit))
+        {
+            return null;
+        }
+
+        return "#" + text[..6];
+    }
+
+    private static bool IsPlainFileName(string value) =>
+        value.Length > 0 && value != "." && value != ".." && !value.Contains('/') && !value.Contains('\\');
+
+    private static double Clamp(double value, double min, double max) => Math.Min(Math.Max(value, min), max);
+}
