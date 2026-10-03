@@ -20,7 +20,7 @@
              throwaway self-signed certificate that the Sandbox trusts.
 
 .PARAMETER Version
-  Asset version, e.g. 1.8.1 (used for the download name or to stamp the build).
+  Asset version, e.g. 1.8.2 (used for the download name or to stamp the build).
 
 .PARAMETER WaitSeconds
   How long the app must stay alive to pass. Default 60.
@@ -29,9 +29,9 @@
   Host folder mapped into the Sandbox as C:\share. Default: %TEMP%\tinyclips-sandbox.
 
 .EXAMPLE
-  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.1
+  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.2
 .EXAMPLE
-  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.1
+  .\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.2
 #>
 [CmdletBinding()]
 param(
@@ -64,7 +64,7 @@ if ($Source -eq 'Release') {
     gh release download "v$Version-windows" --repo jamesmontemagno/tiny-clips --pattern $msixName --dir $WorkDir --clobber
     if ($LASTEXITCODE -ne 0) { throw 'gh release download failed.' }
 } else {
-    Write-Host "Building NativeAOT self-contained x64 MSIX $Version from the working tree..."
+    Write-Host "Building self-contained x64 MSIX $Version from the working tree..."
     $packageDir = Join-Path $WorkDir 'build'
     Remove-Item $packageDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $packageDir | Out-Null
@@ -72,11 +72,9 @@ if ($Source -eq 'Release') {
     try {
         $text = [Text.Encoding]::UTF8.GetString($manifestBackup)
         [IO.File]::WriteAllText($manifestPath, ($text -creplace '(<Identity[\s\S]*?Version=")[^"]+(")', "`${1}$Version.0`${2}"), (New-Object Text.UTF8Encoding $true))
-        $vswhereDirectory = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
-        $env:PATH = "$vswhereDirectory;$env:PATH"
         dotnet build $appProject -c Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
-            -p:TinyClipsDirectReleaseBuild=true -p:PublishAot=true -p:SelfContained=true `
-            -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=true -p:PublishReadyToRun=false `
+            -p:TinyClipsDirectReleaseBuild=true -p:PublishAot=false -p:SelfContained=true `
+            -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false `
             -p:EnableMsixTooling=true -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageDir="$packageDir\" -p:AppxBundle=Never -p:UapAppxPackageBuildMode=SideloadOnly `
             -p:AppxPackageSigningEnabled=false -nologo -v minimal

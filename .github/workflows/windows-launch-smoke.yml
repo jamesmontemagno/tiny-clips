@@ -1,7 +1,7 @@
 name: Windows Launch Smoke (self-contained package)
 
 # Reproduces the winget-pkgs "Installation Validation" step on real x64 and ARM64 runners:
-# verify the direct MSIX is NativeAOT and bundles Windows App SDK, install it without installing
+# verify the direct MSIX bundles .NET and Windows App SDK, install it without installing
 # either runtime first, launch TinyClips.App.exe straight from C:\Program Files\WindowsApps (as the
 # harness does), and report whether the process survives. On a crash the job collects diagnostics.
 #
@@ -21,11 +21,11 @@ on:
       release_tag:
         description: "Release tag holding the MSIX assets (source=release)"
         required: false
-        default: "v1.8.1-windows"
+        default: "v1.8.2-windows"
       asset_version:
         description: "Version embedded in the asset name (e.g. 1.7.1)"
         required: true
-        default: "1.8.1"
+        default: "1.8.2"
       wait_seconds:
         description: "How long the app must stay alive to count as a pass"
         required: false
@@ -49,8 +49,8 @@ jobs:
 
     env:
       SOURCE: ${{ inputs.source || 'release' }}
-      RELEASE_TAG: ${{ inputs.release_tag || 'v1.8.1-windows' }}
-      ASSET_VERSION: ${{ inputs.asset_version || '1.8.1' }}
+      RELEASE_TAG: ${{ inputs.release_tag || 'v1.8.2-windows' }}
+      ASSET_VERSION: ${{ inputs.asset_version || '1.8.2' }}
       WAIT_SECONDS: ${{ inputs.wait_seconds || '60' }}
       ARCH: ${{ matrix.arch }}
       GH_TOKEN: ${{ github.token }}
@@ -83,24 +83,6 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Verify NativeAOT toolchain
-        if: env.SOURCE == 'build'
-        shell: pwsh
-        run: |
-          $vswhereDirectory = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer"
-          $vswhere = Join-Path $vswhereDirectory "vswhere.exe"
-          if (-not (Test-Path $vswhere)) { throw "vswhere.exe was not found." }
-
-          $visualStudio = & $vswhere -latest -products * -property installationPath
-          if (-not $visualStudio) { throw "Visual Studio was not found." }
-
-          $linker = Get-ChildItem "$visualStudio\VC\Tools\MSVC" -Recurse -Filter link.exe |
-            Where-Object { $_.FullName -match "\\Host(x64|arm64)\\$env:ARCH\\link\.exe$" } |
-            Select-Object -First 1
-          if (-not $linker) { throw "NativeAOT linker for $env:ARCH was not found." }
-
-          $vswhereDirectory >> $env:GITHUB_PATH
-
       - name: Build and package MSIX from this branch
         if: env.SOURCE == 'build'
         shell: pwsh
@@ -120,11 +102,10 @@ jobs:
             -p:Platform=$platform `
             -p:RuntimeIdentifier=win-$env:ARCH `
             -p:TinyClipsDirectReleaseBuild=true `
-            -p:PublishAot=true `
+            -p:PublishAot=false `
             -p:SelfContained=true `
             -p:WindowsAppSDKSelfContained=true `
-            -p:PublishTrimmed=true `
-            -p:PublishReadyToRun=false `
+            -p:PublishTrimmed=false `
             -p:EnableMsixTooling=true `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageDir=$packageDirFull `
@@ -140,7 +121,7 @@ jobs:
           Copy-Item $produced.FullName "packages/TinyClips-$env:ASSET_VERSION-$env:ARCH.msix" -Force
           Get-ChildItem packages -File
 
-      - name: Verify self-contained NativeAOT package
+      - name: Verify self-contained package
         shell: pwsh
         run: |
           & windows/packaging/Assert-DirectPackage.ps1 `
@@ -277,7 +258,7 @@ jobs:
         run: |
           # "Open with Tiny Clips" file activation opens the screenshot editor without driving the
           # capture UI. The editor window must appear and the process must stay alive: a launch-only
-          # check does not load the editor, which is where NativeAOT-only failures have surfaced.
+          # check does not load the editor.
           Add-Type -AssemblyName System.Drawing
           $png = Join-Path $env:RUNNER_TEMP 'tinyclips-smoke.png'
           $bmp = New-Object System.Drawing.Bitmap 640, 400

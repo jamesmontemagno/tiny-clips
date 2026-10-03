@@ -8,7 +8,7 @@ What it checks, in order:
 1. Fresh Windows (Sandbox), with networking disabled so App Installer cannot acquire dependencies.
 2. Reports whether .NET 10 Desktop Runtime or Windows App Runtime 1.8 happens to be present; it
    deliberately installs neither.
-3. Validates and installs the NativeAOT self-contained MSIX (`Add-AppxPackage`).
+3. Validates and installs the self-contained MSIX (`Add-AppxPackage`).
 4. Launches `TinyClips.App.exe` by full path from `C:\Program Files\WindowsApps\…` with an unrelated
    working directory (`C:\Windows\Temp`) — exactly how the winget harness starts the app.
 5. Brings the first-run Welcome window to the foreground and presses Enter three times
@@ -33,18 +33,18 @@ From the repository root:
 
 ```pwsh
 # Validate a published release (Azure-signed, no certificate juggling)
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.1
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.2
 
 # Validate the current working tree: builds the MSIX with the release recipe and signs it with a
 # throwaway self-signed certificate that only the Sandbox trusts
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.1
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.2
 ```
 
 The Welcome window appears, gets clicked through, and the script prints the result:
 
 ```
 18:05:28   installed
-18:05:31   Refractored.TinyClips_1.8.1.0_x64__vmshqmcyy894t
+18:05:31   Refractored.TinyClips_1.8.2.0_x64__vmshqmcyy894t
 18:05:32 Launching C:\Program Files\WindowsApps\...\TinyClips.App.exe (cwd C:\Windows\Temp)
 18:05:52 Activating 'Welcome to Tiny Clips' and clicking through onboarding (3x Enter)
 18:06:34 RESULT: PASS - alive after 60s
@@ -71,7 +71,7 @@ Artifacts land in `%TEMP%\tinyclips-sandbox\` (override with `-WorkDir`).
 - **Networking is disabled intentionally.** A framework-dependent regression must fail instead of
   being masked by App Installer or Store dependency acquisition.
 - **The host validates package structure before starting Sandbox.** This catches the wrong
-  architecture, managed/CLR output, missing bundled Windows App SDK files, a stale
+  architecture, a missing bundled .NET runtime or Windows App SDK files, a stale
   `WindowsAppRuntime` framework dependency, or missing registration-free activation metadata.
 - **Sandbox ≠ ARM64.** For ARM64 use the *Windows Launch Smoke* GitHub workflow
   (`windows-11-arm` runner), or a real ARM64 machine with the gist-style test script.

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
-# Installer manifest for the signed, NativeAOT self-contained MSIX produced by the Windows
-# Release workflow. The package bundles .NET native code and Windows App SDK, so no runtime
+# Installer manifest for the signed, self-contained MSIX produced by the Windows
+# Release workflow. The package bundles the .NET runtime and Windows App SDK, so no runtime
 # package dependencies are required.
 # Fill in InstallerUrl + InstallerSha256 after publishing a signed release asset.
 # SignatureSha256 is required for msix installers (the package signature hash):

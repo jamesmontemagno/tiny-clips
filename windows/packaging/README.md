@@ -29,14 +29,13 @@ dotnet build windows\src\TinyClips.App\TinyClips.App.csproj -c Release `
 
 Repeat with `Platform=ARM64`, `RuntimeIdentifier=win-arm64`, and
 `Assert-DirectPackage.ps1 -Architecture arm64`. Sign the resulting packages before distribution.
-NativeAOT requires Visual Studio's **Desktop development with C++** workload.
 Attach the signed `.msix` files to a GitHub Release (e.g. `v1.0.0`). The automated release
 workflow also generates architecture-specific `.appinstaller` files for auto-updating direct installs.
 
 ### Automated Windows release workflow
 
 `.github/workflows/windows-release.yml` runs for tags like `v1.0.1-windows` and maps them to
-MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 as NativeAOT self-contained MSIX
+MSIX/winget versions like `1.0.1.0`. It builds x64 + ARM64 as self-contained MSIX
 packages, signs them with Azure Artifact Signing, runs WACK, computes winget hashes, generates a
 versioned winget manifest artifact, and creates the GitHub Release. The generated App Installer
 configuration is published only as standalone `.appinstaller` release assets; neither direct nor
@@ -74,7 +73,7 @@ as the repository's latest release, avoiding collisions with interleaved macOS r
 `windows-latest` git tag and generated source archives identify the commit that first created the
 channel; only the `.appinstaller` assets represent current channel state.
 
-Direct packages remain NativeAOT and self-contained, including the Windows App SDK runtime, so a
+Direct packages are self-contained, bundling the .NET runtime and the Windows App SDK runtime, so a
 clean machine needs no separate .NET or Windows App Runtime installation. `winget` and App Installer
 install the same direct MSIX and operate on the same package family, so either can advance its
 installed version; only installs made through the `.appinstaller` update automatically.
@@ -85,10 +84,10 @@ Direct GitHub Release and winget artifacts use the `TinyClipsDirectReleaseBuild=
 
 | MSBuild property | Direct release effect |
 |---|---|
-| `PublishAot=true` | Compiles Tiny Clips and reachable .NET code to an architecture-specific native executable; no JIT or machine-installed .NET runtime is used. |
-| `SelfContained=true` | Makes the .NET deployment contract explicitly self-contained (NativeAOT also implies this). |
+| `PublishAot=false` | Direct releases run on CoreCLR, the same code path as the Store flavor. NativeAOT shipped in 1.8.0 and 1.8.1 and failed at runtime in the screenshot editor, recording setup, and Clips Library; the build did not flag any of it. |
+| `SelfContained=true` | Bundles the .NET 10 runtime, so no machine-installed .NET runtime is used. |
 | `WindowsAppSDKSelfContained=true` | Includes WinUI 3 and Windows App SDK runtime files inside the MSIX instead of declaring `Microsoft.WindowsAppRuntime` as a framework dependency. |
-| `PublishTrimmed=true` | Required by NativeAOT; app JSON serialization, COM interop, and XAML bindings use source-generated/compiled paths. |
+| `PublishTrimmed=false` | Trimming is off: WinUI 3, H.NotifyIcon, and NAudio rely on reflection that trimming breaks. |
 
 Build and package in one MSBuild invocation. Splitting `dotnet publish` from packaging can lose the
 embedded registration-free WinRT `activatableClass` metadata and cause `REGDB_E_CLASSNOTREG` on a
@@ -96,23 +95,23 @@ clean machine.
 
 `Assert-DirectPackage.ps1` unpacks every x64/ARM64 candidate and requires:
 
-- a native PE for the requested architecture with a native entry point and no CLR header;
-- no `TinyClips.App.dll`, `coreclr.dll`, `clrjit.dll`, `hostfxr.dll`, or `hostpolicy.dll`;
+- `TinyClips.App.exe` and `coreclr.dll` built for the requested architecture;
+- bundled `TinyClips.App.dll`, `coreclr.dll`, `hostfxr.dll`, and `hostpolicy.dll`;
 - bundled `Microsoft.WindowsAppRuntime.dll` and `Microsoft.UI.Xaml.dll`;
-- no `Microsoft.WindowsAppRuntime` framework dependency; and
+- no `Microsoft.WindowsAppRuntime` framework dependency;
+- no embedded App Installer configuration (`uap13:AutoUpdate` or an `.appinstaller` file); and
 - embedded registration-free WinRT activation metadata.
 
-The x64 package is about **50.9 MiB compressed / 126.4 MiB expanded** at 1.8.0, versus
-**22.4 MiB compressed / 72.1 MiB expanded** for a same-source framework-dependent package. The
-download grows by about 28.5 MiB (2.27x). NativeAOT removes the CLR/JIT payload, but the Windows App
-SDK self-contained payload includes optional runtime components, so release size still increases in
-exchange for clean-machine installation.
+The x64 package is about **105 MiB compressed / 285 MiB expanded** at 1.8.2. For comparison, the
+NativeAOT 1.8.1 package was about 35 MiB and the framework-dependent 1.7.5 package about 22 MiB.
+Bundling the untrimmed .NET runtime and its ReadyToRun images accounts for most of the growth, in
+exchange for clean-machine installation and the same runtime behavior as the Store flavor.
 
 #### Verifying locally in Windows Sandbox (recommended before every release)
 
 ```pwsh
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.1     # working tree
-.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.1   # published tag
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Build -Version 1.8.2     # working tree
+.\windows\packaging\sandbox\Invoke-SandboxValidation.ps1 -Source Release -Version 1.8.2   # published tag
 ```
 
 This starts an **offline** fresh Sandbox, installs no .NET or Windows App Runtime prerequisites,
@@ -168,7 +167,7 @@ The locale manifest already includes:
 3. Build the Store-configuration MSIX (Store handles signing) and upload via Partner Center
    or `winapp` Store submission.
 4. Build with the Store flavor flag so Store-only distribution behavior is enabled while the
-   direct NativeAOT/self-contained profile stays disabled:
+   direct self-contained profile stays disabled:
    `dotnet build windows\src\TinyClips.App\TinyClips.App.csproj -c Release -p:Platform=x64 -p:TinyClipsStoreBuild=true -p:TinyClipsDirectReleaseBuild=false -p:PublishAot=false -p:SelfContained=false -p:WindowsAppSDKSelfContained=false`
    (the Store workflow creates the x64 + ARM64 upload bundle).
 5. Complete the listing metadata, privacy, and screen-recording capability declarations.

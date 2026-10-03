@@ -5,6 +5,23 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v1.8.2-windows] - 2026-10-03
+
+### Changed
+- **Direct and winget builds no longer use NativeAOT.** They now run on the same .NET runtime as
+  the Microsoft Store build. The .NET runtime and Windows App SDK are still bundled, so nothing
+  else needs to be installed, but the download is larger (about 105 MiB for x64, up from about
+  35 MiB).
+
+### Fixed
+- **Recording setup no longer crashes in direct and winget installs.** In 1.8.1, closing the
+  video or GIF recording setup window crashed Tiny Clips.
+- **The Clips Library opens again in direct and winget installs.** In 1.8.1, opening it crashed
+  Tiny Clips.
+
+  Both were failures that only happened in the NativeAOT build; Microsoft Store installs were
+  not affected.
+
 ## [v1.8.1-windows] - 2026-10-03
 
 ### Changed
