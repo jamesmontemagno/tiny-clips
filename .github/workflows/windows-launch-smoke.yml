@@ -292,24 +292,32 @@ jobs:
           using System.Collections.Generic;
           using System.Runtime.InteropServices;
           using System.Text;
+          using System.Threading;
 
           public static class TinyClipsSmoke
           {
-              [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-              private interface IApplicationActivationManager
+              [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+              private struct SHELLEXECUTEINFO
               {
-                  [PreserveSig] int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appUserModelId, [MarshalAs(UnmanagedType.LPWStr)] string arguments, int options, out uint processId);
-                  [PreserveSig] int ActivateForFile([MarshalAs(UnmanagedType.LPWStr)] string appUserModelId, IntPtr itemArray, [MarshalAs(UnmanagedType.LPWStr)] string verb, out uint processId);
+                  public int cbSize;
+                  public uint fMask;
+                  public IntPtr hwnd;
+                  [MarshalAs(UnmanagedType.LPWStr)] public string lpVerb;
+                  [MarshalAs(UnmanagedType.LPWStr)] public string lpFile;
+                  [MarshalAs(UnmanagedType.LPWStr)] public string lpParameters;
+                  [MarshalAs(UnmanagedType.LPWStr)] public string lpDirectory;
+                  public int nShow;
+                  public IntPtr hInstApp;
+                  public IntPtr lpIDList;
+                  [MarshalAs(UnmanagedType.LPWStr)] public string lpClass;
+                  public IntPtr hkeyClass;
+                  public uint dwHotKey;
+                  public IntPtr hIcon;
+                  public IntPtr hProcess;
               }
 
-              [ComImport, Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")]
-              private class ApplicationActivationManager { }
-
-              [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
-              private static extern void SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid riid, out IntPtr item);
-
-              [DllImport("shell32.dll", PreserveSig = false)]
-              private static extern void SHCreateShellItemArrayFromShellItem(IntPtr item, ref Guid riid, out IntPtr itemArray);
+              [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+              private static extern bool ShellExecuteEx(ref SHELLEXECUTEINFO info);
 
               private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
               [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
@@ -317,25 +325,36 @@ jobs:
               [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
               [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int count);
 
-              public static uint ActivateForFile(string appUserModelId, string path)
+              // Opens the file with a specific ProgID (the package's file association) instead of
+              // the machine default, on an STA thread as the shell requires.
+              public static void OpenWithProgId(string path, string progId)
               {
-                  var shellItemId = new Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe");
-                  var shellItemArrayId = new Guid("b63ea76d-1f85-456f-a19c-48159efa858b");
-                  IntPtr item, itemArray;
-                  SHCreateItemFromParsingName(path, IntPtr.Zero, ref shellItemId, out item);
-                  SHCreateShellItemArrayFromShellItem(item, ref shellItemArrayId, out itemArray);
-                  try
+                  Exception failure = null;
+                  var thread = new Thread(() =>
                   {
-                      var manager = (IApplicationActivationManager)new ApplicationActivationManager();
-                      uint processId;
-                      Marshal.ThrowExceptionForHR(manager.ActivateForFile(appUserModelId, itemArray, "open", out processId));
-                      return processId;
-                  }
-                  finally
-                  {
-                      Marshal.Release(itemArray);
-                      Marshal.Release(item);
-                  }
+                      try
+                      {
+                          var info = new SHELLEXECUTEINFO();
+                          info.cbSize = Marshal.SizeOf(typeof(SHELLEXECUTEINFO));
+                          info.fMask = 0x00000001 | 0x00000400; // SEE_MASK_CLASSNAME | SEE_MASK_FLAG_NO_UI
+                          info.lpVerb = "open";
+                          info.lpFile = path;
+                          info.lpClass = progId;
+                          info.nShow = 1;
+                          if (!ShellExecuteEx(ref info))
+                          {
+                              throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                          }
+                      }
+                      catch (Exception ex)
+                      {
+                          failure = ex;
+                      }
+                  });
+                  thread.SetApartmentState(ApartmentState.STA);
+                  thread.Start();
+                  thread.Join();
+                  if (failure != null) { throw failure; }
               }
 
               public static string[] VisibleWindowTitles(uint processId)
@@ -358,9 +377,24 @@ jobs:
           }
           '@
 
-          $appPid = [TinyClipsSmoke]::ActivateForFile("$env:PKG_PFN!App", $png)
-          "File activation started PID $appPid for $png"
-          $proc = Get-Process -Id $appPid -ErrorAction Stop
+          # Full-trust packaged apps register their file types as classic ProgIDs, so open the PNG
+          # with Tiny Clips' own ProgID rather than whatever the machine default for .png is.
+          $packageFullName = (Get-AppxPackage Refractored.TinyClips).PackageFullName
+          $associations = "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages\$packageFullName\App\Capabilities\FileAssociations"
+          $progId = (Get-ItemProperty $associations).'.png'
+          if (-not $progId) { throw "Tiny Clips has no .png file association registered under $associations." }
+          "Opening $png with ProgID $progId"
+          [TinyClipsSmoke]::OpenWithProgId($png, $progId)
+
+          $proc = $null
+          $launchDeadline = (Get-Date).AddSeconds(30)
+          while (-not $proc -and (Get-Date) -lt $launchDeadline) {
+            Start-Sleep -Milliseconds 500
+            $proc = Get-Process TinyClips.App -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $proc) { throw "File activation did not start TinyClips.App.exe." }
+          $appPid = [uint32]$proc.Id
+          "File activation started PID $appPid"
           $null = $proc.Handle
 
           # The editor must show up, then survive its first layout passes.
