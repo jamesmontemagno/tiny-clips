@@ -16,15 +16,17 @@ Both platforms implement sections 5 to 7 as pure functions, and both test suites
 ```
 
 - Projects root on Windows: `%LOCALAPPDATA%\TinyClips\Projects`. On macOS: `Application Support/TinyClips/Projects`.
-- The project id is a lowercase UUID without braces. It is also the folder name.
+- The project id is a lowercase UUID in hyphenated form, such as `3f0013cf-ba10-4453-af91-792b7882dae6`.
+- **The folder name is the id.** A store ignores any folder whose name is not such a UUID, and never builds a path from an id it has not validated. When `project.json` holds a different `id`, the folder name wins.
+- `sources.screen.file` (unless `external` is true), `sources.camera.file`, and `sources.events` are file names inside the project folder. A value containing a path separator makes the project invalid. A `background.image` containing one is treated as missing.
 
 ## 2. Conventions
 
 - UTF-8 JSON with camelCase property names. Writers emit indented JSON.
 - **Unknown properties survive a save.** Every object type keeps the properties it does not recognize and writes them back unchanged.
 - **Missing properties take their default.** A reader never fails because an optional property is absent. A missing timestamp reads as `1970-01-01T00:00:00Z`.
-- **Required properties** have no default: `id`, `sources.screen.width`, `sources.screen.height`, `sources.screen.duration`, and, when `sources.camera` is present, its `width`, `height`, and `duration`. A project missing one of these is invalid and is not opened.
-- **`null` counts as missing** unless the property's type below says "or null". So a `null` optional property takes its default, and a `null` required property makes the project invalid.
+- **Required properties** have no default: `id`, `sources.screen.width`, `sources.screen.height`, `sources.screen.duration`, and, when `sources.camera` is present, its `width`, `height`, and `duration`. A project missing one of these is invalid and is not opened. So is one where a `width` or `height` is not an integer of at least 1, or a `duration` is negative.
+- **`null` counts as missing** unless the property's type below says "or null". So a `null` optional property takes its default, and a `null` required property makes the project invalid. A `null` element inside an array is dropped.
 - A reader refuses to open a project whose `schemaVersion` is greater than the version it supports.
 - Enumerations are camelCase strings. An unrecognized value reads as the field's default.
 - Times are seconds as finite doubles. Unless stated otherwise they are **source time**: seconds on the pause-adjusted recording timeline, where 0 is the first screen frame.
@@ -173,6 +175,8 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 - `cursor` holds at most 60 samples per second, sorted by `t`, with consecutive duplicates removed.
 - `cameraCorners` uses the bubble anchor names.
 - `markers` is reserved for live layout switches.
+- Section 2 applies here too: unknown properties survive, missing or `null` properties take their default (`scale` 1, `kind` `display`, empty lists), and a `schemaVersion` above 1 is refused.
+- A project with no `events.json` file has no events. Reading it gives the defaults rather than an error.
 
 ## 5. Canvas size
 
@@ -400,20 +404,28 @@ The classic look, matching a recording made without Studio, is background `none`
 
 ## 9. Flat projects
 
-Opening an existing video that has no project creates a flat project: `sources.screen.external` is true, `screen.file` is the absolute path, and `camera` and `events` are null. There is at most one flat project per video path. Camera layouts are unavailable, so every scene resolves as `screen`.
+Opening an existing video that has no project creates a flat project: `sources.screen.external` is true, `screen.file` is the absolute path, and `camera` and `events` are null. The caller reads the video's width, height, duration, and frame rate and passes them in; the store does not open media files. There is at most one flat project per video path. Camera layouts are unavailable, so every scene resolves as `screen`.
 
 ## 10. Export links
 
-Each export appends `{ path, exportedAt }` to `exports`. The project store indexes those paths, compared case-insensitively, so the Clips Library can find the project for a video. Renaming or moving an exported video updates its entry; deleting the video removes it.
+Each export adds `{ path, exportedAt }` to `exports`. The project store indexes those paths, compared case-insensitively, so the Clips Library can find the project for a video.
+
+- Exporting to a path the project already lists replaces that entry instead of adding a second one.
+- A path belongs to one project. Recording an export removes the same path from every other project, because the file there has been overwritten.
+- Renaming or moving an exported video updates its entry; deleting the video removes it.
 
 ## 11. Cleanup
 
 - A project is **eligible** for automatic cleanup when it has at least one export, `keepSources` is false, and it is not a flat project.
+- A project that is open in Studio, or still being recorded, is never deleted. The app passes those ids to every cleanup.
 - **Age rule**: an eligible project is deleted when `lastOpenedAt` is more than 30 days old. The number of days is a setting; 0 disables the rule.
-- **Size rule**: when the total size of the projects root exceeds 10 GB (10 × 1024³ bytes), eligible projects are deleted in ascending `lastOpenedAt` order until the total is under the cap or none remain. The cap is a setting; 0 disables the rule.
+- **Size rule**: applied after the age rule. When the projects that remain total more than 10 GB (10 × 1024³ bytes), eligible ones are deleted in ascending `lastOpenedAt` order, ties broken by id, until the total is at or under the cap or none remain. The cap is a setting; 0 disables the rule.
 - A draft (no exports) is never deleted automatically.
 - A flat project is deleted when its external video no longer exists.
+- A folder with no `project.json` is a recording that never finished. It is deleted once it is more than 24 hours old.
+- A folder whose `project.json` cannot be read (for example, it was written by a newer version) is left alone.
 - Cleanup deletes the whole project folder. The exported video is untouched, and opening it in Studio later creates a flat project.
+- A folder that cannot be deleted because a file is in use is skipped and tried again next time. One failure does not stop the rest.
 - Cleanup runs at app launch and after each export.
 
 ## 12. Fixtures
