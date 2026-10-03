@@ -15,7 +15,7 @@ Both platforms implement sections 5 to 7 as pure functions, and both test suites
   poster.jpg     optional thumbnail
 ```
 
-- Projects root on Windows: `%LOCALAPPDATA%\TinyClips\Projects`. On macOS: `Application Support/TinyClips/Projects`.
+- Projects root on Windows: the app's local data folder, then `TinyClips\Projects`. For the installed (packaged) app that is `%LOCALAPPDATA%\Packages\<package family>\LocalState\TinyClips\Projects`; for an unpackaged run it is `%LOCALAPPDATA%\TinyClips\Projects`. On macOS: `Application Support/TinyClips/Projects`.
 - The project id is a lowercase UUID in hyphenated form, such as `3f0013cf-ba10-4453-af91-792b7882dae6`.
 - **The folder name is the id.** A store ignores any folder whose name is not such a UUID, and never builds a path from an id it has not validated. When `project.json` holds a different `id`, the folder name wins.
 - `sources.screen.file` (unless `external` is true), `sources.camera.file`, and `sources.events` are file names inside the project folder. A value containing a path separator makes the project invalid. A `background.image` containing one is treated as missing.
