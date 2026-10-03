@@ -85,9 +85,11 @@ struct CaptureRegion: Sendable {
 
 struct CaptureTarget {
     let region: CaptureRegion
+    let studioCaptureKind: StudioCaptureKind
 
-    init(region: CaptureRegion) {
+    init(region: CaptureRegion, studioCaptureKind: StudioCaptureKind = .region) {
         self.region = region
+        self.studioCaptureKind = studioCaptureKind
     }
 
     func prepare(alwaysExcluding windows: [SCWindow] = []) async throws -> PreparedCaptureTarget {
@@ -203,6 +205,12 @@ enum VideoCodec: String, CaseIterable {
         case .hevc: return "H.265 / HEVC"
         }
     }
+}
+
+enum VideoAfterRecording: String, CaseIterable {
+    case save
+    case trimmer
+    case studio
 }
 
 enum MultiMonitorCaptureMode: String, CaseIterable {
@@ -370,6 +378,28 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifMouseClickOpacity") var gifMouseClickOpacity: Double = 0.85
     @AppStorage("gifMouseClickDuration") var gifMouseClickDuration: Double = 0.45
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
+    @AppStorage("studioPreviewEnabled") var studioPreviewEnabled: Bool = false
+    @AppStorage("videoAfterRecording") private var storedVideoAfterRecording: String = ""
+    var videoAfterRecording: VideoAfterRecording {
+        get {
+            if let value = VideoAfterRecording(rawValue: storedVideoAfterRecording) {
+                return value
+            }
+            return showTrimmer ? .trimmer : .save
+        }
+        set {
+            storedVideoAfterRecording = newValue.rawValue
+            switch newValue {
+            case .save, .studio:
+                showTrimmer = false
+            case .trimmer:
+                showTrimmer = true
+            }
+        }
+    }
+    var isStudioVideoRecordingEnabled: Bool {
+        studioPreviewEnabled && videoAfterRecording == .studio
+    }
     @AppStorage("recordAudio") var recordAudio: Bool = false
     @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
     @AppStorage("audioOffsetMs") private var storedAudioOffsetMs: Int = 0
@@ -783,7 +813,7 @@ class CaptureSettings: ObservableObject {
         "gifMouseClicksUseVideoSettings",
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
-        "showTrimmer",
+        "showTrimmer", "studioPreviewEnabled", "videoAfterRecording",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", "showGifTrimmer",

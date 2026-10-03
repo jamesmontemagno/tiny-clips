@@ -152,6 +152,24 @@
 		B60000000000000000000001 /* StudioProjectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000001 /* StudioProjectTests.swift */; };
 		B60000000000000000000002 /* StudioLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000002 /* StudioLayoutTests.swift */; };
 		B60000000000000000000003 /* StudioFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000003 /* StudioFixtureTests.swift */; };
+		774667601CEB4B855CC1C93F /* StudioRenderGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */; };
+		D0D2B1E6D380CFA891E26F03 /* StudioRenderGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */; };
+		919755A630E5FA97FA82A34C /* StudioCaptureEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1C92E15965D592980D7254C /* StudioCaptureEvents.swift */; };
+		BF95D6F237E260C603BB3B05 /* StudioCaptureEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1C92E15965D592980D7254C /* StudioCaptureEvents.swift */; };
+		B8EDC14A56F0ECC682744CCA /* StudioRenderState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */; };
+		322CB3FB9F91146FB467C8DF /* StudioRenderState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */; };
+		40548B5C1CEC09E72682102E /* StudioCompositionBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */; };
+		D73E4D374157B85A9EF1C9E1 /* StudioCompositionBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */; };
+		F7EE90646BDD9AC23B804EF0 /* StudioCompositor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE54467E687EC983845F1A47 /* StudioCompositor.swift */; };
+		C15E5D215EE86B4B5BC530DC /* StudioCompositor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE54467E687EC983845F1A47 /* StudioCompositor.swift */; };
+		3E2067888B99235F7647F19F /* StudioExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70E12611BB3087DAEE68C93 /* StudioExporter.swift */; };
+		07CED5D8E70FC72F8BFDD16A /* StudioExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70E12611BB3087DAEE68C93 /* StudioExporter.swift */; };
+		F8CFD962B25E6731B8E26193 /* StudioPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8570D0C6EFBF2099DAE2F7E3 /* StudioPlayback.swift */; };
+		1DA46A23D7166ABB620684BA /* StudioPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8570D0C6EFBF2099DAE2F7E3 /* StudioPlayback.swift */; };
+		75EAE17CAD57EB4AC17976E3 /* StudioRecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6AA390A4D115AC20BFCFD0F /* StudioRecordingCoordinator.swift */; };
+		0DBC2497957460ED836EDEBF /* StudioRecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6AA390A4D115AC20BFCFD0F /* StudioRecordingCoordinator.swift */; };
+		FA0BE82E7B443BF2C65E796B /* StudioRenderGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F398D2F36A0A31E3BB060B /* StudioRenderGeometryTests.swift */; };
+		2919C387E06C78C948A7CC3A /* StudioCaptureEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C575E8A9C0896B153E9401C5 /* StudioCaptureEventsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -247,6 +265,16 @@
 		A50000000000000000000001 /* StudioProjectTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProjectTests.swift; sourceTree = "<group>"; };
 		A50000000000000000000002 /* StudioLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioLayoutTests.swift; sourceTree = "<group>"; };
 		A50000000000000000000003 /* StudioFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioFixtureTests.swift; sourceTree = "<group>"; };
+		F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRenderGeometry.swift; sourceTree = "<group>"; };
+		D1C92E15965D592980D7254C /* StudioCaptureEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptureEvents.swift; sourceTree = "<group>"; };
+		4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRenderState.swift; sourceTree = "<group>"; };
+		D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCompositionBuilder.swift; sourceTree = "<group>"; };
+		FE54467E687EC983845F1A47 /* StudioCompositor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCompositor.swift; sourceTree = "<group>"; };
+		A70E12611BB3087DAEE68C93 /* StudioExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioExporter.swift; sourceTree = "<group>"; };
+		8570D0C6EFBF2099DAE2F7E3 /* StudioPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioPlayback.swift; sourceTree = "<group>"; };
+		F6AA390A4D115AC20BFCFD0F /* StudioRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRecordingCoordinator.swift; sourceTree = "<group>"; };
+		F3F398D2F36A0A31E3BB060B /* StudioRenderGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRenderGeometryTests.swift; sourceTree = "<group>"; };
+		C575E8A9C0896B153E9401C5 /* StudioCaptureEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptureEventsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -376,6 +404,7 @@
 				A10000000000000000000031 /* BrandingOverlayProcessor.swift */,
 				A1000000000000000000001E /* WindowSelector.swift */,
 				A1000000000000000000003E /* ScrollingPanoramaCapture.swift */,
+				F6AA390A4D115AC20BFCFD0F /* StudioRecordingCoordinator.swift */,
 			);
 			path = Capture;
 			sourceTree = "<group>";
@@ -408,6 +437,9 @@
 				A40000000000000000000006 /* StudioCanvasMath.swift */,
 				A40000000000000000000007 /* StudioLayoutResolver.swift */,
 				A40000000000000000000008 /* StudioTimeMap.swift */,
+				F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */,
+				D1C92E15965D592980D7254C /* StudioCaptureEvents.swift */,
+				536FC4823D4E273D9E5841E6 /* Rendering */,
 			);
 			path = Studio;
 			sourceTree = "<group>";
@@ -433,8 +465,22 @@
 				A50000000000000000000001 /* StudioProjectTests.swift */,
 				A50000000000000000000002 /* StudioLayoutTests.swift */,
 				A50000000000000000000003 /* StudioFixtureTests.swift */,
+				F3F398D2F36A0A31E3BB060B /* StudioRenderGeometryTests.swift */,
+				C575E8A9C0896B153E9401C5 /* StudioCaptureEventsTests.swift */,
 			);
 			path = TinyClipsTests;
+			sourceTree = "<group>";
+		};
+		536FC4823D4E273D9E5841E6 /* Rendering */ = {
+			isa = PBXGroup;
+			children = (
+				4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */,
+				D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */,
+				FE54467E687EC983845F1A47 /* StudioCompositor.swift */,
+				A70E12611BB3087DAEE68C93 /* StudioExporter.swift */,
+				8570D0C6EFBF2099DAE2F7E3 /* StudioPlayback.swift */,
+			);
+			path = Rendering;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -633,6 +679,14 @@
 				B40000000000000000000006 /* StudioCanvasMath.swift in Sources */,
 				B40000000000000000000007 /* StudioLayoutResolver.swift in Sources */,
 				B40000000000000000000008 /* StudioTimeMap.swift in Sources */,
+				774667601CEB4B855CC1C93F /* StudioRenderGeometry.swift in Sources */,
+				919755A630E5FA97FA82A34C /* StudioCaptureEvents.swift in Sources */,
+				B8EDC14A56F0ECC682744CCA /* StudioRenderState.swift in Sources */,
+				40548B5C1CEC09E72682102E /* StudioCompositionBuilder.swift in Sources */,
+				F7EE90646BDD9AC23B804EF0 /* StudioCompositor.swift in Sources */,
+				3E2067888B99235F7647F19F /* StudioExporter.swift in Sources */,
+				F8CFD962B25E6731B8E26193 /* StudioPlayback.swift in Sources */,
+				75EAE17CAD57EB4AC17976E3 /* StudioRecordingCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -706,6 +760,14 @@
 				B50000000000000000000006 /* StudioCanvasMath.swift in Sources */,
 				B50000000000000000000007 /* StudioLayoutResolver.swift in Sources */,
 				B50000000000000000000008 /* StudioTimeMap.swift in Sources */,
+				D0D2B1E6D380CFA891E26F03 /* StudioRenderGeometry.swift in Sources */,
+				BF95D6F237E260C603BB3B05 /* StudioCaptureEvents.swift in Sources */,
+				322CB3FB9F91146FB467C8DF /* StudioRenderState.swift in Sources */,
+				D73E4D374157B85A9EF1C9E1 /* StudioCompositionBuilder.swift in Sources */,
+				C15E5D215EE86B4B5BC530DC /* StudioCompositor.swift in Sources */,
+				07CED5D8E70FC72F8BFDD16A /* StudioExporter.swift in Sources */,
+				1DA46A23D7166ABB620684BA /* StudioPlayback.swift in Sources */,
+				0DBC2497957460ED836EDEBF /* StudioRecordingCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -721,6 +783,8 @@
 				B60000000000000000000001 /* StudioProjectTests.swift in Sources */,
 				B60000000000000000000002 /* StudioLayoutTests.swift in Sources */,
 				B60000000000000000000003 /* StudioFixtureTests.swift in Sources */,
+				FA0BE82E7B443BF2C65E796B /* StudioRenderGeometryTests.swift in Sources */,
+				2919C387E06C78C948A7CC3A /* StudioCaptureEventsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
