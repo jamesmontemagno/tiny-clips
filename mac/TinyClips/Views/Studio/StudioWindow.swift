@@ -239,6 +239,19 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         super.keyDown(with: event)
     }
 
+    /// Esc, or Command-Period. It reaches the window because no control in Studio uses it as a key
+    /// equivalent. It stops a running export; otherwise it closes the editor like the other Tiny
+    /// Clips editors, asking first when that setting is on.
+    override func cancelOperation(_ sender: Any?) {
+        guard attachedSheet == nil else { return }
+        if viewModel.isExporting {
+            viewModel.cancelExport()
+            return
+        }
+        guard viewModel.confirmEscapeClose() else { return }
+        performClose(nil)
+    }
+
     /// The key window is asked before the menu bar, so these work even when the menu is not shown.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if handleCommandKey(event) {
@@ -273,14 +286,8 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     private func handleKey(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         guard modifiers.isEmpty, attachedSheet == nil else { return false }
+        guard viewModel.isReady, !viewModel.isExporting else { return false }
         let keyCode = Int(event.keyCode)
-
-        if viewModel.isExporting {
-            guard keyCode == kVK_Escape else { return false }
-            viewModel.cancelExport()
-            return true
-        }
-        guard viewModel.isReady else { return false }
 
         // Holding an arrow key keeps stepping through frames. The other keys act once per press.
         let isFirstPress = !event.isARepeat

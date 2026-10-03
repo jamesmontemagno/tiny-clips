@@ -394,6 +394,27 @@ final class StudioViewModel: ObservableObject {
 
     // MARK: - Closing
 
+    /// Asked when Esc is pressed. Returns false to keep the window open.
+    ///
+    /// Edits are saved with the project, so there is nothing to lose; the question only guards
+    /// against a stray Esc, and follows the setting shared by the other editors. A project that was
+    /// never exported is not asked here, because closing it asks what to do with it anyway.
+    func confirmEscapeClose() -> Bool {
+        guard CaptureSettings.shared.confirmEditorEscape,
+              isReady, let editor, !editor.hasNeverExported
+        else {
+            return true
+        }
+        pause()
+
+        let alert = NSAlert()
+        alert.messageText = "Close Studio?"
+        alert.informativeText = "Your edits are saved with the project, and you can reopen it from the Clips Manager. You can turn off this confirmation in General settings."
+        alert.addButton(withTitle: "Close Studio")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     /// Asked when the user closes the window. Returns false to keep it open.
     func shouldClose() -> Bool {
         if isExporting {

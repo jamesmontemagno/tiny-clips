@@ -894,10 +894,10 @@ private struct StudioExportOverlay: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
+                // Esc also cancels: the window handles it, so the button takes no key equivalent.
                 Button("Cancel") {
                     onCancel()
                 }
-                .keyboardShortcut(.cancelAction)
             }
             .padding(24)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
