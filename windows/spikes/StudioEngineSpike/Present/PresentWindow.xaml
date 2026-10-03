@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="StudioEngineSpike.Present.PresentWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    Title="Studio engine spike: presenting">
+
+    <Grid
+        x:Name="Root"
+        Padding="12"
+        ColumnSpacing="12"
+        RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock
+            x:Name="Win2DHeader"
+            Grid.Row="0"
+            Grid.Column="0"
+            Style="{ThemeResource BodyStrongTextBlockStyle}"
+            Text="(a) Win2D CanvasSwapChainPanel on the shared device" />
+        <TextBlock
+            x:Name="NativeHeader"
+            Grid.Row="0"
+            Grid.Column="1"
+            Style="{ThemeResource BodyStrongTextBlockStyle}"
+            Text="(b) SwapChainPanel + ISwapChainPanelNative, DXGI composition swap chain" />
+
+        <!-- The scale test puts a RenderTransform on this grid to change the panels' composition scale. -->
+        <Grid
+            x:Name="PanelHost"
+            Grid.Row="1"
+            Grid.ColumnSpan="2"
+            ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!--
+                Each panel carries two XAML children drawn over the swap chain: a label (overlay UI
+                such as drag handles has to work) and an 8 DIP orange square in the bottom-right
+                corner, which the screenshot analysis uses as "where XAML layout says the panel ends".
+            -->
+            <canvas:CanvasSwapChainPanel
+                x:Name="Win2DPanel"
+                Grid.Column="0"
+                AutomationProperties.AutomationId="Win2DPreviewPanel"
+                AutomationProperties.Name="Preview presented through Win2D">
+                <Border
+                    Margin="0,6,0,0"
+                    Padding="8,2"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Background="#C0000000"
+                    CornerRadius="4">
+                    <TextBlock Foreground="White" Text="XAML overlay on (a)" />
+                </Border>
+                <Border
+                    Width="8"
+                    Height="8"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="#FFFF8000" />
+            </canvas:CanvasSwapChainPanel>
+
+            <SwapChainPanel
+                x:Name="NativePanel"
+                Grid.Column="1"
+                AutomationProperties.AutomationId="NativePreviewPanel"
+                AutomationProperties.Name="Preview presented through a DXGI swap chain">
+                <Border
+                    Margin="0,6,0,0"
+                    Padding="8,2"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Background="#C0000000"
+                    CornerRadius="4">
+                    <TextBlock Foreground="White" Text="XAML overlay on (b)" />
+                </Border>
+                <Border
+                    Width="8"
+                    Height="8"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="#FFFF8000" />
+            </SwapChainPanel>
+        </Grid>
+
+        <TextBlock
+            x:Name="StatusText"
+            Grid.Row="2"
+            Grid.ColumnSpan="2"
+            AutomationProperties.AutomationId="StatusText"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Text="Starting…"
+            TextTrimming="CharacterEllipsis" />
+    </Grid>
+</Window>
