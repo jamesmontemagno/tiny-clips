@@ -270,6 +270,127 @@ jobs:
           }
           "launch_start=$($start.ToString('o'))" | Out-File $env:GITHUB_OUTPUT -Append
 
+      - name: Open a screenshot in the editor
+        id: editor
+        if: steps.launch.outputs.crashed == 'false'
+        shell: pwsh
+        run: |
+          # "Open with Tiny Clips" file activation opens the screenshot editor without driving the
+          # capture UI. The editor window must appear and the process must stay alive: a launch-only
+          # check does not load the editor, which is where NativeAOT-only failures have surfaced.
+          Add-Type -AssemblyName System.Drawing
+          $png = Join-Path $env:RUNNER_TEMP 'tinyclips-smoke.png'
+          $bmp = New-Object System.Drawing.Bitmap 640, 400
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.Clear([System.Drawing.Color]::SteelBlue)
+          $g.Dispose()
+          $bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
+          $bmp.Dispose()
+
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Collections.Generic;
+          using System.Runtime.InteropServices;
+          using System.Text;
+
+          public static class TinyClipsSmoke
+          {
+              [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+              private interface IApplicationActivationManager
+              {
+                  [PreserveSig] int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appUserModelId, [MarshalAs(UnmanagedType.LPWStr)] string arguments, int options, out uint processId);
+                  [PreserveSig] int ActivateForFile([MarshalAs(UnmanagedType.LPWStr)] string appUserModelId, IntPtr itemArray, [MarshalAs(UnmanagedType.LPWStr)] string verb, out uint processId);
+              }
+
+              [ComImport, Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")]
+              private class ApplicationActivationManager { }
+
+              [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+              private static extern void SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid riid, out IntPtr item);
+
+              [DllImport("shell32.dll", PreserveSig = false)]
+              private static extern void SHCreateShellItemArrayFromShellItem(IntPtr item, ref Guid riid, out IntPtr itemArray);
+
+              private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+              [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+              [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+              [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int count);
+
+              public static uint ActivateForFile(string appUserModelId, string path)
+              {
+                  var shellItemId = new Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe");
+                  var shellItemArrayId = new Guid("b63ea76d-1f85-456f-a19c-48159efa858b");
+                  IntPtr item, itemArray;
+                  SHCreateItemFromParsingName(path, IntPtr.Zero, ref shellItemId, out item);
+                  SHCreateShellItemArrayFromShellItem(item, ref shellItemArrayId, out itemArray);
+                  try
+                  {
+                      var manager = (IApplicationActivationManager)new ApplicationActivationManager();
+                      uint processId;
+                      Marshal.ThrowExceptionForHR(manager.ActivateForFile(appUserModelId, itemArray, "open", out processId));
+                      return processId;
+                  }
+                  finally
+                  {
+                      Marshal.Release(itemArray);
+                      Marshal.Release(item);
+                  }
+              }
+
+              public static string[] VisibleWindowTitles(uint processId)
+              {
+                  var titles = new List<string>();
+                  EnumWindows((hwnd, lParam) =>
+                  {
+                      uint owner;
+                      GetWindowThreadProcessId(hwnd, out owner);
+                      if (owner == processId && IsWindowVisible(hwnd))
+                      {
+                          var text = new StringBuilder(512);
+                          GetWindowText(hwnd, text, text.Capacity);
+                          if (text.Length > 0) { titles.Add(text.ToString()); }
+                      }
+                      return true;
+                  }, IntPtr.Zero);
+                  return titles.ToArray();
+              }
+          }
+          '@
+
+          $appPid = [TinyClipsSmoke]::ActivateForFile("$env:PKG_PFN!App", $png)
+          "File activation started PID $appPid for $png"
+          $proc = Get-Process -Id $appPid -ErrorAction Stop
+          $null = $proc.Handle
+
+          # The editor must show up, then survive its first layout passes.
+          $deadline = (Get-Date).AddSeconds(45)
+          $editorSeen = $null
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+            $proc.Refresh()
+            if ($proc.HasExited) { break }
+            if (-not $editorSeen -and ([TinyClipsSmoke]::VisibleWindowTitles($appPid) -match 'Edit Screenshot')) {
+              $editorSeen = Get-Date
+              "Editor window visible"
+            }
+            if ($editorSeen -and ((Get-Date) - $editorSeen).TotalSeconds -ge 15) { break }
+          }
+
+          $proc.Refresh()
+          if ($proc.HasExited) {
+            "::error::TinyClips.App.exe exited with 0x$('{0:X8}' -f $proc.ExitCode) after opening a screenshot in the editor"
+            "failed=true" | Out-File $env:GITHUB_OUTPUT -Append
+          } elseif (-not $editorSeen) {
+            "::error::The screenshot editor window never appeared. Visible windows: $([TinyClipsSmoke]::VisibleWindowTitles($appPid) -join '; ')"
+            Stop-Process -Id $appPid -Force
+            "failed=true" | Out-File $env:GITHUB_OUTPUT -Append
+          } else {
+            "Screenshot editor open and process alive (PID $appPid) -> PASS"
+            Stop-Process -Id $appPid -Force
+            "failed=false" | Out-File $env:GITHUB_OUTPUT -Append
+          }
+
       - name: Collect diagnostics
         if: always()
         shell: pwsh
@@ -315,6 +436,6 @@ jobs:
           if-no-files-found: ignore
 
       - name: Fail if the app crashed
-        if: steps.launch.outputs.crashed == 'true'
+        if: steps.launch.outputs.crashed == 'true' || steps.editor.outputs.failed == 'true'
         shell: pwsh
         run: exit 1
