@@ -196,7 +196,11 @@ private struct ScreenshotEditorSceneRoot: View {
                     deleteSourceAfterSave: session.deleteSourceAfterSave
                 ) { resultURL in
                     completionResult = resultURL
-                    dismissWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
+                    // `dismissWindow` is ignored while a sheet is attached, and a confirmation dialog
+                    // runs its button action before detaching, so close on the next main-loop turn.
+                    DispatchQueue.main.async {
+                        dismissWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
+                    }
                 }
             } else {
                 Color(NSColor.windowBackgroundColor)
