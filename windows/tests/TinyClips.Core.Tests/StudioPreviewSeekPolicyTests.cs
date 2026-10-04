@@ -598,7 +598,7 @@ public sealed class StudioPreviewSeekPolicyTests
         // given its offset on the clock, and the first position after that is lost on it.
         var h = new Harness();
 
-        h.Policy.RequestSeekAfterOffsetChange(0);
+        h.Policy.RequestFirstSeek(0);
         h.Pump();
         Assert.Equal(["seek 8"], h.Calls);
         Assert.True(h.Policy.HoldPicture);
@@ -638,7 +638,7 @@ public sealed class StudioPreviewSeekPolicyTests
     {
         var h = new Harness();
 
-        h.Policy.RequestSeekAfterOffsetChange(0);
+        h.Policy.RequestFirstSeek(0);
         h.Pump();
 
         // The screen's seek completes without a frame: that one is a lost seek like any other,
@@ -653,6 +653,143 @@ public sealed class StudioPreviewSeekPolicyTests
         h.Advance(1);
         h.Pump();
         Assert.Equal(["seek 8", "seek 0"], h.Calls);
+    }
+
+    [Fact]
+    public void FirstPositionAfterOpening_IsSpentOnAnotherFrame_AlsoWhenNoOffsetChanged()
+    {
+        // Screen and camera start together, so nothing was changed after the players opened.
+        // What a player hands over for its first position still does not count: measured on the
+        // graphics hardware, the screen picture came out blank in about one open in seven.
+        var h = new Harness(new StudioPreviewTimeline(30, 30, [new(30, 900, 0), new(30, 900, 0)]));
+
+        h.Policy.RequestFirstSeek(0);
+        h.Pump();
+        Assert.Equal(["seek 8"], h.Calls);
+        Assert.True(h.Policy.HoldPicture);
+
+        // Neither player is expected to lose the position, so both are waited for.
+        h.Advance(30);
+        h.Frame(Screen, 8);
+        h.Completed(Screen);
+        h.Pump();
+        h.Advance(100);
+        h.Pump();
+        Assert.Equal(["seek 8"], h.Calls);
+
+        h.Frame(Camera, 8);
+        h.Completed(Camera);
+        h.Pump();
+        h.Advance(39);
+        h.Pump();
+        Assert.Equal(["seek 8"], h.Calls);
+
+        h.Advance(1);
+        h.Pump();
+        Assert.Equal(["seek 8", "seek 0"], h.Calls);
+        Assert.Empty(h.Landings);
+        Assert.True(h.Policy.HoldPicture);
+
+        // The picture is let go on a frame the players were sent to and came back with.
+        h.Advance(30);
+        h.Deliver(0);
+        h.Pump();
+        var landing = Assert.Single(h.Landings);
+        Assert.Equal(0, landing.Frame);
+        Assert.True(landing.Confirmed);
+        Assert.False(h.Policy.HoldPicture);
+        Assert.Equal(0, h.Policy.Repairs);
+        Assert.Equal(0, h.Policy.DetoursUnanswered);
+    }
+
+    [Fact]
+    public void FirstPositionAfterOpening_ASecondFrameForIt_KeepsTheWayBackWaiting()
+    {
+        // The screen alone. Its answer to the first position is a blank frame, and the right one
+        // follows a moment later: the way back starts only when the player has gone quiet.
+        var h = new Harness(new StudioPreviewTimeline(30, 30, [new(30, 900, 0)]));
+
+        h.Policy.RequestFirstSeek(0);
+        h.Pump();
+        Assert.Equal(["seek 8"], h.Calls);
+
+        h.Advance(20);
+        h.Frame(Screen, 8);
+        h.Completed(Screen);
+        h.Pump();
+        h.Advance(30);
+        h.Frame(Screen, 8);
+        h.Pump();
+        h.Advance(39);
+        h.Pump();
+        Assert.Equal(["seek 8"], h.Calls);
+
+        h.Advance(1);
+        h.Pump();
+        Assert.Equal(["seek 8", "seek 0"], h.Calls);
+
+        h.Advance(30);
+        h.Deliver(0);
+        h.Pump();
+        Assert.Equal(0, Assert.Single(h.Landings).Frame);
+    }
+
+    [Fact]
+    public void FirstPositionAfterOpening_InARecordingOfAFewFrames_IsSpentOnTheNextFrame()
+    {
+        // Five frames: there is no frame eight away to go to.
+        var h = new Harness(new StudioPreviewTimeline(5 / 30.0, 30, [new(30, 5, 0)]));
+
+        h.Policy.RequestFirstSeek(0);
+        h.Pump();
+        Assert.Equal(["seek 1"], h.Calls);
+
+        h.Advance(20);
+        h.DeliverDetour(1);
+        Assert.Equal(["seek 1", "seek 0"], h.Calls);
+
+        h.Advance(20);
+        h.Deliver(0);
+        h.Pump();
+        Assert.Equal(0, Assert.Single(h.Landings).Frame);
+    }
+
+    [Fact]
+    public void FirstPositionAfterOpening_IsNotSpentOnTheEndOfAStream_IfItCanBeHelped()
+    {
+        // Nine frames: the frame eight away is the last, and a player that has read its stream to
+        // the end does not do its next seek properly. The next frame will do as well.
+        var h = new Harness(new StudioPreviewTimeline(9 / 30.0, 30, [new(30, 9, 0)]));
+
+        h.Policy.RequestFirstSeek(0);
+        h.Pump();
+
+        Assert.Equal(["seek 1"], h.Calls);
+        Assert.Equal(0, h.Policy.EndRecoveries);
+    }
+
+    [Fact]
+    public void FirstPositionAfterOpening_OfTwoFrames_IsSpentOnTheLastFrame_ThereBeingNoOther()
+    {
+        var h = new Harness(new StudioPreviewTimeline(2 / 30.0, 30, [new(30, 2, 0)]));
+
+        h.Policy.RequestFirstSeek(0);
+        h.Pump();
+
+        Assert.Equal(["seek 1"], h.Calls);
+    }
+
+    [Fact]
+    public void FirstPositionAfterOpening_InARecordingOfOneFrame_IsTheFrameItself()
+    {
+        var h = new Harness(new StudioPreviewTimeline(1 / 30.0, 30, [new(30, 1, 0)]));
+
+        h.Policy.RequestFirstSeek(0);
+        h.Pump();
+
+        // Nowhere else to go, and the player shows the frame already: the clock is put on it.
+        Assert.Equal(["seek 0"], h.Calls);
+        Assert.Equal(0, Assert.Single(h.Landings).Frame);
     }
 
     [Fact]

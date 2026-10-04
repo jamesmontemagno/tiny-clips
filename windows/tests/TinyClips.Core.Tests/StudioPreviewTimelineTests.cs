@@ -273,6 +273,81 @@ public sealed class StudioPreviewTimelineTests
         Assert.True(timeline.IsPlayerAtEnd(0, timeline.FrameMiddle(359)));
     }
 
+    [Fact]
+    public void ProofFrames_AreTheFirstFrameThatShowsEveryClip_AndOneEightFramesOn()
+    {
+        // The camera starts 0.2 s late: it is in the picture from frame 6, on its own frame 0.
+        var late = Timeline(12, 30, new StudioPreviewClipTiming(30, 360, 0.2, 12));
+        Assert.True(late.TryPickProofFrames(avoid: 0, out var first, out var second));
+        Assert.Equal((6, 14), (first, second));
+        Assert.True(late.IsShown(1, first) && late.IsShown(1, second));
+        Assert.Equal((0, 8), (late.PlayerFrame(1, first), late.PlayerFrame(1, second)));
+
+        // Both clips from the start, and the screen alone: any frame but the one to avoid.
+        Assert.True(Timeline(12, 30, new StudioPreviewClipTiming(30, 360, 0, 12)).TryPickProofFrames(0, out first, out second));
+        Assert.Equal((1, 9), (first, second));
+        Assert.True(Timeline(12, 30).TryPickProofFrames(0, out first, out second));
+        Assert.Equal((1, 9), (first, second));
+    }
+
+    [Fact]
+    public void ProofFrames_LeaveOutTheFrameThePlayersAreWantedOnAfterwards()
+    {
+        var late = Timeline(12, 30, new StudioPreviewClipTiming(30, 360, 0.2, 12));
+
+        Assert.True(late.TryPickProofFrames(avoid: 6, out var first, out var second));
+        Assert.Equal((7, 15), (first, second));
+
+        // It may be the second of the two: the players come back from there to the first.
+        Assert.True(Timeline(12, 30).TryPickProofFrames(avoid: 8, out first, out second));
+        Assert.Equal((0, 8), (first, second));
+    }
+
+    [Fact]
+    public void ProofFrames_MoveEveryPlayer_AlsoOneWithFewFramesASecond()
+    {
+        // Two camera frames a second: fifteen screen frames show the same one.
+        var slow = Timeline(12, 30, new StudioPreviewClipTiming(2, 24, 0, 12));
+
+        Assert.True(slow.TryPickProofFrames(avoid: 0, out var first, out var second));
+
+        Assert.Equal((1, 15), (first, second));
+        Assert.NotEqual(slow.PlayerFrame(1, first), slow.PlayerFrame(1, second));
+    }
+
+    [Fact]
+    public void ProofFrames_KeepOffTheEndOfAStream_WhereAPlayerDoesNotSeekProperly()
+    {
+        // Three camera frames, from 0.2 s: in the picture on frames 6, 7 and 8, at its end on 8.
+        var brief = Timeline(12, 30, new StudioPreviewClipTiming(30, 3, 0.2, 0.1));
+
+        Assert.True(brief.TryPickProofFrames(avoid: 0, out var first, out var second));
+
+        Assert.Equal((6, 7), (first, second));
+    }
+
+    [Fact]
+    public void ProofFrames_FallBackToTheScreen_WhenTheCameraIsNeverInThePicture()
+    {
+        var never = Timeline(12, 30, new StudioPreviewClipTiming(30, 360, 20, 12));
+
+        Assert.True(never.TryPickProofFrames(avoid: 0, out var first, out var second));
+
+        Assert.Equal((1, 9), (first, second));
+    }
+
+    [Fact]
+    public void ProofFrames_OfARecordingOfTwoFrames_AreThoseTwo_AndOneFrameHasNone()
+    {
+        Assert.True(Timeline(2 / 30.0, 30).TryPickProofFrames(avoid: 0, out var first, out var second));
+        Assert.Equal((1, 0), (first, second));
+
+        Assert.False(Timeline(1 / 30.0, 30).TryPickProofFrames(avoid: 0, out first, out second));
+        Assert.Equal((-1, -1), (first, second));
+        Assert.False(Timeline(1 / 30.0, 30).TryPickProofFrames(avoid: -1, out first, out second));
+        Assert.Equal((-1, -1), (first, second));
+    }
+
     private static StudioPreviewTimeline Timeline(double duration, double fps, StudioPreviewClipTiming? camera = null)
     {
         var rate = StudioPreviewTimeMath.NormalizeFrameRate(fps);

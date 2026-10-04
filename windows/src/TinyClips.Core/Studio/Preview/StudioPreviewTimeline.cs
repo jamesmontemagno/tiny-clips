@@ -81,6 +81,11 @@ internal readonly record struct StudioPreviewClipTiming(double FrameRate, long F
 /// </summary>
 internal sealed class StudioPreviewTimeline
 {
+    // How far apart the two frames of TryPickProofFrames are when the recording allows it, and
+    // how far the second is looked for when the players do not all move over that distance.
+    private const int ProofDistance = 8;
+    private const int ProofSearchSpan = 90;
+
     private readonly StudioPreviewClipTiming[] _tracks;
 
     public StudioPreviewTimeline(double durationSeconds, double frameRate, IReadOnlyList<StudioPreviewClipTiming> tracks)
@@ -172,5 +177,92 @@ internal sealed class StudioPreviewTimeline
     {
         var timing = _tracks[track];
         return timelineSeconds - timing.StartOffset >= (timing.FrameCount - 1) / timing.FrameRate;
+    }
+
+    /// <summary>
+    /// Two frames to send the players back and forth between, to see whether each of them shows
+    /// the same picture every time it comes back to <paramref name="first"/> (see
+    /// <see cref="StudioPreviewProof"/>). <paramref name="first"/> is the earliest frame other than
+    /// <paramref name="avoid"/> at which every track is part of the picture and no player is at
+    /// the end of its stream; <paramref name="second"/> is a frame of the same kind a few frames
+    /// away, on which every one of those players shows another frame. A recording that has no such
+    /// pair gives the nearest thing: frames that show the screen at least. False when the
+    /// recording has no two frames at all.
+    /// </summary>
+    /// <param name="avoid">The frame the players are wanted on afterwards, so that going there moves them.</param>
+    public bool TryPickProofFrames(long avoid, out long first, out long second)
+    {
+        return TryPickProofFrames(avoid, everyTrack: true, insideStreams: true, out first, out second)
+            || TryPickProofFrames(avoid, everyTrack: false, insideStreams: true, out first, out second)
+            || TryPickProofFrames(avoid, everyTrack: false, insideStreams: false, out first, out second);
+    }
+
+    private bool TryPickProofFrames(long avoid, bool everyTrack, bool insideStreams, out long first, out long second)
+    {
+        first = -1;
+        second = -1;
+        for (long frame = 0; frame <= LastFrame; frame++)
+        {
+            if (frame != avoid && IsProofFrame(frame, everyTrack, insideStreams))
+            {
+                first = frame;
+                break;
+            }
+        }
+
+        if (first < 0)
+        {
+            return false;
+        }
+
+        // The usual distance first, then nearer, then farther.
+        for (var step = 0; step < ProofDistance + ProofSearchSpan; step++)
+        {
+            var distance = step < ProofDistance ? ProofDistance - step : step + 1;
+            foreach (var candidate in (ReadOnlySpan<long>)[first + distance, first - distance])
+            {
+                if (candidate >= 0 && candidate <= LastFrame && IsProofFrame(candidate, everyTrack, insideStreams) && MovesEveryPlayer(first, candidate))
+                {
+                    second = candidate;
+                    return true;
+                }
+            }
+        }
+
+        first = -1;
+        return false;
+    }
+
+    private bool IsProofFrame(long frame, bool everyTrack, bool insideStreams)
+    {
+        for (var track = 0; track < _tracks.Length; track++)
+        {
+            if (!IsShown(track, frame))
+            {
+                if (everyTrack)
+                {
+                    return false;
+                }
+            }
+            else if (insideStreams && IsPlayerAtEnd(track, FrameMiddle(frame)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool MovesEveryPlayer(long from, long to)
+    {
+        for (var track = 0; track < _tracks.Length; track++)
+        {
+            if (IsShown(track, from) && PlayerFrame(track, from) == PlayerFrame(track, to))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

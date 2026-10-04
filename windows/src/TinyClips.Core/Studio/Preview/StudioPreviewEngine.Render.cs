@@ -327,6 +327,145 @@ public sealed partial class StudioPreviewEngine
         }
     }
 
+    /// <summary>
+    /// Lets the players' first frames be taken, once each of them has one to hand over, and takes
+    /// the frame of a player that does not hand it over by itself. Render thread only. Returns
+    /// when it wants to be called again, as a clock reading.
+    /// </summary>
+    /// <remarks>
+    /// A player decodes on a Direct3D device of its own, and the first frame it copies into a
+    /// texture tells it which device its frames are wanted on. When that device is on another
+    /// graphics adapter the player moves its work there. Measured with the players on the graphics
+    /// hardware and the engine on the software adapter: while one player moves, another that is
+    /// still opening fails (<c>MF_E_INVALIDMEDIATYPE</c>, reported as <c>SourceNotSupported</c>),
+    /// and one that has opened and not yet announced its first frame never announces any. Two
+    /// players that both have their first frame ready come through each other's move. So on the
+    /// software adapter, the one place where the engine can know that the players may be
+    /// elsewhere, no frame is taken before every player has one. What a player that moved hands
+    /// over at first is another matter: see <see cref="StudioPreviewProof"/>.
+    /// </remarks>
+    private long ReleaseFirstFrames()
+    {
+        var now = Stopwatch.GetTimestamp();
+        if (_firstFramesHeld)
+        {
+            foreach (var clip in _clips)
+            {
+                if (!clip.HasAnnouncedFrame)
+                {
+                    return long.MaxValue;
+                }
+            }
+
+            // From here on a frame is copied by the callback that announces it.
+            _firstFramesReleasedAt = now;
+            _firstFramesHeld = false;
+            if (_trace is not null)
+            {
+                Note("every player has a first frame: they are taken now");
+            }
+        }
+
+        // A player announces a frame nobody took again and again (measured: every 10 ms). That is
+        // not written down anywhere, so a player that stays silent has its frame taken from here.
+        var pullAt = _firstFramesReleasedAt + (FirstFramePullMilliseconds * Stopwatch.Frequency / 1000);
+        var waiting = false;
+        foreach (var clip in _clips)
+        {
+            if (clip.HasDeliveredFrame)
+            {
+                continue;
+            }
+
+            if (now < pullAt || clip.DeliveriesInFlight > 0)
+            {
+                waiting = true;
+                continue;
+            }
+
+            var graphics = _graphics;
+            lock (graphics.Gate)
+            {
+                if (clip.HasDeliveredFrame || clip.CopySurface is not { } surface)
+                {
+                    continue;
+                }
+
+                long positionTicks;
+                try
+                {
+                    positionTicks = clip.Session.Position.Ticks;
+                    clip.Player.CopyFrameToVideoSurface(surface);
+                }
+                catch (Exception ex)
+                {
+                    // Dealt with as a copy that failed in the player's own callback is, by the
+                    // next pass; and tried again until that gives the player up.
+                    clip.CopyFailed();
+                    Post(new Signal(SignalKind.CopyFailed, clip.Index, now, 0, null, ex));
+                    waiting = true;
+                    continue;
+                }
+
+                var empty = NoteFirstFrame(graphics, clip);
+                clip.FrameCopied(delivered: false);
+                Interlocked.Increment(ref _firstFramesPulled);
+                if (_trace is not null)
+                {
+                    Note($"first frame of clip {clip.Index} taken from the player, which did not hand it over{(empty ? ": nothing in it" : string.Empty)}");
+                }
+
+                _policy.OnFrame(clip.Index, clip.Timing.FrameAtPlayerTicks(positionTicks), now);
+            }
+        }
+
+        return waiting ? Math.Max(pullAt, now + (Stopwatch.Frequency / 100)) : long.MaxValue;
+    }
+
+    /// <summary>
+    /// Looks at the first frame taken from a player, and notes when it left nothing in the
+    /// texture. Device lock held. Returns whether it did.
+    /// </summary>
+    private bool NoteFirstFrame(StudioGraphicsDevice graphics, StudioPreviewClip clip)
+    {
+        if (clip.CopyTexture is not { } texture)
+        {
+            return false;
+        }
+
+        Interlocked.Increment(ref _firstFramesLookedAt);
+        if (!StudioPreviewPixels.IsEmpty(graphics, texture))
+        {
+            return false;
+        }
+
+        clip.FirstFrameWasEmpty = true;
+        Interlocked.Increment(ref _firstFramesEmpty);
+        return true;
+    }
+
+    /// <summary>
+    /// The fingerprint of the picture each player's texture holds, for the clips that are part of
+    /// the picture of <paramref name="timelineFrame"/>. Any thread.
+    /// </summary>
+    private ulong[] ReadPictures(long timelineFrame)
+    {
+        var pictures = new List<ulong>(_clips.Length);
+        var graphics = Volatile.Read(ref _graphics);
+        lock (graphics.Gate)
+        {
+            foreach (var clip in _clips)
+            {
+                if (_timeline.IsShown(clip.Index, timelineFrame) && clip.CopyTexture is { } texture)
+                {
+                    pictures.Add(StudioPreviewPixels.Fingerprint(graphics, texture));
+                }
+            }
+        }
+
+        return [.. pictures];
+    }
+
     // Device lock held.
     private void PromoteCopyTarget(StudioPreviewClip clip)
     {
@@ -460,7 +599,10 @@ public sealed partial class StudioPreviewEngine
         const string message = "The graphics device was lost and the preview could not be restarted.";
         if (_opening || (!_drawnSinceRebuild && Stopwatch.GetElapsedTime(_lastRebuildAt) < RebuildProbation))
         {
-            Fail(message, cause, asDataError: false);
+            // Whoever opens the preview has to be able to tell that it was the device, whatever
+            // the error that brought it to light said: a device lost while opening is answered
+            // by opening once more.
+            Fail(message, _opening && !IsDeviceLost(cause) ? new StudioDeviceLostException("The graphics device was removed.", cause) : cause, asDataError: false);
             return;
         }
 
@@ -857,6 +999,13 @@ public sealed partial class StudioPreviewEngine
             PlayerStates = playerStates,
             FilesClosedAfterMilliseconds = _filesClosedAfterMilliseconds,
             FilesClosed = _filesClosed,
+            FilesWaitedFor = _filesWaitedFor,
+            OpenAttempts = _openAttempt,
+            FirstFramesLookedAt = Volatile.Read(ref _firstFramesLookedAt),
+            FirstFramesEmpty = Volatile.Read(ref _firstFramesEmpty),
+            FirstFramesPulled = Volatile.Read(ref _firstFramesPulled),
+            ProofRounds = Volatile.Read(ref _proofRounds),
+            ProofHeld = Volatile.Read(ref _proofHeld),
         };
     }
 }

@@ -16,10 +16,43 @@ internal sealed record StudioPreviewOptions
     public bool ZeroVolume { get; init; }
 
     /// <summary>
-    /// Draws on WARP, Direct3D's software device, which is what a PC without graphics hardware
-    /// gets. For the check that the preview works there.
+    /// Draws on WARP, Direct3D's software device, which is where the engine draws on a PC without
+    /// usable graphics hardware. For the check that the preview works there. On a PC that has
+    /// graphics hardware this is not the same as having none: the players start on the hardware
+    /// and move to the software adapter when their first frames are taken.
     /// </summary>
     public bool SoftwareDevice { get; init; }
+
+    /// <summary>
+    /// Believes what the players hand over first: takes each player's first frame the moment it
+    /// has one, and shows what the players hold after the first position they are given. For the
+    /// comparison that shows what that costs. On the graphics hardware: a blank screen picture
+    /// drawn for a moment after about one open in six of a project whose camera does not start
+    /// late (92 of 520). On the software adapter of a PC that has graphics hardware: previews that
+    /// fail to open, and first pictures that are blank or a frame off.
+    /// </summary>
+    public bool TrustFirstFrames { get; init; }
+
+    /// <summary>
+    /// Makes this many attempts to open see a lost graphics device, starting with the first. 1 is
+    /// a device lost while the preview opens; 2 is one lost again while it opens once more.
+    /// </summary>
+    public int DevicesLostWhileOpening { get; init; }
+
+    /// <summary>
+    /// Makes this many attempts to open see a player fail once every player has handed over its
+    /// first frame, starting with the first attempt. 1 is a player that fails while the preview
+    /// opens; 2 is one that fails again while it opens once more.
+    /// </summary>
+    public int PlayersFailedWhileOpening { get; init; }
+
+    /// <summary>
+    /// Makes the engine deaf to a player that offers its first frame again once the frames may be
+    /// taken, so that the engine has to take every first frame itself. Only where the first frames
+    /// are held back, on the software adapter. For the check of that way in: where it was
+    /// measured, no player has ever made it necessary.
+    /// </summary>
+    public bool PlayersKeepFirstFrames { get; init; }
 
     public StudioPreviewSeekSettings Seek { get; init; } = new();
 
@@ -164,4 +197,46 @@ internal sealed record StudioPreviewDiagnostics
 
     /// <summary>False when the last close gave up waiting for a file.</summary>
     public bool FilesClosed { get; init; } = true;
+
+    /// <summary>
+    /// The media files the last close waited for: the ones in the project folder. A screen
+    /// recording outside it is the user's own file and is not waited for.
+    /// </summary>
+    public int FilesWaitedFor { get; init; }
+
+    /// <summary>
+    /// The attempt that opened this preview: 1, or 2 when the first failed in a way that may
+    /// pass (a graphics device lost, or a player that failed after every player had handed over
+    /// a frame).
+    /// </summary>
+    public int OpenAttempts { get; init; } = 1;
+
+    /// <summary>
+    /// Players whose first frame the engine looked at: all of them on the software adapter, none
+    /// on the graphics hardware, where the players are taken to be on the engine's adapter.
+    /// </summary>
+    public int FirstFramesLookedAt { get; init; }
+
+    /// <summary>
+    /// Of those, the players whose first frame left nothing in its texture: they started on
+    /// another graphics adapter than the engine's device and moved over. 0 where both are on the
+    /// same adapter.
+    /// </summary>
+    public int FirstFramesEmpty { get; init; }
+
+    /// <summary>
+    /// First frames the engine took from a player because the player did not hand it over by
+    /// itself once the frames could be taken. Should stay 0: a player announces a frame nobody
+    /// took again and again.
+    /// </summary>
+    public int FirstFramesPulled { get; init; }
+
+    /// <summary>
+    /// Rounds it took, while opening, until the players showed the same pictures twice in a row
+    /// (see <see cref="StudioPreviewProof"/>). 0 when no player had moved, so there was nothing to prove.
+    /// </summary>
+    public int ProofRounds { get; init; }
+
+    /// <summary>False when the players had moved and did not show the same pictures twice in a row within the limit.</summary>
+    public bool ProofHeld { get; init; } = true;
 }

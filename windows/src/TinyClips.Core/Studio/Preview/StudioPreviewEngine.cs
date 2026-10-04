@@ -39,6 +39,20 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private const int PausePassWaitMilliseconds = 100;
     private const int FilesClosedTimeoutMilliseconds = 5_000;
 
+    // Proving players that came from another graphics adapter (ProvePlayers): how many rounds and
+    // how long at most, and how long the players have to have said nothing before their pictures
+    // are compared.
+    private const int ProofRoundLimit = 8;
+    private const int ProofTimeLimitMilliseconds = 8_000;
+    private const int ProofQuietMilliseconds = 60;
+    private const int ProofQuietLimitMilliseconds = 1_500;
+
+    // How long a player is given to hand its first frame over by itself once the frames may be taken.
+    private const int FirstFramePullMilliseconds = 100;
+
+    // A preview that fails while it opens is opened once more when what went wrong may pass.
+    private const int OpenAttemptLimit = 2;
+
     private enum PreviewEventKind
     {
         PositionChanged,
@@ -87,7 +101,22 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private long _lateFramesDiscarded;
     private Task? _closeTask;
     private volatile bool _opening = true;
-    private volatile bool _offsetsChanged;
+
+    // On the software adapter the players may be on another adapter than the engine's device.
+    // Their first frames are then held until each has one, and looked at (ReleaseFirstFrames).
+    private readonly bool _trustsFirstFrames;
+    private readonly bool _looksAtFirstFrames;
+    private readonly bool _playersKeepFirstFrames;
+    private volatile bool _firstFramesHeld;
+    private long _firstFramesReleasedAt;
+    private readonly int _openAttempt;
+    private readonly bool _failsAfterFirstFrames;
+    private int _firstFramesLookedAt;
+    private int _firstFramesEmpty;
+    private int _firstFramesPulled;
+    private int _proofRounds;
+    private bool _proofHeld = true;
+    private volatile bool _spendFirst;
     private volatile bool _closing;
     private volatile bool _stopRequested;
     private volatile bool _eventsClosed;
@@ -97,6 +126,7 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private Exception? _openFailure;
     private double _filesClosedAfterMilliseconds = -1;
     private bool _filesClosed = true;
+    private int _filesWaitedFor;
 
     private StudioPreviewEngine(
         StudioProject project,
@@ -107,8 +137,12 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         double cameraFrameRate,
         StudioPreviewOptions options,
         StudioGraphicsDevice graphics,
-        StudioSceneRenderer renderer)
+        StudioSceneRenderer renderer,
+        int openAttempt)
     {
+        _openAttempt = openAttempt;
+        _simulatedDeviceLosses = openAttempt <= options.DevicesLostWhileOpening ? 1 : 0;
+        _failsAfterFirstFrames = openAttempt <= options.PlayersFailedWhileOpening;
         _events = events;
         _projectDirectory = projectDirectory;
         _latestProject = project;
@@ -116,6 +150,10 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         _forceMuted = options.ForceMuted;
         _zeroVolume = options.ForceMuted || options.ZeroVolume;
         _softwareDevice = options.SoftwareDevice;
+        _trustsFirstFrames = options.TrustFirstFrames;
+        _looksAtFirstFrames = graphics.IsSoftware && !options.TrustFirstFrames;
+        _playersKeepFirstFrames = _looksAtFirstFrames && options.PlayersKeepFirstFrames;
+        _firstFramesHeld = _looksAtFirstFrames;
         _trace = options.Trace;
         _graphics = graphics;
         _renderer = renderer;
@@ -258,48 +296,79 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             }
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        StudioGraphicsDevice? graphics = null;
-        StudioSceneRenderer? renderer = null;
-        StudioPreviewEngine? engine = null;
-        try
+        for (var attempt = 1; ; attempt++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            StudioGraphicsDevice? graphics = null;
+            StudioSceneRenderer? renderer = null;
+            StudioPreviewEngine? engine = null;
             try
             {
-                graphics = CreateDevice(options.SoftwareDevice);
-                renderer = CreateRenderer(graphics);
+                try
+                {
+                    graphics = CreateDevice(options.SoftwareDevice);
+                    renderer = CreateRenderer(graphics);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException("The preview needs a graphics device, and none could be created.", ex);
+                }
+
+                engine = new StudioPreviewEngine(project, events, paths.ProjectDirectory, screenPath, cameraPath, cameraFrameRate, options, graphics, renderer, attempt);
+                engine.Start(cancellationToken);
+                return engine;
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException("The preview needs a graphics device, and none could be created.", ex);
-            }
-
-            engine = new StudioPreviewEngine(project, events, paths.ProjectDirectory, screenPath, cameraPath, cameraFrameRate, options, graphics, renderer);
-            engine.Start(cancellationToken);
-            return engine;
-        }
-        catch
-        {
-            if (engine is not null)
-            {
-                engine.Close(joinEventThread: true);
-            }
-            else if (graphics is not null)
-            {
-                if (renderer is not null)
+                if (engine is not null)
                 {
-                    lock (graphics.Gate)
+                    engine.Close(joinEventThread: true);
+                }
+                else if (graphics is not null)
+                {
+                    if (renderer is not null)
                     {
-                        renderer.Dispose();
+                        lock (graphics.Gate)
+                        {
+                            renderer.Dispose();
+                        }
                     }
+
+                    graphics.Dispose();
                 }
 
-                graphics.Dispose();
-            }
+                // What went wrong may pass: see StudioPreviewOpenFailure. Then everything is opened
+                // once more, on a new device and with new players.
+                var why = StudioPreviewOpenFailure.WorthAnotherAttempt(ex, engine is { EveryPlayerDeliveredAFrame: true });
+                if (attempt >= OpenAttemptLimit || why is null || cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
 
-            throw;
+                options.Trace?.Invoke($"          {why} while the preview opened (0x{(ex.InnerException ?? ex).HResult:X8}): opening once more");
+            }
         }
     }
+
+    /// <summary>Whether each player has handed over at least one frame, which shows that its file can be decoded.</summary>
+    private bool EveryPlayerDeliveredAFrame
+    {
+        get
+        {
+            foreach (var clip in _clips)
+            {
+                if (!clip.HasDeliveredFrame)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>The attempt that opened this preview: 1, or 2 when the first failed in a way that may pass.</summary>
+    internal int OpenAttempt => _openAttempt;
 
     /// <inheritdoc/>
     public void UpdateProject(StudioProject project)
@@ -531,15 +600,31 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         ThrowIfOpenFailed();
 
         // With the clock at zero and no offsets yet, every player hands over the first frame of
-        // its stream by itself. That is the proof that each clip can be decoded.
+        // its stream by itself. That is the proof that each clip can be decoded. Where the frames
+        // are held until every player has one, the player to blame is one that never had a frame.
         _firstFramesGate.Wait(FirstFrameTimeoutMilliseconds, cancellationToken);
         ThrowIfOpenFailed();
+        foreach (var clip in _clips)
+        {
+            if (!clip.HasDeliveredFrame && !clip.HasAnnouncedFrame)
+            {
+                throw new InvalidDataException($"The {clip.Name} recording could not be decoded: it delivered no frame.");
+            }
+        }
+
         foreach (var clip in _clips)
         {
             if (!clip.HasDeliveredFrame)
             {
                 throw new InvalidDataException($"The {clip.Name} recording could not be decoded: it delivered no frame.");
             }
+        }
+
+        if (_failsAfterFirstFrames)
+        {
+            // For the check of what opening does about a player that fails from here on.
+            var failing = _clips[^1];
+            Post(new Signal(SignalKind.MediaFailed, failing.Index, Stopwatch.GetTimestamp(), 0, $"The {failing.Name} recording could not be decoded (simulated).", new InvalidOperationException("Simulated failure of a player.")));
         }
 
         // Only now is each clip that does not start with the recording put at its place on the
@@ -560,13 +645,110 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             }
         }
 
+        // What a player makes of the first position it is given does not count, whether or not
+        // its offset was changed: see RequestFirstSeek.
+        _spendFirst = offsets || !_trustsFirstFrames;
+
+        // A player whose first frame left nothing in its texture came from another graphics
+        // adapter, and what it hands over is not believed until it has shown the same picture twice.
+        var moved = false;
+        foreach (var clip in _clips)
+        {
+            moved |= clip.FirstFrameWasEmpty;
+        }
+
+        if (moved)
+        {
+            ProvePlayers(cancellationToken);
+        }
+
         // The first frame is asked for the way a caller asks for any other. It is frame 0, which
         // is what is reported already, so nobody is told.
-        _offsetsChanged = offsets;
-        _position.Request(0);
-        WakeEngine();
-        WaitForLanding(1, cancellationToken);
+        GoTo(0, cancellationToken);
+        if (moved)
+        {
+            // The pass that landed has to be over before anybody may be told anything.
+            WaitForQuiet(0, cancellationToken);
+        }
+
         _opening = false;
+    }
+
+    /// <summary>Asks for a frame the way a caller does and waits until the players have landed on it. While opening only.</summary>
+    private void GoTo(long frame, CancellationToken cancellationToken)
+    {
+        var landed = Volatile.Read(ref _landingCount);
+        _position.Request(frame);
+        WakeEngine();
+        WaitForLanding(landed + 1, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends the players back and forth between two frames until they have shown the same
+    /// pictures twice in a row, or the limit is reached: see <see cref="StudioPreviewProof"/>.
+    /// The preview opens either way; a picture that could not be proven is put right by the first
+    /// seek that is.
+    /// </summary>
+    private void ProvePlayers(CancellationToken cancellationToken)
+    {
+        if (!_timeline.TryPickProofFrames(avoid: 0, out var first, out var second))
+        {
+            // A recording one frame long: there is nowhere to send the players.
+            Volatile.Write(ref _proofHeld, false);
+            return;
+        }
+
+        var proof = new StudioPreviewProof();
+        var start = Stopwatch.GetTimestamp();
+        var held = false;
+        while (!held && proof.Rounds < ProofRoundLimit && Stopwatch.GetElapsedTime(start).TotalMilliseconds < ProofTimeLimitMilliseconds)
+        {
+            GoTo(second, cancellationToken);
+            GoTo(first, cancellationToken);
+            WaitForQuiet(ProofQuietMilliseconds, cancellationToken);
+            var pictures = ReadPictures(first);
+            held = proof.Offer(pictures);
+            if (_trace is not null)
+            {
+                Note($"proof round {proof.Rounds} on frame {first}: {string.Join(' ', pictures.Select(picture => picture == StudioPreviewPixels.Nothing ? "nothing" : picture.ToString("X16")))}{(held ? ", the same as the round before" : string.Empty)}");
+            }
+        }
+
+        Volatile.Write(ref _proofRounds, proof.Rounds);
+        Volatile.Write(ref _proofHeld, held);
+    }
+
+    /// <summary>
+    /// Waits until the render thread has nothing left to do and no player has announced a frame
+    /// for <paramref name="quietMilliseconds"/>. Gives up, without saying so, after a second and a half.
+    /// </summary>
+    private void WaitForQuiet(int quietMilliseconds, CancellationToken cancellationToken)
+    {
+        var start = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(start).TotalMilliseconds < ProofQuietLimitMilliseconds)
+        {
+            ThrowIfOpenFailed();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_position.HasNewRequest && _signals.IsEmpty && _engineIdle && IsQuietFor(quietMilliseconds))
+            {
+                return;
+            }
+
+            Thread.Sleep(2);
+        }
+    }
+
+    private bool IsQuietFor(int milliseconds)
+    {
+        foreach (var clip in _clips)
+        {
+            if (clip.DeliveriesInFlight > 0 || Stopwatch.GetElapsedTime(clip.LastCallbackStartedAt).TotalMilliseconds < milliseconds)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Waits until the players have come to rest <paramref name="count"/> times since the engine started.</summary>
@@ -884,17 +1066,35 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
 
     /// <summary>
     /// The caller may delete the project folder as soon as the preview is disposed, so wait until
-    /// the players have really let go of the files.
+    /// the players have really let go of the files in it.
     /// </summary>
+    /// <remarks>
+    /// The only way to find out is to open a file with no sharing, for an instant, again and
+    /// again. That is done to the engine's own recordings only. A screen recording outside the
+    /// project folder is the user's own file: nobody is about to delete it, another app may have
+    /// it open for as long as it likes, and it must not be taken away from that app even for an
+    /// instant. Its player is closed like the others and lets go of it in its own time; nobody
+    /// waits for that.
+    /// </remarks>
     private void WaitForFilesClosed()
     {
+        var watched = new List<string>(_clips.Length);
+        foreach (var clip in _clips)
+        {
+            if (StudioPreviewFiles.IsInFolder(_projectDirectory, clip.Path))
+            {
+                watched.Add(clip.Path);
+            }
+        }
+
+        _filesWaitedFor = watched.Count;
         var start = Stopwatch.GetTimestamp();
         while (true)
         {
             var open = false;
-            foreach (var clip in _clips)
+            foreach (var path in watched)
             {
-                open |= IsStillOpen(clip.Path);
+                open |= IsStillOpen(path);
             }
 
             var elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;

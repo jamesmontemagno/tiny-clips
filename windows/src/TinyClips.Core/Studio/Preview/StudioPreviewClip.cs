@@ -29,7 +29,9 @@ internal sealed class StudioPreviewClip
     private long _endsReached;
     private int _deliveriesInFlight;
     private int _mostDeliveriesAtOnce;
+    private int _hasAnnouncedFrame;
     private volatile bool _hasDeliveredFrame;
+    private volatile bool _firstFrameWasEmpty;
 
     public StudioPreviewClip(int index, string name, string path, int sourceWidth, int sourceHeight, StudioPreviewClipTiming timing, MediaPlayer player, MediaSource source)
     {
@@ -145,6 +147,22 @@ internal sealed class StudioPreviewClip
 
     /// <summary>The player has delivered at least one frame, so a frame can be pulled from it.</summary>
     public bool HasDeliveredFrame => _hasDeliveredFrame;
+
+    /// <summary>The player has said that it has a frame to hand over.</summary>
+    public bool HasAnnouncedFrame => Volatile.Read(ref _hasAnnouncedFrame) != 0;
+
+    /// <summary>Notes that the player has a frame to hand over. True the first time.</summary>
+    public bool FrameAnnounced() => Interlocked.Exchange(ref _hasAnnouncedFrame, 1) == 0;
+
+    /// <summary>
+    /// The first frame taken from the player left nothing in the texture: the player was on another
+    /// graphics adapter than the texture and is moving over (see <see cref="StudioPreviewProof"/>).
+    /// </summary>
+    public bool FirstFrameWasEmpty
+    {
+        get => _firstFrameWasEmpty;
+        set => _firstFrameWasEmpty = value;
+    }
 
     public void DeliveryStarted(long timestamp)
     {

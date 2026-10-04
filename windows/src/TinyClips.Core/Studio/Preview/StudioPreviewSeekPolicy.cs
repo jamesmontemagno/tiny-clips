@@ -163,6 +163,13 @@ internal sealed record StudioPreviewSeekSettings
 /// that does not count first, with the picture held. What the player makes of that position is
 /// waited for as any answer is, not as a frame that is owed: its <c>SeekCompleted</c> comes at
 /// once and says nothing about the frame.</item>
+/// <item>What a player hands over when it has just opened does not count either. Measured on the
+/// graphics hardware, with the screen recording: the first frame it hands over, or the frame it
+/// hands over for the first position it is given, came out blank in about one open in six of a
+/// project whose camera does not start late (92 of 520), and the right picture followed within a
+/// fiftieth of a second. So the first frame asked for after opening is reached by way of another,
+/// as after an offset change, and the picture is only let go on a frame the players were sent to
+/// and came back with.</item>
 /// </list>
 /// Not thread-safe: the owner calls every member from one thread, or under one lock. Which frame
 /// each player shows comes only from the frames it delivered, never from what was asked of it.
@@ -380,11 +387,12 @@ internal sealed class StudioPreviewSeekPolicy
     }
 
     /// <summary>
-    /// Asks for a timeline frame after the clips' offsets on the clock were set. The first
-    /// position a player is given after its offset changed is lost on it, so one is spent on
-    /// another frame before this one is gone to.
+    /// Asks for the first timeline frame after the players opened, and after the clips' offsets on
+    /// the clock were set. What a player makes of the first position it is given does not count:
+    /// one whose offset changed loses it, and any player may answer it with a blank frame. So one
+    /// position is spent on another frame before this one is gone to.
     /// </summary>
-    public void RequestSeekAfterOffsetChange(long timelineFrame)
+    public void RequestFirstSeek(long timelineFrame)
     {
         RequestSeek(timelineFrame);
         _spendFirst = !_stopped;
@@ -703,7 +711,14 @@ internal sealed class StudioPreviewSeekPolicy
         _settled = -1;
         _settledConfirmed = false;
 
-        if (spendFirst && TryPickDetour(target, EndedDetourAttempt, out var away))
+        // Any other frame will do for a position that is only there to be spent: a few frames
+        // away as a rule, a nearer one in a recording that is no longer than that. Not the end of
+        // a stream if it can be helped, where a player does not do its next seek properly.
+        if (spendFirst
+            && (TryPickDetour(target, EndedDetourAttempt, out var away, awayFromEnds: true)
+                || TryPickDetour(target, 0, out away, awayFromEnds: true)
+                || TryPickDetour(target, EndedDetourAttempt, out away)
+                || TryPickDetour(target, 0, out away)))
         {
             HoldPicture = true;
             StartAssignment(Operation.Spend, away);
@@ -1322,18 +1337,19 @@ internal sealed class StudioPreviewSeekPolicy
     /// way back shows something other than what it has to show at <paramref name="target"/>, so
     /// that coming back moves it.
     /// </summary>
-    private bool TryPickDetour(long target, int attempt, out long detour)
+    /// <param name="awayFromEnds">Only a frame on which no player in the picture is at the end of its stream.</param>
+    private bool TryPickDetour(long target, int attempt, out long detour, bool awayFromEnds = false)
     {
         var start = DetourDistances[Math.Min(attempt, DetourDistances.Length - 1)];
         for (var distance = start; distance <= start + DetourSearchSpan; distance++)
         {
-            if (IsUsefulDetour(target - distance, target))
+            if (IsUsefulDetour(target - distance, target) && !(awayFromEnds && AnyPlayerAtEndOn(target - distance)))
             {
                 detour = target - distance;
                 return true;
             }
 
-            if (IsUsefulDetour(target + distance, target))
+            if (IsUsefulDetour(target + distance, target) && !(awayFromEnds && AnyPlayerAtEndOn(target + distance)))
             {
                 detour = target + distance;
                 return true;
@@ -1341,6 +1357,20 @@ internal sealed class StudioPreviewSeekPolicy
         }
 
         detour = -1;
+        return false;
+    }
+
+    private bool AnyPlayerAtEndOn(long timelineFrame)
+    {
+        var seconds = _timeline.FrameMiddle(timelineFrame);
+        for (var track = 0; track < _trackCount; track++)
+        {
+            if (Wanted(track, timelineFrame) >= 0 && _timeline.IsPlayerAtEnd(track, seconds))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 

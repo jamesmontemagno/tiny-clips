@@ -14,6 +14,7 @@ public sealed partial class StudioPreviewEngine
     private enum SignalKind : byte
     {
         Opened,
+        Announced,
         Frame,
         SeekCompleted,
         Ended,
@@ -61,6 +62,19 @@ public sealed partial class StudioPreviewEngine
                 return;
             }
 
+            // On the software adapter no frame is taken before every player has one: see
+            // ReleaseFirstFrames. A player that still has a frame to hand over says so again
+            // every hundredth of a second, and that is when it is taken.
+            if (_firstFramesHeld || (_playersKeepFirstFrames && !clip.HasDeliveredFrame))
+            {
+                if (clip.FrameAnnounced())
+                {
+                    Post(new Signal(SignalKind.Announced, clip.Index, startedAt));
+                }
+
+                return;
+            }
+
             // Stopped by Pause(), and this frame only set out afterwards.
             if (_discardLateFrames && startedAt > Interlocked.Read(ref _pausedAt))
             {
@@ -71,12 +85,14 @@ public sealed partial class StudioPreviewEngine
             // Which frame this is: the frame that contains the player's position right now.
             var positionTicks = clip.Session.Position.Ticks;
             var copied = false;
+            var empty = false;
             var graphics = Volatile.Read(ref _graphics);
             lock (graphics.Gate)
             {
                 if (ReferenceEquals(graphics, Volatile.Read(ref _graphics)) && !_closing && clip.CopySurface is { } surface)
                 {
                     player.CopyFrameToVideoSurface(surface);
+                    empty = _looksAtFirstFrames && !clip.HasDeliveredFrame && NoteFirstFrame(graphics, clip);
                     clip.FrameCopied(delivered: true);
                     copied = true;
                 }
@@ -85,7 +101,7 @@ public sealed partial class StudioPreviewEngine
             // Always posted when the frame was counted: the render thread waits for it before it draws.
             if (copied)
             {
-                PostFrame(new Signal(SignalKind.Frame, clip.Index, startedAt, positionTicks));
+                PostFrame(new Signal(SignalKind.Frame, clip.Index, startedAt, positionTicks, empty ? "nothing in it" : null));
             }
         }
         catch (Exception ex)
@@ -174,6 +190,7 @@ public sealed partial class StudioPreviewEngine
             return long.MaxValue;
         }
 
+        var firstFramesBy = _looksAtFirstFrames && _opening ? ReleaseFirstFrames() : long.MaxValue;
         ApplyCommands();
         var deadline = _policy.Pump();
         _policy.TakeLandings(_landings);
@@ -208,7 +225,7 @@ public sealed partial class StudioPreviewEngine
 
         UpdateOpenGates();
         _engineIdle = _policy.IsIdle && !HasSomethingToDraw();
-        return deadline;
+        return Math.Min(deadline, firstFramesBy);
     }
 
     private void PassSettled(long pass)
@@ -234,6 +251,10 @@ public sealed partial class StudioPreviewEngine
             {
                 case SignalKind.Opened:
                     _clips[signal.Clip].Opened = true;
+                    break;
+
+                case SignalKind.Announced:
+                    // The pass that takes this signal looks whether every player has a frame now.
                     break;
 
                 case SignalKind.Frame:
@@ -306,10 +327,10 @@ public sealed partial class StudioPreviewEngine
 
         if (_position.TryTake(out var requested))
         {
-            if (_offsetsChanged)
+            if (_spendFirst)
             {
-                _offsetsChanged = false;
-                _policy.RequestSeekAfterOffsetChange(requested);
+                _spendFirst = false;
+                _policy.RequestFirstSeek(requested);
             }
             else
             {
@@ -577,26 +598,5 @@ public sealed partial class StudioPreviewEngine
 
     bool IStudioPreviewTransport.IsDelivering(int track) => _clips[track].DeliveriesInFlight > 0;
 
-    private static bool IsDeviceLost(Exception? exception)
-    {
-        for (var current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is StudioDeviceLostException)
-            {
-                return true;
-            }
-
-            switch (unchecked((uint)current.HResult))
-            {
-                case 0x887A0005: // DXGI_ERROR_DEVICE_REMOVED
-                case 0x887A0006: // DXGI_ERROR_DEVICE_HUNG
-                case 0x887A0007: // DXGI_ERROR_DEVICE_RESET
-                case 0x887A0020: // DXGI_ERROR_DRIVER_INTERNAL_ERROR
-                case 0x8899000C: // D2DERR_RECREATE_TARGET
-                    return true;
-            }
-        }
-
-        return false;
-    }
+    private static bool IsDeviceLost(Exception? exception) => StudioPreviewOpenFailure.IsDeviceLost(exception);
 }
