@@ -264,7 +264,10 @@ public sealed partial class StudioEditorModel
         {
             Scenes = NormalizeStoredScenes(Project.Scenes, SourceDuration),
             Zooms = SortStoredZooms(Project.Zooms),
-            Edits = ClampedEdits(Project.Edits, Project.Edits.TrimStart, Project.Edits.TrimEnd),
+            Edits = ClampedEdits(
+                Project.Edits with { Cuts = NormalizeStoredCuts(Project.Edits.Cuts, SourceDuration) },
+                Project.Edits.TrimStart,
+                Project.Edits.TrimEnd),
         };
         _exportedState = project.Exports is { Length: > 0 } ? EditableState : null;
     }
@@ -335,17 +338,23 @@ public sealed partial class StudioEditorModel
         double.IsFinite(sourceTime) ? Clamp(sourceTime, 0, SourceDuration) : 0;
 
     /// <summary>
-    /// Where playback starts when Play is pressed at <paramref name="sourceTime"/>: the same spot, or
-    /// the trim start when the playhead is outside the kept range or already at its end.
+    /// Where playback starts when Play is pressed at <paramref name="sourceTime"/>: the same spot,
+    /// the end of the cut it is in, or the start of the video when the playhead is outside what
+    /// the video shows or already at its end.
     /// </summary>
     public double GetPlaybackStart(double sourceTime)
     {
         var time = ClampSourceTime(sourceTime);
-        return time < TrimStart || time >= TrimEnd - FrameDuration / 2 ? TrimStart : time;
+        if (time < PlaybackStart || time >= PlaybackEnd - FrameDuration / 2)
+        {
+            return PlaybackStart;
+        }
+
+        return GetCutSkipTarget(time) ?? time;
     }
 
-    /// <summary>Whether a playing preview has reached the end of the kept range and should stop.</summary>
-    public bool IsAtPlaybackEnd(double sourceTime) => sourceTime >= TrimEnd - 1e-6;
+    /// <summary>Whether a playing preview has reached the end of the video and should stop.</summary>
+    public bool IsAtPlaybackEnd(double sourceTime) => sourceTime >= PlaybackEnd - 1e-6;
 
     /// <summary>Formats seconds as minutes, seconds and tenths, such as <c>1:02.5</c>.</summary>
     public static string FormatTime(double seconds)
@@ -1043,11 +1052,17 @@ public sealed partial class StudioEditorModel
 
     /// <summary>
     /// Sets the trim in source time. The kept range stays inside the recording, in order, and at
-    /// least <see cref="MinimumDuration"/> long (or the whole recording when it is shorter).
+    /// least <see cref="MinimumDuration"/> long (or the whole recording when it is shorter). A
+    /// trim that would leave less than that between the cuts is not made.
     /// </summary>
     public void SetTrim(double start, double? end)
     {
         var edits = ClampedEdits(Project.Edits, start, end);
+        if (edits.Cuts.Length > 0 && !LeavesEnoughVideo(edits))
+        {
+            return;
+        }
+
         Mutate(project => project with { Edits = edits });
     }
 

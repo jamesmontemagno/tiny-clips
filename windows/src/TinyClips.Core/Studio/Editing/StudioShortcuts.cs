@@ -11,6 +11,7 @@ public enum StudioShortcutKey
     I,
     O,
     S,
+    X,
     Z,
     Y,
     E,
@@ -41,6 +42,8 @@ public enum StudioShortcutAction
     RemoveSelectedZoom,
     SplitScene,
     RemoveCurrentScene,
+    AddCut,
+    RemoveSelectedCut,
     Undo,
     Redo,
     Export,
@@ -78,9 +81,12 @@ public readonly record struct StudioShortcutInput(
     /// <summary>Whether a zoom is selected. Delete removes it, and without one is left alone.</summary>
     public bool HasSelectedZoom { get; init; }
 
+    /// <summary>Whether a cut is selected. Delete removes it, which puts its stretch back.</summary>
+    public bool HasSelectedCut { get; init; }
+
     /// <summary>
     /// True when the focused control is a scene on the scene lane. Delete then removes the scene
-    /// the playhead is in, and not the selected zoom.
+    /// the playhead is in, and not the selected zoom or cut.
     /// </summary>
     public bool IsSceneFocused { get; init; }
 }
@@ -88,9 +94,9 @@ public readonly record struct StudioShortcutInput(
 /// <summary>
 /// The Studio editor's keyboard model, the same as on the Mac: Space plays or pauses, Left and
 /// Right step a frame, I and O set the trim at the playhead, 1 to 4 choose the layout, S splits the
-/// scene at the playhead, Z adds a zoom there, Delete removes the selected zoom, or the current
-/// scene while a scene on the lane has the focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E
-/// undo, redo and export. Esc stops a running export.
+/// scene at the playhead, Z adds a zoom there and X a cut, Delete removes the selected zoom or
+/// cut, or the current scene while a scene on the lane has the focus, and Ctrl+Z, Ctrl+Y or
+/// Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Esc stops a running export.
 /// </summary>
 /// <remarks>
 /// The window only asks about a key that the focused control did not use, so a focused slider
@@ -161,8 +167,10 @@ public static class StudioShortcuts
             StudioShortcutKey.I => StudioShortcutAction.SetTrimStartAtPlayhead,
             StudioShortcutKey.O => StudioShortcutAction.SetTrimEndAtPlayhead,
             StudioShortcutKey.S => StudioShortcutAction.SplitScene,
+            StudioShortcutKey.X => StudioShortcutAction.AddCut,
             StudioShortcutKey.Z => StudioShortcutAction.AddZoom,
             StudioShortcutKey.Delete when input.IsSceneFocused => StudioShortcutAction.RemoveCurrentScene,
+            StudioShortcutKey.Delete when input.HasSelectedCut => StudioShortcutAction.RemoveSelectedCut,
             StudioShortcutKey.Delete when input.HasSelectedZoom => StudioShortcutAction.RemoveSelectedZoom,
             StudioShortcutKey.Digit1 => StudioShortcutAction.ShowScreenLayout,
             StudioShortcutKey.Digit2 => StudioShortcutAction.ShowBubbleLayout,

@@ -437,20 +437,30 @@ public sealed partial class StudioEditorSession
     // answers with the place the zoom has afterwards, or none when it is gone. An edit that is
     // refused, because the project cannot be edited just now, leaves the zoom where it was.
     //
-    // One zoom can be selected. An edit to the selected zoom takes the selection with it, and so
-    // does adding a zoom. Through every other edit, and undo and redo, the selection follows its
-    // zoom as StudioEditorModel.FindZoomFollowing finds it, or lets go when the zoom is gone.
+    // One zoom can be selected, or one cut, never both. An edit to the selected zoom takes the
+    // selection with it, and so does adding a zoom. Through every other edit, and undo and redo,
+    // the selection follows its zoom as StudioEditorModel.FindZoomFollowing finds it, or lets go
+    // when the zoom is gone.
 
     /// <summary>The zoom that contains a source time, or null.</summary>
     public int? GetZoomIndexAt(double sourceTime) => Model?.GetZoomIndexAt(sourceTime);
 
-    /// <summary>Selects a zoom, or none with null or a place that has no zoom. The playhead stays.</summary>
+    /// <summary>
+    /// Selects a zoom, or none with null or a place that has no zoom. The playhead stays. A
+    /// selected cut is let go when a zoom is selected.
+    /// </summary>
     public void SelectZoom(int? index)
     {
-        var before = SelectedZoomIndex;
+        var zoomBefore = SelectedZoomIndex;
+        var cutBefore = SelectedCutIndex;
         _selectedZoomIndex = index;
         _selectedZoomIndex = SelectedZoomIndex;
-        if (SelectedZoomIndex != before)
+        if (_selectedZoomIndex is not null)
+        {
+            _selectedCutIndex = null;
+        }
+
+        if (SelectedZoomIndex != zoomBefore || SelectedCutIndex != cutBefore)
         {
             RaiseChanged(StudioEditorChanges.Selection);
         }
@@ -478,7 +488,7 @@ public sealed partial class StudioEditorSession
         EditAndSelect(model =>
         {
             result = model.AddZoom(sourceTime, _events);
-            return result.Index is { } index ? new ZoomSelection(index) : null;
+            return result.Index is { } index ? EditSelection.Zoom(index) : null;
         });
         return result;
     }
@@ -597,9 +607,9 @@ public sealed partial class StudioEditorSession
             return null;
         });
 
-    // An edit that may say where the zoom selection goes. One that does not leaves it to follow
-    // the zoom it was on.
-    private void EditAndSelect(Func<StudioEditorModel, ZoomSelection?> change)
+    // An edit that may say where the selection goes: to a zoom or a cut, or away from the one it
+    // was on. One that does not leaves it to follow the zoom or the cut it was on.
+    private void EditAndSelect(Func<StudioEditorModel, EditSelection?> change)
     {
         if (!IsEditable || Model is not { } model)
         {
@@ -608,21 +618,49 @@ public sealed partial class StudioEditorSession
 
         var before = model.EditableState;
         var zoomsBefore = model.Project.Zooms;
-        var selectedIndex = SelectedZoomIndex;
+        var cutsBefore = model.Project.Edits.Cuts;
+        var selectedZoom = SelectedZoomIndex;
+        var selectedCut = SelectedCutIndex;
         var selection = change(model);
         var isChanged = !model.EditableState.ContentEquals(before);
 
+        if (selection is { IsCut: false } zoomChosen)
+        {
+            _selectedZoomIndex = zoomChosen.Index;
+        }
+        else if (isChanged && selectedZoom is { } zoomIndex)
+        {
+            _selectedZoomIndex = StudioEditorModel.FindZoomFollowing(zoomsBefore, zoomIndex, model.Project.Zooms);
+        }
+
+        if (selection is { IsCut: true } cutChosen)
+        {
+            _selectedCutIndex = cutChosen.Index;
+        }
+        else if (isChanged && selectedCut is { } cutIndex)
+        {
+            _selectedCutIndex = StudioEditorModel.FindCutFollowing(cutsBefore, cutIndex, model.Project.Edits.Cuts);
+        }
+
+        // One selection: an edit that says where a zoom is lets go of the cut, and the other way
+        // round. An edit to the selected zoom finds no cut selected, so only adding one does.
         if (selection is { } chosen)
         {
-            _selectedZoomIndex = chosen.Index;
-        }
-        else if (isChanged && selectedIndex is { } index)
-        {
-            _selectedZoomIndex = StudioEditorModel.FindZoomFollowing(zoomsBefore, index, model.Project.Zooms);
+            if (chosen.IsCut)
+            {
+                _selectedZoomIndex = null;
+            }
+            else
+            {
+                _selectedCutIndex = null;
+            }
         }
 
         _selectedZoomIndex = SelectedZoomIndex;
-        var selectionChange = SelectedZoomIndex != selectedIndex ? StudioEditorChanges.Selection : StudioEditorChanges.None;
+        _selectedCutIndex = SelectedCutIndex;
+        var selectionChange = SelectedZoomIndex != selectedZoom || SelectedCutIndex != selectedCut
+            ? StudioEditorChanges.Selection
+            : StudioEditorChanges.None;
         if (!isChanged)
         {
             if (selectionChange != StudioEditorChanges.None)
@@ -660,7 +698,7 @@ public sealed partial class StudioEditorSession
         EditAndSelect(model =>
         {
             result = change(model);
-            return isSelected ? new ZoomSelection(result.Index) : null;
+            return isSelected ? EditSelection.Zoom(result.Index) : null;
         });
         return result;
     }
@@ -677,8 +715,14 @@ public sealed partial class StudioEditorSession
         return true;
     }
 
-    // Where the zoom selection goes after an edit that knows.
-    private readonly record struct ZoomSelection(int? Index);
+    // Where the selection goes after an edit that knows: to a zoom or to a cut, or away from the
+    // one it was on when there is no index.
+    private readonly record struct EditSelection(bool IsCut, int? Index)
+    {
+        public static EditSelection Zoom(int? index) => new(false, index);
+
+        public static EditSelection Cut(int? index) => new(true, index);
+    }
 
     // Transport
 
@@ -705,6 +749,7 @@ public sealed partial class StudioEditorSession
             Seek(start);
         }
 
+        _cutSkipTarget = null;
         Interlocked.Increment(ref _playGeneration);
         preview.Play();
         IsPlaying = true;
@@ -818,11 +863,25 @@ public sealed partial class StudioEditorSession
             return;
         }
 
-        Playhead = model.ClampSourceTime(position);
-        if (model.IsAtPlaybackEnd(position))
+        if (!model.IsAtPlaybackEnd(position) && model.GetCutSkipTarget(position) is { } target)
         {
-            PausePreview();
-            Seek(model.TrimEnd);
+            // Playback has reached a cut and goes on from its end. The preview reports positions
+            // inside the cut until its seek has landed. Those do not send it there again, and
+            // they leave the playhead where it was sent.
+            if (target != _cutSkipTarget)
+            {
+                _cutSkipTarget = target;
+                Seek(target);
+            }
+        }
+        else
+        {
+            Playhead = model.ClampSourceTime(position);
+            if (model.IsAtPlaybackEnd(position))
+            {
+                PausePreview();
+                Seek(model.PlaybackEnd);
+            }
         }
 
         RaiseChanged(StudioEditorChanges.Playback);
@@ -849,10 +908,10 @@ public sealed partial class StudioEditorSession
 
             // A preview reports the start of the frame it shows, so at the end of the recording it
             // stops one frame short of the trim end. That is the end of playback all the same, and
-            // the playhead goes to the trim end as it does when playback is stopped there.
+            // the playhead goes to the end of the video as it does when playback is stopped there.
             if (model.IsAtPlaybackEnd(Playhead + model.FrameDuration))
             {
-                Seek(model.TrimEnd);
+                Seek(model.PlaybackEnd);
             }
         }
 

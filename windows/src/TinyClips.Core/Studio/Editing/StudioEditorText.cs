@@ -56,6 +56,18 @@ public static class StudioEditorText
     /// <summary>Why the first scene has no start to set and no way of being entered.</summary>
     public const string FirstSceneExplanation = "The first scene starts with the recording and has nothing to move from.";
 
+    /// <summary>Said when a cut has been added at the playhead.</summary>
+    public const string CutAddedMessage = "Cut added.";
+
+    /// <summary>Said when a cut was asked for where one already is. That cut is selected instead.</summary>
+    public const string CutAlreadyThereMessage = "There is already a cut here.";
+
+    /// <summary>Said when a cut was asked for where the shortest cut does not fit, or where it would leave no video.</summary>
+    public const string NoRoomForCutMessage = "There is no room for a cut here.";
+
+    /// <summary>Said when the selected cut has been deleted.</summary>
+    public const string CutDeletedMessage = "Cut deleted.";
+
     // How far a number that went through single precision may be from what was meant, as a part of
     // its size. One unit in the last place is 2^-23 of it at most, and the value a screen reader
     // read, the step it read and the sum it sent back each lose up to half of one.
@@ -260,6 +272,33 @@ public static class StudioEditorText
             ? string.Create(CultureInfo.InvariantCulture, $"The scene is shorter than that, so the move takes {length:0.00} seconds.")
             : null;
     }
+
+    /// <summary>
+    /// A cut for screen readers, such as <c>Cut, 12.0 to 16.5 seconds</c>. The times are source
+    /// time, as the trim handles read.
+    /// </summary>
+    public static string GetCutDescription(StudioTimeRange cut) => $"Cut, {GetCutRangeText(cut)}";
+
+    /// <summary>When a cut starts and ends, in source time: <c>12.0 to 16.5 seconds</c>.</summary>
+    public static string GetCutRangeText(StudioTimeRange cut)
+    {
+        ArgumentNullException.ThrowIfNull(cut);
+        var start = double.IsFinite(cut.Start) ? cut.Start : 0;
+        var end = double.IsFinite(cut.End) ? cut.End : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{start:0.0} to {end:0.0} seconds");
+    }
+
+    /// <summary>How long a cut is: <c>4.5 seconds long</c>.</summary>
+    public static string GetCutLengthText(StudioTimeRange cut)
+    {
+        ArgumentNullException.ThrowIfNull(cut);
+        var length = double.IsFinite(cut.End - cut.Start) ? Math.Max(0, cut.End - cut.Start) : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{length:0.0} seconds long");
+    }
+
+    /// <summary>Which cut is selected, counting from one: <c>Cut 2 of 3</c>.</summary>
+    public static string GetCutPositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Cut {index + 1} of {count}");
 
     /// <summary>What to say after zooms were suggested, given how many suggestions there are now.</summary>
     public static string GetZoomSuggestionsText(int count) => count switch
