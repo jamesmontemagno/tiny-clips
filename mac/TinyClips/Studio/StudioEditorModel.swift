@@ -551,6 +551,12 @@ struct StudioEditorModel: Equatable, Sendable {
         mutate { $0.camera.mirror = isMirrored }
     }
 
+    /// Sets what happens to everything in the camera picture that is not a person: kept,
+    /// blurred, or taken away.
+    mutating func setCameraCutout(_ cutout: StudioCameraCutout) {
+        mutate { $0.camera.cutout = cutout }
+    }
+
     mutating func setCameraBorderWidth(_ value: Double) {
         mutate { $0.camera.borderWidth = StudioCanvasMath.clamped(value, 0, 0.02) }
     }
@@ -1694,6 +1700,15 @@ struct StudioEditorModel: Equatable, Sendable {
         case .roundedRectangle: return "Rounded rectangle"
         case .squircle: return "Squircle"
         case .rectangle: return "Rectangle"
+        }
+    }
+
+    /// What a choice for the camera's background is called.
+    static func cutoutName(_ cutout: StudioCameraCutout) -> String {
+        switch cutout {
+        case .none: return "Keep"
+        case .blur: return "Blur"
+        case .remove: return "Remove"
         }
     }
 

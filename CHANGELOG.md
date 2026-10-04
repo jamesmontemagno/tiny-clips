@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
   - Cut parts out. Press **X** to cut a second out of the video at the playhead, then drag the cut or its ends on its lane, or set them in the inspector. Playback jumps over a cut and the export leaves it out. **Delete** removes the selected cut and puts its stretch back.
   - Change the speed. Press **R** to play two seconds twice as fast from the playhead, then drag the stretch or its ends on its lane, or set them in the inspector, and pick a rate from 0.25× to 8×. The preview and the export play the stretch at that rate, without sound. **Delete** removes the selected speed change.
   - Balance the sound. A recording with system audio and the microphone gets a volume slider for each in the inspector's Audio section, next to **Mute audio**.
+  - Blur or remove what is behind you. **Background** in the Camera section keeps the camera picture as it is, blurs everything but you, or removes it so that only you stand in front of the screen.
   - Known limits: window recordings keep no click or cursor data, and the cursor is part of the screen layer.
 - macOS General settings have a new **Confirm before closing editors with Esc** option, on by default, covering the screenshot editor, video trimmer, and GIF trimmer. Turn it off to close them with a single Esc press, which discards anything unsaved.
 

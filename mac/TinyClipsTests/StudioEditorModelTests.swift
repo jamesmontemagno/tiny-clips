@@ -142,6 +142,36 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertNil(model.project.canvas.background.image)
     }
 
+    func testTheCameraBackgroundIsKeptBlurredOrRemoved() {
+        var model = StudioEditorModel(project: makeProject())
+        XCTAssertEqual(model.project.camera.cutout, .none)
+
+        model.setCameraCutout(.blur)
+        XCTAssertEqual(model.project.camera.cutout, .blur)
+        model.setCameraCutout(.remove)
+        XCTAssertEqual(model.project.camera.cutout, .remove)
+
+        // The same choice again is no edit.
+        model.setCameraCutout(.remove)
+        XCTAssertEqual(undoDepth(&model), 2)
+
+        model.undo()
+        XCTAssertEqual(model.project.camera.cutout, .blur)
+        model.undo()
+        XCTAssertEqual(model.project.camera.cutout, .none)
+
+        // It is part of the look, so a saved look brings it to the next recording.
+        model.redo()
+        var next = StudioEditorModel(project: makeProject())
+        next.applyLook(StudioLook(canvas: model.project.canvas, screen: model.project.screen, camera: model.project.camera))
+        XCTAssertEqual(next.project.camera.cutout, .blur)
+
+        XCTAssertEqual(
+            [StudioCameraCutout.none, .blur, .remove].map(StudioEditorModel.cutoutName),
+            ["Keep", "Blur", "Remove"]
+        )
+    }
+
     func testLayoutChoicesAreIgnoredWithoutACamera() {
         var model = StudioEditorModel(project: makeProject(camera: false))
         XCTAssertFalse(model.hasCamera)

@@ -284,6 +284,10 @@ final class StudioViewModel: ObservableObject {
         edit { $0.setCameraMirror(value) }
     }
 
+    func setCameraCutout(_ value: StudioCameraCutout) {
+        edit { $0.setCameraCutout(value) }
+    }
+
     func setCameraBorderWidth(_ value: Double) {
         edit { $0.setCameraBorderWidth(value) }
     }

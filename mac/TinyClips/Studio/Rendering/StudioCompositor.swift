@@ -3,6 +3,7 @@ import CoreGraphics
 import CoreImage
 import Foundation
 import ImageIO
+import Vision
 
 // MARK: - Video Composition Instruction
 
@@ -107,6 +108,46 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
     }
 }
 
+// MARK: - Person Segmenter
+
+/// Finds the people in camera frames, for the person cutout (section 6.7 of the project format).
+/// One belongs to one compositor. While a video plays or exports its frames come in order, and
+/// Vision steadies the edge of a person from one frame to the next. After a seek the first
+/// masks can trail the picture a little.
+private final class StudioPersonSegmenter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let sequenceHandler = VNSequenceRequestHandler()
+    private lazy var request: VNGeneratePersonSegmentationRequest = {
+        let request = VNGeneratePersonSegmentationRequest()
+        request.qualityLevel = .balanced
+        request.outputPixelFormat = kCVPixelFormatType_OneComponent8
+        return request
+    }()
+
+    /// A mask the size of the frame, with the red channel full where a person is. Vision gives
+    /// one number for each point, and Core Image reads such a picture as red alone, so the mask
+    /// is for the filters that go by red. Nil when Vision cannot make one.
+    func mask(for pixelBuffer: CVPixelBuffer) -> CIImage? {
+        lock.lock()
+        defer { lock.unlock() }
+        do {
+            try sequenceHandler.perform([request], on: pixelBuffer)
+        } catch {
+            return nil
+        }
+        guard let maskBuffer = request.results?.first?.pixelBuffer else { return nil }
+        let mask = CIImage(cvPixelBuffer: maskBuffer)
+        let width = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
+        let height = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
+        guard mask.extent.width > 0, mask.extent.height > 0, width > 0, height > 0 else { return nil }
+        // The mask is smaller than the frame. Scaled up, it lies on the frame point for point.
+        return mask.transformed(by: CGAffineTransform(
+            scaleX: width / mask.extent.width,
+            y: height / mask.extent.height
+        ))
+    }
+}
+
 // MARK: - Compositor
 
 final class StudioCompositor: NSObject, AVVideoCompositing {
@@ -120,6 +161,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
 
     private let lock = NSLock()
     private var renderContext: AVVideoCompositionRenderContext?
+    private let personSegmenter = StudioPersonSegmenter()
 
     var sourcePixelBufferAttributes: [String: any Sendable]? {
         [
@@ -235,16 +277,36 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             let cameraRect = pixelAligned(camera.rect)
             let whole = camera.opacity >= 1
             var layer = whole ? output : clearImage(extent: outputExtent)
-            layer = drawShadow(
-                for: cameraRect,
-                radius: camera.cornerRadius,
-                shadow: camera.shadow,
-                over: layer,
-                renderSize: renderSize,
-                shape: camera.shape
-            )
+
+            // Person cutout (section 6.7): the people are found in the frame as it was recorded,
+            // before it is cropped, mirrored and scaled. A frame they cannot be found in is drawn
+            // as it is.
+            var cameraSource = CIImage(cvPixelBuffer: cameraBuffer)
+            var showsPeopleOnly = false
+            let cutout = snapshot.project.camera.cutout
+            if cutout != .none, let personMask = personSegmenter.mask(for: cameraBuffer) {
+                if cutout == .blur {
+                    cameraSource = blurringAllButPeople(in: cameraSource, mask: personMask)
+                } else {
+                    cameraSource = keepingOnlyPeople(in: cameraSource, mask: personMask)
+                    showsPeopleOnly = true
+                }
+            }
+
+            // A shadow and a border belong to the frame around the picture. With only the people
+            // left there is no frame.
+            if !showsPeopleOnly {
+                layer = drawShadow(
+                    for: cameraRect,
+                    radius: camera.cornerRadius,
+                    shadow: camera.shadow,
+                    over: layer,
+                    renderSize: renderSize,
+                    shape: camera.shape
+                )
+            }
             let cameraImage = layerImage(
-                sourceImage: CIImage(cvPixelBuffer: cameraBuffer),
+                sourceImage: cameraSource,
                 source: camera.source,
                 destination: cameraRect,
                 renderSize: renderSize,
@@ -256,9 +318,10 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 in: cameraRect,
                 radius: camera.cornerRadius,
                 shape: camera.shape,
-                renderSize: renderSize
+                renderSize: renderSize,
+                isSeeThrough: showsPeopleOnly
             )
-            if camera.borderWidth > 0 {
+            if camera.borderWidth > 0, !showsPeopleOnly {
                 layer = drawBorder(
                     in: cameraRect,
                     radius: camera.cornerRadius,
@@ -355,16 +418,23 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             .cropped(to: destinationRect.insetBy(dx: -2, dy: -2))
     }
 
+    /// - Parameter isSeeThrough: Whether the picture has see-through parts. The mask filter puts
+    ///   the picture's own pixels wherever the mask is, clear ones too, which would cut a hole in
+    ///   what is under it. So such a picture is laid on what is under it first.
     private func composite(
-        _ foreground: CIImage,
+        _ picture: CIImage,
         over background: CIImage,
         in rect: StudioRect,
         radius: Double,
         shape: StudioCameraShape,
-        renderSize: CGSize
+        renderSize: CGSize,
+        isSeeThrough: Bool = false
     ) -> CIImage {
+        let destinationRect = StudioRenderGeometry.ciRect(forTopLeftRect: rect, renderSize: renderSize)
+        let foreground = isSeeThrough
+            ? picture.cropped(to: destinationRect.insetBy(dx: -2, dy: -2)).composited(over: background)
+            : picture
         guard let mask = translatedMask(for: rect, radius: radius, shape: shape, renderSize: renderSize) else {
-            let destinationRect = StudioRenderGeometry.ciRect(forTopLeftRect: rect, renderSize: renderSize)
             return foreground.cropped(to: destinationRect).composited(over: background)
         }
         // Masks are white on transparent, so the alpha channel carries the coverage.
@@ -375,6 +445,40 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 kCIInputMaskImageKey: mask,
             ]
         )
+    }
+
+    // MARK: - Person Cutout
+
+    /// The frame with everything but the people blurred. The blur is a Gaussian whose standard
+    /// deviation is 2 percent of the frame's longer side (section 6.7).
+    private func blurringAllButPeople(in image: CIImage, mask: CIImage) -> CIImage {
+        let deviation = 0.02 * max(image.extent.width, image.extent.height)
+        let blurred = image
+            .clampedToExtent()
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: deviation])
+            .cropped(to: image.extent)
+        return image
+            .applyingFilter(
+                "CIBlendWithRedMask",
+                parameters: [
+                    kCIInputBackgroundImageKey: blurred,
+                    kCIInputMaskImageKey: mask,
+                ]
+            )
+            .cropped(to: image.extent)
+    }
+
+    /// The frame with everything but the people see-through.
+    private func keepingOnlyPeople(in image: CIImage, mask: CIImage) -> CIImage {
+        image
+            .applyingFilter(
+                "CIBlendWithRedMask",
+                parameters: [
+                    kCIInputBackgroundImageKey: clearImage(extent: image.extent),
+                    kCIInputMaskImageKey: mask,
+                ]
+            )
+            .cropped(to: image.extent)
     }
 
     private func drawShadow(

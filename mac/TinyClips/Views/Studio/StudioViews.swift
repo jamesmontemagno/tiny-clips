@@ -291,6 +291,7 @@ private struct StudioInspectorView: View {
     @ObservedObject var viewModel: StudioViewModel
 
     private static let shapes: [StudioCameraShape] = [.circle, .roundedRectangle, .squircle, .rectangle]
+    private static let cutouts: [StudioCameraCutout] = [.none, .blur, .remove]
     private static let anchors: [StudioAnchor] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
     private static let swatchColumns = Array(repeating: GridItem(.fixed(22), spacing: 7), count: 9)
 
@@ -492,6 +493,18 @@ private struct StudioInspectorView: View {
     private var cameraStyleControls: some View {
         Toggle("Mirror", isOn: mirrorBinding)
             .toggleStyle(.checkbox)
+        Picker("Background", selection: cutoutBinding) {
+            ForEach(Self.cutouts, id: \.self) { cutout in
+                Text(StudioEditorModel.cutoutName(cutout)).tag(cutout)
+            }
+        }
+        .help("Keeps, blurs, or removes what is behind you in the camera picture")
+        if camera.cutout == .remove {
+            Text("With the background removed, the camera has no border and no shadow.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
         StudioSliderRow(
             title: "Border",
             value: camera.borderWidth,
@@ -701,6 +714,13 @@ private struct StudioInspectorView: View {
         Binding(
             get: { camera.mirror },
             set: { viewModel.setCameraMirror($0) }
+        )
+    }
+
+    private var cutoutBinding: Binding<StudioCameraCutout> {
+        Binding(
+            get: { camera.cutout },
+            set: { viewModel.setCameraCutout($0) }
         )
     }
 
