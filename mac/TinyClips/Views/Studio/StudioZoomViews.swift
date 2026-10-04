@@ -54,7 +54,7 @@ struct StudioZoomLane: View {
                     .onChanged { value in
                         if !isTrackDragging {
                             isTrackDragging = true
-                            viewModel.selectZoom(nil)
+                            viewModel.selectNothing()
                         }
                         viewModel.scrub(to: time(at: value.location.x, usable: usable, duration: duration))
                     }

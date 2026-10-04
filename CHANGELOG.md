@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
   - To try it, quit Tiny Clips and run `defaults write com.tinyclips.app studioPreviewEnabled -bool YES` (use `com.refractored.tinyclips` for the Mac App Store build). Then choose **After recording: Open in Studio** in Settings › Video, or switch on **Record for Studio** in the Record panel.
   - Zoom in on part of the screen for a stretch of the video. Press **Z** to add a zoom at the playhead, drag it on the timeline, and set how far it zooms and where it looks, or have it follow the pointer. **Suggest Zooms** proposes zooms from your clicks. The Screen and Camera sections have Crop sliders.
   - Change the layout partway through. Press **S** to split the recording into scenes at the playhead, give each its own layout, and choose whether a scene is cut to or the screen and camera move into place.
+  - Cut parts out. Press **X** to cut a second out of the video at the playhead, then drag the cut or its ends on its lane, or set them in the inspector. Playback jumps over a cut and the export leaves it out. **Delete** removes the selected cut and puts its stretch back.
   - Known limits: window recordings keep no click or cursor data, and the cursor is part of the screen layer.
 - macOS General settings have a new **Confirm before closing editors with Esc** option, on by default, covering the screenshot editor, video trimmer, and GIF trimmer. Turn it off to close them with a single Esc press, which discards anything unsaved.
 

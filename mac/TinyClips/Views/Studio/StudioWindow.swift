@@ -87,7 +87,7 @@ final class StudioWindowRegistry {
 /// responder chain and are disabled while another window is in front.
 ///
 /// Only Export has a key equivalent here. The other shortcuts are single keys (Space, arrows, I, O,
-/// S, Z, Delete, and 1 to 4), which as menu key equivalents would be taken from text fields in every
+/// S, X, Z, Delete, and 1 to 4), which as menu key equivalents would be taken from text fields in every
 /// window, so `StudioWindow` handles them itself. That also keeps them working while Tiny Clips
 /// runs without a Dock icon and its menu bar is not shown.
 @MainActor
@@ -123,6 +123,11 @@ enum StudioMenuCommands {
         menu.addItem(menuItem("Delete Scene", action: "studioDeleteScene:"))
         menu.addItem(menuItem("Previous Scene", action: "studioPreviousScene:"))
         menu.addItem(menuItem("Next Scene", action: "studioNextScene:"))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Add Cut", action: "studioAddCut:"))
+        menu.addItem(menuItem("Delete Cut", action: "studioDeleteCut:"))
+        menu.addItem(menuItem("Previous Cut", action: "studioPreviousCut:"))
+        menu.addItem(menuItem("Next Cut", action: "studioNextCut:"))
         menu.addItem(.separator())
         menu.addItem(menuItem("Screen Only", action: "studioLayoutScreen:"))
         menu.addItem(menuItem("Screen with Camera Bubble", action: "studioLayoutBubble:"))
@@ -210,6 +215,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioDeleteScene(_ sender: Any?) { viewModel.removeCurrentScene() }
     @objc func studioPreviousScene(_ sender: Any?) { viewModel.stepToPreviousScene() }
     @objc func studioNextScene(_ sender: Any?) { viewModel.stepToNextScene() }
+    @objc func studioAddCut(_ sender: Any?) { viewModel.addCutAtPlayhead() }
+    @objc func studioDeleteCut(_ sender: Any?) { viewModel.removeSelectedCut() }
+    @objc func studioPreviousCut(_ sender: Any?) { viewModel.showPreviousCut() }
+    @objc func studioNextCut(_ sender: Any?) { viewModel.showNextCut() }
     @objc func studioLayoutScreen(_ sender: Any?) { viewModel.setLayout(.screen) }
     @objc func studioLayoutBubble(_ sender: Any?) { viewModel.setLayout(.bubble) }
     @objc func studioLayoutSideBySide(_ sender: Any?) { viewModel.setLayout(.sideBySide) }
@@ -255,6 +264,13 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return viewModel.isEditable && viewModel.currentSceneIndex > 0
         case #selector(studioNextScene(_:)):
             return viewModel.isEditable && viewModel.currentSceneIndex + 1 < viewModel.scenes.count
+        case #selector(studioAddCut(_:)):
+            return viewModel.canAddCutAtPlayhead
+        case #selector(studioDeleteCut(_:)):
+            return viewModel.isEditable && viewModel.selectedCutIndex != nil
+        case #selector(studioPreviousCut(_:)),
+            #selector(studioNextCut(_:)):
+            return viewModel.isEditable && !viewModel.cuts.isEmpty
         default:
             return super.validateMenuItem(menuItem)
         }
@@ -338,9 +354,15 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
 
         // Holding an arrow key keeps stepping through frames. The other keys act once per press.
         let isFirstPress = !event.isARepeat
-        if (keyCode == kVK_Delete || keyCode == kVK_ForwardDelete) && viewModel.selectedZoomIndex != nil {
-            if isFirstPress { viewModel.removeSelectedZoom() }
-            return true
+        if keyCode == kVK_Delete || keyCode == kVK_ForwardDelete {
+            if viewModel.selectedCutIndex != nil {
+                if isFirstPress { viewModel.removeSelectedCut() }
+                return true
+            }
+            if viewModel.selectedZoomIndex != nil {
+                if isFirstPress { viewModel.removeSelectedZoom() }
+                return true
+            }
         }
 
         switch keyCode {
@@ -380,6 +402,9 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return true
         case "s":
             if isFirstPress { viewModel.splitSceneAtPlayhead() }
+            return true
+        case "x":
+            if isFirstPress { viewModel.addCutAtPlayhead() }
             return true
         case "z":
             if isFirstPress { viewModel.addZoomAtPlayhead() }

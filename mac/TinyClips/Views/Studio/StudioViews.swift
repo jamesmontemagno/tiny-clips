@@ -307,6 +307,7 @@ private struct StudioInspectorView: View {
                     cameraSection
                 }
                 StudioZoomInspectorSection(viewModel: viewModel)
+                StudioCutInspectorSection(viewModel: viewModel)
                 extrasSection
                 Divider()
                 Button("Save as Default Look") {
@@ -801,6 +802,13 @@ private struct StudioTimelineView: View {
                 .disabled(!viewModel.canAddZoomAtPlayhead)
                 .help("Add a zoom at the playhead (Z)")
 
+                Button("Cut") {
+                    viewModel.addCutAtPlayhead()
+                }
+                .disabled(!viewModel.canAddCutAtPlayhead)
+                .help("Cut a second out of the video at the playhead (X)")
+                .accessibilityLabel("Add cut")
+
                 Button("Start Here") {
                     viewModel.setTrimStartAtPlayhead()
                 }
@@ -819,6 +827,9 @@ private struct StudioTimelineView: View {
 
             StudioZoomLane(viewModel: viewModel)
                 .frame(height: 26)
+
+            StudioCutLane(viewModel: viewModel)
+                .frame(height: 22)
 
             StudioTrimBar(viewModel: viewModel)
                 .frame(height: 36)
@@ -868,6 +879,8 @@ private struct StudioTrimBar: View {
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
 
+                cutGaps(trimStart: trimStart, trimEnd: trimEnd, usable: usable, duration: duration)
+
                 handle(isStart: true, time: trimStart, usable: usable, duration: duration)
                     .offset(x: startX)
                 handle(isStart: false, time: trimEnd, usable: usable, duration: duration)
@@ -893,6 +906,21 @@ private struct StudioTrimBar: View {
                     .offset(x: playheadX - 1)
             }
             .coordinateSpace(.named(Self.space))
+        }
+    }
+
+    private func cutGaps(trimStart: Double, trimEnd: Double, usable: CGFloat, duration: Double) -> some View {
+        ForEach(Array(viewModel.cuts.enumerated()), id: \.offset) { _, cut in
+            let from = max(cut.start, trimStart)
+            let to = min(cut.end, trimEnd)
+            if to > from {
+                Rectangle()
+                    .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                    .frame(width: CGFloat((to - from) / duration) * usable)
+                    .offset(x: handleWidth + CGFloat(from / duration) * usable)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
