@@ -69,6 +69,7 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 | `screen.frameRate` | number | 30 | The rate the recording was made at. It sets the frame step in the editor and the frame rate of an export. See the note below |
 | `screen.duration` | number | | Seconds |
 | `screen.external` | bool | false | True for flat projects |
+| `screen.audioTracks` | string[] or null | null | What each sound track of the screen file holds, in the file's order: `system` (the computer's sound), `microphone`, or `mixed` (both in one track). Null means it is not known. Section 7 says what it is used for |
 | `camera` | object or null | null | Null when there is no camera track |
 | `camera.file` | string | `"camera.mp4"` | |
 | `camera.width`, `camera.height` | int | | |
@@ -153,8 +154,8 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 
 | Property | Type | Default | Notes |
 |---|---|---|---|
-| `audio.muted` | bool | false | |
-| `audio.systemVolume`, `audio.microphoneVolume` | number | 1 | Reserved |
+| `audio.muted` | bool | false | The video has no sound |
+| `audio.systemVolume`, `audio.microphoneVolume` | number | 1 | How loud the sound tracks of that kind are in the video, from 0 (silent) to 1 (as recorded). Clamped to that range when used. See section 7 |
 | `overlays.clicks.enabled` | bool | true | |
 | `overlays.clicks.color` | color | `#0A84FF` | |
 | `overlays.clicks.size` | number | 40 | Ring diameter in points of the captured screen |
@@ -558,6 +559,10 @@ Speed entries are not clamped to the trim. Which of two overlapping entries coun
 Everything else stays in source time. A zoom, a move between scenes, and a click ring inside a faster piece therefore pass faster in the video, as the picture does.
 
 **Sound.** The video has the recording's sound only in pieces with rate 1. For the output time of a piece with another rate it is silent.
+
+Where the video has sound, the sound tracks of the screen file are added together, each at its gain. `sources.screen.audioTracks` says what each track holds. A `system` track has the gain `audio.systemVolume` and a `microphone` track the gain `audio.microphoneVolume`, each clamped to 0 to 1. Every other track has the gain 1: a `mixed` track, a track named by any other word, and every track when the list is missing or does not have one entry for each sound track in the file. With `audio.muted` the video has no sound at all.
+
+The macOS recorder writes the computer's sound and the microphone as two tracks and lists them. The Windows recorder mixes them into one track while recording and lists nothing, so there the two volumes change nothing. The Windows preview and exporter read the first sound track of the file only and do not apply the two volumes yet; a project where that makes a difference cannot be recorded on Windows.
 
 ## 8. Zoom suggestions
 
