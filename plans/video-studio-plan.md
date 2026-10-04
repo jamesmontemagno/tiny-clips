@@ -229,6 +229,18 @@ A speed change is a stretch of the recording that the video plays faster or slow
 
 **Limits.** A speed change covers at least 0.1 seconds of the recording. Speed changes do not overlap: an end dragged against another one stops there, and two may touch. A project file may hold any rate from 0.25 to 8; the editor shows it as it is until one of its six is chosen. At least 0.1 seconds of video has to stay. A faster stretch makes the video shorter, and so does taking a slower one away, so an edit to a speed change, to a cut, or to the trim that would leave less is not made. A speed change outside the trim does nothing and is kept. Speed changes in a project file that overlap or are out of order are put in order when the project is opened, exactly as an export reads them, so opening a project and saving it does not change how it plays.
 
+### Volumes (Milestone 3)
+
+A recording can have the computer's sound and the microphone in one file. Where each is in a sound track of its own, the video can have each at its own volume, from silent to as recorded. Nothing makes a track louder than it was recorded: that would need a limiter to keep it from clipping, and is left for later.
+
+**What the project says.** `sources.screen.audioTracks` lists what each sound track of the screen file holds, in the file's order: `system`, `microphone`, or `mixed`. `audio.systemVolume` and `audio.microphoneVolume` are the two volumes. A track that holds both, a track the project says nothing about, and every track of a file the list does not fit play as recorded. Mute still takes all sound away.
+
+**Audio section in the inspector.** Mute, and under it a slider for each kind of sound the recording has in a track of its own: System audio and Microphone, in steps of 5 percent. A recording with one mixed track, or one made before the list existed, shows Mute alone. A drag is one undo step. The preview plays with the volumes as they are set, without rebuilding anything.
+
+**macOS.** The recorder already writes the computer's sound and the microphone as two tracks. It now tells the project which is which, and only when the file really has one track for each sound it set out to record. Preview and export play each track at its volume through an audio mix.
+
+**Windows.** The recorder mixes both into one track while recording, so a Windows recording has nothing to set apart and the window shows no volumes. Separate volumes there need three things: the recorder writing two sound tracks in a Studio recording, the exporter mixing two tracks, and the preview playing two. The first of these changes the sound path of the recorder that ships today, and none of it can be tried on the machine this is written on without recording its user's sound and microphone. It is left until that can be done with the user.
+
 ## Platform architecture
 
 ### macOS
@@ -338,7 +350,8 @@ The Windows window has the zoom lane, the Zoom section and the crop sliders. `St
 | Editing operations for speed changes, with undo: adding, moving, and deleting one, its rate, and one selection shared with the zooms and the cuts | Done in the editor model, which is unit tested, and the view model | Done in the editor model and session, with the R key and Delete on a speed change in the key rules. Unit tested. The window does not use them yet |
 | Speed in the preview | The player is set to the rate of the stretch it is in, and is silent there. Compiled only | Not started. The preview plays every stretch at the recording's own speed |
 | Speed lane, Speed section in the inspector, the Speed button | Done. Compiled, never run | Not started |
-| Volumes, switching layouts while recording | Not started | Not started |
+| Volumes for the computer's sound and the microphone | Done: the recorder lists its sound tracks, the Audio section has a slider for each, and preview and export play them through an audio mix. The rules are unit tested. Compiled, never run | Not started. A Windows recording has one mixed sound track; see "Volumes" above |
+| Switching layouts while recording | Not started | Not started |
 
 A project file with more than one scene is drawn with its transitions on both platforms. On the Mac the editor can now split a recording into scenes and change each one, in views that have been compiled and never run. On Windows no window has a control for scenes yet, and until it does, the layout controls of a project that already has several scenes change the scene under the playhead while showing the layout of another.
 
@@ -397,6 +410,8 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **Editing rules for cuts**, the same on both platforms and unit tested on each: a cut is never shorter than 0.1 seconds and never overlaps another; two that touch play as one; at least 0.1 seconds of video has to stay, so an edit to a cut or to the trim that would leave less is not made; a cut outside the trim is kept. Opening a project puts its cuts in order and joins those that overlap.
 - **What a speed change is.** A stretch of the recording with a rate from 0.25× to 8×, stored in recording time like a cut. Zooms, moves between scenes, and click rings stay tied to the recording, so inside a faster stretch they pass faster too. A stretch at another speed has no sound: sound that keeps its pitch needs a time-stretching step that neither exporter has. Where two entries in a project file overlap, the one that starts first in the recording counts, wherever the trim is, so the speed at a moment of the recording does not change when the trim moves.
 - **Editing rules for speed changes**, the same on both platforms and unit tested on each: a new one plays twice as fast and covers 2 seconds, or up to the next one or the end of the recording; one never covers less than 0.1 seconds and never overlaps another; a rate of 1 is not a speed change, and deleting it is how a stretch goes back to the recording's own speed; at least 0.1 seconds of video has to stay, which a faster rate, a move, and even deleting a slower stretch can break, so those are not made then. Opening a project keeps exactly the entries an export counts, so opening and saving does not change how it plays.
+- **Volumes go down only.** The computer's sound and the microphone each have a volume from silent to as recorded, and only where the recording has them in tracks of their own. Making a track louder than it was recorded is left out, because it needs a limiter to keep it from clipping. On Windows there is nothing to set yet: its recorder mixes both into one track, and changing that touches the sound path of the recorder that ships today (see "Volumes").
+- **The project says what its sound tracks hold only when that is certain.** The Mac recorder lists them when the finished file has exactly one sound track for each sound it set out to record. An input that never got a sample may or may not have become a track; then the project lists nothing and every track plays as recorded.
 - **Playing over a cut** is done by the editor, which sends the preview on to the end of the cut when playback reaches it. The export is exact; the preview can show a few frames of the cut first.
 - **Stepping is read out.** Previous and Next, for zooms, scenes and cuts, say nothing of where they land by themselves, and the text between them is not read when it changes. So the editor reads out where it landed: "Zoom 2 of 5, 2×, 12.0 to 16.5 seconds", "Scene 2 of 3, Side by side, 12.0 to 30.5 seconds", "Cut 2 of 3, 12.0 to 16.5 seconds". On Windows a button that sets a time also reads out the new time; on the Mac the stepper speaks for itself.
 - **A press on an empty part of the zoom lane or the cut lane selects nothing**, neither a zoom nor a cut.
@@ -446,7 +461,7 @@ Known limits to state up front:
 - Window captures record no click or cursor data on either platform today, because windows move. Auto-zoom is unavailable there; manual zoom works.
 - The cursor is baked into the screen track, so zooming enlarges it.
 - GIF recordings keep the GIF trimmer. Studio is video only.
-- Windows mixes system audio and microphone into one track. Separate volumes there need a capture change, planned in M3.
+- Windows mixes system audio and microphone into one track. Separate volumes there need a capture change, which is not made yet (see "Volumes").
 
 ## Dream backlog (not planned yet)
 
