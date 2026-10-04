@@ -171,17 +171,24 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             extent: outputExtent
         )
 
+        // A layer is drawn when the frame has it: the layout is not asked, because while a scene
+        // is being entered the frame can have a layer its layout does not (section 6.9). A layer
+        // that is fading is put together by itself, on nothing, and then laid on the frame as
+        // one, so its shadow, its border and its click rings fade with it (section 6.7).
         if let screen = frame.screen,
+           screen.opacity > 0,
            let screenBuffer = request.sourceFrame(byTrackID: instruction.screenTrackID) {
             // Whole-pixel layer rectangles keep the shape mask and the layer exactly on top of each other.
             var alignedScreen = screen
             alignedScreen.rect = pixelAligned(screen.rect)
             let screenShape: StudioCameraShape = screen.cornerRadius > 0 ? .roundedRectangle : .rectangle
-            output = drawShadow(
+            let whole = screen.opacity >= 1
+            var layer = whole ? output : clearImage(extent: outputExtent)
+            layer = drawShadow(
                 for: alignedScreen.rect,
                 radius: screen.cornerRadius,
                 shadow: screen.shadow,
-                over: output,
+                over: layer,
                 renderSize: renderSize,
                 shape: screenShape
             )
@@ -192,9 +199,9 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 renderSize: renderSize,
                 mirrored: false
             )
-            output = composite(
+            layer = composite(
                 screenImage,
-                over: output,
+                over: layer,
                 in: alignedScreen.rect,
                 radius: screen.cornerRadius,
                 shape: screenShape,
@@ -202,7 +209,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             )
 
             if snapshot.project.overlays.clicks.enabled {
-                output = drawClickRings(
+                layer = drawClickRings(
                     StudioRenderGeometry.activeClickRings(
                         at: sourceTime,
                         events: snapshot.events,
@@ -213,22 +220,26 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                     color: snapshot.project.overlays.clicks.color,
                     clippedTo: alignedScreen,
                     shape: screenShape,
-                    over: output,
+                    over: layer,
                     renderSize: renderSize
                 )
             }
+            output = whole ? layer : faded(layer, opacity: screen.opacity).composited(over: output)
         }
 
         if let camera = frame.camera,
            camera.visible,
+           camera.opacity > 0,
            let cameraTrackID = instruction.cameraTrackID,
            let cameraBuffer = request.sourceFrame(byTrackID: cameraTrackID) {
             let cameraRect = pixelAligned(camera.rect)
-            output = drawShadow(
+            let whole = camera.opacity >= 1
+            var layer = whole ? output : clearImage(extent: outputExtent)
+            layer = drawShadow(
                 for: cameraRect,
                 radius: camera.cornerRadius,
                 shadow: camera.shadow,
-                over: output,
+                over: layer,
                 renderSize: renderSize,
                 shape: camera.shape
             )
@@ -239,25 +250,26 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 renderSize: renderSize,
                 mirrored: camera.mirror
             )
-            output = composite(
+            layer = composite(
                 cameraImage,
-                over: output,
+                over: layer,
                 in: cameraRect,
                 radius: camera.cornerRadius,
                 shape: camera.shape,
                 renderSize: renderSize
             )
             if camera.borderWidth > 0 {
-                output = drawBorder(
+                layer = drawBorder(
                     in: cameraRect,
                     radius: camera.cornerRadius,
                     shape: camera.shape,
                     width: camera.borderWidth,
                     color: snapshot.project.camera.borderColor,
-                    over: output,
+                    over: layer,
                     renderSize: renderSize
                 )
             }
+            output = whole ? layer : faded(layer, opacity: camera.opacity).composited(over: output)
         }
 
         if snapshot.project.overlays.branding {
@@ -273,6 +285,22 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     func cancelAllPendingVideoCompositionRequests() {}
 
     // MARK: - Drawing
+
+    /// Nothing at all, the size of the frame: what a fading layer is put together on.
+    private func clearImage(extent: CGRect) -> CIImage {
+        CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0)).cropped(to: extent)
+    }
+
+    /// The image that much see-through. Core Image's color filters work on straight alpha, so
+    /// scaling the alpha alone fades everything in the image as one.
+    private func faded(_ image: CIImage, opacity: Double) -> CIImage {
+        image.applyingFilter(
+            "CIColorMatrix",
+            parameters: [
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(StudioCanvasMath.clamped(opacity, 0, 1))),
+            ]
+        )
+    }
 
     private func drawBackground(
         project: StudioProject,
