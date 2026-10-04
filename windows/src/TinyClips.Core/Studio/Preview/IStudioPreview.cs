@@ -8,7 +8,8 @@ namespace TinyClips.Core.Studio.Preview;
 /// <para>
 /// The preview always plays the whole recording and ignores <see cref="StudioProject.Edits"/>.
 /// The caller applies the trim: it decides where playback starts and pauses it at the trim end.
-/// That way moving a trim handle never rebuilds anything here.
+/// That way moving a trim handle never rebuilds anything here. The caller applies cuts and speed
+/// changes the same way, with <see cref="Seek"/> and <see cref="SetPlaybackRate"/>.
 /// </para>
 /// <para>
 /// Every member may be called from any thread. Events are raised on a worker thread, never on the
@@ -68,6 +69,22 @@ public interface IStudioPreview : IAsyncDisposable
     /// be shown are coalesced, and the newest one wins.
     /// </summary>
     void Seek(double sourceTime);
+
+    /// <summary>
+    /// Sets how fast playback runs, in seconds of the recording per second: 2 plays twice as
+    /// fast. A preview opens at 1. The rate stays until it is set again, through
+    /// <see cref="Pause"/>, <see cref="Play"/> and <see cref="Seek"/>, and it can be set while
+    /// playing. Rates from <see cref="StudioTimeMap.SlowestRate"/> to
+    /// <see cref="StudioTimeMap.FastestRate"/> are asked for. The recording's sound is heard only
+    /// while the rate is 1, as an export leaves a stretch at another speed silent.
+    /// </summary>
+    /// <remarks>
+    /// The body is here until the engine has its own, so a preview without one plays everything
+    /// at the recording's own speed.
+    /// </remarks>
+    void SetPlaybackRate(double rate)
+    {
+    }
 }
 
 public sealed class StudioPreviewFailedEventArgs(string message, Exception? exception = null) : EventArgs

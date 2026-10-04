@@ -1,3 +1,5 @@
+using TinyClips.Core.Studio.Preview;
+
 namespace TinyClips.Core.Studio.Editing;
 
 // Speed changes. An index is a speed change's place in Project.Edits.Speed, which is kept in time
@@ -12,6 +14,9 @@ namespace TinyClips.Core.Studio.Editing;
 public sealed partial class StudioEditorSession
 {
     private int? _selectedSpeedIndex;
+
+    // How fast the preview was last told to play. A preview opens at 1, and a session has one.
+    private double _previewRate = 1;
 
     /// <summary>
     /// The speed change the inspector shows, as its place in <see cref="StudioEdits.Speed"/>, or
@@ -185,5 +190,19 @@ public sealed partial class StudioEditorSession
         SelectSpeed(speed);
         Scrub(model.Project.Edits.Speed[speed].Start);
         return true;
+    }
+
+    // Tells the preview how fast the stretch at a source time plays, unless that is what it was
+    // last told. A preview keeps its rate while it is paused and when it is sent elsewhere, so
+    // this is asked before every Play and for every position a playing preview reports. A change
+    // of speed therefore takes effect one report after playback has come to it.
+    private void ApplyPlaybackRate(IStudioPreview preview, StudioEditorModel model, double sourceTime)
+    {
+        var rate = model.GetPlaybackRate(sourceTime);
+        if (rate != _previewRate)
+        {
+            _previewRate = rate;
+            preview.SetPlaybackRate(rate);
+        }
     }
 }

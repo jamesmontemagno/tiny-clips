@@ -205,10 +205,13 @@ internal sealed class FakePreview(List<string> log) : IStudioPreview
 
     public bool IsPlaying { get; set; }
 
-    /// <summary>Play, Pause, Seek and UpdateProject, in order.</summary>
+    /// <summary>Play, Pause, Seek, Rate and UpdateProject, in order.</summary>
     public List<string> Calls { get; } = [];
 
     public List<double> Seeks { get; } = [];
+
+    /// <summary>Every rate the preview was told to play at, in order.</summary>
+    public List<double> Rates { get; } = [];
 
     public StudioProject? LastProject { get; private set; }
 
@@ -243,6 +246,12 @@ internal sealed class FakePreview(List<string> log) : IStudioPreview
         Position = sourceTime;
         Seeks.Add(sourceTime);
         Calls.Add("Seek");
+    }
+
+    public void SetPlaybackRate(double rate)
+    {
+        Rates.Add(rate);
+        Calls.Add("Rate");
     }
 
     public async ValueTask DisposeAsync()

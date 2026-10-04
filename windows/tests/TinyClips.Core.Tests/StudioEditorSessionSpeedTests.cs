@@ -367,6 +367,178 @@ public sealed class StudioEditorSessionSpeedTests : StudioEditorSessionTestBase
         Assert.Empty(Preview.Seeks);
     }
 
+    // Playing
+
+    [Fact]
+    public async Task Playback_TellsThePreviewTheRateOfEachStretch_OnceForEach()
+    {
+        var session = await OpenAsync(CreateProjectWithSpeed((2, 3, 2), (5, 6, 0.5)));
+        session.Scrub(1);
+        Preview.Calls.Clear();
+
+        // A preview opens at the recording's own speed, so before a stretch at that speed it is
+        // told nothing.
+        session.TogglePlayback();
+        Assert.Equal(new[] { "Play" }, Preview.Calls);
+        Preview.RaisePosition(1.5);
+        Pump();
+        Assert.Empty(Preview.Rates);
+
+        // The first position inside a faster stretch sets its rate, and the next ones do not.
+        Preview.RaisePosition(2);
+        Pump();
+        Assert.Equal(new[] { 2.0 }, Preview.Rates);
+        Preview.RaisePosition(2.5);
+        Pump();
+        Preview.RaisePosition(2.97);
+        Pump();
+        Assert.Equal(new[] { 2.0 }, Preview.Rates);
+
+        // Its end belongs to the stretch after it.
+        Preview.RaisePosition(3);
+        Pump();
+        Assert.Equal(new[] { 2.0, 1.0 }, Preview.Rates);
+
+        Preview.RaisePosition(5.2);
+        Pump();
+        Assert.Equal(new[] { 2.0, 1.0, 0.5 }, Preview.Rates);
+        Preview.RaisePosition(6.1);
+        Pump();
+        Assert.Equal(new[] { 2.0, 1.0, 0.5, 1.0 }, Preview.Rates);
+
+        // None of it stopped the preview or sent it anywhere.
+        Assert.True(session.IsPlaying);
+        Assert.Equal(6.1, session.Playhead, Precision);
+        Assert.Equal(new[] { "Play", "Rate", "Rate", "Rate", "Rate" }, Preview.Calls);
+    }
+
+    [Fact]
+    public async Task Play_SetsTheRateOfWhereItStarts_BeforeThePreviewPlays()
+    {
+        var session = await OpenAsync(CreateProjectWithSpeed((2, 3, 2), (5, 6, 0.5)));
+        session.Scrub(2.5);
+        Preview.Calls.Clear();
+
+        session.TogglePlayback();
+        Assert.Equal(new[] { "Rate", "Play" }, Preview.Calls);
+        Assert.Equal(new[] { 2.0 }, Preview.Rates);
+
+        // A preview keeps its rate while it is paused: started again there, it is not told again.
+        session.TogglePlayback();
+        Assert.False(session.IsPlaying);
+        session.TogglePlayback();
+        Assert.True(session.IsPlaying);
+        Assert.Equal(new[] { 2.0 }, Preview.Rates);
+
+        // Started somewhere else, it is told first.
+        session.Scrub(4);
+        Preview.Calls.Clear();
+        session.TogglePlayback();
+        Assert.Equal(new[] { "Rate", "Play" }, Preview.Calls);
+        Assert.Equal(new[] { 2.0, 1.0 }, Preview.Rates);
+    }
+
+    [Fact]
+    public async Task Play_FromJustBeforeTheTrimStart_TakesTheRateOfTheVideosFirstStretch()
+    {
+        var session = await OpenAsync(CreateProjectWithSpeed((2, 3, 4)));
+        session.SetTrimStart(2);
+
+        // Within half a frame of where the video starts, the preview is not sent there, and what
+        // it plays first is the stretch that starts there.
+        session.Scrub(2 - Frame / 4);
+        Preview.Calls.Clear();
+        session.TogglePlayback();
+        Assert.Equal(new[] { "Rate", "Play" }, Preview.Calls);
+        Assert.Equal(new[] { 4.0 }, Preview.Rates);
+    }
+
+    [Fact]
+    public async Task Playback_OverACut_TakesTheRateOfTheStretchAfterIt_WithTheJump()
+    {
+        var id = CreateProjectWithSpeed((3, 4, 4));
+        var project = Projects.Load(id);
+        Projects.Save(project with
+        {
+            Edits = project.Edits with { Cuts = [new StudioTimeRange { Start = 2, End = 3 }] },
+        });
+        var session = await OpenAsync(id);
+        session.Scrub(1);
+        session.TogglePlayback();
+        Preview.Calls.Clear();
+
+        // The cut is reached: the preview is sent to its end and told the rate there at once.
+        Preview.RaisePosition(2);
+        Pump();
+        Assert.Equal(new[] { "Seek", "Rate" }, Preview.Calls);
+        Assert.Equal(3, Preview.Seeks[^1], Precision);
+        Assert.Equal(new[] { 4.0 }, Preview.Rates);
+
+        // Positions from before the jump landed are inside the cut. They change nothing.
+        Preview.RaisePosition(2.03);
+        Pump();
+        Preview.RaisePosition(2.07);
+        Pump();
+        Assert.Equal(new[] { 4.0 }, Preview.Rates);
+
+        Preview.RaisePosition(3.1);
+        Pump();
+        Assert.Equal(new[] { 4.0 }, Preview.Rates);
+        Preview.RaisePosition(4);
+        Pump();
+        Assert.Equal(new[] { 4.0, 1.0 }, Preview.Rates);
+        Assert.True(session.IsPlaying);
+    }
+
+    [Fact]
+    public async Task Playback_FollowsAnEditToTheStretchItIsIn_AtTheNextPosition()
+    {
+        var session = await OpenAsync(CreateProjectWithSpeed((2, 6, 2)));
+        session.Scrub(2.5);
+        session.TogglePlayback();
+        Assert.Equal(new[] { 2.0 }, Preview.Rates);
+
+        Assert.Equal(new StudioSpeedEditResult(true, 0), session.SetSpeedRate(0, 4));
+        Assert.True(session.IsPlaying);
+        Assert.Equal(new[] { 2.0 }, Preview.Rates);
+        Preview.RaisePosition(2.6);
+        Pump();
+        Assert.Equal(new[] { 2.0, 4.0 }, Preview.Rates);
+
+        session.Undo();
+        Preview.RaisePosition(2.8);
+        Pump();
+        Assert.Equal(new[] { 2.0, 4.0, 2.0 }, Preview.Rates);
+
+        session.RemoveSpeed(0);
+        Preview.RaisePosition(3);
+        Pump();
+        Assert.Equal(new[] { 2.0, 4.0, 2.0, 1.0 }, Preview.Rates);
+        Assert.True(session.IsPlaying);
+    }
+
+    [Fact]
+    public async Task Playback_ThatEndsInAFasterStretch_StartsOverAtTheRateOfTheStart()
+    {
+        var session = await OpenAsync(CreateProjectWithSpeed((8, 10, 2)));
+        session.Scrub(9);
+        session.TogglePlayback();
+        Assert.Equal(new[] { 2.0 }, Preview.Rates);
+
+        // The end of the video: the preview is paused and sent there, and its rate is left alone.
+        Preview.RaisePosition(10);
+        Pump();
+        Assert.False(session.IsPlaying);
+        Assert.Equal(new[] { 2.0 }, Preview.Rates);
+
+        // Play starts over, at the speed the video starts with.
+        Preview.Calls.Clear();
+        session.TogglePlayback();
+        Assert.Equal(new[] { "Seek", "Rate", "Play" }, Preview.Calls);
+        Assert.Equal(0, Preview.Seeks[^1], Precision);
+        Assert.Equal(new[] { 2.0, 1.0 }, Preview.Rates);
+    }
+
     // While the project cannot be edited
 
     [Fact]

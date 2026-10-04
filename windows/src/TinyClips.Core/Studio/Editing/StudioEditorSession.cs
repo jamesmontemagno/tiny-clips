@@ -801,6 +801,7 @@ public sealed partial class StudioEditorSession
         }
 
         _cutSkipTarget = null;
+        ApplyPlaybackRate(preview, model, start);
         Interlocked.Increment(ref _playGeneration);
         preview.Play();
         IsPlaying = true;
@@ -923,6 +924,9 @@ public sealed partial class StudioEditorSession
             {
                 _cutSkipTarget = target;
                 Seek(target);
+
+                // The stretch after the cut may play at another speed than the one before it.
+                ApplyPlaybackRate(preview, model, target);
             }
         }
         else
@@ -932,6 +936,10 @@ public sealed partial class StudioEditorSession
             {
                 PausePreview();
                 Seek(model.PlaybackEnd);
+            }
+            else
+            {
+                ApplyPlaybackRate(preview, model, position);
             }
         }
 
