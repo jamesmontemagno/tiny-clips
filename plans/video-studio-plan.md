@@ -275,7 +275,7 @@ This section records what was built and how it differs from the plan above. It i
 | Project format, store, cleanup rules, layout resolver, time map | Done. Passes the shared fixtures | Done. Passes the shared fixtures |
 | Studio capture mode | Done | Done. Checked with the recording benchmark and `tools/StudioRenderCheck` |
 | Renderer and exporter | Done | Done. Checked with `tools/StudioRenderCheck` |
-| Live preview | Done (part of the renderer) | Done. Checked with `tools/StudioPreviewCheck`; one open problem on the software adapter (see `windows/docs/studio-preview.md`) |
+| Live preview | Done (part of the renderer) | Done. Checked with `tools/StudioPreviewCheck`. One open problem: after the app has been held up, the engine can take a frame for the one after it (see "Known problems on Windows" below) |
 | Studio window | Done | Done. Run by `tools/StudioWindowCheck` with the real preview and exporter, without a person at the controls |
 | Settings, Record for Studio, reopening projects | Done | Done |
 
@@ -292,13 +292,15 @@ The PC was in use, so the tool sends no input and its windows never come to the 
 | Spec and fixtures for zooms and zoom suggestions (sections 6.8 and 8 of the format) | Done. 13 layout fixtures and 10 suggestion fixtures | The same files |
 | Zooms in the layout, with a zoom that follows the pointer | Done. Passes the fixtures | Done. Passes the fixtures |
 | Zoom suggestions from clicks | Done. Passes the fixtures | Done. Passes the fixtures |
-| Zooms in the preview and the export | The compositor passes the events to the layout. Compiled only | Drawn, exported and postered zooms are measured from pixels by `StudioRenderCheck`. The live preview has not shown one yet |
+| Zooms in the preview and the export | The compositor passes the events to the layout. Compiled only | Drawn, exported and postered zooms are measured from pixels by `StudioRenderCheck`, and zooms and crops in the live preview by `StudioWindowCheck`, paused and while playing |
 | Editing operations for zooms and crops, with undo | Done in the editor model. Unit tested | Done in the editor model and session. Unit tested |
 | What the lane and the inspector need: moving a whole zoom, stepping through the zooms, the focus pad, a crop as what it cuts off each edge | Done in the editor model. Unit tested | Done in the editor model. The session also keeps the selected zoom. Unit tested |
-| Zoom lane, Zoom section in the inspector, crop sliders, the Z and Delete keys | Done. Compiled, never run | Not started |
+| Zoom lane, Zoom section in the inspector, crop sliders, the Z and Delete keys | Done. Compiled, never run | Done. Run by `StudioWindowCheck`, without a person at the controls |
 | Crop handles on the canvas, and dragging the zoomed picture to move the focus | Left out of this pass | Left out of this pass |
 
-A project file with zooms in it is drawn with them on both platforms. On the Mac the editor can now make and change zooms and crops; that UI has been compiled and never run, and no zoom has been rendered there. On Windows nothing in the app can make or change one yet. The Windows renderer and exporter draw a zoom where the format says: `StudioRenderCheck` finds four edges of its test pattern in each frame and they are within a quarter of a pixel of their places, and the frames have been looked at. The live preview on Windows has not shown a zoom yet.
+A project file with zooms in it is drawn with them on both platforms. On the Mac the editor can make and change zooms and crops; that UI has been compiled and never run, and no zoom has been rendered there. The Windows renderer and exporter draw a zoom where the format says: `StudioRenderCheck` finds four edges of its test pattern in each frame and they are within a quarter of a pixel of their places, and the frames have been looked at.
+
+The Windows window has the zoom lane, the Zoom section and the crop sliders. `StudioWindowCheck` works them the way it works the rest of the window (115 of its 244 checks): it adds, selects, moves and deletes zooms through the lane, the keys and the inspector, reads what a screen reader is given and told, and reads from the preview which part of the screen is shown. In four full runs, the part shown while paused was at most 0.38 pixels from where the format puts it, a crop at most 0.61, and the part shown while a zoom moves in during playback at most 0.38. Ten faults put into the window's code on purpose were tried against the checks: nine failed a check at once, and the tenth, the lane's playhead line staying where it was, showed that nothing looked at the line, which a check now does. What the tool cannot do is unchanged: nobody pressed a key or dragged anything, and the high-contrast themes and a screen reader have not been tried. Exporting a zoomed project from the window has not been run either; the exporter's zooms are covered by `StudioRenderCheck`.
 
 | Milestone 3 piece | macOS | Windows |
 |---|---|---|
@@ -306,15 +308,22 @@ A project file with zooms in it is drawn with them on both platforms. On the Mac
 | Moving and fading layers in the layout | Done. Passes the fixtures | Done. Passes the fixtures |
 | Drawing them in the preview and the export | The compositor draws a fading layer as one with its shadow. Compiled only | Drawn, exported and postered moves are measured from pixels by `StudioRenderCheck`. The live preview has not shown one yet |
 | Editing operations for scenes, with undo: the scene the playhead is in, splitting, deleting, moving a start, how a scene is entered | Done in the editor model, which is unit tested, and the view model | Done in the editor model and session, with the S key and Delete on a scene in the key rules. Unit tested. The window does not use them yet |
-| Scene lane, Scene section in the inspector, the Split button | Done. Compiled, never run | Not started |
+| Scene lane, Scene section in the inspector, the Split button | Done. Compiled, never run | In progress |
 | Cuts in the export | The composition is built from the stretches that are kept, picture and sound. Compiled only | Done. `StudioRenderCheck` exports a project with a cut and reads every frame and the sound back |
 | Editing operations for cuts, with undo: adding, moving, and deleting a cut, one selection shared with the zooms, and playback that jumps over cuts | Done in the editor model, which is unit tested, and the view model | Done in the editor model and session, with the X key and Delete on a cut in the key rules. Unit tested. The window does not use them yet |
-| Cut lane, Cut section in the inspector, the Cut button | Not started | Not started |
+| Cut lane, Cut section in the inspector, the Cut button | In progress | In progress |
 | Speed, volumes, switching layouts while recording | Not started | Not started |
 
 A project file with more than one scene is drawn with its transitions on both platforms. On the Mac the editor can now split a recording into scenes and change each one, in views that have been compiled and never run. On Windows no window has a control for scenes yet, and until it does, the layout controls of a project that already has several scenes change the scene under the playhead while showing the layout of another.
 
 A project file with cuts in it is exported without them on both platforms. The rules for making and changing cuts are in both editor models, and playback in both editors jumps over them, but no window has a control for cuts yet. The jump while playing has only been run against a stand-in for the preview: no real preview has played over a cut. On Windows `StudioRenderCheck` works out by hand where each layer is on its way, measures the test pattern inside the screen and the camera there, looks for their outlines, and compares a fading layer with what is under it. The frames have been looked at. On the Mac the same rules are in the layout, which the fixtures cover, and in the compositor, which has only been compiled.
+
+### Known problems on Windows
+
+Found by the check tools, and open:
+
+- **A frame taken for the one after it.** The preview knows which frame a picture is only from where its player says it is at the moment the picture arrives. When the app has been held up for some tens of milliseconds, a picture that arrives late is taken for the next frame. Two things follow. After a pause at that moment, the playhead names the frame after the one shown, until the next seek: this failed one check in one of six full runs of `StudioWindowCheck`. And while playing, one scene is drawn with the picture of one frame and the layout of the next, which shows where a zoom is moving: with the tool holding its own process up on purpose (`--held-up`), 2 of 90 scenes were up to 5.4 pixels off; without that, none in any run.
+- **Two editors that could not open.** In one of six full runs, two editors opened one after the other each said that the screen recording could not be decoded, and the next one opened. The cause is not known, and it has not happened again in 72 more opens made the same way. The tool now keeps the error codes and the engine's trace of the seconds before, which it did not then.
 
 ### Hidden switch
 
@@ -359,6 +368,8 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **A cut is a range, like a zoom.** It is added at the playhead with a length of one second and then adjusted, it is selected, moved and deleted the way a zoom is, and a zoom or a cut is selected, never both. Cuts are stored in recording time, so a cut moves nothing else.
 - **Editing rules for cuts**, the same on both platforms and unit tested on each: a cut is never shorter than 0.1 seconds and never overlaps another; two that touch play as one; at least 0.1 seconds of video has to stay, so an edit to a cut or to the trim that would leave less is not made; a cut outside the trim is kept. Opening a project puts its cuts in order and joins those that overlap.
 - **Playing over a cut** is done by the editor, which sends the preview on to the end of the cut when playback reaches it. The export is exact; the preview can show a few frames of the cut first.
+- **Stepping is read out.** Previous and Next, for zooms, scenes and cuts, say nothing of where they land by themselves, and the text between them is not read when it changes. So the editor reads out where it landed: "Zoom 2 of 5, 2×, 12.0 to 16.5 seconds", "Scene 2 of 3, Side by side, 12.0 to 30.5 seconds", "Cut 2 of 3, 12.0 to 16.5 seconds". On Windows a button that sets a time also reads out the new time; on the Mac the stepper speaks for itself.
+- **A press on an empty part of the zoom lane or the cut lane selects nothing**, neither a zoom nor a cut.
 - **Crops.** The editor only stores valid crops. A rectangle that is not one is made valid by its size first and its position second, so a rectangle dragged past an edge stops there with its size. A saved look still never carries a crop.
 - **macOS preview.** The preview always plays the whole recording. Trim and mute are applied by the transport and by export, so changing them does not rebuild the player. Only a change of canvas shape does.
 - **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
