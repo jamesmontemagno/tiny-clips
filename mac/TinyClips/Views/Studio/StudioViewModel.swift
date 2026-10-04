@@ -36,6 +36,10 @@ final class StudioViewModel: ObservableObject {
     /// zoom while edits, undo, and redo change the list around it.
     @Published private(set) var selectedZoomIndex: Int?
 
+    /// The cut the inspector shows, as its place in the project's cuts, or nil. A zoom or a cut is
+    /// selected, never both: selecting one lets go of the other.
+    @Published private(set) var selectedCutIndex: Int?
+
     /// The size the preview is drawn at. It follows the project, except during a drag, when a new
     /// size waits for the drag to end so the player is not rebuilt for every step of it.
     @Published private(set) var previewSize = CGSize.zero
@@ -59,6 +63,10 @@ final class StudioViewModel: ObservableObject {
     private var closesAfterExport = false
     private var deletesOnClose = false
     private var isTornDown = false
+
+    /// Where playback was last sent to get over a cut. Playback only goes forward, so it comes to
+    /// the same cut again only after Play has been pressed, which forgets this.
+    private var cutSkipTarget: Double?
 
     init(projectID: String, store: StudioProjectStore = .shared) {
         self.projectID = projectID
@@ -315,16 +323,20 @@ final class StudioViewModel: ObservableObject {
     // zoom. Through every other edit, and undo and redo, the selection follows its zoom as
     // `StudioEditorModel.zoomIndex(following:from:to:)` finds it, or lets go when the zoom is gone.
 
-    /// Selects a zoom, or none with nil or a place that has no zoom. The playhead stays.
+    /// Selects a zoom, or none with nil or a place that has no zoom. The playhead stays. A
+    /// selected cut is let go when a zoom is selected.
     func selectZoom(_ index: Int?) {
         setSelectedZoomIndex(index)
+        if selectedZoomIndex != nil {
+            setSelectedCutIndex(nil)
+        }
     }
 
     /// Selects a zoom and moves the playhead to where it has moved in.
     @discardableResult
     func selectAndShowZoom(_ index: Int?) -> Bool {
         guard isEditable, let index, let time = editor?.zoomLookTime(at: index) else { return false }
-        setSelectedZoomIndex(index)
+        selectZoom(index)
         scrub(to: time)
         return true
     }
@@ -354,7 +366,7 @@ final class StudioViewModel: ObservableObject {
         editAndSelect { model in
             result = model.addZoom(at: time, events: recordedEvents)
             if let index = result.index {
-                return .select(index)
+                return .zoom(index)
             }
             return .follow
         }
@@ -472,6 +484,145 @@ final class StudioViewModel: ObservableObject {
         guard isEditable, hasSuggestedZooms else { return }
         edit { $0.applyZoomSuggestions([]) }
         announce(StudioEditorModel.zoomSuggestionsRemovedMessage)
+    }
+
+    // MARK: - Cuts
+    //
+    // An index is a cut's place in `project.edits.cuts`, which is kept in time order. One cut can
+    // be selected, in place of a zoom. An edit to the selected cut takes the selection with it,
+    // and so does adding a cut. Through every other edit, and undo and redo, the selection follows
+    // its cut as `StudioEditorModel.cutIndex(following:from:to:)` finds it, or lets go when the
+    // cut is gone.
+
+    var cuts: [StudioTimeRange] { project?.edits.cuts ?? [] }
+
+    var selectedCut: StudioTimeRange? {
+        guard let index = selectedCutIndex, cuts.indices.contains(index) else { return nil }
+        return cuts[index]
+    }
+
+    /// Whether adding a cut at the playhead has a cut to answer with: one fits there, or one is
+    /// already there to select.
+    var canAddCutAtPlayhead: Bool { isEditable && (editor?.canAddCut(at: playhead) ?? false) }
+
+    /// Selects a cut, or none with nil or a place that has no cut. The playhead stays. A selected
+    /// zoom is let go when a cut is selected.
+    func selectCut(_ index: Int?) {
+        setSelectedCutIndex(index)
+        if selectedCutIndex != nil {
+            setSelectedZoomIndex(nil)
+        }
+    }
+
+    /// Selects a cut and moves the playhead to where it starts, on the first picture the video
+    /// leaves out.
+    @discardableResult
+    func selectAndShowCut(_ index: Int?) -> Bool {
+        guard isEditable, let index, cuts.indices.contains(index) else { return false }
+        selectCut(index)
+        scrub(to: cuts[index].start)
+        return true
+    }
+
+    /// Selects the cut after the selected one and shows it. With nothing selected, the cut at the
+    /// playhead or the first one after it. False when there is none.
+    @discardableResult
+    func selectNextCut() -> Bool {
+        selectAndShowCut(editor?.cutIndex(after: selectedCutIndex, playhead: playhead))
+    }
+
+    /// Selects the cut before the selected one and shows it. With nothing selected, the cut at the
+    /// playhead or the last one before it. False when there is none.
+    @discardableResult
+    func selectPreviousCut() -> Bool {
+        selectAndShowCut(editor?.cutIndex(before: selectedCutIndex, playhead: playhead))
+    }
+
+    /// Adds a cut at the playhead and selects it. Where a cut already is, that one is selected
+    /// instead. The playhead stays where the cut starts.
+    func addCutAtPlayhead() {
+        guard isEditable else { return }
+        let time = playhead
+        var result = StudioCutEditResult(changed: false, index: nil)
+        editAndSelect { model in
+            result = model.addCut(at: time)
+            if let index = result.index {
+                return .cut(index)
+            }
+            return .follow
+        }
+
+        if result.changed {
+            announce(StudioEditorModel.cutAddedMessage)
+        } else if result.index != nil {
+            announce(StudioEditorModel.cutAlreadyThereMessage)
+        } else {
+            announce(StudioEditorModel.noRoomForCutMessage)
+        }
+    }
+
+    /// Deletes the selected cut, which puts its stretch back into the video.
+    func removeSelectedCut() {
+        guard let index = selectedCutIndex else { return }
+        let result = editCut(at: index) { $0.removeCut(at: index) }
+        if result.changed {
+            announce(StudioEditorModel.cutDeletedMessage)
+        }
+    }
+
+    /// Moves a cut's start, from the lane or the inspector, and shows the picture there, which is
+    /// the first one the video leaves out. Returns where the cut is afterwards.
+    @discardableResult
+    func setCutStart(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editCut(at: index) { $0.setCutStart(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, cuts.indices.contains(place) {
+            scrub(to: cuts[place].start)
+        }
+        return result.index
+    }
+
+    /// Moves a cut's end and shows the picture there, which is the one the video picks up again
+    /// with. Returns where the cut is afterwards.
+    @discardableResult
+    func setCutEnd(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editCut(at: index) { $0.setCutEnd(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, cuts.indices.contains(place) {
+            scrub(to: cuts[place].end)
+        }
+        return result.index
+    }
+
+    /// Moves a whole cut so it starts at `sourceTime`, keeping its length. The playhead stays.
+    /// Returns where the cut is afterwards.
+    @discardableResult
+    func moveCut(at index: Int, to sourceTime: Double) -> Int? {
+        editCut(at: index) { $0.moveCut(at: index, to: sourceTime) }.index
+    }
+
+    /// Starts the selected cut at the playhead. The playhead stays where it is.
+    func setSelectedCutStartAtPlayhead() {
+        guard let index = selectedCutIndex else { return }
+        let time = playhead
+        editCut(at: index) { $0.setCutStart(at: index, to: time) }
+    }
+
+    /// Ends the selected cut at the playhead. The playhead stays where it is.
+    func setSelectedCutEndAtPlayhead() {
+        guard let index = selectedCutIndex else { return }
+        let time = playhead
+        editCut(at: index) { $0.setCutEnd(at: index, to: time) }
+    }
+
+    /// Moves the selected cut's start by `seconds`, for the inspector's step buttons.
+    func nudgeSelectedCutStart(by seconds: Double) {
+        guard let index = selectedCutIndex, let cut = selectedCut else { return }
+        setCutStart(at: index, to: cut.start + seconds)
+    }
+
+    /// Moves the selected cut's end by `seconds`, for the inspector's step buttons.
+    func nudgeSelectedCutEnd(by seconds: Double) {
+        guard let index = selectedCutIndex, let cut = selectedCut else { return }
+        setCutEnd(at: index, to: cut.end + seconds)
     }
 
     // MARK: - Scenes
@@ -639,6 +790,7 @@ final class StudioViewModel: ObservableObject {
         if abs(start - playhead) > editor.frameDuration / 2 {
             seek(to: start)
         }
+        cutSkipTarget = nil
         player.play()
         isPlaying = true
     }
@@ -844,13 +996,16 @@ final class StudioViewModel: ObservableObject {
 
     // MARK: - Private: Edits
 
-    /// Where the zoom selection goes after an edit.
-    private enum ZoomSelectionAfterEdit {
-        /// The edit did not say. The selection follows the zoom it was on.
+    /// Where the selection goes after an edit.
+    private enum SelectionAfterEdit {
+        /// The edit did not say. The selection follows the zoom or the cut it was on.
         case follow
 
         /// The edit knows where its zoom went, or that it is gone.
-        case select(Int?)
+        case zoom(Int?)
+
+        /// The edit knows where its cut went, or that it is gone.
+        case cut(Int?)
     }
 
     private func edit(_ change: (inout StudioEditorModel) -> Void) {
@@ -871,32 +1026,62 @@ final class StudioViewModel: ObservableObject {
         let isSelected = selectedZoomIndex == index
         editAndSelect { model in
             result = change(&model)
-            return isSelected ? .select(result.index) : .follow
+            return isSelected ? .zoom(result.index) : .follow
         }
         return result
     }
 
-    private func editAndSelect(_ change: (inout StudioEditorModel) -> ZoomSelectionAfterEdit) {
+    /// An edit to one cut. The selection goes with the cut when it is the selected one. An edit
+    /// that is refused, because the project cannot be edited just now, leaves the cut where it was.
+    @discardableResult
+    private func editCut(
+        at index: Int,
+        _ change: (inout StudioEditorModel) -> StudioCutEditResult
+    ) -> StudioCutEditResult {
+        var result = StudioCutEditResult(changed: false, index: index)
+        let isSelected = selectedCutIndex == index
+        editAndSelect { model in
+            result = change(&model)
+            return isSelected ? .cut(result.index) : .follow
+        }
+        return result
+    }
+
+    private func editAndSelect(_ change: (inout StudioEditorModel) -> SelectionAfterEdit) {
         guard isEditable, var model = editor else { return }
         // An edit to the layout changes the scene the playhead is in.
         model.sceneTime = playhead
         let before = model.editableState
         let zoomsBefore = model.project.zooms
-        let selectedBefore = selectedZoomIndex
+        let cutsBefore = model.project.edits.cuts
         let selection = change(&model)
         editor = model
         let isChanged = model.editableState != before
 
-        switch selection {
-        case .select(let index):
-            setSelectedZoomIndex(index)
-        case .follow:
-            if isChanged, let selectedBefore {
-                setSelectedZoomIndex(
-                    StudioEditorModel.zoomIndex(following: selectedBefore, from: zoomsBefore, to: model.project.zooms)
-                )
-            }
+        // Through an edit that did not say, the selection follows the zoom or the cut it was on.
+        var zoomIndex = selectedZoomIndex
+        var cutIndex = selectedCutIndex
+        if isChanged, let selected = zoomIndex {
+            zoomIndex = StudioEditorModel.zoomIndex(following: selected, from: zoomsBefore, to: model.project.zooms)
         }
+        if isChanged, let selected = cutIndex {
+            cutIndex = StudioEditorModel.cutIndex(following: selected, from: cutsBefore, to: model.project.edits.cuts)
+        }
+
+        // One selection: an edit that says where a zoom is lets go of the cut, and the other way
+        // round. An edit to the selected zoom finds no cut selected, so only adding one does.
+        switch selection {
+        case .follow:
+            break
+        case .zoom(let index):
+            zoomIndex = index
+            cutIndex = nil
+        case .cut(let index):
+            cutIndex = index
+            zoomIndex = nil
+        }
+        setSelectedZoomIndex(zoomIndex)
+        setSelectedCutIndex(cutIndex)
 
         guard isChanged else { return }
         hasUnsavedEdits = true
@@ -916,6 +1101,17 @@ final class StudioViewModel: ObservableObject {
         }
         if selectedZoomIndex != valid {
             selectedZoomIndex = valid
+        }
+    }
+
+    /// Sets the selection to a cut that exists, or to none. It is published only when it changes.
+    private func setSelectedCutIndex(_ index: Int?) {
+        var valid: Int?
+        if let index, cuts.indices.contains(index) {
+            valid = index
+        }
+        if selectedCutIndex != valid {
+            selectedCutIndex = valid
         }
     }
 
@@ -1040,10 +1236,21 @@ final class StudioViewModel: ObservableObject {
 
     private func playerDidReach(_ seconds: Double) {
         guard isPlaying, seconds.isFinite, let editor else { return }
+        if !editor.isAtPlaybackEnd(seconds), let target = editor.cutSkipTarget(at: seconds) {
+            // Playback has reached a cut and goes on from its end. The player reports times inside
+            // the cut until its seek has landed. Those do not send it there again, and they leave
+            // the playhead where it was sent.
+            if target != cutSkipTarget {
+                cutSkipTarget = target
+                seek(to: target)
+            }
+            return
+        }
+
         playhead = editor.clampedSourceTime(seconds)
         if editor.isAtPlaybackEnd(seconds) {
             pause()
-            seek(to: editor.trimEnd)
+            seek(to: editor.playbackEnd)
         }
     }
 

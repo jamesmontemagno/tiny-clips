@@ -70,6 +70,15 @@ struct StudioEditableState: Equatable, Sendable {
     }
 }
 
+/// What an edit to a cut did.
+struct StudioCutEditResult: Equatable, Sendable {
+    /// Whether the project changed.
+    var changed: Bool
+
+    /// Where the cut is in `project.edits.cuts` now, or nil when it is gone or there is none.
+    var index: Int?
+}
+
 /// What an edit to a zoom did.
 struct StudioZoomEditResult: Equatable, Sendable {
     /// Whether the project changed.
@@ -263,6 +272,24 @@ struct StudioEditorModel: Equatable, Sendable {
     /// Why the first scene has no start to set and no way of being entered.
     static let firstSceneExplanation = "The first scene starts with the recording and has nothing to move from."
 
+    /// The shortest cut the editor makes, in seconds.
+    static let minimumCutDuration = 0.1
+
+    /// How long a cut is when it is added, in seconds, where there is room for it.
+    static let newCutDuration = 1.0
+
+    /// Said when a cut has been added at the playhead.
+    static let cutAddedMessage = "Cut added."
+
+    /// Said when a cut was asked for where one already is. That cut is selected instead.
+    static let cutAlreadyThereMessage = "There is already a cut here."
+
+    /// Said when a cut was asked for where the shortest cut does not fit, or where it would leave no video.
+    static let noRoomForCutMessage = "There is no room for a cut here."
+
+    /// Said when the selected cut has been deleted.
+    static let cutDeletedMessage = "Cut deleted."
+
     static let maximumUndoDepth = 100
 
     private(set) var project: StudioProject
@@ -280,6 +307,7 @@ struct StudioEditorModel: Equatable, Sendable {
         self.project = project
         ensureScene()
         normalizeStoredScenes()
+        normalizeStoredCuts()
         normalizeTrim()
         sortStoredZooms()
         exportedState = project.exports.isEmpty ? nil : StudioEditableState(project: self.project)
@@ -350,19 +378,28 @@ struct StudioEditorModel: Equatable, Sendable {
         return StudioCanvasMath.clamped(sourceTime, 0, sourceDuration)
     }
 
-    /// Where playback starts when Play is pressed at `sourceTime`: the same spot, or the trim start
-    /// when the playhead is outside the kept range or already at its end.
+    /// The first instant the video shows: the trim start, or the end of a cut that begins there.
+    /// The trim start when cuts leave nothing.
+    var playbackStart: Double { timeMap.segments.first?.start ?? trimStart }
+
+    /// Where the video ends: the trim end, or the start of a cut that runs up to it. The trim
+    /// start when cuts leave nothing.
+    var playbackEnd: Double { timeMap.segments.last?.end ?? trimStart }
+
+    /// Where playback starts when Play is pressed at `sourceTime`: the same spot, the end of the
+    /// cut it is in, or the start of the video when the playhead is outside what the video shows
+    /// or already at its end.
     func playbackStart(from sourceTime: Double) -> Double {
         let time = clampedSourceTime(sourceTime)
-        if time < trimStart || time >= trimEnd - frameDuration / 2 {
-            return trimStart
+        if time < playbackStart || time >= playbackEnd - frameDuration / 2 {
+            return playbackStart
         }
-        return time
+        return cutSkipTarget(at: time) ?? time
     }
 
-    /// Whether a playing preview has reached the end of the kept range and should stop.
+    /// Whether a playing preview has reached the end of the video and should stop.
     func isAtPlaybackEnd(_ sourceTime: Double) -> Bool {
-        sourceTime >= trimEnd - 1e-6
+        sourceTime >= playbackEnd - 1e-6
     }
 
     static func formattedTime(_ seconds: Double) -> String {
@@ -962,6 +999,190 @@ struct StudioEditorModel: Equatable, Sendable {
         return project.zooms != before
     }
 
+    // MARK: - Cuts
+    //
+    // Stretches of the recording the video leaves out. They are stored in source time, so a cut
+    // moves nothing else. `project.edits.cuts` is kept in time order without overlaps, so a cut's
+    // index identifies it between two edits. Two cuts may touch; the time map plays them as one.
+
+    /// The cut that contains `sourceTime`, or nil. A cut contains its start and not its end, as in
+    /// the time map: the frame at its end is the first one kept again.
+    func cutIndex(at sourceTime: Double) -> Int? {
+        project.edits.cuts.firstIndex { $0.start <= sourceTime && sourceTime < $0.end }
+    }
+
+    /// Where a playing preview goes on from when it has reached a stretch the video leaves out:
+    /// the next instant that is kept. Nil where `sourceTime` is kept itself, and outside what the
+    /// video shows, where playback starts or stops and does not jump.
+    func cutSkipTarget(at sourceTime: Double) -> Double? {
+        let segments = timeMap.segments
+        for index in segments.indices.dropLast()
+        where sourceTime >= segments[index].end && sourceTime < segments[index + 1].start {
+            return segments[index + 1].start
+        }
+        return nil
+    }
+
+    /// Adds a cut that starts at `sourceTime` and lasts `newCutDuration`, or until the next cut or
+    /// the end of the recording when that comes sooner.
+    ///
+    /// Returns the new cut's index. Unchanged with the index of the cut that is already there, and
+    /// unchanged with no index when there is no room for `minimumCutDuration` or the cut would
+    /// leave no video.
+    @discardableResult
+    mutating func addCut(at sourceTime: Double) -> StudioCutEditResult {
+        guard sourceTime.isFinite else { return StudioCutEditResult(changed: false, index: nil) }
+        let start = clampedSourceTime(sourceTime)
+        if let existing = cutIndex(at: start) {
+            return StudioCutEditResult(changed: false, index: existing)
+        }
+        guard let place = newCutPlace(startingAt: start) else {
+            return StudioCutEditResult(changed: false, index: nil)
+        }
+
+        var cuts = project.edits.cuts
+        cuts.insert(StudioTimeRange(start: start, end: place.end), at: place.index)
+        return setCuts(cuts)
+            ? StudioCutEditResult(changed: true, index: place.index)
+            : StudioCutEditResult(changed: false, index: nil)
+    }
+
+    /// Whether `addCut(at:)` at this time has a cut to answer with: a new one, or the one that is
+    /// already there.
+    func canAddCut(at sourceTime: Double) -> Bool {
+        guard sourceTime.isFinite else { return false }
+        let start = clampedSourceTime(sourceTime)
+        if cutIndex(at: start) != nil {
+            return true
+        }
+        guard let place = newCutPlace(startingAt: start) else { return false }
+        var edits = project.edits
+        edits.cuts.insert(StudioTimeRange(start: start, end: place.end), at: place.index)
+        return leavesEnoughVideo(edits)
+    }
+
+    /// Deletes a cut, which puts its stretch back into the video.
+    @discardableResult
+    mutating func removeCut(at index: Int) -> StudioCutEditResult {
+        guard project.edits.cuts.indices.contains(index) else {
+            return StudioCutEditResult(changed: false, index: nil)
+        }
+        mutate { $0.edits.cuts.remove(at: index) }
+        return StudioCutEditResult(changed: true, index: nil)
+    }
+
+    /// Moves a cut's start. It stays at or after the end of the cut before it, and at least
+    /// `minimumCutDuration` before its own end.
+    @discardableResult
+    mutating func setCutStart(at index: Int, to sourceTime: Double) -> StudioCutEditResult {
+        let cuts = project.edits.cuts
+        guard cuts.indices.contains(index) else {
+            return StudioCutEditResult(changed: false, index: nil)
+        }
+        guard sourceTime.isFinite else { return StudioCutEditResult(changed: false, index: index) }
+
+        // Cuts never overlap, so where both limits cannot be kept the cut before decides.
+        let earliest = index > 0 ? cuts[index - 1].end : 0
+        let latest = cuts[index].end - Self.minimumCutDuration
+        return replaceCut(at: index, start: max(earliest, min(sourceTime, latest)), end: cuts[index].end)
+    }
+
+    /// Moves a cut's end. It stays at least `minimumCutDuration` after its own start, and at or
+    /// before the start of the next cut and the end of the recording.
+    @discardableResult
+    mutating func setCutEnd(at index: Int, to sourceTime: Double) -> StudioCutEditResult {
+        let cuts = project.edits.cuts
+        guard cuts.indices.contains(index) else {
+            return StudioCutEditResult(changed: false, index: nil)
+        }
+        guard sourceTime.isFinite else { return StudioCutEditResult(changed: false, index: index) }
+
+        let earliest = cuts[index].start + Self.minimumCutDuration
+        let latest = index + 1 < cuts.count ? cuts[index + 1].start : sourceDuration
+        return replaceCut(at: index, start: cuts[index].start, end: min(max(sourceTime, earliest), latest))
+    }
+
+    /// Moves a whole cut so it starts at `sourceTime`, keeping its length. It stays between the cut
+    /// before it and the cut after it, or the ends of the recording.
+    @discardableResult
+    mutating func moveCut(at index: Int, to sourceTime: Double) -> StudioCutEditResult {
+        let cuts = project.edits.cuts
+        guard cuts.indices.contains(index) else {
+            return StudioCutEditResult(changed: false, index: nil)
+        }
+        guard sourceTime.isFinite else { return StudioCutEditResult(changed: false, index: index) }
+
+        let length = cuts[index].end - cuts[index].start
+        let earliest = index > 0 ? cuts[index - 1].end : 0
+        let latestEnd = index + 1 < cuts.count ? cuts[index + 1].start : sourceDuration
+
+        let start: Double
+        let end: Double
+        if sourceTime <= earliest {
+            start = earliest
+            end = min(earliest + length, latestEnd)
+        } else if sourceTime + length >= latestEnd {
+            end = latestEnd
+            start = max(earliest, latestEnd - length)
+        } else {
+            start = sourceTime
+            end = sourceTime + length
+        }
+
+        guard end > start else { return StudioCutEditResult(changed: false, index: index) }
+        return replaceCut(at: index, start: start, end: end)
+    }
+
+    /// The cut after the selected one, for stepping through the cuts. With nothing selected, the
+    /// cut at `playhead` or the first one after it. Nil when there is none.
+    func cutIndex(after selected: Int?, playhead: Double) -> Int? {
+        let cuts = project.edits.cuts
+        if let selected, cuts.indices.contains(selected) {
+            return selected + 1 < cuts.count ? selected + 1 : nil
+        }
+        return cuts.firstIndex { $0.end > playhead }
+    }
+
+    /// The cut before the selected one. With nothing selected, the cut at `playhead` or the last
+    /// one before it. Nil when there is none.
+    func cutIndex(before selected: Int?, playhead: Double) -> Int? {
+        let cuts = project.edits.cuts
+        if let selected, cuts.indices.contains(selected) {
+            return selected > 0 ? selected - 1 : nil
+        }
+        return cuts.lastIndex { $0.start <= playhead }
+    }
+
+    /// Where the cut at `index` of `before` is in `after`, for an edit that did not say, such as
+    /// undo. When the two lists differ in that one cut at most, it is that cut, changed: the same
+    /// place. Otherwise it is the cut that shares the most time with it, and among equals the one
+    /// nearest to where it was. Nil when there was no such cut, or none shares any time with it.
+    static func cutIndex(following index: Int, from before: [StudioTimeRange], to after: [StudioTimeRange]) -> Int? {
+        guard before.indices.contains(index) else { return nil }
+
+        if before.count == after.count,
+           before.indices.allSatisfy({
+               $0 == index || (before[$0].start == after[$0].start && before[$0].end == after[$0].end)
+           }) {
+            return index
+        }
+
+        let cut = before[index]
+        var best: Int?
+        var bestShared = 0.0
+        for (position, candidate) in after.enumerated() {
+            let shared = min(cut.end, candidate.end) - max(cut.start, candidate.start)
+            guard shared > 0 else { continue }
+            if let current = best {
+                let isNearer = shared == bestShared && abs(position - index) < abs(current - index)
+                guard shared > bestShared || isNearer else { continue }
+            }
+            best = position
+            bestShared = shared
+        }
+        return best
+    }
+
     // MARK: - Bubble Dragging
 
     /// Moves the camera bubble so its top-left corner is at `desiredTopLeft` (canvas pixels for a
@@ -1015,9 +1236,11 @@ struct StudioEditorModel: Equatable, Sendable {
     // MARK: - Trim, Audio, Overlays
 
     /// Sets the trim in source time. The kept range stays inside the recording, in order, and at
-    /// least `minimumDuration` long (or the whole recording when it is shorter).
+    /// least `minimumDuration` long (or the whole recording when it is shorter). A trim that would
+    /// leave less than that between the cuts is not made.
     mutating func setTrim(start: Double, end: Double?) {
         let edits = clampedEdits(project.edits, trimStart: start, trimEnd: end)
+        guard edits.cuts.isEmpty || leavesEnoughVideo(edits) else { return }
         mutate { $0.edits = edits }
     }
 
@@ -1216,6 +1439,30 @@ struct StudioEditorModel: Equatable, Sendable {
         return "The scene is shorter than that, so the move takes \(String(format: "%.2f", length)) seconds."
     }
 
+    /// A cut for VoiceOver, such as "Cut, 12.0 to 16.5 seconds". The times are source time, as the
+    /// trim handles read.
+    static func cutAccessibilityText(_ cut: StudioTimeRange) -> String {
+        "Cut, \(cutRangeText(cut))"
+    }
+
+    /// When a cut starts and ends, in source time: "12.0 to 16.5 seconds".
+    static func cutRangeText(_ cut: StudioTimeRange) -> String {
+        let start = String(format: "%.1f", cut.start.isFinite ? cut.start : 0)
+        let end = String(format: "%.1f", cut.end.isFinite ? cut.end : 0)
+        return "\(start) to \(end) seconds"
+    }
+
+    /// How long a cut is: "4.5 seconds long".
+    static func cutLengthText(_ cut: StudioTimeRange) -> String {
+        let length = cut.end - cut.start
+        return String(format: "%.1f seconds long", length.isFinite ? max(0, length) : 0)
+    }
+
+    /// Which cut is selected, counting from one: "Cut 2 of 3".
+    static func cutPositionText(index: Int, count: Int) -> String {
+        "Cut \(index + 1) of \(count)"
+    }
+
     /// For example "0:02.5 of 0:10.0".
     func playheadText(sourceTime: Double) -> String {
         "\(Self.formattedTime(outputTime(forSourceTime: sourceTime))) of \(Self.formattedTime(outputDuration))"
@@ -1268,6 +1515,77 @@ struct StudioEditorModel: Equatable, Sendable {
         let replacement = transition
         mutate { $0.scenes[index].transition = replacement }
         return StudioSceneEditResult(changed: true, index: index)
+    }
+
+    /// Keeps the stored cuts as the editor needs them: inside the recording, in time order, and
+    /// without overlaps, which are joined. Ranges that remove nothing are dropped, and with them
+    /// any whose start or end is not a number, which compares as neither before nor after.
+    private mutating func normalizeStoredCuts() {
+        let duration = sourceDuration
+        var inside: [StudioTimeRange] = []
+        for cut in project.edits.cuts {
+            var clamped = cut
+            clamped.start = StudioCanvasMath.clamped(cut.start, 0, duration)
+            clamped.end = StudioCanvasMath.clamped(cut.end, 0, duration)
+            if clamped.end > clamped.start {
+                inside.append(clamped)
+            }
+        }
+
+        // In time order, and for equal starts in the order they were in.
+        let ordered = inside.enumerated()
+            .sorted {
+                if $0.element.start == $1.element.start { return $0.offset < $1.offset }
+                return $0.element.start < $1.element.start
+            }
+            .map(\.element)
+
+        var joined: [StudioTimeRange] = []
+        for cut in ordered {
+            if let last = joined.last, cut.start < last.end {
+                joined[joined.count - 1].end = max(last.end, cut.end)
+            } else {
+                joined.append(cut)
+            }
+        }
+        project.edits.cuts = joined
+    }
+
+    /// At least `minimumDuration` of video has to stay, or the whole recording when it is shorter.
+    private func leavesEnoughVideo(_ edits: StudioEdits) -> Bool {
+        let kept = StudioTimeMap(sourceDuration: sourceDuration, edits: edits).outputDuration
+        return kept >= min(Self.minimumDuration, sourceDuration) - 1e-9
+    }
+
+    /// Replaces the cuts unless that would leave too little video. True when the project changed.
+    private mutating func setCuts(_ cuts: [StudioTimeRange]) -> Bool {
+        var edits = project.edits
+        edits.cuts = cuts
+        guard leavesEnoughVideo(edits) else { return false }
+        let before = editableState
+        let replacement = edits
+        mutate { $0.edits = replacement }
+        return before != editableState
+    }
+
+    /// Its neighbors keep a cut in its place in the list, so its index stays.
+    private mutating func replaceCut(at index: Int, start: Double, end: Double) -> StudioCutEditResult {
+        var cuts = project.edits.cuts
+        cuts[index].start = start
+        cuts[index].end = end
+        return StudioCutEditResult(changed: setCuts(cuts), index: index)
+    }
+
+    /// Where a cut starting at a time that no cut contains goes in the list, and where it ends:
+    /// after `newCutDuration`, or at the next cut or the end of the recording when that comes
+    /// sooner. Nil when that leaves less than the shortest cut.
+    private func newCutPlace(startingAt start: Double) -> (index: Int, end: Double)? {
+        let cuts = project.edits.cuts
+        let index = cuts.firstIndex { $0.start > start } ?? cuts.count
+        let nextStart = index < cuts.count ? cuts[index].start : sourceDuration
+        let end = min(start + Self.newCutDuration, nextStart)
+        guard end - start >= Self.minimumCutDuration else { return nil }
+        return (index, end)
     }
 
     private mutating func normalizeTrim() {

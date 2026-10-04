@@ -1902,6 +1902,342 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(model.project.scenes[0], project.scenes[0])
     }
 
+    // MARK: - Cuts
+    //
+    // The same cases, with the same numbers, are in the Windows StudioEditorModelCutTests.
+
+    func testACutStartsAtATimeAndLastsOneSecondOrUntilTheNextOne() {
+        var model = StudioEditorModel(project: makeProject())
+        XCTAssertEqual(model.addCut(at: 4), StudioCutEditResult(changed: true, index: 0))
+        assertCuts(model, [(4, 5)])
+        XCTAssertEqual(model.outputDuration, 9, accuracy: 1e-9)
+        XCTAssertTrue(model.canUndo)
+
+        // Where a cut already is, that one is the answer and nothing changes.
+        XCTAssertEqual(model.addCut(at: 4.5), StudioCutEditResult(changed: false, index: 0))
+        assertCuts(model, [(4, 5)])
+
+        // The list stays in time order, and a new cut ends where the next one starts.
+        XCTAssertEqual(model.addCut(at: 2), StudioCutEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.addCut(at: 3.5), StudioCutEditResult(changed: true, index: 1))
+        assertCuts(model, [(2, 3), (3.5, 4), (4, 5)])
+        XCTAssertEqual(model.addCut(at: 3.95), StudioCutEditResult(changed: false, index: 1))
+
+        // A cut contains its start and not its end, so one can start where another ends.
+        XCTAssertEqual(model.addCut(at: 3), StudioCutEditResult(changed: true, index: 1))
+        assertCuts(model, [(2, 3), (3, 3.5), (3.5, 4), (4, 5)])
+
+        // Less than 0.1 s before the end of the recording there is no room.
+        XCTAssertEqual(model.addCut(at: 9.95), StudioCutEditResult(changed: false, index: nil))
+        XCTAssertFalse(model.canAddCut(at: 9.95))
+        XCTAssertTrue(model.canAddCut(at: 4.2))
+        XCTAssertTrue(model.canAddCut(at: 6))
+        XCTAssertEqual(model.addCut(at: .nan), StudioCutEditResult(changed: false, index: nil))
+        XCTAssertFalse(model.canAddCut(at: .nan))
+
+        // A time before the recording is its start.
+        XCTAssertEqual(model.addCut(at: -3), StudioCutEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.project.edits.cuts[0].start, 0, accuracy: 1e-9)
+        XCTAssertEqual(model.project.edits.cuts[0].end, 1, accuracy: 1e-9)
+    }
+
+    func testACutOrATrimThatWouldLeaveNoVideoIsNotMade() {
+        // A recording barely longer than a new cut.
+        var brief = StudioEditorModel(project: makeProject(duration: 1.05))
+        XCTAssertFalse(brief.canAddCut(at: 0))
+        XCTAssertEqual(brief.addCut(at: 0), StudioCutEditResult(changed: false, index: nil))
+        XCTAssertTrue(brief.project.edits.cuts.isEmpty)
+        XCTAssertFalse(brief.canUndo)
+
+        // What counts is what the trim keeps: here the second from 4 to 5.
+        var model = StudioEditorModel(project: makeProject())
+        model.setTrim(start: 4, end: 5)
+        XCTAssertFalse(model.canAddCut(at: 4))
+        XCTAssertEqual(model.addCut(at: 4), StudioCutEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.addCut(at: 4.5), StudioCutEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.outputDuration, 0.5, accuracy: 1e-9)
+
+        // The start of the cut can come down to 4.1, which leaves 0.1 s, and no further.
+        XCTAssertEqual(model.setCutStart(at: 0, to: 4.05), StudioCutEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.project.edits.cuts[0].start, 4.5, accuracy: 1e-9)
+        XCTAssertEqual(model.setCutStart(at: 0, to: 4.1), StudioCutEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.outputDuration, 0.1, accuracy: 1e-9)
+
+        // Nor can the trim take the rest away.
+        model.setTrimStart(4.05)
+        XCTAssertEqual(model.trimStart, 4, accuracy: 1e-9)
+        model.setTrimStart(3)
+        XCTAssertEqual(model.trimStart, 3, accuracy: 1e-9)
+        XCTAssertEqual(model.outputDuration, 1.1, accuracy: 1e-9)
+
+        // Moving a cut onto all that is left is not made either.
+        var moved = StudioEditorModel(project: withCuts([(0, 2)], duration: 3))
+        XCTAssertEqual(moved.setCutEnd(at: 0, to: 2.95), StudioCutEditResult(changed: false, index: 0))
+        XCTAssertEqual(moved.setCutEnd(at: 0, to: 2.9), StudioCutEditResult(changed: true, index: 0))
+    }
+
+    func testTheEndsOfACutStayClearOfItsNeighbors() {
+        var model = StudioEditorModel(project: threeCuts())
+
+        XCTAssertEqual(model.setCutStart(at: 1, to: 4), StudioCutEditResult(changed: true, index: 1))
+        assertCuts(model, [(2, 3), (4, 6), (8, 9)])
+
+        // The start stops at the end of the cut before, and 0.1 s before its own end.
+        model.setCutStart(at: 1, to: 1)
+        assertCuts(model, [(2, 3), (3, 6), (8, 9)])
+        model.setCutStart(at: 1, to: 5.95)
+        assertCuts(model, [(2, 3), (5.9, 6), (8, 9)])
+
+        // The end stops at the start of the next cut, and 0.1 s after its own start.
+        XCTAssertEqual(model.setCutEnd(at: 1, to: 7), StudioCutEditResult(changed: true, index: 1))
+        model.setCutEnd(at: 1, to: 9.5)
+        assertCuts(model, [(2, 3), (5.9, 8), (8, 9)])
+        model.setCutEnd(at: 1, to: 5)
+        assertCuts(model, [(2, 3), (5.9, 6), (8, 9)])
+
+        // The first and the last stop at the ends of the recording.
+        model.setCutStart(at: 0, to: -1)
+        model.setCutEnd(at: 2, to: 12)
+        assertCuts(model, [(0, 3), (5.9, 6), (8, 10)])
+
+        // Nothing to change, nothing that is a number, no such cut.
+        let depth = undoDepth(&model)
+        XCTAssertEqual(model.setCutStart(at: 1, to: 5.9), StudioCutEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.setCutEnd(at: 1, to: .nan), StudioCutEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.setCutStart(at: 1, to: .infinity), StudioCutEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.setCutStart(at: 3, to: 1), StudioCutEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.setCutEnd(at: -1, to: 1), StudioCutEditResult(changed: false, index: nil))
+        XCTAssertEqual(undoDepth(&model), depth)
+
+        // A cut from a file that is shorter than 0.1 s and sits against the one before: the cut
+        // before decides, so its start does not move into it.
+        var tight = StudioEditorModel(project: withCuts([(2, 3), (3, 3.05)]))
+        XCTAssertEqual(tight.setCutStart(at: 1, to: 2.5), StudioCutEditResult(changed: false, index: 1))
+        assertCuts(tight, [(2, 3), (3, 3.05)])
+    }
+
+    func testMovingACutKeepsItsLengthBetweenItsNeighbors() {
+        var model = StudioEditorModel(project: threeCuts())
+
+        XCTAssertEqual(model.moveCut(at: 1, to: 6.5), StudioCutEditResult(changed: true, index: 1))
+        assertCuts(model, [(2, 3), (6.5, 7.5), (8, 9)])
+
+        // Against the next cut, and against the one before.
+        model.moveCut(at: 1, to: 7.8)
+        assertCuts(model, [(2, 3), (7, 8), (8, 9)])
+        model.moveCut(at: 1, to: 0)
+        assertCuts(model, [(2, 3), (3, 4), (8, 9)])
+
+        // Against the ends of the recording.
+        model.moveCut(at: 0, to: -5)
+        model.moveCut(at: 2, to: 20)
+        assertCuts(model, [(0, 1), (3, 4), (9, 10)])
+
+        XCTAssertEqual(model.moveCut(at: 1, to: 3), StudioCutEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.moveCut(at: 1, to: .nan), StudioCutEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.moveCut(at: 3, to: 1), StudioCutEditResult(changed: false, index: nil))
+    }
+
+    func testDeletingACutPutsItsStretchBack() {
+        var model = StudioEditorModel(project: threeCuts())
+        XCTAssertEqual(model.outputDuration, 7, accuracy: 1e-9)
+
+        XCTAssertEqual(model.removeCut(at: 1), StudioCutEditResult(changed: true, index: nil))
+        assertCuts(model, [(2, 3), (8, 9)])
+        XCTAssertEqual(model.outputDuration, 8, accuracy: 1e-9)
+
+        model.undo()
+        assertCuts(model, [(2, 3), (5, 6), (8, 9)])
+        model.redo()
+        assertCuts(model, [(2, 3), (8, 9)])
+
+        XCTAssertEqual(model.removeCut(at: 2), StudioCutEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.removeCut(at: -1), StudioCutEditResult(changed: false, index: nil))
+    }
+
+    func testOpeningPutsCutsInOrderAndJoinsThoseThatOverlap() {
+        let model = StudioEditorModel(project: withCuts([
+            (5, 6), (2, 3), (2.5, 4), (9, 12), (11, 11.5), (.nan, 3), (7, 6.5), (4, 4.5), (5.2, 5.5),
+            (-.infinity, 1),
+        ]))
+
+        // Two that overlap are one, and so is one inside another. Two that touch stay two, and
+        // play as one. One that reaches past the recording stops at its ends, and one that is not
+        // a number is dropped.
+        assertCuts(model, [(0, 1), (2, 4), (4, 4.5), (5, 6), (9, 10)])
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(model.outputDuration, 4.5, accuracy: 1e-9)
+    }
+
+    func testPlaybackJumpsOverCutsAndEndsWhereTheVideoDoes() {
+        let model = StudioEditorModel(project: withCuts([(2, 3), (9, 10)]))
+
+        // A cut that runs up to the end of the recording ends the video where it starts.
+        XCTAssertEqual(model.playbackStart, 0, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackEnd, 9, accuracy: 1e-9)
+        XCTAssertFalse(model.isAtPlaybackEnd(8.99))
+        XCTAssertTrue(model.isAtPlaybackEnd(9))
+
+        // Inside a cut the next thing to show is its end. A cut contains its start and not its end.
+        XCTAssertNil(model.cutSkipTarget(at: 1.99))
+        XCTAssertEqual(model.cutSkipTarget(at: 2) ?? -1, 3, accuracy: 1e-9)
+        XCTAssertEqual(model.cutSkipTarget(at: 2.5) ?? -1, 3, accuracy: 1e-9)
+        XCTAssertNil(model.cutSkipTarget(at: 3))
+        XCTAssertNil(model.cutSkipTarget(at: 9.5))
+
+        // Play starts where the playhead is, after the cut it is in, or over again at the end.
+        XCTAssertEqual(model.playbackStart(from: 1), 1, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackStart(from: 2.5), 3, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackStart(from: 8.99), 0, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackStart(from: 9.4), 0, accuracy: 1e-9)
+
+        // A cut at the start of the recording starts the video at its end.
+        let late = StudioEditorModel(project: withCuts([(0, 1.5)]))
+        XCTAssertEqual(late.playbackStart, 1.5, accuracy: 1e-9)
+        XCTAssertEqual(late.playbackStart(from: 0.5), 1.5, accuracy: 1e-9)
+        XCTAssertNil(late.cutSkipTarget(at: 0.5))
+
+        // Cuts count inside the trim only.
+        var trimmed = StudioEditorModel(project: withCuts([(0.5, 2), (7, 9)]))
+        trimmed.setTrim(start: 1, end: 8)
+        XCTAssertEqual(trimmed.playbackStart, 2, accuracy: 1e-9)
+        XCTAssertEqual(trimmed.playbackEnd, 7, accuracy: 1e-9)
+        XCTAssertEqual(trimmed.outputDuration, 5, accuracy: 1e-9)
+        XCTAssertEqual(trimmed.outputTime(forSourceTime: 4), 2, accuracy: 1e-9)
+        XCTAssertNil(trimmed.cutSkipTarget(at: 1.5))
+        XCTAssertNil(trimmed.cutSkipTarget(at: 7.5))
+
+        // Two cuts that touch are jumped as one.
+        let touching = StudioEditorModel(project: withCuts([(2, 3), (3, 4)]))
+        XCTAssertEqual(touching.cutSkipTarget(at: 2.2) ?? -1, 4, accuracy: 1e-9)
+
+        // A file in which the cuts leave nothing: the video starts and ends in one place.
+        let nothing = StudioEditorModel(project: withCuts([(0, 10)]))
+        XCTAssertEqual(nothing.outputDuration, 0, accuracy: 1e-9)
+        XCTAssertEqual(nothing.playbackStart, 0, accuracy: 1e-9)
+        XCTAssertEqual(nothing.playbackEnd, 0, accuracy: 1e-9)
+        XCTAssertTrue(nothing.isAtPlaybackEnd(0))
+    }
+
+    func testWithoutCutsPlaybackStartsAndEndsWithTheTrim() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setTrim(start: 2, end: 8)
+        XCTAssertEqual(model.playbackStart, 2, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackEnd, 8, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackStart(from: 1), 2, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackStart(from: 5), 5, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackStart(from: 8), 2, accuracy: 1e-9)
+        XCTAssertTrue(model.isAtPlaybackEnd(8))
+        XCTAssertFalse(model.isAtPlaybackEnd(7.9))
+        XCTAssertNil(model.cutSkipTarget(at: 5))
+        XCTAssertNil(model.cutIndex(at: 5))
+    }
+
+    func testSteppingThroughCutsAndFollowingOneThroughAnEditThatDidNotSay() {
+        let model = StudioEditorModel(project: threeCuts())
+        XCTAssertEqual(model.cutIndex(at: 5), 1)
+        XCTAssertEqual(model.cutIndex(at: 5.99), 1)
+        XCTAssertNil(model.cutIndex(at: 6))
+        XCTAssertNil(model.cutIndex(at: 4.99))
+
+        // With nothing selected: the cut at the playhead, or the nearest one on that side.
+        XCTAssertEqual(model.cutIndex(after: nil, playhead: 0), 0)
+        XCTAssertEqual(model.cutIndex(after: nil, playhead: 2.5), 0)
+        XCTAssertEqual(model.cutIndex(after: nil, playhead: 3), 1)
+        XCTAssertNil(model.cutIndex(after: nil, playhead: 9))
+        XCTAssertEqual(model.cutIndex(before: nil, playhead: 10), 2)
+        XCTAssertEqual(model.cutIndex(before: nil, playhead: 5.5), 1)
+        XCTAssertNil(model.cutIndex(before: nil, playhead: 1))
+
+        // With one selected: its neighbors.
+        XCTAssertEqual(model.cutIndex(after: 0, playhead: 9), 1)
+        XCTAssertNil(model.cutIndex(after: 2, playhead: 0))
+        XCTAssertEqual(model.cutIndex(before: 1, playhead: 9), 0)
+        XCTAssertNil(model.cutIndex(before: 0, playhead: 9))
+
+        let before = [cut(2, 3), cut(5, 6)]
+
+        // Only that cut differs: it is the same cut, changed.
+        XCTAssertEqual(StudioEditorModel.cutIndex(following: 1, from: before, to: [cut(2, 3), cut(5.5, 7)]), 1)
+
+        // Otherwise the one that shares the most time with it, or none.
+        XCTAssertEqual(StudioEditorModel.cutIndex(following: 1, from: before, to: [cut(5, 6)]), 0)
+        XCTAssertEqual(
+            StudioEditorModel.cutIndex(following: 1, from: before, to: [cut(1, 2), cut(4.5, 5.2), cut(5.2, 6.5)]),
+            2
+        )
+        XCTAssertEqual(StudioEditorModel.cutIndex(following: 1, from: before, to: [cut(5.2, 6.5), cut(8, 9)]), 0)
+        XCTAssertNil(StudioEditorModel.cutIndex(following: 0, from: before, to: [cut(5, 6)]))
+        XCTAssertNil(StudioEditorModel.cutIndex(following: 2, from: before, to: before))
+        XCTAssertNil(StudioEditorModel.cutIndex(following: -1, from: before, to: before))
+    }
+
+    func testACutMovesNothingElse() {
+        var project = makeProject()
+        project.scenes = [StudioScene(start: 0, layout: .bubble), StudioScene(start: 4, layout: .sideBySide)]
+        project.zooms = [zoom(3, 6)]
+        var model = StudioEditorModel(project: project)
+        let scenes = model.project.scenes
+        let zooms = model.project.zooms
+
+        XCTAssertTrue(model.addCut(at: 3.5).changed)
+
+        XCTAssertEqual(model.project.scenes, scenes)
+        XCTAssertEqual(model.project.zooms, zooms)
+        XCTAssertEqual(model.trimStart, 0, accuracy: 1e-9)
+        XCTAssertEqual(model.trimEnd, 10, accuracy: 1e-9)
+
+        // The video is a second shorter, and what came after the cut is a second earlier in it.
+        XCTAssertEqual(model.outputDuration, 9, accuracy: 1e-9)
+        XCTAssertEqual(model.outputTime(forSourceTime: 8), 7, accuracy: 1e-9)
+        XCTAssertEqual(model.outputTime(forSourceTime: 4), 3.5, accuracy: 1e-9)
+    }
+
+    func testCutTextNamesTheTimes() {
+        XCTAssertEqual(StudioEditorModel.cutAccessibilityText(cut(12, 16.5)), "Cut, 12.0 to 16.5 seconds")
+        XCTAssertEqual(StudioEditorModel.cutRangeText(cut(12, 16.5)), "12.0 to 16.5 seconds")
+        XCTAssertEqual(StudioEditorModel.cutLengthText(cut(12, 16.5)), "4.5 seconds long")
+        XCTAssertEqual(StudioEditorModel.cutLengthText(cut(3, .nan)), "0.0 seconds long")
+        XCTAssertEqual(StudioEditorModel.cutPositionText(index: 1, count: 3), "Cut 2 of 3")
+    }
+
+    private func assertCuts(_ model: StudioEditorModel, _ expected: [(Double, Double)], line: UInt = #line) {
+        let cuts = model.project.edits.cuts
+        XCTAssertEqual(cuts.count, expected.count, "count", line: line)
+        for (index, range) in expected.enumerated() where index < cuts.count {
+            XCTAssertEqual(cuts[index].start, range.0, accuracy: 1e-9, "start of cut \(index)", line: line)
+            XCTAssertEqual(cuts[index].end, range.1, accuracy: 1e-9, "end of cut \(index)", line: line)
+        }
+    }
+
+    /// How many times Undo can be pressed. Everything undone is redone before it returns.
+    private func undoDepth(_ model: inout StudioEditorModel) -> Int {
+        var depth = 0
+        while model.canUndo {
+            model.undo()
+            depth += 1
+        }
+        for _ in 0..<depth {
+            model.redo()
+        }
+        return depth
+    }
+
+    private func cut(_ start: Double, _ end: Double) -> StudioTimeRange {
+        StudioTimeRange(start: start, end: end)
+    }
+
+    /// Cuts from 2 to 3, 5 to 6 and 8 to 9 seconds, in a recording 10 s long.
+    private func threeCuts() -> StudioProject {
+        withCuts([(2, 3), (5, 6), (8, 9)])
+    }
+
+    private func withCuts(_ cuts: [(Double, Double)], duration: Double = 10) -> StudioProject {
+        var project = makeProject(duration: duration)
+        project.edits = StudioEdits(cuts: cuts.map { cut($0.0, $0.1) })
+        return project
+    }
+
     /// The bubble until 4 s, side by side until 7 s, then the camera alone, in a recording 10 s long.
     private func threeScenes() -> StudioProject {
         var project = makeProject()
