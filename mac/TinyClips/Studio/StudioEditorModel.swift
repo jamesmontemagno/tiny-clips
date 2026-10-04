@@ -79,6 +79,16 @@ struct StudioCutEditResult: Equatable, Sendable {
     var index: Int?
 }
 
+/// What an edit to a speed change did.
+struct StudioSpeedEditResult: Equatable, Sendable {
+    /// Whether the project changed.
+    var changed: Bool
+
+    /// Where the speed change is in `project.edits.speed` now, or nil when it is gone or there is
+    /// none.
+    var index: Int?
+}
+
 /// What an edit to a zoom did.
 struct StudioZoomEditResult: Equatable, Sendable {
     /// Whether the project changed.
@@ -290,6 +300,42 @@ struct StudioEditorModel: Equatable, Sendable {
     /// Said when the selected cut has been deleted.
     static let cutDeletedMessage = "Cut deleted."
 
+    /// The shortest speed change the editor makes, in seconds of the recording.
+    static let minimumSpeedDuration = 0.1
+
+    /// How much of the recording a speed change covers when it is added, in seconds, where there
+    /// is room for it.
+    static let newSpeedDuration = 2.0
+
+    /// The rate a speed change has when it is added: twice as fast.
+    static let newSpeedRate = 2.0
+
+    /// The rates the editor offers, slowest first. A project file may hold any rate from
+    /// `StudioTimeMap.slowestRate` to `StudioTimeMap.fastestRate`.
+    static let speedRates: [Double] = [0.25, 0.5, 1.5, 2, 4, 8]
+
+    /// What the speed lane says while no stretch plays at another speed.
+    static let noSpeedHint = "No speed changes. Press R to speed up two seconds from the playhead."
+
+    /// What the Speed section says while there are speed changes and none is selected.
+    static let selectSpeedHint = "Select a speed change on the timeline, or step to one with the arrows above."
+
+    /// What the Speed section says of the sound, which a stretch at another speed does not have.
+    static let speedSilentNote = "A stretch at another speed plays without sound."
+
+    /// Said when a speed change has been added at the playhead.
+    static let speedAddedMessage = "Speed change added."
+
+    /// Said when a speed change was asked for where one already is. That one is selected instead.
+    static let speedAlreadyThereMessage = "There is already a speed change here."
+
+    /// Said when a speed change was asked for where the shortest one does not fit, or where it
+    /// would leave too little video.
+    static let noRoomForSpeedMessage = "There is no room for a speed change here."
+
+    /// Said when the selected speed change has been deleted.
+    static let speedDeletedMessage = "Speed change deleted."
+
     static let maximumUndoDepth = 100
 
     private(set) var project: StudioProject
@@ -308,6 +354,7 @@ struct StudioEditorModel: Equatable, Sendable {
         ensureScene()
         normalizeStoredScenes()
         normalizeStoredCuts()
+        normalizeStoredSpeed()
         normalizeTrim()
         sortStoredZooms()
         exportedState = project.exports.isEmpty ? nil : StudioEditableState(project: self.project)
@@ -1183,6 +1230,209 @@ struct StudioEditorModel: Equatable, Sendable {
         return best
     }
 
+    // MARK: - Speed
+    //
+    // Stretches of the recording the video plays faster or slower. They are stored in source time,
+    // like cuts, so one moves nothing else in the project; what it changes is how long the video
+    // is. `project.edits.speed` is kept in time order without overlaps, so a speed change's index
+    // identifies it between two edits. Two may touch.
+
+    /// The speed change that contains `sourceTime`, or nil. It contains its start and not its end,
+    /// as in the time map.
+    func speedIndex(at sourceTime: Double) -> Int? {
+        project.edits.speed.firstIndex { $0.start <= sourceTime && sourceTime < $0.end }
+    }
+
+    /// Adds a speed change that starts at `sourceTime`, plays at `newSpeedRate`, and covers
+    /// `newSpeedDuration` of the recording, or up to the next speed change or the end of the
+    /// recording when that comes sooner.
+    ///
+    /// Returns the new speed change's index. Unchanged with the index of the one that is already
+    /// there, and unchanged with no index when there is no room for `minimumSpeedDuration` or the
+    /// video would become too short.
+    @discardableResult
+    mutating func addSpeed(at sourceTime: Double) -> StudioSpeedEditResult {
+        guard sourceTime.isFinite else { return StudioSpeedEditResult(changed: false, index: nil) }
+        let start = clampedSourceTime(sourceTime)
+        if let existing = speedIndex(at: start) {
+            return StudioSpeedEditResult(changed: false, index: existing)
+        }
+        guard let place = newSpeedPlace(startingAt: start) else {
+            return StudioSpeedEditResult(changed: false, index: nil)
+        }
+
+        var speed = project.edits.speed
+        speed.insert(StudioSpeedRange(start: start, end: place.end, rate: Self.newSpeedRate), at: place.index)
+        return setSpeed(speed)
+            ? StudioSpeedEditResult(changed: true, index: place.index)
+            : StudioSpeedEditResult(changed: false, index: nil)
+    }
+
+    /// Whether `addSpeed(at:)` at this time has a speed change to answer with: a new one, or the
+    /// one that is already there.
+    func canAddSpeed(at sourceTime: Double) -> Bool {
+        guard sourceTime.isFinite else { return false }
+        let start = clampedSourceTime(sourceTime)
+        if speedIndex(at: start) != nil {
+            return true
+        }
+        guard let place = newSpeedPlace(startingAt: start) else { return false }
+        var edits = project.edits
+        edits.speed.insert(StudioSpeedRange(start: start, end: place.end, rate: Self.newSpeedRate), at: place.index)
+        return leavesEnoughVideo(edits)
+    }
+
+    /// Deletes a speed change, so its stretch plays at the recording's own speed again. Not made
+    /// when that would leave too little video, which only a slower stretch in a video of a few
+    /// frames can.
+    @discardableResult
+    mutating func removeSpeed(at index: Int) -> StudioSpeedEditResult {
+        guard project.edits.speed.indices.contains(index) else {
+            return StudioSpeedEditResult(changed: false, index: nil)
+        }
+        var speed = project.edits.speed
+        speed.remove(at: index)
+        return setSpeed(speed)
+            ? StudioSpeedEditResult(changed: true, index: nil)
+            : StudioSpeedEditResult(changed: false, index: index)
+    }
+
+    /// Moves a speed change's start. It stays at or after the end of the one before it, and at
+    /// least `minimumSpeedDuration` before its own end.
+    @discardableResult
+    mutating func setSpeedStart(at index: Int, to sourceTime: Double) -> StudioSpeedEditResult {
+        let speed = project.edits.speed
+        guard speed.indices.contains(index) else {
+            return StudioSpeedEditResult(changed: false, index: nil)
+        }
+        guard sourceTime.isFinite else { return StudioSpeedEditResult(changed: false, index: index) }
+
+        // Speed changes never overlap, so where both limits cannot be kept the one before decides.
+        let earliest = index > 0 ? speed[index - 1].end : 0
+        let latest = speed[index].end - Self.minimumSpeedDuration
+        var entry = speed[index]
+        entry.start = max(earliest, min(sourceTime, latest))
+        return replaceSpeed(at: index, with: entry)
+    }
+
+    /// Moves a speed change's end. It stays at least `minimumSpeedDuration` after its own start,
+    /// and at or before the start of the next one and the end of the recording.
+    @discardableResult
+    mutating func setSpeedEnd(at index: Int, to sourceTime: Double) -> StudioSpeedEditResult {
+        let speed = project.edits.speed
+        guard speed.indices.contains(index) else {
+            return StudioSpeedEditResult(changed: false, index: nil)
+        }
+        guard sourceTime.isFinite else { return StudioSpeedEditResult(changed: false, index: index) }
+
+        let earliest = speed[index].start + Self.minimumSpeedDuration
+        let latest = index + 1 < speed.count ? speed[index + 1].start : sourceDuration
+        var entry = speed[index]
+        entry.end = min(max(sourceTime, earliest), latest)
+        return replaceSpeed(at: index, with: entry)
+    }
+
+    /// Moves a whole speed change so it starts at `sourceTime`, keeping its length and its rate.
+    /// It stays between the one before it and the one after it, or the ends of the recording.
+    @discardableResult
+    mutating func moveSpeed(at index: Int, to sourceTime: Double) -> StudioSpeedEditResult {
+        let speed = project.edits.speed
+        guard speed.indices.contains(index) else {
+            return StudioSpeedEditResult(changed: false, index: nil)
+        }
+        guard sourceTime.isFinite else { return StudioSpeedEditResult(changed: false, index: index) }
+
+        let length = speed[index].end - speed[index].start
+        let earliest = index > 0 ? speed[index - 1].end : 0
+        let latestEnd = index + 1 < speed.count ? speed[index + 1].start : sourceDuration
+
+        var entry = speed[index]
+        if sourceTime <= earliest {
+            entry.start = earliest
+            entry.end = min(earliest + length, latestEnd)
+        } else if sourceTime + length >= latestEnd {
+            entry.end = latestEnd
+            entry.start = max(earliest, latestEnd - length)
+        } else {
+            entry.start = sourceTime
+            entry.end = sourceTime + length
+        }
+
+        guard entry.end > entry.start else { return StudioSpeedEditResult(changed: false, index: index) }
+        return replaceSpeed(at: index, with: entry)
+    }
+
+    /// Sets how fast a speed change plays: how many seconds of the recording pass in one second
+    /// of video. A rate outside what the time map plays counts as the nearer limit. A rate of 1 is
+    /// no speed change and is not taken; deleting it is how a stretch goes back to the recording's
+    /// own speed.
+    @discardableResult
+    mutating func setSpeedRate(at index: Int, to rate: Double) -> StudioSpeedEditResult {
+        let speed = project.edits.speed
+        guard speed.indices.contains(index) else {
+            return StudioSpeedEditResult(changed: false, index: nil)
+        }
+        guard rate.isFinite, rate > 0 else { return StudioSpeedEditResult(changed: false, index: index) }
+
+        let limited = StudioCanvasMath.clamped(rate, StudioTimeMap.slowestRate, StudioTimeMap.fastestRate)
+        guard limited != 1 else { return StudioSpeedEditResult(changed: false, index: index) }
+        var entry = speed[index]
+        entry.rate = limited
+        return replaceSpeed(at: index, with: entry)
+    }
+
+    /// The speed change after the selected one, for stepping through them. With nothing selected,
+    /// the one at `playhead` or the first one after it. Nil when there is none.
+    func speedIndex(after selected: Int?, playhead: Double) -> Int? {
+        let speed = project.edits.speed
+        if let selected, speed.indices.contains(selected) {
+            return selected + 1 < speed.count ? selected + 1 : nil
+        }
+        return speed.firstIndex { $0.end > playhead }
+    }
+
+    /// The speed change before the selected one. With nothing selected, the one at `playhead` or
+    /// the last one before it. Nil when there is none.
+    func speedIndex(before selected: Int?, playhead: Double) -> Int? {
+        let speed = project.edits.speed
+        if let selected, speed.indices.contains(selected) {
+            return selected > 0 ? selected - 1 : nil
+        }
+        return speed.lastIndex { $0.start <= playhead }
+    }
+
+    /// Where the speed change at `index` of `before` is in `after`, for an edit that did not say,
+    /// such as undo. When the two lists differ in that one speed change at most, it is that one,
+    /// changed: the same place. Otherwise it is the one that shares the most time with it, and
+    /// among equals the one nearest to where it was. Nil when there was no such speed change, or
+    /// none shares any time with it.
+    static func speedIndex(following index: Int, from before: [StudioSpeedRange], to after: [StudioSpeedRange]) -> Int? {
+        guard before.indices.contains(index) else { return nil }
+
+        if before.count == after.count,
+           before.indices.allSatisfy({
+               $0 == index
+                   || (before[$0].start == after[$0].start && before[$0].end == after[$0].end && before[$0].rate == after[$0].rate)
+           }) {
+            return index
+        }
+
+        let entry = before[index]
+        var best: Int?
+        var bestShared = 0.0
+        for (position, candidate) in after.enumerated() {
+            let shared = min(entry.end, candidate.end) - max(entry.start, candidate.start)
+            guard shared > 0 else { continue }
+            if let current = best {
+                let isNearer = shared == bestShared && abs(position - index) < abs(current - index)
+                guard shared > bestShared || isNearer else { continue }
+            }
+            best = position
+            bestShared = shared
+        }
+        return best
+    }
+
     // MARK: - Bubble Dragging
 
     /// Moves the camera bubble so its top-left corner is at `desiredTopLeft` (canvas pixels for a
@@ -1237,10 +1487,10 @@ struct StudioEditorModel: Equatable, Sendable {
 
     /// Sets the trim in source time. The kept range stays inside the recording, in order, and at
     /// least `minimumDuration` long (or the whole recording when it is shorter). A trim that would
-    /// leave less than that between the cuts is not made.
+    /// leave less video than that, between the cuts and at the speed of what is left, is not made.
     mutating func setTrim(start: Double, end: Double?) {
         let edits = clampedEdits(project.edits, trimStart: start, trimEnd: end)
-        guard edits.cuts.isEmpty || leavesEnoughVideo(edits) else { return }
+        guard (edits.cuts.isEmpty && edits.speed.isEmpty) || leavesEnoughVideo(edits) else { return }
         mutate { $0.edits = edits }
     }
 
@@ -1483,6 +1733,60 @@ struct StudioEditorModel: Equatable, Sendable {
         "\(cutPositionText(index: index, count: count)), \(cutRangeText(cut))"
     }
 
+    /// A speed change for VoiceOver, such as "Speed 2×, 12.0 to 16.5 seconds". The times are
+    /// source time, as the trim handles read.
+    static func speedAccessibilityText(_ speed: StudioSpeedRange) -> String {
+        "Speed \(speedRateText(speed.rate)), \(speedRangeText(speed))"
+    }
+
+    /// How fast a stretch plays, such as "2×" or "0.25×": the rate the time map plays, which is
+    /// the stored one kept within its limits, with up to two decimals.
+    static func speedRateText(_ rate: Double) -> String {
+        "\(scaleText(playedRate(rate)))×"
+    }
+
+    /// A rate in words, for the name of the control that chooses it: "Half speed", "Twice the
+    /// speed", "4 times the speed".
+    static func speedRateName(_ rate: Double) -> String {
+        let played = playedRate(rate)
+        switch played {
+        case 0.25: return "Quarter speed"
+        case 0.5: return "Half speed"
+        case 1: return "The recording's own speed"
+        case 1.5: return "One and a half times the speed"
+        case 2: return "Twice the speed"
+        default: return "\(scaleText(played)) times the speed"
+        }
+    }
+
+    /// When a speed change starts and ends, in source time: "12.0 to 16.5 seconds".
+    static func speedRangeText(_ speed: StudioSpeedRange) -> String {
+        let start = String(format: "%.1f", speed.start.isFinite ? speed.start : 0)
+        let end = String(format: "%.1f", speed.end.isFinite ? speed.end : 0)
+        return "\(start) to \(end) seconds"
+    }
+
+    /// How much of the recording a speed change covers and how long that takes in the video:
+    /// "4.5 seconds, plays in 1.1 seconds". It is the whole stretch that counts, whether or not
+    /// the trim and the cuts keep all of it.
+    static func speedLengthText(_ speed: StudioSpeedRange) -> String {
+        let span = speed.end - speed.start
+        let length = span.isFinite ? max(0, span) : 0
+        return String(format: "%.1f seconds, plays in %.1f seconds", length, length / playedRate(speed.rate))
+    }
+
+    /// Which speed change is selected, counting from one: "Speed change 2 of 3".
+    static func speedPositionText(index: Int, count: Int) -> String {
+        "Speed change \(index + 1) of \(count)"
+    }
+
+    /// What is read out when a speed change is stepped to with Previous or Next, which say nothing
+    /// of where they land by themselves: which one it is, its rate and its times, such as
+    /// "Speed change 2 of 3, 2×, 12.0 to 16.5 seconds".
+    static func speedStepText(index: Int, count: Int, speed: StudioSpeedRange) -> String {
+        "\(speedPositionText(index: index, count: count)), \(speedRateText(speed.rate)), \(speedRangeText(speed))"
+    }
+
     /// For example "0:02.5 of 0:10.0".
     func playheadText(sourceTime: Double) -> String {
         "\(Self.formattedTime(outputTime(forSourceTime: sourceTime))) of \(Self.formattedTime(outputDuration))"
@@ -1606,6 +1910,58 @@ struct StudioEditorModel: Equatable, Sendable {
         let end = min(start + Self.newCutDuration, nextStart)
         guard end - start >= Self.minimumCutDuration else { return nil }
         return (index, end)
+    }
+
+    /// Keeps the stored speed changes as the editor needs them: the ones the time map counts, in
+    /// time order and clear of each other as it reads them (section 7 of the project format), and
+    /// inside the recording. So opening a project and saving it again does not change how it plays.
+    private mutating func normalizeStoredSpeed() {
+        let duration = sourceDuration
+        project.edits.speed = StudioTimeMap.normalizedSpeed(project.edits.speed).compactMap { entry -> StudioSpeedRange? in
+            var inside = entry
+            inside.start = StudioCanvasMath.clamped(entry.start, 0, duration)
+            inside.end = StudioCanvasMath.clamped(entry.end, 0, duration)
+            return inside.end > inside.start ? inside : nil
+        }
+    }
+
+    /// Replaces the speed changes unless that would leave too little video. A faster stretch makes
+    /// the video shorter, and so does taking a slower one away. True when the project changed.
+    private mutating func setSpeed(_ speed: [StudioSpeedRange]) -> Bool {
+        var edits = project.edits
+        edits.speed = speed
+        guard leavesEnoughVideo(edits) else { return false }
+        let before = editableState
+        let replacement = edits
+        mutate { $0.edits = replacement }
+        return before != editableState
+    }
+
+    /// Its neighbors keep a speed change in its place in the list, so its index stays.
+    private mutating func replaceSpeed(at index: Int, with entry: StudioSpeedRange) -> StudioSpeedEditResult {
+        var speed = project.edits.speed
+        speed[index] = entry
+        return StudioSpeedEditResult(changed: setSpeed(speed), index: index)
+    }
+
+    /// Where a speed change starting at a time that none contains goes in the list, and where it
+    /// ends: after `newSpeedDuration`, or at the next one or the end of the recording when that
+    /// comes sooner. Nil when that leaves less than the shortest speed change.
+    private func newSpeedPlace(startingAt start: Double) -> (index: Int, end: Double)? {
+        let speed = project.edits.speed
+        let index = speed.firstIndex { $0.start > start } ?? speed.count
+        let nextStart = index < speed.count ? speed[index].start : sourceDuration
+        let end = min(start + Self.newSpeedDuration, nextStart)
+        guard end - start >= Self.minimumSpeedDuration else { return nil }
+        return (index, end)
+    }
+
+    /// The rate the time map plays for a stored one: kept within its limits, and 1 for what is no
+    /// rate at all.
+    private static func playedRate(_ rate: Double) -> Double {
+        rate.isFinite && rate > 0
+            ? StudioCanvasMath.clamped(rate, StudioTimeMap.slowestRate, StudioTimeMap.fastestRate)
+            : 1
     }
 
     private mutating func normalizeTrim() {

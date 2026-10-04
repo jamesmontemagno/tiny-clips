@@ -2219,6 +2219,387 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.cutStepText(index: 1, count: 3, cut: cut(12, 16.5)), "Cut 2 of 3, 12.0 to 16.5 seconds")
     }
 
+    // MARK: - Speed
+    //
+    // The same cases, with the same numbers, are in the Windows StudioEditorModelSpeedTests.
+
+    func testASpeedChangeStartsAtATimePlaysTwiceAsFastAndCoversTwoSecondsOrUntilTheNextOne() {
+        var model = StudioEditorModel(project: makeProject())
+        XCTAssertEqual(model.addSpeed(at: 4), StudioSpeedEditResult(changed: true, index: 0))
+        assertSpeed(model, [(4, 6, 2)])
+        XCTAssertEqual(model.outputDuration, 9, accuracy: 1e-9)
+        XCTAssertTrue(model.canUndo)
+
+        // Where a speed change already is, that one is the answer and nothing changes.
+        XCTAssertEqual(model.addSpeed(at: 5), StudioSpeedEditResult(changed: false, index: 0))
+        assertSpeed(model, [(4, 6, 2)])
+
+        // The list stays in time order, and a new one ends where the next one starts.
+        XCTAssertEqual(model.addSpeed(at: 1), StudioSpeedEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.addSpeed(at: 3.5), StudioSpeedEditResult(changed: true, index: 1))
+        assertSpeed(model, [(1, 3, 2), (3.5, 4, 2), (4, 6, 2)])
+        XCTAssertEqual(model.addSpeed(at: 3.95), StudioSpeedEditResult(changed: false, index: 1))
+
+        // A speed change contains its start and not its end, so one can start where another ends.
+        XCTAssertEqual(model.addSpeed(at: 3), StudioSpeedEditResult(changed: true, index: 1))
+        assertSpeed(model, [(1, 3, 2), (3, 3.5, 2), (3.5, 4, 2), (4, 6, 2)])
+
+        // Less than 0.1 s before the end of the recording there is no room.
+        XCTAssertEqual(model.addSpeed(at: 9.95), StudioSpeedEditResult(changed: false, index: nil))
+        XCTAssertFalse(model.canAddSpeed(at: 9.95))
+        XCTAssertTrue(model.canAddSpeed(at: 4.2))
+        XCTAssertTrue(model.canAddSpeed(at: 7))
+        XCTAssertEqual(model.addSpeed(at: .nan), StudioSpeedEditResult(changed: false, index: nil))
+        XCTAssertFalse(model.canAddSpeed(at: .nan))
+
+        // A time before the recording is its start.
+        XCTAssertEqual(model.addSpeed(at: -3), StudioSpeedEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.project.edits.speed[0].start, 0, accuracy: 1e-9)
+        XCTAssertEqual(model.project.edits.speed[0].end, 1, accuracy: 1e-9)
+    }
+
+    func testASpeedChangeChangesHowLongTheVideoIsAndMovesNothingElse() {
+        var project = makeProject()
+        project.scenes = [StudioScene(start: 0, layout: .bubble), StudioScene(start: 4, layout: .sideBySide)]
+        project.zooms = [zoom(3, 6)]
+        project.edits = StudioEdits(cuts: [cut(7, 7.5)])
+        var model = StudioEditorModel(project: project)
+        let scenes = model.project.scenes
+        let zooms = model.project.zooms
+        let cuts = model.project.edits.cuts
+
+        XCTAssertTrue(model.addSpeed(at: 3.5).changed)
+
+        XCTAssertEqual(model.project.scenes, scenes)
+        XCTAssertEqual(model.project.zooms, zooms)
+        XCTAssertEqual(model.project.edits.cuts, cuts)
+        XCTAssertEqual(model.trimStart, 0, accuracy: 1e-9)
+        XCTAssertEqual(model.trimEnd, 10, accuracy: 1e-9)
+
+        // The two seconds from 3.5 take one, so the video is a second shorter, and what came
+        // after is a second earlier in it. Inside, the video's time passes half as fast.
+        XCTAssertEqual(model.outputDuration, 8.5, accuracy: 1e-9)
+        XCTAssertEqual(model.outputTime(forSourceTime: 6), 5, accuracy: 1e-9)
+        XCTAssertEqual(model.outputTime(forSourceTime: 4.5), 4, accuracy: 1e-9)
+        XCTAssertEqual(model.sourceTime(forOutputTime: 4), 4.5, accuracy: 1e-9)
+    }
+
+    func testTheRateOfASpeedChangeIsKeptWithinItsLimitsAndOneIsNoRate() {
+        var model = StudioEditorModel(project: withSpeed([(2, 6, 2)]))
+        XCTAssertEqual(model.outputDuration, 8, accuracy: 1e-9)
+
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 4), StudioSpeedEditResult(changed: true, index: 0))
+        assertSpeed(model, [(2, 6, 4)])
+        XCTAssertEqual(model.outputDuration, 7, accuracy: 1e-9)
+
+        // The rate it has already changes nothing. A rate of 1 is no speed change, and neither is
+        // one that is no rate at all. None of them leaves anything to undo.
+        let depth = undoDepth(&model)
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 4), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 1), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 0), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: -2), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: .nan), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: .infinity), StudioSpeedEditResult(changed: false, index: 0))
+        assertSpeed(model, [(2, 6, 4)])
+        XCTAssertEqual(undoDepth(&model), depth)
+
+        // A rate past a limit is the limit.
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 100), StudioSpeedEditResult(changed: true, index: 0))
+        assertSpeed(model, [(2, 6, 8)])
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 16), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 0.01), StudioSpeedEditResult(changed: true, index: 0))
+        assertSpeed(model, [(2, 6, 0.25)])
+        XCTAssertEqual(model.outputDuration, 22, accuracy: 1e-9)
+
+        XCTAssertEqual(model.setSpeedRate(at: 1, to: 2), StudioSpeedEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.setSpeedRate(at: -1, to: 2), StudioSpeedEditResult(changed: false, index: nil))
+
+        // Every rate the editor offers can be chosen, a new speed change has one of them, and
+        // none of them is 1.
+        XCTAssertEqual(StudioEditorModel.speedRates, [0.25, 0.5, 1.5, 2, 4, 8])
+        XCTAssertTrue(StudioEditorModel.speedRates.contains(StudioEditorModel.newSpeedRate))
+        for rate in StudioEditorModel.speedRates.reversed() {
+            XCTAssertEqual(model.setSpeedRate(at: 0, to: rate), StudioSpeedEditResult(changed: true, index: 0))
+            XCTAssertEqual(model.project.edits.speed[0].rate, rate, accuracy: 1e-9)
+        }
+    }
+
+    func testASpeedChangeOrATrimThatWouldLeaveTooLittleVideoIsNotMade() {
+        // Twice as fast, a recording of 0.15 s would last 0.075 s.
+        var brief = StudioEditorModel(project: makeProject(duration: 0.15))
+        XCTAssertFalse(brief.canAddSpeed(at: 0))
+        XCTAssertEqual(brief.addSpeed(at: 0), StudioSpeedEditResult(changed: false, index: nil))
+        XCTAssertTrue(brief.project.edits.speed.isEmpty)
+        XCTAssertFalse(brief.canUndo)
+
+        // What counts is how long the video is: here half a second of the recording.
+        var model = StudioEditorModel(project: withSpeed([(4, 5, 2)]))
+        model.setTrim(start: 4, end: 4.5)
+        XCTAssertEqual(model.outputDuration, 0.25, accuracy: 1e-9)
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 8), StudioSpeedEditResult(changed: false, index: 0))
+        assertSpeed(model, [(4, 5, 2)])
+        XCTAssertEqual(model.setSpeedRate(at: 0, to: 4), StudioSpeedEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.outputDuration, 0.125, accuracy: 1e-9)
+
+        // Nor can the trim take more of it away: four times as fast, 0.3 s would last 0.075 s.
+        model.setTrimEnd(4.3)
+        XCTAssertEqual(model.trimEnd, 4.5, accuracy: 1e-9)
+        model.setTrimStart(4.2)
+        XCTAssertEqual(model.trimStart, 4, accuracy: 1e-9)
+        model.setTrimEnd(4.4)
+        XCTAssertEqual(model.trimEnd, 4.4, accuracy: 1e-9)
+        XCTAssertEqual(model.outputDuration, 0.1, accuracy: 1e-9)
+
+        // A faster stretch moved onto all that is kept is not made either.
+        var moved = StudioEditorModel(project: withSpeed([(6, 8, 8)]))
+        moved.setTrim(start: 4, end: 4.5)
+        XCTAssertEqual(moved.outputDuration, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(moved.moveSpeed(at: 0, to: 4), StudioSpeedEditResult(changed: false, index: 0))
+        assertSpeed(moved, [(6, 8, 8)])
+        XCTAssertEqual(moved.setSpeedStart(at: 0, to: 4), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(moved.moveSpeed(at: 0, to: 4.3), StudioSpeedEditResult(changed: true, index: 0))
+        XCTAssertEqual(moved.outputDuration, 0.325, accuracy: 1e-9)
+
+        // Taking a slower stretch away makes the video shorter. Here a cut leaves 0.05 s of the
+        // recording, which lasts 0.2 s at a quarter of the speed.
+        var project = makeProject()
+        project.edits = StudioEdits(trimStart: 4, trimEnd: 5, cuts: [cut(4.05, 5)], speed: [speed(4, 4.05, 0.25)])
+        var slow = StudioEditorModel(project: project)
+        XCTAssertEqual(slow.outputDuration, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(slow.removeSpeed(at: 0), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(slow.project.edits.speed.count, 1)
+        XCTAssertEqual(slow.setSpeedRate(at: 0, to: 2), StudioSpeedEditResult(changed: false, index: 0))
+        XCTAssertEqual(slow.setSpeedRate(at: 0, to: 0.5), StudioSpeedEditResult(changed: true, index: 0))
+        XCTAssertEqual(slow.outputDuration, 0.1, accuracy: 1e-9)
+        XCTAssertFalse(slow.canRedo)
+    }
+
+    func testTheEndsOfASpeedChangeStayClearOfItsNeighbors() {
+        var model = StudioEditorModel(project: threeSpeedChanges())
+
+        XCTAssertEqual(model.setSpeedStart(at: 1, to: 4), StudioSpeedEditResult(changed: true, index: 1))
+        assertSpeed(model, [(2, 3, 2), (4, 6, 4), (8, 9, 0.5)])
+
+        // The start stops at the end of the one before, and 0.1 s before its own end.
+        model.setSpeedStart(at: 1, to: 1)
+        assertSpeed(model, [(2, 3, 2), (3, 6, 4), (8, 9, 0.5)])
+        model.setSpeedStart(at: 1, to: 5.95)
+        assertSpeed(model, [(2, 3, 2), (5.9, 6, 4), (8, 9, 0.5)])
+
+        // The end stops at the start of the next one, and 0.1 s after its own start.
+        XCTAssertEqual(model.setSpeedEnd(at: 1, to: 7), StudioSpeedEditResult(changed: true, index: 1))
+        model.setSpeedEnd(at: 1, to: 9.5)
+        assertSpeed(model, [(2, 3, 2), (5.9, 8, 4), (8, 9, 0.5)])
+        model.setSpeedEnd(at: 1, to: 5)
+        assertSpeed(model, [(2, 3, 2), (5.9, 6, 4), (8, 9, 0.5)])
+
+        // The first and the last stop at the ends of the recording.
+        model.setSpeedStart(at: 0, to: -1)
+        model.setSpeedEnd(at: 2, to: 12)
+        assertSpeed(model, [(0, 3, 2), (5.9, 6, 4), (8, 10, 0.5)])
+
+        // Nothing to change, nothing that is a number, no such speed change.
+        let depth = undoDepth(&model)
+        XCTAssertEqual(model.setSpeedStart(at: 1, to: 5.9), StudioSpeedEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.setSpeedEnd(at: 1, to: .nan), StudioSpeedEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.setSpeedStart(at: 1, to: .infinity), StudioSpeedEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.setSpeedStart(at: 3, to: 1), StudioSpeedEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.setSpeedEnd(at: -1, to: 1), StudioSpeedEditResult(changed: false, index: nil))
+        XCTAssertEqual(undoDepth(&model), depth)
+
+        // One from a file that is shorter than 0.1 s and sits against the one before: the one
+        // before decides, so its start does not move into it.
+        var tight = StudioEditorModel(project: withSpeed([(2, 3, 2), (3, 3.05, 4)]))
+        XCTAssertEqual(tight.setSpeedStart(at: 1, to: 2.5), StudioSpeedEditResult(changed: false, index: 1))
+        assertSpeed(tight, [(2, 3, 2), (3, 3.05, 4)])
+    }
+
+    func testMovingASpeedChangeKeepsItsLengthAndItsRateBetweenItsNeighbors() {
+        var model = StudioEditorModel(project: threeSpeedChanges())
+
+        XCTAssertEqual(model.moveSpeed(at: 1, to: 6.5), StudioSpeedEditResult(changed: true, index: 1))
+        assertSpeed(model, [(2, 3, 2), (6.5, 7.5, 4), (8, 9, 0.5)])
+
+        // Against the next one, and against the one before.
+        model.moveSpeed(at: 1, to: 7.8)
+        assertSpeed(model, [(2, 3, 2), (7, 8, 4), (8, 9, 0.5)])
+        model.moveSpeed(at: 1, to: 0)
+        assertSpeed(model, [(2, 3, 2), (3, 4, 4), (8, 9, 0.5)])
+
+        // Against the ends of the recording.
+        model.moveSpeed(at: 0, to: -5)
+        model.moveSpeed(at: 2, to: 20)
+        assertSpeed(model, [(0, 1, 2), (3, 4, 4), (9, 10, 0.5)])
+
+        XCTAssertEqual(model.moveSpeed(at: 1, to: 3), StudioSpeedEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.moveSpeed(at: 1, to: .nan), StudioSpeedEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.moveSpeed(at: 3, to: 1), StudioSpeedEditResult(changed: false, index: nil))
+    }
+
+    func testDeletingASpeedChangePutsItsStretchBackAtTheRecordingsOwnSpeed() {
+        var model = StudioEditorModel(project: threeSpeedChanges())
+        XCTAssertEqual(model.outputDuration, 9.75, accuracy: 1e-9)
+
+        XCTAssertEqual(model.removeSpeed(at: 1), StudioSpeedEditResult(changed: true, index: nil))
+        assertSpeed(model, [(2, 3, 2), (8, 9, 0.5)])
+        XCTAssertEqual(model.outputDuration, 10.5, accuracy: 1e-9)
+
+        model.undo()
+        assertSpeed(model, [(2, 3, 2), (5, 6, 4), (8, 9, 0.5)])
+        model.redo()
+        assertSpeed(model, [(2, 3, 2), (8, 9, 0.5)])
+
+        XCTAssertEqual(model.removeSpeed(at: 2), StudioSpeedEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.removeSpeed(at: -1), StudioSpeedEditResult(changed: false, index: nil))
+    }
+
+    func testOpeningPutsSpeedChangesInOrderAndClearOfEachOtherAndPlaysAsBefore() {
+        var labelled = speed(1, 2, 16)
+        labelled.extra = ["label": .string("intro")]
+        let edits = StudioEdits(speed: [
+            speed(8, 12, 2), speed(4, 9, 4), speed(5, 7, 8), labelled, speed(2.5, 3, 1), speed(3, 3.5, 0),
+            speed(.nan, 3, 2), speed(7, 6.5, 2), speed(-2, 0.5, 0.5), speed(0.25, 0.75, 3), speed(11, 12, 2),
+            speed(13, 14, 2),
+        ])
+        var project = makeProject()
+        project.edits = edits
+        let model = StudioEditorModel(project: project)
+
+        // Where two overlap, the one that starts first in the recording stays as it is and the
+        // other starts where it ends, or is dropped when nothing of it is left. A rate past a
+        // limit is the limit, and an entry with a rate of 1 or of 0, with a time that is not a
+        // number, or that ends before it starts is none. What reaches past the recording stops at
+        // its ends, and what lies outside it is dropped.
+        assertSpeed(model, [(0, 0.5, 0.5), (0.5, 0.75, 3), (1, 2, 8), (4, 9, 4), (9, 10, 2)])
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(model.project.edits.speed[2].extra["label"], .string("intro"))
+
+        // The video plays as the file said, with any trim and any cut.
+        XCTAssertEqual(model.timeMap.pieces, StudioTimeMap(sourceDuration: 10, edits: edits).pieces)
+        var trimmed = edits
+        trimmed.trimStart = 0.3
+        trimmed.trimEnd = 9.5
+        trimmed.cuts = [cut(1.5, 4.5)]
+        project.edits = trimmed
+        XCTAssertEqual(
+            StudioEditorModel(project: project).timeMap.pieces,
+            StudioTimeMap(sourceDuration: 10, edits: trimmed).pieces
+        )
+        XCTAssertEqual(model.outputDuration, 125.0 / 24, accuracy: 1e-9)
+    }
+
+    func testSteppingThroughSpeedChangesAndFollowingOneThroughAnEditThatDidNotSay() {
+        let model = StudioEditorModel(project: threeSpeedChanges())
+        XCTAssertEqual(model.speedIndex(at: 5), 1)
+        XCTAssertEqual(model.speedIndex(at: 5.99), 1)
+        XCTAssertNil(model.speedIndex(at: 6))
+        XCTAssertNil(model.speedIndex(at: 4.99))
+
+        // With nothing selected: the one at the playhead, or the nearest one on that side.
+        XCTAssertEqual(model.speedIndex(after: nil, playhead: 0), 0)
+        XCTAssertEqual(model.speedIndex(after: nil, playhead: 2.5), 0)
+        XCTAssertEqual(model.speedIndex(after: nil, playhead: 3), 1)
+        XCTAssertNil(model.speedIndex(after: nil, playhead: 9))
+        XCTAssertEqual(model.speedIndex(before: nil, playhead: 10), 2)
+        XCTAssertEqual(model.speedIndex(before: nil, playhead: 5.5), 1)
+        XCTAssertNil(model.speedIndex(before: nil, playhead: 1))
+
+        // With one selected: its neighbors.
+        XCTAssertEqual(model.speedIndex(after: 0, playhead: 9), 1)
+        XCTAssertNil(model.speedIndex(after: 2, playhead: 0))
+        XCTAssertEqual(model.speedIndex(before: 1, playhead: 9), 0)
+        XCTAssertNil(model.speedIndex(before: 0, playhead: 9))
+
+        let before = [speed(2, 3, 2), speed(5, 6, 2)]
+
+        // Only that one differs, in its times or in its rate: it is the same one, changed.
+        XCTAssertEqual(StudioEditorModel.speedIndex(following: 1, from: before, to: [speed(2, 3, 2), speed(5.5, 7, 2)]), 1)
+        XCTAssertEqual(StudioEditorModel.speedIndex(following: 1, from: before, to: [speed(2, 3, 2), speed(5, 6, 4)]), 1)
+        XCTAssertEqual(StudioEditorModel.speedIndex(following: 0, from: before, to: [speed(7, 8, 2), speed(5, 6, 2)]), 0)
+
+        // Otherwise the one that shares the most time with it, or none. Another one whose rate
+        // changed is another change.
+        XCTAssertNil(StudioEditorModel.speedIndex(following: 0, from: before, to: [speed(7, 8, 2), speed(5, 6, 4)]))
+        XCTAssertEqual(StudioEditorModel.speedIndex(following: 1, from: before, to: [speed(5, 6, 2)]), 0)
+        XCTAssertEqual(
+            StudioEditorModel.speedIndex(
+                following: 1,
+                from: before,
+                to: [speed(1, 2, 2), speed(4.5, 5.2, 2), speed(5.2, 6.5, 2)]
+            ),
+            2
+        )
+        XCTAssertEqual(StudioEditorModel.speedIndex(following: 1, from: before, to: [speed(5.2, 6.5, 2), speed(8, 9, 2)]), 0)
+        XCTAssertNil(StudioEditorModel.speedIndex(following: 0, from: before, to: [speed(5, 6, 2)]))
+        XCTAssertNil(StudioEditorModel.speedIndex(following: 2, from: before, to: before))
+        XCTAssertNil(StudioEditorModel.speedIndex(following: -1, from: before, to: before))
+    }
+
+    func testSpeedTextNamesTheRateAndTheTimes() {
+        XCTAssertEqual(StudioEditorModel.speedAccessibilityText(speed(12, 16.5, 2)), "Speed 2×, 12.0 to 16.5 seconds")
+        XCTAssertEqual(StudioEditorModel.speedAccessibilityText(speed(0, 3, 0.25)), "Speed 0.25×, 0.0 to 3.0 seconds")
+        XCTAssertEqual(StudioEditorModel.speedRangeText(speed(12, 16.5, 2)), "12.0 to 16.5 seconds")
+        XCTAssertEqual(StudioEditorModel.speedPositionText(index: 1, count: 3), "Speed change 2 of 3")
+        XCTAssertEqual(
+            StudioEditorModel.speedStepText(index: 1, count: 3, speed: speed(12, 16.5, 2)),
+            "Speed change 2 of 3, 2×, 12.0 to 16.5 seconds"
+        )
+
+        // The rate is the one that plays: inside the limits, with two decimals at most.
+        XCTAssertEqual(StudioEditorModel.speedRateText(2), "2×")
+        XCTAssertEqual(StudioEditorModel.speedRateText(0.5), "0.5×")
+        XCTAssertEqual(StudioEditorModel.speedRateText(1.5), "1.5×")
+        XCTAssertEqual(StudioEditorModel.speedRateText(4.0 / 3), "1.33×")
+        XCTAssertEqual(StudioEditorModel.speedRateText(16), "8×")
+        XCTAssertEqual(StudioEditorModel.speedRateText(0.01), "0.25×")
+        XCTAssertEqual(StudioEditorModel.speedRateText(.nan), "1×")
+        XCTAssertEqual(StudioEditorModel.speedRateText(0), "1×")
+
+        // How much of the recording, and how long that takes in the video.
+        XCTAssertEqual(StudioEditorModel.speedLengthText(speed(12, 16.5, 0.5)), "4.5 seconds, plays in 9.0 seconds")
+        XCTAssertEqual(StudioEditorModel.speedLengthText(speed(12, 16.5, 4)), "4.5 seconds, plays in 1.1 seconds")
+        XCTAssertEqual(StudioEditorModel.speedLengthText(speed(2, 6, 100)), "4.0 seconds, plays in 0.5 seconds")
+        XCTAssertEqual(StudioEditorModel.speedLengthText(speed(3, .nan, 2)), "0.0 seconds, plays in 0.0 seconds")
+        XCTAssertEqual(StudioEditorModel.speedLengthText(speed(3, 4, .nan)), "1.0 seconds, plays in 1.0 seconds")
+
+        // The names of the controls that choose a rate.
+        XCTAssertEqual(
+            StudioEditorModel.speedRates.map(StudioEditorModel.speedRateName),
+            ["Quarter speed", "Half speed", "One and a half times the speed", "Twice the speed", "4 times the speed", "8 times the speed"]
+        )
+        XCTAssertEqual(StudioEditorModel.speedRateName(0.75), "0.75 times the speed")
+        XCTAssertEqual(StudioEditorModel.speedRateName(20), "8 times the speed")
+        XCTAssertEqual(StudioEditorModel.speedRateName(1), "The recording's own speed")
+        XCTAssertEqual(StudioEditorModel.speedRateName(.nan), "The recording's own speed")
+    }
+
+    private func assertSpeed(_ model: StudioEditorModel, _ expected: [(Double, Double, Double)], line: UInt = #line) {
+        let speed = model.project.edits.speed
+        XCTAssertEqual(speed.count, expected.count, "count", line: line)
+        for (index, entry) in expected.enumerated() where index < speed.count {
+            XCTAssertEqual(speed[index].start, entry.0, accuracy: 1e-9, "start of speed change \(index)", line: line)
+            XCTAssertEqual(speed[index].end, entry.1, accuracy: 1e-9, "end of speed change \(index)", line: line)
+            XCTAssertEqual(speed[index].rate, entry.2, accuracy: 1e-9, "rate of speed change \(index)", line: line)
+        }
+    }
+
+    private func speed(_ start: Double, _ end: Double, _ rate: Double) -> StudioSpeedRange {
+        StudioSpeedRange(start: start, end: end, rate: rate)
+    }
+
+    /// Twice as fast from 2 to 3, four times as fast from 5 to 6, and half as fast from 8 to 9
+    /// seconds, in a recording 10 s long.
+    private func threeSpeedChanges() -> StudioProject {
+        withSpeed([(2, 3, 2), (5, 6, 4), (8, 9, 0.5)])
+    }
+
+    private func withSpeed(_ speed: [(Double, Double, Double)], duration: Double = 10) -> StudioProject {
+        var project = makeProject(duration: duration)
+        project.edits = StudioEdits(speed: speed.map { self.speed($0.0, $0.1, $0.2) })
+        return project
+    }
+
     private func assertCuts(_ model: StudioEditorModel, _ expected: [(Double, Double)], line: UInt = #line) {
         let cuts = model.project.edits.cuts
         XCTAssertEqual(cuts.count, expected.count, "count", line: line)

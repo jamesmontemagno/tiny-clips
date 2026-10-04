@@ -36,9 +36,12 @@ final class StudioViewModel: ObservableObject {
     /// zoom while edits, undo, and redo change the list around it.
     @Published private(set) var selectedZoomIndex: Int?
 
-    /// The cut the inspector shows, as its place in the project's cuts, or nil. A zoom or a cut is
-    /// selected, never both: selecting one lets go of the other.
+    /// The cut the inspector shows, as its place in the project's cuts, or nil. A zoom, a cut, or
+    /// a speed change is selected, never two of them: selecting one lets go of the others.
     @Published private(set) var selectedCutIndex: Int?
+
+    /// The speed change the inspector shows, as its place in the project's speed changes, or nil.
+    @Published private(set) var selectedSpeedIndex: Int?
 
     /// The size the preview is drawn at. It follows the project, except during a drag, when a new
     /// size waits for the drag to end so the player is not rebuilt for every step of it.
@@ -324,19 +327,22 @@ final class StudioViewModel: ObservableObject {
     // `StudioEditorModel.zoomIndex(following:from:to:)` finds it, or lets go when the zoom is gone.
 
     /// Selects a zoom, or none with nil or a place that has no zoom. The playhead stays. A
-    /// selected cut is let go when a zoom is selected.
+    /// selected cut or speed change is let go when a zoom is selected.
     func selectZoom(_ index: Int?) {
         setSelectedZoomIndex(index)
         if selectedZoomIndex != nil {
             setSelectedCutIndex(nil)
+            setSelectedSpeedIndex(nil)
         }
     }
 
-    /// Lets go of whatever is selected, a zoom or a cut. The playhead stays. A press on an empty
-    /// part of a lane does this: selecting no zoom alone would leave a selected cut as it is.
+    /// Lets go of whatever is selected: a zoom, a cut, or a speed change. The playhead stays. A
+    /// press on an empty part of a lane does this: selecting no zoom alone would leave a selected
+    /// cut as it is.
     func selectNothing() {
         setSelectedZoomIndex(nil)
         setSelectedCutIndex(nil)
+        setSelectedSpeedIndex(nil)
     }
 
     /// Selects a zoom and moves the playhead to where it has moved in.
@@ -533,11 +539,12 @@ final class StudioViewModel: ObservableObject {
     var canAddCutAtPlayhead: Bool { isEditable && (editor?.canAddCut(at: playhead) ?? false) }
 
     /// Selects a cut, or none with nil or a place that has no cut. The playhead stays. A selected
-    /// zoom is let go when a cut is selected.
+    /// zoom or speed change is let go when a cut is selected.
     func selectCut(_ index: Int?) {
         setSelectedCutIndex(index)
         if selectedCutIndex != nil {
             setSelectedZoomIndex(nil)
+            setSelectedSpeedIndex(nil)
         }
     }
 
@@ -670,6 +677,175 @@ final class StudioViewModel: ObservableObject {
     func nudgeSelectedCutEnd(by seconds: Double) {
         guard let index = selectedCutIndex, let cut = selectedCut else { return }
         setCutEnd(at: index, to: cut.end + seconds)
+    }
+
+    // MARK: - Speed
+    //
+    // An index is a speed change's place in `project.edits.speed`, which is kept in time order.
+    // One speed change can be selected, in place of a zoom or a cut. An edit to the selected one
+    // takes the selection with it, and so does adding one. Through every other edit, and undo and
+    // redo, the selection follows its speed change as
+    // `StudioEditorModel.speedIndex(following:from:to:)` finds it, or lets go when it is gone.
+    //
+    // The preview plays every stretch at the recording's own speed for now; the export follows
+    // the speed changes.
+
+    var speedChanges: [StudioSpeedRange] { project?.edits.speed ?? [] }
+
+    var selectedSpeed: StudioSpeedRange? {
+        guard let index = selectedSpeedIndex, speedChanges.indices.contains(index) else { return nil }
+        return speedChanges[index]
+    }
+
+    /// Whether adding a speed change at the playhead has one to answer with: one fits there, or
+    /// one is already there to select.
+    var canAddSpeedAtPlayhead: Bool { isEditable && (editor?.canAddSpeed(at: playhead) ?? false) }
+
+    /// Selects a speed change, or none with nil or a place that has none. The playhead stays. A
+    /// selected zoom or cut is let go when a speed change is selected.
+    func selectSpeed(_ index: Int?) {
+        setSelectedSpeedIndex(index)
+        if selectedSpeedIndex != nil {
+            setSelectedZoomIndex(nil)
+            setSelectedCutIndex(nil)
+        }
+    }
+
+    /// Selects a speed change and moves the playhead to where it starts, on the first picture
+    /// that plays at the other speed.
+    @discardableResult
+    func selectAndShowSpeed(_ index: Int?) -> Bool {
+        guard isEditable, let index, speedChanges.indices.contains(index) else { return false }
+        selectSpeed(index)
+        scrub(to: speedChanges[index].start)
+        return true
+    }
+
+    /// Selects the speed change after the selected one and shows it. With nothing selected, the
+    /// one at the playhead or the first one after it. False when there is none.
+    @discardableResult
+    func selectNextSpeed() -> Bool {
+        selectAndShowSpeed(editor?.speedIndex(after: selectedSpeedIndex, playhead: playhead))
+    }
+
+    /// Selects the speed change before the selected one and shows it. With nothing selected, the
+    /// one at the playhead or the last one before it. False when there is none.
+    @discardableResult
+    func selectPreviousSpeed() -> Bool {
+        selectAndShowSpeed(editor?.speedIndex(before: selectedSpeedIndex, playhead: playhead))
+    }
+
+    /// The Previous speed change button and menu item. The one it lands on is read out: neither
+    /// says anything of where it lands by itself.
+    func showPreviousSpeed() {
+        if selectPreviousSpeed() {
+            announceSelectedSpeed()
+        }
+    }
+
+    /// The Next speed change button and menu item. The one it lands on is read out.
+    func showNextSpeed() {
+        if selectNextSpeed() {
+            announceSelectedSpeed()
+        }
+    }
+
+    private func announceSelectedSpeed() {
+        guard let index = selectedSpeedIndex, let speed = selectedSpeed else { return }
+        announce(StudioEditorModel.speedStepText(index: index, count: speedChanges.count, speed: speed))
+    }
+
+    /// Adds a speed change at the playhead and selects it. Where one already is, that one is
+    /// selected instead. The playhead stays where it starts.
+    func addSpeedAtPlayhead() {
+        guard isEditable else { return }
+        let time = playhead
+        var result = StudioSpeedEditResult(changed: false, index: nil)
+        editAndSelect { model in
+            result = model.addSpeed(at: time)
+            if let index = result.index {
+                return .speed(index)
+            }
+            return .follow
+        }
+
+        if result.changed {
+            announce(StudioEditorModel.speedAddedMessage)
+        } else if result.index != nil {
+            announce(StudioEditorModel.speedAlreadyThereMessage)
+        } else {
+            announce(StudioEditorModel.noRoomForSpeedMessage)
+        }
+    }
+
+    /// Deletes the selected speed change, so its stretch plays at the recording's own speed again.
+    func removeSelectedSpeed() {
+        guard let index = selectedSpeedIndex else { return }
+        let result = editSpeed(at: index) { $0.removeSpeed(at: index) }
+        if result.changed {
+            announce(StudioEditorModel.speedDeletedMessage)
+        }
+    }
+
+    /// Moves a speed change's start, from the lane or the inspector, and shows the picture there,
+    /// which is the first one that plays at the other speed. Returns where it is afterwards.
+    @discardableResult
+    func setSpeedStart(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editSpeed(at: index) { $0.setSpeedStart(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, speedChanges.indices.contains(place) {
+            scrub(to: speedChanges[place].start)
+        }
+        return result.index
+    }
+
+    /// Moves a speed change's end and shows the picture there, which is the first one at the
+    /// recording's own speed again. Returns where it is afterwards.
+    @discardableResult
+    func setSpeedEnd(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editSpeed(at: index) { $0.setSpeedEnd(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, speedChanges.indices.contains(place) {
+            scrub(to: speedChanges[place].end)
+        }
+        return result.index
+    }
+
+    /// Moves a whole speed change so it starts at `sourceTime`, keeping its length and its rate.
+    /// The playhead stays. Returns where it is afterwards.
+    @discardableResult
+    func moveSpeed(at index: Int, to sourceTime: Double) -> Int? {
+        editSpeed(at: index) { $0.moveSpeed(at: index, to: sourceTime) }.index
+    }
+
+    /// Sets how fast the selected speed change plays. The playhead stays.
+    func setSelectedSpeedRate(_ rate: Double) {
+        guard let index = selectedSpeedIndex else { return }
+        editSpeed(at: index) { $0.setSpeedRate(at: index, to: rate) }
+    }
+
+    /// Starts the selected speed change at the playhead. The playhead stays where it is.
+    func setSelectedSpeedStartAtPlayhead() {
+        guard let index = selectedSpeedIndex else { return }
+        let time = playhead
+        editSpeed(at: index) { $0.setSpeedStart(at: index, to: time) }
+    }
+
+    /// Ends the selected speed change at the playhead. The playhead stays where it is.
+    func setSelectedSpeedEndAtPlayhead() {
+        guard let index = selectedSpeedIndex else { return }
+        let time = playhead
+        editSpeed(at: index) { $0.setSpeedEnd(at: index, to: time) }
+    }
+
+    /// Moves the selected speed change's start by `seconds`, for the inspector's step buttons.
+    func nudgeSelectedSpeedStart(by seconds: Double) {
+        guard let index = selectedSpeedIndex, let speed = selectedSpeed else { return }
+        setSpeedStart(at: index, to: speed.start + seconds)
+    }
+
+    /// Moves the selected speed change's end by `seconds`, for the inspector's step buttons.
+    func nudgeSelectedSpeedEnd(by seconds: Double) {
+        guard let index = selectedSpeedIndex, let speed = selectedSpeed else { return }
+        setSpeedEnd(at: index, to: speed.end + seconds)
     }
 
     // MARK: - Scenes
@@ -1065,7 +1241,8 @@ final class StudioViewModel: ObservableObject {
 
     /// Where the selection goes after an edit.
     private enum SelectionAfterEdit {
-        /// The edit did not say. The selection follows the zoom or the cut it was on.
+        /// The edit did not say. The selection follows the zoom, the cut, or the speed change it
+        /// was on.
         case follow
 
         /// The edit knows where its zoom went, or that it is gone.
@@ -1073,6 +1250,9 @@ final class StudioViewModel: ObservableObject {
 
         /// The edit knows where its cut went, or that it is gone.
         case cut(Int?)
+
+        /// The edit knows where its speed change went, or that it is gone.
+        case speed(Int?)
     }
 
     private func edit(_ change: (inout StudioEditorModel) -> Void) {
@@ -1114,6 +1294,22 @@ final class StudioViewModel: ObservableObject {
         return result
     }
 
+    /// An edit to one speed change. The selection goes with it when it is the selected one. An
+    /// edit that is refused, because the project cannot be edited just now, leaves it where it was.
+    @discardableResult
+    private func editSpeed(
+        at index: Int,
+        _ change: (inout StudioEditorModel) -> StudioSpeedEditResult
+    ) -> StudioSpeedEditResult {
+        var result = StudioSpeedEditResult(changed: false, index: index)
+        let isSelected = selectedSpeedIndex == index
+        editAndSelect { model in
+            result = change(&model)
+            return isSelected ? .speed(result.index) : .follow
+        }
+        return result
+    }
+
     private func editAndSelect(_ change: (inout StudioEditorModel) -> SelectionAfterEdit) {
         guard isEditable, var model = editor else { return }
         // An edit to the layout changes the scene the playhead is in.
@@ -1121,34 +1317,48 @@ final class StudioViewModel: ObservableObject {
         let before = model.editableState
         let zoomsBefore = model.project.zooms
         let cutsBefore = model.project.edits.cuts
+        let speedBefore = model.project.edits.speed
         let selection = change(&model)
         editor = model
         let isChanged = model.editableState != before
 
-        // Through an edit that did not say, the selection follows the zoom or the cut it was on.
+        // Through an edit that did not say, the selection follows the zoom, the cut, or the speed
+        // change it was on.
         var zoomIndex = selectedZoomIndex
         var cutIndex = selectedCutIndex
+        var speedIndex = selectedSpeedIndex
         if isChanged, let selected = zoomIndex {
             zoomIndex = StudioEditorModel.zoomIndex(following: selected, from: zoomsBefore, to: model.project.zooms)
         }
         if isChanged, let selected = cutIndex {
             cutIndex = StudioEditorModel.cutIndex(following: selected, from: cutsBefore, to: model.project.edits.cuts)
         }
+        if isChanged, let selected = speedIndex {
+            speedIndex = StudioEditorModel.speedIndex(following: selected, from: speedBefore, to: model.project.edits.speed)
+        }
 
-        // One selection: an edit that says where a zoom is lets go of the cut, and the other way
-        // round. An edit to the selected zoom finds no cut selected, so only adding one does.
+        // One selection: an edit that says where a zoom is lets go of a cut and a speed change,
+        // and so on. An edit to the selected zoom finds nothing else selected, so only adding one
+        // does.
         switch selection {
         case .follow:
             break
         case .zoom(let index):
             zoomIndex = index
             cutIndex = nil
+            speedIndex = nil
         case .cut(let index):
             cutIndex = index
             zoomIndex = nil
+            speedIndex = nil
+        case .speed(let index):
+            speedIndex = index
+            zoomIndex = nil
+            cutIndex = nil
         }
         setSelectedZoomIndex(zoomIndex)
         setSelectedCutIndex(cutIndex)
+        setSelectedSpeedIndex(speedIndex)
 
         guard isChanged else { return }
         hasUnsavedEdits = true
@@ -1179,6 +1389,18 @@ final class StudioViewModel: ObservableObject {
         }
         if selectedCutIndex != valid {
             selectedCutIndex = valid
+        }
+    }
+
+    /// Sets the selection to a speed change that exists, or to none. It is published only when it
+    /// changes.
+    private func setSelectedSpeedIndex(_ index: Int?) {
+        var valid: Int?
+        if let index, speedChanges.indices.contains(index) {
+            valid = index
+        }
+        if selectedSpeedIndex != valid {
+            selectedSpeedIndex = valid
         }
     }
 

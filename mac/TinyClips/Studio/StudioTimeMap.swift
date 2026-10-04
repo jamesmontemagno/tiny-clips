@@ -134,40 +134,44 @@ struct StudioTimeMap: Equatable, Sendable {
         return kept
     }
 
-    /// The speed entries that count, in time order and clear of each other. The trim and the cuts
-    /// play no part here, so the rate at a source time is the same wherever they are.
-    private static func normalizedSpeed(_ speed: [StudioSpeedRange]) -> [StudioTimePiece] {
-        var entries: [(piece: StudioTimePiece, index: Int)] = []
-        for (index, entry) in speed.enumerated() {
-            guard entry.rate.isFinite, entry.rate > 0 else { continue }
-            let rate = StudioCanvasMath.clamped(entry.rate, slowestRate, fastestRate)
-            if entry.end > entry.start, rate != 1 {
-                entries.append((StudioTimePiece(start: entry.start, end: entry.end, rate: rate), index))
+    /// The speed entries that count, in time order and clear of each other, as section 7 of the
+    /// project format reads them: each with its rate inside the limits, and with its start moved
+    /// to the end of the entry before it where the two overlapped. The trim and the cuts play no
+    /// part here, so the rate at a source time is the same wherever they are. Every entry keeps
+    /// what else its file said of it.
+    static func normalizedSpeed(_ speed: [StudioSpeedRange]) -> [StudioSpeedRange] {
+        var entries: [(entry: StudioSpeedRange, index: Int)] = []
+        for (index, stored) in speed.enumerated() {
+            guard stored.rate.isFinite, stored.rate > 0 else { continue }
+            var entry = stored
+            entry.rate = StudioCanvasMath.clamped(stored.rate, slowestRate, fastestRate)
+            if entry.end > entry.start, entry.rate != 1 {
+                entries.append((entry, index))
             }
         }
 
         // The place in the file decides between entries with the same start and end.
         entries.sort { first, second in
-            if first.piece.start != second.piece.start { return first.piece.start < second.piece.start }
-            if first.piece.end != second.piece.end { return first.piece.end < second.piece.end }
+            if first.entry.start != second.entry.start { return first.entry.start < second.entry.start }
+            if first.entry.end != second.entry.end { return first.entry.end < second.entry.end }
             return first.index < second.index
         }
 
-        var result: [StudioTimePiece] = []
-        for entry in entries {
-            var piece = entry.piece
-            if let last = result.last, piece.start < last.end {
-                piece.start = last.end
+        var result: [StudioSpeedRange] = []
+        for item in entries {
+            var entry = item.entry
+            if let last = result.last, entry.start < last.end {
+                entry.start = last.end
             }
-            if piece.end > piece.start {
-                result.append(piece)
+            if entry.end > entry.start {
+                result.append(entry)
             }
         }
         return result
     }
 
     /// The kept segments divided where the rate changes inside them.
-    private static func pieces(of segments: [StudioTimeSegment], speed: [StudioTimePiece]) -> [StudioTimePiece] {
+    private static func pieces(of segments: [StudioTimeSegment], speed: [StudioSpeedRange]) -> [StudioTimePiece] {
         var pieces: [StudioTimePiece] = []
         for segment in segments {
             var points = [segment.start, segment.end]
