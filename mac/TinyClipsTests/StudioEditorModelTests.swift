@@ -1576,6 +1576,343 @@ final class StudioEditorModelTests: XCTestCase {
 
     // MARK: - Helpers
 
+    // MARK: - Scenes
+
+    func testTheCurrentSceneIsTheOneThePlayheadIsIn() {
+        var model = StudioEditorModel(project: threeScenes())
+        for (time, index) in [(-5.0, 0), (0.0, 0), (3.999, 0), (4.0, 1), (6.9, 1), (7.0, 2), (100.0, 2)] {
+            model.sceneTime = time
+            XCTAssertEqual(model.currentSceneIndex, index, "at \(time)")
+            XCTAssertEqual(model.sceneIndex(at: time), index, "at \(time)")
+        }
+        model.sceneTime = 5
+        XCTAssertEqual(model.currentScene.layout, .sideBySide)
+        XCTAssertEqual(model.effectiveLayout, .sideBySide)
+
+        // Moving the playhead is not an edit.
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(model.project, StudioEditorModel(project: threeScenes()).project)
+    }
+
+    func testTheLayoutControlsChangeTheCurrentSceneOnly() {
+        var model = StudioEditorModel(project: threeScenes())
+        let before = model.project.scenes
+
+        model.sceneTime = 5
+        model.setLayout(.screen)
+        model.setSideBySide(cameraSide: .leading, fraction: 0.5)
+        XCTAssertEqual(model.project.scenes[1].layout, .screen)
+        XCTAssertEqual(model.project.scenes[1].split.cameraSide, .leading)
+        XCTAssertEqual(model.project.scenes[1].split.cameraFraction, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(model.project.scenes[0], before[0])
+        XCTAssertEqual(model.project.scenes[2], before[2])
+
+        model.sceneTime = 8
+        model.setCameraBubbleSize(0.4)
+        model.setCameraAnchor(.topLeft)
+        model.setCameraBubbleOffsets(x: 0.1, y: 0.2)
+        XCTAssertEqual(model.project.scenes[2].bubble.size, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(model.project.scenes[2].bubble.anchor, .topLeft)
+        XCTAssertEqual(model.project.scenes[2].bubble.offsetX, 0.1, accuracy: 1e-9)
+        XCTAssertEqual(model.project.scenes[2].bubble.offsetY, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(model.project.scenes[0], before[0])
+
+        // Undo puts the scene back, and the current scene is still the one the playhead is in.
+        model.sceneTime = 5
+        model.undo()
+        model.undo()
+        model.undo()
+        model.undo()
+        model.undo()
+        XCTAssertEqual(model.project.scenes, before)
+        XCTAssertEqual(model.currentSceneIndex, 1)
+    }
+
+    func testOpeningPutsScenesInOrderAndDropsThoseThatNeverShow() {
+        // As section 6.1 reads them: a negative start is 0, the last scene stored for a start wins,
+        // and the first scene starts at 0. Scenes that start at or after the end of the recording
+        // are never shown and are dropped.
+        var project = makeProject()
+        project.scenes = [
+            StudioScene(start: 6, layout: .camera),
+            StudioScene(start: -2, layout: .screen),
+            StudioScene(start: 3, layout: .sideBySide),
+            StudioScene(start: 3, layout: .bubble),
+            StudioScene(start: 10, layout: .camera),
+            StudioScene(start: 12, layout: .screen),
+        ]
+        let model = StudioEditorModel(project: project)
+        XCTAssertEqual(model.project.scenes.map(\.start), [0, 3, 6])
+        XCTAssertEqual(model.project.scenes.map(\.layout), [.screen, .bubble, .camera])
+        XCTAssertFalse(model.canUndo)
+
+        // A first scene that starts late starts at 0, and stays even when it is the only one.
+        var late = makeProject()
+        late.scenes = [StudioScene(start: 25, layout: .camera)]
+        let lateModel = StudioEditorModel(project: late)
+        XCTAssertEqual(lateModel.project.scenes.map(\.start), [0])
+        XCTAssertEqual(lateModel.project.scenes[0].layout, .camera)
+
+        // A recording of no length still has its first scene.
+        let empty = StudioEditorModel(project: makeProject(duration: 0))
+        XCTAssertEqual(empty.project.scenes.count, 1)
+        XCTAssertEqual(empty.currentSceneIndex, 0)
+        XCTAssertEqual(empty.currentScene.layout, .bubble)
+    }
+
+    func testSplittingStartsACopyOfTheSceneEnteredByMoving() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setCameraBubbleSize(0.4)
+        model.setSideBySide(cameraSide: .leading, fraction: 0.45)
+
+        let result = model.splitScene(at: 4)
+        XCTAssertEqual(result, StudioSceneEditResult(changed: true, index: 1))
+        XCTAssertEqual(model.project.scenes.count, 2)
+        XCTAssertEqual(model.project.scenes[0].start, 0)
+        XCTAssertEqual(model.project.scenes[1].start, 4)
+        XCTAssertEqual(model.project.scenes[1].layout, model.project.scenes[0].layout)
+        XCTAssertEqual(model.project.scenes[1].bubble, model.project.scenes[0].bubble)
+        XCTAssertEqual(model.project.scenes[1].split, model.project.scenes[0].split)
+        XCTAssertEqual(model.project.scenes[1].transition, StudioTransition(kind: .morph, duration: 0.35))
+
+        // The scene before keeps how it was entered.
+        XCTAssertEqual(model.project.scenes[0].transition, StudioTransition())
+
+        // One undo step, and the playhead's scene follows.
+        model.sceneTime = 4
+        XCTAssertEqual(model.currentSceneIndex, 1)
+        model.undo()
+        XCTAssertEqual(model.project.scenes.count, 1)
+        XCTAssertEqual(model.currentSceneIndex, 0)
+        model.redo()
+        XCTAssertEqual(model.project.scenes.count, 2)
+    }
+
+    func testASceneIsNotSplitWhereAHalfWouldBeTooShortOrItIsStillMoving() {
+        var model = StudioEditorModel(project: makeProject())
+
+        // Less than 0.3 s from the start of the scene, or from the end of the recording.
+        for time in [0.0, 0.25, 9.75, 10.0, 50.0, -3.0] {
+            XCTAssertFalse(model.canSplitScene(at: time), "at \(time)")
+            XCTAssertEqual(model.splitSceneExplanation(at: time), StudioEditorModel.sceneTooShortToSplitExplanation, "at \(time)")
+            XCTAssertEqual(model.splitScene(at: time), StudioSceneEditResult(changed: false, index: 0), "at \(time)")
+        }
+        XCTAssertFalse(model.canSplitScene(at: .nan))
+        XCTAssertFalse(model.canUndo)
+
+        // Half a second from either is enough.
+        XCTAssertTrue(model.canSplitScene(at: 0.5))
+        XCTAssertTrue(model.canSplitScene(at: 9.5))
+        XCTAssertNil(model.splitSceneExplanation(at: 4))
+        XCTAssertTrue(model.splitScene(at: 4).changed)
+
+        // The new scene is entered over 0.35 s. At 4.32 s both halves would be long enough, and
+        // its layers are still moving.
+        XCTAssertEqual(model.splitSceneExplanation(at: 4.32), StudioEditorModel.sceneStillMovingExplanation)
+        XCTAssertEqual(model.splitScene(at: 4.32), StudioSceneEditResult(changed: false, index: 1))
+        XCTAssertTrue(model.canSplitScene(at: 4.5))
+
+        // Too close to the scene after it, and too close to its own start.
+        XCTAssertEqual(model.splitSceneExplanation(at: 3.75), StudioEditorModel.sceneTooShortToSplitExplanation)
+        XCTAssertEqual(model.splitSceneExplanation(at: 4.25), StudioEditorModel.sceneTooShortToSplitExplanation)
+
+        // A scene that is cut to is at rest from its first instant.
+        model.setSceneTransitionKind(at: 1, to: .cut)
+        XCTAssertTrue(model.canSplitScene(at: 4.32))
+
+        // Without a camera there is nothing to arrange differently.
+        var screenOnly = StudioEditorModel(project: makeProject(camera: false))
+        XCTAssertFalse(screenOnly.canSplitScene(at: 4))
+        XCTAssertEqual(screenOnly.splitSceneExplanation(at: 4), StudioEditorModel.noCameraForScenesExplanation)
+        XCTAssertFalse(screenOnly.splitScene(at: 4).changed)
+        XCTAssertEqual(screenOnly.project.scenes.count, 1)
+    }
+
+    func testDeletingASceneHandsItsTimeToTheSceneBefore() {
+        var model = StudioEditorModel(project: threeScenes())
+        XCTAssertEqual(model.removeScene(at: 1), StudioSceneEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.project.scenes.map(\.start), [0, 7])
+        XCTAssertEqual(model.project.scenes.map(\.layout), [.bubble, .camera])
+        model.undo()
+        XCTAssertEqual(model.project.scenes.count, 3)
+
+        // The first scene's time goes to the second, which then starts at 0.
+        XCTAssertEqual(model.removeScene(at: 0), StudioSceneEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.project.scenes.map(\.start), [0, 7])
+        XCTAssertEqual(model.project.scenes.map(\.layout), [.sideBySide, .camera])
+
+        XCTAssertEqual(model.removeScene(at: 1), StudioSceneEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.project.scenes.map(\.layout), [.sideBySide])
+
+        // The only scene stays, and so does everything when there is no such scene.
+        XCTAssertFalse(model.canRemoveScene(at: 0))
+        XCTAssertEqual(model.removeScene(at: 0), StudioSceneEditResult(changed: false, index: 0))
+        var three = StudioEditorModel(project: threeScenes())
+        XCTAssertFalse(three.canRemoveScene(at: 3))
+        XCTAssertFalse(three.canRemoveScene(at: -1))
+        XCTAssertEqual(three.removeScene(at: 3), StudioSceneEditResult(changed: false, index: 2))
+        XCTAssertEqual(three.removeScene(at: -1), StudioSceneEditResult(changed: false, index: 0))
+        XCTAssertFalse(three.canUndo)
+    }
+
+    func testASceneStartStaysClearOfItsNeighbors() {
+        var model = StudioEditorModel(project: threeScenes())
+        XCTAssertEqual(model.setSceneStart(at: 1, to: 5), StudioSceneEditResult(changed: true, index: 1))
+        XCTAssertEqual(model.project.scenes.map(\.start), [0, 5, 7])
+
+        // No closer than 0.3 s to the start of the scene before, or to its own end.
+        model.setSceneStart(at: 1, to: 0.1)
+        XCTAssertEqual(model.project.scenes[1].start, 0.3, accuracy: 1e-12)
+        model.setSceneStart(at: 1, to: 6.9)
+        XCTAssertEqual(model.project.scenes[1].start, 6.7, accuracy: 1e-12)
+
+        // The last scene ends with the recording, 10 s long.
+        model.setSceneStart(at: 2, to: 50)
+        XCTAssertEqual(model.project.scenes[2].start, 9.7, accuracy: 1e-12)
+        model.setSceneStart(at: 2, to: 0)
+        XCTAssertEqual(model.project.scenes[2].start, 7.0, accuracy: 1e-12)
+
+        // The first scene starts with the recording; a start that is not a number, the start a
+        // scene already has, and a scene that is not there change nothing.
+        let before = model.project.scenes
+        let steps = model.canUndo
+        XCTAssertFalse(model.setSceneStart(at: 0, to: 2).changed)
+        XCTAssertFalse(model.setSceneStart(at: 1, to: .nan).changed)
+        XCTAssertFalse(model.setSceneStart(at: 2, to: 7.0).changed)
+        XCTAssertFalse(model.setSceneStart(at: 3, to: 5).changed)
+        XCTAssertEqual(model.project.scenes, before)
+        XCTAssertEqual(model.canUndo, steps)
+
+        // A drag is one undo step.
+        var dragged = StudioEditorModel(project: threeScenes())
+        dragged.beginEditingGroup()
+        dragged.setSceneStart(at: 1, to: 4.5)
+        dragged.setSceneStart(at: 1, to: 5.5)
+        dragged.commitEditingGroup()
+        dragged.undo()
+        XCTAssertEqual(dragged.project.scenes.map(\.start), [0, 4, 7])
+        XCTAssertFalse(dragged.canUndo)
+
+        // Scenes from a file that are closer together than the editor makes them stay where they are.
+        var close = makeProject()
+        close.scenes = [StudioScene(start: 0), StudioScene(start: 0.2, layout: .camera), StudioScene(start: 0.4, layout: .screen)]
+        var closeModel = StudioEditorModel(project: close)
+        XCTAssertFalse(closeModel.setSceneStart(at: 1, to: 0.3).changed)
+        XCTAssertEqual(closeModel.project.scenes.map(\.start), [0, 0.2, 0.4])
+    }
+
+    func testHowASceneIsEntered() {
+        var model = StudioEditorModel(project: threeScenes())
+        XCTAssertEqual(model.project.scenes[1].transition.kind, .cut)
+        XCTAssertEqual(model.sceneTransitionLength(at: 1), 0)
+
+        XCTAssertEqual(model.setSceneTransitionKind(at: 1, to: .morph), StudioSceneEditResult(changed: true, index: 1))
+        XCTAssertEqual(model.sceneTransitionLength(at: 1), 0.35, accuracy: 1e-12)
+        XCTAssertFalse(model.setSceneTransitionKind(at: 1, to: .morph).changed)
+
+        // Between 0.1 and 2 seconds.
+        model.setSceneTransitionDuration(at: 1, to: 1.5)
+        XCTAssertEqual(model.project.scenes[1].transition.duration, 1.5, accuracy: 1e-12)
+        model.setSceneTransitionDuration(at: 1, to: 9)
+        XCTAssertEqual(model.project.scenes[1].transition.duration, 2, accuracy: 1e-12)
+        model.setSceneTransitionDuration(at: 1, to: 0)
+        XCTAssertEqual(model.project.scenes[1].transition.duration, 0.1, accuracy: 1e-12)
+        XCTAssertFalse(model.setSceneTransitionDuration(at: 1, to: .nan).changed)
+        XCTAssertEqual(model.project.scenes[1].transition.duration, 0.1, accuracy: 1e-12)
+
+        // The first scene has nothing to move from, and a scene that is not there cannot be changed.
+        let before = model.project.scenes
+        XCTAssertEqual(model.setSceneTransitionKind(at: 0, to: .morph), StudioSceneEditResult(changed: false, index: 0))
+        XCTAssertFalse(model.setSceneTransitionDuration(at: 0, to: 1).changed)
+        XCTAssertEqual(model.setSceneTransitionKind(at: 5, to: .morph), StudioSceneEditResult(changed: false, index: 2))
+        XCTAssertEqual(model.project.scenes, before)
+        XCTAssertEqual(model.sceneTransitionLength(at: 0), 0)
+
+        // A move is never longer than its scene. The second scene lasts from 4 s to 7 s; with the
+        // third brought to 5 s it lasts one second, and a move of 2 s takes that one second.
+        model.setSceneTransitionDuration(at: 1, to: 2)
+        XCTAssertNil(model.sceneMoveLimitedText(at: 1))
+        model.setSceneStart(at: 2, to: 5)
+        XCTAssertEqual(model.sceneTransitionLength(at: 1), 1, accuracy: 1e-12)
+        XCTAssertEqual(model.sceneMoveLimitedText(at: 1), "The scene is shorter than that, so the move takes 1.00 seconds.")
+        XCTAssertNil(model.sceneMoveLimitedText(at: 2))
+        XCTAssertNil(model.sceneMoveLimitedText(at: 0))
+    }
+
+    func testASceneIsLookedAtWhereItHasBeenEntered() {
+        var model = StudioEditorModel(project: threeScenes())
+        model.setSceneTransitionKind(at: 1, to: .morph)
+
+        // The first scene and a scene that is cut to are whole from their first instant. A scene
+        // that is moved into is whole when the move ends, 0.35 s after it starts.
+        XCTAssertEqual(model.sceneLookTime(at: 0), 0)
+        XCTAssertEqual(model.sceneLookTime(at: 1) ?? -1, 4.35, accuracy: 1e-12)
+        XCTAssertEqual(model.sceneLookTime(at: 2), 7)
+        XCTAssertNil(model.sceneLookTime(at: 3))
+
+        // A move that takes the whole scene: the last frame of the scene, at 30 frames a second.
+        model.setSceneTransitionDuration(at: 1, to: 2)
+        model.setSceneStart(at: 2, to: 4.5)
+        XCTAssertEqual(model.sceneLookTime(at: 1) ?? -1, 4.5 - 1.0 / 30, accuracy: 1e-12)
+
+        XCTAssertEqual(model.sceneRange(at: 0)?.start, 0)
+        XCTAssertEqual(model.sceneRange(at: 0)?.end, 4)
+        XCTAssertEqual(model.sceneRange(at: 2)?.end, 10)
+        XCTAssertNil(model.sceneRange(at: 3))
+    }
+
+    func testSceneTextNamesTheLayoutAndTheTimes() {
+        let model = StudioEditorModel(project: threeScenes())
+        XCTAssertEqual(model.sceneAccessibilityText(at: 0), "Scene 1 of 3, Screen with camera bubble, 0.0 to 4.0 seconds")
+        XCTAssertEqual(model.sceneAccessibilityText(at: 1), "Scene 2 of 3, Side by side, 4.0 to 7.0 seconds")
+        XCTAssertEqual(model.sceneAccessibilityText(at: 2), "Scene 3 of 3, Camera only, 7.0 to 10.0 seconds")
+        XCTAssertEqual(model.sceneAccessibilityText(at: 3), "")
+        XCTAssertEqual(StudioEditorModel.scenePositionText(index: 1, count: 3), "Scene 2 of 3")
+        XCTAssertEqual(model.sceneRangeText(at: 1), "4.0 to 7.0 seconds")
+
+        // Without a camera every scene shows the screen alone, whatever layout it stores.
+        var project = threeScenes()
+        project.sources.camera = nil
+        XCTAssertEqual(StudioEditorModel(project: project).sceneAccessibilityText(at: 1), "Scene 2 of 3, Screen only, 4.0 to 7.0 seconds")
+    }
+
+    func testTheBubbleHandleIsWhereTheCurrentSceneHasTheBubbleAtRest() {
+        // On a 1000×800 canvas the gap is 24 px. The first scene's bubble is 0.24 of 800, 192 px,
+        // in the top-left corner. The second's is 0.4 of 800, 320 px, in the bottom-right corner,
+        // and is moved into over 2 s.
+        var project = makeProject()
+        project.scenes = [
+            StudioScene(start: 0, layout: .bubble, bubble: StudioBubble(anchor: .topLeft, size: 0.24)),
+            StudioScene(start: 4, layout: .bubble, bubble: StudioBubble(anchor: .bottomRight, size: 0.4), transition: StudioTransition(kind: .morph, duration: 2)),
+        ]
+        var model = StudioEditorModel(project: project)
+        let canvas = CGSize(width: 1000, height: 800)
+
+        model.sceneTime = 1
+        assertRect(model.bubbleRect(canvasSize: canvas), x: 24, y: 24, width: 192, height: 192)
+
+        // A second into the move the picture has the bubble on its way; the handle is where the
+        // scene has it once it is there, because that is what dragging changes.
+        model.sceneTime = 5
+        assertRect(model.bubbleRect(canvasSize: canvas), x: 656, y: 456, width: 320, height: 320)
+
+        model.moveBubble(topLeft: CGPoint(x: 100, y: 456), canvasSize: canvas)
+        assertRect(model.bubbleRect(canvasSize: canvas), x: 100, y: 456, width: 320, height: 320)
+        XCTAssertEqual(model.project.scenes[1].bubble.anchor, .bottomLeft)
+        XCTAssertEqual(model.project.scenes[0], project.scenes[0])
+    }
+
+    /// The bubble until 4 s, side by side until 7 s, then the camera alone, in a recording 10 s long.
+    private func threeScenes() -> StudioProject {
+        var project = makeProject()
+        project.scenes = [
+            StudioScene(start: 0, layout: .bubble),
+            StudioScene(start: 4, layout: .sideBySide),
+            StudioScene(start: 7, layout: .camera),
+        ]
+        return project
+    }
+
     private func makeProject(duration: Double = 10, camera: Bool = true) -> StudioProject {
         StudioProject(
             id: "3f0013cf-ba10-4453-af91-792b7882dae6",

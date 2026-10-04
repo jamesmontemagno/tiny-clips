@@ -80,6 +80,16 @@ struct StudioZoomEditResult: Equatable, Sendable {
     var index: Int?
 }
 
+/// What an edit to the scenes did.
+struct StudioSceneEditResult: Equatable, Sendable {
+    /// Whether the project changed. False when there was nothing to do or the edit is not possible.
+    var changed: Bool
+
+    /// The scene the edit is about, as the scenes are now: the new scene after a split, and after
+    /// a delete the scene that has taken over the deleted scene's time.
+    var index: Int
+}
+
 /// What the focus pad shows for a zoom. The pad stands for the part of the screen that can be
 /// zoomed into, which is the screen crop, or the whole screen without one.
 struct StudioZoomPad: Equatable, Sendable {
@@ -189,7 +199,9 @@ struct StudioCropInsets: Equatable, Sendable {
 /// The Studio editor's state and every edit it can make, with undo. It is a plain value with no
 /// AppKit or AVFoundation in it so it can be tested anywhere.
 ///
-/// The first version edits one scene: `scenes[0]`. Any further scenes are left exactly as they are.
+/// The layout controls change the current scene, which is the one the playhead is in. The owner
+/// says where the playhead is with `sceneTime`. The stored scenes are kept as section 6.1 of the
+/// project format reads them: in time order, each with a start of its own, the first at 0.
 struct StudioEditorModel: Equatable, Sendable {
     static let minimumDuration = 0.1
 
@@ -223,9 +235,42 @@ struct StudioEditorModel: Equatable, Sendable {
     /// Why a zoom cannot follow the pointer in a recording without pointer positions.
     static let noPointerExplanation = "This recording has no pointer positions to follow."
 
+    /// The shortest scene the editor makes, in seconds.
+    static let minimumSceneDuration = 0.3
+
+    /// How long a move into a scene can be set to take, in seconds. Section 6.9 allows none at
+    /// all, which is what a cut is for.
+    static let sceneTransitionDurationRange = 0.1...2.0
+
+    /// Said when a scene has been split at the playhead.
+    static let sceneSplitMessage = "Scene split."
+
+    /// Said when the current scene has been deleted.
+    static let sceneDeletedMessage = "Scene deleted."
+
+    /// Why a recording without a camera has one scene.
+    static let noCameraForScenesExplanation = "This recording has no camera, so there is nothing to arrange differently."
+
+    /// Why a scene cannot be split near where it starts or ends.
+    static let sceneTooShortToSplitExplanation = "Both scenes would have to last at least 0.3 seconds."
+
+    /// Why a scene cannot be split while its layers are still moving into place.
+    static let sceneStillMovingExplanation = "This scene is still moving into place here."
+
+    /// Why the only scene cannot be deleted.
+    static let onlySceneExplanation = "The only scene cannot be deleted."
+
+    /// Why the first scene has no start to set and no way of being entered.
+    static let firstSceneExplanation = "The first scene starts with the recording and has nothing to move from."
+
     static let maximumUndoDepth = 100
 
     private(set) var project: StudioProject
+
+    /// Where the playhead is, in source time, as the owner last said. It picks the current scene.
+    /// It is not part of what undo restores.
+    var sceneTime: Double = 0
+
     private var undoStack: [StudioEditableState] = []
     private var redoStack: [StudioEditableState] = []
     private var groupedSnapshot: StudioEditableState?
@@ -234,6 +279,7 @@ struct StudioEditorModel: Equatable, Sendable {
     init(project: StudioProject) {
         self.project = project
         ensureScene()
+        normalizeStoredScenes()
         normalizeTrim()
         sortStoredZooms()
         exportedState = project.exports.isEmpty ? nil : StudioEditableState(project: self.project)
@@ -256,9 +302,16 @@ struct StudioEditorModel: Equatable, Sendable {
         return exportedState != editableState
     }
 
-    var currentScene: StudioScene { project.scenes.first ?? StudioScene() }
+    /// The scene the playhead is in.
+    var currentSceneIndex: Int { sceneIndex(at: sceneTime) }
 
-    /// The layout that is drawn: a project without a camera always shows the screen alone.
+    var currentScene: StudioScene {
+        let index = currentSceneIndex
+        return project.scenes.indices.contains(index) ? project.scenes[index] : StudioScene()
+    }
+
+    /// The layout the current scene is drawn with once it has been entered: a project without a
+    /// camera always shows the screen alone.
     var effectiveLayout: StudioLayout { hasCamera ? currentScene.layout : .screen }
 
     var currentLook: StudioLook {
@@ -355,11 +408,12 @@ struct StudioEditorModel: Equatable, Sendable {
 
     // MARK: - Layout and Canvas
 
-    /// Sets the layout of the edited scene. Layouts that need a camera are ignored without one.
+    /// Sets the layout of the current scene. Layouts that need a camera are ignored without one.
     mutating func setLayout(_ layout: StudioLayout) {
         // Without a camera the screen is always shown alone, so no choice changes what is drawn.
         guard hasCamera else { return }
-        mutate { $0.scenes[0].layout = layout }
+        let index = currentSceneIndex
+        mutate { $0.scenes[index].layout = layout }
     }
 
     mutating func setCanvasAspect(_ aspect: StudioCanvasAspect) {
@@ -427,29 +481,157 @@ struct StudioEditorModel: Equatable, Sendable {
     }
 
     mutating func setCameraBubbleSize(_ value: Double) {
-        mutate { $0.scenes[0].bubble.size = StudioCanvasMath.clamped(value, 0.08, 0.6) }
+        let index = currentSceneIndex
+        mutate { $0.scenes[index].bubble.size = StudioCanvasMath.clamped(value, 0.08, 0.6) }
     }
 
     /// Snaps the bubble to a corner, clearing any offset from dragging.
     mutating func setCameraAnchor(_ anchor: StudioAnchor) {
+        let index = currentSceneIndex
         mutate {
-            $0.scenes[0].bubble.anchor = anchor
-            $0.scenes[0].bubble.offsetX = 0
-            $0.scenes[0].bubble.offsetY = 0
+            $0.scenes[index].bubble.anchor = anchor
+            $0.scenes[index].bubble.offsetX = 0
+            $0.scenes[index].bubble.offsetY = 0
         }
     }
 
     mutating func setCameraBubbleOffsets(x: Double, y: Double) {
+        let index = currentSceneIndex
         mutate {
-            $0.scenes[0].bubble.offsetX = x.isFinite ? StudioCanvasMath.clamped(x, -1, 1) : 0
-            $0.scenes[0].bubble.offsetY = y.isFinite ? StudioCanvasMath.clamped(y, -1, 1) : 0
+            $0.scenes[index].bubble.offsetX = x.isFinite ? StudioCanvasMath.clamped(x, -1, 1) : 0
+            $0.scenes[index].bubble.offsetY = y.isFinite ? StudioCanvasMath.clamped(y, -1, 1) : 0
         }
     }
 
     mutating func setSideBySide(cameraSide: StudioCameraSide, fraction: Double) {
+        let index = currentSceneIndex
         mutate {
-            $0.scenes[0].split.cameraSide = cameraSide
-            $0.scenes[0].split.cameraFraction = StudioCanvasMath.clamped(fraction, 0.15, 0.6)
+            $0.scenes[index].split.cameraSide = cameraSide
+            $0.scenes[index].split.cameraFraction = StudioCanvasMath.clamped(fraction, 0.15, 0.6)
+        }
+    }
+
+    // MARK: - Scenes
+
+    /// The scene a time is in (section 6.1): the last one that has started.
+    func sceneIndex(at sourceTime: Double) -> Int {
+        var index = 0
+        for (position, scene) in project.scenes.enumerated() where scene.start <= sourceTime {
+            index = position
+        }
+        return index
+    }
+
+    /// When a scene starts and ends. It ends where the next one starts, or with the recording.
+    func sceneRange(at index: Int) -> (start: Double, end: Double)? {
+        let scenes = project.scenes
+        guard scenes.indices.contains(index) else { return nil }
+        let end = index + 1 < scenes.count ? scenes[index + 1].start : sourceDuration
+        return (scenes[index].start, max(scenes[index].start, end))
+    }
+
+    /// How long the layers take to move into a scene, as the layout applies it (section 6.9): 0
+    /// for a cut and for the first scene, and never longer than the scene.
+    func sceneTransitionLength(at index: Int) -> Double {
+        StudioLayoutResolver.transitionLength(project.scenes, index: index)
+    }
+
+    /// A time at which a scene has been entered, to show it at: the end of its move, kept a frame
+    /// inside the scene, which contains its start and not its end.
+    func sceneLookTime(at index: Int) -> Double? {
+        guard let range = sceneRange(at: index) else { return nil }
+        let time = max(range.start, min(range.start + sceneTransitionLength(at: index), range.end - frameDuration))
+        return clampedSourceTime(time)
+    }
+
+    /// Why a scene cannot be split at a time, or nil when it can be.
+    func splitSceneExplanation(at sourceTime: Double) -> String? {
+        guard hasCamera else { return Self.noCameraForScenesExplanation }
+        guard sourceTime.isFinite else { return Self.sceneTooShortToSplitExplanation }
+        let time = clampedSourceTime(sourceTime)
+        let index = sceneIndex(at: time)
+        guard let range = sceneRange(at: index),
+              time - range.start >= Self.minimumSceneDuration,
+              range.end - time >= Self.minimumSceneDuration else {
+            return Self.sceneTooShortToSplitExplanation
+        }
+        guard time >= range.start + sceneTransitionLength(at: index) else {
+            return Self.sceneStillMovingExplanation
+        }
+        return nil
+    }
+
+    func canSplitScene(at sourceTime: Double) -> Bool {
+        splitSceneExplanation(at: sourceTime) == nil
+    }
+
+    /// Starts a new scene at a time: a copy of the scene that time is in, entered by moving. Both
+    /// halves have to last `minimumSceneDuration`, and the scene has to be at rest there.
+    @discardableResult
+    mutating func splitScene(at sourceTime: Double) -> StudioSceneEditResult {
+        let time = clampedSourceTime(sourceTime)
+        let index = sceneIndex(at: time)
+        guard canSplitScene(at: sourceTime) else {
+            return StudioSceneEditResult(changed: false, index: index)
+        }
+        var added = project.scenes[index]
+        added.start = time
+        added.transition = StudioTransition(kind: .morph)
+        let scene = added
+        mutate { $0.scenes.insert(scene, at: index + 1) }
+        return StudioSceneEditResult(changed: true, index: index + 1)
+    }
+
+    /// Whether a scene can be deleted: any scene but the only one.
+    func canRemoveScene(at index: Int) -> Bool {
+        project.scenes.count > 1 && project.scenes.indices.contains(index)
+    }
+
+    /// Deletes a scene. The scene before it then lasts until the next one; deleting the first
+    /// hands its time to the second, which then starts at 0.
+    @discardableResult
+    mutating func removeScene(at index: Int) -> StudioSceneEditResult {
+        guard canRemoveScene(at: index) else {
+            return StudioSceneEditResult(changed: false, index: min(max(0, index), project.scenes.count - 1))
+        }
+        mutate {
+            $0.scenes.remove(at: index)
+            $0.scenes[0].start = 0
+        }
+        return StudioSceneEditResult(changed: true, index: max(0, index - 1))
+    }
+
+    /// Moves where a scene starts. It stays `minimumSceneDuration` after the start of the scene
+    /// before it and as long before its own end. The first scene always starts at 0.
+    @discardableResult
+    mutating func setSceneStart(at index: Int, to sourceTime: Double) -> StudioSceneEditResult {
+        let unchanged = StudioSceneEditResult(changed: false, index: min(max(0, index), project.scenes.count - 1))
+        guard index >= 1, sourceTime.isFinite, let range = sceneRange(at: index) else { return unchanged }
+        let earliest = project.scenes[index - 1].start + Self.minimumSceneDuration
+        let latest = range.end - Self.minimumSceneDuration
+        guard earliest <= latest else { return unchanged }
+        let start = min(max(sourceTime, earliest), latest)
+        guard start != project.scenes[index].start else { return unchanged }
+        mutate { $0.scenes[index].start = start }
+        return StudioSceneEditResult(changed: true, index: index)
+    }
+
+    /// Sets whether a scene is cut to or entered by moving. The first scene is entered at once
+    /// whatever it says, so it is left alone.
+    @discardableResult
+    mutating func setSceneTransitionKind(at index: Int, to kind: StudioTransitionKind) -> StudioSceneEditResult {
+        editSceneTransition(at: index) { $0.kind = kind }
+    }
+
+    /// Sets how long the move into a scene takes, within `sceneTransitionDurationRange`.
+    @discardableResult
+    mutating func setSceneTransitionDuration(at index: Int, to seconds: Double) -> StudioSceneEditResult {
+        guard seconds.isFinite else {
+            return StudioSceneEditResult(changed: false, index: min(max(0, index), project.scenes.count - 1))
+        }
+        let range = Self.sceneTransitionDurationRange
+        return editSceneTransition(at: index) {
+            $0.duration = StudioCanvasMath.clamped(seconds, range.lowerBound, range.upperBound)
         }
     }
 
@@ -798,17 +980,18 @@ struct StudioEditorModel: Equatable, Sendable {
         let isTop = y + size.height / 2 < height / 2
         let anchor: StudioAnchor = isTop ? (isLeft ? .topLeft : .topRight) : (isLeft ? .bottomLeft : .bottomRight)
 
+        let index = currentSceneIndex
         var anchored = project
-        anchored.scenes[0].layout = .bubble
-        anchored.scenes[0].bubble.anchor = anchor
-        anchored.scenes[0].bubble.offsetX = 0
-        anchored.scenes[0].bubble.offsetY = 0
+        anchored.scenes[index].layout = .bubble
+        anchored.scenes[index].bubble.anchor = anchor
+        anchored.scenes[index].bubble.offsetX = 0
+        anchored.scenes[index].bubble.offsetY = 0
         guard let base = bubbleRect(in: anchored, width: width, height: height) else { return }
 
         mutate {
-            $0.scenes[0].bubble.anchor = anchor
-            $0.scenes[0].bubble.offsetX = (x - base.x) / width
-            $0.scenes[0].bubble.offsetY = (y - base.y) / height
+            $0.scenes[index].bubble.anchor = anchor
+            $0.scenes[index].bubble.offsetX = (x - base.x) / width
+            $0.scenes[index].bubble.offsetY = (y - base.y) / height
         }
     }
 
@@ -822,7 +1005,8 @@ struct StudioEditorModel: Equatable, Sendable {
         )
     }
 
-    /// The bubble's rectangle on a canvas of the given size, whatever layout is current.
+    /// The rectangle the current scene's bubble has at rest on a canvas of the given size, whatever
+    /// its layout is.
     func bubbleRect(canvasSize: CGSize) -> StudioRect? {
         guard canvasSize.width > 0, canvasSize.height > 0 else { return nil }
         return bubbleRect(in: project, width: Double(canvasSize.width), height: Double(canvasSize.height))
@@ -1001,6 +1185,37 @@ struct StudioEditorModel: Equatable, Sendable {
         }
     }
 
+    /// A scene for VoiceOver, such as "Scene 2 of 3, Side by side, 12.0 to 30.5 seconds". The times
+    /// are source time, as the trim handles read. Empty when there is no such scene.
+    func sceneAccessibilityText(at index: Int) -> String {
+        guard project.scenes.indices.contains(index) else { return "" }
+        let layout = hasCamera ? project.scenes[index].layout : .screen
+        let position = Self.scenePositionText(index: index, count: project.scenes.count)
+        return "\(position), \(Self.layoutName(layout)), \(sceneRangeText(at: index))"
+    }
+
+    /// Which scene the playhead is in, counting from one: "Scene 2 of 3".
+    static func scenePositionText(index: Int, count: Int) -> String {
+        "Scene \(index + 1) of \(count)"
+    }
+
+    /// When a scene starts and ends, in source time: "12.0 to 30.5 seconds".
+    func sceneRangeText(at index: Int) -> String {
+        guard let range = sceneRange(at: index) else { return "" }
+        return "\(String(format: "%.1f", range.start)) to \(String(format: "%.1f", range.end)) seconds"
+    }
+
+    /// Says how long the move into a scene really is when the scene is shorter than the time
+    /// asked for. Nil when the move takes as long as asked, or the scene is cut to.
+    func sceneMoveLimitedText(at index: Int) -> String? {
+        guard index >= 1, project.scenes.indices.contains(index),
+              project.scenes[index].transition.kind == .morph else { return nil }
+        let asked = StudioCanvasMath.clamped(project.scenes[index].transition.duration, 0, 2)
+        let length = sceneTransitionLength(at: index)
+        guard length < asked else { return nil }
+        return "The scene is shorter than that, so the move takes \(String(format: "%.2f", length)) seconds."
+    }
+
     /// For example "0:02.5 of 0:10.0".
     func playheadText(sourceTime: Double) -> String {
         "\(Self.formattedTime(outputTime(forSourceTime: sourceTime))) of \(Self.formattedTime(outputDuration))"
@@ -1030,6 +1245,29 @@ struct StudioEditorModel: Equatable, Sendable {
         if project.scenes.isEmpty {
             project.scenes = [StudioScene(start: 0, layout: hasCamera ? .bubble : .screen)]
         }
+    }
+
+    /// Puts the stored scenes in the order section 6.1 of the format reads them in, and drops those
+    /// that start at or after the end of the recording, which are never shown.
+    private mutating func normalizeStoredScenes() {
+        let normalized = StudioLayoutResolver.normalizeScenes(project.scenes)
+        let duration = sourceDuration
+        project.scenes = normalized.enumerated().filter { $0.offset == 0 || $0.element.start < duration }.map(\.element)
+    }
+
+    /// Changes how a scene is entered. Not the first scene, which is entered at once.
+    private mutating func editSceneTransition(at index: Int, _ body: (inout StudioTransition) -> Void) -> StudioSceneEditResult {
+        guard index >= 1, project.scenes.indices.contains(index) else {
+            return StudioSceneEditResult(changed: false, index: min(max(0, index), project.scenes.count - 1))
+        }
+        var transition = project.scenes[index].transition
+        body(&transition)
+        guard transition != project.scenes[index].transition else {
+            return StudioSceneEditResult(changed: false, index: index)
+        }
+        let replacement = transition
+        mutate { $0.scenes[index].transition = replacement }
+        return StudioSceneEditResult(changed: true, index: index)
     }
 
     private mutating func normalizeTrim() {
@@ -1110,12 +1348,13 @@ struct StudioEditorModel: Equatable, Sendable {
         return copy
     }
 
-    /// The bubble rectangle the layout resolver produces for `project`, forcing the bubble layout so
-    /// the answer does not depend on the layout currently shown.
+    /// The bubble rectangle the layout resolver produces for the current scene of `project` at rest,
+    /// forcing the bubble layout so the answer does not depend on the layout currently shown.
     private func bubbleRect(in project: StudioProject, width: Double, height: Double) -> StudioRect? {
         var copy = project
-        guard !copy.scenes.isEmpty else { return nil }
-        copy.scenes = [copy.scenes[0]]
+        let index = currentSceneIndex
+        guard copy.scenes.indices.contains(index) else { return nil }
+        copy.scenes = [copy.scenes[index]]
         copy.scenes[0].start = 0
         copy.scenes[0].layout = .bubble
         return StudioLayoutResolver.resolve(project: copy, time: 0, canvasWidth: width, canvasHeight: height).camera?.rect
