@@ -79,6 +79,9 @@ internal sealed class Harness
 
     public string Root { get; }
 
+    /// <summary>Whether the run's files stay when every check passes, so a check may as well save what it looked at.</summary>
+    public bool KeepsFiles { get; init; }
+
     public TestClips Clips { get; }
 
     public List<string> Failures { get; } = [];

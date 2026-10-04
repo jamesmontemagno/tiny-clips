@@ -99,7 +99,7 @@ internal static partial class RendererChecks
         context.Expect(got.Distance(want) <= tolerance, $"{what}: pixel ({px},{py}) is {got}, want {want}");
     }
 
-    private static void ExpectSame(CheckContext context, Picture picture, Picture reference, string what, int left = 0, int top = 0, int right = int.MaxValue, int bottom = int.MaxValue, int tolerance = 0)
+    internal static void ExpectSame(CheckContext context, Picture picture, Picture reference, string what, int left = 0, int top = 0, int right = int.MaxValue, int bottom = int.MaxValue, int tolerance = 0)
     {
         var (difference, x, y) = Picture.MaxDifference(picture, reference, left, top, right, bottom);
         context.Expect(difference <= tolerance, $"{what}: pixel ({x},{y}) is {picture.Pixel(Math.Max(0, x), Math.Max(0, y))}, want {reference.Pixel(Math.Max(0, x), Math.Max(0, y))}");

@@ -113,7 +113,7 @@ internal static partial class RendererChecks
     /// Along six directions from the centre: the plain picture up to 3 px before the ring, the
     /// ring's colour laid over it at <paramref name="alpha"/> across the stroke, the plain picture again after it.
     /// </summary>
-    private static void ExpectRing(CheckContext context, Picture picture, Picture plain, double centerX, double centerY, double radius, double stroke, double alpha, string what)
+    internal static void ExpectRing(CheckContext context, Picture picture, Picture plain, double centerX, double centerY, double radius, double stroke, double alpha, string what)
     {
         var inner = radius - (stroke / 2);
         var outer = radius + (stroke / 2);

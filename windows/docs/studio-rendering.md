@@ -61,9 +61,12 @@ dotnet run --project windows\tools\StudioRenderCheck\StudioRenderCheck.csproj -c
 `StudioRenderCheck` is headless and needs no ffmpeg. It writes its own clips with Media Foundation
 (a number in every frame, colour patches, a tone burst every second), checks them, then renders and
 exports through the public API and reads the results back from pixels and decoded samples. Its
-`recorder` group feeds `StudioCameraRecorder` frames as the webcam service delivers them. 142 checks
-in about five minutes; a `FAIL` line and exit code 1 for a failure. `--only <groups>`,
-`--match <text>` and `--out <folder>` narrow a run and keep its files; `--help` lists the groups.
+`recorder` group feeds `StudioCameraRecorder` frames as the webcam service delivers them. Its `zoom`
+group draws, exports and posters zooms (section 6.8 of the format) and measures which part of the
+screen each frame shows from where four edges of the pattern are; with `--keep` or `--out` it saves
+every frame it looked at as a PNG. 163 checks in about five minutes; a `FAIL` line and exit code 1
+for a failure. `--only <groups>`, `--match <text>` and `--out <folder>` narrow a run and keep its
+files; `--help` lists the groups.
 
 ## Measured (AMD Radeon 860M on a shared PC, three runs, so ranges)
 
@@ -76,6 +79,10 @@ in about five minutes; a `FAIL` line and exit code 1 for a failure. `--only <gro
   with the picture and ends within 11 ms of it; tone bursts are within 0.02 ms, lag 0 samples.
 - Colour, export against source: 1.0–1.6 of 255 with the hardware encoder, 4.7–5.2 in software.
 - Picture edges within 0.32 px of the layout. Cancellation stops the export in 170–230 ms.
+- Zooms: the pattern's edges are within 0.08 px of where the zoom window puts them in a drawn frame
+  (0.21 px on WARP), within 0.13 px in an exported one and 0.04 px in a poster. A frame at 2× draws
+  no slower than one with no zoom: 0.18–0.20 against 0.27 ms linear, and 0.50–0.58 against
+  1.1–1.2 ms high-quality.
 
 ## Known limits
 

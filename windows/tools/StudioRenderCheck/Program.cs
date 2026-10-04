@@ -11,7 +11,7 @@ namespace TinyClips.Tools.StudioRenderCheck;
 /// </summary>
 internal static class Program
 {
-    private static readonly string[] Groups = ["sources", "recorder", "renderer", "exports", "encoders", "color", "robustness", "poster", "service", "warp", "speed"];
+    private static readonly string[] Groups = ["sources", "recorder", "renderer", "zoom", "exports", "encoders", "color", "robustness", "poster", "service", "warp", "speed"];
 
     private static async Task<int> Main(string[] args)
     {
@@ -55,7 +55,7 @@ internal static class Program
 
         root ??= Path.Combine(Path.GetTempPath(), "TinyClipsStudioRenderCheck", DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
         Directory.CreateDirectory(root);
-        var harness = new Harness(root, only, match);
+        var harness = new Harness(root, only, match) { KeepsFiles = keep };
         var watch = Stopwatch.StartNew();
 
         MediaFactory.MFStartup(true).CheckError();
@@ -75,6 +75,7 @@ internal static class Program
             await SourceChecks.Run(harness).ConfigureAwait(false);
             await RecorderChecks.Run(harness).ConfigureAwait(false);
             await RendererChecks.Run(harness).ConfigureAwait(false);
+            await ZoomChecks.Run(harness).ConfigureAwait(false);
             await ExportChecks.Run(harness).ConfigureAwait(false);
             await OtherChecks.Run(harness).ConfigureAwait(false);
             await SamplingChecks.Run(harness).ConfigureAwait(false);
