@@ -133,6 +133,32 @@ Shared golden fixtures in `shared/studio/fixtures/` (a project plus the expected
 - Keys: Space to play or pause, Left and Right to step a frame, I and O for trim in and out, S to split a scene, Z to add a zoom, 1–4 for the layout, Delete, undo and redo, and Ctrl/Cmd+E to export.
 - Undo and redo are a snapshot stack over the project value.
 
+### Zooms and crops in the editor (Milestone 2)
+
+The same design on both platforms. The rule behind every control is in the editor model (`StudioEditorModel` on each platform, and `StudioEditorSession` on Windows) and is unit tested there. The window shows state and passes input on.
+
+**Zoom lane.** A lane above the trim bar, on the same time scale, with one block for each zoom.
+
+- A block shows its scale ("2×"), a mark when it follows the pointer, and a mark when it is a suggestion that has not been changed. It is never drawn narrower than 10 px, so a short zoom in a long recording can still be pressed.
+- Pressing a block selects its zoom and moves the playhead to where it was pressed. Pressing an empty part of the lane selects nothing and moves the playhead there.
+- Dragging a block moves the zoom. Dragging the first or last 6 px of a block that is at least 24 px wide moves that end, and the playhead follows it as it does a trim handle. A drag is one undo step.
+- A lane without zooms says how to add one.
+- To a screen reader each block is an item named like "Zoom 2×, 12.0 to 16.5 seconds", says whether it is selected, and can be pressed.
+
+**Add zoom** (also Z) adds a zoom at the playhead and selects it. Where a zoom already is, that one is selected instead. A zoom starts unzoomed, so a paused playhead then moves to where the new zoom has finished moving in; otherwise adding one would look as if nothing had happened.
+
+**Zoom section in the inspector.**
+
+- Previous and Next step through the zooms and show each where it has moved in. Between them: "Zoom 2 of 5" and its times. This is how a zoom is selected without a pointer.
+- For the selected zoom: Scale (1× to 5×); Looks at (a point, or the pointer); the focus pad with Horizontal and Vertical sliders under it; Start and End, each with buttons that step 0.1 s and one that sets it to the playhead; Ease in and Ease out (0 to 3 s); and Delete (also the Delete key).
+- The focus pad stands for the screen, or for its crop. It shows the part the zoom holds as a rectangle and the point it looks at as a dot, and dragging in it moves the point. The two sliders do the same.
+- Suggest zooms replaces the suggested zooms with new ones worked out from the clicks and says how many there are. Remove suggestions takes them away. Each is one undo step.
+- A recording without clicks, such as one of a window, has Suggest zooms disabled with the reason next to it. One without pointer positions has "the pointer" disabled the same way.
+
+**Crops.** The Screen and Camera sections each have four sliders, Left, Top, Right and Bottom, for how much of the frame is cut off that edge (0 to 95%), and Reset. The preview shows the result as a slider moves.
+
+**Not in this pass:** crop handles on the canvas, and dragging the zoomed picture in the preview to move the focus. The inspector controls are their equivalents and stay when those arrive. The timeline does not magnify, so short zooms in a long recording sit close together on the lane; Start and End in the inspector are exact.
+
 ## Platform architecture
 
 ### macOS
@@ -215,6 +241,7 @@ On Windows the pieces under the window have each been run by a check tool on one
 | Zoom suggestions from clicks | Done. Passes the fixtures | Done. Passes the fixtures |
 | Zooms in the preview and the export | The compositor passes the events to the layout. Compiled only | The renderer and the exporter pass the events to the layout. No check tool draws a zoom yet |
 | Editing operations for zooms and crops, with undo | Done in the editor model. Unit tested | Done in the editor model and session. Unit tested |
+| What the lane and the inspector need: moving a whole zoom, stepping through the zooms, the focus pad, a crop as what it cuts off each edge | Done in the editor model. Unit tested | Done in the editor model. The session also keeps the selected zoom. Unit tested |
 | Zoom lane, crop handles, inspector controls | Not started | Not started |
 
 A project file with zooms in it is drawn with them on both platforms, but nothing in either app can make or change a zoom or a crop yet.
@@ -249,7 +276,8 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **What a zoom is.** A zoom changes which part of the screen its card shows. The card, the camera, and the canvas stay where they are, so a zoom never changes the size of the exported video. Zooms do not overlap; one that starts on the number another ends on is chained to it, and the picture moves from the first place to the second without opening out in between.
 - **Following the pointer** means looking at the pointer's mean position over the second around each frame. That is a pure function of the time, so the preview and the export agree, and a seek shows the same picture as playing to that time.
 - **Suggestions are a proposal.** They are worked out from clicks alone (2× on each click, held while the clicks stay in the middle of the window, moving on when one lands elsewhere) and marked as suggested. Asking again replaces the suggested zooms and leaves alone every zoom the user made or changed. A suggestion that would overlap one of the user's zooms is not made.
-- **Editing rules for zooms**, the same on both platforms and unit tested on each: a new zoom lasts 3 seconds or until the next zoom or the end of the recording, and looks at where the pointer is; a zoom is never shorter than 0.3 seconds and never overlaps a neighbour; an end dragged against a neighbour takes exactly the neighbour's number; changing a suggested zoom makes it the user's own, and an edit that changes nothing does not.
+- **Editing rules for zooms**, the same on both platforms and unit tested on each: a new zoom lasts 3 seconds or until the next zoom or the end of the recording, and looks at where the pointer is; a zoom is never shorter than 0.3 seconds and never overlaps a neighbour; an end dragged against a neighbour takes exactly the neighbour's number, and so does a whole zoom moved against one; changing a suggested zoom makes it the user's own, and an edit that changes nothing does not.
+- **The selected zoom** stays on its zoom while the list changes around it. An edit to the selected zoom says where the zoom went. Undo and redo cannot, so when the list differs in that one zoom only it is taken to be the same zoom, and otherwise the selection goes to the zoom that shares the most time with it, or to none. On Windows this is in the session and unit tested; on the Mac the same steps are in the view model, which the tests cannot reach, over a tested function.
 - **Crops.** The editor only stores valid crops. A rectangle that is not one is made valid by its size first and its position second, so a rectangle dragged past an edge stops there with its size. A saved look still never carries a crop.
 - **macOS preview.** The preview always plays the whole recording. Trim and mute are applied by the transport and by export, so changing them does not rebuild the player. Only a change of canvas shape does.
 - **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
