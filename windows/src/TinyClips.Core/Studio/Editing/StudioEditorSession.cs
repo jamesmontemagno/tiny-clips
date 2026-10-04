@@ -437,45 +437,50 @@ public sealed partial class StudioEditorSession
     // answers with the place the zoom has afterwards, or none when it is gone. An edit that is
     // refused, because the project cannot be edited just now, leaves the zoom where it was.
     //
-    // One zoom can be selected, or one cut, never both. An edit to the selected zoom takes the
-    // selection with it, and so does adding a zoom. Through every other edit, and undo and redo,
-    // the selection follows its zoom as StudioEditorModel.FindZoomFollowing finds it, or lets go
-    // when the zoom is gone.
+    // One zoom can be selected, or one cut, or one speed change, never two of them. An edit to the
+    // selected zoom takes the selection with it, and so does adding a zoom. Through every other
+    // edit, and undo and redo, the selection follows its zoom as StudioEditorModel.FindZoomFollowing
+    // finds it, or lets go when the zoom is gone.
+
+    // What is selected. At most one of the three is not null.
+    private (int? Zoom, int? Cut, int? Speed) Selection => (SelectedZoomIndex, SelectedCutIndex, SelectedSpeedIndex);
 
     /// <summary>The zoom that contains a source time, or null.</summary>
     public int? GetZoomIndexAt(double sourceTime) => Model?.GetZoomIndexAt(sourceTime);
 
     /// <summary>
     /// Selects a zoom, or none with null or a place that has no zoom. The playhead stays. A
-    /// selected cut is let go when a zoom is selected.
+    /// selected cut or speed change is let go when a zoom is selected.
     /// </summary>
     public void SelectZoom(int? index)
     {
-        var zoomBefore = SelectedZoomIndex;
-        var cutBefore = SelectedCutIndex;
+        var before = Selection;
         _selectedZoomIndex = index;
         _selectedZoomIndex = SelectedZoomIndex;
         if (_selectedZoomIndex is not null)
         {
             _selectedCutIndex = null;
+            _selectedSpeedIndex = null;
         }
 
-        if (SelectedZoomIndex != zoomBefore || SelectedCutIndex != cutBefore)
+        if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
         }
     }
 
     /// <summary>
-    /// Lets go of whatever is selected, a zoom or a cut. The playhead stays. A press on an empty
-    /// part of a lane does this: selecting no zoom alone would leave a selected cut as it is.
+    /// Lets go of whatever is selected: a zoom, a cut, or a speed change. The playhead stays. A
+    /// press on an empty part of a lane does this: selecting no zoom alone would leave a selected
+    /// cut as it is.
     /// </summary>
     public void SelectNothing()
     {
-        var hadSelection = SelectedZoomIndex is not null || SelectedCutIndex is not null;
+        var before = Selection;
         _selectedZoomIndex = null;
         _selectedCutIndex = null;
-        if (hadSelection)
+        _selectedSpeedIndex = null;
+        if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
         }
@@ -622,8 +627,8 @@ public sealed partial class StudioEditorSession
             return null;
         });
 
-    // An edit that may say where the selection goes: to a zoom or a cut, or away from the one it
-    // was on. One that does not leaves it to follow the zoom or the cut it was on.
+    // An edit that may say where the selection goes: to a zoom, a cut or a speed change, or away
+    // from the one it was on. One that does not leaves it to follow whichever it was on.
     private void EditAndSelect(Func<StudioEditorModel, EditSelection?> change)
     {
         if (!IsEditable || Model is not { } model)
@@ -634,46 +639,63 @@ public sealed partial class StudioEditorSession
         var before = model.EditableState;
         var zoomsBefore = model.Project.Zooms;
         var cutsBefore = model.Project.Edits.Cuts;
-        var selectedZoom = SelectedZoomIndex;
-        var selectedCut = SelectedCutIndex;
+        var speedBefore = model.Project.Edits.Speed;
+        var selected = Selection;
         var selection = change(model);
         var isChanged = !model.EditableState.ContentEquals(before);
 
-        if (selection is { IsCut: false } zoomChosen)
+        if (selection is { Kind: EditSelectionKind.Zoom } zoomChosen)
         {
             _selectedZoomIndex = zoomChosen.Index;
         }
-        else if (isChanged && selectedZoom is { } zoomIndex)
+        else if (isChanged && selected.Zoom is { } zoomIndex)
         {
             _selectedZoomIndex = StudioEditorModel.FindZoomFollowing(zoomsBefore, zoomIndex, model.Project.Zooms);
         }
 
-        if (selection is { IsCut: true } cutChosen)
+        if (selection is { Kind: EditSelectionKind.Cut } cutChosen)
         {
             _selectedCutIndex = cutChosen.Index;
         }
-        else if (isChanged && selectedCut is { } cutIndex)
+        else if (isChanged && selected.Cut is { } cutIndex)
         {
             _selectedCutIndex = StudioEditorModel.FindCutFollowing(cutsBefore, cutIndex, model.Project.Edits.Cuts);
         }
 
-        // One selection: an edit that says where a zoom is lets go of the cut, and the other way
-        // round. An edit to the selected zoom finds no cut selected, so only adding one does.
+        if (selection is { Kind: EditSelectionKind.Speed } speedChosen)
+        {
+            _selectedSpeedIndex = speedChosen.Index;
+        }
+        else if (isChanged && selected.Speed is { } speedIndex)
+        {
+            _selectedSpeedIndex = StudioEditorModel.FindSpeedFollowing(speedBefore, speedIndex, model.Project.Edits.Speed);
+        }
+
+        // One selection: an edit that says where a zoom is lets go of a cut and a speed change,
+        // and so on. An edit to the selected zoom finds nothing else selected, so only adding one
+        // does.
         if (selection is { } chosen)
         {
-            if (chosen.IsCut)
+            if (chosen.Kind != EditSelectionKind.Zoom)
             {
                 _selectedZoomIndex = null;
             }
-            else
+
+            if (chosen.Kind != EditSelectionKind.Cut)
             {
                 _selectedCutIndex = null;
+            }
+
+            if (chosen.Kind != EditSelectionKind.Speed)
+            {
+                _selectedSpeedIndex = null;
             }
         }
 
         _selectedZoomIndex = SelectedZoomIndex;
         _selectedCutIndex = SelectedCutIndex;
-        var selectionChange = SelectedZoomIndex != selectedZoom || SelectedCutIndex != selectedCut
+        _selectedSpeedIndex = SelectedSpeedIndex;
+        var selectionChange = Selection != selected
             ? StudioEditorChanges.Selection
             : StudioEditorChanges.None;
         if (!isChanged)
@@ -735,13 +757,22 @@ public sealed partial class StudioEditorSession
         return true;
     }
 
-    // Where the selection goes after an edit that knows: to a zoom or to a cut, or away from the
-    // one it was on when there is no index.
-    private readonly record struct EditSelection(bool IsCut, int? Index)
+    private enum EditSelectionKind
     {
-        public static EditSelection Zoom(int? index) => new(false, index);
+        Zoom,
+        Cut,
+        Speed,
+    }
 
-        public static EditSelection Cut(int? index) => new(true, index);
+    // Where the selection goes after an edit that knows: to a zoom, a cut or a speed change, or
+    // away from the one it was on when there is no index.
+    private readonly record struct EditSelection(EditSelectionKind Kind, int? Index)
+    {
+        public static EditSelection Zoom(int? index) => new(EditSelectionKind.Zoom, index);
+
+        public static EditSelection Cut(int? index) => new(EditSelectionKind.Cut, index);
+
+        public static EditSelection Speed(int? index) => new(EditSelectionKind.Speed, index);
     }
 
     // Transport

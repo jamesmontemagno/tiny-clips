@@ -77,6 +77,27 @@ public static class StudioEditorText
     /// <summary>Said when the selected cut has been deleted.</summary>
     public const string CutDeletedMessage = "Cut deleted.";
 
+    /// <summary>What the speed lane says while no stretch plays at another speed.</summary>
+    public const string NoSpeedHint = "No speed changes. Press R to speed up two seconds from the playhead.";
+
+    /// <summary>What the Speed section says while there are speed changes and none is selected.</summary>
+    public const string SelectSpeedHint = "Select a speed change on the timeline, or step to one with the arrows above.";
+
+    /// <summary>What the Speed section says of the sound, which a stretch at another speed does not have.</summary>
+    public const string SpeedSilentNote = "A stretch at another speed plays without sound.";
+
+    /// <summary>Said when a speed change has been added at the playhead.</summary>
+    public const string SpeedAddedMessage = "Speed change added.";
+
+    /// <summary>Said when a speed change was asked for where one already is. That one is selected instead.</summary>
+    public const string SpeedAlreadyThereMessage = "There is already a speed change here.";
+
+    /// <summary>Said when a speed change was asked for where the shortest one does not fit, or where it would leave too little video.</summary>
+    public const string NoRoomForSpeedMessage = "There is no room for a speed change here.";
+
+    /// <summary>Said when the selected speed change has been deleted.</summary>
+    public const string SpeedDeletedMessage = "Speed change deleted.";
+
     // How far a number that went through single precision may be from what was meant, as a part of
     // its size. One unit in the last place is 2^-23 of it at most, and the value a screen reader
     // read, the step it read and the sum it sent back each lose up to half of one.
@@ -334,6 +355,87 @@ public static class StudioEditorText
     /// </summary>
     public static string GetCutStepText(int index, int count, StudioTimeRange cut) =>
         $"{GetCutPositionText(index, count)}, {GetCutRangeText(cut)}";
+
+    /// <summary>
+    /// A speed change for screen readers, such as <c>Speed 2×, 12.0 to 16.5 seconds</c>. The times
+    /// are source time, as the trim handles read.
+    /// </summary>
+    public static string GetSpeedDescription(StudioSpeedRange speed)
+    {
+        ArgumentNullException.ThrowIfNull(speed);
+        return $"Speed {GetSpeedRateText(speed.Rate)}, {GetSpeedRangeText(speed)}";
+    }
+
+    /// <summary>
+    /// How fast a stretch plays, such as <c>2×</c> or <c>0.25×</c>: the rate the time map plays,
+    /// which is the stored one kept within its limits, with up to two decimals.
+    /// </summary>
+    public static string GetSpeedRateText(double rate)
+    {
+        var played = double.IsFinite(rate) && rate > 0
+            ? Math.Min(StudioTimeMap.FastestRate, Math.Max(StudioTimeMap.SlowestRate, rate))
+            : 1;
+        return string.Create(CultureInfo.InvariantCulture, $"{played:0.##}×");
+    }
+
+    /// <summary>
+    /// A rate in words, for the name of the button that chooses it: <c>Half speed</c>,
+    /// <c>Twice the speed</c>, <c>4 times the speed</c>.
+    /// </summary>
+    public static string GetSpeedRateName(double rate)
+    {
+        var played = double.IsFinite(rate) && rate > 0
+            ? Math.Min(StudioTimeMap.FastestRate, Math.Max(StudioTimeMap.SlowestRate, rate))
+            : 1;
+        return played switch
+        {
+            0.25 => "Quarter speed",
+            0.5 => "Half speed",
+            1 => "The recording's own speed",
+            1.5 => "One and a half times the speed",
+            2 => "Twice the speed",
+            _ => string.Create(CultureInfo.InvariantCulture, $"{played:0.##} times the speed"),
+        };
+    }
+
+    /// <summary>When a speed change starts and ends, in source time: <c>12.0 to 16.5 seconds</c>.</summary>
+    public static string GetSpeedRangeText(StudioSpeedRange speed)
+    {
+        ArgumentNullException.ThrowIfNull(speed);
+        var start = double.IsFinite(speed.Start) ? speed.Start : 0;
+        var end = double.IsFinite(speed.End) ? speed.End : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{start:0.0} to {end:0.0} seconds");
+    }
+
+    /// <summary>
+    /// How much of the recording a speed change covers and how long that takes in the video:
+    /// <c>4.5 seconds, plays in 2.3 seconds</c>. It is the whole stretch that counts, whether or
+    /// not the trim and the cuts keep all of it.
+    /// </summary>
+    public static string GetSpeedLengthText(StudioSpeedRange speed)
+    {
+        ArgumentNullException.ThrowIfNull(speed);
+        var length = double.IsFinite(speed.End - speed.Start) ? Math.Max(0, speed.End - speed.Start) : 0;
+        var rate = double.IsFinite(speed.Rate) && speed.Rate > 0
+            ? Math.Min(StudioTimeMap.FastestRate, Math.Max(StudioTimeMap.SlowestRate, speed.Rate))
+            : 1;
+        return string.Create(CultureInfo.InvariantCulture, $"{length:0.0} seconds, plays in {length / rate:0.0} seconds");
+    }
+
+    /// <summary>Which speed change is selected, counting from one: <c>Speed change 2 of 3</c>.</summary>
+    public static string GetSpeedPositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Speed change {index + 1} of {count}");
+
+    /// <summary>
+    /// What is read out when a speed change is stepped to with Previous or Next, which say nothing
+    /// of where they land by themselves: which one it is, its rate and its times, such as
+    /// <c>Speed change 2 of 3, 2×, 12.0 to 16.5 seconds</c>.
+    /// </summary>
+    public static string GetSpeedStepText(int index, int count, StudioSpeedRange speed)
+    {
+        ArgumentNullException.ThrowIfNull(speed);
+        return $"{GetSpeedPositionText(index, count)}, {GetSpeedRateText(speed.Rate)}, {GetSpeedRangeText(speed)}";
+    }
 
     /// <summary>What to say after zooms were suggested, given how many suggestions there are now.</summary>
     public static string GetZoomSuggestionsText(int count) => count switch

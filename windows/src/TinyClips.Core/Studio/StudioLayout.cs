@@ -856,7 +856,7 @@ public sealed class StudioTimeMap
         _start = Clamp(edits.TrimStart, 0, sourceDuration);
         var end = Clamp(edits.TrimEnd ?? sourceDuration, _start, sourceDuration);
         _segments = BuildSegments(_start, end, edits.Cuts ?? []);
-        _pieces = BuildPieces(_segments, BuildSpeed(edits.Speed ?? []));
+        _pieces = BuildPieces(_segments, NormalizeSpeed(edits.Speed));
         _cumulative = new double[_pieces.Length];
         double current = 0;
         for (var i = 0; i < _pieces.Length; i++)
@@ -995,36 +995,40 @@ public sealed class StudioTimeMap
     }
 
     /// <summary>
-    /// The speed entries that count, in time order and clear of each other. The trim and the cuts
-    /// play no part here, so the rate at a source time is the same wherever they are.
+    /// The speed entries that count, in time order and clear of each other, as section 7 of the
+    /// project format reads them: each with its rate inside the limits, and with its start moved
+    /// to the end of the entry before it where the two overlapped. The trim and the cuts play no
+    /// part here, so the rate at a source time is the same wherever they are. Every entry keeps
+    /// what else its file said of it.
     /// </summary>
-    private static List<StudioTimePiece> BuildSpeed(IReadOnlyList<StudioSpeedRange> speed)
+    internal static StudioSpeedRange[] NormalizeSpeed(IEnumerable<StudioSpeedRange?>? speed)
     {
         // The place in the file decides between entries with the same start and end.
-        var entries = speed
-            .Where(static entry => entry is not null && double.IsFinite(entry.Rate) && entry.Rate > 0)
-            .Select((entry, index) => (Piece: new StudioTimePiece(entry.Start, entry.End, Clamp(entry.Rate, SlowestRate, FastestRate)), Index: index))
-            .Where(static entry => entry.Piece.End > entry.Piece.Start && entry.Piece.Rate != 1)
-            .OrderBy(static entry => entry.Piece.Start)
-            .ThenBy(static entry => entry.Piece.End)
-            .ThenBy(static entry => entry.Index)
-            .Select(static entry => entry.Piece);
+        var entries = (speed ?? [])
+            .OfType<StudioSpeedRange>()
+            .Where(static entry => double.IsFinite(entry.Rate) && entry.Rate > 0)
+            .Select(static (entry, index) => (Entry: entry with { Rate = Clamp(entry.Rate, SlowestRate, FastestRate) }, Index: index))
+            .Where(static item => item.Entry.End > item.Entry.Start && item.Entry.Rate != 1)
+            .OrderBy(static item => item.Entry.Start)
+            .ThenBy(static item => item.Entry.End)
+            .ThenBy(static item => item.Index)
+            .Select(static item => item.Entry);
 
-        var result = new List<StudioTimePiece>();
+        var result = new List<StudioSpeedRange>();
         foreach (var entry in entries)
         {
-            var entryStart = result.Count > 0 && entry.Start < result[^1].End ? result[^1].End : entry.Start;
-            if (entry.End > entryStart)
+            var start = result.Count > 0 && entry.Start < result[^1].End ? result[^1].End : entry.Start;
+            if (entry.End > start)
             {
-                result.Add(entry with { Start = entryStart });
+                result.Add(entry with { Start = start });
             }
         }
 
-        return result;
+        return [.. result];
     }
 
     /// <summary>The kept segments divided where the rate changes inside them.</summary>
-    private static StudioTimePiece[] BuildPieces(StudioTimeSegment[] segments, List<StudioTimePiece> speed)
+    private static StudioTimePiece[] BuildPieces(StudioTimeSegment[] segments, StudioSpeedRange[] speed)
     {
         var pieces = new List<StudioTimePiece>(segments.Length);
         var points = new List<double>();

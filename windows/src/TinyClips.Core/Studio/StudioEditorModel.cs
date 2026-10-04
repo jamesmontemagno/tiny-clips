@@ -265,7 +265,11 @@ public sealed partial class StudioEditorModel
             Scenes = NormalizeStoredScenes(Project.Scenes, SourceDuration),
             Zooms = SortStoredZooms(Project.Zooms),
             Edits = ClampedEdits(
-                Project.Edits with { Cuts = NormalizeStoredCuts(Project.Edits.Cuts, SourceDuration) },
+                Project.Edits with
+                {
+                    Cuts = NormalizeStoredCuts(Project.Edits.Cuts, SourceDuration),
+                    Speed = NormalizeStoredSpeed(Project.Edits.Speed, SourceDuration),
+                },
                 Project.Edits.TrimStart,
                 Project.Edits.TrimEnd),
         };
@@ -1053,12 +1057,13 @@ public sealed partial class StudioEditorModel
     /// <summary>
     /// Sets the trim in source time. The kept range stays inside the recording, in order, and at
     /// least <see cref="MinimumDuration"/> long (or the whole recording when it is shorter). A
-    /// trim that would leave less than that between the cuts is not made.
+    /// trim that would leave less video than that, between the cuts and at the speed of what is
+    /// left, is not made.
     /// </summary>
     public void SetTrim(double start, double? end)
     {
         var edits = ClampedEdits(Project.Edits, start, end);
-        if (edits.Cuts.Length > 0 && !LeavesEnoughVideo(edits))
+        if ((edits.Cuts.Length > 0 || edits.Speed.Length > 0) && !LeavesEnoughVideo(edits))
         {
             return;
         }

@@ -4,10 +4,10 @@ namespace TinyClips.Core.Studio.Editing;
 // answers with the place the cut has afterwards, or none when it is gone. An edit that is refused,
 // because the project cannot be edited just now, leaves the cut where it was.
 //
-// One cut can be selected, or one zoom, never both: selecting a cut lets go of the zoom. An edit
-// to the selected cut takes the selection with it, and so does adding a cut. Through every other
-// edit, and undo and redo, the selection follows its cut as StudioEditorModel.FindCutFollowing
-// finds it, or lets go when the cut is gone.
+// One cut can be selected, or one zoom, or one speed change, never two of them: selecting a cut
+// lets go of the others. An edit to the selected cut takes the selection with it, and so does
+// adding a cut. Through every other edit, and undo and redo, the selection follows its cut as
+// StudioEditorModel.FindCutFollowing finds it, or lets go when the cut is gone.
 public sealed partial class StudioEditorSession
 {
     private int? _selectedCutIndex;
@@ -41,20 +41,20 @@ public sealed partial class StudioEditorSession
 
     /// <summary>
     /// Selects a cut, or none with null or a place that has no cut. The playhead stays. A selected
-    /// zoom is let go when a cut is selected.
+    /// zoom or speed change is let go when a cut is selected.
     /// </summary>
     public void SelectCut(int? index)
     {
-        var zoomBefore = SelectedZoomIndex;
-        var cutBefore = SelectedCutIndex;
+        var before = Selection;
         _selectedCutIndex = index;
         _selectedCutIndex = SelectedCutIndex;
         if (_selectedCutIndex is not null)
         {
             _selectedZoomIndex = null;
+            _selectedSpeedIndex = null;
         }
 
-        if (SelectedZoomIndex != zoomBefore || SelectedCutIndex != cutBefore)
+        if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
         }
