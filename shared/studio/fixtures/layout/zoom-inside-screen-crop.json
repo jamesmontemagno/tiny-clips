@@ -159,7 +159,8 @@
             "blur": 10.0,
             "offsetY": 3.0,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -191,7 +192,8 @@
             "blur": 10.0,
             "offsetY": 3.0,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -223,7 +225,8 @@
             "blur": 10.0,
             "offsetY": 3.0,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -255,7 +258,8 @@
             "blur": 10.0,
             "offsetY": 3.0,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -287,7 +291,8 @@
             "blur": 10.0,
             "offsetY": 3.0,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }

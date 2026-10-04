@@ -12,12 +12,21 @@ public readonly record struct StudioResolvedFrame(
     StudioResolvedScreen? Screen,
     StudioResolvedCamera? Camera);
 
+/// <param name="Opacity">
+/// 1, except while a scene is being entered with a morph and only one of the two scenes has a
+/// screen (section 6.9 of the project format). A value made with <c>default</c> has 0.
+/// </param>
 public readonly record struct StudioResolvedScreen(
     StudioFrameRect Rect,
     StudioFrameRect Source,
     double CornerRadius,
-    StudioResolvedShadow Shadow);
+    StudioResolvedShadow Shadow,
+    double Opacity = 1);
 
+/// <param name="Opacity">
+/// 1, except while a scene is being entered with a morph and only one of the two scenes has a
+/// camera (section 6.9 of the project format). A value made with <c>default</c> has 0.
+/// </param>
 public readonly record struct StudioResolvedCamera(
     StudioFrameRect Rect,
     StudioFrameRect Source,
@@ -27,7 +36,8 @@ public readonly record struct StudioResolvedCamera(
     double BorderWidth,
     StudioResolvedShadow Shadow,
     double SourceTime,
-    bool Visible);
+    bool Visible,
+    double Opacity = 1);
 
 public readonly record struct StudioResolvedShadow(double Blur, double OffsetY, double Opacity);
 
@@ -106,6 +116,7 @@ public sealed class StudioLayoutPlan
 {
     private readonly StudioProject _project;
     private readonly StudioScene[] _scenes;
+    private readonly double[] _transitionLengths;
     private readonly StudioFrameRect _screenBaseSourceRect;
     private readonly StudioZoom[] _zooms;
     private readonly StudioPreparedCursorSamples _cursorSamples;
@@ -118,6 +129,7 @@ public sealed class StudioLayoutPlan
     {
         _project = project;
         _scenes = scenes;
+        _transitionLengths = TransitionLengths(scenes);
         var screenCrop = StudioCanvasMath.ValidCropOrNull(project.Screen.Crop);
         _screenBaseSourceRect = ToFrameRect(screenCrop ?? new StudioRect(0, 0, 1, 1));
         _zooms = NormalizeZooms(project.Zooms);
@@ -150,6 +162,109 @@ public sealed class StudioLayoutPlan
     public StudioResolvedFrame Resolve(double time, double canvasWidth, double canvasHeight)
     {
         var sceneIndex = ActiveSceneIndex(_scenes, time);
+        var (layout, screen, camera) = SceneAtRest(sceneIndex, time, canvasWidth, canvasHeight);
+
+        // A scene entered with a morph: for a moment the layers are still on their way from
+        // where the scene before had them (section 6.9). A scene with a length to its move is
+        // never the first, and the active scene has started, so only the end needs asking.
+        var length = _transitionLengths[sceneIndex];
+        var start = _scenes[sceneIndex].Start;
+        if (length > 0 && time < start + length)
+        {
+            var k = Ease((time - start) / length);
+            var (_, fromScreen, fromCamera) = SceneAtRest(sceneIndex - 1, time, canvasWidth, canvasHeight);
+            screen = Move(fromScreen, screen, k);
+            camera = Move(fromCamera, camera, k);
+        }
+
+        return new StudioResolvedFrame(sceneIndex, layout, screen, camera);
+    }
+
+    /// <summary>
+    /// How long the layers take to move into each scene: 0 for a cut and for the first scene, and
+    /// never longer than the scene itself, so a move always starts from a scene at rest.
+    /// </summary>
+    private static double[] TransitionLengths(StudioScene[] scenes)
+    {
+        var lengths = new double[scenes.Length];
+        for (var i = 1; i < scenes.Length; i++)
+        {
+            if (scenes[i].Transition.Kind != StudioTransitionKind.Morph)
+            {
+                continue;
+            }
+
+            var length = Clamp(scenes[i].Transition.Duration, 0, 2);
+            lengths[i] = i + 1 < scenes.Length ? Math.Min(length, scenes[i + 1].Start - scenes[i].Start) : length;
+        }
+
+        return lengths;
+    }
+
+    // A layer on its way from the scene before to this one. One that only one of the two scenes
+    // has stays where that scene has it and fades.
+    private static StudioResolvedScreen? Move(StudioResolvedScreen? from, StudioResolvedScreen? to, double k)
+    {
+        if (from is not { } origin)
+        {
+            return to is { } appearing ? appearing with { Opacity = k } : null;
+        }
+
+        if (to is not { } target)
+        {
+            return origin with { Opacity = 1 - k };
+        }
+
+        return target with
+        {
+            Rect = Lerp(origin.Rect, target.Rect, k),
+            CornerRadius = origin.CornerRadius + ((target.CornerRadius - origin.CornerRadius) * k),
+        };
+    }
+
+    private StudioResolvedCamera? Move(StudioResolvedCamera? from, StudioResolvedCamera? to, double k)
+    {
+        if (from is not { } origin)
+        {
+            return to is { } appearing ? appearing with { Opacity = k } : null;
+        }
+
+        if (to is not { } target)
+        {
+            return origin with { Opacity = 1 - k };
+        }
+
+        // The source is worked out again for the card the camera has now, so its picture is
+        // cropped to the card all the way and never stretched. Between two shapes it moves as
+        // a rounded rectangle.
+        var rect = Lerp(origin.Rect, target.Rect, k);
+        var sameShape = origin.Shape == target.Shape;
+        var fromRadius = sameShape ? origin.CornerRadius : RadiusBetweenShapes(origin);
+        var toRadius = sameShape ? target.CornerRadius : RadiusBetweenShapes(target);
+        return target with
+        {
+            Rect = rect,
+            Source = CameraSourceRect(rect),
+            Shape = sameShape ? target.Shape : StudioCameraShape.RoundedRectangle,
+            CornerRadius = fromRadius + ((toRadius - fromRadius) * k),
+        };
+    }
+
+    /// <summary>
+    /// The corner radius a camera has as one end of a move between two shapes. A squircle is
+    /// drawn without one: the rounded rectangle that reaches as far into the corners of its box
+    /// has a radius of 0.22 of its short side.
+    /// </summary>
+    private static double RadiusBetweenShapes(StudioResolvedCamera camera) =>
+        camera.Shape == StudioCameraShape.Squircle ? 0.22 * Math.Min(camera.Rect.Width, camera.Rect.Height) : camera.CornerRadius;
+
+    /// <summary>Sections 6.2 to 6.5: the layout of one scene at rest.</summary>
+    private (StudioLayout Layout, StudioResolvedScreen? Screen, StudioResolvedCamera? Camera) SceneAtRest(
+        int sceneIndex,
+        double time,
+        double canvasWidth,
+        double canvasHeight)
+    {
         var scene = _scenes[sceneIndex];
         var layout = !_hasCamera ? StudioLayout.Screen : scene.Layout;
 
@@ -190,7 +305,7 @@ public sealed class StudioLayoutPlan
             ? null
             : ResolveCamera(scene, layout, cameraRect.Value, screenRadiusBase, shortSide, time);
 
-        return new StudioResolvedFrame(sceneIndex, layout, screen, camera);
+        return (layout, screen, camera);
     }
 
     internal static StudioScene[] NormalizeScenes(IReadOnlyList<StudioScene>? scenes)

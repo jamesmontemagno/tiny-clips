@@ -139,7 +139,8 @@
             "opacity": 0.175
           },
           "sourceTime": 0,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     },
@@ -176,7 +177,8 @@
             "opacity": 0.175
           },
           "sourceTime": 0,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     }

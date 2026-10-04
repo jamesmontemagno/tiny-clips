@@ -139,7 +139,8 @@
             "opacity": 0.175
           },
           "sourceTime": 0,
-          "visible": false
+          "visible": false,
+          "opacity": 1
         }
       }
     },
@@ -176,7 +177,8 @@
             "opacity": 0.175
           },
           "sourceTime": 0.0,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     },
@@ -213,7 +215,8 @@
             "opacity": 0.175
           },
           "sourceTime": 2.5,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     },
@@ -250,7 +253,8 @@
             "opacity": 0.175
           },
           "sourceTime": 5.0,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     },
@@ -287,7 +291,8 @@
             "opacity": 0.175
           },
           "sourceTime": 5,
-          "visible": false
+          "visible": false,
+          "opacity": 1
         }
       }
     }

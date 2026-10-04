@@ -127,7 +127,8 @@
             "blur": 20.04,
             "offsetY": 6.0120000000000005,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }

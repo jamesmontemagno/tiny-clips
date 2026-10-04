@@ -2,7 +2,7 @@
 """Generate Tiny Clips Studio shared golden fixtures.
 
 This is a stdlib-only reference implementation of docs/studio-project-format.md
-sections 5 to 8. It intentionally does not import platform code.
+sections 5 to 8, including scene transitions (section 6.9). It intentionally does not import platform code.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ VALID_ANCHORS = {"topLeft", "topRight", "bottomLeft", "bottomRight"}
 VALID_CAMERA_SIDES = {"leading", "trailing"}
 VALID_FOCUS_MODES = {"point", "cursor"}
 VALID_ZOOM_ORIGINS = {"manual", "auto"}
+VALID_TRANSITIONS = {"cut", "morph"}
 
 # Section 8: zoom suggestions.
 SUGGEST_SCALE = 2
@@ -234,6 +235,7 @@ def normalize_scene(value):
     scene["layout"] = enum(scene.get("layout"), VALID_LAYOUTS, "bubble")
     scene["bubble"] = normalize_bubble(scene.get("bubble"))
     scene["split"] = normalize_split(scene.get("split"))
+    scene["transition"]["kind"] = enum(scene["transition"].get("kind"), VALID_TRANSITIONS, "cut")
     return scene
 
 
@@ -683,13 +685,13 @@ def suggest_zooms(p, events):
     ]
 
 
-def resolve_layout(p, t, canvas_size, events=None):
+def scene_frame(p, sc, t, canvas_size, events=None):
+    """Sections 6.2 to 6.5: the layout of one scene at rest, at time t."""
     w, h = canvas_size["width"], canvas_size["height"]
     m = min(w, h)
     canvas = get_canvas(p)
     screen_style = get_screen_style(p)
     has_camera = get_sources_camera(p) is not None
-    scene_index, sc = active_scene(p, t)
     layout = sc.get("layout", "bubble") if has_camera else "screen"
     padding = clamp(canvas.get("padding", 0.06), 0, 0.4) * m
     content = rect(padding, padding, w - 2 * padding, h - 2 * padding)
@@ -797,6 +799,73 @@ def resolve_layout(p, t, canvas_size, events=None):
             "sourceTime": clamp(tc, 0, source["duration"]),
             "visible": 0 <= tc <= source["duration"],
         }
+
+    if screen_out is not None:
+        screen_out["opacity"] = 1
+    if camera_out is not None:
+        camera_out["opacity"] = 1
+    return layout, screen_out, camera_out
+
+
+def transition_length(scenes, index):
+    """Section 6.9: how long the layers take to move into scene `index`. 0 for a cut and for the first scene."""
+    if index < 1:
+        return 0
+    transition = scenes[index]["transition"]
+    if transition["kind"] != "morph":
+        return 0
+    d = clamp(transition["duration"], 0, 2)
+    if index + 1 < len(scenes):
+        d = min(d, scenes[index + 1]["start"] - scenes[index]["start"])
+    return d
+
+
+def lerp(a, b, k):
+    return a + (b - a) * k
+
+
+def morph_radius(camera):
+    """Section 6.9: the corner radius a camera has as one end of a move between two shapes."""
+    if camera["shape"] == "squircle":
+        return 0.22 * min(camera["rect"]["width"], camera["rect"]["height"])
+    return camera["cornerRadius"]
+
+
+def move_layer(origin, target, k):
+    """Section 6.9: one layer on its way from the scene before (origin) to this scene (target)."""
+    if origin is None and target is None:
+        return None
+    if origin is None:
+        return {**target, "opacity": k}
+    if target is None:
+        return {**origin, "opacity": 1 - k}
+    moved = dict(target)
+    moved["rect"] = lerp_rect(origin["rect"], target["rect"], k)
+    moved["cornerRadius"] = lerp(origin["cornerRadius"], target["cornerRadius"], k)
+    moved["opacity"] = 1
+    return moved
+
+
+def resolve_layout(p, t, canvas_size, events=None):
+    scenes = normalize_scenes(p)
+    scene_index, sc = active_scene(p, t)
+    layout, screen_out, camera_out = scene_frame(p, sc, t, canvas_size, events)
+
+    d = transition_length(scenes, scene_index)
+    if d > 0 and t >= 0 and lt(t, sc["start"] + d, "scene transition: t < start + duration"):
+        if t == sc["start"]:
+            BOUNDARIES.exact.add("scene transition: exact start")
+        k = ease((t - sc["start"]) / d)
+        _, origin_screen, origin_camera = scene_frame(p, scenes[scene_index - 1], t, canvas_size, events)
+        both_cameras = origin_camera is not None and camera_out is not None
+        screen_out = move_layer(origin_screen, screen_out, k)
+        moved_camera = move_layer(origin_camera, camera_out, k)
+        if both_cameras:
+            moved_camera["source"] = camera_source_rect(p, moved_camera["rect"], "moving camera source")
+            if origin_camera["shape"] != camera_out["shape"]:
+                moved_camera["shape"] = "roundedRectangle"
+                moved_camera["cornerRadius"] = lerp(morph_radius(origin_camera), morph_radius(camera_out), k)
+        camera_out = moved_camera
 
     return {"sceneIndex": scene_index, "layout": layout, "screen": screen_out, "camera": camera_out}
 
@@ -1617,6 +1686,504 @@ def generate_zoom_layouts():
     return fixtures
 
 
+def generate_scene_layouts():
+    """Section 6.9: scenes entered with a morph. Canvas 1920x1080 unless a case says otherwise."""
+    fixtures = {}
+    full = size(1920, 1080)
+
+    # Where the layers are at rest on that canvas with the default look, worked out by hand.
+    screen_card = (115.2, 64.8, 1689.6, 950.4)
+    bubble_bottom_right = (1628.4, 788.4, 259.2, 259.2)
+    bubble_top_left = (32.4, 32.4, 259.2, 259.2)
+    split_screen = (64.8, 191.7675, 1238.16, 696.465)
+    split_camera = (1324.56, 191.7675, 530.64, 696.465)
+    camera_card = (64.8, 64.8, 1790.4, 950.4)
+
+    def scene_project(number, name, scenes, **kwargs):
+        return project(f"00000000-0000-4000-8000-{number:012d}", name=name, scenes=scenes, **kwargs)
+
+    def morph(duration=1):
+        return {"kind": "morph", "duration": duration}
+
+    def expected(fixture, index):
+        return fixture["cases"][index]["expected"]
+
+    def halfway(a, b):
+        return tuple((x + y) / 2 for x, y in zip(a, b))
+
+    def at_rest(frame):
+        # A frame without the one value that follows the clock while a scene is at rest.
+        still = copy.deepcopy(frame)
+        if still["camera"] is not None:
+            still["camera"].pop("sourceTime")
+        return still
+
+    p = scene_project(
+        101,
+        "Bubble to side by side",
+        [scene(start=0, layout="bubble"), scene(start=4, layout="sideBySide", transition=morph())],
+    )
+    f = layout_fixture(
+        "A round bubble becomes a side-by-side card over one second: just before, the instant the scene starts, a quarter, half and three quarters of the way, the instant it ends, and after.",
+        p,
+        [(t, full) for t in (3.9, 4, 4.25, 4.5, 4.75, 5, 6)],
+    )
+    assert_equal((expected(f, 0)["sceneIndex"], expected(f, 0)["layout"], expected(f, 0)["camera"]["shape"]), (0, "bubble", "circle"), "morph before")
+    assert_equal((expected(f, 1)["sceneIndex"], expected(f, 1)["layout"]), (1, "sideBySide"), "morph at start names the new scene")
+    assert_rect_close(expected(f, 1)["screen"]["rect"], screen_card, "morph at start screen")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], bubble_bottom_right, "morph at start camera")
+    assert_equal(expected(f, 1)["camera"]["shape"], "roundedRectangle", "morph at start camera shape")
+    assert_close(expected(f, 1)["camera"]["cornerRadius"], 129.6, "morph at start camera radius")
+    assert_close(expected(f, 2)["camera"]["cornerRadius"], 112.725, "morph a quarter of the way camera radius")
+    assert_rect_close(expected(f, 3)["screen"]["rect"], (90, 128.28375, 1463.88, 823.4325), "morph halfway screen")
+    assert_rect_close(expected(f, 3)["camera"]["rect"], (1476.48, 490.08375, 394.92, 477.8325), "morph halfway camera")
+    assert_close(expected(f, 3)["camera"]["cornerRadius"], 75.6, "morph halfway camera radius")
+    assert_close(expected(f, 3)["screen"]["cornerRadius"], 21.6, "morph halfway screen radius")
+    assert_close(expected(f, 3)["camera"]["source"]["width"], (394.92 / 477.8325) / (16 / 9), "morph halfway camera source fills its card")
+    assert_equal((expected(f, 3)["screen"]["opacity"], expected(f, 3)["camera"]["opacity"]), (1, 1), "morph halfway opacity")
+    assert_rect_close(expected(f, 5)["camera"]["rect"], split_camera, "morph at end camera")
+    assert_rect_close(expected(f, 5)["screen"]["rect"], split_screen, "morph at end screen")
+    assert_close(expected(f, 5)["camera"]["cornerRadius"], 21.6, "morph at end camera radius")
+    assert_equal(at_rest(expected(f, 5)), at_rest(expected(f, 6)), "morph at end is the scene at rest")
+    fixtures["scene-morph-bubble-to-side-by-side.json"] = f
+
+    p = scene_project(
+        102,
+        "Bubble to camera",
+        [scene(start=0, layout="bubble"), scene(start=4, layout="camera", transition=morph())],
+    )
+    f = layout_fixture(
+        "Entering the camera layout: the bubble grows into the card while the screen, which the new scene does not have, fades out where it was.",
+        p,
+        [(t, full) for t in (4, 4.25, 4.5, 5)],
+    )
+    assert_equal(expected(f, 0)["layout"], "camera", "bubble to camera layout")
+    assert_close(expected(f, 0)["screen"]["opacity"], 1, "bubble to camera screen at start")
+    assert_close(expected(f, 1)["screen"]["opacity"], 0.84375, "bubble to camera screen a quarter of the way")
+    assert_close(expected(f, 2)["screen"]["opacity"], 0.5, "bubble to camera screen halfway")
+    assert_rect_close(expected(f, 2)["screen"]["rect"], screen_card, "bubble to camera screen stays")
+    assert_rect_close(expected(f, 2)["camera"]["rect"], (846.6, 426.6, 1024.8, 604.8), "bubble to camera camera halfway")
+    assert_close(expected(f, 2)["camera"]["cornerRadius"], 75.6, "bubble to camera radius halfway")
+    assert_equal(expected(f, 2)["camera"]["opacity"], 1, "bubble to camera camera opacity")
+    assert_equal(expected(f, 3)["screen"], None, "bubble to camera screen gone at the end")
+    assert_rect_close(expected(f, 3)["camera"]["rect"], camera_card, "bubble to camera at rest")
+    fixtures["scene-morph-bubble-to-camera.json"] = f
+
+    p = scene_project(
+        103,
+        "Screen to bubble",
+        [scene(start=0, layout="screen"), scene(start=2, layout="bubble", transition=morph(0.5))],
+    )
+    f = layout_fixture(
+        "A camera the scene before did not have fades in where the new scene puts it, and the screen, which both have in the same place, stays.",
+        p,
+        [(t, full) for t in (1.5, 2, 2.125, 2.25, 2.5)],
+    )
+    assert_equal(expected(f, 0)["camera"], None, "screen to bubble before")
+    assert_close(expected(f, 1)["camera"]["opacity"], 0, "screen to bubble camera at start")
+    assert_close(expected(f, 2)["camera"]["opacity"], 0.15625, "screen to bubble camera a quarter of the way")
+    assert_close(expected(f, 3)["camera"]["opacity"], 0.5, "screen to bubble camera halfway")
+    assert_rect_close(expected(f, 3)["camera"]["rect"], bubble_bottom_right, "screen to bubble camera place")
+    assert_equal(expected(f, 3)["camera"]["shape"], "circle", "screen to bubble camera shape")
+    assert_equal(expected(f, 3)["screen"]["opacity"], 1, "screen to bubble screen opacity")
+    assert_rect_close(expected(f, 3)["screen"]["rect"], screen_card, "screen to bubble screen stays")
+    assert_equal(expected(f, 4)["camera"]["opacity"], 1, "screen to bubble at rest")
+    fixtures["scene-morph-screen-to-bubble.json"] = f
+
+    p = scene_project(
+        104,
+        "Camera to screen",
+        [scene(start=0, layout="camera"), scene(start=3, layout="screen", transition=morph())],
+    )
+    f = layout_fixture(
+        "Two scenes with no layer in common: the camera card fades out while the screen fades in.",
+        p,
+        [(t, full) for t in (3, 3.25, 3.5, 4)],
+    )
+    assert_close(expected(f, 1)["screen"]["opacity"], 0.15625, "camera to screen screen a quarter of the way")
+    assert_close(expected(f, 1)["camera"]["opacity"], 0.84375, "camera to screen camera a quarter of the way")
+    assert_close(expected(f, 2)["screen"]["opacity"], 0.5, "camera to screen screen halfway")
+    assert_close(expected(f, 2)["camera"]["opacity"], 0.5, "camera to screen camera halfway")
+    assert_rect_close(expected(f, 2)["camera"]["rect"], camera_card, "camera to screen camera stays")
+    assert_rect_close(expected(f, 2)["screen"]["rect"], screen_card, "camera to screen screen place")
+    assert_equal(expected(f, 2)["layout"], "screen", "camera to screen layout")
+    assert_equal(expected(f, 3)["camera"], None, "camera to screen camera gone at the end")
+    fixtures["scene-morph-camera-to-screen.json"] = f
+
+    p = scene_project(
+        105,
+        "Bubble moves to another corner",
+        [
+            scene(start=0, layout="bubble", bubble={"anchor": "topLeft"}),
+            scene(start=2, layout="bubble", bubble={"anchor": "bottomRight"}, transition=morph()),
+        ],
+    )
+    f = layout_fixture(
+        "A round bubble moves from the top left corner to the bottom right in a straight line and stays a circle.",
+        p,
+        [(t, full) for t in (2, 2.5, 3)],
+    )
+    assert_rect_close(expected(f, 0)["camera"]["rect"], bubble_top_left, "bubble moves at start")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], (830.4, 410.4, 259.2, 259.2), "bubble moves halfway")
+    assert_equal(expected(f, 1)["camera"]["shape"], "circle", "bubble moves shape")
+    assert_close(expected(f, 1)["camera"]["cornerRadius"], 129.6, "bubble moves radius")
+    assert_equal(expected(f, 1)["camera"]["source"], expected(f, 0)["camera"]["source"], "bubble moves source")
+    assert_rect_close(expected(f, 2)["camera"]["rect"], bubble_bottom_right, "bubble moves at rest")
+    fixtures["scene-morph-bubble-moves-corner.json"] = f
+
+    p = scene_project(
+        106,
+        "Squircle bubble grows",
+        [
+            scene(start=0, layout="bubble", bubble={"anchor": "topLeft", "size": 0.24}),
+            scene(start=2, layout="bubble", bubble={"anchor": "bottomRight", "size": 0.4}, transition=morph()),
+        ],
+        camera_style={"shape": "squircle"},
+    )
+    f = layout_fixture(
+        "A squircle bubble moves and grows from 0.24 to 0.4 of the short side, and stays a squircle.",
+        p,
+        [(t, full) for t in (2.5, 3)],
+    )
+    assert_rect_close(expected(f, 0)["camera"]["rect"], (744, 324, 345.6, 345.6), "squircle grows halfway")
+    assert_equal(expected(f, 0)["camera"]["shape"], "squircle", "squircle grows shape")
+    assert_close(expected(f, 0)["camera"]["cornerRadius"], 172.8, "squircle grows radius")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], (1455.6, 615.6, 432, 432), "squircle grows at rest")
+    fixtures["scene-morph-squircle-bubble-grows.json"] = f
+
+    p = scene_project(
+        107,
+        "Rectangle bubble to side by side",
+        [scene(start=0, layout="bubble"), scene(start=2, layout="sideBySide", transition=morph())],
+        camera_style={"shape": "rectangle", "borderWidth": 0.01},
+    )
+    f = layout_fixture(
+        "A rectangle bubble becomes a card with round corners: the two shapes differ, so it moves as a rounded rectangle whose radius grows from nothing. The border keeps its width.",
+        p,
+        [(t, full) for t in (1, 2, 2.5, 3)],
+    )
+    assert_rect_close(expected(f, 0)["camera"]["rect"], (1426.8, 788.4, 460.8, 259.2), "rectangle bubble at rest")
+    assert_equal((expected(f, 0)["camera"]["shape"], expected(f, 0)["camera"]["cornerRadius"]), ("rectangle", 0), "rectangle bubble shape")
+    assert_equal((expected(f, 1)["camera"]["shape"], expected(f, 1)["camera"]["cornerRadius"]), ("roundedRectangle", 0), "rectangle bubble as it starts to move")
+    assert_close(expected(f, 2)["camera"]["cornerRadius"], 10.8, "rectangle bubble radius halfway")
+    assert_close(expected(f, 2)["camera"]["borderWidth"], 10.8, "rectangle bubble border halfway")
+    assert_equal(expected(f, 3)["camera"]["shape"], "roundedRectangle", "rectangle bubble as a card")
+    fixtures["scene-morph-rectangle-bubble-to-card.json"] = f
+
+    p = scene_project(
+        108,
+        "Rounded bubble to side by side",
+        [scene(start=0, layout="bubble"), scene(start=2, layout="sideBySide", transition=morph())],
+        camera_style={"shape": "roundedRectangle", "cornerRadius": 0.25},
+    )
+    f = layout_fixture(
+        "A rounded rectangle bubble becomes a card: both are rounded rectangles, and the radius goes from a quarter of the bubble's short side to the card's.",
+        p,
+        [(t, full) for t in (2, 2.5, 3)],
+    )
+    assert_close(expected(f, 0)["camera"]["cornerRadius"], 64.8, "rounded bubble radius at start")
+    assert_close(expected(f, 1)["camera"]["cornerRadius"], 43.2, "rounded bubble radius halfway")
+    assert_equal(expected(f, 1)["camera"]["shape"], "roundedRectangle", "rounded bubble shape")
+    fixtures["scene-morph-rounded-bubble-to-card.json"] = f
+
+    p = scene_project(
+        109,
+        "Rectangle bubble to square cards",
+        [scene(start=0, layout="bubble"), scene(start=2, layout="sideBySide", transition=morph())],
+        camera_style={"shape": "rectangle"},
+        screen_style={"cornerRadius": 0},
+    )
+    f = layout_fixture(
+        "With a card radius of 0 the side-by-side camera is a rectangle too, so a rectangle bubble stays a rectangle all the way.",
+        p,
+        [(t, full) for t in (2, 2.5, 3)],
+    )
+    assert_equal([expected(f, index)["camera"]["shape"] for index in range(3)], ["rectangle"] * 3, "rectangle all the way")
+    assert_equal([expected(f, index)["camera"]["cornerRadius"] for index in range(3)], [0, 0, 0], "no radius all the way")
+    fixtures["scene-morph-rectangle-stays-rectangle.json"] = f
+
+    p = scene_project(
+        110,
+        "Moves limited by their scenes",
+        [
+            scene(start=0, layout="bubble"),
+            scene(start=2, layout="sideBySide", transition=morph(2)),
+            scene(start=2.5, layout="camera", transition=morph(5)),
+        ],
+    )
+    f = layout_fixture(
+        "A move is never longer than its scene: one that asks for 2 seconds in a scene half a second long takes half a second, so the next move starts from a scene at rest. The last scene's move is limited only by the 2 second clamp.",
+        p,
+        [(t, full) for t in (2.25, 2.5, 3.5, 4.5, 5)],
+    )
+    assert_rect_close(expected(f, 0)["camera"]["rect"], halfway(bubble_bottom_right, split_camera), "short scene halfway")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], split_camera, "next move starts from the scene at rest: camera")
+    assert_rect_close(expected(f, 1)["screen"]["rect"], split_screen, "next move starts from the scene at rest: screen")
+    assert_close(expected(f, 1)["screen"]["opacity"], 1, "next move starts with the screen still there")
+    assert_equal(expected(f, 1)["sceneIndex"], 2, "next move scene index")
+    assert_rect_close(expected(f, 2)["camera"]["rect"], (694.68, 128.28375, 1160.52, 823.4325), "last move halfway after 1 of 2 seconds")
+    assert_close(expected(f, 2)["screen"]["opacity"], 0.5, "last move screen halfway")
+    assert_equal((expected(f, 2)["camera"]["shape"], expected(f, 2)["camera"]["cornerRadius"]), ("roundedRectangle", 21.6), "card to card keeps its shape and radius")
+    assert_equal(expected(f, 3)["screen"], None, "last move over after 2 seconds")
+    assert_equal(at_rest(expected(f, 3)), at_rest(expected(f, 4)), "last move at rest")
+    fixtures["scene-morph-limited-by-its-scene.json"] = f
+
+    p = scene_project(
+        111,
+        "Cuts and ignored transitions",
+        [
+            scene(start=0, layout="bubble", transition=morph()),
+            scene(start=2, layout="sideBySide"),
+            scene(start=4, layout="bubble", transition=morph(0)),
+            scene(start=6, layout="camera", transition={"kind": "dissolve", "duration": 1}),
+            scene(start=8, layout="bubble", transition=morph(-1)),
+            scene(start=10, layout="sideBySide", transition=morph()),
+        ],
+    )
+    p["scenes"][5]["transition"]["duration"] = None
+    f = layout_fixture(
+        "Scenes that are entered at once: the first scene whatever it says, a cut, a morph of no length, a kind this version does not know, and a negative length. A null length is the default 0.35 seconds.",
+        p,
+        [(t, full) for t in (0, 0.5, 2, 4, 6, 8, 10, 10.175, 10.5)],
+    )
+    assert_equal(at_rest(expected(f, 0)), at_rest(expected(f, 1)), "first scene is entered at once")
+    assert_equal(expected(f, 1)["camera"]["shape"], "circle", "first scene at rest")
+    assert_rect_close(expected(f, 2)["camera"]["rect"], split_camera, "a cut")
+    assert_rect_close(expected(f, 3)["camera"]["rect"], bubble_bottom_right, "a morph of no length")
+    assert_equal(expected(f, 3)["camera"]["shape"], "circle", "a morph of no length leaves the shape")
+    assert_equal(expected(f, 4)["screen"], None, "an unknown kind is a cut")
+    assert_rect_close(expected(f, 5)["camera"]["rect"], bubble_bottom_right, "a negative length")
+    assert_equal(expected(f, 5)["screen"]["opacity"], 1, "a negative length leaves the screen opaque")
+    assert_rect_close(expected(f, 6)["camera"]["rect"], bubble_bottom_right, "a null length starts moving")
+    assert_equal(expected(f, 6)["camera"]["shape"], "roundedRectangle", "a null length is a morph")
+    assert_rect_close(expected(f, 7)["camera"]["rect"], halfway(bubble_bottom_right, split_camera), "a null length halfway after 0.175 seconds")
+    assert_rect_close(expected(f, 8)["camera"]["rect"], split_camera, "a null length at rest")
+    add_fixture(
+        fixtures,
+        "scene-morph-entered-at-once.json",
+        f,
+        null=["project.scenes[5].transition.duration"],
+    )
+
+    p = scene_project(
+        112,
+        "A move during a zoom",
+        [scene(start=0, layout="bubble"), scene(start=4, layout="sideBySide", transition=morph())],
+        zooms=[zoom(3, 7, focus={"x": 0.3, "y": 0.4})],
+    )
+    f = layout_fixture(
+        "The screen's card moves while a zoom is held: the card is on its way, and what it shows is the zoom window, as in both scenes.",
+        p,
+        [(t, full) for t in (4.5, 5)],
+    )
+    assert_rect_close(expected(f, 0)["screen"]["rect"], halfway(screen_card, split_screen), "move during zoom card")
+    assert_rect_close(expected(f, 0)["screen"]["source"], (0.05, 0.15, 0.5, 0.5), "move during zoom window")
+    assert_rect_close(expected(f, 1)["screen"]["source"], (0.05, 0.15, 0.5, 0.5), "after the move, still zoomed")
+    fixtures["scene-morph-during-a-zoom.json"] = f
+
+    p = scene_project(
+        113,
+        "No camera",
+        [scene(start=0, layout="bubble"), scene(start=2, layout="camera", transition=morph())],
+        has_camera=False,
+    )
+    f = layout_fixture(
+        "Without a camera source every scene is the screen layout, so a morph between two of them moves nothing.",
+        p,
+        [(t, full) for t in (1, 2, 2.5, 3)],
+    )
+    for index in range(4):
+        assert_rect_close(expected(f, index)["screen"]["rect"], screen_card, f"no camera case {index}")
+        assert_equal((expected(f, index)["layout"], expected(f, index)["camera"], expected(f, index)["screen"]["opacity"]), ("screen", None, 1), f"no camera case {index} frame")
+    assert_equal([expected(f, index)["sceneIndex"] for index in range(4)], [0, 1, 1, 1], "no camera scene index")
+    fixtures["scene-morph-without-a-camera.json"] = f
+
+    p = scene_project(
+        114,
+        "Portrait canvas",
+        [scene(start=0, layout="bubble"), scene(start=2, layout="sideBySide", transition=morph())],
+        canvas={"aspect": "portrait9x16"},
+    )
+    tall = size(1080, 1920)
+    f = layout_fixture(
+        "On a portrait canvas the side-by-side cards are stacked. Halfway through the move each layer is halfway between its two places.",
+        p,
+        [(t, tall) for t in (1, 2.5, 3)],
+    )
+    for layer in ("screen", "camera"):
+        before = tuple(expected(f, 0)[layer]["rect"][key] for key in ("x", "y", "width", "height"))
+        after = tuple(expected(f, 2)[layer]["rect"][key] for key in ("x", "y", "width", "height"))
+        assert_rect_close(expected(f, 1)[layer]["rect"], halfway(before, after), f"portrait {layer} halfway")
+    assert_close(expected(f, 2)["camera"]["rect"]["x"], expected(f, 2)["screen"]["rect"]["x"], "portrait cards are stacked")
+    fixtures["scene-morph-portrait-stacked.json"] = f
+
+    p = scene_project(
+        115,
+        "Cropped camera",
+        [scene(start=0, layout="bubble"), scene(start=2, layout="sideBySide", transition=morph())],
+        camera_style={"crop": rect(0.1, 0.1, 0.8, 0.6)},
+    )
+    f = layout_fixture(
+        "A cropped camera on the move: its source is worked out again for the card it has at each instant, inside the crop and with the card's shape.",
+        p,
+        [(t, full) for t in (2, 2.25, 2.5, 2.75, 3)],
+    )
+    for index in range(5):
+        camera = expected(f, index)["camera"]
+        source = camera["source"]
+        assert_close(
+            (source["width"] * 1280) / (source["height"] * 720),
+            camera["rect"]["width"] / camera["rect"]["height"],
+            f"cropped camera case {index}: the source has the card's shape",
+        )
+        if source["x"] < 0.1 - EPS or source["y"] < 0.1 - EPS or source["x"] + source["width"] > 0.9 + EPS or source["y"] + source["height"] > 0.7 + EPS:
+            raise AssertionError(f"cropped camera case {index}: the source leaves the crop")
+    fixtures["scene-morph-cropped-camera.json"] = f
+
+    p = scene_project(
+        116,
+        "Scenes out of order",
+        [
+            scene(start=4, layout="sideBySide", transition=morph(1)),
+            scene(start=0, layout="bubble"),
+            scene(start=4, layout="camera", transition=morph(2)),
+            scene(start=-3, layout="screen"),
+        ],
+    )
+    f = layout_fixture(
+        "Transitions are worked out on the normalized scenes: the last scene stored for a start wins, with its own transition, and it comes from the scene that survives before it.",
+        p,
+        [(t, full) for t in (1, 5, 6)],
+    )
+    assert_equal((expected(f, 0)["sceneIndex"], expected(f, 0)["layout"], expected(f, 0)["camera"]), (0, "screen", None), "out of order first scene")
+    assert_close(expected(f, 1)["screen"]["opacity"], 0.5, "out of order screen halfway through 2 seconds")
+    assert_close(expected(f, 1)["camera"]["opacity"], 0.5, "out of order camera halfway through 2 seconds")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], camera_card, "out of order camera place")
+    assert_equal((expected(f, 2)["sceneIndex"], expected(f, 2)["layout"], expected(f, 2)["screen"]), (1, "camera", None), "out of order at rest")
+    fixtures["scene-morph-scenes-out-of-order.json"] = f
+
+    p = scene_project(
+        117,
+        "Other canvas sizes",
+        [scene(start=0, layout="bubble"), scene(start=4, layout="sideBySide", transition=morph())],
+    )
+    f = layout_fixture(
+        "A move resolved at other sizes than the natural canvas: twice as large, half as large, and a preview of another shape.",
+        p,
+        [(4.5, size(3840, 2160)), (4.5, size(960, 540)), (4.5, size(800, 600))],
+    )
+    assert_rect_close(expected(f, 0)["screen"]["rect"], (180, 256.5675, 2927.76, 1646.865), "twice as large screen")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], (738.24, 245.041875, 197.46, 238.91625), "half as large camera")
+    assert_close(expected(f, 0)["camera"]["cornerRadius"], 151.2, "twice as large radius")
+    fixtures["scene-morph-other-canvas-sizes.json"] = f
+
+    p = scene_project(
+        118,
+        "Camera starts later",
+        [scene(start=0, layout="bubble"), scene(start=2, layout="sideBySide", transition=morph())],
+        camera_start=5,
+    )
+    f = layout_fixture(
+        "A camera that is not showing yet still has its place worked out, and that place moves with the scene.",
+        p,
+        [(t, full) for t in (2.5, 6)],
+    )
+    assert_equal((expected(f, 0)["camera"]["visible"], expected(f, 0)["camera"]["sourceTime"]), (False, 0), "camera not showing yet")
+    assert_rect_close(expected(f, 0)["camera"]["rect"], halfway(bubble_bottom_right, split_camera), "camera not showing yet, halfway")
+    assert_equal(expected(f, 1)["camera"]["visible"], True, "camera showing later")
+    fixtures["scene-morph-before-the-camera-starts.json"] = f
+
+    p = scene_project(
+        119,
+        "Cards change sides",
+        [
+            scene(start=0, layout="sideBySide", split={"cameraSide": "trailing"}),
+            scene(start=2, layout="sideBySide", split={"cameraSide": "leading"}, transition=morph()),
+        ],
+    )
+    f = layout_fixture(
+        "The camera goes from the right of the screen to its left: the two cards cross, each in a straight line.",
+        p,
+        [(t, full) for t in (2, 2.5, 3)],
+    )
+    assert_rect_close(expected(f, 1)["screen"]["rect"], (340.92, 191.7675, 1238.16, 696.465), "cards cross: screen halfway")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], (694.68, 191.7675, 530.64, 696.465), "cards cross: camera halfway")
+    assert_rect_close(expected(f, 2)["screen"]["rect"], (617.04, 191.7675, 1238.16, 696.465), "cards cross: screen at rest")
+    assert_rect_close(expected(f, 2)["camera"]["rect"], (64.8, 191.7675, 530.64, 696.465), "cards cross: camera at rest")
+    assert_equal(expected(f, 1)["camera"]["shape"], "roundedRectangle", "cards cross: shape")
+    fixtures["scene-morph-cards-change-sides.json"] = f
+
+    p = scene_project(
+        120,
+        "Side by side to a round bubble",
+        [scene(start=0, layout="sideBySide"), scene(start=2, layout="bubble", transition=morph())],
+    )
+    f = layout_fixture(
+        "A card becomes a round bubble: the two shapes differ, so it moves as a rounded rectangle whose radius grows to half its side, and is a circle from the instant the move ends.",
+        p,
+        [(t, full) for t in (1, 2, 2.5, 3)],
+    )
+    assert_equal((expected(f, 0)["camera"]["shape"], expected(f, 0)["camera"]["cornerRadius"]), ("roundedRectangle", 21.6), "card at rest")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], split_camera, "card to round bubble at start")
+    assert_equal(expected(f, 1)["camera"]["shape"], "roundedRectangle", "card to round bubble shape at start")
+    assert_rect_close(expected(f, 2)["camera"]["rect"], halfway(split_camera, bubble_bottom_right), "card to round bubble halfway")
+    assert_equal(expected(f, 2)["camera"]["shape"], "roundedRectangle", "card to round bubble shape halfway")
+    assert_close(expected(f, 2)["camera"]["cornerRadius"], 75.6, "card to round bubble radius halfway")
+    assert_rect_close(expected(f, 2)["screen"]["rect"], halfway(split_screen, screen_card), "card to round bubble screen halfway")
+    assert_equal((expected(f, 3)["camera"]["shape"], expected(f, 3)["camera"]["cornerRadius"]), ("circle", 129.6), "round bubble at rest")
+    fixtures["scene-morph-card-to-round-bubble.json"] = f
+
+    p = scene_project(
+        121,
+        "Camera to a squircle bubble",
+        [scene(start=0, layout="camera"), scene(start=2, layout="bubble", transition=morph())],
+        camera_style={"shape": "squircle"},
+    )
+    f = layout_fixture(
+        "Leaving the camera layout: the card shrinks into the bubble as a rounded rectangle whose radius goes to 0.22 of the bubble's side, which is what a squircle looks like, and is a squircle once it is there. The screen fades in behind it where the new scene has it.",
+        p,
+        [(t, full) for t in (2, 2.25, 2.5, 2.75, 3)],
+    )
+    assert_equal(expected(f, 0)["layout"], "bubble", "camera to squircle layout")
+    assert_rect_close(expected(f, 0)["camera"]["rect"], camera_card, "camera to squircle at start")
+    assert_equal((expected(f, 0)["camera"]["shape"], expected(f, 0)["camera"]["cornerRadius"]), ("roundedRectangle", 21.6), "camera to squircle shape at start")
+    assert_close(expected(f, 0)["screen"]["opacity"], 0, "camera to squircle screen at start")
+    assert_close(expected(f, 1)["screen"]["opacity"], 0.15625, "camera to squircle screen a quarter of the way")
+    assert_rect_close(expected(f, 2)["camera"]["rect"], (846.6, 426.6, 1024.8, 604.8), "camera to squircle halfway")
+    assert_equal(expected(f, 2)["camera"]["shape"], "roundedRectangle", "camera to squircle shape halfway")
+    assert_close(expected(f, 2)["camera"]["cornerRadius"], 39.312, "camera to squircle radius halfway: between 21.6 and 0.22 * 259.2")
+    assert_close(expected(f, 3)["camera"]["cornerRadius"], 51.489, "camera to squircle radius three quarters of the way")
+    assert_close(expected(f, 2)["screen"]["opacity"], 0.5, "camera to squircle screen halfway")
+    assert_rect_close(expected(f, 2)["screen"]["rect"], screen_card, "camera to squircle screen place")
+    assert_equal((expected(f, 4)["camera"]["shape"], expected(f, 4)["camera"]["cornerRadius"]), ("squircle", 129.6), "squircle bubble at rest")
+    assert_equal(expected(f, 4)["screen"]["opacity"], 1, "camera to squircle screen at rest")
+    fixtures["scene-morph-camera-to-squircle-bubble.json"] = f
+
+    p = scene_project(
+        122,
+        "Squircle bubble to side by side",
+        [
+            scene(start=0, layout="bubble", bubble={"size": 0.36}),
+            scene(start=2, layout="sideBySide", transition=morph()),
+        ],
+        camera_style={"shape": "squircle"},
+    )
+    f = layout_fixture(
+        "A squircle bubble becomes a card. From the instant it starts to move it is a rounded rectangle, and its radius starts at 0.22 of its side, not at the half a squircle has on paper, so its outline does not jump.",
+        p,
+        [(t, full) for t in (1, 2, 2.5, 3)],
+    )
+    assert_equal((expected(f, 0)["camera"]["shape"], expected(f, 0)["camera"]["cornerRadius"]), ("squircle", 194.4), "squircle at rest")
+    assert_rect_close(expected(f, 1)["camera"]["rect"], (1498.8, 658.8, 388.8, 388.8), "squircle to card at start")
+    assert_equal(expected(f, 1)["camera"]["shape"], "roundedRectangle", "squircle to card shape at start")
+    assert_close(expected(f, 1)["camera"]["cornerRadius"], 85.536, "squircle to card radius at start: 0.22 * 388.8")
+    assert_close(expected(f, 2)["camera"]["cornerRadius"], 53.568, "squircle to card radius halfway: between 85.536 and 21.6")
+    assert_equal((expected(f, 3)["camera"]["shape"], expected(f, 3)["camera"]["cornerRadius"]), ("roundedRectangle", 21.6), "squircle to card at rest")
+    fixtures["scene-morph-squircle-bubble-to-card.json"] = f
+
+    return fixtures
+
+
 def generate_autozooms():
     fixtures = {}
 
@@ -1844,6 +2411,8 @@ def generated_files():
     for filename, fixture in generate_layouts().items():
         files[Path("layout") / filename] = fixture
     for filename, fixture in generate_zoom_layouts().items():
+        files[Path("layout") / filename] = fixture
+    for filename, fixture in generate_scene_layouts().items():
         files[Path("layout") / filename] = fixture
     for filename, fixture in generate_timemaps().items():
         files[Path("timemap") / filename] = fixture

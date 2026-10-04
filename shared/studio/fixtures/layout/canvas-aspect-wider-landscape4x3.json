@@ -127,7 +127,8 @@
             "blur": 45.0,
             "offsetY": 13.5,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }

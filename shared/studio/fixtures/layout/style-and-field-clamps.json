@@ -143,7 +143,8 @@
             "blur": 43.2,
             "offsetY": 12.96,
             "opacity": 0.5
-          }
+          },
+          "opacity": 1
         },
         "camera": {
           "rect": {
@@ -168,7 +169,8 @@
             "opacity": 0.0
           },
           "sourceTime": 0,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     }

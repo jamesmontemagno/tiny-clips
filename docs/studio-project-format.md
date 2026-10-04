@@ -126,8 +126,8 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `bubble.offsetX`, `bubble.offsetY` | number | 0 | | Fractions of canvas width and height, added to the anchored position |
 | `split.cameraSide` | enum | `trailing` | | `leading` is left or top, `trailing` is right or bottom |
 | `split.cameraFraction` | number | 0.3 | 0.15 to 0.6 | |
-| `transition.kind` | enum | `cut` | | `cut`, `morph`. How this scene is entered. Evaluated in a later revision |
-| `transition.duration` | number | 0.35 | 0 to 2 | Seconds |
+| `transition.kind` | enum | `cut` | | `cut`, `morph`. How this scene is entered (section 6.9). The first scene's is ignored |
+| `transition.duration` | number | 0.35 | 0 to 2 | Seconds a `morph` takes |
 
 ### Zoom
 
@@ -233,7 +233,7 @@ Inputs: a project, its events, a source time `t`, and a canvas size `(W, H)`. Ou
 
 Normalize scenes before use: replace any negative `start` with 0, sort by `start` ascending (stable), keep only the last scene among those sharing a `start`, and treat the first scene's `start` as 0. An empty list becomes one default scene.
 
-The active scene is the last one whose `start <= t`. For `t < 0` it is the first.
+The active scene is the last one whose `start <= t`. For `t < 0` it is the first. Sections 6.2 to 6.5 lay out the active scene. Just after a scene starts, the layers may still be on their way from the scene before (section 6.9).
 
 The **effective layout** is the scene's layout, except that a project with no camera source always resolves as `screen`.
 
@@ -355,7 +355,8 @@ Draw order: background, screen shadow, screen, click rings (clipped to the scree
     "rect": { "x": 0, "y": 0, "width": 0, "height": 0 },
     "source": { "x": 0, "y": 0, "width": 1, "height": 1 },
     "cornerRadius": 0,
-    "shadow": { "blur": 0, "offsetY": 0, "opacity": 0 }
+    "shadow": { "blur": 0, "offsetY": 0, "opacity": 0 },
+    "opacity": 1
   },
   "camera": {
     "rect": { "x": 0, "y": 0, "width": 0, "height": 0 },
@@ -366,12 +367,13 @@ Draw order: background, screen shadow, screen, click rings (clipped to the scree
     "borderWidth": 0,
     "shadow": { "blur": 0, "offsetY": 0, "opacity": 0 },
     "sourceTime": 0,
-    "visible": true
+    "visible": true,
+    "opacity": 1
   }
 }
 ```
 
-`screen` is null in the `camera` layout. `camera` is null when the effective layout is `screen`. `sceneIndex` indexes the normalized scene list, and `layout` is the effective layout.
+`screen` is null in the `camera` layout. `camera` is null when the effective layout is `screen`. `sceneIndex` indexes the normalized scene list, and `layout` is the effective layout. `opacity` is 1, and a layer the layout does not have is null, except while a scene is being entered with a morph (section 6.9). A renderer draws the layers the frame has and does not go by `layout`.
 
 ### 6.7 Drawing rules
 
@@ -393,6 +395,7 @@ These are not covered by fixtures, because they describe pixels rather than geom
   ```
 
   `k` is canvas pixels per point of the captured screen. `source` is the resolved screen source rect. When `capture.width` is missing or 0 the ratio `sources.screen.width / capture.width` is 1. A click whose center falls outside the visible source rect is not drawn.
+- **Opacity.** A layer whose `opacity` is below 1 is put together by itself first, with everything that belongs to it: its shadow, its picture, its border, and for the screen its click rings. The whole is then laid on the frame that much see-through. So a card that fades does not show its own shadow through itself, and its border and its click rings fade with it. A layer whose `opacity` is 0 is not drawn.
 - **Cursor samples** are steps, not line segments: at time `t` the pointer is at the latest sample at or before `t`. That is why a resting pointer needs no repeated samples.
 
 ### 6.8 Zoom
@@ -464,6 +467,47 @@ else:                     window = held(zoom, t)
 A zoom with `easeIn` 0 cuts in, and one with `easeOut` 0 cuts out. Between two chained zooms the window moves straight from the first place to the second and does not open out in between.
 
 Nothing else changes for a zoom. The click rings follow by themselves, because their size and position are already computed from the resolved source rectangle (section 6.7).
+
+### 6.9 Scene transitions
+
+A scene whose `transition.kind` is `morph` is entered by moving the layers from where the scene before had them to where this scene has them. A scene whose kind is `cut` is entered at once, and so is the first scene whatever it says.
+
+```
+i = the index of the active scene (section 6.1), with i >= 1 and kind morph
+d = min(clamp(transition.duration, 0, 2), start of scene i + 1 - start of scene i)
+    the last scene has no scene after it and no such limit
+
+the layers are moving while d > 0 and start_i <= t < start_i + d
+k = ease((t - start_i) / d)                       ease as in section 6.8
+
+F = the frame sections 6.2 to 6.5 give for scene i - 1 at time t      where the layers come from
+G = the frame they give for scene i at time t                         where they are going
+```
+
+F and G are worked out for the same `t`, so they have the same zoom window and the same camera timing. A move is never longer than its scene, so the scene before has always finished its own move by the time the next one begins: F is a scene at rest.
+
+A layer that F and G both have (the screen, or the camera):
+
+```
+rect           lerp(F.rect, G.rect, k)            x, y, width, and height separately
+cornerRadius   rF + (rG - rF) * k                 rF and rG are the corner radii in F and G
+opacity        1
+
+screen source  the zoom window, as in F and G
+camera source  section 6.4 again, for the rect the camera now has
+camera shape   the shape F and G share, or roundedRectangle when they differ
+
+when the camera's shapes differ, a squircle's radius counts as
+               0.22 * min(rect.width, rect.height)        of its own rect, in F or in G
+```
+
+Shadows, the camera's border, its mirroring, and its timing do not depend on the scene, so they are the same in F and G and stay as they are. Working the camera's source out again for each rect keeps its picture cropped to its card and never stretched.
+
+A camera that changes shape moves as a rounded rectangle, and its outline does not jump at either end. A circle is a rounded rectangle whose radius is half its side, which is the radius it resolves to. A squircle resolves to that radius too, but is drawn without one, and reaches further into the corners of its box than a circle: the rounded rectangle that reaches as far has a radius of 0.22 of the side, so that is what a squircle counts as when it turns into another shape or another shape turns into it. Between two squircles the shape stays a squircle and the radius is not drawn.
+
+A layer that only F has stays exactly as it is in F, with `opacity` `1 - k`. A layer that only G has is exactly as it is in G, with `opacity` `k`.
+
+`sceneIndex` and `layout` are those of scene `i`, also while the layers move. So while the `camera` layout is being entered the frame still has a screen, fading out.
 
 ## 7. Time map
 
@@ -591,7 +635,7 @@ Layout fixtures, in `layout/`:
 }
 ```
 
-`project` is a complete `project.json`, `naturalCanvas` is the expected result of section 5, and each `expected` is a resolved frame from section 6.6. A fixture may also have an `events` member holding an `events.json`; the layout is then resolved with those events. Without the member there are no events.
+`project` is a complete `project.json`, `naturalCanvas` is the expected result of section 5, and each `expected` is a resolved frame from section 6.6. The `zoom-*.json` files cover section 6.8 and the `scene-morph-*.json` files section 6.9. A fixture may also have an `events` member holding an `events.json`; the layout is then resolved with those events. Without the member there are no events.
 
 Zoom suggestion fixtures, in `autozoom/`:
 

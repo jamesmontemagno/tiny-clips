@@ -175,6 +175,7 @@ public sealed class StudioFixtureTests
         CompareRect(file, caseIndex, "screen.source", expected.GetProperty("source"), screen.Source);
         CompareNumber(file, caseIndex, "screen.cornerRadius", expected.GetProperty("cornerRadius").GetDouble(), screen.CornerRadius);
         CompareShadow(file, caseIndex, "screen.shadow", expected.GetProperty("shadow"), screen.Shadow);
+        CompareNumber(file, caseIndex, "screen.opacity", expected.GetProperty("opacity").GetDouble(), screen.Opacity);
     }
 
     private static void CompareCamera(string file, int caseIndex, JsonElement expected, StudioResolvedCamera? actual)
@@ -196,6 +197,7 @@ public sealed class StudioFixtureTests
         CompareShadow(file, caseIndex, "camera.shadow", expected.GetProperty("shadow"), camera.Shadow);
         CompareNumber(file, caseIndex, "camera.sourceTime", expected.GetProperty("sourceTime").GetDouble(), camera.SourceTime);
         CompareBool(file, caseIndex, "camera.visible", expected.GetProperty("visible").GetBoolean(), camera.Visible);
+        CompareNumber(file, caseIndex, "camera.opacity", expected.GetProperty("opacity").GetDouble(), camera.Opacity);
     }
 
     private static void CompareRect(string file, int caseIndex, string field, JsonElement expected, StudioFrameRect actual)

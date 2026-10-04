@@ -141,7 +141,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -173,7 +174,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -205,7 +207,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -237,7 +240,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -269,7 +273,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -301,7 +306,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -333,7 +339,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -365,7 +372,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }
@@ -397,7 +405,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": null
       }

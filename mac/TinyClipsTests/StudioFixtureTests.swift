@@ -105,6 +105,7 @@ final class StudioFixtureTests: XCTestCase {
             assertRect(actualScreen.source, expectedScreen.source, file: file, caseIndex: caseIndex, prefix: "screen.source")
             XCTAssertEqual(actualScreen.cornerRadius, expectedScreen.cornerRadius, accuracy: 1e-6, message(file, caseIndex, "screen.cornerRadius"))
             assertShadow(actualScreen.shadow, expectedScreen.shadow, file: file, caseIndex: caseIndex, prefix: "screen.shadow")
+            XCTAssertEqual(actualScreen.opacity, expectedScreen.opacity, accuracy: 1e-6, message(file, caseIndex, "screen.opacity"))
         }
 
         if let actualCamera = actual.camera, let expectedCamera = expected.camera {
@@ -117,6 +118,7 @@ final class StudioFixtureTests: XCTestCase {
             assertShadow(actualCamera.shadow, expectedCamera.shadow, file: file, caseIndex: caseIndex, prefix: "camera.shadow")
             XCTAssertEqual(actualCamera.sourceTime, expectedCamera.sourceTime, accuracy: 1e-6, message(file, caseIndex, "camera.sourceTime"))
             XCTAssertEqual(actualCamera.visible, expectedCamera.visible, message(file, caseIndex, "camera.visible"))
+            XCTAssertEqual(actualCamera.opacity, expectedCamera.opacity, accuracy: 1e-6, message(file, caseIndex, "camera.opacity"))
         }
     }
 

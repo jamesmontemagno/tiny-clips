@@ -187,7 +187,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": {
           "rect": {
@@ -212,7 +213,8 @@
             "opacity": 0.175
           },
           "sourceTime": 0,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     },
@@ -243,7 +245,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": {
           "rect": {
@@ -268,7 +271,8 @@
             "opacity": 0.175
           },
           "sourceTime": 2,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     },
@@ -299,7 +303,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": {
           "rect": {
@@ -324,7 +329,8 @@
             "opacity": 0.175
           },
           "sourceTime": 4,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     },
@@ -355,7 +361,8 @@
             "blur": 21.6,
             "offsetY": 6.48,
             "opacity": 0.25
-          }
+          },
+          "opacity": 1
         },
         "camera": {
           "rect": {
@@ -380,7 +387,8 @@
             "opacity": 0.175
           },
           "sourceTime": 6,
-          "visible": true
+          "visible": true,
+          "opacity": 1
         }
       }
     }

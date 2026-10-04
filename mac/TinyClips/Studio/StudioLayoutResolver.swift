@@ -13,6 +13,9 @@ struct StudioResolvedScreen: Codable, Equatable, Sendable {
     var source: StudioRect
     var cornerRadius: Double
     var shadow: StudioResolvedShadow
+    /// 1, except while a scene is being entered with a morph and only one of the two scenes has
+    /// a screen (section 6.9 of the project format).
+    var opacity: Double = 1
 }
 
 struct StudioResolvedCamera: Codable, Equatable, Sendable {
@@ -25,6 +28,9 @@ struct StudioResolvedCamera: Codable, Equatable, Sendable {
     var shadow: StudioResolvedShadow
     var sourceTime: Double
     var visible: Bool
+    /// 1, except while a scene is being entered with a morph and only one of the two scenes has
+    /// a camera (section 6.9 of the project format).
+    var opacity: Double = 1
 }
 
 struct StudioResolvedFrame: Codable, Equatable, Sendable {
@@ -52,9 +58,60 @@ enum StudioLayoutResolver {
         canvasHeight: Double,
         events: StudioEvents? = nil
     ) -> StudioResolvedFrame {
-        let normalizedScenes = normalizeScenes(project.scenes)
-        let selected = activeScene(in: normalizedScenes, time: time)
-        let scene = selected.scene
+        let scenes = normalizeScenes(project.scenes)
+        let selected = activeScene(in: scenes, time: time)
+        var frame = sceneAtRest(
+            project: project,
+            scene: selected.scene,
+            index: selected.index,
+            time: time,
+            canvasWidth: canvasWidth,
+            canvasHeight: canvasHeight,
+            events: events
+        )
+
+        // A scene entered with a morph: for a moment the layers are still on their way from where
+        // the scene before had them (section 6.9). A scene with a length to its move is never the
+        // first, and the active scene has started, so only the end needs asking.
+        let length = transitionLength(scenes, index: selected.index)
+        let start = selected.scene.start
+        if length > 0, time < start + length {
+            let k = ease((time - start) / length)
+            let origin = sceneAtRest(
+                project: project,
+                scene: scenes[selected.index - 1],
+                index: selected.index - 1,
+                time: time,
+                canvasWidth: canvasWidth,
+                canvasHeight: canvasHeight,
+                events: events
+            )
+            frame.screen = moved(from: origin.screen, to: frame.screen, k: k)
+            frame.camera = moved(from: origin.camera, to: frame.camera, k: k, project: project)
+        }
+        return frame
+    }
+
+    /// How long the layers take to move into scene `index` of a normalized scene list: 0 for a
+    /// cut and for the first scene, and never longer than the scene itself, so a move always
+    /// starts from a scene at rest.
+    static func transitionLength(_ scenes: [StudioScene], index: Int) -> Double {
+        guard index >= 1, index < scenes.count, scenes[index].transition.kind == .morph else { return 0 }
+        let length = StudioCanvasMath.clamped(scenes[index].transition.duration, 0, 2)
+        guard index + 1 < scenes.count else { return length }
+        return min(length, scenes[index + 1].start - scenes[index].start)
+    }
+
+    /// Sections 6.2 to 6.5: the layout of one scene at rest.
+    private static func sceneAtRest(
+        project: StudioProject,
+        scene: StudioScene,
+        index: Int,
+        time: Double,
+        canvasWidth: Double,
+        canvasHeight: Double,
+        events: StudioEvents?
+    ) -> StudioResolvedFrame {
         let hasCamera = project.sources.camera != nil
         let layout = hasCamera ? scene.layout : .screen
         let screenSource = zoomWindow(project: project, events: events, time: time)
@@ -75,7 +132,7 @@ enum StudioLayoutResolver {
         case .screen:
             let rect = fit(aspect: screenAspect, in: content)
             return StudioResolvedFrame(
-                sceneIndex: selected.index,
+                sceneIndex: index,
                 layout: .screen,
                 screen: resolvedScreen(project: project, rect: rect, source: screenSource, radius: cardRadius, m: m),
                 camera: nil
@@ -84,7 +141,7 @@ enum StudioLayoutResolver {
             let screenRect = fit(aspect: screenAspect, in: content)
             let cameraRect = bubbleCameraRect(project: project, scene: scene, canvasWidth: canvasWidth, canvasHeight: canvasHeight, m: m)
             return StudioResolvedFrame(
-                sceneIndex: selected.index,
+                sceneIndex: index,
                 layout: .bubble,
                 screen: resolvedScreen(project: project, rect: screenRect, source: screenSource, radius: cardRadius, m: m),
                 camera: resolvedCamera(project: project, scene: scene, layout: .bubble, rect: cameraRect, time: time, m: m, cardRadius: cardRadius)
@@ -92,14 +149,14 @@ enum StudioLayoutResolver {
         case .sideBySide:
             let rects = sideBySideRects(project: project, scene: scene, content: content, canvasWidth: canvasWidth, canvasHeight: canvasHeight, m: m)
             return StudioResolvedFrame(
-                sceneIndex: selected.index,
+                sceneIndex: index,
                 layout: .sideBySide,
                 screen: resolvedScreen(project: project, rect: rects.screen, source: screenSource, radius: cardRadius, m: m),
                 camera: resolvedCamera(project: project, scene: scene, layout: .sideBySide, rect: rects.camera, time: time, m: m, cardRadius: cardRadius)
             )
         case .camera:
             return StudioResolvedFrame(
-                sceneIndex: selected.index,
+                sceneIndex: index,
                 layout: .camera,
                 screen: nil,
                 camera: resolvedCamera(project: project, scene: scene, layout: .camera, rect: content, time: time, m: m, cardRadius: cardRadius)
@@ -227,6 +284,61 @@ enum StudioLayoutResolver {
     }
 
     // MARK: - Private
+
+    /// A screen on its way from the scene before to this one. A screen only one of the two
+    /// scenes has stays where that scene has it and fades.
+    private static func moved(from origin: StudioResolvedScreen?, to target: StudioResolvedScreen?, k: Double) -> StudioResolvedScreen? {
+        guard let origin else {
+            guard var appearing = target else { return nil }
+            appearing.opacity = k
+            return appearing
+        }
+        guard let target else {
+            var leaving = origin
+            leaving.opacity = 1 - k
+            return leaving
+        }
+        var moving = target
+        moving.rect = lerp(origin.rect, target.rect, k)
+        moving.cornerRadius = origin.cornerRadius + (target.cornerRadius - origin.cornerRadius) * k
+        return moving
+    }
+
+    private static func moved(from origin: StudioResolvedCamera?, to target: StudioResolvedCamera?, k: Double, project: StudioProject) -> StudioResolvedCamera? {
+        guard let origin else {
+            guard var appearing = target else { return nil }
+            appearing.opacity = k
+            return appearing
+        }
+        guard let target else {
+            var leaving = origin
+            leaving.opacity = 1 - k
+            return leaving
+        }
+        // The source is worked out again for the card the camera has now, so its picture is
+        // cropped to the card all the way and never stretched. Between two shapes it moves as a
+        // rounded rectangle.
+        var moving = target
+        moving.rect = lerp(origin.rect, target.rect, k)
+        moving.source = cameraSourceRect(
+            project: project,
+            crop: StudioCanvasMath.validCrop(project.camera.crop) ?? unitRect(),
+            destination: moving.rect
+        )
+        let sameShape = origin.shape == target.shape
+        let fromRadius = sameShape ? origin.cornerRadius : radiusBetweenShapes(origin)
+        let toRadius = sameShape ? target.cornerRadius : radiusBetweenShapes(target)
+        moving.shape = sameShape ? target.shape : .roundedRectangle
+        moving.cornerRadius = fromRadius + (toRadius - fromRadius) * k
+        return moving
+    }
+
+    /// The corner radius a camera has as one end of a move between two shapes. A squircle is
+    /// drawn without one: the rounded rectangle that reaches as far into the corners of its box
+    /// has a radius of 0.22 of its short side.
+    private static func radiusBetweenShapes(_ camera: StudioResolvedCamera) -> Double {
+        camera.shape == .squircle ? 0.22 * min(camera.rect.width, camera.rect.height) : camera.cornerRadius
+    }
 
     private struct SuggestionGroup {
         var start: Double
