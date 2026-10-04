@@ -198,34 +198,43 @@ This section records what was built and how it differs from the plan above. It i
 | Milestone 1 piece | macOS | Windows |
 |---|---|---|
 | Project format, store, cleanup rules, layout resolver, time map | Done. Passes the shared fixtures | Done. Passes the shared fixtures |
-| Studio capture mode | Done | Done. Checked with the recording benchmark |
-| Renderer and exporter | Done | In progress |
-| Live preview | Done (part of the renderer) | Not started. The design is settled by the engine spike |
-| Studio window | Done | In progress |
-| Settings, Record for Studio, reopening projects | Done | Settings, the Record for Studio toggle, and cleanup are done. Opening a project waits for the window |
+| Studio capture mode | Done | Done. Checked with the recording benchmark and `tools/StudioRenderCheck` |
+| Renderer and exporter | Done | Done. Checked with `tools/StudioRenderCheck` |
+| Live preview | Done (part of the renderer) | Done. Checked with `tools/StudioPreviewCheck`; one open problem on the software adapter (see `windows/docs/studio-preview.md`) |
+| Studio window | Done | Done. Not yet run with the real preview and exporter |
+| Settings, Record for Studio, reopening projects | Done | Done |
 
 Nothing on macOS has been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. Capture, the compositor, the preview, export, and the whole Studio window are unverified at runtime. Until someone has run them, Studio stays off on macOS.
+
+On Windows the pieces under the window have each been run by a check tool on one PC (AMD graphics, Windows 11): the renderer, exporter and camera recorder by `StudioRenderCheck`, and the preview engine with its panel by `StudioPreviewCheck`. Both read their results back from pixels. The editor's behavior is in Core and unit tested. The window itself was run only while it was being built, with stand-ins for the preview and the exporter. The finished window has not been run, because the PC this was built on was in use and the app could not be installed or started there. Not yet seen on Windows at all: a real recording arriving in the editor, the preview's sound, dragging the camera bubble and the trim bar with a pointer, the dark and high-contrast themes, and Narrator. Until someone has gone through those, Studio stays off on Windows.
 
 ### Hidden switch
 
 Studio is off by default on both platforms until it has been verified there.
 
 - macOS: `defaults write com.tinyclips.app studioPreviewEnabled -bool YES` (`com.refractored.tinyclips` for the Mac App Store build).
-- Windows: the `studioPreviewEnabled` setting, or the environment variable `TINYCLIPS_STUDIO_PREVIEW=1`. A packaged launch does not pass the caller's environment to the app, so start it with `winapp run <output folder> --manifest <output folder>\AppxManifest.xml --output-appx-directory <output folder>\AppX --with-alias`.
+- Windows: the `studioPreviewEnabled` setting, or the environment variable `TINYCLIPS_STUDIO_PREVIEW=1`. A packaged launch does not pass the caller's environment to the app, so a build from source is started with `winapp run <output folder> --manifest <output folder>\AppxManifest.xml --output-appx-directory <output folder>\AppX --with-alias`. For an installed build, `setx TINYCLIPS_STUDIO_PREVIEW 1` followed by a restart of the app should do it; that route has not been tried.
 
 With the switch off, no Studio UI is visible and recordings follow the existing path unchanged.
 
 ### Decisions made while building
 
 - **A failed project save keeps the recording.** If the project cannot be saved when a Studio recording stops, the screen track is kept as an ordinary video.
-- **Drafts.** A recording kept as a draft has no exported file, so it does not appear in the Clips Manager. On macOS the drafts are listed in Settings › Video, where they can be opened or deleted. Windows needs the same list before Studio is switched on there.
+- **Drafts.** A recording kept as a draft has no exported file, so it does not appear in the Clips Manager. The drafts are listed in Settings, where they can be opened or deleted: under Video on macOS and under General on Windows.
 - **Deleting an exported video leaves its export link in place.** The project then still counts as exported, so the cleanup rules remove its sources later. Removing the link would turn it back into a draft that is never cleaned up.
 - **Cleanup can be switched off.** Zero days keeps projects until they are deleted by hand, and zero gigabytes means no storage limit.
 - **Events during pauses.** Clicks and cursor samples from before the first frame or during a pause are not recorded. Cursor samples are capped at 60 per second, drop consecutive duplicates, and are steps, not points to interpolate between.
 - **Drawing rules** are in section 6.7 of `docs/studio-project-format.md`: sRGB with gamma-space blending, no color conversion of screen pixels, the shadow model, where the border goes, and the click ring geometry.
 - **Camera size on Windows.** The camera track is recorded at the camera's own aspect, fitted inside 1920×1080 and never enlarged.
 - **Where projects are kept on Windows.** The installed app is packaged, so its projects are in the package's own folder, `%LOCALAPPDATA%\Packages\<package family>\LocalState\TinyClips\Projects`. Only an unpackaged run uses `%LOCALAPPDATA%\TinyClips\Projects`.
-- **Windows editor behavior lives in Core.** `StudioEditorModel` (edits and undo) and the preview and export contracts are in `TinyClips.Core`, so the editor's rules are unit tested and the window only binds to them.
+- **Windows editor behavior lives in Core.** `StudioEditorModel` (edits and undo), `StudioEditorSession` (loading, transport, autosave, export, closing) and the preview and export contracts are in `TinyClips.Core`, so the editor's rules are unit tested and the window only binds to them.
+- **Windows preview and export.** The preview engine is in Core (`Studio/Preview`), not in the app as planned; the app has only the panel it draws into. The preview owns one Direct3D device per editor window and each export creates its own, so neither shares a device with a recording in progress. The exporter writes through its own sink-writer wrapper rather than the recorder's `MfSinkWriterEncoder`.
+- **Frame rate.** `sources.screen.frameRate` is the rate the recording was set to, on both platforms. The rate a media library reads from the file is an average of unevenly spaced frames and can be far lower.
+- **Small differences between the two exporters**, accepted for now. Windows samples each output frame at its middle, drops a partial last frame, and keeps NTSC rates exact. macOS samples at the frame's start, keeps the partial frame, and rounds the rate up. Windows will not open or export a project whose camera file is missing; macOS exports it without the camera.
+- **Color on Windows.** Media Foundation's encoders convert with BT.601 up to 576 lines and BT.709 above, whatever the stream says, so an export is tagged with the matrix that was really used.
+- **Windows without graphics hardware.** Exports on the software adapter sample linearly, which measured 43 to 58 frames per second against 16 to 21 for the high-quality sampler.
+- **Windows keys and closing.** Esc stops a running export and does nothing otherwise, because the Windows trimmer does not close on Esc either. Closing a project that was never exported asks Export, Keep as draft, or Cancel; Delete is a separate button in the dialog and never the default.
+- **Background swatches** are each platform's own screenshot editor presets. The Windows list has `slate`, which the Mac's does not. A project stores a preset's colors with its id and is drawn from the colors.
 - **macOS preview.** The preview always plays the whole recording. Trim and mute are applied by the transport and by export, so changing them does not rebuild the player. Only a change of canvas shape does.
 - **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
 - **Editor windows get a Dock icon.** While a Studio window is open on macOS, Tiny Clips shows its Dock icon and menu bar, as it does for the screenshot editor.
@@ -247,6 +256,12 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - The macOS `Build` workflow also builds the `TinyClipsMAS` scheme, and both workflows run when `shared/studio/**` changes.
 - `TinyClipsActivationPolicy.resolve` takes `hasOpenEditors`, which covers screenshot editors and Studio windows.
 - On Windows, `ShowTextRecognitionNotification` was renamed `ShowMessageNotification` because Studio reuses it.
+- On Windows, `MfSinkWriterEncoder` has two new switches, `topDownMemoryFrames` and `keepFrameTimes`, both off by default. Only the Studio camera recorder turns them on; the regular recorder's calls are unchanged.
+
+### Found in the regular Windows recorder and left alone
+
+`StudioRenderCheck` reproduces the regular recorder's CPU path without capturing anything: it creates the encoder the way the recorder does and hands it frames through the recorder's own buffer code. That path is used when the GPU recording pipeline is switched off or cannot start. On the development PC (AMD encoder) the file it wrote was upside down in every frame, for H.264 and HEVC. A real recording made that way has not been looked at. A Studio screen track recorded on that path would have the same fault, and the check tool reports it as known. The Studio camera track had the same cause and is fixed with `topDownMemoryFrames`. The regular recorder was not changed, because it is shipping code outside this work. The same fix there is a small change that is waiting for a decision.
+
 ## Risks and how the plan handles them
 
 | Risk | Handling |
