@@ -6,8 +6,8 @@ using TinyClips.App.ViewModels.Studio;
 namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
-/// The bottom of the Studio window: play and pause, the two frame steps, the time, the two buttons
-/// that trim at the playhead, and under them the trim bar.
+/// The bottom of the Studio window: play and pause, the two frame steps, the time, the button that
+/// adds a zoom and the two that trim at the playhead, and under them the zoom lane and the trim bar.
 /// </summary>
 public sealed partial class StudioTimeline : UserControl
 {
@@ -15,6 +15,7 @@ public sealed partial class StudioTimeline : UserControl
     {
         ViewModel = viewModel;
         InitializeComponent();
+        ZoomLaneHost.Child = new StudioZoomLane(viewModel);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }

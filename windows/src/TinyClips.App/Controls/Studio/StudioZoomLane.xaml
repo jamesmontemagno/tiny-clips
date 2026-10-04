@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="TinyClips.App.Controls.Studio.StudioZoomLane"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Height="26"
+    AutomationProperties.AutomationId="StudioZoomLane"
+    AutomationProperties.Name="Zooms"
+    IsTabStop="True"
+    UseSystemFocusVisuals="True">
+
+    <!--
+        Positions are set in code: the blocks are placed by time, not by layout. The pointer is
+        handled here for the whole lane, so a press is told to be on a block, on one of its ends,
+        or on the empty lane from where along the lane it is.
+    -->
+    <Grid
+        x:Name="Root"
+        Background="Transparent"
+        PointerCanceled="OnPointerEnded"
+        PointerCaptureLost="OnPointerEnded"
+        PointerMoved="OnPointerMoved"
+        PointerPressed="OnPointerPressed"
+        PointerReleased="OnPointerEnded"
+        SizeChanged="OnRootSizeChanged">
+        <!--  The whole recording, on the time scale of the trim bar under it.  -->
+        <Border
+            AutomationProperties.AccessibilityView="Raw"
+            Background="{ThemeResource ControlAltFillColorTertiaryBrush}"
+            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource ControlCornerRadius}"
+            IsHitTestVisible="False" />
+
+        <TextBlock
+            x:Name="EmptyText"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            AutomationProperties.AutomationId="StudioZoomLaneEmptyText"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            IsHitTestVisible="False"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            Text="No zooms. Press Z to add one at the playhead."
+            TextTrimming="CharacterEllipsis"
+            TextWrapping="NoWrap" />
+
+        <!--  One StudioZoomBlock for each zoom, in time order.  -->
+        <Canvas x:Name="Blocks" />
+
+        <Canvas IsHitTestVisible="False">
+            <Rectangle
+                x:Name="PlayheadLine"
+                Width="1"
+                Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                Opacity="0.6" />
+        </Canvas>
+    </Grid>
+</UserControl>

@@ -132,6 +132,54 @@
                     Step="0.05"
                     ValueText="{x:Bind ViewModel.ScreenShadowText, Mode=OneWay}"
                     Value="{x:Bind ViewModel.ScreenShadow, Mode=TwoWay}" />
+                <!--  How much of the picture is cut off each edge.  -->
+                <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Crop" />
+                <local:StudioSliderRow
+                    x:Name="ScreenCropLeftRow"
+                    Title="Crop left"
+                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                    Maximum="0.95"
+                    Minimum="0"
+                    SliderAutomationId="StudioScreenCropLeftSlider"
+                    Step="0.01"
+                    ValueText="{x:Bind ViewModel.ScreenCropLeftText, Mode=OneWay}"
+                    Value="{x:Bind ViewModel.ScreenCropLeft, Mode=TwoWay}" />
+                <local:StudioSliderRow
+                    Title="Crop top"
+                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                    Maximum="0.95"
+                    Minimum="0"
+                    SliderAutomationId="StudioScreenCropTopSlider"
+                    Step="0.01"
+                    ValueText="{x:Bind ViewModel.ScreenCropTopText, Mode=OneWay}"
+                    Value="{x:Bind ViewModel.ScreenCropTop, Mode=TwoWay}" />
+                <local:StudioSliderRow
+                    Title="Crop right"
+                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                    Maximum="0.95"
+                    Minimum="0"
+                    SliderAutomationId="StudioScreenCropRightSlider"
+                    Step="0.01"
+                    ValueText="{x:Bind ViewModel.ScreenCropRightText, Mode=OneWay}"
+                    Value="{x:Bind ViewModel.ScreenCropRight, Mode=TwoWay}" />
+                <local:StudioSliderRow
+                    Title="Crop bottom"
+                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                    Maximum="0.95"
+                    Minimum="0"
+                    SliderAutomationId="StudioScreenCropBottomSlider"
+                    Step="0.01"
+                    ValueText="{x:Bind ViewModel.ScreenCropBottomText, Mode=OneWay}"
+                    Value="{x:Bind ViewModel.ScreenCropBottom, Mode=TwoWay}" />
+                <Button
+                    AutomationProperties.AutomationId="StudioScreenCropResetButton"
+                    Click="OnResetScreenCropClick"
+                    Content="Reset crop"
+                    IsEnabled="{x:Bind ViewModel.CanResetScreenCrop, Mode=OneWay}" />
             </StackPanel>
 
             <!--  Camera: only for a recording that has one, and following the layout.  -->
@@ -249,7 +297,304 @@
                         Step="0.05"
                         ValueText="{x:Bind ViewModel.CameraShadowText, Mode=OneWay}"
                         Value="{x:Bind ViewModel.CameraShadow, Mode=TwoWay}" />
+                    <!--  How much of the picture is cut off each edge.  -->
+                    <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Crop" />
+                    <local:StudioSliderRow
+                        x:Name="CameraCropLeftRow"
+                        Title="Crop left"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="0.95"
+                        Minimum="0"
+                        SliderAutomationId="StudioCameraCropLeftSlider"
+                        Step="0.01"
+                        ValueText="{x:Bind ViewModel.CameraCropLeftText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraCropLeft, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Crop top"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="0.95"
+                        Minimum="0"
+                        SliderAutomationId="StudioCameraCropTopSlider"
+                        Step="0.01"
+                        ValueText="{x:Bind ViewModel.CameraCropTopText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraCropTop, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Crop right"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="0.95"
+                        Minimum="0"
+                        SliderAutomationId="StudioCameraCropRightSlider"
+                        Step="0.01"
+                        ValueText="{x:Bind ViewModel.CameraCropRightText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraCropRight, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Crop bottom"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="0.95"
+                        Minimum="0"
+                        SliderAutomationId="StudioCameraCropBottomSlider"
+                        Step="0.01"
+                        ValueText="{x:Bind ViewModel.CameraCropBottomText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraCropBottom, Mode=TwoWay}" />
+                    <Button
+                        AutomationProperties.AutomationId="StudioCameraCropResetButton"
+                        Click="OnResetCameraCropClick"
+                        Content="Reset crop"
+                        IsEnabled="{x:Bind ViewModel.CanResetCameraCrop, Mode=OneWay}" />
                 </StackPanel>
+            </StackPanel>
+
+            <!--
+                Zoom: stepping through the zooms, adding and suggesting them, and every value of
+                the selected one. It is how a zoom is selected and changed without a pointer.
+            -->
+            <StackPanel x:Name="ZoomSection" Spacing="8">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Zoom" />
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="PreviousZoomButton"
+                        Grid.Column="0"
+                        AutomationProperties.AutomationId="StudioPreviousZoomButton"
+                        AutomationProperties.Name="Previous zoom"
+                        Click="OnPreviousZoomClick"
+                        IsEnabled="{x:Bind ViewModel.CanSelectPreviousZoom, Mode=OneWay}"
+                        ToolTipService.ToolTip="Previous zoom">
+                        <FontIcon FontSize="14" Glyph="&#xE76B;" />
+                    </Button>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioZoomPositionText"
+                            Text="{x:Bind ViewModel.ZoomSelectionTitle, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioZoomRangeText"
+                            Style="{StaticResource StudioCaptionStyle}"
+                            Text="{x:Bind ViewModel.ZoomSelectionDetail, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.HasZoomSelectionDetail, Mode=OneWay}" />
+                    </StackPanel>
+                    <Button
+                        x:Name="NextZoomButton"
+                        Grid.Column="2"
+                        AutomationProperties.AutomationId="StudioNextZoomButton"
+                        AutomationProperties.Name="Next zoom"
+                        Click="OnNextZoomClick"
+                        IsEnabled="{x:Bind ViewModel.CanSelectNextZoom, Mode=OneWay}"
+                        ToolTipService.ToolTip="Next zoom">
+                        <FontIcon FontSize="14" Glyph="&#xE76C;" />
+                    </Button>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        x:Name="ZoomSectionAddButton"
+                        AutomationProperties.AutomationId="StudioZoomSectionAddButton"
+                        Click="{x:Bind ViewModel.AddZoomAtPlayhead}"
+                        Content="Add zoom"
+                        IsEnabled="{x:Bind ViewModel.CanAddZoomAtPlayhead, Mode=OneWay}"
+                        ToolTipService.ToolTip="Add a zoom at the playhead (Z)" />
+                    <Button
+                        x:Name="SuggestZoomsButton"
+                        AutomationProperties.AutomationId="StudioSuggestZoomsButton"
+                        AutomationProperties.HelpText="{x:Bind ViewModel.SuggestZoomsHelpText, Mode=OneWay}"
+                        Click="{x:Bind ViewModel.SuggestZooms}"
+                        Content="Suggest zooms"
+                        IsEnabled="{x:Bind ViewModel.CanSuggestZooms, Mode=OneWay}"
+                        ToolTipService.ToolTip="Add zooms where you clicked" />
+                </StackPanel>
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioNoClicksNote"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="{x:Bind ViewModel.ClicksExplanation}"
+                    Visibility="{x:Bind ViewModel.IsClicksExplanationVisible, Mode=OneWay}" />
+                <Button
+                    AutomationProperties.AutomationId="StudioRemoveSuggestionsButton"
+                    Click="OnRemoveSuggestionsClick"
+                    Content="Remove suggestions"
+                    Visibility="{x:Bind ViewModel.HasSuggestedZooms, Mode=OneWay}" />
+
+                <!--  The selected zoom.  -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasSelectedZoom, Mode=OneWay}">
+                    <local:StudioSliderRow
+                        Title="Scale"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="5"
+                        Minimum="1"
+                        SliderAutomationId="StudioZoomScaleSlider"
+                        Step="0.1"
+                        ValueText="{x:Bind ViewModel.ZoomScaleText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.ZoomScale, Mode=TwoWay}" />
+
+                    <RadioButtons
+                        AutomationProperties.AutomationId="StudioZoomFocusChoice"
+                        AutomationProperties.Name="Looks at"
+                        Header="Looks at"
+                        MaxColumns="2"
+                        SelectedIndex="{x:Bind ViewModel.ZoomFocusModeIndex, Mode=TwoWay}">
+                        <RadioButton AutomationProperties.AutomationId="StudioZoomFocusPoint" Content="A point" />
+                        <RadioButton
+                            AutomationProperties.AutomationId="StudioZoomFocusPointer"
+                            AutomationProperties.HelpText="{x:Bind ViewModel.ZoomFollowPointerHelpText, Mode=OneWay}"
+                            Content="The pointer"
+                            IsEnabled="{x:Bind ViewModel.CanZoomFollowPointer, Mode=OneWay}" />
+                    </RadioButtons>
+                    <TextBlock
+                        AutomationProperties.AutomationId="StudioNoPointerNote"
+                        Style="{StaticResource StudioNoteStyle}"
+                        Text="{x:Bind ViewModel.PointerExplanation}"
+                        Visibility="{x:Bind ViewModel.IsPointerExplanationVisible, Mode=OneWay}" />
+
+                    <!--  Where a zoom that looks at a point looks. The pad is for the pointer, the two sliders for everything else.  -->
+                    <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreZoomFocusControlsVisible, Mode=OneWay}">
+                        <local:StudioFocusPad
+                            x:Name="FocusPad"
+                            AutomationProperties.AutomationId="StudioZoomFocusPad"
+                            FocusRequested="OnFocusPadRequested"
+                            GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                            GestureStarted="{x:Bind ViewModel.BeginGesture}" />
+                        <local:StudioSliderRow
+                            Title="Horizontal"
+                            GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                            GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                            Maximum="1"
+                            Minimum="0"
+                            SliderAutomationId="StudioZoomFocusXSlider"
+                            Step="0.01"
+                            ValueText="{x:Bind ViewModel.ZoomFocusXText, Mode=OneWay}"
+                            Value="{x:Bind ViewModel.ZoomFocusX, Mode=TwoWay}" />
+                        <local:StudioSliderRow
+                            Title="Vertical"
+                            GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                            GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                            Maximum="1"
+                            Minimum="0"
+                            SliderAutomationId="StudioZoomFocusYSlider"
+                            Step="0.01"
+                            ValueText="{x:Bind ViewModel.ZoomFocusYText, Mode=OneWay}"
+                            Value="{x:Bind ViewModel.ZoomFocusY, Mode=TwoWay}" />
+                    </StackPanel>
+
+                    <!--  When the zoom starts. The time is said with its name, so screen readers skip the label.  -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Start" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="StudioZoomStartText"
+                                AutomationProperties.Name="{x:Bind ViewModel.ZoomStartAccessibleName, Mode=OneWay}"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.ZoomStartText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="StudioZoomStartEarlierButton"
+                                AutomationProperties.Name="Start 0.1 seconds earlier"
+                                Click="{x:Bind ViewModel.StepZoomStartEarlier}"
+                                Content="&#x2212;0.1 s"
+                                ToolTipService.ToolTip="Start 0.1 seconds earlier" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioZoomStartLaterButton"
+                                AutomationProperties.Name="Start 0.1 seconds later"
+                                Click="{x:Bind ViewModel.StepZoomStartLater}"
+                                Content="+0.1 s"
+                                ToolTipService.ToolTip="Start 0.1 seconds later" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioZoomStartAtPlayheadButton"
+                                AutomationProperties.Name="Start at playhead"
+                                Click="{x:Bind ViewModel.SetZoomStartAtPlayhead}"
+                                Content="At playhead"
+                                ToolTipService.ToolTip="Start this zoom at the playhead" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!--  When the zoom ends.  -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="End" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="StudioZoomEndText"
+                                AutomationProperties.Name="{x:Bind ViewModel.ZoomEndAccessibleName, Mode=OneWay}"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.ZoomEndText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="StudioZoomEndEarlierButton"
+                                AutomationProperties.Name="End 0.1 seconds earlier"
+                                Click="{x:Bind ViewModel.StepZoomEndEarlier}"
+                                Content="&#x2212;0.1 s"
+                                ToolTipService.ToolTip="End 0.1 seconds earlier" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioZoomEndLaterButton"
+                                AutomationProperties.Name="End 0.1 seconds later"
+                                Click="{x:Bind ViewModel.StepZoomEndLater}"
+                                Content="+0.1 s"
+                                ToolTipService.ToolTip="End 0.1 seconds later" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioZoomEndAtPlayheadButton"
+                                AutomationProperties.Name="End at playhead"
+                                Click="{x:Bind ViewModel.SetZoomEndAtPlayhead}"
+                                Content="At playhead"
+                                ToolTipService.ToolTip="End this zoom at the playhead" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <local:StudioSliderRow
+                        Title="Ease in"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="3"
+                        Minimum="0"
+                        SliderAutomationId="StudioZoomEaseInSlider"
+                        Step="0.1"
+                        ValueText="{x:Bind ViewModel.ZoomEaseInText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.ZoomEaseIn, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Ease out"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="3"
+                        Minimum="0"
+                        SliderAutomationId="StudioZoomEaseOutSlider"
+                        Step="0.1"
+                        ValueText="{x:Bind ViewModel.ZoomEaseOutText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.ZoomEaseOut, Mode=TwoWay}" />
+                    <Button
+                        AutomationProperties.AutomationId="StudioDeleteZoomButton"
+                        Click="OnDeleteZoomClick"
+                        Content="Delete zoom"
+                        ToolTipService.ToolTip="Delete this zoom (Delete)" />
+                </StackPanel>
+
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioZoomHint"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="Select a zoom on the timeline, or step to one with the arrows above."
+                    Visibility="{x:Bind ViewModel.IsZoomHintVisible, Mode=OneWay}" />
             </StackPanel>
 
             <!--  Extras  -->

@@ -24,8 +24,9 @@ namespace TinyClips.App.Controls.Studio;
 /// </remarks>
 public sealed partial class StudioTrimBar : UserControl
 {
-    // The handles sit outside the kept range, so the range itself spans the bar minus both.
-    private const double HandleWidth = 12;
+    // The handles sit outside the kept range, so the range itself spans the bar minus both. The
+    // zoom lane above the bar leaves the same room at its ends.
+    private const double HandleWidth = StudioTimelineMetrics.EdgeInset;
     private const double TrimLargeStepCount = 10;
     private const double DisabledOpacity = 0.4;
 

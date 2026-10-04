@@ -139,9 +139,57 @@ public sealed class StudioEditorSessionZoomTests : StudioEditorSessionTestBase
 
         Assert.False(session.SelectNextZoom());
         Assert.False(session.SelectPreviousZoom());
+        Assert.False(session.SelectAndShowZoom(0));
 
         Assert.Null(session.SelectedZoomIndex);
         Assert.Empty(Changes);
+    }
+
+    [Fact]
+    public async Task AZoomIsSelectedAndShownByItsPlace_FromAnywhere()
+    {
+        var session = await OpenAsync(CreateProjectWithZooms(Zoom(1, 3), Zoom(5, 7, easeIn: 1), Zoom(8, 9.5)));
+        session.Scrub(4);
+        Preview.Seeks.Clear();
+        Changes.Clear();
+
+        // The last one, whatever is selected and wherever the playhead is.
+        Assert.True(session.SelectAndShowZoom(2));
+        Assert.Equal(2, session.SelectedZoomIndex);
+        Assert.Equal(8.5, session.Playhead, Precision);
+        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Playback }, Changes);
+
+        Assert.True(session.SelectAndShowZoom(0));
+        Assert.Equal(0, session.SelectedZoomIndex);
+        Assert.Equal(1.5, session.Playhead, Precision);
+
+        // The selected zoom again: it stays selected, and the playhead goes back to where it has moved in.
+        session.Scrub(2.5);
+        Changes.Clear();
+        Assert.True(session.SelectAndShowZoom(0));
+        Assert.Equal(0, session.SelectedZoomIndex);
+        Assert.Equal(1.5, session.Playhead, Precision);
+        Assert.Equal(new[] { StudioEditorChanges.Playback }, Changes);
+        Assert.Equal(new[] { 8.5, 1.5, 2.5, 1.5 }, Preview.Seeks);
+    }
+
+    [Fact]
+    public async Task APlaceWithNoZoom_IsNotSelectedOrShown()
+    {
+        var session = await OpenAsync(CreateProjectWithZooms(Zoom(1, 3), Zoom(5, 7)));
+        session.SelectZoom(1);
+        session.Scrub(4);
+        Preview.Seeks.Clear();
+        Changes.Clear();
+
+        Assert.False(session.SelectAndShowZoom(2));
+        Assert.False(session.SelectAndShowZoom(-1));
+        Assert.False(session.SelectAndShowZoom(null));
+
+        Assert.Equal(1, session.SelectedZoomIndex);
+        Assert.Equal(4, session.Playhead, Precision);
+        Assert.Empty(Changes);
+        Assert.Empty(Preview.Seeks);
     }
 
     // Adding and removing
@@ -488,6 +536,7 @@ public sealed class StudioEditorSessionZoomTests : StudioEditorSessionTestBase
         Assert.False(session.RemoveZoomSuggestions());
         Assert.False(session.SelectNextZoom());
         Assert.False(session.SelectPreviousZoom());
+        Assert.False(session.SelectAndShowZoom(1));
         session.SetScreenCropInset(StudioCropEdge.Left, 0.2);
 
         Assert.Equal(0, session.SelectedZoomIndex);

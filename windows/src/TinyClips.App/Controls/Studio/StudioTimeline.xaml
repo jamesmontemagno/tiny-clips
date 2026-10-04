@@ -15,6 +15,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Button
@@ -56,26 +57,37 @@
 
             <Button
                 Grid.Column="4"
+                AutomationProperties.AutomationId="StudioAddZoomButton"
+                Click="{x:Bind ViewModel.AddZoomAtPlayhead}"
+                Content="Add zoom"
+                IsEnabled="{x:Bind ViewModel.CanAddZoomAtPlayhead, Mode=OneWay}"
+                ToolTipService.ToolTip="Add a zoom at the playhead (Z)" />
+            <Button
+                Grid.Column="5"
                 AutomationProperties.AutomationId="StudioStartHereButton"
                 Click="{x:Bind ViewModel.SetTrimStartAtPlayhead}"
                 Content="Start here"
                 ToolTipService.ToolTip="Start the video at the playhead (I)" />
             <Button
-                Grid.Column="5"
+                Grid.Column="6"
                 AutomationProperties.AutomationId="StudioEndHereButton"
                 Click="{x:Bind ViewModel.SetTrimEndAtPlayhead}"
                 Content="End here"
                 ToolTipService.ToolTip="End the video at the playhead (O)" />
         </Grid>
 
-        <local:StudioTrimBar
-            x:Name="TrimBar"
-            AutomationProperties.AutomationId="StudioTrimBar"
-            AutomationProperties.Name="Trim bar"
-            GestureCompleted="OnTrimGestureCompleted"
-            GestureStarted="OnTrimGestureStarted"
-            ScrubRequested="OnScrubRequested"
-            TrimEndRequested="OnTrimEndRequested"
-            TrimStartRequested="OnTrimStartRequested" />
+        <!--  The zooms and the trim, one above the other on the same time scale.  -->
+        <StackPanel Spacing="4">
+            <Border x:Name="ZoomLaneHost" />
+            <local:StudioTrimBar
+                x:Name="TrimBar"
+                AutomationProperties.AutomationId="StudioTrimBar"
+                AutomationProperties.Name="Trim bar"
+                GestureCompleted="OnTrimGestureCompleted"
+                GestureStarted="OnTrimGestureStarted"
+                ScrubRequested="OnScrubRequested"
+                TrimEndRequested="OnTrimEndRequested"
+                TrimStartRequested="OnTrimStartRequested" />
+        </StackPanel>
     </StackPanel>
 </UserControl>

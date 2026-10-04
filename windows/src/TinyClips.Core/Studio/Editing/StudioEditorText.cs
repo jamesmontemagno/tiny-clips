@@ -181,8 +181,25 @@ public static class StudioEditorText
     public static string GetZoomDescription(StudioZoom zoom)
     {
         ArgumentNullException.ThrowIfNull(zoom);
+        return $"Zoom {GetZoomDetailText(zoom)}";
+    }
 
-        var text = $"Zoom {GetZoomScaleText(zoom.Scale)}, {GetZoomRangeText(zoom)}";
+    /// <summary>
+    /// What is read out when a zoom is stepped to with Previous or Next, which say nothing of
+    /// where they land by themselves: which zoom it is, and then what
+    /// <see cref="GetZoomDescription"/> says of it, such as
+    /// <c>Zoom 2 of 5, 2×, 12.0 to 16.5 seconds</c>.
+    /// </summary>
+    public static string GetZoomStepText(int index, int count, StudioZoom zoom)
+    {
+        ArgumentNullException.ThrowIfNull(zoom);
+        return $"{GetZoomPositionText(index, count)}, {GetZoomDetailText(zoom)}";
+    }
+
+    // "2×, 12.0 to 16.5 seconds", with "follows the pointer" and "suggested" where they apply.
+    private static string GetZoomDetailText(StudioZoom zoom)
+    {
+        var text = $"{GetZoomScaleText(zoom.Scale)}, {GetZoomRangeText(zoom)}";
         if (zoom.Focus.Mode == StudioZoomFocusMode.Cursor)
         {
             text += ", follows the pointer";

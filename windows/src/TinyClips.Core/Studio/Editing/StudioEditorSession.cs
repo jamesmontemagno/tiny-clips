@@ -703,7 +703,12 @@ public sealed partial class StudioEditorSession
         return result;
     }
 
-    private bool SelectAndShowZoom(int? index)
+    /// <summary>
+    /// Selects a zoom and shows it where it has moved in: the playhead goes to the end of its
+    /// ease in, as it does for <see cref="SelectNextZoom"/>. False, with nothing changed, when
+    /// there is no such zoom or the project cannot be edited just now.
+    /// </summary>
+    public bool SelectAndShowZoom(int? index)
     {
         if (index is not { } zoom || !IsEditable || Model?.GetZoomLookTime(zoom) is not { } time)
         {

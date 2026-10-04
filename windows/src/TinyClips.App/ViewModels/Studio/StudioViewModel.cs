@@ -16,7 +16,8 @@ namespace TinyClips.App.ViewModels.Studio;
 /// <remarks>
 /// Every value is read from the session when it is asked for, so there is no second copy to keep
 /// in step. A change to the project refreshes every binding; the playhead and export progress,
-/// which change many times a second, refresh only what depends on them.
+/// which change many times a second, refresh only what depends on them, and so does selecting
+/// another zoom.
 /// </remarks>
 public sealed partial class StudioViewModel : ObservableObject
 {
@@ -258,7 +259,7 @@ public sealed partial class StudioViewModel : ObservableObject
     public void MoveBubbleTopLeft(double x, double y) =>
         _session.MoveBubbleTopLeft(x, y, CanvasWidth, CanvasHeight);
 
-    /// <summary>Runs what a key press means. A layout chosen this way is read out.</summary>
+    /// <summary>Runs what a key press means. A layout chosen this way is read out, and so is what came of a zoom.</summary>
     public void Run(StudioShortcutAction action)
     {
         switch (action)
@@ -289,6 +290,12 @@ public sealed partial class StudioViewModel : ObservableObject
                 break;
             case StudioShortcutAction.ShowCameraLayout:
                 SetLayoutFromKey(StudioLayout.Camera);
+                break;
+            case StudioShortcutAction.AddZoom:
+                AddZoomAtPlayhead();
+                break;
+            case StudioShortcutAction.RemoveSelectedZoom:
+                RemoveSelectedZoom();
                 break;
             case StudioShortcutAction.Undo:
                 Undo();
@@ -353,13 +360,20 @@ public sealed partial class StudioViewModel : ObservableObject
         {
             ClearDefaultLookStatusIfEdited();
             ClearSaveErrorIfSaved();
+            RememberZoomStateAtPlayhead();
             OnPropertyChanged(string.Empty);
         }
         else
         {
+            if (e.Includes(StudioEditorChanges.Selection))
+            {
+                RaiseZoomSelectionChanged();
+            }
+
             if (e.Includes(StudioEditorChanges.Playback))
             {
                 Raise(PlaybackPropertyNames);
+                RaiseZoomStateAtPlayhead();
             }
 
             if (e.Includes(StudioEditorChanges.Export))

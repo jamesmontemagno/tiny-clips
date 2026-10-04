@@ -13,14 +13,26 @@ own `CHANGELOG.md` at the repository root.
   and export an MP4. The project stays editable afterward: reopen it from **Open in Studio…** in
   the Clips Library, from Recent captures, or from the drafts list in Settings › General, which
   also sets how long projects are kept and how much disk space they may use.
+  - **Zooms.** Press **Z** or choose **Add zoom** to zoom in on the screen recording at the
+    playhead. Zooms sit on a lane above the trim bar: drag one to move it, or drag one of its ends
+    to change when it starts or stops. The **Zoom** section of the inspector steps through the
+    zooms and sets how far each one zooms in, whether it looks at a point or follows the pointer,
+    when it starts and ends, and how long it takes to move in and out. **Suggest zooms** adds
+    zooms where you clicked during the recording, and **Remove suggestions** takes away the
+    suggestions you have not changed. **Delete** removes the selected zoom.
+  - **Crops.** The **Crop left**, **Crop top**, **Crop right**, and **Crop bottom** sliders in the
+    Screen and Camera sections cut the edges off the screen recording or the camera, and
+    **Reset crop** brings them back.
   - To try it, set the environment variable `TINYCLIPS_STUDIO_PREVIEW` to `1` and restart Tiny
     Clips (see the README). Then choose **Open in Studio (Preview)** under **After recording** in
     Settings › Video, or switch on **Record for Studio** in the recording setup panel.
   - Keys in the editor: **Space** plays or pauses, **Left** and **Right** step a frame, **I** and
-    **O** start and end the video at the playhead, **1** to **4** choose the layout, **Ctrl+Z**
-    and **Ctrl+Y** undo and redo, **Ctrl+E** exports, and **Esc** stops an export.
-  - Known limits: window recordings keep no click or cursor data, and the cursor is part of the
-    screen layer.
+    **O** start and end the video at the playhead, **Z** adds a zoom at the playhead, **Delete**
+    removes the selected zoom, **1** to **4** choose the layout, **Ctrl+Z** and **Ctrl+Y** undo
+    and redo, **Ctrl+E** exports, and **Esc** stops an export.
+  - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
+    for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
+    layer.
 
 ## [v1.8.2-windows] - 2026-10-03
 

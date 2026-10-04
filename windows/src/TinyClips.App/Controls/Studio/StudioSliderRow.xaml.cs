@@ -106,6 +106,9 @@ public sealed partial class StudioSliderRow : UserControl
         set => SetValue(SliderAutomationIdProperty, value);
     }
 
+    /// <summary>Puts the keyboard focus on the slider. The row itself is not a tab stop.</summary>
+    public bool FocusSlider(FocusState state) => ValueSlider.Focus(state);
+
     private static void OnTitleChanged(DependencyObject sender, DependencyPropertyChangedEventArgs e)
     {
         var row = (StudioSliderRow)sender;

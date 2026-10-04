@@ -11,8 +11,9 @@ using Windows.Foundation;
 namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
-/// The right-hand side of the Studio window: layout, background, screen, camera and extras, and
-/// the button that saves the look as the default. The camera section follows the layout.
+/// The right-hand side of the Studio window: layout, background, screen, camera, zoom and extras,
+/// and the button that saves the look as the default. The camera section follows the layout, and
+/// the zoom section the selected zoom.
 /// </summary>
 public sealed partial class StudioInspector : UserControl
 {
@@ -47,6 +48,7 @@ public sealed partial class StudioInspector : UserControl
     {
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         SyncSwatches();
+        FocusPad.Update(ViewModel.ZoomPad);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) =>
@@ -57,6 +59,97 @@ public sealed partial class StudioInspector : UserControl
         if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(StudioViewModel.BackgroundPresetId))
         {
             SyncSwatches();
+        }
+
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(StudioViewModel.ZoomPad))
+        {
+            FocusPad.Update(ViewModel.ZoomPad);
+        }
+    }
+
+    private void OnFocusPadRequested(object? sender, StudioFocusPadPoint e) => ViewModel.SetZoomFocusOnPad(e.X, e.Y);
+
+    // A button that its own action switches off, or hides, would leave the keyboard focus to
+    // whatever comes next in the window. Each of these moves it to where a person would go on
+    // from instead. A button that was pressed without having the focus leaves the focus alone.
+
+    private void OnPreviousZoomClick(object sender, RoutedEventArgs e)
+    {
+        var focus = FocusStateOf(sender);
+        ViewModel.ShowPreviousZoom();
+        if (!ViewModel.CanSelectPreviousZoom)
+        {
+            MoveFocus(focus, NextZoomButton, ZoomSectionAddButton);
+        }
+    }
+
+    private void OnNextZoomClick(object sender, RoutedEventArgs e)
+    {
+        var focus = FocusStateOf(sender);
+        ViewModel.ShowNextZoom();
+        if (!ViewModel.CanSelectNextZoom)
+        {
+            MoveFocus(focus, PreviousZoomButton, ZoomSectionAddButton);
+        }
+    }
+
+    private void OnRemoveSuggestionsClick(object sender, RoutedEventArgs e)
+    {
+        var focus = FocusStateOf(sender);
+        ViewModel.RemoveZoomSuggestions();
+        if (!ViewModel.HasSuggestedZooms)
+        {
+            MoveFocus(focus, SuggestZoomsButton, ZoomSectionAddButton);
+        }
+    }
+
+    private void OnDeleteZoomClick(object sender, RoutedEventArgs e)
+    {
+        var focus = FocusStateOf(sender);
+        ViewModel.RemoveSelectedZoom();
+        if (!ViewModel.HasSelectedZoom)
+        {
+            MoveFocus(focus, NextZoomButton, PreviousZoomButton, ZoomSectionAddButton);
+        }
+    }
+
+    private void OnResetScreenCropClick(object sender, RoutedEventArgs e)
+    {
+        var focus = FocusStateOf(sender);
+        ViewModel.ResetScreenCrop();
+        if (!ViewModel.CanResetScreenCrop && focus != FocusState.Unfocused)
+        {
+            ScreenCropLeftRow.FocusSlider(focus);
+        }
+    }
+
+    private void OnResetCameraCropClick(object sender, RoutedEventArgs e)
+    {
+        var focus = FocusStateOf(sender);
+        ViewModel.ResetCameraCrop();
+        if (!ViewModel.CanResetCameraCrop && focus != FocusState.Unfocused)
+        {
+            CameraCropLeftRow.FocusSlider(focus);
+        }
+    }
+
+    private static FocusState FocusStateOf(object sender) =>
+        sender is Control control ? control.FocusState : FocusState.Unfocused;
+
+    /// <summary>Gives the focus to the first of the controls that can take it, the way the pressed button had it.</summary>
+    private static void MoveFocus(FocusState state, params Control[] candidates)
+    {
+        if (state == FocusState.Unfocused)
+        {
+            return;
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (candidate.IsEnabled && candidate.Focus(state))
+            {
+                return;
+            }
         }
     }
 

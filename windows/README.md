@@ -32,8 +32,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture.
 - **Tiny Clips Studio (early preview, off by default)** — records the screen and the camera as
   separate layers and opens a compositing editor when the recording ends: background and padding,
-  a rounded screen card, camera shape and four layouts, a draggable camera bubble, trim, and MP4
-  export. The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
+  a rounded screen card, camera shape and four layouts, a draggable camera bubble, zooms (added by
+  hand or suggested from your clicks), crops for the screen and the camera, trim, and MP4 export.
+  The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
@@ -152,9 +153,12 @@ With the switch on:
   recording setup panel has **Record for Studio**. A Studio recording is saved as a project (a
   clean screen track, a camera track, and click and cursor data) and opens in the editor.
 - **The editor** has a live preview, an inspector (layout, background, padding, screen and camera
-  styling), a trim bar, undo and redo, and Export. Keys: `Space` play or pause, `Left`/`Right` step
-  a frame, `I`/`O` start and end the video at the playhead, `1`–`4` layout, `Ctrl+Z`/`Ctrl+Y` undo
-  and redo, `Ctrl+E` export, `Esc` stop an export.
+  styling with crops, and the zooms), a zoom lane above a trim bar, undo and redo, and Export.
+  Keys: `Space` play or pause, `Left`/`Right` step a frame, `I`/`O` start and end the video at the
+  playhead, `Z` add a zoom at the playhead, `Delete` remove the selected zoom, `1`–`4` layout,
+  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export. While the zoom lane has
+  the keyboard focus, `Left`/`Right` select the previous and the next zoom, and `Home`/`End` the
+  first and the last.
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer.
   **Settings › General** shows the space projects take, the cleanup rules, and the drafts

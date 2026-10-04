@@ -270,6 +270,32 @@ public sealed class StudioEditorSessionTextTests : StudioEditorSessionTestBase
         Assert.Equal("Zoom 12 of 1000", StudioEditorText.GetZoomPositionText(11, 1000));
     }
 
+    [Fact]
+    public void ZoomStepText_SaysWhichZoomItIs_AndThenWhatTheZoomIs()
+    {
+        Assert.Equal(
+            "Zoom 2 of 5, 2×, 12.0 to 16.5 seconds",
+            StudioEditorText.GetZoomStepText(1, 5, new StudioZoom { Start = 12, End = 16.5, Scale = 2 }));
+        Assert.Equal(
+            "Zoom 1 of 1, 2.5×, 1.0 to 3.0 seconds, follows the pointer, suggested",
+            StudioEditorText.GetZoomStepText(
+                0,
+                1,
+                new StudioZoom
+                {
+                    Start = 1,
+                    End = 3,
+                    Scale = 2.5,
+                    Focus = new StudioZoomFocus { Mode = StudioZoomFocusMode.Cursor },
+                    Origin = StudioZoomOrigin.Auto,
+                }));
+
+        // The scale that is drawn, as everywhere else.
+        Assert.Equal(
+            "Zoom 3 of 3, 5×, 0.0 to 0.3 seconds",
+            StudioEditorText.GetZoomStepText(2, 3, new StudioZoom { Start = 0, End = 0.3, Scale = 9 }));
+    }
+
     [Theory]
     [InlineData(0, "No zooms to suggest for this recording.")]
     [InlineData(-1, "No zooms to suggest for this recording.")]

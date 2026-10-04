@@ -379,34 +379,45 @@ public sealed partial class StudioWindow : Window
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
     {
         var key = MapKey(e.Key);
-        if (key == StudioShortcutKey.Other)
+        if (key != StudioShortcutKey.Other
+            && RunShortcut(key, IsKeyDown(VirtualKey.Control), IsKeyDown(VirtualKey.Shift), e.KeyStatus.IsMenuKeyDown, e.KeyStatus.WasKeyDown) != StudioShortcutAction.None)
         {
-            return;
+            e.Handled = true;
         }
+    }
 
+    /// <summary>
+    /// Does what a key means in this window as it is now, and returns what that was:
+    /// <see cref="StudioShortcutAction.None"/> for a key that is left alone.
+    /// </summary>
+    /// <param name="isRepeat">True when the key is being held and this is not its first press.</param>
+    internal StudioShortcutAction RunShortcut(StudioShortcutKey key, bool isControlDown, bool isShiftDown, bool isAltDown, bool isRepeat)
+    {
         var focused = RootGrid.XamlRoot is { } root ? FocusManager.GetFocusedElement(root) : null;
         var input = new StudioShortcutInput(
             key,
-            IsControlDown: IsKeyDown(VirtualKey.Control),
-            IsShiftDown: IsKeyDown(VirtualKey.Shift),
-            IsAltDown: e.KeyStatus.IsMenuKeyDown,
-            IsRepeat: e.KeyStatus.WasKeyDown,
+            IsControlDown: isControlDown,
+            IsShiftDown: isShiftDown,
+            IsAltDown: isAltDown,
+            IsRepeat: isRepeat,
             IsTextInputFocused: focused is TextBox or RichEditBox or PasswordBox,
             IsReady: ViewModel.IsReady,
             IsExporting: ViewModel.IsExporting)
         {
             IsTypeToSearchFocused = focused is ComboBox or ComboBoxItem,
+            HasSelectedZoom = ViewModel.HasSelectedZoom,
         };
 
         var action = StudioShortcuts.Resolve(input);
         if (action != StudioShortcutAction.None)
         {
-            e.Handled = true;
             ViewModel.Run(action);
         }
+
+        return action;
     }
 
-    private static StudioShortcutKey MapKey(VirtualKey key) => key switch
+    internal static StudioShortcutKey MapKey(VirtualKey key) => key switch
     {
         VirtualKey.Space => StudioShortcutKey.Space,
         VirtualKey.Left => StudioShortcutKey.Left,
@@ -417,6 +428,7 @@ public sealed partial class StudioWindow : Window
         VirtualKey.Z => StudioShortcutKey.Z,
         VirtualKey.Y => StudioShortcutKey.Y,
         VirtualKey.E => StudioShortcutKey.E,
+        VirtualKey.Delete => StudioShortcutKey.Delete,
 
         // The number row, not the number pad.
         VirtualKey.Number1 => StudioShortcutKey.Digit1,
