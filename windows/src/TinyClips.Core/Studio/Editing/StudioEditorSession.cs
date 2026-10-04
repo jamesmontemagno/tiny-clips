@@ -412,6 +412,9 @@ public sealed partial class StudioEditorSession
 
     public void SetCameraMirror(bool isMirrored) => Edit(model => model.SetCameraMirror(isMirrored));
 
+    /// <summary>Keeps, blurs or takes away everything in the camera picture that is not a person.</summary>
+    public void SetCameraCutout(StudioCameraCutout cutout) => Edit(model => model.SetCameraCutout(cutout));
+
     public void SetCameraBorderWidth(double value) => Edit(model => model.SetCameraBorderWidth(value));
 
     public void SetCameraShadow(double value) => Edit(model => model.SetCameraShadow(value));

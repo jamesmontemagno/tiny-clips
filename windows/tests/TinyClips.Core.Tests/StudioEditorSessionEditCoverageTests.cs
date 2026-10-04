@@ -27,6 +27,7 @@ public sealed class StudioEditorSessionEditCoverageTests : StudioEditorSessionTe
             p => Near(p.Scenes[0].Bubble.OffsetX, -0.1) && Near(p.Scenes[0].Bubble.OffsetY, 0.05)
         },
         { "mirror", s => s.SetCameraMirror(false), p => !p.Camera.Mirror },
+        { "camera cutout", s => s.SetCameraCutout(StudioCameraCutout.Blur), p => p.Camera.Cutout == StudioCameraCutout.Blur },
         { "border", s => s.SetCameraBorderWidth(0.01), p => Near(p.Camera.BorderWidth, 0.01) },
         { "camera shadow", s => s.SetCameraShadow(0.9), p => Near(p.Camera.Shadow, 0.9) },
         {

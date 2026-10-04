@@ -507,6 +507,13 @@ public sealed partial class StudioEditorModel
     public void SetCameraMirror(bool isMirrored) =>
         Mutate(project => project with { Camera = project.Camera with { Mirror = isMirrored } });
 
+    /// <summary>
+    /// Sets what happens to everything in the camera picture that is not a person: kept, blurred
+    /// or taken away.
+    /// </summary>
+    public void SetCameraCutout(StudioCameraCutout cutout) =>
+        Mutate(project => project with { Camera = project.Camera with { Cutout = cutout } });
+
     public void SetCameraBorderWidth(double value)
     {
         if (double.IsFinite(value))
@@ -1183,6 +1190,14 @@ public sealed partial class StudioEditorModel
         StudioCameraShape.RoundedRectangle => "Rounded rectangle",
         StudioCameraShape.Squircle => "Squircle",
         _ => "Rectangle",
+    };
+
+    /// <summary>What a choice for the camera's background is called.</summary>
+    public static string GetCutoutName(StudioCameraCutout cutout) => cutout switch
+    {
+        StudioCameraCutout.Blur => "Blur",
+        StudioCameraCutout.Remove => "Remove",
+        _ => "Keep",
     };
 
     public static string GetAspectName(StudioCanvasAspect aspect) => aspect switch

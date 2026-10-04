@@ -362,6 +362,32 @@ public sealed class StudioEditorModelTests
         Assert.Equal(0.06, model.Project.Canvas.Padding, Precision);
     }
 
+    [Fact]
+    public void TheCameraBackground_IsKeptBlurredOrRemoved()
+    {
+        var model = new StudioEditorModel(MakeProject());
+        Assert.Equal(StudioCameraCutout.None, model.Project.Camera.Cutout);
+
+        model.SetCameraCutout(StudioCameraCutout.Blur);
+        Assert.Equal(StudioCameraCutout.Blur, model.Project.Camera.Cutout);
+        model.SetCameraCutout(StudioCameraCutout.Remove);
+        Assert.Equal(StudioCameraCutout.Remove, model.Project.Camera.Cutout);
+
+        // The same choice again is no edit: two steps back and the project is as it was opened.
+        model.SetCameraCutout(StudioCameraCutout.Remove);
+        model.Undo();
+        Assert.Equal(StudioCameraCutout.Blur, model.Project.Camera.Cutout);
+        model.Undo();
+        Assert.Equal(StudioCameraCutout.None, model.Project.Camera.Cutout);
+        Assert.False(model.CanUndo);
+
+        // It is part of the look, so a saved look brings it to the next recording.
+        model.Redo();
+        var next = new StudioEditorModel(MakeProject());
+        next.ApplyLook(model.CurrentLook);
+        Assert.Equal(StudioCameraCutout.Blur, next.Project.Camera.Cutout);
+    }
+
     // Trim and time
 
     [Fact]
@@ -558,6 +584,9 @@ public sealed class StudioEditorModelTests
         Assert.Equal("Camera only", StudioEditorModel.GetLayoutName(StudioLayout.Camera));
         Assert.Equal("Bottom right", StudioEditorModel.GetAnchorName(StudioAnchor.BottomRight));
         Assert.Equal("Rounded rectangle", StudioEditorModel.GetShapeName(StudioCameraShape.RoundedRectangle));
+        Assert.Equal("Keep", StudioEditorModel.GetCutoutName(StudioCameraCutout.None));
+        Assert.Equal("Blur", StudioEditorModel.GetCutoutName(StudioCameraCutout.Blur));
+        Assert.Equal("Remove", StudioEditorModel.GetCutoutName(StudioCameraCutout.Remove));
         Assert.Equal("Auto", StudioEditorModel.GetAspectName(StudioCanvasAspect.Auto));
         Assert.Equal("9:16", StudioEditorModel.GetAspectName(StudioCanvasAspect.Portrait9X16));
         Assert.Equal("12.5 seconds", StudioEditorModel.GetSecondsText(12.5));
