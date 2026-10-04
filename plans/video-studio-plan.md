@@ -241,6 +241,20 @@ A recording can have the computer's sound and the microphone in one file. Where 
 
 **Windows.** The recorder mixes both into one track while recording, so a Windows recording has nothing to set apart and the window shows no volumes. Separate volumes there need three things: the recorder writing two sound tracks in a Studio recording, the exporter mixing two tracks, and the preview playing two. The first of these changes the sound path of the recorder that ships today, and none of it can be tried on the machine this is written on without recording its user's sound and microphone. It is left until that can be done with the user.
 
+### Scenes from the recording (Milestone 3)
+
+Both apps let the camera be moved to another corner while a recording runs, and both already wrote those moves into the project's events. A regular recording has the camera drawn into it, so the move is simply in the video. A Studio recording kept the camera apart and then showed it in its first corner from start to end, whatever was done while recording.
+
+A new project now gets a scene for each move: the camera goes to the corner it was moved to, at the time it was moved, and glides there the way it does into a scene split off in the editor. The scenes are ordinary scenes. They show on the scene lane and can be changed or deleted.
+
+The rule is in section 9.1 of the project format, is the same on both platforms, and is held by shared fixtures. Its corners:
+
+- Corners passed through in less than 0.3 seconds leave no scenes of their own. Only where the camera stayed gets one.
+- A move that is taken back at once leaves nothing.
+- A move in the last 0.3 seconds of the recording is left out, because its scene would be shorter than any the editor makes.
+
+**Choosing a layout while recording** uses the same rule. The format has a place for it (`markers` in the events, each a time and a layout), and a marker becomes a scene with that layout. Nothing writes markers yet: that needs a control in each app's recording panel, and it only pays off with keys for it, since a click on the panel is itself in the recording. Which keys is a question for the user.
+
 ## Platform architecture
 
 ### macOS
@@ -351,7 +365,8 @@ The Windows window has the zoom lane, the Zoom section and the crop sliders. `St
 | Speed in the preview | The player is set to the rate of the stretch it is in, and is silent there. Compiled only | Not started. The preview plays every stretch at the recording's own speed |
 | Speed lane, Speed section in the inspector, the Speed button | Done. Compiled, never run | Not started |
 | Volumes for the computer's sound and the microphone | Done: the recorder lists its sound tracks, the Audio section has a slider for each, and preview and export play them through an audio mix. The rules are unit tested. Compiled, never run | Not started. A Windows recording has one mixed sound track; see "Volumes" above |
-| Switching layouts while recording | Not started | Not started |
+| Moves of the camera while recording become scenes (section 9.1 of the format) | Done. 16 fixtures. The recorder hands the moves to the new project. Compiled, never run | Done. The same fixtures. The recorder hands the moves to the new project; that hand-over is two lines that no test reaches, and no recording has been made with it |
+| Choosing a layout while recording | The format and the rule are in, with fixtures. No control in the recording panel writes a marker yet | The same |
 
 A project file with more than one scene is drawn with its transitions on both platforms. On the Mac the editor can now split a recording into scenes and change each one, in views that have been compiled and never run. On Windows no window has a control for scenes yet, and until it does, the layout controls of a project that already has several scenes change the scene under the playhead while showing the layout of another.
 
@@ -411,6 +426,7 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **What a speed change is.** A stretch of the recording with a rate from 0.25× to 8×, stored in recording time like a cut. Zooms, moves between scenes, and click rings stay tied to the recording, so inside a faster stretch they pass faster too. A stretch at another speed has no sound: sound that keeps its pitch needs a time-stretching step that neither exporter has. Where two entries in a project file overlap, the one that starts first in the recording counts, wherever the trim is, so the speed at a moment of the recording does not change when the trim moves.
 - **Editing rules for speed changes**, the same on both platforms and unit tested on each: a new one plays twice as fast and covers 2 seconds, or up to the next one or the end of the recording; one never covers less than 0.1 seconds and never overlaps another; a rate of 1 is not a speed change, and deleting it is how a stretch goes back to the recording's own speed; at least 0.1 seconds of video has to stay, which a faster rate, a move, and even deleting a slower stretch can break, so those are not made then. Opening a project keeps exactly the entries an export counts, so opening and saving does not change how it plays.
 - **Volumes go down only.** The computer's sound and the microphone each have a volume from silent to as recorded, and only where the recording has them in tracks of their own. Making a track louder than it was recorded is left out, because it needs a limiter to keep it from clipping. On Windows there is nothing to set yet: its recorder mixes both into one track, and changing that touches the sound path of the recorder that ships today (see "Volumes").
+- **What was done while recording arrives as scenes.** A Studio recording used to show the camera in its first corner throughout, even when it had been moved while recording. Each move now starts a scene that the camera glides into, 0.35 seconds as for a scene split off in the editor, where a regular recording jumps. Corners passed through in under 0.3 seconds are skipped, since the editor makes no scene shorter than that.
 - **The project says what its sound tracks hold only when that is certain.** The Mac recorder lists them when the finished file has exactly one sound track for each sound it set out to record. An input that never got a sample may or may not have become a track; then the project lists nothing and every track plays as recorded.
 - **Playing over a cut** is done by the editor, which sends the preview on to the end of the cut when playback reaches it. The export is exact; the preview can show a few frames of the cut first.
 - **Stepping is read out.** Previous and Next, for zooms, scenes and cuts, say nothing of where they land by themselves, and the text between them is not read when it changes. So the editor reads out where it landed: "Zoom 2 of 5, 2×, 12.0 to 16.5 seconds", "Scene 2 of 3, Side by side, 12.0 to 30.5 seconds", "Cut 2 of 3, 12.0 to 16.5 seconds". On Windows a button that sets a time also reads out the new time; on the Mac the stepper speaks for itself.
