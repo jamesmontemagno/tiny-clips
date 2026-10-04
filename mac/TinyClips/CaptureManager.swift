@@ -901,7 +901,8 @@ class CaptureManager: ObservableObject {
                             captureRegion: target.region,
                             captureKind: target.studioCaptureKind,
                             initialCameraCorner: StudioRecordingCoordinator.studioAnchor(from: webcamSelection.corner),
-                            clickVisualsEnabled: mouseClicksEnabled
+                            clickVisualsEnabled: mouseClicksEnabled,
+                            frameRate: settings.videoFrameRate
                         )
                     } else {
                         studioCoordinator = nil

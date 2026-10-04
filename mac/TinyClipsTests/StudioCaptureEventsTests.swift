@@ -2,6 +2,20 @@ import XCTest
 @testable import TinyClips
 
 final class StudioCaptureEventsTests: XCTestCase {
+    func testProjectFrameRateIsTheConfiguredRateNotTheFilesAverage() {
+        // Little moved on screen, so the file averages 7 frames a second. It was recorded at 60.
+        XCTAssertEqual(StudioCaptureEvents.projectFrameRate(configured: 60, measured: 7.2), 60)
+        XCTAssertEqual(StudioCaptureEvents.projectFrameRate(configured: 24, measured: 24), 24)
+        XCTAssertEqual(StudioCaptureEvents.projectFrameRate(configured: 1000, measured: 30), 240)
+    }
+
+    func testProjectFrameRateFallsBackToTheFileButNeverBelowThirty() {
+        XCTAssertEqual(StudioCaptureEvents.projectFrameRate(configured: 0, measured: 7.2), 30)
+        XCTAssertEqual(StudioCaptureEvents.projectFrameRate(configured: .nan, measured: 59.94), 60)
+        XCTAssertEqual(StudioCaptureEvents.projectFrameRate(configured: 0, measured: 0), 30)
+        XCTAssertEqual(StudioCaptureEvents.projectFrameRate(configured: 0, measured: .infinity), 30)
+    }
+
     func testNormalizedPointDropsClicksOutsideCaptureRect() {
         let rect = CGRect(x: 10, y: 20, width: 200, height: 100)
 

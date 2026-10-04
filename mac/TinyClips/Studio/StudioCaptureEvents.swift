@@ -41,6 +41,20 @@ struct StudioCaptureMediaInfo: Equatable, Sendable {
 // MARK: - Capture Events
 
 enum StudioCaptureEvents {
+    /// The frame rate a project is edited and exported at.
+    ///
+    /// A screen recording gets a frame only when something on screen changed, so the rate read
+    /// from the file is an average and can be far below the rate the recording was made at. A
+    /// project with that rate would export as a slide show. The rate the recording was configured
+    /// with is used instead. The file's own rate is the fallback, and never below 30.
+    static func projectFrameRate(configured: Double, measured: Double) -> Double {
+        if configured.isFinite, configured >= 1 {
+            return min(configured, 240)
+        }
+        guard measured.isFinite, measured > 0 else { return 30 }
+        return min(max(measured.rounded(.up), 30), 240)
+    }
+
     static func normalizedPoint(
         _ point: CGPoint,
         in rect: CGRect,

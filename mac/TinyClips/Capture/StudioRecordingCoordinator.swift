@@ -17,22 +17,26 @@ final class StudioRecordingCoordinator {
     private let captureKind: StudioCaptureKind
     private let initialCameraCorner: StudioAnchor
     private let clickVisualsEnabled: Bool
+    private let configuredFrameRate: Double
     private var cursorTimer: Timer?
     private var cursorSamples: [StudioCaptureCursorSampleInput] = []
     private var completedProjectID: String?
 
+    /// - Parameter frameRate: The frame rate the screen recording is made at.
     init(
         store: StudioProjectStore = .shared,
         captureRegion: CaptureRegion,
         captureKind: StudioCaptureKind,
         initialCameraCorner: StudioAnchor,
-        clickVisualsEnabled: Bool
+        clickVisualsEnabled: Bool,
+        frameRate: Int
     ) throws {
         self.store = store
         self.captureRegion = captureRegion
         self.captureKind = captureKind
         self.initialCameraCorner = initialCameraCorner
         self.clickVisualsEnabled = clickVisualsEnabled
+        self.configuredFrameRate = Double(frameRate)
         self.paths = try store.beginRecording()
         StudioMaintenance.recordingDidBegin(projectID: paths.id)
     }
@@ -99,7 +103,11 @@ final class StudioRecordingCoordinator {
     ) async throws -> String {
         stopCursorSampling()
 
-        let screenInfo = try await Self.mediaInfo(for: screenURL)
+        var screenInfo = try await Self.mediaInfo(for: screenURL)
+        screenInfo.frameRate = StudioCaptureEvents.projectFrameRate(
+            configured: configuredFrameRate,
+            measured: screenInfo.frameRate
+        )
         var cameraInfo: StudioCaptureMediaInfo?
         if let cameraURL, FileManager.default.fileExists(atPath: cameraURL.path) {
             cameraInfo = try? await Self.mediaInfo(for: cameraURL)
