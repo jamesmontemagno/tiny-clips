@@ -488,7 +488,7 @@ internal static class ZoomChecks
     }
 
     /// <summary>The named frames of a video, decoded in one pass.</summary>
-    private static Dictionary<int, Picture> Frames(string path, params int[] wanted)
+    internal static Dictionary<int, Picture> Frames(string path, params int[] wanted)
     {
         var found = new Dictionary<int, Picture>();
         var last = wanted.Max();
@@ -548,7 +548,7 @@ internal static class ZoomChecks
     /// number reads right where the strip should be, flat places of the pattern have their
     /// colours, and four of the pattern's edges are where they should be.
     /// </summary>
-    private static void ExpectWindow(CheckContext context, Picture picture, ClipSpec spec, int number, Box card, Window want, double edgeTolerance, double colorTolerance, string what)
+    internal static void ExpectWindow(CheckContext context, Picture picture, ClipSpec spec, int number, Box card, Window want, double edgeTolerance, double colorTolerance, string what)
     {
         var problems = context.Problems.Count;
         var map = Map(card, spec, want);
@@ -627,7 +627,7 @@ internal static class ZoomChecks
     }
 
     /// <summary>Saves a picture in the check's folder when the run's files are kept, and whenever it was not right.</summary>
-    private static void Keep(CheckContext context, Picture picture, string what, bool always = false)
+    internal static void Keep(CheckContext context, Picture picture, string what, bool always = false)
     {
         if (always || context.Harness.KeepsFiles)
         {
@@ -760,7 +760,7 @@ internal static class ZoomChecks
     }
 
     /// <summary>Where the clip's pixels land when the part <paramref name="window"/> of it fills a card.</summary>
-    private static ClipMap Map(Box card, ClipSpec spec, Window window)
+    internal static ClipMap Map(Box card, ClipSpec spec, Window window)
     {
         var scaleX = card.Width / (window.Width * spec.Width);
         var scaleY = card.Height / (window.Height * spec.Height);
@@ -775,7 +775,7 @@ internal static class ZoomChecks
         && y + height + margin <= ((window.Y + window.Height) * spec.Height) + 1e-9;
 
     /// <summary>Everything outside a card's box is the same in two pictures.</summary>
-    private static void ExpectSameOutside(CheckContext context, Picture picture, Picture reference, Box card, string what)
+    internal static void ExpectSameOutside(CheckContext context, Picture picture, Picture reference, Box card, string what)
     {
         RendererChecks.ExpectSame(context, picture, reference, $"{what}, left of the card", 0, 0, card.Left, picture.Height);
         RendererChecks.ExpectSame(context, picture, reference, $"{what}, right of the card", card.Right, 0, picture.Width, picture.Height);
@@ -812,7 +812,7 @@ internal static class ZoomChecks
     }
 
     /// <summary>A layer's box on the canvas, in whole pixels: right and bottom are the first pixels outside it.</summary>
-    private readonly record struct Box(int Left, int Top, int Right, int Bottom)
+    internal readonly record struct Box(int Left, int Top, int Right, int Bottom)
     {
         public int Width => Right - Left;
 
@@ -820,7 +820,7 @@ internal static class ZoomChecks
     }
 
     /// <summary>A part of the screen, as fractions of it.</summary>
-    private readonly record struct Window(double X, double Y, double Width, double Height)
+    internal readonly record struct Window(double X, double Y, double Width, double Height)
     {
         public static readonly Window Whole = new(0, 0, 1, 1);
 

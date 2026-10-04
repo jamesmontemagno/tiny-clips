@@ -1,7 +1,7 @@
 # Studio rendering and export on Windows
 
 `TinyClips.Core.Studio.Rendering` draws Studio frames and exports projects. It follows sections 6.5
-and 6.7 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineSpike` measured.
+to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineSpike` measured.
 
 ## The pieces
 
@@ -10,7 +10,12 @@ and 6.7 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngine
 - `StudioSceneRenderer`: draws one frame with Direct2D into a `B8G8R8A8_UNorm` render target:
   background, screen shadow, screen, click rings, camera shadow, camera, border, badge. Layer edges
   sit on whole pixels. `StudioRenderQuality.Preview` samples linearly; `Export` uses high-quality
-  cubic sampling, which keeps a picture drawn at a quarter of its size from aliasing.
+  cubic sampling, which keeps a picture drawn at a quarter of its size from aliasing. It draws the
+  layers the resolved frame has and does not ask the layout: while a scene is being entered a
+  frame can have a layer its layout does not. A layer whose opacity is below 1 goes through a
+  Direct2D layer, so its shadow, picture, border and click rings fade as one. The background and
+  the shadow of a screen that is whole are kept as one bitmap between frames; a screen that moves
+  has it made again for every frame, and one that fades has its shadow drawn with it.
 - `StudioExporter`: `ExportAsync` writes an MP4 (H.264 or HEVC), `WritePosterAsync` a JPEG.
   `StudioExportService` adapts it to `IStudioExportService`.
 - Internal: `StudioVideoSource`, `StudioAudioSource`, `StudioSinkWriterEncoder`, `StudioAudioPump`,
@@ -63,9 +68,12 @@ dotnet run --project windows\tools\StudioRenderCheck\StudioRenderCheck.csproj -c
 exports through the public API and reads the results back from pixels and decoded samples. Its
 `recorder` group feeds `StudioCameraRecorder` frames as the webcam service delivers them. Its `zoom`
 group draws, exports and posters zooms (section 6.8 of the format) and measures which part of the
-screen each frame shows from where four edges of the pattern are; with `--keep` or `--out` it saves
-every frame it looked at as a PNG. 163 checks in about five minutes; a `FAIL` line and exit code 1
-for a failure. `--only <groups>`, `--match <text>` and `--out <folder>` narrow a run and keep its
+screen each frame shows from where four edges of the pattern are. Its `scenes` group does the same
+for scenes entered with a morph (section 6.9): where each layer is on its way is worked out by
+hand, the pattern is measured inside the screen and the camera, their outlines are looked for,
+and a layer that fades is compared with what is under it. With `--keep` or `--out` both groups
+save every frame they looked at as a PNG. 182 checks in about four minutes; a `FAIL` line and
+exit code 1 for a failure. `--only <groups>`, `--match <text>` and `--out <folder>` narrow a run and keep its
 files; `--help` lists the groups.
 
 ## Measured (AMD Radeon 860M on a shared PC, three runs, so ranges)
@@ -83,6 +91,12 @@ files; `--help` lists the groups.
   (0.21 px on WARP), within 0.13 px in an exported one and 0.04 px in a poster. A frame at 2× draws
   no slower than one with no zoom: 0.18–0.20 against 0.27 ms linear, and 0.50–0.58 against
   1.1–1.2 ms high-quality.
+- Scenes entered with a morph (one run): the pattern's edges are within 0.22 px of where the
+  layers are worked out to be in a drawn frame (0.25 px on WARP), within 0.08 px in an exported
+  one and 0.02 px in a poster. A camera fading in an export has its colours within 2.2 of 255 of
+  the mix worked out by hand. A frame with a gradient, both shadows and a border takes 0.34 ms
+  at rest, 1.5–1.8 ms while both cards move, and 1.4–1.5 ms while the screen fades; on WARP
+  1.6–1.8, 13–16 and 10–11 ms.
 
 ## Known limits
 

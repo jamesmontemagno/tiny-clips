@@ -6,13 +6,13 @@ namespace TinyClips.Tools.StudioRenderCheck;
 internal static partial class RendererChecks
 {
     /// <summary>The half-diagonal of a unit square at which a superellipse of exponent 5 ends: 2^(-1/5).</summary>
-    private const double SquircleDiagonal = 0.8705505632961241;
+    internal const double SquircleDiagonal = 0.8705505632961241;
 
     private static StudioProject WithCamera(RenderBench bench, StudioCameraShape shape, double border = 0, string borderColor = "#FFFFFF", bool mirror = true, double shadow = 0) =>
         bench.Base() with { Camera = new StudioCameraStyle { Shape = shape, CornerRadius = 0.3, Mirror = mirror, Shadow = shadow, BorderWidth = border, BorderColor = borderColor } };
 
     /// <summary>Pairs of points 4 px inside and 4 px outside the outline of a shape, all the way round.</summary>
-    private static List<((double X, double Y) Inside, (double X, double Y) Outside)> OutlinePairs(StudioCameraShape shape, (int Left, int Top, int Right, int Bottom) box, double radius)
+    internal static List<((double X, double Y) Inside, (double X, double Y) Outside)> OutlinePairs(StudioCameraShape shape, (int Left, int Top, int Right, int Bottom) box, double radius)
     {
         var pairs = new List<((double, double), (double, double))>();
         var a = (box.Right - box.Left) / 2.0;

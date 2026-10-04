@@ -30,7 +30,7 @@ public readonly record struct StudioGpuVideoFrame(ID3D11Texture2D Texture, uint 
 /// <param name="ProjectDirectory">The project folder, where a background image is looked for.</param>
 /// <param name="SourceTimeSeconds">The source time of the frame: it picks the scene and the click rings.</param>
 /// <param name="Screen">The screen picture for that time, or null when it is not there yet; the screen card and its shadow are then left out.</param>
-/// <param name="Camera">The camera picture, or null. It is drawn only when the layout shows the camera at that time.</param>
+/// <param name="Camera">The camera picture, or null. It is drawn only when the resolved frame has a camera that is showing at that time.</param>
 /// <param name="Target">
 /// The texture to draw into: B8G8R8A8_UNorm with render-target binding, <paramref name="CanvasWidth"/> by
 /// <paramref name="CanvasHeight"/> pixels. Every pixel of the canvas is written, opaque.
@@ -182,29 +182,40 @@ public sealed class StudioSceneRenderer : IDisposable
             var target = GetTarget(request.Target);
             var frame = request.ResolvedFrame ?? StudioLayoutResolver.Resolve(project, request.Events, request.SourceTimeSeconds, width, height);
 
-            // A layer is drawn when the layout has it and its picture is here. Whole-pixel edges
+            // A layer is drawn when the frame has it, it is not wholly see-through, and its
+            // picture is here: the layout is not asked, because while a scene is being entered
+            // the frame can have a layer its layout does not (section 6.9). Whole-pixel edges
             // keep a layer, its shadow and its border exactly on top of each other.
             StudioResolvedScreen screen = default;
             StudioFrameRect screenRect = default;
             ID2D1BitmapBrush1? screenBrush = null;
-            if (frame.Screen is { } resolvedScreen && request.Screen is { } screenPicture && IsDrawable(resolvedScreen.Rect, resolvedScreen.Source))
+            float screenOpacity = 0;
+            if (frame.Screen is { Opacity: > 0 } resolvedScreen && request.Screen is { } screenPicture && IsDrawable(resolvedScreen.Rect, resolvedScreen.Source))
             {
                 screen = resolvedScreen;
                 screenRect = PixelAlign(resolvedScreen.Rect);
                 screenBrush = PrepareSource(screenPicture, ScreenSlot);
+                screenOpacity = (float)Math.Min(1, resolvedScreen.Opacity);
             }
 
             StudioResolvedCamera camera = default;
             StudioFrameRect cameraRect = default;
             ID2D1BitmapBrush1? cameraBrush = null;
-            if (frame.Camera is { Visible: true } resolvedCamera && request.Camera is { } cameraPicture && IsDrawable(resolvedCamera.Rect, resolvedCamera.Source))
+            float cameraOpacity = 0;
+            if (frame.Camera is { Visible: true, Opacity: > 0 } resolvedCamera && request.Camera is { } cameraPicture && IsDrawable(resolvedCamera.Rect, resolvedCamera.Source))
             {
                 camera = resolvedCamera;
                 cameraRect = PixelAlign(resolvedCamera.Rect);
                 cameraBrush = PrepareSource(cameraPicture, CameraSlot);
+                cameraOpacity = (float)Math.Min(1, resolvedCamera.Opacity);
             }
 
-            EnsureUnderlay(project.Canvas.Background, request.ProjectDirectory, width, height, screenBrush is null ? null : new Card(screenRect, screen.CornerRadius, screen.Shadow));
+            // The shadow of a screen that is whole is kept with the background. One that is
+            // fading is drawn with its screen, so the two fade as one.
+            var screenShape = screen.CornerRadius > 0 ? StudioCameraShape.RoundedRectangle : StudioCameraShape.Rectangle;
+            var screenFades = screenBrush is not null && screenOpacity < 1;
+            EnsureUnderlay(project.Canvas.Background, request.ProjectDirectory, width, height, screenBrush is null || screenFades ? null : new Card(screenRect, screen.CornerRadius, screen.Shadow));
+            var screenShadow = screenFades ? EnsureShadow(_screenShadow, screenRect.Width, screenRect.Height, screen.CornerRadius, screenShape, screen.Shadow) : null;
             var cameraShadow = cameraBrush is null ? null : EnsureShadow(_cameraShadow, cameraRect.Width, cameraRect.Height, camera.CornerRadius, camera.Shape, camera.Shadow);
 
             _context.Target = target;
@@ -221,20 +232,41 @@ public sealed class StudioSceneRenderer : IDisposable
                 if (screenBrush is not null)
                 {
                     var picture = request.Screen!.Value;
-                    DrawLayer(screenBrush, picture.Width, picture.Height, screenRect, screen.Source, screen.CornerRadius, screen.CornerRadius > 0 ? StudioCameraShape.RoundedRectangle : StudioCameraShape.Rectangle, mirror: false, request.Quality);
-                    DrawClickRings(project, request.Events, request.SourceTimeSeconds, screen, screenRect);
+                    var fades = BeginFade(screenOpacity, screenRect, screenShadow);
+                    try
+                    {
+                        if (screenShadow is not null)
+                        {
+                            DrawShadow(screenShadow, screenRect);
+                        }
+
+                        DrawLayer(screenBrush, picture.Width, picture.Height, screenRect, screen.Source, screen.CornerRadius, screenShape, mirror: false, request.Quality);
+                        DrawClickRings(project, request.Events, request.SourceTimeSeconds, screen, screenRect);
+                    }
+                    finally
+                    {
+                        EndFade(fades);
+                    }
                 }
 
                 if (cameraBrush is not null)
                 {
                     var picture = request.Camera!.Value;
-                    if (cameraShadow is not null)
+                    var fades = BeginFade(cameraOpacity, cameraRect, cameraShadow);
+                    try
                     {
-                        DrawShadow(cameraShadow, cameraRect);
-                    }
+                        if (cameraShadow is not null)
+                        {
+                            DrawShadow(cameraShadow, cameraRect);
+                        }
 
-                    DrawLayer(cameraBrush, picture.Width, picture.Height, cameraRect, camera.Source, camera.CornerRadius, camera.Shape, camera.Mirror, request.Quality);
-                    DrawCameraBorder(project.Camera.BorderColor, camera, cameraRect);
+                        DrawLayer(cameraBrush, picture.Width, picture.Height, cameraRect, camera.Source, camera.CornerRadius, camera.Shape, camera.Mirror, request.Quality);
+                        DrawCameraBorder(project.Camera.BorderColor, camera, cameraRect);
+                    }
+                    finally
+                    {
+                        EndFade(fades);
+                    }
                 }
 
                 if (project.Overlays.Branding)
@@ -693,6 +725,44 @@ public sealed class StudioSceneRenderer : IDisposable
     }
 
     // Layers
+
+    /// <summary>
+    /// For a layer that is fading, starts a group: what is drawn until <see cref="EndFade"/> is
+    /// put together by itself and then laid on the frame at the layer's opacity, so its shadow,
+    /// its picture, its border and its click rings fade as one (section 6.7). Returns false,
+    /// and does nothing, for a layer that is whole.
+    /// </summary>
+    private bool BeginFade(float opacity, StudioFrameRect rect, CachedShadow? shadow)
+    {
+        if (!(opacity < 1))
+        {
+            return false;
+        }
+
+        // The shadow's bitmap reaches further than the layer on every side, and the border and
+        // the click rings stay inside the layer. One pixel more for an antialiased edge.
+        var margin = (shadow?.Margin ?? 0) + 1;
+        var parameters = new LayerParameters1
+        {
+            ContentBounds = new RawRectF((float)rect.X - margin, (float)rect.Y - margin, (float)(rect.X + rect.Width) + margin, (float)(rect.Y + rect.Height) + margin),
+            GeometricMask = null,
+            MaskAntialiasMode = AntialiasMode.PerPrimitive,
+            MaskTransform = Matrix3x2.Identity,
+            Opacity = opacity,
+            OpacityBrush = null,
+            LayerOptions = LayerOptions1.None,
+        };
+        _context.PushLayer(parameters, null!);
+        return true;
+    }
+
+    private void EndFade(bool fades)
+    {
+        if (fades)
+        {
+            _context.PopLayer();
+        }
+    }
 
     /// <summary>
     /// Fills the layer's shape with the part of the picture <paramref name="crop"/> names. The

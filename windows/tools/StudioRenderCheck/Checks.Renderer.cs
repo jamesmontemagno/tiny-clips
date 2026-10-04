@@ -85,7 +85,7 @@ internal static partial class RendererChecks
         context.Expect(box == want.Value, $"{what} is at {box}, worked out by hand as {want.Value}");
     }
 
-    private static void ExpectPixel(CheckContext context, Picture picture, double x, double y, Rgb want, double tolerance, string what)
+    internal static void ExpectPixel(CheckContext context, Picture picture, double x, double y, Rgb want, double tolerance, string what)
     {
         var px = (int)Math.Floor(x);
         var py = (int)Math.Floor(y);
@@ -110,7 +110,7 @@ internal static partial class RendererChecks
     /// pattern. At the very edge of the clip that is the colour a little further in: the pattern
     /// is flat out to its edges wherever it is flat that far in.
     /// </summary>
-    private static Rgb? ClipColorAt(ClipSpec spec, ClipMap map, int number, double x, double y)
+    internal static Rgb? ClipColorAt(ClipSpec spec, ClipMap map, int number, double x, double y)
     {
         var margin = (3 / Math.Min(Math.Abs(map.ScaleX), Math.Abs(map.ScaleY))) + 1;
         var clipX = (Math.Floor(x) + 0.5 - map.OriginX) / map.ScaleX;
@@ -124,14 +124,14 @@ internal static partial class RendererChecks
     }
 
     /// <summary>The frame number reads right and the four colour patches are the colours drawn.</summary>
-    private static void ExpectContent(CheckContext context, string what, Picture picture, ClipSpec spec, ClipMap map, int number)
+    internal static void ExpectContent(CheckContext context, string what, Picture picture, ClipSpec spec, ClipMap map, int number, double colorTolerance = 1)
     {
         var read = FrameCode.Decode(picture, spec, map);
         context.Expect(read == number, $"{what}'s strip reads {read}, want {number} ({FrameCode.Describe(picture, spec, map)})");
         var patches = FrameCode.ReadPatches(picture, spec, map);
         for (var index = 0; index < patches.Length; index++)
         {
-            context.Expect(patches[index].Distance(ClipSpec.PatchColors[index]) <= 1, $"{what}'s patch {index} is {patches[index]}, drawn {ClipSpec.PatchColors[index]}");
+            context.Expect(patches[index].Distance(ClipSpec.PatchColors[index]) <= colorTolerance, $"{what}'s patch {index} is {patches[index]}, drawn {ClipSpec.PatchColors[index]}");
         }
 
         // The picture is where the layout puts it, to well under a pixel.
@@ -144,7 +144,7 @@ internal static partial class RendererChecks
     /// layer, and the pixel inside is the layer's own colour. So an edge is a step, on the
     /// pixel boundary the format's rounding gives, and not a blend.
     /// </summary>
-    private static void ExpectEdges(CheckContext context, string what, Picture picture, Picture without, (int Left, int Top, int Right, int Bottom) box, ClipSpec spec, ClipMap map, int number)
+    internal static void ExpectEdges(CheckContext context, string what, Picture picture, Picture without, (int Left, int Top, int Right, int Bottom) box, ClipSpec spec, ClipMap map, int number, double colorTolerance = 1)
     {
         var (left, top, right, bottom) = box;
         var middleX = (left + right) / 2;
@@ -164,7 +164,7 @@ internal static partial class RendererChecks
             if (ClipColorAt(spec, map, number, edge.InX, edge.InY) is { } flat)
             {
                 compared++;
-                ExpectPixel(context, picture, edge.InX, edge.InY, flat, 1, $"{what}, just inside its {edge.Name} edge");
+                ExpectPixel(context, picture, edge.InX, edge.InY, flat, colorTolerance, $"{what}, just inside its {edge.Name} edge");
             }
         }
 
@@ -172,7 +172,7 @@ internal static partial class RendererChecks
     }
 
     /// <summary>Just outside a rounded corner is what is there without the layer; just inside is the layer.</summary>
-    private static void ExpectRoundedCorners(CheckContext context, string what, Picture picture, Picture without, (int Left, int Top, int Right, int Bottom) box, double radius)
+    internal static void ExpectRoundedCorners(CheckContext context, string what, Picture picture, Picture without, (int Left, int Top, int Right, int Bottom) box, double radius)
     {
         var diagonal = Math.Sqrt(0.5);
         foreach (var (sx, sy) in new[] { (-1, -1), (1, -1), (-1, 1), (1, 1) })

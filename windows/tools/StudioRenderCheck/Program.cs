@@ -11,7 +11,7 @@ namespace TinyClips.Tools.StudioRenderCheck;
 /// </summary>
 internal static class Program
 {
-    private static readonly string[] Groups = ["sources", "recorder", "renderer", "zoom", "exports", "encoders", "color", "robustness", "poster", "service", "warp", "speed"];
+    private static readonly string[] Groups = ["sources", "recorder", "renderer", "zoom", "scenes", "exports", "encoders", "color", "robustness", "poster", "service", "warp", "speed"];
 
     private static async Task<int> Main(string[] args)
     {
@@ -76,6 +76,7 @@ internal static class Program
             await RecorderChecks.Run(harness).ConfigureAwait(false);
             await RendererChecks.Run(harness).ConfigureAwait(false);
             await ZoomChecks.Run(harness).ConfigureAwait(false);
+            await SceneChecks.Run(harness).ConfigureAwait(false);
             await ExportChecks.Run(harness).ConfigureAwait(false);
             await OtherChecks.Run(harness).ConfigureAwait(false);
             await SamplingChecks.Run(harness).ConfigureAwait(false);
