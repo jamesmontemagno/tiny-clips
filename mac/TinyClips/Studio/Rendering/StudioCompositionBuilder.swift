@@ -70,21 +70,27 @@ enum StudioCompositionBuilder {
         // Each kept piece of the source timeline is placed with exact CMTime arithmetic and clamped
         // to the media that really exists, so no track ever runs past another one. A track that
         // ended a frame early would otherwise leave the last frames without a picture.
+        //
+        // Every piece is first placed at the recording's own speed, one after the other. The
+        // pieces that play at another speed are stretched or squeezed afterwards, all tracks at
+        // once (see below), so the tracks cannot come apart by a rounding step.
         let screenTrackRange = try await screenTrack.load(.timeRange)
-        var placements: [(source: CMTimeRange, at: CMTime)] = []
+        var placements: [(source: CMTimeRange, at: CMTime, rate: Double)] = []
         var cursor = CMTime.zero
-        for segment in timeMap.segments {
-            let wanted = CMTimeRange(start: cmTime(segment.start), end: cmTime(segment.end))
+        for piece in timeMap.pieces {
+            let wanted = CMTimeRange(start: cmTime(piece.start), end: cmTime(piece.end))
             let source = wanted.intersection(screenTrackRange)
             guard source.duration > .zero else { continue }
             try compositionScreenTrack.insertTimeRange(source, of: screenTrack, at: cursor)
-            placements.append((source: source, at: cursor))
+            placements.append((source: source, at: cursor, rate: piece.rate))
             cursor = CMTimeAdd(cursor, source.duration)
         }
         guard cursor > .zero else {
             throw Error.emptyTimeline
         }
 
+        // A piece at another speed has no sound (section 7 of the project format), so its stretch
+        // of the sound tracks is left empty.
         if !project.audio.muted {
             for audioTrack in try await screenAsset.loadTracks(withMediaType: .audio) {
                 guard let compositionAudioTrack = composition.addMutableTrack(
@@ -94,7 +100,7 @@ enum StudioCompositionBuilder {
                     continue
                 }
                 let audioTrackRange = try await audioTrack.load(.timeRange)
-                for placement in placements {
+                for placement in placements where placement.rate == 1 {
                     let source = placement.source.intersection(audioTrackRange)
                     guard source.duration > .zero else { continue }
                     try compositionAudioTrack.insertTimeRange(
@@ -142,7 +148,26 @@ enum StudioCompositionBuilder {
             }
         }
 
-        let outputDuration = cursor
+        // Now the speed. Going from the last piece to the first keeps the places of the pieces
+        // before it, which were worked out at the recording's own speed, good until their turn.
+        var outputDuration = cursor
+        for placement in placements.reversed() where placement.rate != 1 {
+            let range = CMTimeRange(start: placement.at, duration: placement.source.duration)
+            let scaled = CMTimeMultiplyByFloat64(placement.source.duration, multiplier: 1 / placement.rate)
+            if scaled > .zero {
+                composition.scaleTimeRange(range, toDuration: scaled)
+                outputDuration = CMTimeAdd(CMTimeSubtract(outputDuration, placement.source.duration), scaled)
+            } else {
+                // A sliver that is over before the clock's next step at its speed. A range cannot
+                // be scaled to nothing, so it is left out.
+                composition.removeTimeRange(range)
+                outputDuration = CMTimeSubtract(outputDuration, placement.source.duration)
+            }
+        }
+        guard outputDuration > .zero else {
+            throw Error.emptyTimeline
+        }
+
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = try await frameDuration(project: project, track: screenTrack)
