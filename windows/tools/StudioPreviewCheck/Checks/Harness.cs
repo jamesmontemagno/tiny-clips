@@ -589,6 +589,12 @@ internal sealed class TraceLog(int capacity)
 /// <summary>An opened preview with everything a check needs around it.</summary>
 internal sealed class Session : IAsyncDisposable
 {
+    private const string FailedOpenTraceKey = "StudioPreviewCheck.Trace";
+
+    // Over the whole run: the previews opened, and the traces of those that needed a second attempt.
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string[]> SecondAttempts = new();
+    private static int _opened;
+
     private readonly Dictionary<(int, int), SceneView> _views = [];
     private readonly bool _ownsEngine;
     private StudioProject _project;
@@ -638,13 +644,113 @@ internal sealed class Session : IAsyncDisposable
     /// <summary>When the scene that call waited for was drawn; 0 when none had to be drawn.</summary>
     public long LastDrawnAt { get; private set; }
 
+    /// <summary>The trace of an engine that did not open, or null. <see cref="OpenEngine"/> leaves it on what it throws.</summary>
+    public static string[]? TraceOfFailedOpen(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current.Data[FailedOpenTraceKey] is string[] lines)
+            {
+                return lines;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Opens an engine the way the editor does, through the factory contract, with a trace of
+    /// its own. Every preview of the tool is opened here, so that one that does not open leaves
+    /// behind what its players reported until then: it goes with the exception, which is the
+    /// exception the editor would get. One that needed a second attempt is noted with its trace.
+    /// </summary>
+    public static StudioPreviewEngine OpenEngine(StudioPreviewOptions options, TestFolder folder, out TraceLog trace)
+    {
+        var log = trace = new TraceLog(600);
+        IStudioPreviewFactory factory = new StudioPreviewFactory(options with { Trace = log.Add });
+        StudioPreviewEngine engine;
+        try
+        {
+            engine = (StudioPreviewEngine)factory.OpenAsync(folder.Project, folder.Events, folder.Paths).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            ex.Data[FailedOpenTraceKey] = log.Lines();
+            throw;
+        }
+
+        NoteOpened(engine, log, firstAttemptMadeToFail: options.DevicesLostWhileOpening > 0 || options.PlayersFailedWhileOpening > 0);
+        return engine;
+    }
+
+    /// <summary>Counts a preview that opened, and keeps its trace when it needed a second attempt that no check asked for.</summary>
+    private static void NoteOpened(StudioPreviewEngine engine, TraceLog trace, bool firstAttemptMadeToFail)
+    {
+        Interlocked.Increment(ref _opened);
+        if (engine.OpenAttempt > 1 && !firstAttemptMadeToFail)
+        {
+            SecondAttempts.Enqueue(trace.Lines());
+        }
+    }
+
+    /// <summary>
+    /// Says how many previews of this run opened only at the second attempt, without a check
+    /// having made the first one fail, and leaves the trace of each in the run's failures folder.
+    /// It is reported and not judged: the engine did what it is meant to do. What made the first
+    /// attempt fail is in the trace.
+    /// </summary>
+    public static void ReportSecondAttempts(Report report, string failuresDirectory)
+    {
+        var traces = SecondAttempts.ToArray();
+        var text = $"{Volatile.Read(ref _opened)} previews were opened in this run. {traces.Length} of them opened at the second attempt, the first having failed in a way that may pass: a graphics device lost, or a player that failed after every player had handed over a frame. (The previews of the checks that make that happen are not counted.)";
+        if (traces.Length > 0)
+        {
+            try
+            {
+                Directory.CreateDirectory(failuresDirectory);
+                for (var index = 0; index < traces.Length; index++)
+                {
+                    File.WriteAllLines(Path.Combine(failuresDirectory, $"second-attempt-{index + 1}-trace.txt"), traces[index]);
+                }
+
+                text += $" [traces of both attempts in {DisplayPath(failuresDirectory)}\\second-attempt-*-trace.txt]";
+            }
+            catch (Exception ex)
+            {
+                text += $" [no traces: {ex.Message}]";
+            }
+        }
+
+        report.Note(text);
+    }
+
+    /// <summary>
+    /// Writes the trace of a preview that did not open into a run's failures folder, and returns
+    /// the words that say so in the report: nothing when the exception carries no trace.
+    /// </summary>
+    public static string DumpFailedOpen(Exception exception, string failuresDirectory, string name)
+    {
+        if (TraceOfFailedOpen(exception) is not { } lines)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(failuresDirectory);
+            File.WriteAllLines(Path.Combine(failuresDirectory, $"{name}-trace.txt"), lines);
+            return $" [trace of the open in {DisplayPath(failuresDirectory)}\\{name}-trace.txt]";
+        }
+        catch (Exception ex)
+        {
+            return $" [no trace: {ex.Message}]";
+        }
+    }
+
     public static Session Open(StudioPreviewOptions options, TestFolder folder, int width = 1280, int height = 720, bool attach = true)
     {
-        // Opened the way the editor does it: through the factory contract.
-        var trace = new TraceLog(600);
-        IStudioPreviewFactory factory = new StudioPreviewFactory(options with { Trace = trace.Add });
         var watch = Stopwatch.StartNew();
-        var engine = (StudioPreviewEngine)factory.OpenAsync(folder.Project, folder.Events, folder.Paths).GetAwaiter().GetResult();
+        var engine = OpenEngine(options, folder, out var trace);
         var elapsed = watch.Elapsed.TotalMilliseconds;
         OffscreenSurface? surface = null;
         if (attach)
@@ -665,6 +771,7 @@ internal sealed class Session : IAsyncDisposable
     /// <param name="project">The project that engine is drawing.</param>
     public static Session Adopt(TestFolder folder, StudioPreviewEngine engine, StudioProject project, TraceLog trace, int width = 1280, int height = 720)
     {
+        NoteOpened(engine, trace, firstAttemptMadeToFail: false);
         var surface = new OffscreenSurface(width, height);
         var session = new Session(folder, engine, surface, trace, ownsEngine: false);
         session.Follow(project);
@@ -810,11 +917,11 @@ internal sealed class Session : IAsyncDisposable
     /// Writes the surface's picture and both players' textures as PNG files, and the engine's
     /// trace as text, for a look at what went wrong.
     /// </summary>
-    public string Dump(string outputDirectory, string name)
+    /// <param name="directory">The run's own folder under <c>out\failures</c>.</param>
+    public string Dump(string directory, string name)
     {
         try
         {
-            var directory = Path.Combine(outputDirectory, "failures");
             Directory.CreateDirectory(directory);
             File.WriteAllLines(Path.Combine(directory, name + "-trace.txt"), Trace.Lines());
             if (ReadPicture() is { } picture)
@@ -830,13 +937,17 @@ internal sealed class Session : IAsyncDisposable
                 }
             }
 
-            return $" [pictures and trace in out\\failures\\{name}-*]";
+            return $" [pictures and trace in {DisplayPath(directory)}\\{name}-*]";
         }
         catch (Exception ex)
         {
             return $" [no pictures: {ex.Message}]";
         }
     }
+
+    /// <summary>A run's failures folder as a report names it: from the <c>out</c> folder on.</summary>
+    public static string DisplayPath(string failuresDirectory) =>
+        Path.Combine("out", "failures", Path.GetFileName(failuresDirectory));
 
     public async ValueTask DisposeAsync()
     {

@@ -25,7 +25,7 @@ internal static class Program
         try
         {
             options = CheckOptions.Parse(args);
-            if (options.Unknown("quick", "only", "skip", "no-window", "no-headless", "out", "help") is { Length: > 0 } unknown)
+            if (options.Unknown("quick", "only", "skip", "no-window", "no-headless", "out", "help", "trust-first-frames", "investigate", "count", "seconds", "device", "camera", "scenario", "alternate", "keep-first-frames") is { Length: > 0 } unknown)
             {
                 throw new ArgumentException($"Unknown option --{unknown[0]}.");
             }
@@ -53,21 +53,29 @@ internal static class Program
 
         var output = Path.GetFullPath(options.Text("out", Path.Combine(FindToolDirectory(), "out")));
         var media = Path.Combine(output, "media");
-        using var report = new Report(Path.Combine(output, $"report-{DateTime.Now:yyyyMMdd-HHmmss}.txt"));
+        using var report = new Report(output, DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
         try
         {
-            report.Line($"StudioPreviewCheck, {DateTime.Now:yyyy-MM-dd HH:mm:ss}, {(options.Flag("quick") ? "quick" : "full")} run");
+            report.Line($"StudioPreviewCheck, {DateTime.Now:yyyy-MM-dd HH:mm:ss}, {(options.Flag("investigate") ? "an investigation" : options.Flag("quick") ? "quick run" : "full run")}");
+            if (options.Flag("trust-first-frames") && !options.Flag("investigate"))
+            {
+                report.Line("--trust-first-frames: every preview without a window is opened the way the engine opened before, believing what the players hand over first. Checks of the first picture are expected to fail.");
+            }
             report.Line($"{Environment.OSVersion}, .NET {Environment.Version}, {Environment.ProcessorCount} logical processors, {AdapterName()}");
             report.Line("Every player is muted and at volume zero for the whole run. The one exception is named in the mute checks.");
             report.Section("Test clips");
             OnWorkerThread(() => TestMedia.Ensure(media, report));
 
-            if (!options.Flag("no-headless") && HeadlessGroups.Any(options.Wants))
+            if (options.Flag("investigate"))
+            {
+                OnWorkerThread(() => new HeadlessChecks(report, options, media, output).Investigate());
+            }
+            else if (!options.Flag("no-headless") && HeadlessGroups.Any(options.Wants))
             {
                 OnWorkerThread(() => new HeadlessChecks(report, options, media, output).Run());
             }
 
-            if (!options.Flag("no-window") && WindowGroups.Any(options.Wants))
+            if (!options.Flag("investigate") && !options.Flag("no-window") && WindowGroups.Any(options.Wants))
             {
                 RunWindow(report, options, media, output);
             }
@@ -76,6 +84,9 @@ internal static class Program
         {
             report.Check("the tool ran to the end", false, ex.ToString());
         }
+
+        report.Section("Previews that needed a second attempt to open");
+        Session.ReportSecondAttempts(report, Path.Combine(output, "failures", report.Stamp));
 
         report.Section("Cleaning up");
         report.Check("the temp project folders of this run are gone", TestFolder.DeleteRoot(), TestFolder.Root);
@@ -160,6 +171,7 @@ internal static class Program
         Console.WriteLine(
             """
             StudioPreviewCheck [--quick] [--only a,b] [--skip a,b] [--no-window] [--no-headless] [--out <folder>]
+            StudioPreviewCheck --investigate opens|cycles|decoding|players [...]
 
               --quick         fewer repetitions (a smoke run; the numbers in the docs come from a full run)
               --only a,b      run only these groups of checks
@@ -167,6 +179,17 @@ internal static class Program
               --no-window     leave out the checks that open a window
               --no-headless   leave out the checks that need no window
               --out <folder>  where the test clips, reports and screenshots go (default: out next to the project)
+              --trust-first-frames
+                              open every preview without a window the way the engine opened before it
+                              stopped believing the players' first frames, to see which checks notice
+
+              --investigate   an experiment instead of the checks; it prints what it measures (see README.md):
+                opens      [--device software|hardware] [--count N] [--camera late|start|none|mixed]
+                           [--trust-first-frames | --alternate] [--keep-first-frames]
+                cycles     [--device hardware|software] [--count N] [--trust-first-frames]
+                decoding   [--device software|hardware] [--seconds N]
+                players    [--device software|hardware|both] [--count N] [--scenario first-copy|second-device|
+                           while-opening|both-ready|settle|before-source|reopen]
 
             Groups without a window: open seek step seekplay position editor play pause end update camera mute
                                      surface dispose device software

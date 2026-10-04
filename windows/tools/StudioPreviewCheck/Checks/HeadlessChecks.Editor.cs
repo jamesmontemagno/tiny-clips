@@ -27,7 +27,7 @@ internal sealed partial class HeadlessChecks
         const int trimEnd = 78;
         _report.Section("The editor session (StudioEditorSession) on the engine");
         _report.Line("The session class of TinyClips.Core, on a project store in the temp folder, opens its preview through the factory. Its thread is one of the tool's, busy with something else now and then as a UI thread is. The exporter is a stand-in that does nothing.");
-        using (var host = EditorHost.Open(_media, TestMedia.Camera, Late))
+        using (var host = EditorHost.Open(Muted, _media, TestMedia.Camera, Late))
         {
             if (host.Preview is not { } preview)
             {
@@ -325,7 +325,7 @@ internal sealed partial class HeadlessChecks
         for (var round = 0; round < rounds; round++)
         {
             var when = (ClosedWhen)(round % 4);
-            using var host = EditorHost.Open(_media, round % 3 == 2 ? null : TestMedia.Camera, Late);
+            using var host = EditorHost.Open(Muted, _media, round % 3 == 2 ? null : TestMedia.Camera, Late);
             if (host.Preview is not { } preview)
             {
                 wrong.Add($"round {round}: the session did not become ready: {host.Get(e => e.UnavailableMessage)}");
@@ -422,7 +422,7 @@ internal sealed partial class HeadlessChecks
         /// <summary>When the session last went from playing to not playing.</summary>
         public long StoppedAt => Interlocked.Read(ref _stoppedAt);
 
-        public static EditorHost Open(string mediaDirectory, ClipSpec? camera, double cameraOffset)
+        public static EditorHost Open(StudioPreviewOptions options, string mediaDirectory, ClipSpec? camera, double cameraOffset)
         {
             var folder = TestFolder.Create(mediaDirectory, camera, cameraOffset);
             var ui = new SessionThread();
@@ -434,7 +434,7 @@ internal sealed partial class HeadlessChecks
                 var editor = new StudioEditorSession(
                     folder.Paths.ProjectId,
                     store,
-                    new StudioPreviewFactory(Muted with { Trace = trace.Add }),
+                    new StudioPreviewFactory(options with { Trace = trace.Add }),
                     new NoExporter(),
                     new CaptureSettings(new MemorySettings()),
                     ui.Post);

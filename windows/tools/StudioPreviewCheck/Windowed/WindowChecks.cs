@@ -44,7 +44,7 @@ internal sealed partial class WindowChecks
     private readonly DispatcherQueue _dispatcher;
     private readonly nint _handle;
     private readonly Action _finished;
-    private readonly StudioPreviewFactory _factory = new(new StudioPreviewOptions { ForceMuted = true });
+    private readonly StudioPreviewOptions _muted = new() { ForceMuted = true };
     private readonly byte[] _block = PanelMarkers.BuildBlock();
     private readonly byte[] _serialStrip = new byte[PanelMarkers.SerialWidth * PanelMarkers.SerialHeight * 4];
     private readonly List<TestFolder> _folders = [];
@@ -111,7 +111,7 @@ internal sealed partial class WindowChecks
         }
         catch (Exception ex)
         {
-            _report.Check("window: the checks ran to the end", false, ex.ToString());
+            _report.Check("window: the checks ran to the end", false, ex + FailedOpen(ex, "window"));
         }
         finally
         {
@@ -136,7 +136,7 @@ internal sealed partial class WindowChecks
         }
         catch (Exception ex)
         {
-            _report.Check($"{name}: the checks ran to the end", false, ex.ToString());
+            _report.Check($"{name}: the checks ran to the end", false, ex + FailedOpen(ex, name));
         }
 
         _wasForeground |= NativeMethods.IsForeground(_handle);
@@ -213,6 +213,10 @@ internal sealed partial class WindowChecks
         }
     }
 
+    /// <summary>Leaves the trace of a preview that did not open in the run's folder under <c>out\failures</c>.</summary>
+    private string FailedOpen(Exception exception, string name) =>
+        Checks.Session.DumpFailedOpen(exception, Path.Combine(_output, "failures", _report.Stamp), name);
+
     private TestFolder NewFolder(ClipSpec? camera, Func<StudioProject, StudioProject>? edit = null)
     {
         var folder = TestFolder.Create(_media, camera, Late, edit);
@@ -222,7 +226,7 @@ internal sealed partial class WindowChecks
 
     private StudioPreviewEngine OpenEngine(TestFolder folder)
     {
-        var engine = (StudioPreviewEngine)_factory.OpenAsync(folder.Project, folder.Events, folder.Paths).GetAwaiter().GetResult();
+        var engine = Checks.Session.OpenEngine(_muted, folder, out _);
         _engines.Add(engine);
         engine.AfterRender = OnRendered;
         return engine;

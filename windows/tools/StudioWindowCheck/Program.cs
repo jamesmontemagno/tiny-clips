@@ -51,7 +51,7 @@ internal static class Program
         var output = Path.GetFullPath(options.Text("out", Path.Combine(tool, "out")));
         var media = Path.GetFullPath(options.Text("media", DefaultMediaDirectory(tool, output)));
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        using var report = new Report(Path.Combine(output, $"report-{stamp}.txt"));
+        using var report = new Report(output, stamp);
         using var foreground = new ForegroundWatch();
         try
         {

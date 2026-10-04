@@ -65,7 +65,7 @@ internal sealed partial class HeadlessChecks
         // Disposing twice, from two threads at once, and using the preview afterwards.
         {
             var folder = TestFolder.Create(_media, TestMedia.Camera, Late);
-            var engine = (StudioPreviewEngine)_factory.OpenAsync(folder.Project, folder.Events, folder.Paths).GetAwaiter().GetResult();
+            var engine = Session.OpenEngine(Muted, folder, out _);
             var surface = new OffscreenSurface(640, 360);
             engine.AttachSurface(surface);
             engine.WaitForIdle(TimeSpan.FromSeconds(5));
@@ -98,7 +98,7 @@ internal sealed partial class HeadlessChecks
         // Disposing from inside an event handler, which runs on the engine's own event thread.
         {
             var folder = TestFolder.Create(_media, TestMedia.Camera, Late);
-            var engine = (StudioPreviewEngine)_factory.OpenAsync(folder.Project, folder.Events, folder.Paths).GetAwaiter().GetResult();
+            var engine = Session.OpenEngine(Muted, folder, out _);
             using var disposed = new ManualResetEventSlim(false);
             Task? closing = null;
             var eventsAfter = 0;
@@ -126,6 +126,8 @@ internal sealed partial class HeadlessChecks
             _report.Check("DisposeAsync called from a PositionChanged handler completes, and the folder can be deleted", finished && deleted && eventsAfter == 0, $"handler ran {signalled}, dispose finished {finished}, events afterwards {eventsAfter}; {error}");
             folder.Dispose();
         }
+
+        FilesAtClose();
 
         // 20 open/close cycles: handles, threads, memory and GPU memory.
         _report.Section("20 open/close cycles: handles and memory");
@@ -195,6 +197,100 @@ internal sealed partial class HeadlessChecks
         GC.WaitForPendingFinalizers();
         GC.Collect();
         Thread.Sleep(150);
+    }
+
+    /// <summary>
+    /// What closing does about a media file that another program has open. A recording in the
+    /// project folder is waited for, because the caller may be about to delete the folder. A
+    /// screen recording outside it is the user's own video: nobody is about to delete it, so it is
+    /// not waited for, and not opened without sharing to find out whether a player still has it.
+    /// </summary>
+    private void FilesAtClose()
+    {
+        // The control: this is what waiting for a file looks like, and how long it takes.
+        var inFolder = TestFolder.Create(_media, camera: null);
+        var held = CloseWhileHeld(inFolder, inFolder.Paths.ScreenPath);
+        _report.Check(
+            "the control: a recording in the project folder that another program has open is waited for when the preview closes, for 5 s, and then the engine says that it gave up",
+            held.Played && held.State.FilesWaitedFor == 1 && !held.State.FilesClosed && held.DisposeMilliseconds is >= 4500 and <= 8000 && held.OtherStillReads,
+            $"DisposeAsync took {F(held.DisposeMilliseconds, "0")} ms; waited for {held.State.FilesWaitedFor} file(s), released: {held.State.FilesClosed}");
+
+        Directory.CreateDirectory(TestFolder.Root);
+        var video = Path.Combine(TestFolder.Root, $"the-users-own-video-{Guid.NewGuid():N}.mp4");
+        File.Copy(TestMedia.PathOf(_media, TestMedia.Screen), video);
+        var outside = TestFolder.Create(
+            _media,
+            camera: null,
+            writeScreen: false,
+            edit: project => project with { Sources = project.Sources with { Screen = project.Sources.Screen with { File = video, External = true } } });
+        var left = CloseWhileHeld(outside, video);
+        _report.Check(
+            "a screen recording outside the project folder (the user's own video) that another program has open: the preview plays it, closing does not wait for it, and the other program keeps it",
+            left.Played && left.State.FilesWaitedFor == 0 && left.State.FilesClosed && left.DisposeMilliseconds < 1000 && left.OtherStillReads,
+            $"DisposeAsync took {F(left.DisposeMilliseconds, "0")} ms; waited for {left.State.FilesWaitedFor} file(s); the other program could still read it: {left.OtherStillReads}");
+
+        // The player lets go of that video in its own time. Nobody waits for it; it is reported.
+        var letGo = Stopwatch.StartNew();
+        var deleted = false;
+        while (!deleted && letGo.Elapsed.TotalSeconds < 5)
+        {
+            try
+            {
+                File.Delete(video);
+                deleted = true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(5);
+            }
+        }
+
+        _report.Note(deleted
+            ? $"the player had let go of that video {F(letGo.Elapsed.TotalMilliseconds, "0")} ms after DisposeAsync returned and the other program closed it"
+            : "the player had NOT let go of that video 5 s after DisposeAsync returned and the other program closed it");
+    }
+
+    /// <summary>
+    /// Opens a preview of <paramref name="folder"/> while this tool holds <paramref name="heldPath"/>
+    /// open for reading, as another program that plays the video does, and disposes the preview.
+    /// </summary>
+    private (bool Played, double DisposeMilliseconds, StudioPreviewDiagnostics State, bool OtherStillReads) CloseWhileHeld(TestFolder folder, string heldPath)
+    {
+        var other = new FileStream(heldPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        Session? session = null;
+        try
+        {
+            session = Session.Open(Muted, folder);
+            var played = session.ReadShown().Screen == 0 && session.SeekTo(100) && session.ReadShown().Screen == 100;
+            var watch = Stopwatch.StartNew();
+            session.Engine.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            var milliseconds = watch.Elapsed.TotalMilliseconds;
+            var state = session.Engine.GetDiagnostics();
+            var reads = false;
+            try
+            {
+                other.Position = 0;
+                reads = other.ReadByte() >= 0;
+            }
+            catch (IOException)
+            {
+            }
+
+            return (played, milliseconds, state, reads);
+        }
+        finally
+        {
+            // The other program first, so that the session can delete its folder.
+            other.Dispose();
+            if (session is null)
+            {
+                folder.Dispose();
+            }
+            else
+            {
+                session.Close();
+            }
+        }
     }
 
     /// <summary>
@@ -294,11 +390,21 @@ internal sealed partial class HeadlessChecks
     /// Opens a preview with a surface, disposes it at the given moment, and deletes the project
     /// folder the instant DisposeAsync has returned. Returns what went wrong, or null.
     /// </summary>
-    private string? OpenAndClose(CloseMoment moment, out double disposeMilliseconds, out double filesClosedAfter)
+    private string? OpenAndClose(CloseMoment moment, out double disposeMilliseconds, out double filesClosedAfter, StudioPreviewOptions? options = null)
     {
         var folder = TestFolder.Create(_media, TestMedia.Camera, Late);
         var watch = Stopwatch.StartNew();
-        var engine = (StudioPreviewEngine)_factory.OpenAsync(folder.Project, folder.Events, folder.Paths).GetAwaiter().GetResult();
+        StudioPreviewEngine engine;
+        try
+        {
+            engine = Session.OpenEngine(options ?? Muted, folder, out _);
+        }
+        catch
+        {
+            folder.Dispose();
+            throw;
+        }
+
         _openTimes.Add(watch.Elapsed.TotalMilliseconds);
         var surface = new OffscreenSurface(1280, 720);
         engine.AttachSurface(surface);
@@ -460,6 +566,14 @@ internal sealed partial class HeadlessChecks
         var deleted = TryDelete(folder, out var error);
         _report.Check("a failed preview can be disposed, and the folder deleted at once", deleted, $"{error}; DisposeAsync took {F(closeWatch.Elapsed.TotalMilliseconds, "0")} ms");
         Close(session);
+
+        // A device lost while the preview opens: everything is opened once more.
+        FirstAttemptFails<InvalidOperationException>(
+            "a device lost while the preview opens",
+            Muted with { DevicesLostWhileOpening = 1 },
+            Muted with { DevicesLostWhileOpening = 2 },
+            "graphics device was lost",
+            "device");
     }
 
     /// <summary>The GPU memory this process uses, as the default adapter reports it.</summary>

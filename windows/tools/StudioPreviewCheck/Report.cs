@@ -11,14 +11,17 @@ internal sealed class Report : IDisposable
     private string _group = string.Empty;
     private int _checks;
 
-    public Report(string? path)
+    /// <param name="directory">The folder the report file is written to.</param>
+    /// <param name="stamp">When the run started. It names the report file, and the folder that takes what a failed check leaves behind.</param>
+    public Report(string directory, string stamp)
     {
-        if (path is not null)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            _file = new StreamWriter(path, append: false) { AutoFlush = true };
-        }
+        Stamp = stamp;
+        Directory.CreateDirectory(directory);
+        _file = new StreamWriter(Path.Combine(directory, $"report-{stamp}.txt"), append: false) { AutoFlush = true };
     }
+
+    /// <summary>When the run started, as it stands in the name of the report file.</summary>
+    public string Stamp { get; }
 
     public int Checks => _checks;
 

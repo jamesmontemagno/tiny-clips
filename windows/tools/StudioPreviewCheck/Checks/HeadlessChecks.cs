@@ -20,10 +20,8 @@ internal sealed partial class HeadlessChecks
     private readonly Report _report;
     private readonly CheckOptions _options;
     private readonly string _media;
-    private readonly string _output;
-    private static readonly StudioPreviewOptions Muted = new() { ForceMuted = true };
-
-    private readonly StudioPreviewFactory _factory = new(Muted);
+    private readonly string _failuresDirectory;
+    private readonly StudioPreviewFactory _factory;
     private readonly Random _random = new(20261003);
     private readonly Samples _openTimes = new();
     private readonly Samples _disposeTimes = new();
@@ -35,13 +33,45 @@ internal sealed partial class HeadlessChecks
         _report = report;
         _options = options;
         _media = mediaDirectory;
-        _output = outputDirectory;
+        // A folder of its own for what the failed checks of this run leave behind, named like the
+        // report, so that a run does not write over the evidence of the run before it.
+        _failuresDirectory = Path.Combine(outputDirectory, "failures", report.Stamp);
         _quick = options.Flag("quick");
+        Muted = new StudioPreviewOptions { ForceMuted = true, TrustFirstFrames = options.Flag("trust-first-frames") };
+        _factory = new StudioPreviewFactory(Muted);
     }
+
+    /// <summary>
+    /// What every preview of the run is opened with: every player muted. With
+    /// <c>--trust-first-frames</c>, also opened the way the engine opened before it stopped
+    /// believing what the players hand over first, to see which checks notice.
+    /// </summary>
+    private StudioPreviewOptions Muted { get; }
 
     /// <summary>Leaves pictures of a wrong result behind, for the first few of a run.</summary>
     private string Dump(Session session, string name) =>
-        Interlocked.Increment(ref _dumps) <= 12 ? session.Dump(_output, $"{name}-{_dumps}") : string.Empty;
+        Interlocked.Increment(ref _dumps) <= 12 ? session.Dump(_failuresDirectory, $"{name}-{_dumps}") : string.Empty;
+
+    /// <summary>
+    /// Leaves the trace of a preview that did not open behind: what its players reported before
+    /// the engine gave up. There are no pictures: the engine is gone.
+    /// </summary>
+    private string DumpFailedOpen(Exception exception, string name) =>
+        Session.TraceOfFailedOpen(exception) is null || Interlocked.Increment(ref _dumps) > 12
+            ? string.Empty
+            : Session.DumpFailedOpen(exception, _failuresDirectory, $"{name}-{_dumps}");
+
+    /// <summary>An exception with the error code underneath it: a player's failure carries the reason only there.</summary>
+    private static string Describe(Exception exception)
+    {
+        var text = $"{exception.GetType().Name}: {Shorten(exception.Message)}";
+        for (var inner = exception.InnerException; inner is not null; inner = inner.InnerException)
+        {
+            text += $" <- {inner.GetType().Name} 0x{inner.HResult:X8}: {Shorten(inner.Message)}";
+        }
+
+        return text;
+    }
 
     public void Run()
     {
@@ -80,7 +110,7 @@ internal sealed partial class HeadlessChecks
         }
         catch (Exception ex)
         {
-            _report.Check($"{name}: the checks ran to the end", false, ex.ToString());
+            _report.Check($"{name}: the checks ran to the end", false, ex + DumpFailedOpen(ex, name));
         }
     }
 
@@ -133,7 +163,8 @@ internal sealed partial class HeadlessChecks
         // Screen and camera, both starting at 0: the first frame of both clips.
         var session = OpenSession(TestMedia.Camera, cameraOffset: 0);
         var shown = session.ReadShown();
-        _report.Check("screen and camera: the picture shows the first frame of both clips", shown is { Screen: 0, Camera: 0 }, shown.ToString());
+        var first = shown is { Screen: 0, Camera: 0 };
+        _report.Check("screen and camera: the picture shows the first frame of both clips", first, first ? shown.ToString() : shown + Dump(session, "open"));
         _report.Check("screen and camera: both players' textures hold their first frame", session.ReadClipFrame(0) == 0 && session.ReadClipFrame(1) == 0, $"screen {session.ReadClipFrame(0)}, camera {session.ReadClipFrame(1)}");
         _report.Check("screen and camera: paused at the start", !session.Engine.IsPlaying && session.Engine.Position == 0, $"IsPlaying {session.Engine.IsPlaying}, Position {F(session.Engine.Position, "0.####")}");
         _report.Check("screen and camera: no event was raised by opening", session.Events.PositionEvents == 0 && session.Events.PlayingEvents == 0 && session.Events.FailedEvents == 0);
@@ -174,7 +205,132 @@ internal sealed partial class HeadlessChecks
             _report.Check("an open that is cancelled throws OperationCanceledException", thrown is OperationCanceledException, thrown?.GetType().Name ?? "nothing thrown");
             _report.Check("the folder of a cancelled open can be deleted at once", TryDelete(folder, out var error), error);
         }
+
+        // What a player hands over when it has just opened is not always a picture: its first
+        // frame, or the one for the first position it is given, came out blank in about one open
+        // in six of a project without a camera offset, and was drawn for a moment. So every
+        // scene drawn after an open is looked at, over many opens of each kind of project.
+        var opens = _quick ? 6 : 24;
+        var times = new Samples();
+        var wrong = OpenMany(opens, Muted, "open", times, out var states);
+        _report.Check(
+            $"{opens} previews opened one after the other, with the camera late, with the camera from the start and without a camera: each shows the first frame, no scene drawn after it opened shows anything else, and no more than one needed a second attempt to open",
+            wrong.Count == 0 && SecondAttemptCount(states) <= 1,
+            wrong.Count == 0 ? SecondAttempts(states) : $"{wrong.Count} wrong; first: {string.Join(" | ", wrong.Take(3))}; {SecondAttempts(states)}");
+        _report.Note($"those opens: {times.Summary()}");
+
+        // A player that fails once every player has handed over a frame. The frames show that
+        // the files can be decoded, so what went wrong is the player's and may pass.
+        FirstAttemptFails<InvalidDataException>(
+            "a player that fails while the preview opens, after every player has handed over a frame",
+            Muted with { PlayersFailedWhileOpening = 1 },
+            Muted with { PlayersFailedWhileOpening = 2 },
+            "could not be decoded",
+            "open");
     }
+
+    /// <summary>
+    /// Opens a preview whose first attempt to open is made to fail in a way that may pass, which
+    /// the engine answers by opening once more; and one whose second attempt fails as well.
+    /// </summary>
+    private void FirstAttemptFails<TException>(string what, StudioPreviewOptions once, StudioPreviewOptions twice, string messagePart, string name)
+        where TException : Exception
+    {
+        var again = $"{what} (simulated): everything is opened once more, and the preview shows the first frame";
+        var folder = TestFolder.Create(_media, TestMedia.Camera, Late);
+        try
+        {
+            var session = Session.Open(once, folder);
+            var attempts = session.Engine.GetDiagnostics().OpenAttempts;
+            var first = session.ReadShown();
+            var sought = session.SeekTo(100);
+            var after = session.ReadShown();
+            var right = attempts == 2 && first == new Shown(0, session.ExpectedCamera(0)) && sought && after == new Shown(100, session.ExpectedCamera(100)) && session.Events.FailedEvents == 0;
+            _report.Check(again, right, $"opened at attempt {attempts} in {F(session.OpenMilliseconds, "0")} ms; picture {first}; after Seek to frame 100: {after}{(right ? string.Empty : Dump(session, name))}");
+            session.Close();
+        }
+        catch (Exception ex)
+        {
+            folder.Dispose();
+            _report.Check(again, false, Describe(ex) + DumpFailedOpen(ex, name + "-open"));
+        }
+
+        using var failing = TestFolder.Create(_media, TestMedia.Camera, Late);
+        Exception? thrown = null;
+        var watch = Stopwatch.StartNew();
+        try
+        {
+            Session.Open(twice, failing).Close();
+        }
+        catch (Exception ex)
+        {
+            thrown = ex;
+        }
+
+        var elapsed = watch.Elapsed.TotalMilliseconds;
+        _report.Check(
+            $"{what}, and again while it opens once more (simulated): OpenAsync gives up with a clear message, and the folder can be deleted at once",
+            thrown is TException && thrown.Message.Contains(messagePart, StringComparison.OrdinalIgnoreCase) && AttemptsOf(thrown) == 2 && TryDelete(failing, out _),
+            thrown is null ? "it opened" : $"{Describe(thrown)} after {F(elapsed, "0")} ms and {AttemptsOf(thrown)} attempts");
+    }
+
+    /// <summary>How many attempts an open that failed had made, by its trace.</summary>
+    private static int AttemptsOf(Exception exception) =>
+        1 + (Session.TraceOfFailedOpen(exception)?.Count(line => line.Contains("opening once more", StringComparison.Ordinal)) ?? 0);
+
+    /// <summary>
+    /// Opens previews one after the other, of each kind of project in turn: the camera 0.2 s
+    /// late, the camera from the start, no camera. Returns what was wrong with each that did not
+    /// open, did not show the first frame of its clips, or drew a scene that showed anything else
+    /// in the tenth of a second after it opened.
+    /// </summary>
+    /// <param name="states">What each engine said about its own opening.</param>
+    private List<string> OpenMany(int count, StudioPreviewOptions options, string name, Samples times, out List<StudioPreviewDiagnostics> states)
+    {
+        var wrong = new List<string>();
+        states = [];
+        for (var index = 0; index < count; index++)
+        {
+            var kind = (index % 3) switch { 0 => "camera late", 1 => "camera from the start", _ => "no camera" };
+            var folder = index % 3 == 2 ? TestFolder.Create(_media, camera: null) : TestFolder.Create(_media, TestMedia.Camera, index % 3 == 0 ? Late : 0);
+            Session session;
+            try
+            {
+                session = Session.Open(options, folder);
+            }
+            catch (Exception ex)
+            {
+                folder.Dispose();
+                wrong.Add($"open {index + 1} ({kind}): {Describe(ex)}{DumpFailedOpen(ex, name)}");
+                continue;
+            }
+
+            var expected = new Shown(0, session.ExpectedCamera(0));
+            var shown = session.ReadShown();
+            var screen = session.ReadClipFrame(0);
+            Thread.Sleep(100);
+            session.WaitForIdle();
+            var scenes = session.Recorder.Drain();
+            var later = session.ReadShown();
+            var others = scenes.Where(scene => new Shown(scene.Screen, scene.Camera) != expected).Select(scene => $"[{new Shown(scene.Screen, scene.Camera)}]").ToList();
+            if (shown != expected || later != expected || screen != 0 || others.Count > 0 || session.Events.FailedEvents > 0)
+            {
+                wrong.Add($"open {index + 1} ({kind}): picture {shown}, a tenth of a second later {later}, the screen player's texture held frame {screen}; of {scenes.Count} scenes drawn, {others.Count} showed something else: {string.Join(" ", others.Take(4))}{string.Join("; ", session.Events.Failures())}{Dump(session, name)}");
+            }
+
+            times.Add(session.OpenMilliseconds);
+            states.Add(session.Engine.GetDiagnostics());
+            session.Close();
+        }
+
+        return wrong;
+    }
+
+    /// <summary>How many of a series of previews needed a second attempt to open, the first having failed in a way that may pass.</summary>
+    private static int SecondAttemptCount(List<StudioPreviewDiagnostics> states) => states.Count(state => state.OpenAttempts > 1);
+
+    private static string SecondAttempts(List<StudioPreviewDiagnostics> states) =>
+        $"opened at the second attempt: {SecondAttemptCount(states)} of {states.Count}";
 
     private TestFolder WithGarbage(TestFolder folder, bool camera, int bytes = 256 * 1024)
     {
@@ -193,20 +349,20 @@ internal sealed partial class HeadlessChecks
             var watch = Stopwatch.StartNew();
             try
             {
-                var preview = _factory.OpenAsync(folder.Project, folder.Events, folder.Paths).GetAwaiter().GetResult();
-                preview.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                Session.OpenEngine(Muted, folder, out _).DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
                 thrown = ex;
             }
 
+            // Nothing says that a file like this would do better the second time.
             var elapsed = watch.Elapsed.TotalMilliseconds;
-            var ok = thrown is TException && thrown.Message.Contains(messagePart, StringComparison.OrdinalIgnoreCase);
+            var ok = thrown is TException && thrown.Message.Contains(messagePart, StringComparison.OrdinalIgnoreCase) && AttemptsOf(thrown) == 1;
             _report.Check(
-                $"{what} fails OpenAsync with a clear message",
+                $"{what} fails OpenAsync with a clear message, at the first attempt",
                 ok,
-                thrown is null ? "it opened" : $"{thrown.GetType().Name} after {F(elapsed, "0")} ms: \"{Shorten(thrown.Message)}\"");
+                thrown is null ? "it opened" : $"{thrown.GetType().Name} after {F(elapsed, "0")} ms{(AttemptsOf(thrown) == 1 ? string.Empty : $" and {AttemptsOf(thrown)} attempts")}: \"{Shorten(thrown.Message)}\"");
             _report.Check($"{what}: the folder can be deleted at once afterwards", TryDelete(folder, out var error), error);
         }
     }
