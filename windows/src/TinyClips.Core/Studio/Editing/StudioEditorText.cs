@@ -56,6 +56,15 @@ public static class StudioEditorText
     /// <summary>Why the first scene has no start to set and no way of being entered.</summary>
     public const string FirstSceneExplanation = "The first scene starts with the recording and has nothing to move from.";
 
+    /// <summary>What the Scene section says while the recording is one scene: what scenes are for.</summary>
+    public const string OneSceneExplanation = "Split the recording into scenes to change the layout partway through.";
+
+    /// <summary>What the cut lane says while there are no cuts.</summary>
+    public const string NoCutsHint = "No cuts. Press X to cut a second out at the playhead.";
+
+    /// <summary>What the Cut section says while there are cuts and none is selected.</summary>
+    public const string SelectCutHint = "Select a cut on the timeline, or step to one with the arrows above.";
+
     /// <summary>Said when a cut has been added at the playhead.</summary>
     public const string CutAddedMessage = "Cut added.";
 
