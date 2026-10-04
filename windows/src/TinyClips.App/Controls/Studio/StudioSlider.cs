@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.Controls.Studio;
 
@@ -26,8 +27,8 @@ namespace TinyClips.App.Controls.Studio;
 /// </para>
 /// <para>
 /// The template parts are used as plain elements, which is all that asking them about the pointer
-/// needs. A part read back from a template is not reliably of its own type in the NativeAOT
-/// build, where a cast to a type such as Thumb can fail.
+/// needs. It also avoids a cast to a type such as Thumb, which can fail on a part read back from a
+/// template when the app is compiled ahead of time. The app is not now; 1.8.0 and 1.8.1 were.
 /// </para>
 /// </remarks>
 public sealed partial class StudioSlider : Slider
@@ -128,19 +129,77 @@ public sealed partial class StudioSlider : Slider
 }
 
 /// <summary>
-/// Adds the slider's text value to what a slider already offers. The number stays available
-/// through the range pattern, so a screen reader can still raise and lower it.
+/// Adds the slider's text value to what a slider already offers, and hands out a range value
+/// through which a screen reader can set every value of the range.
 /// </summary>
 public sealed partial class StudioSliderAutomationPeer(StudioSlider owner) : SliderAutomationPeer(owner), IValueProvider
 {
+    private StudioSliderRangeValue? _rangeValue;
+
+    private StudioSlider Slider => (StudioSlider)Owner;
+
     // Explicit, because the slider's own range pattern already has a number called Value.
     bool IValueProvider.IsReadOnly => true;
 
-    string IValueProvider.Value => ((StudioSlider)Owner).ValueText;
+    string IValueProvider.Value => Slider.ValueText;
 
     void IValueProvider.SetValue(string value) =>
         throw new InvalidOperationException("The slider's text is read-only. Set its number through the range value.");
 
-    protected override object GetPatternCore(PatternInterface patternInterface) =>
-        patternInterface == PatternInterface.Value ? this : base.GetPatternCore(patternInterface);
+    protected override object GetPatternCore(PatternInterface patternInterface) => patternInterface switch
+    {
+        PatternInterface.Value => this,
+        PatternInterface.RangeValue => _rangeValue ??= new StudioSliderRangeValue(Slider),
+        _ => base.GetPatternCore(patternInterface),
+    };
+}
+
+/// <summary>
+/// The slider's number, as screen readers read and set it.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A number set through UI Automation arrives in single precision: 0.2 as 0.2000000030. The
+/// slider's own peer refuses a number outside the range, and that one is above a maximum of 0.2.
+/// Left to it, the highest value of a range such as 0 to 0.2, 0.4 or 0.6 could not be set, nor
+/// the lowest of one that starts at 0.08. Here the number that was meant is worked out first.
+/// </para>
+/// <para>
+/// This is an object of its own because the peer cannot answer for the range value itself: a
+/// peer derived from the slider's peer is asked for it on the interface the slider's peer
+/// already implements, and that is where the call goes.
+/// </para>
+/// </remarks>
+public sealed partial class StudioSliderRangeValue(StudioSlider slider) : IRangeValueProvider
+{
+    // How far a value that was added up from steps may be past the end of the range.
+    private const double RangeTolerance = 1e-9;
+
+    public bool IsReadOnly => !slider.IsEnabled;
+
+    public double Minimum => slider.Minimum;
+
+    public double Maximum => slider.Maximum;
+
+    public double Value => slider.Value;
+
+    public double SmallChange => slider.SmallChange;
+
+    public double LargeChange => slider.LargeChange;
+
+    public void SetValue(double value)
+    {
+        if (!slider.IsEnabled)
+        {
+            throw new ElementNotEnabledException();
+        }
+
+        var meant = StudioEditorText.ResolveAutomationValue(value, slider.Value, slider.SmallChange);
+        if (meant < slider.Minimum - RangeTolerance || meant > slider.Maximum + RangeTolerance)
+        {
+            throw new ArgumentException("The value is outside the slider's range.", nameof(value));
+        }
+
+        slider.Value = Math.Min(Math.Max(meant, slider.Minimum), slider.Maximum);
+    }
 }

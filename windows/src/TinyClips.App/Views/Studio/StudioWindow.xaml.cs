@@ -2,9 +2,11 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using TinyClips.App.Controls.Studio;
 using TinyClips.App.Services.Studio;
 using TinyClips.App.ViewModels.Studio;
@@ -37,6 +39,8 @@ public sealed partial class StudioWindow : Window
     private readonly Action<StudioWindow, Task> _onClosed;
     private FrameworkElement? _previewView;
     private Task? _teardown;
+    private FocusRequest _focusRequest;
+    private bool _isActive;
     private bool _wasExporting;
     private bool _isPromptOpen;
     private bool _closeConfirmed;
@@ -93,15 +97,31 @@ public sealed partial class StudioWindow : Window
             _ => ElementTheme.Default,
         };
 
+        AppTitleBar.Loaded += OnDecoratedControlLoaded;
+        LoadingRing.Loaded += OnDecoratedControlLoaded;
+        ErrorBar.SizeChanged += OnErrorBarSizeChanged;
         ViewModel.StateChanged += OnStateChanged;
         ViewModel.Announced += OnAnnounced;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        Activated += OnActivated;
         RootGrid.KeyDown += OnRootKeyDown;
         AppWindow.Closing += OnAppWindowClosing;
         Closed += OnClosed;
 
         // Queued, so the window is on screen saying "Opening" before the project is read.
         DispatcherQueue.TryEnqueue(() => _ = ViewModel.LoadAsync());
+    }
+
+    /// <summary>Where the keyboard focus is waiting to be put.</summary>
+    private enum FocusRequest
+    {
+        None,
+
+        /// <summary>The window has opened: on Play, or on the message when the project cannot be shown.</summary>
+        Opened,
+
+        /// <summary>An export started or ended: on Cancel while it runs, on Export afterwards.</summary>
+        Export,
     }
 
     public StudioViewModel ViewModel { get; }
@@ -140,14 +160,8 @@ public sealed partial class StudioWindow : Window
         {
             AttachPreviewView();
 
-            // Once the editor has been laid out. Space and the arrow keys start from Play.
-            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
-            {
-                if (!_isClosed && ViewModel.IsEditable)
-                {
-                    _timeline.FocusPlayButton();
-                }
-            });
+            // Space and the arrow keys start from Play.
+            RequestFocus(FocusRequest.Opened);
             return;
         }
 
@@ -156,15 +170,75 @@ public sealed partial class StudioWindow : Window
         {
             // The focused element is what a screen reader reads, also in a window that has only
             // just opened, where a notice sent this early would not arrive.
-            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
-            {
-                if (!_isClosed && ViewModel.IsUnavailable)
-                {
-                    // The message has only just become visible, and has to be laid out to take focus.
-                    RootGrid.UpdateLayout();
-                    UnavailablePanel.Focus(FocusState.Programmatic);
-                }
-            });
+            RequestFocus(FocusRequest.Opened);
+        }
+    }
+
+    // Focus
+
+    private void OnActivated(object sender, Microsoft.UI.Xaml.WindowActivatedEventArgs args)
+    {
+        _isActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        if (args.WindowActivationState == WindowActivationState.PointerActivated)
+        {
+            // The click that activated the window says where the focus goes.
+            _focusRequest = FocusRequest.None;
+        }
+        else if (_isActive)
+        {
+            PlaceFocusLater();
+        }
+    }
+
+    /// <summary>
+    /// Asks for the keyboard focus to be put where the editor's state calls for.
+    /// </summary>
+    /// <remarks>
+    /// Moving the focus also asks Windows for the keyboard focus, and Windows answers that by
+    /// activating the window: it comes in front of the app's other windows, and of other apps
+    /// when Windows lets it. A project that has finished opening or an export that has ended is
+    /// no reason for that. So a window that is not the active one keeps the request, and the
+    /// focus is put there when the user comes back to it.
+    /// </remarks>
+    private void RequestFocus(FocusRequest request)
+    {
+        _focusRequest = request;
+        PlaceFocusLater();
+    }
+
+    // Later, so that what has only just become visible or enabled is laid out and can take focus.
+    private void PlaceFocusLater()
+    {
+        if (_isActive && _focusRequest != FocusRequest.None)
+        {
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, PlaceFocus);
+        }
+    }
+
+    private void PlaceFocus()
+    {
+        if (_isClosed || !_isActive || _focusRequest == FocusRequest.None)
+        {
+            return;
+        }
+
+        var request = _focusRequest;
+        _focusRequest = FocusRequest.None;
+        if (ViewModel.IsUnavailable)
+        {
+            // The message has only just become visible, and has to be laid out to take focus.
+            RootGrid.UpdateLayout();
+            UnavailablePanel.Focus(FocusState.Programmatic);
+        }
+        else if (ViewModel.IsExporting)
+        {
+            // The editor under the overlay is disabled, so focus goes to the one thing that works.
+            CancelExportButton.Focus(FocusState.Programmatic);
+        }
+        else if (ViewModel.IsEditable
+            && (request != FocusRequest.Export || !ExportButton.Focus(FocusState.Programmatic)))
+        {
+            _timeline.FocusPlayButton();
         }
     }
 
@@ -210,17 +284,10 @@ public sealed partial class StudioWindow : Window
             return;
         }
 
-        // The editor under the overlay is disabled, so focus goes to the one thing that works, and
-        // back to where an export is started when it is over.
+        // Focus goes to Cancel while the export runs, and back to where an export is started
+        // when it is over.
         _wasExporting = ViewModel.IsExporting;
-        var target = _wasExporting ? CancelExportButton : ExportButton;
-        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
-        {
-            if (!_isClosed && !target.Focus(FocusState.Programmatic) && !_wasExporting)
-            {
-                _timeline.FocusPlayButton();
-            }
-        });
+        RequestFocus(FocusRequest.Export);
     }
 
     private void OnClipNameTrimmedChanged(TextBlock sender, IsTextTrimmedChangedEventArgs args) =>
@@ -229,6 +296,51 @@ public sealed partial class StudioWindow : Window
     private void OnExportClick(object sender, RoutedEventArgs e) => _ = ViewModel.ExportAsync();
 
     // Screen readers
+
+    /// <summary>
+    /// The title bar shows the app icon, and the progress ring its animation, as an image without
+    /// a name: something a screen reader stops on and can say nothing about. Both are decoration,
+    /// so they are taken out of what a screen reader walks.
+    /// </summary>
+    private void OnDecoratedControlLoaded(object sender, RoutedEventArgs e)
+    {
+        var control = (FrameworkElement)sender;
+        control.Loaded -= OnDecoratedControlLoaded;
+        HideWhatSaysNothing(control);
+    }
+
+    /// <summary>
+    /// The message bar has a text for a title, which this window does not use, and which is then
+    /// an empty text to a screen reader. The bar builds its parts when it is first shown.
+    /// </summary>
+    private void OnErrorBarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ErrorBar.SizeChanged -= OnErrorBarSizeChanged;
+        HideWhatSaysNothing(ErrorBar);
+    }
+
+    /// <summary>Takes the images and texts without a name that a control is built of out of what a screen reader walks.</summary>
+    private static void HideWhatSaysNothing(DependencyObject parent)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+
+            // Told by what it is to a screen reader, not by its type: that needs no cast, and a
+            // cast can fail on a part read back from a template when the app is compiled ahead
+            // of time.
+            if (child is UIElement element
+                && FrameworkElementAutomationPeer.CreatePeerForElement(element) is { } peer
+                && peer.GetAutomationControlType() is AutomationControlType.Image or AutomationControlType.Text
+                && string.IsNullOrEmpty(peer.GetName()))
+            {
+                AutomationProperties.SetAccessibilityView(element, AccessibilityView.Raw);
+            }
+
+            HideWhatSaysNothing(child);
+        }
+    }
 
     private void OnAnnounced(object? sender, StudioAnnouncementEventArgs e)
     {
@@ -429,6 +541,10 @@ public sealed partial class StudioWindow : Window
 
         _isClosed = true;
         Closed -= OnClosed;
+        Activated -= OnActivated;
+        AppTitleBar.Loaded -= OnDecoratedControlLoaded;
+        LoadingRing.Loaded -= OnDecoratedControlLoaded;
+        ErrorBar.SizeChanged -= OnErrorBarSizeChanged;
         AppWindow.Closing -= OnAppWindowClosing;
         RootGrid.KeyDown -= OnRootKeyDown;
         ViewModel.StateChanged -= OnStateChanged;

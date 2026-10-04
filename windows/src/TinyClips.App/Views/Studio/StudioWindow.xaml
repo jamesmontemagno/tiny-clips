@@ -35,6 +35,7 @@
             Spacing="12"
             Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}">
             <ProgressRing
+                x:Name="LoadingRing"
                 Width="32"
                 Height="32"
                 HorizontalAlignment="Center"
@@ -195,12 +196,14 @@
                 <!--
                     What went wrong, when something did. It reads itself out when it opens. It is
                     collapsed while closed, because its margin would leave a gap under the header.
+                    The name is for a screen reader that comes across the bar later.
                 -->
                 <InfoBar
                     x:Name="ErrorBar"
                     Grid.Row="1"
                     Margin="16,8,16,0"
                     AutomationProperties.AutomationId="StudioErrorBar"
+                    AutomationProperties.Name="Error"
                     IsOpen="{x:Bind ViewModel.HasError, Mode=TwoWay}"
                     Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                     Severity="Error"
