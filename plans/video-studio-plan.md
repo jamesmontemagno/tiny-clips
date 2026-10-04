@@ -266,7 +266,7 @@ Which pixels are a person is for each platform to find, so the edge is not the s
 
 **macOS** uses the Vision framework's person segmentation in the compositor, for the preview and the export alike, at its middle quality setting. Nothing is added to the app. While a video plays, Vision steadies the edge from frame to frame; right after a seek the first masks can trail the picture.
 
-**Windows** has nothing built in that does this on an ordinary PC, so it needs a model and something to run it, which is an added dependency and a decision for the user. Until then the Windows renderer draws a project with a blurred or removed background as if it were kept.
+**Windows** has nothing built in that does this on an ordinary PC, so it needs a model and something to run it, which is an added dependency and a decision for the user. Until then the Windows renderer draws a project with a blurred or removed background as if it were kept. NativeAOT and trimming do not narrow the choice: the releases no longer use NativeAOT, so every runtime is open, Windows ML included.
 
 ## Platform architecture
 
@@ -465,8 +465,8 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
   - Export: Media Foundation source readers with the shared Direct3D device give textures Direct2D can draw without a copy. With offline encoder settings a 2560×1440 export ran at 131 to 238 frames per second on the test machine.
   - Presenting: a plain `SwapChainPanel` with a DXGI composition swap chain and Win2D's `CanvasSwapChainPanel` behaved alike. The plain panel is used, because the one shared renderer draws straight into its back buffer.
   - Recording: a second hardware encoder for a 1920×1080 camera track cost the screen track nothing measurable, with no dropped frames.
-  - NativeAOT: every mode ran from the AOT build without changes.
-  - Not measured: sound from the preview players, real recordings as input, a real change of monitor DPI, and a packaged AOT build.
+  - NativeAOT: every mode ran from the AOT build without changes. (The app's releases have since stopped using NativeAOT, so this no longer decides anything.)
+  - Not measured: sound from the preview players, real recordings as input, and a real change of monitor DPI.
 - **macOS**: not run. It needs a Mac.
 
 ### Changes outside Studio
@@ -484,7 +484,7 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 
 | Risk | Handling |
 |---|---|
-| Windows preview: two frame-server players staying in sync through seeks and frame steps, and presenting from Core's device under NativeAOT | `m0-win-engine-spike` chooses between a Win2D swap chain panel on the shared device and raw `SwapChainPanel` interop, and is checked with an AOT publish |
+| Windows preview: two frame-server players staying in sync through seeks and frame steps, and presenting from Core's device | `m0-win-engine-spike` chooses between a Win2D swap chain panel on the shared device and raw `SwapChainPanel` interop. It was also checked with an AOT publish, which mattered when the plan was written; the releases no longer use NativeAOT |
 | Windows: a second hardware encode for the camera while recording | The spike measures it with `RecordingPerformanceMonitor`. The fallback is a software encode or 720p for the camera |
 | macOS: refreshing the composited frame while paused and dragging, and Core Image speed on Retina 4K and 5K | `m0-mac-engine-spike`. The fallback is previewing at reduced scale |
 | The Swift and C# engines drift apart | Shared golden fixtures that run in both CI workflows |
