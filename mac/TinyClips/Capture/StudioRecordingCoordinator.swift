@@ -152,7 +152,8 @@ final class StudioRecordingCoordinator {
             clickOverlay: Self.clickOverlay(from: clickOverlayStyle, enabled: clickVisualsEnabled),
             branding: branding,
             appVersion: appVersion,
-            look: look
+            look: look,
+            cameraCorners: cameraCorners
         )
 
         _ = try store.completeRecording(id: paths.id, request: request)

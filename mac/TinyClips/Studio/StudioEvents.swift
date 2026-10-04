@@ -277,3 +277,10 @@ struct StudioCameraCornerEvent: Codable, Equatable, Sendable {
         try container.encode(corner, forKey: StudioJSONKey("corner"))
     }
 }
+
+/// A layout chosen while recording, at a time on the recording timeline. In events.json these
+/// are the entries of `markers`.
+struct StudioLayoutMarker: Codable, Equatable, Sendable {
+    var t: Double
+    var layout: StudioLayout
+}

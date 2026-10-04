@@ -159,6 +159,92 @@ enum StudioCaptureEvents {
         return output
     }
 
+    /// The shortest scene that a change made while recording gets (section 9.1 of the project
+    /// format). It is the shortest scene the editor makes.
+    static let shortestRecordedScene = StudioEditorModel.minimumSceneDuration
+
+    /// The scenes a new project gets from what was changed while recording (section 9.1 of the
+    /// project format): a scene for each move of the camera to another corner and for each change
+    /// of layout, entered by moving, after `first`, which starts at 0.
+    static func scenes(
+        first: StudioScene,
+        corners: [StudioCameraCornerEvent],
+        markers: [StudioLayoutMarker],
+        duration: Double
+    ) -> [StudioScene] {
+        var changes: [RecordedChange] = []
+        for (index, corner) in corners.enumerated() where corner.t.isFinite {
+            changes.append(RecordedChange(time: corner.t, isCorner: true, index: index, corner: corner.corner, layout: .bubble))
+        }
+        for (index, marker) in markers.enumerated() where marker.t.isFinite {
+            changes.append(RecordedChange(time: marker.t, isCorner: false, index: index, corner: .bottomRight, layout: marker.layout))
+        }
+        // By time. At the same time a corner comes before a marker, and two of a kind keep the
+        // order of their list.
+        changes.sort { a, b in
+            if a.time != b.time { return a.time < b.time }
+            if a.isCorner != b.isCorner { return a.isCorner }
+            return a.index < b.index
+        }
+
+        var opening = first
+        opening.start = 0
+        var scenes = [opening]
+        for change in changes {
+            let last = scenes[scenes.count - 1]
+            var changed = last
+            if !change.isCorner {
+                changed.layout = change.layout
+            } else if last.bubble.anchor != change.corner {
+                // The offsets are from the corner the bubble was in, so they do not go with it.
+                changed.bubble.anchor = change.corner
+                changed.bubble.offsetX = 0
+                changed.bubble.offsetY = 0
+            }
+
+            if showsTheSame(changed, last) {
+                continue
+            }
+            if change.isCorner, last.layout != .bubble {
+                // No bubble is showing. The corner counts from when one shows again.
+                scenes[scenes.count - 1] = changed
+                continue
+            }
+            if change.time < last.start + shortestRecordedScene {
+                // Too soon after the last scene started for that one to last: it takes the change.
+                scenes[scenes.count - 1] = changed
+                if scenes.count > 1, showsTheSame(changed, scenes[scenes.count - 2]) {
+                    scenes.removeLast()
+                }
+                continue
+            }
+            if change.time > duration - shortestRecordedScene {
+                continue
+            }
+            changed.start = change.time
+            changed.transition = StudioTransition(kind: .morph)
+            scenes.append(changed)
+        }
+        return scenes
+    }
+
+    /// Whether two scenes have the same layout and the bubble in the same place. A recording
+    /// changes nothing else about a scene.
+    private static func showsTheSame(_ a: StudioScene, _ b: StudioScene) -> Bool {
+        a.layout == b.layout
+            && a.bubble.anchor == b.bubble.anchor
+            && a.bubble.offsetX == b.bubble.offsetX
+            && a.bubble.offsetY == b.bubble.offsetY
+    }
+
+    private struct RecordedChange {
+        var time: Double
+        var isCorner: Bool
+        var index: Int
+        var corner: StudioAnchor
+        var layout: StudioLayout
+    }
+
     static func makeEvents(
         captureWidth: Int,
         captureHeight: Int,
@@ -191,7 +277,9 @@ enum StudioCaptureEvents {
         clickOverlay: StudioClickOverlay,
         branding: Bool,
         appVersion: String,
-        look: StudioLook? = nil
+        look: StudioLook? = nil,
+        cameraCorners: [StudioCameraCornerEvent] = [],
+        layoutMarkers: [StudioLayoutMarker] = []
     ) -> StudioProjectCreationRequest {
         StudioProjectCreationRequest(
             name: name,
@@ -212,7 +300,9 @@ enum StudioCaptureEvents {
             clickOverlay: clickOverlay,
             branding: branding,
             appVersion: appVersion,
-            look: look
+            look: look,
+            cameraCorners: cameraCorners,
+            layoutMarkers: layoutMarkers
         )
     }
 }

@@ -159,6 +159,96 @@ final class StudioCaptureEventsTests: XCTestCase {
         XCTAssertNil(StudioCaptureEvents.screenAudioTracks(recorded: [.system], trackCountInFile: 0))
     }
 
+    // MARK: - Scenes from the recording
+    //
+    // Section 9.1 of the format. The shared fixtures hold the cases; these are the ones a fixture
+    // cannot hold.
+
+    func testAChangeExactlyAShortestSceneAfterTheLastGetsItsOwnScene() {
+        let first = StudioScene(bubble: StudioBubble(anchor: .bottomRight))
+        let shortest = StudioCaptureEvents.shortestRecordedScene
+        XCTAssertEqual(shortest, StudioEditorModel.minimumSceneDuration)
+        XCTAssertEqual(shortest, 0.3)
+
+        var scenes = StudioCaptureEvents.scenes(
+            first: first,
+            corners: [corner(0, .bottomRight), corner(5, .topLeft), corner(5 + shortest, .topRight)],
+            markers: [],
+            duration: 20
+        )
+        XCTAssertEqual(scenes.map(\.start), [0, 5, 5 + shortest])
+        XCTAssertEqual(scenes.map(\.bubble.anchor), [.bottomRight, .topLeft, .topRight])
+
+        // And a change exactly that long after the start of the recording.
+        scenes = StudioCaptureEvents.scenes(first: first, corners: [corner(shortest, .topLeft)], markers: [], duration: 20)
+        XCTAssertEqual(scenes.map(\.start), [0, shortest])
+        XCTAssertEqual(scenes[0].bubble.anchor, .bottomRight)
+    }
+
+    func testAChangeExactlyAShortestSceneBeforeTheEndIsKept() {
+        let first = StudioScene(bubble: StudioBubble(anchor: .bottomRight))
+        let shortest = StudioCaptureEvents.shortestRecordedScene
+
+        var scenes = StudioCaptureEvents.scenes(first: first, corners: [corner(20 - shortest, .topLeft)], markers: [], duration: 20)
+        XCTAssertEqual(scenes.map(\.start), [0, 20 - shortest])
+
+        // The next number after it is too late.
+        scenes = StudioCaptureEvents.scenes(first: first, corners: [corner((20 - shortest).nextUp, .topLeft)], markers: [], duration: 20)
+        XCTAssertEqual(scenes.count, 1)
+        XCTAssertEqual(scenes[0].bubble.anchor, .bottomRight)
+    }
+
+    func testTimesThatAreNoNumbersAreLeftOut() {
+        let first = StudioScene(
+            start: 4,
+            layout: .bubble,
+            bubble: StudioBubble(anchor: .bottomRight),
+            transition: StudioTransition(kind: .morph, duration: 1)
+        )
+
+        let scenes = StudioCaptureEvents.scenes(
+            first: first,
+            corners: [corner(.nan, .topLeft), corner(.infinity, .topRight), corner(-.infinity, .bottomLeft), corner(6, .topRight)],
+            markers: [StudioLayoutMarker(t: .nan, layout: .camera), StudioLayoutMarker(t: 10, layout: .sideBySide)],
+            duration: 20
+        )
+
+        XCTAssertEqual(scenes.map(\.start), [0, 6, 10])
+        XCTAssertEqual(scenes.map(\.bubble.anchor), [.bottomRight, .topRight, .topRight])
+        XCTAssertEqual(scenes.map(\.layout), [.bubble, .bubble, .sideBySide])
+
+        // The first scene starts at 0 whatever it was given, and is entered as it was given.
+        XCTAssertEqual(scenes[0].transition, StudioTransition(kind: .morph, duration: 1))
+        XCTAssertEqual(scenes[1].transition, StudioTransition(kind: .morph, duration: 0.35))
+
+        // No changes at all.
+        let alone = StudioCaptureEvents.scenes(first: first, corners: [], markers: [], duration: 20)
+        XCTAssertEqual(alone.map(\.start), [0])
+    }
+
+    func testTheRequestCarriesWhatWasChangedWhileRecording() {
+        let corners = [corner(0, .topRight), corner(3, .bottomLeft)]
+        let markers = [StudioLayoutMarker(t: 5, layout: .camera)]
+        let request = StudioCaptureEvents.makeProjectCreationRequest(
+            name: "Recording",
+            screen: StudioCaptureMediaInfo(width: 1920, height: 1080, duration: 12, frameRate: 30),
+            camera: StudioCaptureMediaInfo(width: 640, height: 480, duration: 12, frameRate: 30),
+            cameraStartOffset: 0,
+            bubbleAnchor: .topRight,
+            clickOverlay: StudioClickOverlay(),
+            branding: false,
+            appVersion: "1.2.3",
+            cameraCorners: corners,
+            layoutMarkers: markers
+        )
+        XCTAssertEqual(request.cameraCorners, corners)
+        XCTAssertEqual(request.layoutMarkers, markers)
+    }
+
+    private func corner(_ t: Double, _ anchor: StudioAnchor) -> StudioCameraCornerEvent {
+        StudioCameraCornerEvent(t: t, corner: anchor)
+    }
+
     func testEventsDocumentCarriesCaptureMetadata() {
         let events = StudioCaptureEvents.makeEvents(
             captureWidth: 100,

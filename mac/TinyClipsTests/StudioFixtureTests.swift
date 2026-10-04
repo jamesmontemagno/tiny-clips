@@ -98,6 +98,37 @@ final class StudioFixtureTests: XCTestCase {
         }
     }
 
+    /// Section 9.1: the scenes a new project gets from what was changed while recording.
+    func testSharedRecordingFixtures() throws {
+        let files = try fixtureFiles(in: "recording")
+        XCTAssertFalse(files.isEmpty, "Expected shared Studio recording fixtures")
+
+        for file in files {
+            let fixture = try StudioJSON.makeDecoder().decode(RecordingFixture.self, from: Data(contentsOf: file))
+            let actual = StudioCaptureEvents.scenes(
+                first: fixture.first,
+                corners: fixture.cameraCorners,
+                markers: fixture.markers,
+                duration: fixture.duration
+            )
+            XCTAssertEqual(actual.count, fixture.expected.count, "\(file.lastPathComponent) scene count")
+            for index in 0..<min(actual.count, fixture.expected.count) {
+                let scene = actual[index]
+                let expected = fixture.expected[index]
+                XCTAssertEqual(scene.start, expected.start, accuracy: 1e-6, message(file, index, "start"))
+                XCTAssertEqual(scene.layout, expected.layout, message(file, index, "layout"))
+                XCTAssertEqual(scene.bubble.anchor, expected.bubble.anchor, message(file, index, "bubble.anchor"))
+                XCTAssertEqual(scene.bubble.size, expected.bubble.size, accuracy: 1e-6, message(file, index, "bubble.size"))
+                XCTAssertEqual(scene.bubble.offsetX, expected.bubble.offsetX, accuracy: 1e-6, message(file, index, "bubble.offsetX"))
+                XCTAssertEqual(scene.bubble.offsetY, expected.bubble.offsetY, accuracy: 1e-6, message(file, index, "bubble.offsetY"))
+                XCTAssertEqual(scene.split.cameraSide, expected.split.cameraSide, message(file, index, "split.cameraSide"))
+                XCTAssertEqual(scene.split.cameraFraction, expected.split.cameraFraction, accuracy: 1e-6, message(file, index, "split.cameraFraction"))
+                XCTAssertEqual(scene.transition.kind, expected.transition.kind, message(file, index, "transition.kind"))
+                XCTAssertEqual(scene.transition.duration, expected.transition.duration, accuracy: 1e-6, message(file, index, "transition.duration"))
+            }
+        }
+    }
+
     // MARK: - Assertions
 
     private func assertFrame(_ actual: StudioResolvedFrame, _ expected: StudioResolvedFrame, file: URL, caseIndex: Int) {
@@ -180,6 +211,14 @@ final class StudioFixtureTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+    }
+
+    private struct RecordingFixture: Decodable {
+        var duration: Double
+        var first: StudioScene
+        var cameraCorners: [StudioCameraCornerEvent]
+        var markers: [StudioLayoutMarker]
+        var expected: [StudioScene]
     }
 
     private struct LayoutFixture: Decodable {

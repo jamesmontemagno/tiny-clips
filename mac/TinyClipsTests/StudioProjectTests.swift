@@ -208,6 +208,55 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertEqual(unknown.audio, StudioAudio())
     }
 
+    func testANewProjectHasASceneForEachCornerTheCameraWasMovedTo() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        var request = creationRequest(camera: StudioCameraCreationInfo(width: 640, height: 480, duration: 10, startOffset: 0.25))
+        request.bubbleAnchor = .topRight
+        request.cameraCorners = [
+            StudioCameraCornerEvent(t: 0, corner: .topRight),
+            StudioCameraCornerEvent(t: 3, corner: .bottomLeft),
+            StudioCameraCornerEvent(t: 7.5, corner: .topLeft),
+        ]
+
+        let project = try store.completeRecording(id: store.beginRecording().id, request: request)
+        XCTAssertEqual(project.scenes.map(\.start), [0, 3, 7.5])
+        XCTAssertEqual(project.scenes.map(\.bubble.anchor), [.topRight, .bottomLeft, .topLeft])
+        XCTAssertEqual(project.scenes.map(\.layout), [.bubble, .bubble, .bubble])
+        XCTAssertEqual(project.scenes.map(\.transition.kind), [.cut, .morph, .morph])
+        XCTAssertEqual(project.edits.trimStart, 0.25)
+        XCTAssertEqual(try store.load(id: project.id).scenes, project.scenes)
+
+        // The recording's length is what decides which changes come too late.
+        var shorter = request
+        shorter.screenDuration = 7.6
+        XCTAssertEqual(try store.completeRecording(id: store.beginRecording().id, request: shorter).scenes.map(\.start), [0, 3])
+
+        // Layouts chosen while recording become scenes as well.
+        var withLayouts = request
+        withLayouts.layoutMarkers = [StudioLayoutMarker(t: 5, layout: .camera)]
+        let laidOut = try store.completeRecording(id: store.beginRecording().id, request: withLayouts)
+        XCTAssertEqual(laidOut.scenes.map(\.start), [0, 3, 5])
+        XCTAssertEqual(laidOut.scenes[2].layout, .camera)
+        XCTAssertEqual(laidOut.scenes[2].bubble.anchor, .topLeft)
+    }
+
+    func testANewProjectWithoutACameraHasItsOneScreenSceneWhateverWasChanged() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        var request = creationRequest(camera: nil)
+        request.cameraCorners = [StudioCameraCornerEvent(t: 0, corner: .topRight), StudioCameraCornerEvent(t: 4, corner: .topLeft)]
+        request.layoutMarkers = [StudioLayoutMarker(t: 6, layout: .camera)]
+
+        let project = try store.completeRecording(id: store.beginRecording().id, request: request)
+        XCTAssertEqual(project.scenes.map(\.start), [0])
+        XCTAssertEqual(project.scenes[0].layout, .screen)
+
+        // A request that says nothing about corners gives the one scene, as before.
+        let plain = try store.completeRecording(id: store.beginRecording().id, request: creationRequest())
+        XCTAssertEqual(plain.scenes.map(\.start), [0])
+        XCTAssertEqual(plain.scenes[0].bubble.anchor, .topLeft)
+        XCTAssertEqual(plain.scenes[0].layout, .bubble)
+    }
+
     func testNullRequiredPropertiesAreInvalid() {
         XCTAssertThrowsError(try decodeProject("""
         {

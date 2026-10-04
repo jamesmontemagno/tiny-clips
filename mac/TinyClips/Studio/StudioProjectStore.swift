@@ -87,6 +87,13 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
     var appVersion: String
     var look: StudioLook?
 
+    /// The corners the camera was in while recording, with the time it got to each. With
+    /// `layoutMarkers` they become the project's scenes (section 9.1 of the format).
+    var cameraCorners: [StudioCameraCornerEvent]
+
+    /// The layouts chosen while recording, with the time of each.
+    var layoutMarkers: [StudioLayoutMarker]
+
     init(
         name: String = "",
         screenWidth: Int,
@@ -99,7 +106,9 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
         clickOverlay: StudioClickOverlay = StudioClickOverlay(),
         branding: Bool = false,
         appVersion: String,
-        look: StudioLook? = nil
+        look: StudioLook? = nil,
+        cameraCorners: [StudioCameraCornerEvent] = [],
+        layoutMarkers: [StudioLayoutMarker] = []
     ) {
         self.name = name
         self.screenWidth = screenWidth
@@ -113,6 +122,8 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
         self.branding = branding
         self.appVersion = appVersion
         self.look = look
+        self.cameraCorners = cameraCorners
+        self.layoutMarkers = layoutMarkers
     }
 }
 
@@ -524,6 +535,17 @@ final class StudioProjectStore {
         camera.crop = nil
         canvas.background.image = validBackgroundImage(canvas.background.image)
 
+        // With a camera, what was changed while recording becomes scenes (section 9.1).
+        let firstScene = StudioScene(start: 0, layout: layout, bubble: StudioBubble(anchor: request.bubbleAnchor))
+        let scenes = cameraSource == nil
+            ? [firstScene]
+            : StudioCaptureEvents.scenes(
+                first: firstScene,
+                corners: request.cameraCorners,
+                markers: request.layoutMarkers,
+                duration: request.screenDuration
+            )
+
         return StudioProject(
             id: id,
             name: request.name,
@@ -545,13 +567,7 @@ final class StudioProjectStore {
             canvas: canvas,
             screen: screen,
             camera: camera,
-            scenes: [
-                StudioScene(
-                    start: 0,
-                    layout: layout,
-                    bubble: StudioBubble(anchor: request.bubbleAnchor)
-                )
-            ],
+            scenes: scenes,
             edits: StudioEdits(trimStart: trimStart),
             overlays: StudioOverlays(clicks: request.clickOverlay, branding: request.branding)
         )
