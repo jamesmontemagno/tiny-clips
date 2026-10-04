@@ -317,6 +317,15 @@ public static class StudioEditorText
     public static string GetCutPositionText(int index, int count) =>
         string.Create(CultureInfo.InvariantCulture, $"Cut {index + 1} of {count}");
 
+    /// <summary>
+    /// What is read out when a cut is stepped to with Previous or Next, which say nothing of where
+    /// they land by themselves: which cut it is and its times, such as
+    /// <c>Cut 2 of 3, 12.0 to 16.5 seconds</c>. A scene that is stepped to is read out with
+    /// <see cref="GetSceneDescription"/>, which already says which scene it is.
+    /// </summary>
+    public static string GetCutStepText(int index, int count, StudioTimeRange cut) =>
+        $"{GetCutPositionText(index, count)}, {GetCutRangeText(cut)}";
+
     /// <summary>What to say after zooms were suggested, given how many suggestions there are now.</summary>
     public static string GetZoomSuggestionsText(int count) => count switch
     {

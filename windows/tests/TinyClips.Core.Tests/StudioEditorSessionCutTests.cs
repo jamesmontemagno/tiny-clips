@@ -242,6 +242,55 @@ public sealed class StudioEditorSessionCutTests : StudioEditorSessionTestBase
         var none = await OpenAsync(CreateProject());
         Assert.False(none.SelectNextCut());
         Assert.False(none.SelectPreviousCut());
+        Assert.False(none.SelectAndShowCut(0));
+    }
+
+    [Fact]
+    public async Task ACutIsSelectedAndShownByItsPlace_FromAnywhere()
+    {
+        var session = await OpenAsync(CreateProjectWithCuts((2, 3), (5, 6), (8, 9)));
+        session.Scrub(4);
+        Preview.Seeks.Clear();
+        Changes.Clear();
+
+        // The last one, whatever is selected and wherever the playhead is.
+        Assert.True(session.SelectAndShowCut(2));
+        Assert.Equal(2, session.SelectedCutIndex);
+        Assert.Equal(8, session.Playhead, Precision);
+        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Playback }, Changes);
+
+        Assert.True(session.SelectAndShowCut(0));
+        Assert.Equal(0, session.SelectedCutIndex);
+        Assert.Equal(2, session.Playhead, Precision);
+
+        // The selected cut again: it stays selected, and the playhead goes back to its start.
+        session.Scrub(2.5);
+        Changes.Clear();
+        Assert.True(session.SelectAndShowCut(0));
+        Assert.Equal(0, session.SelectedCutIndex);
+        Assert.Equal(2, session.Playhead, Precision);
+        Assert.Equal(new[] { StudioEditorChanges.Playback }, Changes);
+        Assert.Equal(new[] { 8.0, 2.0, 2.5, 2.0 }, Preview.Seeks);
+        Assert.False(session.HasUnsavedEdits);
+    }
+
+    [Fact]
+    public async Task APlaceWithNoCut_IsNotSelectedOrShown()
+    {
+        var session = await OpenAsync(CreateProjectWithCuts((2, 3), (5, 6)));
+        session.SelectCut(1);
+        session.Scrub(4);
+        Preview.Seeks.Clear();
+        Changes.Clear();
+
+        Assert.False(session.SelectAndShowCut(2));
+        Assert.False(session.SelectAndShowCut(-1));
+        Assert.False(session.SelectAndShowCut(null));
+
+        Assert.Equal(1, session.SelectedCutIndex);
+        Assert.Equal(4, session.Playhead, Precision);
+        Assert.Empty(Changes);
+        Assert.Empty(Preview.Seeks);
     }
 
     // Playing
@@ -348,6 +397,7 @@ public sealed class StudioEditorSessionCutTests : StudioEditorSessionTestBase
 
         // There is a cut before the playhead to step to, and the playhead does not go there.
         Assert.False(session.SelectPreviousCut());
+        Assert.False(session.SelectAndShowCut(0));
         Assert.Null(session.SelectedCutIndex);
         Assert.Equal(7, session.Playhead, Precision);
         Assert.Empty(Preview.Seeks);

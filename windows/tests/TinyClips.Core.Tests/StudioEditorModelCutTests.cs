@@ -347,6 +347,7 @@ public sealed class StudioEditorModelCutTests
         Assert.Equal("4.5 seconds long", StudioEditorText.GetCutLengthText(Cut(12, 16.5)));
         Assert.Equal("0.0 seconds long", StudioEditorText.GetCutLengthText(Cut(3, double.NaN)));
         Assert.Equal("Cut 2 of 3", StudioEditorText.GetCutPositionText(1, 3));
+        Assert.Equal("Cut 2 of 3, 12.0 to 16.5 seconds", StudioEditorText.GetCutStepText(1, 3, Cut(12, 16.5)));
     }
 
     // Helpers

@@ -161,7 +161,12 @@ public sealed partial class StudioEditorSession
         return result;
     }
 
-    private bool SelectAndShowCut(int? index)
+    /// <summary>
+    /// Selects a cut and moves the playhead to where it starts, as <see cref="SelectNextCut"/>
+    /// does. False, with nothing changed, when there is no such cut or the project cannot be
+    /// edited just now.
+    /// </summary>
+    public bool SelectAndShowCut(int? index)
     {
         if (index is not { } cut || !IsEditable || Model is not { } model || cut < 0 || cut >= model.Project.Edits.Cuts.Length)
         {
