@@ -517,8 +517,22 @@ public sealed class StudioEditorSession
 
     private void PausePreview()
     {
+        var wasPlaying = IsPlaying;
         _preview?.Pause();
         IsPlaying = false;
+
+        // While playing, the playhead is the last position that was handled, which trails the
+        // picture by however long the session's thread took to get to it. Once Pause has returned,
+        // the preview's position is the frame the picture stays on. A step, or a trim at the
+        // playhead, has to start from that frame.
+        if (wasPlaying && _preview is { } preview && Model is { } model)
+        {
+            var position = preview.Position;
+            if (double.IsFinite(position))
+            {
+                Playhead = model.ClampSourceTime(position);
+            }
+        }
     }
 
     private void Seek(double sourceTime)

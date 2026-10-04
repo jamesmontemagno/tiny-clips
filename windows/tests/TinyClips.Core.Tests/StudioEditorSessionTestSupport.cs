@@ -239,6 +239,8 @@ internal sealed class FakePreview(List<string> log) : IStudioPreview
 
     public void Seek(double sourceTime)
     {
+        // A preview reports a requested position from the moment the call returns.
+        Position = sourceTime;
         Seeks.Add(sourceTime);
         Calls.Add("Seek");
     }

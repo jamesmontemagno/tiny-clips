@@ -56,6 +56,10 @@ public interface IStudioPreview : IAsyncDisposable
     /// <summary>Starts playing from the most recently requested position.</summary>
     void Play();
 
+    /// <summary>
+    /// Stops playing. When it returns the picture no longer advances, and <see cref="Position"/>
+    /// is the frame it stays on.
+    /// </summary>
     void Pause();
 
     /// <summary>

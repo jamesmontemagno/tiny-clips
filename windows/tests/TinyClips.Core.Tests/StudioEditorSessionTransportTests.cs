@@ -182,6 +182,58 @@ public sealed class StudioEditorSessionTransportTests : StudioEditorSessionTestB
     }
 
     [Fact]
+    public async Task Pause_TakesTheFrameThePreviewStoppedOn()
+    {
+        var session = await OpenTrimmedAsync();
+        session.TogglePlayback();
+        Preview.RaisePosition(5.5);
+        Pump();
+        Changes.Clear();
+
+        // The preview has played two more frames that the session has not heard about yet.
+        Preview.Position = 5.5 + 2 * Frame;
+        session.Pause();
+
+        Assert.False(session.IsPlaying);
+        Assert.Equal(5.5 + 2 * Frame, session.Playhead, Precision);
+        Assert.Equal(new[] { StudioEditorChanges.Playback }, Changes);
+    }
+
+    [Fact]
+    public async Task Pause_WhenNotPlaying_LeavesThePlayheadAlone()
+    {
+        var session = await OpenTrimmedAsync();
+        Preview.Position = 1;
+
+        session.Pause();
+
+        Assert.Equal(5, session.Playhead, Precision);
+        Assert.Empty(Changes);
+    }
+
+    [Fact]
+    public async Task Step_WhilePlaying_StartsFromTheFrameThePreviewStoppedOn()
+    {
+        var session = await OpenTrimmedAsync();
+        session.TogglePlayback();
+        Preview.RaisePosition(5.5);
+        Pump();
+
+        // Three more frames went by before the step was handled.
+        Preview.Position = 5.5 + 3 * Frame;
+        session.StepFrames(1);
+
+        Assert.False(session.IsPlaying);
+        Assert.Equal(5.5 + 4 * Frame, session.Playhead, Precision);
+        Assert.Equal(5.5 + 4 * Frame, Preview.Seeks[^1], Precision);
+
+        // The notice for a frame that was played before the pause arrives afterwards.
+        Preview.RaisePosition(5.5 + 3 * Frame);
+        Pump();
+        Assert.Equal(5.5 + 4 * Frame, session.Playhead, Precision);
+    }
+
+    [Fact]
     public async Task Step_PausesAndMovesByWholeFrames()
     {
         var session = await OpenTrimmedAsync();
