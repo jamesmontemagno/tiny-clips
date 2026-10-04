@@ -68,11 +68,13 @@ enum StudioExporter {
             }
         }
 
+        // An export may be cancelled from any thread; the session is only not marked `Sendable`.
+        nonisolated(unsafe) let cancellableSession = exportSession
         do {
             try await withTaskCancellationHandler {
                 try await exportSession.export(to: outputURL, as: .mp4)
             } onCancel: {
-                exportSession.cancelExport()
+                cancellableSession.cancelExport()
             }
             progressTask.cancel()
             onProgress?(1)

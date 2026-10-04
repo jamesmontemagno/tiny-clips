@@ -6,7 +6,9 @@ import ImageIO
 
 // MARK: - Video Composition Instruction
 
-final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstructionProtocol {
+/// Every property is set once in `init`. The conformance is unchecked only because `NSValue`,
+/// which AVFoundation asks for the track IDs as, is not marked `Sendable`.
+final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
     let timeRange: CMTimeRange
     let enablePostProcessing = false
     let containsTweening = false
