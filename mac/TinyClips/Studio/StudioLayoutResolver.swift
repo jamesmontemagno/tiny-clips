@@ -37,17 +37,27 @@ struct StudioResolvedFrame: Codable, Equatable, Sendable {
 // MARK: - Layout Resolver
 
 enum StudioLayoutResolver {
+    private static let suggestionScale = 2.0
+    private static let suggestionLead = 0.6
+    private static let suggestionHold = 1.5
+    private static let suggestionJoin = 4.0
+    private static let suggestionInset = 0.15
+    private static let suggestionShortest = 0.3
+    private static let suggestionEase = 0.5
+
     static func resolve(
         project: StudioProject,
         time: Double,
         canvasWidth: Double,
-        canvasHeight: Double
+        canvasHeight: Double,
+        events: StudioEvents? = nil
     ) -> StudioResolvedFrame {
         let normalizedScenes = normalizeScenes(project.scenes)
         let selected = activeScene(in: normalizedScenes, time: time)
         let scene = selected.scene
         let hasCamera = project.sources.camera != nil
         let layout = hasCamera ? scene.layout : .screen
+        let screenSource = zoomWindow(project: project, events: events, time: time)
 
         let m = min(canvasWidth, canvasHeight)
         let padding = StudioCanvasMath.clamped(project.canvas.padding, 0, 0.4) * m
@@ -67,7 +77,7 @@ enum StudioLayoutResolver {
             return StudioResolvedFrame(
                 sceneIndex: selected.index,
                 layout: .screen,
-                screen: resolvedScreen(project: project, rect: rect, source: screenCrop ?? unitRect(), radius: cardRadius, m: m),
+                screen: resolvedScreen(project: project, rect: rect, source: screenSource, radius: cardRadius, m: m),
                 camera: nil
             )
         case .bubble:
@@ -76,7 +86,7 @@ enum StudioLayoutResolver {
             return StudioResolvedFrame(
                 sceneIndex: selected.index,
                 layout: .bubble,
-                screen: resolvedScreen(project: project, rect: screenRect, source: screenCrop ?? unitRect(), radius: cardRadius, m: m),
+                screen: resolvedScreen(project: project, rect: screenRect, source: screenSource, radius: cardRadius, m: m),
                 camera: resolvedCamera(project: project, scene: scene, layout: .bubble, rect: cameraRect, time: time, m: m, cardRadius: cardRadius)
             )
         case .sideBySide:
@@ -84,7 +94,7 @@ enum StudioLayoutResolver {
             return StudioResolvedFrame(
                 sceneIndex: selected.index,
                 layout: .sideBySide,
-                screen: resolvedScreen(project: project, rect: rects.screen, source: screenCrop ?? unitRect(), radius: cardRadius, m: m),
+                screen: resolvedScreen(project: project, rect: rects.screen, source: screenSource, radius: cardRadius, m: m),
                 camera: resolvedCamera(project: project, scene: scene, layout: .sideBySide, rect: rects.camera, time: time, m: m, cardRadius: cardRadius)
             )
         case .camera:
@@ -125,7 +135,106 @@ enum StudioLayoutResolver {
         return deduped
     }
 
+    static func normalizeZooms(_ zooms: [StudioZoom]) -> [StudioZoom] {
+        var adjusted: [(original: Int, zoom: StudioZoom)] = []
+        for (index, zoom) in zooms.enumerated() {
+            var copy = zoom
+            copy.start = max(0, copy.start)
+            guard copy.end > copy.start else { continue }
+            adjusted.append((index, copy))
+        }
+        adjusted.sort {
+            if $0.zoom.start == $1.zoom.start { return $0.original < $1.original }
+            return $0.zoom.start < $1.zoom.start
+        }
+
+        var deduped: [StudioZoom] = []
+        for item in adjusted {
+            if let last = deduped.last, last.start == item.zoom.start {
+                deduped[deduped.count - 1] = item.zoom
+            } else {
+                deduped.append(item.zoom)
+            }
+        }
+        guard deduped.count > 1 else { return deduped }
+        for index in 0..<(deduped.count - 1) where deduped[index + 1].start < deduped[index].end {
+            deduped[index].end = deduped[index + 1].start
+        }
+        return deduped
+    }
+
+    static func suggestZooms(project: StudioProject, events: StudioEvents?) -> [StudioZoom] {
+        let base = screenBaseRect(project: project)
+        let duration = max(0, project.sources.screen.duration)
+        let orderedClicks = (events?.clicks ?? []).enumerated().sorted { left, right in
+            if left.element.t == right.element.t { return left.offset < right.offset }
+            return left.element.t < right.element.t
+        }
+        var clicks: [StudioClickEvent] = []
+        for item in orderedClicks {
+            let click = item.element
+            let insideTime = click.t >= 0 && click.t <= duration
+            let insideX = click.x >= base.x && click.x <= base.x + base.width
+            let insideY = click.y >= base.y && click.y <= base.y + base.height
+            if insideTime && insideX && insideY {
+                clicks.append(click)
+            }
+        }
+
+        var groups: [SuggestionGroup] = []
+        for click in clicks {
+            if let last = groups.indices.last,
+               click.t - groups[last].last <= suggestionJoin {
+                let window = heldWindow(base: base, scale: suggestionScale, focusX: groups[last].x, focusY: groups[last].y)
+                let inner = StudioRect(
+                    x: window.x + suggestionInset * window.width,
+                    y: window.y + suggestionInset * window.height,
+                    width: (1 - 2 * suggestionInset) * window.width,
+                    height: (1 - 2 * suggestionInset) * window.height
+                )
+                if click.x >= inner.x,
+                   click.x <= inner.x + inner.width,
+                   click.y >= inner.y,
+                   click.y <= inner.y + inner.height {
+                    groups[last].last = click.t
+                } else {
+                    let end = max(click.t - suggestionLead, (groups[last].last + click.t) / 2)
+                    groups[last].end = end
+                    groups.append(SuggestionGroup(start: end, x: click.x, y: click.y, last: click.t))
+                }
+            } else {
+                groups.append(SuggestionGroup(start: max(0, click.t - suggestionLead), x: click.x, y: click.y, last: click.t))
+            }
+        }
+
+        let suggestions = groups.compactMap { group -> StudioZoom? in
+            let end = group.end ?? min(duration, group.last + suggestionHold)
+            guard end - group.start >= suggestionShortest else { return nil }
+            return StudioZoom(
+                start: group.start,
+                end: end,
+                scale: suggestionScale,
+                focus: StudioZoomFocus(mode: .point, x: group.x, y: group.y),
+                easeIn: suggestionEase,
+                easeOut: suggestionEase,
+                origin: .auto
+            )
+        }
+        let manual = normalizeZooms(project.zooms.filter { $0.origin != .auto })
+        return suggestions.filter { suggestion in
+            !manual.contains { suggestion.start < $0.end && $0.start < suggestion.end }
+        }
+    }
+
     // MARK: - Private
+
+    private struct SuggestionGroup {
+        var start: Double
+        var x: Double
+        var y: Double
+        var last: Double
+        var end: Double?
+    }
 
     /// The last scene starting at or before `time`, with its position in the normalized list.
     private static func activeScene(in scenes: [StudioScene], time: Double) -> (index: Int, scene: StudioScene) {
@@ -141,6 +250,83 @@ enum StudioLayoutResolver {
         let width = Double(project.sources.screen.width) * (crop?.width ?? 1)
         let height = Double(project.sources.screen.height) * (crop?.height ?? 1)
         return width / height
+    }
+
+    private static func screenBaseRect(project: StudioProject) -> StudioRect {
+        StudioCanvasMath.validCrop(project.screen.crop) ?? unitRect()
+    }
+
+    private static func zoomWindow(project: StudioProject, events: StudioEvents?, time: Double) -> StudioRect {
+        let base = screenBaseRect(project: project)
+        let zooms = normalizeZooms(project.zooms)
+        guard let active = zooms.firstIndex(where: { time >= $0.start && time < $0.end }) else {
+            return base
+        }
+
+        let zoom = zooms[active]
+        let samples = events?.preparedCursorSamples
+        let chainedToPrevious = active > 0 && zooms[active - 1].end == zoom.start
+        let nextIsChained = active + 1 < zooms.count && zooms[active + 1].start == zoom.end
+        var easeIn = StudioCanvasMath.clamped(zoom.easeIn, 0, 3)
+        var easeOut = nextIsChained ? 0 : StudioCanvasMath.clamped(zoom.easeOut, 0, 3)
+        let duration = zoom.end - zoom.start
+        if easeIn + easeOut > duration {
+            let factor = duration / (easeIn + easeOut)
+            easeIn *= factor
+            easeOut *= factor
+        }
+
+        let held = heldWindow(base: base, zoom: zoom, samples: samples, time: time)
+        if time < zoom.start + easeIn {
+            let origin: StudioRect
+            if chainedToPrevious {
+                origin = heldWindow(base: base, zoom: zooms[active - 1], samples: samples, time: time)
+            } else {
+                origin = base
+            }
+            return lerp(origin, held, ease((time - zoom.start) / easeIn))
+        }
+        if time > zoom.end - easeOut {
+            return lerp(base, held, ease((zoom.end - time) / easeOut))
+        }
+        return held
+    }
+
+    private static func heldWindow(base: StudioRect, zoom: StudioZoom, samples: StudioPreparedCursorSamples?, time: Double) -> StudioRect {
+        let focus = zoomFocus(zoom, samples: samples, time: time)
+        return heldWindow(base: base, scale: zoom.scale, focusX: focus.x, focusY: focus.y)
+    }
+
+    private static func heldWindow(base: StudioRect, scale: Double, focusX: Double, focusY: Double) -> StudioRect {
+        let scale = StudioCanvasMath.clamped(scale, 1, 5)
+        let width = base.width / scale
+        let height = base.height / scale
+        let x = max(base.x, min(focusX - width / 2, base.x + base.width - width))
+        let y = max(base.y, min(focusY - height / 2, base.y + base.height - height))
+        return StudioRect(x: x, y: y, width: width, height: height)
+    }
+
+    private static func zoomFocus(_ zoom: StudioZoom, samples: StudioPreparedCursorSamples?, time: Double) -> (x: Double, y: Double) {
+        if zoom.focus.mode == .cursor, let focus = samples?.focus(at: time) {
+            return focus
+        }
+        return (
+            StudioCanvasMath.clamped(zoom.focus.x, 0, 1),
+            StudioCanvasMath.clamped(zoom.focus.y, 0, 1)
+        )
+    }
+
+    private static func lerp(_ a: StudioRect, _ b: StudioRect, _ k: Double) -> StudioRect {
+        StudioRect(
+            x: a.x + (b.x - a.x) * k,
+            y: a.y + (b.y - a.y) * k,
+            width: a.width + (b.width - a.width) * k,
+            height: a.height + (b.height - a.height) * k
+        )
+    }
+
+    private static func ease(_ value: Double) -> Double {
+        value * value * (3 - 2 * value)
     }
 
     private static func cameraContentAspect(project: StudioProject, crop: StudioRect?) -> Double {

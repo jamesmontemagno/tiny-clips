@@ -697,7 +697,7 @@ struct StudioZoom: Codable, Equatable, Sendable {
     var origin: StudioZoomOrigin
     var extra: [String: StudioJSONValue]
 
-    init(start: Double = 0, end: Double = 0, scale: Double = 1, focus: StudioZoomFocus = StudioZoomFocus(), easeIn: Double = 0, easeOut: Double = 0, origin: StudioZoomOrigin = .manual, extra: [String: StudioJSONValue] = [:]) {
+    init(start: Double = 0, end: Double = 0, scale: Double = 2, focus: StudioZoomFocus = StudioZoomFocus(), easeIn: Double = 0.5, easeOut: Double = 0.5, origin: StudioZoomOrigin = .manual, extra: [String: StudioJSONValue] = [:]) {
         self.start = start
         self.end = end
         self.scale = scale
@@ -712,10 +712,10 @@ struct StudioZoom: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         start = try container.decodeDouble("start", default: 0)
         end = try container.decodeDouble("end", default: 0)
-        scale = try container.decodeDouble("scale", default: 1)
+        scale = try container.decodeDouble("scale", default: 2)
         focus = try container.decodeIfPresent(StudioZoomFocus.self, forKey: StudioJSONKey("focus")) ?? StudioZoomFocus()
-        easeIn = try container.decodeDouble("easeIn", default: 0)
-        easeOut = try container.decodeDouble("easeOut", default: 0)
+        easeIn = try container.decodeDouble("easeIn", default: 0.5)
+        easeOut = try container.decodeDouble("easeOut", default: 0.5)
         origin = try container.decodeEnum("origin", default: .manual)
         extra = try StudioJSON.decodeExtra(from: container, excluding: ["start", "end", "scale", "focus", "easeIn", "easeOut", "origin"])
     }

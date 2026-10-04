@@ -35,9 +35,34 @@ final class StudioFixtureTests: XCTestCase {
                     project: fixture.project,
                     time: testCase.time,
                     canvasWidth: testCase.canvas.width,
-                    canvasHeight: testCase.canvas.height
+                    canvasHeight: testCase.canvas.height,
+                    events: fixture.events
                 )
                 assertFrame(actual, testCase.expected, file: file, caseIndex: index)
+            }
+        }
+    }
+
+    func testSharedAutoZoomFixtures() throws {
+        let files = try fixtureFiles(in: "autozoom")
+        XCTAssertFalse(files.isEmpty, "Expected shared Studio auto-zoom fixtures")
+
+        for file in files {
+            let fixture = try StudioJSON.makeDecoder().decode(AutoZoomFixture.self, from: Data(contentsOf: file))
+            let actual = StudioLayoutResolver.suggestZooms(project: fixture.project, events: fixture.events)
+            XCTAssertEqual(actual.count, fixture.expected.zooms.count, "\(file.lastPathComponent) zoom count")
+            let count = min(actual.count, fixture.expected.zooms.count)
+            for index in 0..<count {
+                assertZoom(actual[index], fixture.expected.zooms[index], file: file, index: index)
+            }
+
+            // Two zooms are chained when one ends on the very number the next starts on (section
+            // 6.8), so where the fixture has that, close is not enough.
+            for index in 0..<max(0, count - 1) where fixture.expected.zooms[index].end == fixture.expected.zooms[index + 1].start {
+                XCTAssertTrue(
+                    actual[index].end == actual[index + 1].start,
+                    "\(file.lastPathComponent) zooms \(index) and \(index + 1) are chained in the fixture"
+                )
             }
         }
     }
@@ -108,6 +133,18 @@ final class StudioFixtureTests: XCTestCase {
         XCTAssertEqual(actual.opacity, expected.opacity, accuracy: 1e-6, message(file, caseIndex, "\(prefix).opacity"))
     }
 
+    private func assertZoom(_ actual: StudioZoom, _ expected: StudioZoom, file: URL, index: Int) {
+        XCTAssertEqual(actual.start, expected.start, accuracy: 1e-6, "\(file.lastPathComponent) zoom \(index) start")
+        XCTAssertEqual(actual.end, expected.end, accuracy: 1e-6, "\(file.lastPathComponent) zoom \(index) end")
+        XCTAssertEqual(actual.scale, expected.scale, accuracy: 1e-6, "\(file.lastPathComponent) zoom \(index) scale")
+        XCTAssertEqual(actual.focus.mode, expected.focus.mode, "\(file.lastPathComponent) zoom \(index) focus.mode")
+        XCTAssertEqual(actual.focus.x, expected.focus.x, accuracy: 1e-6, "\(file.lastPathComponent) zoom \(index) focus.x")
+        XCTAssertEqual(actual.focus.y, expected.focus.y, accuracy: 1e-6, "\(file.lastPathComponent) zoom \(index) focus.y")
+        XCTAssertEqual(actual.easeIn, expected.easeIn, accuracy: 1e-6, "\(file.lastPathComponent) zoom \(index) easeIn")
+        XCTAssertEqual(actual.easeOut, expected.easeOut, accuracy: 1e-6, "\(file.lastPathComponent) zoom \(index) easeOut")
+        XCTAssertEqual(actual.origin, expected.origin, "\(file.lastPathComponent) zoom \(index) origin")
+    }
+
     private func message(_ file: URL, _ caseIndex: Int?, _ field: String) -> String {
         if let caseIndex = caseIndex {
             return "\(file.lastPathComponent) case \(caseIndex) \(field)"
@@ -139,8 +176,19 @@ final class StudioFixtureTests: XCTestCase {
 
     private struct LayoutFixture: Decodable {
         var project: StudioProject
+        var events: StudioEvents?
         var naturalCanvas: StudioRect
         var cases: [LayoutFixtureCase]
+    }
+
+    private struct AutoZoomFixture: Decodable {
+        var project: StudioProject
+        var events: StudioEvents
+        var expected: AutoZoomExpected
+    }
+
+    private struct AutoZoomExpected: Decodable {
+        var zooms: [StudioZoom]
     }
 
     private struct CanvasFixture: Decodable {

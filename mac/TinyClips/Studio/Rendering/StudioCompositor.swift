@@ -159,7 +159,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             project: snapshot.project,
             time: sourceTime,
             canvasWidth: Double(renderSize.width),
-            canvasHeight: Double(renderSize.height)
+            canvasHeight: Double(renderSize.height),
+            events: snapshot.events
         )
         let outputExtent = CGRect(origin: .zero, size: renderSize)
         var output = drawBackground(

@@ -501,6 +501,521 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.secondsText(2.44), "2.4 seconds")
     }
 
+    // MARK: - Zooms: Adding and Removing
+
+    func testAddedZoomHasTheDefaultsAndLooksWhereThePointerIs() {
+        var model = StudioEditorModel(project: makeProject(duration: 8, camera: false))
+        let events = StudioEvents(cursor: [
+            StudioCursorSample(t: 1.5, x: 0.2, y: 0.4),
+            StudioCursorSample(t: 2.5, x: 0.8, y: 0.6)
+        ])
+
+        XCTAssertEqual(model.addZoom(at: 2, events: events), StudioZoomEditResult(changed: true, index: 0))
+
+        XCTAssertEqual(model.project.zooms.count, 1)
+        guard let zoom = model.project.zooms.first else { return }
+        XCTAssertEqual(zoom.start, 2, accuracy: 1e-9)
+        XCTAssertEqual(zoom.end, 5, accuracy: 1e-9)
+        XCTAssertEqual(zoom.scale, 2, accuracy: 1e-9)
+        XCTAssertEqual(zoom.easeIn, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(zoom.easeOut, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(zoom.focus.mode, .point)
+        XCTAssertEqual(zoom.focus.x, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(zoom.focus.y, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(zoom.origin, .manual)
+
+        model.undo()
+        XCTAssertTrue(model.project.zooms.isEmpty)
+        model.redo()
+        XCTAssertEqual(model.project.zooms.count, 1)
+    }
+
+    func testAddedZoomLooksAtTheCenterWithoutCursorSamples() {
+        var model = StudioEditorModel(project: makeProject(camera: false))
+
+        model.addZoom(at: 1)
+        model.addZoom(at: 5, events: StudioEvents())
+
+        XCTAssertEqual(model.project.zooms.count, 2)
+        for zoom in model.project.zooms {
+            XCTAssertEqual(zoom.focus.x, 0.5, accuracy: 1e-9)
+            XCTAssertEqual(zoom.focus.y, 0.5, accuracy: 1e-9)
+        }
+    }
+
+    func testAddingWhereAZoomIsChangesNothingAndSaysWhichZoomThatIs() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 3), zoom(5, 7)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.addZoom(at: 5), StudioZoomEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.addZoom(at: 6.9), StudioZoomEditResult(changed: false, index: 1))
+        XCTAssertEqual(model.addZoom(at: 1), StudioZoomEditResult(changed: false, index: 0))
+
+        XCTAssertEqual(model.project.zooms.count, 2)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testAddedZoomStopsAtTheNextZoomAndAtTheEndOfTheRecording() {
+        var project = makeProject(duration: 10, camera: false)
+        project.zooms = [zoom(4, 6)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.addZoom(at: 2), StudioZoomEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.addZoom(at: 8.5), StudioZoomEditResult(changed: true, index: 2))
+
+        XCTAssertEqual(model.project.zooms.map(\.start), [2, 4, 8.5])
+        guard model.project.zooms.count == 3 else { return }
+        XCTAssertTrue(model.project.zooms[0].end == model.project.zooms[1].start)
+        XCTAssertEqual(model.project.zooms[2].end, 10, accuracy: 1e-9)
+    }
+
+    func testAZoomAddedAtTheEndOfAnotherIsChainedToIt() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 3)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.addZoom(at: 3), StudioZoomEditResult(changed: true, index: 1))
+        guard model.project.zooms.count == 2 else { return XCTFail("Expected two zooms") }
+        XCTAssertTrue(model.project.zooms[0].end == model.project.zooms[1].start)
+    }
+
+    func testAddingWithoutRoomForTheShortestZoomChangesNothing() {
+        for time in [3.8, 9.8, 10, 25] {
+            var project = makeProject(duration: 10, camera: false)
+            project.zooms = [zoom(4, 6)]
+            var model = StudioEditorModel(project: project)
+
+            XCTAssertEqual(model.addZoom(at: time), StudioZoomEditResult(changed: false, index: nil), "at \(time)")
+            XCTAssertEqual(model.project.zooms.count, 1, "at \(time)")
+            XCTAssertFalse(model.canUndo, "at \(time)")
+        }
+    }
+
+    func testAddingKeepsTheTimeInsideTheRecordingAndIgnoresWhatIsNotANumber() {
+        var model = StudioEditorModel(project: makeProject(duration: 10, camera: false))
+
+        XCTAssertEqual(model.addZoom(at: .nan), StudioZoomEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.addZoom(at: .infinity), StudioZoomEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.addZoom(at: -4), StudioZoomEditResult(changed: true, index: 0))
+
+        XCTAssertEqual(model.project.zooms.map(\.start), [0])
+    }
+
+    func testRemovingTakesOneZoomOut() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 2), zoom(3, 4), zoom(5, 6)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.removeZoom(at: 1), StudioZoomEditResult(changed: true, index: nil))
+        XCTAssertEqual(model.project.zooms.map(\.start), [1, 5])
+        XCTAssertEqual(model.removeZoom(at: 2), StudioZoomEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.removeZoom(at: -1), StudioZoomEditResult(changed: false, index: nil))
+
+        model.undo()
+        XCTAssertEqual(model.project.zooms.map(\.start), [1, 3, 5])
+    }
+
+    // MARK: - Zooms: Moving the Ends
+
+    func testZoomEndsStopAtTheNeighboursOnExactlyTheirNumbers() {
+        var project = makeProject(duration: 12, camera: false)
+        project.zooms = [zoom(1, 3.1), zoom(5, 7), zoom(9.3, 11)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.setZoomStart(at: 1, to: 2), StudioZoomEditResult(changed: true, index: 1))
+        XCTAssertEqual(model.setZoomEnd(at: 1, to: 10), StudioZoomEditResult(changed: true, index: 1))
+
+        let zooms = model.project.zooms
+        XCTAssertEqual(zooms.map(\.start), [1, 3.1, 9.3])
+        guard zooms.count == 3 else { return }
+        XCTAssertTrue(zooms[1].start == zooms[0].end)
+        XCTAssertTrue(zooms[1].end == zooms[2].start)
+    }
+
+    func testZoomEndsStopAtTheEdgesOfTheRecording() {
+        var project = makeProject(duration: 10, camera: false)
+        project.zooms = [zoom(4, 6)]
+        var model = StudioEditorModel(project: project)
+
+        model.setZoomStart(at: 0, to: -3)
+        model.setZoomEnd(at: 0, to: 40)
+
+        XCTAssertEqual(model.project.zooms[0].start, 0, accuracy: 1e-9)
+        XCTAssertEqual(model.project.zooms[0].end, 10, accuracy: 1e-9)
+    }
+
+    func testAZoomIsNeverShorterThanTheShortestZoom() {
+        var project = makeProject(duration: 10, camera: false)
+        project.zooms = [zoom(4, 6)]
+        var model = StudioEditorModel(project: project)
+
+        model.setZoomStart(at: 0, to: 5.9)
+        XCTAssertEqual(model.project.zooms[0].start, 6 - StudioEditorModel.minimumZoomDuration, accuracy: 1e-9)
+
+        model.setZoomEnd(at: 0, to: 1)
+        XCTAssertEqual(
+            model.project.zooms[0].end,
+            model.project.zooms[0].start + StudioEditorModel.minimumZoomDuration,
+            accuracy: 1e-9
+        )
+    }
+
+    func testAZoomSqueezedBetweenItsNeighboursDoesNotOverlapThem() {
+        // Not something the editor makes: a project written by hand, with 0.2 seconds between two zooms.
+        var project = makeProject(duration: 10, camera: false)
+        project.zooms = [zoom(1, 3), zoom(3, 3.2), zoom(3.2, 6)]
+        var model = StudioEditorModel(project: project)
+
+        model.setZoomStart(at: 1, to: 0)
+        model.setZoomEnd(at: 1, to: 9)
+
+        XCTAssertEqual(model.project.zooms[1].start, 3, accuracy: 1e-9)
+        XCTAssertEqual(model.project.zooms[1].end, 3.2, accuracy: 1e-9)
+    }
+
+    func testZoomEditsThatAreNotANumberOrNameNoZoomChangeNothing() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 3)]
+        var model = StudioEditorModel(project: project)
+        let before = model.project
+        let unchanged = StudioZoomEditResult(changed: false, index: 0)
+        let noZoom = StudioZoomEditResult(changed: false, index: nil)
+
+        XCTAssertEqual(model.setZoomStart(at: 0, to: .nan), unchanged)
+        XCTAssertEqual(model.setZoomEnd(at: 0, to: -.infinity), unchanged)
+        XCTAssertEqual(model.setZoomScale(at: 0, to: .nan), unchanged)
+        XCTAssertEqual(model.setZoomFocusPoint(at: 0, x: .nan, y: 0.2), unchanged)
+        XCTAssertEqual(model.setZoomFocusPoint(at: 0, x: 0.2, y: .infinity), unchanged)
+        XCTAssertEqual(model.setZoomEaseIn(at: 0, to: .nan), unchanged)
+        XCTAssertEqual(model.setZoomEaseOut(at: 0, to: .nan), unchanged)
+
+        XCTAssertEqual(model.setZoomStart(at: 1, to: 2), noZoom)
+        XCTAssertEqual(model.setZoomEnd(at: -1, to: 2), noZoom)
+        XCTAssertEqual(model.setZoomScale(at: 7, to: 2), noZoom)
+        XCTAssertEqual(model.setZoomFocusMode(at: 1, to: .cursor), noZoom)
+        XCTAssertEqual(model.setZoomFocusPoint(at: 1, x: 0.5, y: 0.5), noZoom)
+        XCTAssertEqual(model.setZoomEaseIn(at: 1, to: 1), noZoom)
+        XCTAssertEqual(model.setZoomEaseOut(at: 1, to: 1), noZoom)
+
+        XCTAssertEqual(model.project, before)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    // MARK: - Zooms: The Other Values
+
+    func testZoomValuesAreKeptInTheirRanges() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 5)]
+        var model = StudioEditorModel(project: project)
+
+        model.setZoomScale(at: 0, to: 9)
+        model.setZoomFocusPoint(at: 0, x: -1, y: 2)
+        model.setZoomEaseIn(at: 0, to: 7)
+        model.setZoomEaseOut(at: 0, to: -1)
+        model.setZoomFocusMode(at: 0, to: .cursor)
+
+        let edited = model.project.zooms[0]
+        XCTAssertEqual(edited.scale, 5, accuracy: 1e-9)
+        XCTAssertEqual(edited.focus.x, 0, accuracy: 1e-9)
+        XCTAssertEqual(edited.focus.y, 1, accuracy: 1e-9)
+        XCTAssertEqual(edited.easeIn, 3, accuracy: 1e-9)
+        XCTAssertEqual(edited.easeOut, 0, accuracy: 1e-9)
+        XCTAssertEqual(edited.focus.mode, .cursor)
+
+        model.setZoomScale(at: 0, to: 0.2)
+        XCTAssertEqual(model.project.zooms[0].scale, 1, accuracy: 1e-9)
+    }
+
+    func testChangingASuggestedZoomMakesItTheUsersOwnAndAnEditThatChangesNothingDoesNot() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 4, origin: .auto), zoom(5, 8, origin: .auto)]
+        var model = StudioEditorModel(project: project)
+        let unchanged = StudioZoomEditResult(changed: false, index: 0)
+
+        // The values the zoom already has, as the start of a drag sends them.
+        XCTAssertEqual(model.setZoomScale(at: 0, to: 2), unchanged)
+        XCTAssertEqual(model.setZoomStart(at: 0, to: 1), unchanged)
+        XCTAssertEqual(model.setZoomEnd(at: 0, to: 4), unchanged)
+        XCTAssertEqual(model.setZoomFocusMode(at: 0, to: .point), unchanged)
+        XCTAssertEqual(model.setZoomFocusPoint(at: 0, x: 0.5, y: 0.5), unchanged)
+        XCTAssertEqual(model.project.zooms[0].origin, .auto)
+        XCTAssertFalse(model.canUndo)
+
+        XCTAssertEqual(model.setZoomScale(at: 0, to: 3), StudioZoomEditResult(changed: true, index: 0))
+
+        XCTAssertEqual(model.project.zooms[0].origin, .manual)
+        XCTAssertEqual(model.project.zooms[1].origin, .auto)
+
+        model.undo()
+        XCTAssertEqual(model.project.zooms[0].origin, .auto)
+        XCTAssertEqual(model.project.zooms[0].scale, 2, accuracy: 1e-9)
+    }
+
+    func testZoomEditsKeepWhatTheZoomHasThatThisVersionDoesNotKnow() throws {
+        let json = """
+        {
+          "id": "3f0013cf-ba10-4453-af91-792b7882dae6",
+          "sources": { "screen": { "width": 1920, "height": 1080, "duration": 10 } },
+          "zooms": [ { "start": 1, "end": 4, "tilt": 3, "focus": { "x": 0.2, "y": 0.3, "depth": 2 } } ]
+        }
+        """
+        let project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(json.utf8))
+        var model = StudioEditorModel(project: project)
+        XCTAssertFalse(project.zooms[0].extra.isEmpty)
+        XCTAssertFalse(project.zooms[0].focus.extra.isEmpty)
+
+        model.setZoomScale(at: 0, to: 3)
+        model.setZoomFocusPoint(at: 0, x: 0.6, y: 0.7)
+        model.setZoomEnd(at: 0, to: 5)
+
+        XCTAssertEqual(model.project.zooms[0].extra, project.zooms[0].extra)
+        XCTAssertEqual(model.project.zooms[0].focus.extra, project.zooms[0].focus.extra)
+    }
+
+    func testADragOfAZoomIsOneUndoStepAndCanBeCancelled() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 4)]
+        var model = StudioEditorModel(project: project)
+
+        model.beginEditingGroup()
+        model.setZoomEnd(at: 0, to: 4.5)
+        model.setZoomEnd(at: 0, to: 5)
+        model.setZoomEnd(at: 0, to: 6)
+        XCTAssertFalse(model.canUndo)
+        model.commitEditingGroup()
+
+        XCTAssertEqual(model.project.zooms[0].end, 6, accuracy: 1e-9)
+        model.undo()
+        XCTAssertEqual(model.project.zooms[0].end, 4, accuracy: 1e-9)
+        XCTAssertFalse(model.canUndo)
+
+        model.beginEditingGroup()
+        model.setZoomFocusPoint(at: 0, x: 0.1, y: 0.9)
+        model.cancelEditingGroup()
+        XCTAssertEqual(model.project.zooms[0].focus.x, 0.5, accuracy: 1e-9)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testSettingAZoomBackToWhatWasExportedIsNoLongerAChange() {
+        var exported = makeProject(camera: false)
+        exported.zooms = [zoom(1, 4)]
+        exported.exports = [StudioExport(path: "/tmp/out.mp4")]
+        var model = StudioEditorModel(project: exported)
+        XCTAssertFalse(model.hasUnexportedChanges)
+
+        model.setZoomScale(at: 0, to: 3)
+        XCTAssertTrue(model.hasUnexportedChanges)
+        model.setZoomScale(at: 0, to: 2)
+        XCTAssertFalse(model.hasUnexportedChanges)
+
+        model.addZoom(at: 6)
+        XCTAssertTrue(model.hasUnexportedChanges)
+        model.undo()
+        XCTAssertFalse(model.hasUnexportedChanges)
+    }
+
+    // MARK: - Zooms: The List
+
+    func testTheEditorKeepsTheZoomsInTimeOrderFromTheMomentItOpens() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(5, 7), zoom(1, 3), zoom(8, 9)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.project.zooms.map(\.start), [1, 5, 8])
+        XCTAssertFalse(model.canUndo)
+
+        XCTAssertEqual(model.addZoom(at: 3.5), StudioZoomEditResult(changed: true, index: 1))
+        XCTAssertEqual(model.project.zooms.map(\.start), [1, 3.5, 5, 8])
+    }
+
+    func testTheZoomAtATimeHasItsStartAndNotItsEnd() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 3), zoom(3, 5), zoom(6, 7)]
+        let model = StudioEditorModel(project: project)
+
+        XCTAssertNil(model.zoomIndex(at: 0.99))
+        XCTAssertEqual(model.zoomIndex(at: 1), 0)
+        XCTAssertEqual(model.zoomIndex(at: 2.99), 0)
+        XCTAssertEqual(model.zoomIndex(at: 3), 1)
+        XCTAssertEqual(model.zoomIndex(at: 4.5), 1)
+        XCTAssertNil(model.zoomIndex(at: 5))
+        XCTAssertEqual(model.zoomIndex(at: 6), 2)
+        XCTAssertNil(model.zoomIndex(at: .nan))
+    }
+
+    // MARK: - Zooms: Suggestions
+
+    func testApplyingSuggestionsReplacesOnlyTheSuggestedZoomsInOneUndoStep() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 2), zoom(4, 5, origin: .auto), zoom(9, 9.5)]
+        var model = StudioEditorModel(project: project)
+
+        // Suggestions arrive marked as such, but the editor does not rely on it.
+        XCTAssertTrue(model.applyZoomSuggestions([zoom(6, 8), zoom(3, 3.5, origin: .auto)]))
+
+        XCTAssertEqual(model.project.zooms.map(\.start), [1, 3, 6, 9])
+        XCTAssertEqual(model.project.zooms.map(\.origin), [.manual, .auto, .auto, .manual])
+
+        model.undo()
+        XCTAssertEqual(model.project.zooms.map(\.start), [1, 4, 9])
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testApplyingTheSuggestionsThatAreThereChangesNothing() {
+        var model = StudioEditorModel(project: makeProject(camera: false))
+        let events = StudioEvents(clicks: [StudioClickEvent(t: 3, x: 0.2, y: 0.3, button: .left)])
+
+        XCTAssertTrue(model.applyZoomSuggestions(StudioLayoutResolver.suggestZooms(project: model.project, events: events)))
+        XCTAssertFalse(model.applyZoomSuggestions(StudioLayoutResolver.suggestZooms(project: model.project, events: events)))
+
+        XCTAssertEqual(model.project.zooms.count, 1)
+        model.undo()
+        XCTAssertTrue(model.project.zooms.isEmpty)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testApplyingNoSuggestionsTakesTheSuggestedZoomsAway() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 2, origin: .auto), zoom(4, 5)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertTrue(model.applyZoomSuggestions([]))
+
+        XCTAssertEqual(model.project.zooms.map(\.start), [4])
+    }
+
+    func testSuggestionsForClicksThatMoveAreChainedByOneNumber() {
+        let project = makeProject(camera: false)
+        let events = StudioEvents(clicks: [
+            StudioClickEvent(t: 3, x: 0.2, y: 0.3, button: .left),
+            StudioClickEvent(t: 5.1, x: 0.8, y: 0.7, button: .left)
+        ])
+
+        let zooms = StudioLayoutResolver.suggestZooms(project: project, events: events)
+
+        XCTAssertEqual(zooms.count, 2)
+        guard zooms.count == 2 else { return }
+
+        // Not merely close: the layout chains two zooms only when the numbers are the same.
+        XCTAssertTrue(zooms[0].end == zooms[1].start)
+        XCTAssertEqual(zooms.map(\.origin), [.auto, .auto])
+
+        var chained = project
+        chained.zooms = zooms
+        let justBefore = StudioLayoutResolver.resolve(
+            project: chained,
+            time: zooms[1].start - 0.001,
+            canvasWidth: 1920,
+            canvasHeight: 1080
+        ).screen?.source
+        assertRect(justBefore, x: 0, y: 0.05, width: 0.5, height: 0.5)
+    }
+
+    func testSuggestionsNeedClicks() {
+        let project = makeProject(camera: false)
+
+        XCTAssertTrue(StudioLayoutResolver.suggestZooms(project: project, events: nil).isEmpty)
+        XCTAssertTrue(StudioLayoutResolver.suggestZooms(project: project, events: StudioEvents()).isEmpty)
+    }
+
+    // MARK: - Crops
+
+    func testACropIsMadeValidSizeFirstAndThenPosition() {
+        var model = StudioEditorModel(project: makeProject())
+
+        model.setScreenCrop(StudioRect(x: -1, y: 0.9, width: 2, height: 0.01))
+        model.setCameraCrop(StudioRect(x: 0.9, y: 0.9, width: 0.2, height: 0.2))
+
+        assertRect(model.project.screen.crop, x: 0, y: 0.9, width: 1, height: 0.05)
+        assertRect(model.project.camera.crop, x: 0.8, y: 0.8, width: 0.2, height: 0.2)
+        XCTAssertNotNil(StudioCanvasMath.validCrop(model.project.screen.crop))
+        XCTAssertNotNil(StudioCanvasMath.validCrop(model.project.camera.crop))
+    }
+
+    func testAValidCropIsStoredAsItIsAndChangesTheCanvas() {
+        var model = StudioEditorModel(project: makeProject(camera: false))
+
+        model.setScreenCrop(StudioRect(x: 0.25, y: 0.25, width: 0.5, height: 0.25))
+
+        XCTAssertEqual(model.project.screen.crop, StudioRect(x: 0.25, y: 0.25, width: 0.5, height: 0.25))
+        let natural = StudioCanvasMath.naturalCanvas(project: model.project)
+        XCTAssertEqual(natural.width, 960, accuracy: 1e-9)
+        XCTAssertEqual(natural.height, 270, accuracy: 1e-9)
+    }
+
+    func testCropsCanBeClearedAndUndoneAndStayOutOfASavedLook() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setScreenCrop(StudioRect(x: 0.1, y: 0.1, width: 0.5, height: 0.5))
+        model.setCameraCrop(StudioRect(x: 0.2, y: 0.2, width: 0.5, height: 0.5))
+
+        XCTAssertNil(model.currentLook.screen.crop)
+        XCTAssertNil(model.currentLook.camera.crop)
+
+        model.clearScreenCrop()
+        model.clearCameraCrop()
+        XCTAssertNil(model.project.screen.crop)
+        XCTAssertNil(model.project.camera.crop)
+
+        // Clearing what is not there is not an edit.
+        model.clearScreenCrop()
+        model.undo()
+        XCTAssertNotNil(model.project.camera.crop)
+        model.undo()
+        XCTAssertNotNil(model.project.screen.crop)
+    }
+
+    func testACropThatIsNotANumberIsIgnored() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setScreenCrop(StudioRect(x: 0.1, y: 0.1, width: 0.5, height: 0.5))
+
+        model.setScreenCrop(StudioRect(x: .nan, y: 0, width: 0.5, height: 0.5))
+        model.setScreenCrop(StudioRect(x: 0, y: 0, width: .infinity, height: 0.5))
+        model.setCameraCrop(StudioRect(x: 0, y: .nan, width: 0.5, height: 0.5))
+
+        XCTAssertEqual(model.project.screen.crop, StudioRect(x: 0.1, y: 0.1, width: 0.5, height: 0.5))
+        XCTAssertNil(model.project.camera.crop)
+    }
+
+    func testAZoomWorksInsideTheCrop() {
+        var model = StudioEditorModel(project: makeProject(camera: false))
+        model.setScreenCrop(StudioRect(x: 0.5, y: 0, width: 0.5, height: 1))
+        model.addZoom(at: 1)
+        model.setZoomEaseIn(at: 0, to: 0)
+
+        // The focus is the middle of the whole screen, which is the crop's left edge.
+        let source = StudioLayoutResolver.resolve(
+            project: model.project,
+            time: 2,
+            canvasWidth: 960,
+            canvasHeight: 1080
+        ).screen?.source
+
+        assertRect(source, x: 0.5, y: 0.25, width: 0.25, height: 0.5)
+    }
+
+    // MARK: - Zooms: Text
+
+    func testZoomAccessibilityText() {
+        XCTAssertEqual(
+            StudioEditorModel.zoomAccessibilityText(StudioZoom(start: 12, end: 16.5)),
+            "Zoom 2×, 12.0 to 16.5 seconds"
+        )
+        XCTAssertEqual(
+            StudioEditorModel.zoomAccessibilityText(zoom(1, 3, scale: 2.5, mode: .cursor, origin: .auto)),
+            "Zoom 2.5×, 1.0 to 3.0 seconds, follows the pointer, suggested"
+        )
+        XCTAssertEqual(
+            StudioEditorModel.zoomAccessibilityText(zoom(0, 0.3, scale: 1.25, origin: .auto)),
+            "Zoom 1.25×, 0.0 to 0.3 seconds, suggested"
+        )
+
+        // The scale that is drawn, which is the stored one kept within 1 to 5.
+        XCTAssertEqual(StudioEditorModel.zoomAccessibilityText(zoom(1, 2, scale: 9)), "Zoom 5×, 1.0 to 2.0 seconds")
+        XCTAssertEqual(StudioEditorModel.zoomAccessibilityText(zoom(1, 2, scale: 0.2)), "Zoom 1×, 1.0 to 2.0 seconds")
+        XCTAssertEqual(StudioEditorModel.zoomAccessibilityText(zoom(1, 2, scale: .nan)), "Zoom 1×, 1.0 to 2.0 seconds")
+    }
+
     // MARK: - Helpers
 
     private func makeProject(duration: Double = 10, camera: Bool = true) -> StudioProject {
@@ -511,6 +1026,39 @@ final class StudioEditorModelTests: XCTestCase {
                 camera: camera ? StudioCameraSource(width: 640, height: 480, duration: duration) : nil
             )
         )
+    }
+
+    private func zoom(
+        _ start: Double,
+        _ end: Double,
+        scale: Double = 2,
+        mode: StudioZoomFocusMode = .point,
+        x: Double = 0.5,
+        y: Double = 0.5,
+        easeIn: Double = 0.5,
+        easeOut: Double = 0.5,
+        origin: StudioZoomOrigin = .manual
+    ) -> StudioZoom {
+        StudioZoom(
+            start: start,
+            end: end,
+            scale: scale,
+            focus: StudioZoomFocus(mode: mode, x: x, y: y),
+            easeIn: easeIn,
+            easeOut: easeOut,
+            origin: origin
+        )
+    }
+
+    private func assertRect(_ rect: StudioRect?, x: Double, y: Double, width: Double, height: Double, line: UInt = #line) {
+        guard let rect = rect else {
+            XCTFail("Expected a rectangle", line: line)
+            return
+        }
+        XCTAssertEqual(rect.x, x, accuracy: 1e-9, "x", line: line)
+        XCTAssertEqual(rect.y, y, accuracy: 1e-9, "y", line: line)
+        XCTAssertEqual(rect.width, width, accuracy: 1e-9, "width", line: line)
+        XCTAssertEqual(rect.height, height, accuracy: 1e-9, "height", line: line)
     }
 
     private func resolvedCamera(_ project: StudioProject, canvas: CGSize) -> StudioRect? {

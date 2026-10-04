@@ -25,10 +25,19 @@ struct StudioEvents: Codable, Equatable, Sendable {
     var schemaVersion: Int
     var capture: StudioCaptureInfo
     var clicks: [StudioClickEvent]
-    var cursor: [StudioCursorSample]
+    /// Set the samples as a whole. Each assignment prepares all of them again (see
+    /// `preparedCursorSamples`), so appending one at a time to a long list is slow.
+    var cursor: [StudioCursorSample] {
+        didSet { preparedCursorSamples = StudioPreparedCursorSamples(cursor) }
+    }
     var cameraCorners: [StudioCameraCornerEvent]
     var markers: [StudioJSONValue]
     var extra: [String: StudioJSONValue]
+
+    /// `cursor` in time order with its points clamped to the frame. Derived from `cursor`, kept in
+    /// step with it, and not written to the file. A zoom that follows the pointer reads it for
+    /// every frame, and a long recording has a hundred thousand samples, so it is made once here.
+    private(set) var preparedCursorSamples: StudioPreparedCursorSamples
 
     init(
         schemaVersion: Int = 1,
@@ -46,6 +55,7 @@ struct StudioEvents: Codable, Equatable, Sendable {
         self.cameraCorners = cameraCorners
         self.markers = markers
         self.extra = extra
+        self.preparedCursorSamples = StudioPreparedCursorSamples(cursor)
     }
 
     init(from decoder: Decoder) throws {
@@ -60,6 +70,7 @@ struct StudioEvents: Codable, Equatable, Sendable {
         cameraCorners = try container.decodeCompactArray("cameraCorners", default: [])
         markers = try container.decodeCompactArray("markers", default: [])
         extra = try StudioJSON.decodeExtra(from: container, excluding: ["schemaVersion", "capture", "clicks", "cursor", "cameraCorners", "markers"])
+        preparedCursorSamples = StudioPreparedCursorSamples(cursor)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -71,6 +82,75 @@ struct StudioEvents: Codable, Equatable, Sendable {
         try container.encode(cursor, forKey: StudioJSONKey("cursor"))
         try container.encode(cameraCorners, forKey: StudioJSONKey("cameraCorners"))
         try container.encode(markers, forKey: StudioJSONKey("markers"))
+    }
+}
+
+// MARK: - Prepared Cursor Samples
+
+/// Cursor samples ready for `focus(at:)`: in time order, samples with the same time in the order
+/// they were stored, and every point clamped to the frame (section 6.8 of the project format).
+struct StudioPreparedCursorSamples: Equatable, Sendable {
+    struct Sample: Equatable, Sendable {
+        var t: Double
+        var x: Double
+        var y: Double
+    }
+
+    private(set) var samples: [Sample]
+
+    init(_ cursor: [StudioCursorSample] = []) {
+        samples = cursor
+            .enumerated()
+            .map { (index: $0.offset, sample: Sample(t: $0.element.t, x: StudioCanvasMath.clamped($0.element.x, 0, 1), y: StudioCanvasMath.clamped($0.element.y, 0, 1))) }
+            .sorted {
+                if $0.sample.t == $1.sample.t { return $0.index < $1.index }
+                return $0.sample.t < $1.sample.t
+            }
+            .map(\.sample)
+    }
+
+    var isEmpty: Bool { samples.isEmpty }
+
+    /// The pointer's mean position over the second centered on `time`, or nil without samples. A
+    /// sample lasts until the next one. Before the first sample the pointer counts as being at
+    /// the first, and after the last at the last.
+    func focus(at time: Double) -> (x: Double, y: Double)? {
+        guard !samples.isEmpty else { return nil }
+        let start = time - 0.5
+        let end = time + 0.5
+
+        // The sample the pointer is at when the second begins. Every one before it has ended by then.
+        var index = sampleIndex(atOrBefore: start)
+        var x = 0.0
+        var y = 0.0
+
+        while index < samples.count {
+            let intervalStart = index == 0 ? -Double.infinity : samples[index].t
+            if intervalStart >= end { break }
+            let intervalEnd = index + 1 == samples.count ? Double.infinity : samples[index + 1].t
+            let length = max(0, min(end, intervalEnd) - max(start, intervalStart))
+            x += samples[index].x * length
+            y += samples[index].y * length
+            if intervalEnd >= end { break }
+            index += 1
+        }
+
+        return (x, y)
+    }
+
+    /// The last sample at or before `time`, or the first sample when there is none.
+    private func sampleIndex(atOrBefore time: Double) -> Int {
+        var low = 0
+        var high = samples.count
+        while low < high {
+            let mid = low + (high - low) / 2
+            if samples[mid].t <= time {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return max(0, low - 1)
     }
 }
 

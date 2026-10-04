@@ -144,6 +144,102 @@ final class StudioLayoutTests: XCTestCase {
         XCTAssertEqual(map.outputToSource(1), 2)
     }
 
+    // MARK: - Zooms and Cursor Samples
+
+    func testPreparedCursorSamplesGiveThePlainSumOfTheSpecForAHundredThousandSamples() {
+        // Stored newest first, so they also have to be put in order.
+        var samples: [StudioCursorSample] = []
+        samples.reserveCapacity(100_000)
+        for index in (0..<100_000).reversed() {
+            samples.append(StudioCursorSample(
+                t: Double(index) / 60,
+                x: Double(index % 97) / 96,
+                y: 1 - Double(index % 89) / 88
+            ))
+        }
+        let prepared = StudioPreparedCursorSamples(samples)
+
+        XCTAssertEqual(prepared.samples.count, 100_000)
+        for time in [-10, 0, 0.125, 0.5, 3.25, 18.75, 123.456, 999.9, 1600.25, 1666.15, 1666.65, 2000] {
+            let actual = prepared.focus(at: time)
+            let expected = plainCursorFocus(samples: samples, time: time)
+            XCTAssertEqual(actual?.x ?? -1, expected.x, accuracy: 1e-12, "x at \(time)")
+            XCTAssertEqual(actual?.y ?? -1, expected.y, accuracy: 1e-12, "y at \(time)")
+        }
+    }
+
+    func testPreparedCursorSamplesFollowTheCursorOfTheirEvents() {
+        var events = StudioEvents(cursor: [StudioCursorSample(t: 1, x: 0.2, y: 0.3)])
+        XCTAssertEqual(events.preparedCursorSamples.focus(at: 5)?.x ?? -1, 0.2, accuracy: 1e-9)
+
+        events.cursor = [StudioCursorSample(t: 1, x: 0.9, y: 0.3)]
+        XCTAssertEqual(events.preparedCursorSamples.focus(at: 5)?.x ?? -1, 0.9, accuracy: 1e-9)
+
+        events.cursor = []
+        XCTAssertNil(events.preparedCursorSamples.focus(at: 5))
+        XCTAssertTrue(events.preparedCursorSamples.isEmpty)
+        XCTAssertEqual(events, StudioEvents())
+    }
+
+    func testPreparedCursorSamplesAreNotWrittenToTheFile() throws {
+        let events = StudioEvents(cursor: [StudioCursorSample(t: 1, x: 0.2, y: 0.3)])
+
+        let data = try StudioJSON.makeEncoder().encode(events)
+        let text = String(decoding: data, as: UTF8.self)
+        let decoded = try StudioJSON.makeDecoder().decode(StudioEvents.self, from: data)
+
+        XCTAssertFalse(text.contains("prepared"))
+        XCTAssertEqual(decoded, events)
+        XCTAssertEqual(decoded.preparedCursorSamples.focus(at: 5)?.x ?? -1, 0.2, accuracy: 1e-9)
+    }
+
+    func testCursorSamplesWithTheSameTimeKeepTheOrderTheyAreStoredIn() {
+        // Two samples at one instant: the pointer ends up where the later one says.
+        let inOrder = [
+            StudioCursorSample(t: 1, x: 0.2, y: 0.2),
+            StudioCursorSample(t: 1, x: 0.8, y: 0.6)
+        ]
+        let outOfOrder = [
+            StudioCursorSample(t: 9, x: 0.5, y: 0.5),
+            StudioCursorSample(t: 1, x: 0.2, y: 0.2),
+            StudioCursorSample(t: 1, x: 0.8, y: 0.6)
+        ]
+
+        for samples in [inOrder, outOfOrder] {
+            let focus = StudioPreparedCursorSamples(samples).focus(at: 4)
+            XCTAssertEqual(focus?.x ?? -1, 0.8, accuracy: 1e-9)
+            XCTAssertEqual(focus?.y ?? -1, 0.6, accuracy: 1e-9)
+        }
+    }
+
+    func testTheResolverUsesTheEventsOnlyForAZoomThatFollowsThePointer() {
+        let events = StudioEvents(cursor: [
+            StudioCursorSample(t: 1, x: 0.8, y: 0.8),
+            StudioCursorSample(t: 2, x: 0.8, y: 0.8)
+        ])
+        var follows = makeProject(camera: nil)
+        follows.zooms = [StudioZoom(start: 1, end: 5, focus: StudioZoomFocus(mode: .cursor, x: 0.1, y: 0.1), easeIn: 0, easeOut: 0)]
+        var point = makeProject(camera: nil)
+        point.zooms = [StudioZoom(start: 1, end: 5, focus: StudioZoomFocus(mode: .point, x: 0.1, y: 0.1), easeIn: 0, easeOut: 0)]
+
+        let withoutEvents = StudioLayoutResolver.resolve(project: follows, time: 2, canvasWidth: 1920, canvasHeight: 1080)
+        let withEvents = StudioLayoutResolver.resolve(project: follows, time: 2, canvasWidth: 1920, canvasHeight: 1080, events: events)
+
+        XCTAssertEqual(withoutEvents.screen?.source.x ?? -1, 0, accuracy: 1e-9)
+        XCTAssertEqual(withoutEvents.screen?.source.y ?? -1, 0, accuracy: 1e-9)
+        XCTAssertEqual(withEvents.screen?.source.x ?? -1, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(withEvents.screen?.source.y ?? -1, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(withEvents.screen?.source.width ?? -1, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(
+            StudioLayoutResolver.resolve(project: point, time: 2, canvasWidth: 1920, canvasHeight: 1080),
+            StudioLayoutResolver.resolve(project: point, time: 2, canvasWidth: 1920, canvasHeight: 1080, events: events)
+        )
+        XCTAssertEqual(
+            withoutEvents,
+            StudioLayoutResolver.resolve(project: follows, time: 2, canvasWidth: 1920, canvasHeight: 1080, events: StudioEvents())
+        )
+    }
+
     // MARK: - Helpers
 
     private func makeProject(width: Int = 1920, height: Int = 1080, camera: StudioCameraSource? = StudioCameraSource(width: 640, height: 480, duration: 8, startOffset: 0.25)) -> StudioProject {
@@ -154,5 +250,24 @@ final class StudioLayoutTests: XCTestCase {
                 camera: camera
             )
         )
+    }
+
+    private func plainCursorFocus(samples: [StudioCursorSample], time: Double) -> (x: Double, y: Double) {
+        let sorted = samples.enumerated().sorted {
+            if $0.element.t == $1.element.t { return $0.offset < $1.offset }
+            return $0.element.t < $1.element.t
+        }.map(\.element)
+        let a = time - 0.5
+        let b = time + 0.5
+        var x = 0.0
+        var y = 0.0
+        for index in sorted.indices {
+            let start = index == sorted.startIndex ? -Double.infinity : sorted[index].t
+            let end = index == sorted.index(before: sorted.endIndex) ? Double.infinity : sorted[sorted.index(after: index)].t
+            let length = max(0, min(b, end) - max(a, start))
+            x += StudioCanvasMath.clamped(sorted[index].x, 0, 1) * length
+            y += StudioCanvasMath.clamped(sorted[index].y, 0, 1) * length
+        }
+        return (x, y)
     }
 }
