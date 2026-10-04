@@ -34,6 +34,9 @@ internal sealed class UiaElement
         _element = element;
     }
 
+    /// <summary>The element itself, for what this class does not wrap.</summary>
+    internal UIA.IUIAutomationElement Raw => _element;
+
     public string Name => Read(() => _element.CurrentName) ?? string.Empty;
 
     public string Id => Read(() => _element.CurrentAutomationId) ?? string.Empty;
@@ -183,6 +186,9 @@ internal sealed class UiaElement
     public bool Select() => Act<UIA.IUIAutomationSelectionItemPattern>(UIA.UIA_PatternIds.UIA_SelectionItemPatternId, static pattern => pattern.Select());
 
     public bool? IsSelected => Get<UIA.IUIAutomationSelectionItemPattern, bool?>(UIA.UIA_PatternIds.UIA_SelectionItemPatternId, static pattern => pattern.CurrentIsSelected != 0);
+
+    /// <summary>Takes the element out of its container's selection.</summary>
+    public bool RemoveFromSelection() => Act<UIA.IUIAutomationSelectionItemPattern>(UIA.UIA_PatternIds.UIA_SelectionItemPatternId, static pattern => pattern.RemoveFromSelection());
 
     public bool SetRange(double value) => Act<UIA.IUIAutomationRangeValuePattern>(UIA.UIA_PatternIds.UIA_RangeValuePatternId, pattern => pattern.SetValue(value));
 

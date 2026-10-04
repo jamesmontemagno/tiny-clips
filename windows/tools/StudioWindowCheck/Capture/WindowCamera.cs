@@ -30,6 +30,7 @@ internal sealed record Shot(byte[] Bgra, int Width, int Height, int ScreenX, int
 internal sealed class WindowCamera : IDisposable
 {
     private const int Buffers = 3;
+    private static int _notClosedInTime;
 
     private readonly object _sync = new();
     private readonly nint _window;
@@ -63,6 +64,17 @@ internal sealed class WindowCamera : IDisposable
     /// <summary>The newest picture of the window, or null when the system has not delivered one yet.</summary>
     public Shot? Take()
     {
+        byte[]? fresh = null;
+        return Take(ref fresh);
+    }
+
+    /// <summary>
+    /// The newest picture of the window, read into a buffer that is used again when it has the
+    /// right size: the picture is good until the next one is taken with the same buffer. For
+    /// taking many pictures while something is timed, without work for the garbage collector.
+    /// </summary>
+    public Shot? Take(ref byte[]? buffer)
+    {
         lock (_sync)
         {
             if (_disposed || _latest is not { } frame)
@@ -76,8 +88,15 @@ internal sealed class WindowCamera : IDisposable
             int stride;
             lock (_graphics.Gate)
             {
-                whole = _graphics.ReadTexture(texture);
                 stride = (int)texture.Description.Width * 4;
+                var length = stride * (int)texture.Description.Height;
+                if (buffer is null || buffer.Length != length)
+                {
+                    buffer = new byte[length];
+                }
+
+                whole = buffer;
+                _graphics.ReadTexture(texture, 0, whole);
             }
 
             var width = Math.Min(content.Width, (int)texture.Description.Width);
@@ -100,8 +119,12 @@ internal sealed class WindowCamera : IDisposable
         }
     }
 
+    /// <summary>How many cameras the system did not finish closing in time. See <see cref="Dispose"/>.</summary>
+    public static int NotClosedInTime => Volatile.Read(ref _notClosedInTime);
+
     public void Dispose()
     {
+        Direct3D11CaptureFrame? latest;
         lock (_sync)
         {
             if (_disposed)
@@ -109,16 +132,41 @@ internal sealed class WindowCamera : IDisposable
                 return;
             }
 
+            // From here on a frame that arrives is ignored.
             _disposed = true;
-            _pool.FrameArrived -= OnFrameArrived;
-            _latest?.Dispose();
+            latest = _latest;
             _latest = null;
         }
 
-        _session.Dispose();
-        _pool.Dispose();
-        _device.Dispose();
-        _graphics.Dispose();
+        // Ending a capture session is a call into the system, and it has been seen never to
+        // return: a run stood still in it for six minutes. So it is made on a thread of its own,
+        // and the checks go on without it when it takes too long. What is left of the session
+        // ends with the process.
+        var closing = new Thread(() =>
+        {
+            try
+            {
+                _pool.FrameArrived -= OnFrameArrived;
+                latest?.Dispose();
+                _session.Dispose();
+                _pool.Dispose();
+                _device.Dispose();
+                _graphics.Dispose();
+            }
+            catch (Exception)
+            {
+                // The window is gone, and with it what there was to close.
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "StudioWindowCheck.CameraClose",
+        };
+        closing.Start();
+        if (!closing.Join(TimeSpan.FromSeconds(5)))
+        {
+            Interlocked.Increment(ref _notClosedInTime);
+        }
     }
 
     // On a thread of the frame pool.

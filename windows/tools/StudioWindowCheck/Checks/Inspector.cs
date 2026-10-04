@@ -185,9 +185,13 @@ internal sealed partial class WindowChecks
         Try("StudioPaddingSlider", "StudioScreenCornerRadiusSlider", "StudioScreenShadowSlider", "StudioCameraCornerRadiusSlider", "StudioCameraSizeSlider", "StudioCameraOffsetXSlider", "StudioCameraOffsetYSlider", "StudioCameraBorderSlider", "StudioCameraShadowSlider");
         Find(editor, "StudioLayoutSideBySide")?.Select();
         Try("StudioCameraShareSlider");
+
+        // The crops last: one edge cut all the way leaves a sliver of a canvas.
+        Try("StudioScreenCropLeftSlider", "StudioScreenCropTopSlider", "StudioScreenCropRightSlider", "StudioScreenCropBottomSlider");
+        Try("StudioCameraCropLeftSlider", "StudioCameraCropTopSlider", "StudioCameraCropRightSlider", "StudioCameraCropBottomSlider");
         _report.Check(
             "every slider of the inspector can be set to its lowest and to its highest value through UI Automation",
-            refused.Count == 0 && sliders == 10,
+            refused.Count == 0 && sliders == 18,
             refused.Count == 0 ? $"{sliders} sliders" : string.Join("; ", refused));
 
         void Try(params string[] ids)
@@ -784,12 +788,22 @@ internal sealed partial class WindowChecks
             saved == wanted ? saved : $"saved: {saved} | expected: {wanted}");
     }
 
-    /// <summary>Everything the inspector and the trim bar can change, as one line.</summary>
+    /// <summary>Everything the inspector, the zoom lane and the trim bar can change, as one line.</summary>
     private static string Describe(StudioProject p) =>
         $"trim {F(p.Edits.TrimStart)} to {(p.Edits.TrimEnd is { } end ? F(end) : "the end")}; "
         + $"canvas {p.Canvas.Aspect}, padding {F(p.Canvas.Padding)}, background {p.Canvas.Background.Style} {p.Canvas.Background.Preset} {p.Canvas.Background.Primary} {p.Canvas.Background.Secondary}; "
         + $"screen radius {F(p.Screen.CornerRadius)}, shadow {F(p.Screen.Shadow)}; "
         + $"camera {p.Camera.Shape}, radius {F(p.Camera.CornerRadius)}, mirrored {p.Camera.Mirror}, border {F(p.Camera.BorderWidth)}, shadow {F(p.Camera.Shadow)}; "
         + $"layout {p.Scenes[0].Layout}, bubble {p.Scenes[0].Bubble.Anchor} {F(p.Scenes[0].Bubble.Size)} {F(p.Scenes[0].Bubble.OffsetX)} {F(p.Scenes[0].Bubble.OffsetY)}, split {p.Scenes[0].Split.CameraSide} {F(p.Scenes[0].Split.CameraFraction)}; "
-        + $"badge {p.Overlays.Branding}, click rings {p.Overlays.Clicks.Enabled}, muted {p.Audio.Muted}";
+        + $"badge {p.Overlays.Branding}, click rings {p.Overlays.Clicks.Enabled}, muted {p.Audio.Muted}; "
+        + $"screen crop {Describe(p.Screen.Crop)}, camera crop {Describe(p.Camera.Crop)}; "
+        + $"zooms {(p.Zooms.Length == 0 ? "none" : string.Join(", ", p.Zooms.Select(Describe)))}";
+
+    private static string Describe(StudioRect? crop) =>
+        crop is null ? "none" : $"({F(crop.X, "0.######")}, {F(crop.Y, "0.######")}, {F(crop.Width, "0.######")}, {F(crop.Height, "0.######")})";
+
+    /// <summary>A zoom with every value it stores, times to a millionth of a second.</summary>
+    private static string Describe(StudioZoom zoom) =>
+        $"[{F(zoom.Start, "0.######")} to {F(zoom.End, "0.######")}, {F(zoom.Scale, "0.######")}x, {zoom.Focus.Mode} ({F(zoom.Focus.X, "0.######")}, {F(zoom.Focus.Y, "0.######")}), "
+        + $"in {F(zoom.EaseIn, "0.######")}, out {F(zoom.EaseOut, "0.######")}, {zoom.Origin}]";
 }

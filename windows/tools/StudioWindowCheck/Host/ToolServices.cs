@@ -43,10 +43,13 @@ internal sealed class ToolServices
         Tracker = new StudioProjectTracker();
         var cleanup = new StudioProjectCleanupService(Store, Settings, Tracker, new NoRecorder());
 
-        // Forced mute is the one difference from the app's preview factory: no sound on this machine.
+        // Two differences from the app's preview factory: forced mute, for no sound on this
+        // machine, and the engines' trace kept, with every open that fails, for when one does.
         Windows = new StudioWindowService(
             Store,
-            new StudioPreviewFactory(new StudioPreviewOptions { ForceMuted = true }),
+            new RecordingPreviewFactory(
+                new StudioPreviewFactory(new StudioPreviewOptions { ForceMuted = true, Trace = PreviewOpens.Trace }),
+                PreviewOpens),
             new StudioExportService(),
             new StudioPreviewViewFactory(),
             Settings,
@@ -81,6 +84,9 @@ internal sealed class ToolServices
     public StudioProjectTracker Tracker { get; }
 
     public StudioWindowService Windows { get; }
+
+    /// <summary>What the previews of the windows said, and what each open that failed failed with.</summary>
+    public PreviewOpenLog PreviewOpens { get; } = new();
 
     /// <summary>Every export the window service reported as finished.</summary>
     public ConcurrentQueue<StudioExportedEventArgs> Exports { get; } = new();

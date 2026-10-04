@@ -23,7 +23,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 /// </summary>
 internal sealed partial class WindowChecks
 {
-    public static readonly string[] Groups = ["open", "transport", "inspector", "trim", "export", "close", "windows", "accessibility", "themes"];
+    public static readonly string[] Groups = ["open", "transport", "inspector", "trim", "export", "close", "windows", "accessibility", "themes", "zoom", "crop"];
 
     private const int Fps = TestMedia.Fps;
 
@@ -83,6 +83,8 @@ internal sealed partial class WindowChecks
             Group("windows", "7. More than one window", SeveralWindows);
             Group("accessibility", "8. Accessibility, as far as the UI Automation tree shows it", Accessibility);
             Group("themes", "9. Light and dark", Themes);
+            Group("zoom", "10. Zooms", Zooming);
+            Group("crop", "11. Crops", Cropping);
 
             // Last of all: after this the window service opens nothing.
             Group("windows", "7, at the end. The app exits while editors are open", ExitingWithWindowsOpen);
@@ -152,6 +154,10 @@ internal sealed partial class WindowChecks
             var errors = _services.Errors();
             _report.Check("the window service reported no error of a window that was gone", errors.Length == 0, errors.Length == 0 ? null : string.Join(" | ", errors));
             _report.Note($"{_editors.Count} Studio windows were opened and {_editors.Sum(e => e.Camera.Taken)} screenshots of them were read");
+            if (WindowCamera.NotClosedInTime > 0)
+            {
+                _report.Note($"{WindowCamera.NotClosedInTime} time(s) Windows did not finish ending the tool's capture of one of its windows within 5 s; the checks went on without it");
+            }
         }
         catch (Exception ex)
         {
@@ -323,7 +329,13 @@ internal sealed partial class WindowChecks
             return editor;
         }
 
-        _report.Check($"{label}: the editor becomes ready", false, $"the window is {state}: {editor.Root.Find("StudioUnavailableMessage")?.Name}");
+        // What the window says is one sentence. What is behind it is kept in a file.
+        var behind = _services.PreviewOpens.LastFailure();
+        var file = _services.PreviewOpens.Write(_output, _report.Stamp);
+        _report.Check(
+            $"{label}: the editor becomes ready",
+            false,
+            $"the window is {state}: {editor.Root.Find("StudioUnavailableMessage")?.Name}{(behind.Length > 0 ? $" Behind it: {behind}." : string.Empty)}{(file is null ? string.Empty : $" The engines' trace of the seconds before: {file}")}");
         return null;
     }
 

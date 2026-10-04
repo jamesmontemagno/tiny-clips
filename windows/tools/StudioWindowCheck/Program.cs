@@ -21,7 +21,7 @@ internal static class Program
         try
         {
             options = CheckOptions.Parse(args);
-            if (options.Unknown("only", "skip", "out", "media", "help") is { Length: > 0 } unknown)
+            if (options.Unknown("only", "skip", "out", "media", "held-up", "help") is { Length: > 0 } unknown)
             {
                 throw new ArgumentException($"Unknown option --{unknown[0]}.");
             }
@@ -126,13 +126,16 @@ internal static class Program
     {
         Console.WriteLine(
             $"""
-            StudioWindowCheck [--only a,b] [--skip a,b] [--out <folder>] [--media <folder>]
+            StudioWindowCheck [--only a,b] [--skip a,b] [--out <folder>] [--media <folder>] [--held-up]
 
               --only a,b        run only these groups of checks
               --skip a,b        leave these groups out
               --out <folder>    where reports and screenshots go (default: out next to the project)
               --media <folder>  where the test clips are, or are generated (default: StudioPreviewCheck's
                                 out\media when it has them, otherwise media in the out folder)
+              --held-up         in the zoom group, play through a zoom that moves in a second time
+                                while the tool makes the garbage collector stop every thread of the
+                                process a few times, as happens to an app on a busy PC
 
             Groups: {string.Join(' ', WindowChecks.Groups)}
 

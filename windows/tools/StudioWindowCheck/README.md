@@ -6,14 +6,19 @@ window's source files (`Views\Studio`, `Controls\Studio`, `ViewModels\Studio`, `
 with the real project store, preview engine, preview panel and exporter behind it. `TinyClips.App`
 is never started, and nothing is packaged, registered or installed.
 
-Every result is read back by the tool itself, in one of three ways:
+Every result is read back by the tool itself, in one of these ways:
 
 - a screenshot of its own window, taken with Windows.Graphics.Capture. Each frame of the test
   clips carries its frame number as a strip of black and white cells (see
   `..\StudioPreviewCheck\README.md`), so a screenshot says which frame of each clip is shown and
-  where;
-- the window's UI Automation tree, read with the client a screen reader uses;
-- the frames of an exported file, decoded with ffmpeg.
+  where. For zooms and crops the edges of the test picture are found as well, which says which
+  part of a clip is shown and how large: see "Which part of a clip a picture shows";
+- the window's UI Automation tree, read with the client a screen reader uses, and the events the
+  window sends that client: the sentences it asks to have read out, and which item of a list
+  became the selected one;
+- the frames of an exported file, decoded with ffmpeg;
+- every scene the preview engine draws while it plays through a zoom, copied out of the texture
+  it was drawn into through the engine's hook for check tools (`AfterRender`).
 
 ## Needs
 
@@ -31,7 +36,7 @@ dotnet build windows\tools\StudioWindowCheck\StudioWindowCheck.csproj -c Debug -
 windows\tools\StudioWindowCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioWindowCheck.exe
 ```
 
-A full run takes between one and one and a half minutes. It exits with 0 when every check passed and with 1 when one
+A full run takes about two minutes. It exits with 0 when every check passed and with 1 when one
 did not, after printing one `FAILED:` line for each; 2 is a usage error.
 
 | Option | |
@@ -40,8 +45,9 @@ did not, after printing one `FAILED:` line for each; 2 is a usage error.
 | `--skip a,b` | leave these groups out |
 | `--out <folder>` | where reports, trees and pictures go (default `out` next to the project) |
 | `--media <folder>` | where the test clips are, or are generated (default `..\StudioPreviewCheck\out\media` when it has them, otherwise `media` in the out folder) |
+| `--held-up` | in the `zoom` group, play through a zoom that moves in a second time while the tool holds its own process up: see "A frame that comes late" |
 
-Groups: `open transport inspector trim export close windows accessibility themes`.
+Groups: `open transport inspector trim export close windows accessibility themes zoom crop`.
 
 ## What it leaves behind
 
@@ -52,10 +58,25 @@ Groups: `open transport inspector trim export close windows accessibility themes
   front during the run.
 - `out\window-light.png`, `out\window-dark.png`, `out\close-dialog-light.png`,
   `out\close-dialog-dark.png`: the whole window in each theme with a project open, and the question
-  it asks on closing. For a person to look at.
+  it asks on closing. For a person to look at, as are the next two.
+- `out\window-zooms-light.png`, `out\window-zooms-dark.png`: the whole window with three zooms on
+  the lane, the middle one selected. One zoom follows the pointer and one is a suggestion, so
+  both marks a block can carry are in the picture.
+- `out\zoom-section-light.png`, `-2.png`, `-3.png`, and the same for `dark`: the inspector
+  scrolled to its Zoom section with a zoom selected. The section is higher than the inspector, so
+  there are three: from its heading, from the focus pad, and from its end.
+- `out\zoom-preview.png`: the window right after Z added a zoom, with the preview zoomed.
+  `out\zoom-moving-in.png`: a screenshot taken while the preview played through a zoom moving in.
 - `out\tree-*.txt`: the UI Automation tree of the window in each state the `accessibility` group
   reads: opening, the editor in three layouts, exporting, the question on closing, a recording
-  without a camera, and a project that cannot be opened.
+  without a camera, and a project that cannot be opened; and, from the `zoom` group, with a zoom
+  selected and with suggested zooms.
+- `out\tab-order.txt`: the tab stops of the window with a zoom selected, in the order the focus
+  moves through them.
+- `out\open-failure-<time>-<n>.txt`, only when a window could not open its project: what the
+  preview failed with, each exception with its error code, and what the preview engines wrote
+  to their trace in the eight seconds before. The window itself shows one sentence, and the
+  failed check says where this file is. See "An open that fails".
 - Everything the tool writes while it checks goes under one folder,
   `%TEMP%\TinyClipsStudioPreviewCheck-<pid>` (the name comes from StudioPreviewCheck's
   `TestFolder`, which is shared): the project store, with a folder per project, and `exports`,
@@ -84,7 +105,10 @@ Someone may be working on the machine while the tool runs, so:
   thread of the process for a few tenths of a second; the changes Windows reports are queued, so
   none is lost in a gap.
 - Windows are shown without activation, behind every other window, and not in the taskbar or
-  Alt+Tab. Screenshots are of the tool's own windows only.
+  Alt+Tab. Screenshots are of the tool's own windows only. Ending the capture of a window is a
+  call into the system, and it was once seen not to return: a run stood still in it for six
+  minutes. The tool makes that call on a thread of its own, goes on without it after 5 s, and
+  says in the report how often that happened.
 - **No input is sent**: no keys, no pointer. See "What stands in for a person".
 - **No sound.** The preview is created with `StudioPreviewOptions.ForceMuted`. Audible playback is
   not checked.
@@ -128,12 +152,29 @@ Someone may be working on the machine while the tool runs, so:
 - **Combo boxes** are set by `SelectedIndex` on the UI thread. An open drop-down is a window of
   its own, in front of other windows, so none is ever opened.
 - **Keys are not pressed.** Where a check says "what the Space key runs", it calls what the
-  window's key handler calls: `StudioShortcuts.Resolve` with that key, then `StudioViewModel.Run`.
-  That the key reaches the handler, and what a focused control does with it first, is not checked.
-- **Nothing is dragged.** The camera in the preview, the handles of the trim bar and a slider's
-  thumb are never moved with a pointer. A slider drag as one undo step is checked by calling what
-  the slider's row calls when a pointer takes hold of it and lets go (`BeginGesture`,
-  `EndGesture`), with the values set through UI Automation in between.
+  window's key handler calls once it has mapped the key: `StudioWindow.RunShortcut`, which asks
+  `StudioShortcuts.Resolve` what the key means in the window as it is, and runs that. That the
+  window maps the Z and Delete keys is checked on `StudioWindow.MapKey`. For the arrow keys, Home
+  and End on the zoom lane, the lane's own `HandleKey` is called, which is what its key handler
+  calls. That a key reaches a handler, and what a focused control does with it first, is not
+  checked.
+- **Nothing is dragged or pressed with a pointer.** The camera in the preview, the handles of the
+  trim bar and a slider's thumb are never moved. A slider drag as one undo step is checked by
+  calling what the slider's row calls when a pointer takes hold of it and lets go
+  (`BeginGesture`, `EndGesture`), with the values set through UI Automation in between. A press
+  and a drag on the zoom lane and on the focus pad are checked by calling what their pointer
+  handlers call with a place (`PressAt`, `DragTo`, `EndPress`). Which element a real pointer
+  lands on, and that the element keeps the pointer while it is down, is not checked.
+- **The focus is moved inside the window only.** The window never has the keyboard. Where the
+  focus goes is read from XAML's own focus manager: the order of the tab stops by asking it to
+  move the focus to the next stop over and over, and where the focus lands after a button
+  switches itself off or goes away by putting it on the button first. Each of these asks
+  Windows for the keyboard, and each request is refused and counted like every other.
+- **No screen reader runs.** What one would be told is heard by a listener for UI Automation
+  events inside the tool. It hears every event twice, a few milliseconds apart on two threads,
+  including those of the framework's own controls, so the checks hold what the window's zoom
+  lane sends against what a framework list sends for the same thing. Whether a screen reader
+  hears an event once was not seen.
 
 ## How the checks are built
 
@@ -171,3 +212,82 @@ Someone may be working on the machine while the tool runs, so:
   pane that cannot take the focus may be without a name; the two panes in which the framework
   hosts XAML in a window are left out.
 - `themes`: the pictures, and that each is what its name says.
+- `zoom`: the lane above the trim bar, Add zoom, what Z and Delete run, the lane's keys, its
+  blocks as list items, Previous and Next, the Zoom section with every control of the selected
+  zoom, the focus pad, the Start and End buttons, presses and drags on the lane, a zoom that
+  follows the pointer, a zoom that moves in while the preview plays, suggested zooms, and undo and
+  redo across an add, a move and a delete. Wherever a zoom changes the picture, the picture is
+  read: see below.
+- `crop`: the four crop sliders of the screen and of the camera, where an edge stops, a drag as
+  one undo step, Reset crop and its undo, a zoom inside a crop, and where the keyboard focus goes
+  after Reset crop. After each step the preview has to show the part of the clip the crop leaves.
+
+## Which part of a clip a picture shows
+
+A check that a picture is zoomed or cropped has to tell the right picture from a wrong one, and
+colours do not: a picture of the wrong part of the screen is made of the same colours. So
+`Checks\ZoomPicture.cs` finds the straight edges of the test clips, whose places in a clip are
+known (between the colour bars, around the colour patches, and along the frame strip), and
+compares where each is in the picture with where the wanted part of the clip puts it. The wanted
+part is worked out by hand in a comment at each check, from the project format, not asked of the
+layout code.
+
+- An edge is placed by the brightness of the pixels across it. A video keeps the brightness of
+  every pixel and the colour of every other one only, so the colours next to an edge are a
+  mixture, while the brightness changes at the edge itself.
+- An edge is read along every line that crosses it inside the picture, and counts only when at
+  least two lines, and more than half of them, agree to three quarters of a pixel. The test clips
+  move things across the picture (a striped band, dots, a line), and a line with one of those on
+  it disagrees with the others. A wrong part of the clip moves an edge the same way on all of
+  them.
+- A picture passes when the frame strip reads the frame (where the strip is in the wanted part),
+  at least two upright edges a fifth of the layer apart and two level edges 24 pixels apart were
+  found, at most a third of the edges that should be there are missing, and no edge is further
+  from its place than 0.75 pixels of the picture, or half a pixel of the clip where the clip is
+  magnified so far that this is more.
+- What a check cannot tell from the right picture is said in a comment at the check. All the
+  level edges of the screen clip are in its top left, so a part without the frame strip and with
+  only the patches places the picture down the screen less surely than across. A zoom that looks
+  at the middle of the screen is what a preview that ignored the focus would show too.
+- That the checks can fail was tried on a copy of the tree, with two faults put into
+  `StudioLayout.cs` one after the other. With a held window that ignores where the zoom looks,
+  21 checks failed: all 14 that read a picture of a zoom which does not look at the middle of
+  what it is in, the focus pad's rectangle, the count of frames drawn while a zoom moves in
+  (their numbers could not be read), and five checks of suggested zooms, which are worked out
+  with the same function. With a zoom that moves in at an even pace, the check of eases that are
+  shortened failed, every scene of the zoom that moves in, the count of frames, and the
+  screenshots taken while it moved; the check half way through an ease passed, as its comment
+  says it would.
+
+## A frame that comes late
+
+While the preview plays, the `zoom` group copies every scene the engine draws and reads which
+frame it shows and which part of the screen. Each has to show the part the format gives for the
+frame it shows.
+
+With `--held-up` the same is done a second time while the tool gives its garbage collector work:
+a new buffer of eight megabytes for every screenshot, as the tool did before it took screenshots
+into one buffer. Each collection stops every thread of the process, the preview's among them,
+for some tens of milliseconds, as other things do to an app on a busy PC. The scene that is
+drawn after such a stop has shown the picture of one frame with the part of the screen of the
+next one: see the report of the run. Without the option the tool keeps out of the preview's way:
+it makes its buffers and has the garbage collector run before the playing starts, and takes its
+screenshots into one buffer. That play-through is the one the group's other numbers are about.
+
+With the engine as it is now the `--held-up` check fails: 11 of about 538 scenes were wrong in
+the runs made while it was written, and 2 of 90 in one run made after it was merged. It is kept
+as the way to see that fault, and is not part of a run without the option.
+
+## An open that fails
+
+Every editor the tool opens gets its preview from the app's factory with two differences: the
+sound is forced off, and the engines write their trace into memory (`Host\PreviewOpenLog.cs`).
+When a window says that its project cannot be opened, the check "the editor becomes ready"
+fails with the sentence the window shows, the exceptions behind it with their error codes, and
+the path of a file with the trace of the seconds before.
+
+This is here because it happened once, in one of six full runs on 4 October 2026: two editors
+opened one after the other, each 2 ms after the one before it was closed, both said "The screen
+recording could not be decoded (DecodingError)", and the next one, 0.4 s later, opened. At that
+time the tool kept nothing but the sentence. It did not happen again in 24 runs of
+`--only inspector,trim,export`, which open the same three editors in the same order.

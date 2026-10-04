@@ -133,8 +133,10 @@ internal sealed partial class WindowChecks
 
         var sight = LookFor(editor, s => s.Shown == Both(editor, FrameOf(CameraOffset)), 5);
 
-        // The editor with the bubble layout: padding, two sliders for the screen, three for the camera's place, two for its style, and the three of the trim bar.
-        AuditState(editor, "the editor, bubble layout", "tree-editor.txt", 11);
+        // The editor with the bubble layout: padding, two sliders for the screen and four for its
+        // crop, three for the camera's place, two for its style and four for its crop, and the
+        // three of the trim bar. No zoom is selected, so the Zoom section shows none of its own.
+        AuditState(editor, "the editor, bubble layout", "tree-editor.txt", 19);
 
         // The canvas: one image.
         var canvas = Find(editor, "StudioPreview");
@@ -160,10 +162,10 @@ internal sealed partial class WindowChecks
         Timeline.Mark("8: the other layouts");
         Find(editor, "StudioLayoutSideBySide")?.Select();
         Until(() => editor.Root.Find("StudioCameraShareSlider"), found => found is not null, 2);
-        AuditState(editor, "the editor, side by side", "tree-side-by-side.txt", 9, _ => Find(editor, "StudioPreview", 0.5)?.HelpText == "Side by side" ? null : $"the canvas is described as \"{Find(editor, "StudioPreview", 0)?.HelpText}\"");
+        AuditState(editor, "the editor, side by side", "tree-side-by-side.txt", 17, _ => Find(editor, "StudioPreview", 0.5)?.HelpText == "Side by side" ? null : $"the canvas is described as \"{Find(editor, "StudioPreview", 0)?.HelpText}\"");
         Find(editor, "StudioLayoutScreen")?.Select();
         Until(() => editor.Root.Find("StudioCameraHiddenNote"), found => found is not null, 2);
-        AuditState(editor, "the editor, screen only", "tree-screen.txt", 6, _ => Find(editor, "StudioPreview", 0.5)?.HelpText == "Screen only" ? null : $"the canvas is described as \"{Find(editor, "StudioPreview", 0)?.HelpText}\"");
+        AuditState(editor, "the editor, screen only", "tree-screen.txt", 10, _ => Find(editor, "StudioPreview", 0.5)?.HelpText == "Screen only" ? null : $"the canvas is described as \"{Find(editor, "StudioPreview", 0)?.HelpText}\"");
         Find(editor, "StudioLayoutBubble")?.Select();
         Until(() => editor.Root.Find("StudioCameraSizeSlider"), found => found is not null, 2);
 
@@ -171,7 +173,7 @@ internal sealed partial class WindowChecks
         Timeline.Mark("8: the export overlay");
         Invoke(editor, "StudioExportButton");
         Find(editor, "StudioCancelExportButton", 3);
-        AuditState(editor, "while exporting", "tree-exporting.txt", 11, tree =>
+        AuditState(editor, "while exporting", "tree-exporting.txt", 19, tree =>
         {
             var enabled = tree.Where(e => Operated.Contains(e.Element.ControlType) && e.Element.IsEnabled && e.Element.Id != "StudioCancelExportButton").Select(e => e.Element.Id).ToArray();
             var bar = Find(editor, "StudioExportProgressBar", 0.5);
@@ -190,7 +192,7 @@ internal sealed partial class WindowChecks
         Gone(editor, "StudioCancelExportButton", 5);
         File.Delete(inTheWay);
         var (bar, texts, close) = MessageBar(editor, 2);
-        AuditState(editor, "with a message shown", "tree-message.txt", 11, _ =>
+        AuditState(editor, "with a message shown", "tree-message.txt", 19, _ =>
             bar is not { Name: "Error" } ? $"the message bar is {(bar is null ? "not shown" : $"called \"{bar.Name}\"")}"
             : !texts.Any(text => text.StartsWith("Studio export failed", StringComparison.Ordinal)) ? $"the message is not a text of the bar: {string.Join(" | ", texts)}"
             : close is not { Name.Length: > 0 } ? "the bar has no close button with a name"
@@ -219,7 +221,7 @@ internal sealed partial class WindowChecks
         Timeline.Mark("8: without a camera, and unavailable");
         if (OpenReady(NewScreenProject("Accessibility, screen"), "accessibility, screen only") is { } screenOnly)
         {
-            AuditState(screenOnly, "a recording without a camera", "tree-no-camera.txt", 6);
+            AuditState(screenOnly, "a recording without a camera", "tree-no-camera.txt", 10);
             CloseQuietly(screenOnly);
         }
 

@@ -1,15 +1,33 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using TinyClips.Core.Models;
+using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 using TinyClips.Tools.StudioPreviewCheck.Media;
 using TinyClips.Tools.StudioWindowCheck.Capture;
 using TinyClips.Tools.StudioWindowCheck.Host;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 9. Light and dark: a picture of the whole window in each theme, with a project open, and one
-// of the question on closing. The pictures are saved for a person to look at; the checks only
+// 9. Light and dark: pictures of the whole window in each theme, with a project open: as it
+// opens, with a zoom selected on the lane, with the Zoom section of the inspector in view, and
+// with the question on closing. The pictures are saved for a person to look at; the checks only
 // make sure each is what its name says.
 internal sealed partial class WindowChecks
 {
+    /// <summary>
+    /// Three zooms for the pictures, none of them at the frame the pictures are taken at: one that
+    /// looks at a point, one that follows the pointer, and one that was suggested, so that both
+    /// marks a block can carry are in the picture.
+    /// </summary>
+    private static StudioZoom[] ZoomsForPictures() =>
+    [
+        PointZoom(0.5, 2.5, 0.3, 0.3),
+        PointZoom(5, 7.5, 0.5, 0.5, scale: 1.5) with { Focus = new StudioZoomFocus { Mode = StudioZoomFocusMode.Cursor, X = 0.5, Y = 0.5 } },
+        PointZoom(9, 11, 0.7, 0.6, scale: 3) with { Origin = StudioZoomOrigin.Auto },
+    ];
+
     private void Themes()
     {
         var saved = new List<string>();
@@ -35,7 +53,7 @@ internal sealed partial class WindowChecks
 
         // The theme is the app's setting, which the window applies to its own root element when it opens.
         _services.Settings.Theme = theme;
-        if (OpenReady(NewCameraProject($"Studio in the {name} theme"), $"{name} theme") is not { } editor)
+        if (OpenReady(NewCameraProject($"Studio in the {name} theme", p => p with { Zooms = ZoomsForPictures() }), $"{name} theme") is not { } editor)
         {
             return;
         }
@@ -57,7 +75,7 @@ internal sealed partial class WindowChecks
         sight.Shot.Save(windowPath);
         saved.Add(windowPath);
 
-        // The window's own surfaces: the header left of Undo, the inspector's edge, and the timeline between the time and Start here.
+        // The window's own surfaces: the header left of Undo, the inspector's edge, and the timeline between the time and Add zoom.
         var surfaces = Surfaces(editor, sight.Shot);
         var text = TextContrast(editor, sight.Shot, "StudioClipName");
         var isLight = theme == AppTheme.Light;
@@ -65,6 +83,8 @@ internal sealed partial class WindowChecks
             $"the window in the {name} theme: its root element asks for that theme, its surfaces are {(isLight ? "light" : "dark")} and its text {(isLight ? "dark" : "light")} on them, and the preview shows the project",
             requested == theme.ToString() && surfaces.Count >= 3 && surfaces.All(color => isLight ? Luma(color) > 170 : Luma(color) < 90) && (isLight ? text < -80 : text > 80) && sight.Shown == Both(editor, Frame),
             $"requested theme {requested}; surfaces {string.Join(" ", surfaces)}; the recording's name is {F(Math.Abs(text), "0")} levels {(text < 0 ? "darker" : "lighter")} than what is behind it; {sight.Shown}; saved as {Path.GetFileName(windowPath)} ({sight.Shot.Width}x{sight.Shot.Height})");
+
+        ZoomPictures(editor, name, isLight, Frame, saved);
 
         // The question on closing, once it has finished opening.
         Timeline.Mark($"9: the question on closing, {name}");
@@ -100,6 +120,198 @@ internal sealed partial class WindowChecks
         CloseQuietly(editor);
     }
 
+    /// <summary>
+    /// Two more pictures of a window whose project has three zooms: the whole window with the
+    /// middle zoom selected on the lane, and the inspector scrolled to its Zoom section.
+    /// </summary>
+    private void ZoomPictures(Editor editor, string name, bool isLight, int frame, List<string> saved)
+    {
+        Timeline.Mark($"9: the lane with a zoom selected, {name}");
+        var zooms = ZoomsForPictures();
+        var names = zooms.Select(StudioEditorText.GetZoomDescription).ToArray();
+        var wanted = $"{names[0]} | *{names[1]} | {names[2]}";
+
+        // Selecting through the list item selects without moving the playhead, so the preview stays as it was.
+        var selected = LaneItems(editor) is { Count: 3 } items && items[1].Select();
+        var lane = WaitForLane(editor, wanted);
+        Thread.Sleep(400);
+        var sight = Look(editor);
+        if (sight is null)
+        {
+            _report.Check($"the window with zooms in the {name} theme can be pictured", false, "no screenshot");
+            return;
+        }
+
+        var path = Path.Combine(_output, $"window-zooms-{name}.png");
+        sight.Shot.Save(path);
+        saved.Add(path);
+
+        // Each block: where it is, the colour of its fill left of its text, and whether something is written in its middle.
+        var laneBox = Find(editor, "StudioZoomLane")?.Bounds ?? default;
+        var blocks = LaneItems(editor).Select(item =>
+        {
+            var (x, y, width, height) = item.Bounds;
+            var (left, top) = (x - sight.Shot.ScreenX, y - sight.Shot.ScreenY);
+            var fill = sight.Shot.Color(left + (8 * editor.Scale), top + (height / 2.0), 1);
+            var written = 0;
+            for (var row = top + 4; row < top + height - 4; row++)
+            {
+                for (var column = left + (width / 2) - (int)(30 * editor.Scale); column < left + (width / 2) + (int)(30 * editor.Scale); column++)
+                {
+                    if (sight.Shot.Color(column, row, 0) is { R: >= 0 } color && color.Distance(fill) > 80)
+                    {
+                        written++;
+                    }
+                }
+            }
+
+            return (Left: x, Right: x + width, Top: y, Bottom: y + height, Fill: fill, Written: written);
+        }).ToArray();
+        var inLane = blocks.Length == 3
+            && blocks.All(block => block.Left >= laneBox.X && block.Right <= laneBox.X + laneBox.Width && block.Top >= laneBox.Y && block.Bottom <= laneBox.Y + laneBox.Height)
+            && blocks[0].Right <= blocks[1].Left
+            && blocks[1].Right <= blocks[2].Left;
+        var told = blocks.Length == 3
+            && blocks[0].Fill.Distance(blocks[2].Fill) < 12
+            && blocks[1].Fill.Distance(blocks[0].Fill) > 40
+            && blocks.All(block => block.Written >= 12);
+        _report.Check(
+            $"the window in the {name} theme with three zooms: the lane shows three blocks in the order of their times, each with something written on it, the selected one filled differently from the other two, and the preview is as it was",
+            selected && lane == wanted && inLane && told && sight.Shown == Both(editor, frame),
+            $"the lane: {lane}; blocks at {string.Join(", ", blocks.Select(block => $"{block.Left} to {block.Right}"))} in a lane from {laneBox.X} to {laneBox.X + laneBox.Width}; fills {string.Join(" ", blocks.Select(block => block.Fill))}; pixels of writing {string.Join(" ", blocks.Select(block => block.Written))}; {sight.Shown}; saved as {Path.GetFileName(path)}");
+
+        // The Zoom section, with the first zoom selected: it looks at a point, so the focus pad
+        // and its two sliders are there. The section is higher than the inspector, so it is
+        // pictured twice: from its heading down, and from its end up.
+        Timeline.Mark($"9: the Zoom section, {name}");
+        var first = LaneItems(editor) is { Count: 3 } again && again[0].Select();
+        var laneThen = WaitForLane(editor, $"*{names[0]} | {names[1]} | {names[2]}");
+        var fromHeading = PictureOfZoomSection(editor, section => section.Top - 8, "StudioZoomScaleSlider", Path.Combine(_output, $"zoom-section-{name}.png"), saved);
+        var fromPad = fromHeading is null ? null : PictureOfZoomSection(editor, section => section.Pad - 8, "StudioZoomFocusXSlider", Path.Combine(_output, $"zoom-section-{name}-2.png"), saved);
+        var fromEnd = fromPad is null ? null : PictureOfZoomSection(editor, section => section.Bottom - section.Viewport + 16, "StudioDeleteZoomButton", Path.Combine(_output, $"zoom-section-{name}-3.png"), saved);
+        if (fromHeading is not { } top || fromPad is not { } middle || fromEnd is not { } end)
+        {
+            _report.Check($"the Zoom section in the {name} theme can be pictured", false, "the inspector's scroll viewer, its Zoom section or the focus pad was not found, or there was no screenshot");
+        }
+        else
+        {
+            static string Short(string[] ids) => ids.Length == 0 ? "none" : string.Join(", ", ids.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)));
+            var inNone = top.Outside.Intersect(middle.Outside).Intersect(end.Outside).ToArray();
+            _report.Check(
+                $"the Zoom section in the {name} theme with a zoom selected: three pictures show the inspector, which is {(isLight ? "light" : "dark")}, from the section's heading, from the focus pad and from the section's end, and every control of the section, the focus pad among them, is whole in one of them",
+                first && top.Position == "Zoom 1 of 3" && inNone.Length == 0 && top.HeadingAtTop && !middle.Outside.Contains("StudioZoomFocusPad")
+                    && new[] { top.Surface, middle.Surface, end.Surface }.All(surface => isLight ? Luma(surface) > 170 : Luma(surface) < 90),
+                $"the lane: {laneThen}; \"{top.Position}\"; the inspector shows {R(top.Viewport)} of the window, its surface is {top.Surface}, {middle.Surface} and {end.Surface}; "
+                    + $"{(inNone.Length == 0 ? "every control is whole in one of the three pictures" : "whole in none of the pictures: " + string.Join(", ", inNone))}; "
+                    + $"not in the first: {Short(top.Outside)}; not in the second: {Short(middle.Outside)}; not in the third: {Short(end.Outside)}; "
+                    + $"saved as zoom-section-{name}.png, zoom-section-{name}-2.png and zoom-section-{name}-3.png");
+        }
+
+        ScrollInspector(editor, _ => 0);
+    }
+
+    /// <summary>What a picture of the inspector's Zoom section shows.</summary>
+    /// <param name="Outside">The controls of the section that are not whole inside the inspector's viewport.</param>
+    /// <param name="Surface">The colour of the inspector's own surface, in the margin left of a control.</param>
+    private sealed record SectionPicture(string[] Outside, Rgb Surface, string Position, StudioFrameRect Viewport, bool HeadingAtTop);
+
+    /// <summary>
+    /// Scrolls the inspector to a place in its Zoom section and saves a picture of the window.
+    /// Null without a picture.
+    /// </summary>
+    /// <param name="surfaceBeside">A control of the section that is in the picture: the inspector's surface is read in the margin left of it.</param>
+    private SectionPicture? PictureOfZoomSection(Editor editor, Func<(double Top, double Bottom, double Viewport, double Pad), double> offset, string surfaceBeside, string path, List<string> saved)
+    {
+        string[] all =
+        [
+            "StudioPreviousZoomButton", "StudioZoomPositionText", "StudioZoomRangeText", "StudioNextZoomButton", "StudioZoomSectionAddButton", "StudioSuggestZoomsButton",
+            "StudioZoomScaleSlider", "StudioZoomFocusPoint", "StudioZoomFocusPointer", "StudioZoomFocusPad", "StudioZoomFocusXSlider", "StudioZoomFocusYSlider",
+            "StudioZoomStartText", "StudioZoomStartEarlierButton", "StudioZoomStartLaterButton", "StudioZoomStartAtPlayheadButton",
+            "StudioZoomEndText", "StudioZoomEndEarlierButton", "StudioZoomEndLaterButton", "StudioZoomEndAtPlayheadButton",
+            "StudioZoomEaseInSlider", "StudioZoomEaseOutSlider", "StudioDeleteZoomButton",
+        ];
+        var viewport = ScrollInspector(editor, offset);
+        Thread.Sleep(500);
+        if (viewport is not { } view || editor.Camera.Take() is not { } shot)
+        {
+            return null;
+        }
+
+        shot.Save(path);
+        saved.Add(path);
+        var box = InShot(editor, shot, view);
+        bool Within(double left, double upper, double width, double height) =>
+            width > 0 && height > 0 && left >= box.X - 1 && upper >= box.Y - 1 && left + width <= box.X + box.Width + 1 && upper + height <= box.Y + box.Height + 1;
+        bool Inside(string id)
+        {
+            if (id == "StudioZoomFocusPad")
+            {
+                // The pad is not an element for UI Automation. Where it is comes from the window's own elements.
+                var pad = OnUi<Windows.Foundation.Rect?>(() => Descendant<TinyClips.App.Controls.Studio.StudioFocusPad>(editor.Window.Content, id) is { ActualHeight: > 0 } element
+                    ? element.TransformToVisual(editor.Window.Content).TransformBounds(new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight))
+                    : null);
+                return pad is { } rect && PadShows(editor) && InShot(editor, shot, rect) is var at && Within(at.X, at.Y, at.Width, at.Height);
+            }
+
+            if (editor.Root.Find(id) is not { IsOffscreen: false } found)
+            {
+                return false;
+            }
+
+            var (x, y, width, height) = found.Bounds;
+            return Within(x - shot.ScreenX, y - shot.ScreenY, width, height);
+        }
+
+        // The inspector's own surface, in the margin left of the section's controls.
+        var surface = editor.Root.Find(surfaceBeside) is { } anchor
+            ? shot.Color(anchor.Bounds.X - shot.ScreenX - (8 * editor.Scale), anchor.Bounds.Y - shot.ScreenY + (anchor.Bounds.Height / 2.0), 2)
+            : new Rgb(-1, -1, -1);
+
+        // The heading is a few pixels under the top of the inspector's viewport when the section was scrolled to it.
+        var headingAtTop = editor.Root.Find("StudioPreviousZoomButton") is { } stepper && stepper.Bounds.Y - shot.ScreenY - box.Y is > 0 and < 110 * 1.5;
+        return new SectionPicture([.. all.Where(id => !Inside(id))], surface, NameOf(editor, "StudioZoomPositionText", 0.5), box, headingAtTop);
+    }
+    /// <summary>
+    /// Scrolls the inspector, without an animation, to an offset worked out from where its Zoom
+    /// section is. Returns the scroll viewer's rectangle in the window's content, or null when
+    /// either was not found.
+    /// </summary>
+    private Windows.Foundation.Rect? ScrollInspector(Editor editor, Func<(double Top, double Bottom, double Viewport, double Pad), double> offset) => OnUi<Windows.Foundation.Rect?>(() =>
+    {
+        if (Descendant<Button>(editor.Window.Content, "StudioPreviousZoomButton") is not { } button)
+        {
+            return null;
+        }
+
+        FrameworkElement? section = null;
+        ScrollViewer? scroller = null;
+        for (DependencyObject? at = button; at is not null && scroller is null; at = VisualTreeHelper.GetParent(at))
+        {
+            if (at is FrameworkElement { Name: "ZoomSection" } found)
+            {
+                section = found;
+            }
+
+            scroller = at as ScrollViewer;
+        }
+
+        if (section is null || scroller?.Content is not UIElement content)
+        {
+            return null;
+        }
+
+        var top = section.TransformToVisual(content).TransformPoint(default).Y;
+
+        // Where the focus pad starts, when it is shown: the section's own start otherwise.
+        var pad = Descendant<TinyClips.App.Controls.Studio.StudioFocusPad>(section, "StudioZoomFocusPad") is { ActualHeight: > 0 } shown
+            ? shown.TransformToVisual(content).TransformPoint(default).Y
+            : top;
+        var wanted = offset((top, top + section.ActualHeight, scroller.ViewportHeight, pad));
+        scroller.ChangeView(null, Math.Clamp(wanted, 0, scroller.ScrollableHeight), null, disableAnimation: true);
+        scroller.UpdateLayout();
+        return scroller.TransformToVisual(editor.Window.Content).TransformBounds(new Windows.Foundation.Rect(0, 0, scroller.ActualWidth, scroller.ActualHeight));
+    });
+
     /// <summary>The colour of three of the window's own surfaces where nothing is drawn on them.</summary>
     private static List<Rgb> Surfaces(Editor editor, Shot shot)
     {
@@ -116,10 +328,10 @@ internal sealed partial class WindowChecks
             colors.Add(shot.Color(slider.Bounds.X - shot.ScreenX - (8 * editor.Scale), preview.Bounds.Y - shot.ScreenY + 4, 2));
         }
 
-        if (Find(editor, "StudioStartHereButton", 0.5) is { } startHere)
+        if (Find(editor, "StudioAddZoomButton", 0.5) is { } addZoom)
         {
-            // In the timeline, left of Start here.
-            colors.Add(shot.Color(startHere.Bounds.X - shot.ScreenX - (60 * editor.Scale), startHere.Bounds.Y - shot.ScreenY + (startHere.Bounds.Height / 2.0), 2));
+            // In the timeline, left of Add zoom, which is the first of the buttons on its right.
+            colors.Add(shot.Color(addZoom.Bounds.X - shot.ScreenX - (60 * editor.Scale), addZoom.Bounds.Y - shot.ScreenY + (addZoom.Bounds.Height / 2.0), 2));
         }
 
         return colors;

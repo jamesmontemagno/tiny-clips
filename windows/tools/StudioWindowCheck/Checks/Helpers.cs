@@ -49,28 +49,12 @@ internal sealed partial class WindowChecks
     });
 
     /// <summary>
-    /// What the window's key handler does with a key: it asks StudioShortcuts what the key means
-    /// and runs that. The key itself is not pressed.
+    /// What the window does with a key it is handed: its own method for that, which the window's
+    /// key handler calls once it has mapped the key. It asks StudioShortcuts what the key means in
+    /// the window as it is now, and runs that. The key itself is not pressed.
     /// </summary>
-    private StudioShortcutAction Key(Editor editor, StudioShortcutKey key, bool control = false) => OnUi(() =>
-    {
-        var viewModel = editor.Window.ViewModel;
-        var action = StudioShortcuts.Resolve(new StudioShortcutInput(
-            key,
-            IsControlDown: control,
-            IsShiftDown: false,
-            IsAltDown: false,
-            IsRepeat: false,
-            IsTextInputFocused: false,
-            IsReady: viewModel.IsReady,
-            IsExporting: viewModel.IsExporting));
-        if (action != StudioShortcutAction.None)
-        {
-            viewModel.Run(action);
-        }
-
-        return action;
-    });
+    private StudioShortcutAction Key(Editor editor, StudioShortcutKey key, bool control = false) =>
+        OnUi(() => editor.Window.RunShortcut(key, isControlDown: control, isShiftDown: false, isAltDown: false, isRepeat: false));
 
     /// <summary>Presses the window's own close button through UI Automation: the Close button of its title bar.</summary>
     private static bool PressClose(Editor editor)
@@ -107,6 +91,19 @@ internal sealed partial class WindowChecks
         var id = AutomationProperties.GetAutomationId(focused);
         return id.Length > 0 ? id : (focused as FrameworkElement)?.Name ?? string.Empty;
     });
+
+    /// <summary>
+    /// Puts the keyboard focus on a control, as XAML sees it: the window does not have the
+    /// keyboard, and its request for it is refused like every other. Returns where the focus is afterwards.
+    /// </summary>
+    private string FocusOn(Editor editor, string automationId)
+    {
+        OnUi(() =>
+        {
+            Descendant<Microsoft.UI.Xaml.Controls.Control>(editor.Window.Content, automationId)?.Focus(FocusState.Keyboard);
+        });
+        return FocusedId(editor);
+    }
 
     /// <summary>Waits until the window is gone.</summary>
     private static bool WindowGone(Editor editor, double seconds = 5) => Until(() => !Native.Exists(editor.Handle), gone => gone, seconds);
