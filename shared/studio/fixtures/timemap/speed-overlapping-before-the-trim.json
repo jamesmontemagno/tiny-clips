@@ -1,0 +1,114 @@
+{
+  "description": "Which of two overlapping speed entries counts does not depend on the trim. Both start before it: the one that starts first in the recording counts, not the one that ends first inside the trim.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 2,
+    "trimEnd": 10,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 1,
+        "end": 5,
+        "rate": 2
+      },
+      {
+        "start": 0,
+        "end": 8,
+        "rate": 4
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 3.5,
+    "segments": [
+      {
+        "start": 2,
+        "end": 10
+      }
+    ],
+    "pieces": [
+      {
+        "start": 2,
+        "end": 8,
+        "rate": 4
+      },
+      {
+        "start": 8,
+        "end": 10,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 2,
+        "output": 0.0
+      },
+      {
+        "source": 3,
+        "output": 0.25
+      },
+      {
+        "source": 5,
+        "output": 0.75
+      },
+      {
+        "source": 6,
+        "output": 1.0
+      },
+      {
+        "source": 8,
+        "output": 1.5
+      },
+      {
+        "source": 9,
+        "output": 2.5
+      },
+      {
+        "source": 10,
+        "output": 3.5
+      },
+      {
+        "source": 20,
+        "output": 3.5
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 2
+      },
+      {
+        "output": 0,
+        "source": 2
+      },
+      {
+        "output": 0.5,
+        "source": 4.0
+      },
+      {
+        "output": 1,
+        "source": 6
+      },
+      {
+        "output": 1.5,
+        "source": 8.0
+      },
+      {
+        "output": 2.5,
+        "source": 9.0
+      },
+      {
+        "output": 3.5,
+        "source": 10
+      },
+      {
+        "output": 4,
+        "source": 10
+      }
+    ]
+  }
+}

@@ -256,9 +256,108 @@ public sealed class StudioLayoutEngineTests
             new StudioEdits { TrimStart = 2, TrimEnd = 4, Cuts = [new StudioTimeRange { Start = 2, End = 4 }] });
 
         Assert.Empty(map.Segments);
+        Assert.Empty(map.Pieces);
         AssertClose(0, map.OutputDuration);
         AssertClose(0, map.SourceToOutput(3));
         AssertClose(2, map.OutputToSource(0));
+        Assert.Equal(1, map.GetRate(3));
+    }
+
+    [Fact]
+    public void TimeMap_WithoutSpeed_ThePiecesAreTheKeptSegmentsAtRateOne()
+    {
+        var map = new StudioTimeMap(
+            20,
+            new StudioEdits { TrimStart = 2, TrimEnd = 18, Cuts = [new StudioTimeRange { Start = 5, End = 8 }] });
+
+        Assert.Equal([new StudioTimePiece(2, 5, 1), new StudioTimePiece(8, 18, 1)], map.Pieces);
+        Assert.Equal(3, map.Pieces[0].OutputDuration);
+        Assert.Equal(1, map.GetRate(4));
+        Assert.Equal(1, map.GetRate(6));
+    }
+
+    [Fact]
+    public void TimeMap_Speed_DividesWhatIsKept_AndChangesHowLongItTakes()
+    {
+        // Four times as fast from 4 to 12, with a cut inside it, and half as fast from 14 to 16.
+        var map = new StudioTimeMap(
+            20,
+            new StudioEdits
+            {
+                Cuts = [new StudioTimeRange { Start = 6, End = 8 }],
+                Speed =
+                [
+                    new StudioSpeedRange { Start = 14, End = 16, Rate = 0.5 },
+                    new StudioSpeedRange { Start = 4, End = 12, Rate = 4 },
+                ],
+            });
+
+        Assert.Equal([new StudioTimeSegment(0, 6), new StudioTimeSegment(8, 20)], map.Segments);
+        Assert.Equal(
+            [
+                new StudioTimePiece(0, 4, 1),
+                new StudioTimePiece(4, 6, 4),
+                new StudioTimePiece(8, 12, 4),
+                new StudioTimePiece(12, 14, 1),
+                new StudioTimePiece(14, 16, 0.5),
+                new StudioTimePiece(16, 20, 1),
+            ],
+            map.Pieces);
+
+        // 4 + 0.5 + 1 + 2 + 4 + 4.
+        AssertClose(15.5, map.OutputDuration);
+        AssertClose(4.25, map.SourceToOutput(5));
+        AssertClose(4.5, map.SourceToOutput(7));
+        AssertClose(5, map.SourceToOutput(10));
+        AssertClose(9.5, map.SourceToOutput(15));
+        AssertClose(5, map.OutputToSource(4.25));
+        AssertClose(8, map.OutputToSource(4.5));
+        AssertClose(15, map.OutputToSource(9.5));
+        AssertClose(20, map.OutputToSource(15.5));
+
+        // The rate at a time: of the piece it is in, and 1 inside a cut and outside everything.
+        Assert.Equal(1, map.GetRate(3.999));
+        Assert.Equal(4, map.GetRate(4));
+        Assert.Equal(1, map.GetRate(7));
+        Assert.Equal(4, map.GetRate(11.999));
+        Assert.Equal(1, map.GetRate(12));
+        Assert.Equal(0.5, map.GetRate(15));
+        Assert.Equal(1, map.GetRate(-1));
+        Assert.Equal(1, map.GetRate(25));
+    }
+
+    [Fact]
+    public void TimeMap_Speed_KeepsRatesWithinItsLimits_AndLeavesOutWhatIsNoRate()
+    {
+        var map = new StudioTimeMap(
+            40,
+            new StudioEdits
+            {
+                Speed =
+                [
+                    new StudioSpeedRange { Start = 2, End = 4, Rate = 100 },
+                    new StudioSpeedRange { Start = 6, End = 8, Rate = 0.01 },
+                    new StudioSpeedRange { Start = 10, End = 12, Rate = 1 },
+                    new StudioSpeedRange { Start = 14, End = 16, Rate = 0 },
+                    new StudioSpeedRange { Start = 18, End = 20, Rate = -2 },
+                    new StudioSpeedRange { Start = 22, End = 24, Rate = double.NaN },
+                    new StudioSpeedRange { Start = 26, End = 28, Rate = double.PositiveInfinity },
+                    new StudioSpeedRange { Start = 32, End = 30, Rate = 2 },
+                    new StudioSpeedRange { Start = double.NaN, End = 36, Rate = 2 },
+                ],
+            });
+
+        Assert.Equal(
+            [
+                new StudioTimePiece(0, 2, 1),
+                new StudioTimePiece(2, 4, StudioTimeMap.FastestRate),
+                new StudioTimePiece(4, 6, 1),
+                new StudioTimePiece(6, 8, StudioTimeMap.SlowestRate),
+                new StudioTimePiece(8, 40, 1),
+            ],
+            map.Pieces);
+        Assert.Equal(8, StudioTimeMap.FastestRate);
+        Assert.Equal(0.25, StudioTimeMap.SlowestRate);
     }
 
     private static StudioProject Project() =>

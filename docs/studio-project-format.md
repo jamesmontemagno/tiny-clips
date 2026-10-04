@@ -147,7 +147,7 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `trimStart` | number | 0 | |
 | `trimEnd` | number or null | null | Null means the end of the screen source |
 | `cuts` | `{ "start", "end" }[]` | `[]` | Ranges removed from the output |
-| `speed` | `{ "start", "end", "rate" }[]` | `[]` | Reserved. Evaluated in a later revision |
+| `speed` | `{ "start", "end", "rate" }[]` | `[]` | Ranges played faster or slower. `rate` is how many seconds of the recording pass in one second of video: 2 is twice as fast, 0.5 half as fast. Section 7 says which entries count |
 
 ### Audio, Overlays, Export
 
@@ -511,7 +511,7 @@ A layer that only F has stays exactly as it is in F, with `opacity` `1 - k`. A l
 
 ## 7. Time map
 
-The time map converts between source time and output time. v1 covers trim and cuts; speed is reserved.
+The time map converts between source time and output time. It covers the trim, the cuts, and speed.
 
 ```
 D     = sources.screen.duration
@@ -521,21 +521,43 @@ end   = clamp(edits.trimEnd if not null else D, start, D)
 cuts: clamp each to [start, end], drop those with end <= start,
       sort by start, merge any that overlap or touch
 kept: [start, end] minus the cuts, as ordered segments [s_i, e_i) with e_i > s_i
-c_i   = sum of (e_j - s_j) for j < i
-outputDuration = sum of all (e_i - s_i)
+
+speed: drop an entry whose rate is not a finite number above 0
+       rate = clamp(rate, 0.25, 8)
+       drop it when end <= start, or when rate is 1
+       sort by start, then by end; entries equal in both keep the order of the file
+       then in that order: an entry that starts before the end of the last entry kept
+       starts at that end instead, and is dropped when that leaves end <= start
+
+pieces: each kept segment, divided at every start and end of a speed entry that lies
+        strictly inside it. A part has the rate of the speed entry that contains its
+        start, or 1. Neighbouring parts of one segment with the same rate are one piece.
+        The pieces in order are [a_k, b_k) with rate r_k and b_k > a_k.
+
+d_k   = (b_k - a_k) / r_k                         the output time piece k takes
+c_k   = d_0 + d_1 + ... + d_(k-1), added in that order
+outputDuration = c_last + d_last, and 0 with no pieces
 
 sourceToOutput(t):
-  t <  s_0                 0
-  s_i <= t < e_i           c_i + (t - s_i)
-  e_i <= t < s_(i+1)       c_(i+1)                (inside a cut: the next kept frame)
-  t >= e_last              outputDuration
-  no kept segments         0
+  t <  a_0                 0
+  a_k <= t < b_k           c_k + (t - a_k) / r_k
+  b_k <= t < a_(k+1)       c_(k+1)                (inside a cut: the next kept frame)
+  t >= b_last              outputDuration
+  no pieces                0
 
 outputToSource(u):   u is clamped to [0, outputDuration]
-  c_i <= u < c_i + (e_i - s_i)     s_i + (u - c_i)
-  u == outputDuration              e_last
-  no kept segments                 start
+  c_k <= u < c_k + d_k     a_k + (u - c_k) * r_k
+  u == outputDuration      b_last
+  no pieces                start
 ```
+
+Without speed entries the pieces are the kept segments, each with rate 1.
+
+Speed entries are not clamped to the trim. Which of two overlapping entries counts is decided by where they are in the recording, so the rate at a source time is the same wherever the trim and the cuts are. An entry counts only where video is kept.
+
+Everything else stays in source time. A zoom, a move between scenes, and a click ring inside a faster piece therefore pass faster in the video, as the picture does.
+
+**Sound.** The video has the recording's sound only in pieces with rate 1. For the output time of a piece with another rate it is silent.
 
 ## 8. Zoom suggestions
 
@@ -660,11 +682,14 @@ Time map fixtures, in `timemap/`:
   "expected": {
     "outputDuration": 14,
     "segments": [ { "start": 2, "end": 5 }, { "start": 7, "end": 18 } ],
+    "pieces": [ { "start": 2, "end": 5, "rate": 1 }, { "start": 7, "end": 18, "rate": 1 } ],
     "sourceToOutput": [ { "source": 6, "output": 3 } ],
     "outputToSource": [ { "output": 3, "source": 7 } ]
   }
 }
 ```
+
+`segments` are the kept segments of section 7 and `pieces` its pieces. The `speed-*.json` files cover speed.
 
 Canvas fixtures, in `canvas/`:
 

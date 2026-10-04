@@ -1,0 +1,131 @@
+{
+  "description": "An entry with a rate of 1 is no range at all, so it takes nothing from an entry it overlaps.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 4,
+        "end": 8,
+        "rate": 1
+      },
+      {
+        "start": 6,
+        "end": 10,
+        "rate": 2
+      },
+      {
+        "start": 12,
+        "end": 16,
+        "rate": 0
+      },
+      {
+        "start": 14,
+        "end": 18,
+        "rate": 4
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 15.0,
+    "segments": [
+      {
+        "start": 0,
+        "end": 20
+      }
+    ],
+    "pieces": [
+      {
+        "start": 0,
+        "end": 6,
+        "rate": 1
+      },
+      {
+        "start": 6,
+        "end": 10,
+        "rate": 2
+      },
+      {
+        "start": 10,
+        "end": 14,
+        "rate": 1
+      },
+      {
+        "start": 14,
+        "end": 18,
+        "rate": 4
+      },
+      {
+        "start": 18,
+        "end": 20,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 6,
+        "output": 6.0
+      },
+      {
+        "source": 8,
+        "output": 7.0
+      },
+      {
+        "source": 10,
+        "output": 8.0
+      },
+      {
+        "source": 14,
+        "output": 12.0
+      },
+      {
+        "source": 16,
+        "output": 12.5
+      },
+      {
+        "source": 18,
+        "output": 13.0
+      },
+      {
+        "source": 20,
+        "output": 15.0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 6,
+        "source": 6
+      },
+      {
+        "output": 7,
+        "source": 8
+      },
+      {
+        "output": 8,
+        "source": 10.0
+      },
+      {
+        "output": 12,
+        "source": 14.0
+      },
+      {
+        "output": 13,
+        "source": 18.0
+      },
+      {
+        "output": 15,
+        "source": 20
+      }
+    ]
+  }
+}

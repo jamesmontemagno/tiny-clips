@@ -1,0 +1,102 @@
+{
+  "description": "A range at half speed takes twice its time, so the video is longer than the recording.",
+  "sourceDuration": 10,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 4,
+        "end": 6,
+        "rate": 0.5
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 12.0,
+    "segments": [
+      {
+        "start": 0,
+        "end": 10
+      }
+    ],
+    "pieces": [
+      {
+        "start": 0,
+        "end": 4,
+        "rate": 1
+      },
+      {
+        "start": 4,
+        "end": 6,
+        "rate": 0.5
+      },
+      {
+        "start": 6,
+        "end": 10,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 4,
+        "output": 4.0
+      },
+      {
+        "source": 4.5,
+        "output": 5.0
+      },
+      {
+        "source": 5,
+        "output": 6.0
+      },
+      {
+        "source": 6,
+        "output": 8.0
+      },
+      {
+        "source": 10,
+        "output": 12.0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 4,
+        "source": 4.0
+      },
+      {
+        "output": 5,
+        "source": 4.5
+      },
+      {
+        "output": 6,
+        "source": 5.0
+      },
+      {
+        "output": 8,
+        "source": 6.0
+      },
+      {
+        "output": 9,
+        "source": 7.0
+      },
+      {
+        "output": 12,
+        "source": 10
+      },
+      {
+        "output": 13,
+        "source": 10
+      }
+    ]
+  }
+}

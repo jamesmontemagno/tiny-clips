@@ -40,6 +40,18 @@
         "end": 14
       }
     ],
+    "pieces": [
+      {
+        "start": 4,
+        "end": 8,
+        "rate": 1
+      },
+      {
+        "start": 10,
+        "end": 14,
+        "rate": 1
+      }
+    ],
     "sourceToOutput": [
       {
         "source": 2,

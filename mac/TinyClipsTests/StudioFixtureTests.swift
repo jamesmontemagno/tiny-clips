@@ -81,6 +81,12 @@ final class StudioFixtureTests: XCTestCase {
                 XCTAssertEqual(map.segments[index].start, fixture.expected.segments[index].start, accuracy: 1e-6, "\(file.lastPathComponent) segment \(index) start")
                 XCTAssertEqual(map.segments[index].end, fixture.expected.segments[index].end, accuracy: 1e-6, "\(file.lastPathComponent) segment \(index) end")
             }
+            XCTAssertEqual(map.pieces.count, fixture.expected.pieces.count, "\(file.lastPathComponent) piece count")
+            for index in 0..<min(map.pieces.count, fixture.expected.pieces.count) {
+                XCTAssertEqual(map.pieces[index].start, fixture.expected.pieces[index].start, accuracy: 1e-6, "\(file.lastPathComponent) piece \(index) start")
+                XCTAssertEqual(map.pieces[index].end, fixture.expected.pieces[index].end, accuracy: 1e-6, "\(file.lastPathComponent) piece \(index) end")
+                XCTAssertEqual(map.pieces[index].rate, fixture.expected.pieces[index].rate, accuracy: 1e-6, "\(file.lastPathComponent) piece \(index) rate")
+            }
             for index in fixture.expected.sourceToOutput.indices {
                 let sample = fixture.expected.sourceToOutput[index]
                 XCTAssertEqual(map.sourceToOutput(sample.source), sample.output, accuracy: 1e-6, "\(file.lastPathComponent) sourceToOutput \(index)")
@@ -218,6 +224,7 @@ final class StudioFixtureTests: XCTestCase {
     private struct TimeMapExpected: Decodable {
         var outputDuration: Double
         var segments: [StudioTimeSegment]
+        var pieces: [StudioTimePiece]
         var sourceToOutput: [TimeMapSourceSample]
         var outputToSource: [TimeMapOutputSample]
     }

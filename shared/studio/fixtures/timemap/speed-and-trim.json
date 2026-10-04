@@ -1,0 +1,125 @@
+{
+  "description": "Speed entries outside the trim change nothing, and those that straddle its ends count for the part inside it.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 4,
+    "trimEnd": 16,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 0,
+        "end": 2,
+        "rate": 2
+      },
+      {
+        "start": 2,
+        "end": 6,
+        "rate": 2
+      },
+      {
+        "start": 14,
+        "end": 18,
+        "rate": 4
+      },
+      {
+        "start": 17,
+        "end": 19,
+        "rate": 2
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 9.5,
+    "segments": [
+      {
+        "start": 4,
+        "end": 16
+      }
+    ],
+    "pieces": [
+      {
+        "start": 4,
+        "end": 6,
+        "rate": 2
+      },
+      {
+        "start": 6,
+        "end": 14,
+        "rate": 1
+      },
+      {
+        "start": 14,
+        "end": 16,
+        "rate": 4
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 4,
+        "output": 0.0
+      },
+      {
+        "source": 5,
+        "output": 0.5
+      },
+      {
+        "source": 6,
+        "output": 1.0
+      },
+      {
+        "source": 14,
+        "output": 9.0
+      },
+      {
+        "source": 15,
+        "output": 9.25
+      },
+      {
+        "source": 16,
+        "output": 9.5
+      },
+      {
+        "source": 20,
+        "output": 9.5
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 4
+      },
+      {
+        "output": 0,
+        "source": 4
+      },
+      {
+        "output": 0.5,
+        "source": 5.0
+      },
+      {
+        "output": 1,
+        "source": 6.0
+      },
+      {
+        "output": 9,
+        "source": 14.0
+      },
+      {
+        "output": 9.25,
+        "source": 15.0
+      },
+      {
+        "output": 9.5,
+        "source": 16
+      },
+      {
+        "output": 10,
+        "source": 16
+      }
+    ]
+  }
+}

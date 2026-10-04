@@ -1,0 +1,124 @@
+{
+  "description": "A cut inside a speed range: what is kept on both sides of it has the rate.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 6,
+        "end": 8
+      }
+    ],
+    "speed": [
+      {
+        "start": 4,
+        "end": 12,
+        "rate": 4
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 13.5,
+    "segments": [
+      {
+        "start": 0,
+        "end": 6
+      },
+      {
+        "start": 8,
+        "end": 20
+      }
+    ],
+    "pieces": [
+      {
+        "start": 0,
+        "end": 4,
+        "rate": 1
+      },
+      {
+        "start": 4,
+        "end": 6,
+        "rate": 4
+      },
+      {
+        "start": 8,
+        "end": 12,
+        "rate": 4
+      },
+      {
+        "start": 12,
+        "end": 20,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 4,
+        "output": 4.0
+      },
+      {
+        "source": 5,
+        "output": 4.25
+      },
+      {
+        "source": 6,
+        "output": 4.5
+      },
+      {
+        "source": 7,
+        "output": 4.5
+      },
+      {
+        "source": 8,
+        "output": 4.5
+      },
+      {
+        "source": 10,
+        "output": 5.0
+      },
+      {
+        "source": 12,
+        "output": 5.5
+      },
+      {
+        "source": 20,
+        "output": 13.5
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 4,
+        "source": 4
+      },
+      {
+        "output": 4.25,
+        "source": 5.0
+      },
+      {
+        "output": 4.5,
+        "source": 8.0
+      },
+      {
+        "output": 5,
+        "source": 10.0
+      },
+      {
+        "output": 5.5,
+        "source": 12.0
+      },
+      {
+        "output": 13.5,
+        "source": 20
+      }
+    ]
+  }
+}

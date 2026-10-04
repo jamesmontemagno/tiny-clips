@@ -98,6 +98,15 @@ public sealed class StudioFixtureTests
             CompareNumber(file, i, "segments.end", segments[i].GetProperty("end").GetDouble(), map.Segments[i].End);
         }
 
+        var pieces = expected.GetProperty("pieces").EnumerateArray().ToArray();
+        Assert.True(pieces.Length == map.Pieces.Count, $"{Path.GetFileName(file)}: {map.Pieces.Count} pieces, expected {pieces.Length}");
+        for (var i = 0; i < pieces.Length; i++)
+        {
+            CompareNumber(file, i, "pieces.start", pieces[i].GetProperty("start").GetDouble(), map.Pieces[i].Start);
+            CompareNumber(file, i, "pieces.end", pieces[i].GetProperty("end").GetDouble(), map.Pieces[i].End);
+            CompareNumber(file, i, "pieces.rate", pieces[i].GetProperty("rate").GetDouble(), map.Pieces[i].Rate);
+        }
+
         foreach (var sample in expected.GetProperty("sourceToOutput").EnumerateArray().Select((value, index) => (value, index)))
         {
             CompareNumber(file, sample.index, "sourceToOutput.output", sample.value.GetProperty("output").GetDouble(), map.SourceToOutput(sample.value.GetProperty("source").GetDouble()));

@@ -1,0 +1,108 @@
+{
+  "description": "A speed range inside a cut changes nothing, and one that reaches out of a cut counts where video is kept.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 6,
+        "end": 12
+      }
+    ],
+    "speed": [
+      {
+        "start": 7,
+        "end": 9,
+        "rate": 2
+      },
+      {
+        "start": 10,
+        "end": 14,
+        "rate": 2
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 13.0,
+    "segments": [
+      {
+        "start": 0,
+        "end": 6
+      },
+      {
+        "start": 12,
+        "end": 20
+      }
+    ],
+    "pieces": [
+      {
+        "start": 0,
+        "end": 6,
+        "rate": 1
+      },
+      {
+        "start": 12,
+        "end": 14,
+        "rate": 2
+      },
+      {
+        "start": 14,
+        "end": 20,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 6,
+        "output": 6
+      },
+      {
+        "source": 8,
+        "output": 6
+      },
+      {
+        "source": 12,
+        "output": 6.0
+      },
+      {
+        "source": 13,
+        "output": 6.5
+      },
+      {
+        "source": 14,
+        "output": 7.0
+      },
+      {
+        "source": 20,
+        "output": 13.0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 6,
+        "source": 12
+      },
+      {
+        "output": 6.5,
+        "source": 13.0
+      },
+      {
+        "output": 7,
+        "source": 14.0
+      },
+      {
+        "output": 13,
+        "source": 20
+      }
+    ]
+  }
+}

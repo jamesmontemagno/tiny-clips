@@ -15,6 +15,13 @@
         "end": 18
       }
     ],
+    "pieces": [
+      {
+        "start": 2,
+        "end": 18,
+        "rate": 1
+      }
+    ],
     "sourceToOutput": [
       {
         "source": -1,

@@ -10,6 +10,7 @@
   "expected": {
     "outputDuration": 0,
     "segments": [],
+    "pieces": [],
     "sourceToOutput": [
       {
         "source": -1,

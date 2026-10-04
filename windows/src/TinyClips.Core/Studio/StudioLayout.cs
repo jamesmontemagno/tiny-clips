@@ -43,6 +43,16 @@ public readonly record struct StudioResolvedShadow(double Blur, double OffsetY, 
 
 public sealed record StudioTimeSegment(double Start, double End);
 
+/// <summary>
+/// A stretch of the recording that the video keeps and plays at one rate. <paramref name="Rate"/>
+/// is how many seconds of the recording pass in one second of video.
+/// </summary>
+public sealed record StudioTimePiece(double Start, double End, double Rate)
+{
+    /// <summary>How long the piece lasts in the video.</summary>
+    public double OutputDuration => (End - Start) / Rate;
+}
+
 public static class StudioCanvasMath
 {
     public static StudioSize NaturalSize(StudioProject project)
@@ -822,9 +832,21 @@ internal sealed class StudioPreparedCursorSamples
         return low;
     }
 }
+
+/// <summary>
+/// Converts between source time and output time: the trim, the cuts, and speed (section 7 of the
+/// project format).
+/// </summary>
 public sealed class StudioTimeMap
 {
+    /// <summary>The slowest rate a speed entry can have. A lower one counts as this.</summary>
+    public const double SlowestRate = 0.25;
+
+    /// <summary>The fastest rate a speed entry can have. A higher one counts as this.</summary>
+    public const double FastestRate = 8;
+
     private readonly StudioTimeSegment[] _segments;
+    private readonly StudioTimePiece[] _pieces;
     private readonly double[] _cumulative;
     private readonly double _start;
 
@@ -834,12 +856,13 @@ public sealed class StudioTimeMap
         _start = Clamp(edits.TrimStart, 0, sourceDuration);
         var end = Clamp(edits.TrimEnd ?? sourceDuration, _start, sourceDuration);
         _segments = BuildSegments(_start, end, edits.Cuts ?? []);
-        _cumulative = new double[_segments.Length];
+        _pieces = BuildPieces(_segments, BuildSpeed(edits.Speed ?? []));
+        _cumulative = new double[_pieces.Length];
         double current = 0;
-        for (var i = 0; i < _segments.Length; i++)
+        for (var i = 0; i < _pieces.Length; i++)
         {
             _cumulative[i] = current;
-            current += _segments[i].End - _segments[i].Start;
+            current += _pieces[i].OutputDuration;
         }
 
         OutputDuration = current;
@@ -853,29 +876,53 @@ public sealed class StudioTimeMap
 
     public double OutputDuration { get; }
 
+    /// <summary>The stretches of the recording the video keeps: the trim without the cuts.</summary>
     public IReadOnlyList<StudioTimeSegment> Segments => _segments;
+
+    /// <summary>
+    /// The kept stretches divided where the speed changes, each with its rate. Without speed
+    /// entries these are the <see cref="Segments"/>, each at rate 1.
+    /// </summary>
+    public IReadOnlyList<StudioTimePiece> Pieces => _pieces;
+
+    /// <summary>
+    /// How many seconds of the recording pass in one second of video at a source time. 1 where no
+    /// speed entry is, and where nothing is kept.
+    /// </summary>
+    public double GetRate(double sourceTime)
+    {
+        foreach (var piece in _pieces)
+        {
+            if (sourceTime >= piece.Start && sourceTime < piece.End)
+            {
+                return piece.Rate;
+            }
+        }
+
+        return 1;
+    }
 
     public double SourceToOutput(double sourceTime)
     {
-        if (_segments.Length == 0)
+        if (_pieces.Length == 0)
         {
             return 0;
         }
 
-        if (sourceTime < _segments[0].Start)
+        if (sourceTime < _pieces[0].Start)
         {
             return 0;
         }
 
-        for (var i = 0; i < _segments.Length; i++)
+        for (var i = 0; i < _pieces.Length; i++)
         {
-            var segment = _segments[i];
-            if (sourceTime >= segment.Start && sourceTime < segment.End)
+            var piece = _pieces[i];
+            if (sourceTime >= piece.Start && sourceTime < piece.End)
             {
-                return _cumulative[i] + (sourceTime - segment.Start);
+                return _cumulative[i] + ((sourceTime - piece.Start) / piece.Rate);
             }
 
-            if (i < _segments.Length - 1 && sourceTime >= segment.End && sourceTime < _segments[i + 1].Start)
+            if (i < _pieces.Length - 1 && sourceTime >= piece.End && sourceTime < _pieces[i + 1].Start)
             {
                 return _cumulative[i + 1];
             }
@@ -886,22 +933,22 @@ public sealed class StudioTimeMap
 
     public double OutputToSource(double outputTime)
     {
-        if (_segments.Length == 0)
+        if (_pieces.Length == 0)
         {
             return _start;
         }
 
         var clampedOutput = Clamp(outputTime, 0, OutputDuration);
-        for (var i = 0; i < _segments.Length; i++)
+        for (var i = 0; i < _pieces.Length; i++)
         {
-            var segmentLength = _segments[i].End - _segments[i].Start;
-            if (clampedOutput >= _cumulative[i] && clampedOutput < _cumulative[i] + segmentLength)
+            var piece = _pieces[i];
+            if (clampedOutput >= _cumulative[i] && clampedOutput < _cumulative[i] + piece.OutputDuration)
             {
-                return _segments[i].Start + (clampedOutput - _cumulative[i]);
+                return piece.Start + ((clampedOutput - _cumulative[i]) * piece.Rate);
             }
         }
 
-        return _segments[^1].End;
+        return _pieces[^1].End;
     }
 
     private static StudioTimeSegment[] BuildSegments(double start, double end, IReadOnlyList<StudioTimeRange> cuts)
@@ -945,6 +992,94 @@ public sealed class StudioTimeMap
         }
 
         return segments.ToArray();
+    }
+
+    /// <summary>
+    /// The speed entries that count, in time order and clear of each other. The trim and the cuts
+    /// play no part here, so the rate at a source time is the same wherever they are.
+    /// </summary>
+    private static List<StudioTimePiece> BuildSpeed(IReadOnlyList<StudioSpeedRange> speed)
+    {
+        // The place in the file decides between entries with the same start and end.
+        var entries = speed
+            .Where(static entry => entry is not null && double.IsFinite(entry.Rate) && entry.Rate > 0)
+            .Select((entry, index) => (Piece: new StudioTimePiece(entry.Start, entry.End, Clamp(entry.Rate, SlowestRate, FastestRate)), Index: index))
+            .Where(static entry => entry.Piece.End > entry.Piece.Start && entry.Piece.Rate != 1)
+            .OrderBy(static entry => entry.Piece.Start)
+            .ThenBy(static entry => entry.Piece.End)
+            .ThenBy(static entry => entry.Index)
+            .Select(static entry => entry.Piece);
+
+        var result = new List<StudioTimePiece>();
+        foreach (var entry in entries)
+        {
+            var entryStart = result.Count > 0 && entry.Start < result[^1].End ? result[^1].End : entry.Start;
+            if (entry.End > entryStart)
+            {
+                result.Add(entry with { Start = entryStart });
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>The kept segments divided where the rate changes inside them.</summary>
+    private static StudioTimePiece[] BuildPieces(StudioTimeSegment[] segments, List<StudioTimePiece> speed)
+    {
+        var pieces = new List<StudioTimePiece>(segments.Length);
+        var points = new List<double>();
+        foreach (var segment in segments)
+        {
+            points.Clear();
+            points.Add(segment.Start);
+            foreach (var entry in speed)
+            {
+                if (entry.Start > segment.Start && entry.Start < segment.End)
+                {
+                    points.Add(entry.Start);
+                }
+
+                if (entry.End > segment.Start && entry.End < segment.End)
+                {
+                    points.Add(entry.End);
+                }
+            }
+
+            points.Add(segment.End);
+            points.Sort();
+
+            var first = pieces.Count;
+            for (var i = 0; i < points.Count - 1; i++)
+            {
+                var partStart = points[i];
+                var partEnd = points[i + 1];
+                if (!(partEnd > partStart))
+                {
+                    continue;
+                }
+
+                var rate = 1.0;
+                foreach (var entry in speed)
+                {
+                    if (partStart >= entry.Start && partStart < entry.End)
+                    {
+                        rate = entry.Rate;
+                        break;
+                    }
+                }
+
+                if (pieces.Count > first && pieces[^1].Rate == rate)
+                {
+                    pieces[^1] = pieces[^1] with { End = partEnd };
+                }
+                else
+                {
+                    pieces.Add(new StudioTimePiece(partStart, partEnd, rate));
+                }
+            }
+        }
+
+        return pieces.ToArray();
     }
 
     private static double Clamp(double value, double min, double max) =>

@@ -139,9 +139,102 @@ final class StudioLayoutTests: XCTestCase {
         )
 
         XCTAssertTrue(map.segments.isEmpty)
+        XCTAssertTrue(map.pieces.isEmpty)
         XCTAssertEqual(map.outputDuration, 0)
         XCTAssertEqual(map.sourceToOutput(5), 0)
         XCTAssertEqual(map.outputToSource(1), 2)
+        XCTAssertEqual(map.rate(at: 5), 1)
+    }
+
+    func testTimeMapWithoutSpeedThePiecesAreTheKeptSegmentsAtRateOne() {
+        let map = StudioTimeMap(
+            sourceDuration: 20,
+            edits: StudioEdits(trimStart: 2, trimEnd: 18, cuts: [StudioTimeRange(start: 5, end: 8)])
+        )
+
+        XCTAssertEqual(map.pieces, [
+            StudioTimePiece(start: 2, end: 5, rate: 1),
+            StudioTimePiece(start: 8, end: 18, rate: 1)
+        ])
+        XCTAssertEqual(map.pieces[0].outputDuration, 3)
+        XCTAssertEqual(map.rate(at: 4), 1)
+        XCTAssertEqual(map.rate(at: 6), 1)
+    }
+
+    func testTimeMapSpeedDividesWhatIsKeptAndChangesHowLongItTakes() {
+        // Four times as fast from 4 to 12, with a cut inside it, and half as fast from 14 to 16.
+        let map = StudioTimeMap(
+            sourceDuration: 20,
+            edits: StudioEdits(
+                cuts: [StudioTimeRange(start: 6, end: 8)],
+                speed: [
+                    StudioSpeedRange(start: 14, end: 16, rate: 0.5),
+                    StudioSpeedRange(start: 4, end: 12, rate: 4)
+                ]
+            )
+        )
+
+        XCTAssertEqual(map.segments, [
+            StudioTimeSegment(start: 0, end: 6),
+            StudioTimeSegment(start: 8, end: 20)
+        ])
+        XCTAssertEqual(map.pieces, [
+            StudioTimePiece(start: 0, end: 4, rate: 1),
+            StudioTimePiece(start: 4, end: 6, rate: 4),
+            StudioTimePiece(start: 8, end: 12, rate: 4),
+            StudioTimePiece(start: 12, end: 14, rate: 1),
+            StudioTimePiece(start: 14, end: 16, rate: 0.5),
+            StudioTimePiece(start: 16, end: 20, rate: 1)
+        ])
+
+        // 4 + 0.5 + 1 + 2 + 4 + 4.
+        XCTAssertEqual(map.outputDuration, 15.5, accuracy: 1e-6)
+        XCTAssertEqual(map.sourceToOutput(5), 4.25, accuracy: 1e-6)
+        XCTAssertEqual(map.sourceToOutput(7), 4.5, accuracy: 1e-6)
+        XCTAssertEqual(map.sourceToOutput(10), 5, accuracy: 1e-6)
+        XCTAssertEqual(map.sourceToOutput(15), 9.5, accuracy: 1e-6)
+        XCTAssertEqual(map.outputToSource(4.25), 5, accuracy: 1e-6)
+        XCTAssertEqual(map.outputToSource(4.5), 8, accuracy: 1e-6)
+        XCTAssertEqual(map.outputToSource(9.5), 15, accuracy: 1e-6)
+        XCTAssertEqual(map.outputToSource(15.5), 20, accuracy: 1e-6)
+
+        // The rate at a time: of the piece it is in, and 1 inside a cut and outside everything.
+        XCTAssertEqual(map.rate(at: 3.999), 1)
+        XCTAssertEqual(map.rate(at: 4), 4)
+        XCTAssertEqual(map.rate(at: 7), 1)
+        XCTAssertEqual(map.rate(at: 11.999), 4)
+        XCTAssertEqual(map.rate(at: 12), 1)
+        XCTAssertEqual(map.rate(at: 15), 0.5)
+        XCTAssertEqual(map.rate(at: -1), 1)
+        XCTAssertEqual(map.rate(at: 25), 1)
+    }
+
+    func testTimeMapSpeedKeepsRatesWithinItsLimitsAndLeavesOutWhatIsNoRate() {
+        let map = StudioTimeMap(
+            sourceDuration: 40,
+            edits: StudioEdits(
+                speed: [
+                    StudioSpeedRange(start: 2, end: 4, rate: 100),
+                    StudioSpeedRange(start: 6, end: 8, rate: 0.01),
+                    StudioSpeedRange(start: 10, end: 12, rate: 1),
+                    StudioSpeedRange(start: 14, end: 16, rate: 0),
+                    StudioSpeedRange(start: 18, end: 20, rate: -2),
+                    StudioSpeedRange(start: 22, end: 24, rate: .nan),
+                    StudioSpeedRange(start: 26, end: 28, rate: .infinity),
+                    StudioSpeedRange(start: 32, end: 30, rate: 2)
+                ]
+            )
+        )
+
+        XCTAssertEqual(map.pieces, [
+            StudioTimePiece(start: 0, end: 2, rate: 1),
+            StudioTimePiece(start: 2, end: 4, rate: StudioTimeMap.fastestRate),
+            StudioTimePiece(start: 4, end: 6, rate: 1),
+            StudioTimePiece(start: 6, end: 8, rate: StudioTimeMap.slowestRate),
+            StudioTimePiece(start: 8, end: 40, rate: 1)
+        ])
+        XCTAssertEqual(StudioTimeMap.fastestRate, 8)
+        XCTAssertEqual(StudioTimeMap.slowestRate, 0.25)
     }
 
     // MARK: - Zooms and Cursor Samples

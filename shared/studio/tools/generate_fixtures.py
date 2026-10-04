@@ -2,7 +2,8 @@
 """Generate Tiny Clips Studio shared golden fixtures.
 
 This is a stdlib-only reference implementation of docs/studio-project-format.md
-sections 5 to 8, including scene transitions (section 6.9). It intentionally does not import platform code.
+sections 5 to 8, including scene transitions (section 6.9) and speed in the time map (section 7).
+It intentionally does not import platform code.
 """
 
 from __future__ import annotations
@@ -44,6 +45,10 @@ SUGGEST_JOIN = 4
 SUGGEST_INSET = 0.15
 SUGGEST_SHORTEST = 0.3
 SUGGEST_EASE = 0.5
+
+# Section 7: speed.
+SPEED_SLOWEST = 0.25
+SPEED_FASTEST = 8
 
 
 class BoundaryLog:
@@ -898,16 +903,84 @@ def time_map(duration, edits):
         cursor = max(cursor, e)
     if cursor < end:
         kept.append([cursor, end])
-    output_duration = sum(e - s for s, e in kept)
-    return start, [{"start": s, "end": e} for s, e in kept], output_duration
+    pieces = time_pieces(kept, normalize_speed(edits))
+    output_duration = 0
+    for piece in pieces:
+        output_duration = output_duration + at_rate(piece["end"] - piece["start"], piece["rate"])
+    return start, [{"start": s, "end": e} for s, e in kept], pieces, output_duration
 
 
-def source_to_output(t, segments, output_duration):
-    if not segments:
+def at_rate(source_seconds, rate):
+    """How long a stretch of the source lasts in the output. Dividing by 1 changes no number, and
+    is left out so that a whole number stays written as one."""
+    return source_seconds if rate == 1 else source_seconds / rate
+
+
+def from_rate(output_seconds, rate):
+    """How much of the source a stretch of output covers."""
+    return output_seconds if rate == 1 else output_seconds * rate
+
+
+def normalize_speed(edits):
+    """The speed entries that count, in order and clear of each other, as [start, end, rate].
+
+    The trim and the cuts play no part here, so the rate at a source time is the same wherever they are.
+    """
+    entries = []
+    for entry in edits.get("speed", []):
+        rate = entry.get("rate", 1)
+        if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
+            continue
+        if rate < SPEED_SLOWEST or rate > SPEED_FASTEST:
+            BOUNDARIES.exact.add("time map: a rate outside 0.25 to 8 is clamped")
+        rate = clamp(rate, SPEED_SLOWEST, SPEED_FASTEST)
+        s = entry.get("start", 0)
+        e = entry.get("end", 0)
+        if e > s and rate != 1:
+            entries.append([s, e, rate])
+    # sorted() is stable, so the file's order decides between entries with the same start and end.
+    entries = sorted(entries, key=lambda item: (item[0], item[1]))
+    result = []
+    for s, e, rate in entries:
+        if result and s < result[-1][1]:
+            BOUNDARIES.exact.add("time map: a speed entry that overlaps the one before starts where that ends")
+            s = result[-1][1]
+        if e > s:
+            result.append([s, e, rate])
+    return result
+
+
+def time_pieces(kept, speed):
+    """The kept segments divided where the rate changes inside them."""
+    pieces = []
+    for s, e in kept:
+        points = {s, e}
+        for a, b, _ in speed:
+            for point in (a, b):
+                if s < point < e:
+                    points.add(point)
+        points = sorted(points)
+        first = len(pieces)
+        for a, b in zip(points, points[1:]):
+            rate = 1
+            for x, y, r in speed:
+                if x <= a < y:
+                    rate = r
+                    break
+            if len(pieces) > first and pieces[-1]["rate"] == rate:
+                BOUNDARIES.exact.add("time map: neighbouring parts with the same rate are one piece")
+                pieces[-1]["end"] = b
+            else:
+                pieces.append({"start": a, "end": b, "rate": rate})
+    return pieces
+
+
+def source_to_output(t, pieces, output_duration):
+    if not pieces:
         return 0
     cumulative = 0
-    for i, segment in enumerate(segments):
-        s, e = segment["start"], segment["end"]
+    for i, piece in enumerate(pieces):
+        s, e, rate = piece["start"], piece["end"], piece["rate"]
         if t == s:
             BOUNDARIES.exact.add("time map: source query at segment start")
         if t == e:
@@ -915,29 +988,29 @@ def source_to_output(t, segments, output_duration):
         if t < s:
             return cumulative
         if s <= t < e:
-            return cumulative + (t - s)
-        cumulative += e - s
-        if i + 1 < len(segments) and e <= t < segments[i + 1]["start"]:
+            return cumulative + at_rate(t - s, rate)
+        cumulative = cumulative + at_rate(e - s, rate)
+        if i + 1 < len(pieces) and e <= t < pieces[i + 1]["start"]:
             return cumulative
     return output_duration
 
 
-def output_to_source(u, start, segments, output_duration):
-    if not segments:
+def output_to_source(u, start, pieces, output_duration):
+    if not pieces:
         return start
     u = clamp(u, 0, output_duration)
     if u == output_duration:
         BOUNDARIES.exact.add("time map: output query at outputDuration")
     cumulative = 0
-    for segment in segments:
-        s, e = segment["start"], segment["end"]
-        length = e - s
+    for piece in pieces:
+        s, e, rate = piece["start"], piece["end"], piece["rate"]
+        length = at_rate(e - s, rate)
         if u == cumulative:
             BOUNDARIES.exact.add("time map: output query at segment start")
         if cumulative <= u < cumulative + length:
-            return s + (u - cumulative)
-        cumulative += length
-    return segments[-1]["end"]
+            return s + from_rate(u - cumulative, rate)
+        cumulative = cumulative + length
+    return pieces[-1]["end"]
 
 
 def layout_fixture(description, p, cases, events=None):
@@ -991,7 +1064,7 @@ def add_fixture(fixtures, filename, fixture, *, folder="layout", null=None, omit
 
 
 def timemap_fixture(description, duration, edits, source_queries, output_queries):
-    start, segments, output_duration = time_map(duration, edits)
+    start, segments, pieces, output_duration = time_map(duration, edits)
     return {
         "description": description,
         "sourceDuration": duration,
@@ -999,11 +1072,12 @@ def timemap_fixture(description, duration, edits, source_queries, output_queries
         "expected": {
             "outputDuration": output_duration,
             "segments": segments,
+            "pieces": pieces,
             "sourceToOutput": [
-                {"source": t, "output": source_to_output(t, segments, output_duration)} for t in source_queries
+                {"source": t, "output": source_to_output(t, pieces, output_duration)} for t in source_queries
             ],
             "outputToSource": [
-                {"output": u, "source": output_to_source(u, start, segments, output_duration)}
+                {"output": u, "source": output_to_source(u, start, pieces, output_duration)}
                 for u in output_queries
             ],
         },
@@ -2320,7 +2394,25 @@ def generate_timemaps():
         "trim-start-beyond-duration.json": timemap_fixture("trimStart beyond duration clamps to duration and produces no kept segments.", 10, {"trimStart": 15, "trimEnd": None, "cuts": [], "speed": []}, [-1, 0, 10, 15], [-1, 0, 1]),
         "trim-end-before-start.json": timemap_fixture("trimEnd before trimStart clamps up to start and produces no kept segments.", 20, {"trimStart": 12, "trimEnd": 5, "cuts": [], "speed": []}, [0, 12, 20], [-1, 0, 5]),
         "everything-cut.json": timemap_fixture("Cuts remove the entire trimmed range.", 20, {"trimStart": 2, "trimEnd": 18, "cuts": [{"start": 0, "end": 20}], "speed": []}, [-1, 2, 10, 18, 21], [-1, 0, 1]),
+        "speed-one-range.json": timemap_fixture("One range at twice the speed in the middle of the trim takes half its time.", 20, {"trimStart": 2, "trimEnd": 18, "cuts": [], "speed": [speed(6, 10, 2)]}, [0, 2, 6, 8, 10, 14, 18, 20], [-1, 0, 4, 5, 5.5, 6, 10, 14, 15]),
+        "speed-slow.json": timemap_fixture("A range at half speed takes twice its time, so the video is longer than the recording.", 10, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": [speed(4, 6, 0.5)]}, [0, 4, 4.5, 5, 6, 10], [0, 4, 5, 6, 8, 9, 12, 13]),
+        "speed-three-halves.json": timemap_fixture("A rate that is not a power of two.", 12, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": [speed(3, 9, 1.5)]}, [0, 3, 4.5, 6, 9, 12], [0, 3, 4, 5, 7, 10]),
+        "speed-with-cut-inside.json": timemap_fixture("A cut inside a speed range: what is kept on both sides of it has the rate.", 20, {"trimStart": 0, "trimEnd": None, "cuts": [{"start": 6, "end": 8}], "speed": [speed(4, 12, 4)]}, [0, 4, 5, 6, 7, 8, 10, 12, 20], [0, 4, 4.25, 4.5, 5, 5.5, 13.5]),
+        "speed-inside-a-cut.json": timemap_fixture("A speed range inside a cut changes nothing, and one that reaches out of a cut counts where video is kept.", 20, {"trimStart": 0, "trimEnd": None, "cuts": [{"start": 6, "end": 12}], "speed": [speed(7, 9, 2), speed(10, 14, 2)]}, [0, 6, 8, 12, 13, 14, 20], [0, 6, 6.5, 7, 13]),
+        "speed-unsorted-overlapping.json": timemap_fixture("Speed entries out of order that overlap: the later one starts where the one before it ends, and one that lies inside another is dropped.", 20, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": [speed(8, 12, 2), speed(4, 9, 4), speed(5, 7, 8)]}, [0, 4, 6, 8, 9, 10, 12, 20], [0, 4, 4.5, 5.25, 6, 6.75, 14.75]),
+        "speed-touching.json": timemap_fixture("Speed ranges that touch: two with the same rate are one piece, and one with another rate is its own.", 20, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": [speed(4, 6, 2), speed(6, 8, 2), speed(8, 10, 4)]}, [0, 4, 6, 7, 8, 9, 10, 20], [0, 4, 5, 6, 6.25, 6.5, 16.5]),
+        "speed-same-range-twice.json": timemap_fixture("Two entries for the same stretch: the first in the file counts.", 20, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": [speed(4, 8, 4), speed(4, 8, 2)]}, [0, 4, 6, 8, 20], [0, 4, 4.5, 5, 17]),
+        "speed-rates.json": timemap_fixture("A rate above 8 counts as 8 and one below 0.25 as 0.25. A rate of 1, of 0, below 0, or left out makes no range.", 40, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": [speed(2, 4, 16), speed(6, 8, 0.125), speed(10, 12, 1), speed(14, 16, 0), speed(18, 20, -2), {"start": 22, "end": 24}]}, [0, 2, 3, 4, 6, 7, 8, 11, 15, 19, 23, 40], [0, 2, 2.125, 2.25, 4.25, 8.25, 12.25, 44.25]),
+        "speed-rate-one-overlaps.json": timemap_fixture("An entry with a rate of 1 is no range at all, so it takes nothing from an entry it overlaps.", 20, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": [speed(4, 8, 1), speed(6, 10, 2), speed(12, 16, 0), speed(14, 18, 4)]}, [0, 6, 8, 10, 14, 16, 18, 20], [0, 6, 7, 8, 12, 13, 15]),
+        "speed-and-trim.json": timemap_fixture("Speed entries outside the trim change nothing, and those that straddle its ends count for the part inside it.", 20, {"trimStart": 4, "trimEnd": 16, "cuts": [], "speed": [speed(0, 2, 2), speed(2, 6, 2), speed(14, 18, 4), speed(17, 19, 2)]}, [0, 4, 5, 6, 14, 15, 16, 20], [-1, 0, 0.5, 1, 9, 9.25, 9.5, 10]),
+        "speed-overlapping-before-the-trim.json": timemap_fixture("Which of two overlapping speed entries counts does not depend on the trim. Both start before it: the one that starts first in the recording counts, not the one that ends first inside the trim.", 20, {"trimStart": 2, "trimEnd": 10, "cuts": [], "speed": [speed(1, 5, 2), speed(0, 8, 4)]}, [0, 2, 3, 5, 6, 8, 9, 10, 20], [-1, 0, 0.5, 1, 1.5, 2.5, 3.5, 4]),
+        "speed-overlapping-past-the-trim.json": timemap_fixture("Which of two overlapping speed entries counts does not depend on the trim. Both start together and end after it: the one that ends first in the recording counts, not the first in the file.", 20, {"trimStart": 0, "trimEnd": 10, "cuts": [], "speed": [speed(4, 14, 4), speed(4, 12, 2)]}, [0, 4, 6, 8, 10, 12, 20], [-1, 0, 4, 5, 6, 7, 8]),
+        "speed-everything.json": timemap_fixture("The whole recording at eight times the speed.", 16, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": [speed(0, 16, 8)]}, [-1, 0, 4, 8, 16, 17], [-1, 0, 0.5, 1, 2, 3]),
     }
+
+
+def speed(start, end, rate):
+    return {"start": start, "end": end, "rate": rate}
 
 
 def generate_canvases():
