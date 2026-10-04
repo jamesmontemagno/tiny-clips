@@ -208,6 +208,17 @@ Nothing on macOS has been run on a Mac. This work was done on Windows, where the
 
 On Windows the pieces under the window have each been run by a check tool on one PC (AMD graphics, Windows 11): the renderer, exporter and camera recorder by `StudioRenderCheck`, and the preview engine with its panel by `StudioPreviewCheck`. Both read their results back from pixels. The editor's behavior is in Core and unit tested. The window itself was run only while it was being built, with stand-ins for the preview and the exporter. The finished window has not been run, because the PC this was built on was in use and the app could not be installed or started there. Not yet seen on Windows at all: a real recording arriving in the editor, the preview's sound, dragging the camera bubble and the trim bar with a pointer, the dark and high-contrast themes, and Narrator. Until someone has gone through those, Studio stays off on Windows.
 
+| Milestone 2 piece | macOS | Windows |
+|---|---|---|
+| Spec and fixtures for zooms and zoom suggestions (sections 6.8 and 8 of the format) | Done. 13 layout fixtures and 10 suggestion fixtures | The same files |
+| Zooms in the layout, with a zoom that follows the pointer | Done. Passes the fixtures | Done. Passes the fixtures |
+| Zoom suggestions from clicks | Done. Passes the fixtures | Done. Passes the fixtures |
+| Zooms in the preview and the export | The compositor passes the events to the layout. Compiled only | The renderer and the exporter pass the events to the layout. No check tool draws a zoom yet |
+| Editing operations for zooms and crops, with undo | Done in the editor model. Unit tested | Done in the editor model and session. Unit tested |
+| Zoom lane, crop handles, inspector controls | Not started | Not started |
+
+A project file with zooms in it is drawn with them on both platforms, but nothing in either app can make or change a zoom or a crop yet.
+
 ### Hidden switch
 
 Studio is off by default on both platforms until it has been verified there.
@@ -235,6 +246,11 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **Windows without graphics hardware.** Exports on the software adapter sample linearly, which measured 43 to 58 frames per second against 16 to 21 for the high-quality sampler.
 - **Windows keys and closing.** Esc stops a running export and does nothing otherwise, because the Windows trimmer does not close on Esc either. Closing a project that was never exported asks Export, Keep as draft, or Cancel; Delete is a separate button in the dialog and never the default.
 - **Background swatches** are each platform's own screenshot editor presets. The Windows list has `slate`, which the Mac's does not. A project stores a preset's colors with its id and is drawn from the colors.
+- **What a zoom is.** A zoom changes which part of the screen its card shows. The card, the camera, and the canvas stay where they are, so a zoom never changes the size of the exported video. Zooms do not overlap; one that starts on the number another ends on is chained to it, and the picture moves from the first place to the second without opening out in between.
+- **Following the pointer** means looking at the pointer's mean position over the second around each frame. That is a pure function of the time, so the preview and the export agree, and a seek shows the same picture as playing to that time.
+- **Suggestions are a proposal.** They are worked out from clicks alone (2× on each click, held while the clicks stay in the middle of the window, moving on when one lands elsewhere) and marked as suggested. Asking again replaces the suggested zooms and leaves alone every zoom the user made or changed. A suggestion that would overlap one of the user's zooms is not made.
+- **Editing rules for zooms**, the same on both platforms and unit tested on each: a new zoom lasts 3 seconds or until the next zoom or the end of the recording, and looks at where the pointer is; a zoom is never shorter than 0.3 seconds and never overlaps a neighbour; an end dragged against a neighbour takes exactly the neighbour's number; changing a suggested zoom makes it the user's own, and an edit that changes nothing does not.
+- **Crops.** The editor only stores valid crops. A rectangle that is not one is made valid by its size first and its position second, so a rectangle dragged past an edge stops there with its size. A saved look still never carries a crop.
 - **macOS preview.** The preview always plays the whole recording. Trim and mute are applied by the transport and by export, so changing them does not rebuild the player. Only a change of canvas shape does.
 - **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
 - **Editor windows get a Dock icon.** While a Studio window is open on macOS, Tiny Clips shows its Dock icon and menu bar, as it does for the screenshot editor.
