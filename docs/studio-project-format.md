@@ -185,7 +185,7 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 - `clicks[].button` is `left`, `right`, `middle`, or `other`.
 - `cursor` holds at most 60 samples per second, sorted by `t`, with consecutive duplicates removed. Samples are steps (section 6.7).
 - `cameraCorners` uses the bubble anchor names.
-- `markers` is reserved for live layout switches.
+- `markers` holds changes of layout made while recording, as `{ "t": 12.3, "layout": "sideBySide" }` with the layout names of a scene. An entry of any other shape is ignored. Section 9.1 says what they become. No recorder writes them yet.
 - Section 2 applies here too: unknown properties survive, missing or `null` properties take their default (`scale` 1, `kind` `display`, empty lists), and a `schemaVersion` above 1 is refused.
 - A project with no `events.json` file has no events. Reading it gives the defaults rather than an error.
 
@@ -619,6 +619,22 @@ A window recording carries no clicks today, so it gets no suggestions.
 
 The classic look, matching a recording made without Studio, is background `none`, padding 0, screen `cornerRadius` 0, and screen `shadow` 0.
 
+### 9.1 Scenes from the recording
+
+With a camera, what was changed while recording becomes scenes, so that a new project shows what the recording showed. Without a camera there is the one `screen` scene.
+
+The changes are the entries of `events.cameraCorners`, each of which moves the bubble to a corner, and of `events.markers`, each of which changes the layout. They are taken in the order of their `t`. At the same `t` a corner comes before a marker, and two of the same kind keep the order of their list. An entry whose `t` is not a number is left out.
+
+Starting with the one scene at 0, each change is made to a copy of the last scene. A corner other than the one the bubble is in sets `bubble.anchor` and sets both bubble offsets to 0, because the offsets are from the corner the bubble was in. A marker sets `layout`. Then the first of these that applies decides what happens:
+
+1. The copy has the same layout as the last scene and its bubble in the same place (anchor and offsets): nothing happens.
+2. The change is a corner and the layout of the last scene is not `bubble`, so no bubble is showing: the last scene becomes the copy, keeping its own start and transition. The corner then counts from when a bubble shows again.
+3. `t` is less than 0.3 s after the start of the last scene: the last scene becomes the copy, keeping its own start and transition. If it then has the same layout as the scene before it and its bubble in the same place, it is removed.
+4. `t` is later than 0.3 s before the end of the recording: nothing happens, because the scene would not last 0.3 s.
+5. The copy becomes a new scene that starts at `t` and is entered by moving: its `transition` is `morph` with `duration` 0.35.
+
+0.3 s is the shortest scene the editor makes, and a `morph` of 0.35 s is how the editor enters a scene it has split off. The scenes can be changed or deleted in the editor like any others.
+
 ## 10. Flat projects
 
 Opening an existing video that has no project creates a flat project: `sources.screen.external` is true, `screen.file` is the absolute path, and `camera` and `events` are null. The caller reads the video's width, height, duration, and frame rate and passes them in; the store does not open media files. There is at most one flat project per video path. Camera layouts are unavailable, so every scene resolves as `screen`.
@@ -708,6 +724,21 @@ Canvas fixtures, in `canvas/`:
 ```
 
 Each case is the export size of section 5 for a natural canvas size and a long-side limit.
+
+Recording fixtures, in `recording/`:
+
+```json
+{
+  "description": "what this case covers",
+  "duration": 20,
+  "first": { },
+  "cameraCorners": [ { "t": 0, "corner": "bottomRight" }, { "t": 5, "corner": "topLeft" } ],
+  "markers": [ { "t": 9, "layout": "camera" } ],
+  "expected": [ { }, { }, { } ]
+}
+```
+
+`first` is the scene a new project starts with, `duration` the length of the recording, and `expected` the scenes of section 9.1 for those corners and markers. Every scene is written out in full.
 
 Tests compare every number with an absolute tolerance of 1e-6. Strings, booleans, and whether `screen` or `camera` is null are compared exactly.
 

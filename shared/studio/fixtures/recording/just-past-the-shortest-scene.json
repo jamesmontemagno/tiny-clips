@@ -1,0 +1,93 @@
+{
+  "description": "A change a little more than 0.3 s after the last scene started gets a scene of its own.",
+  "duration": 20,
+  "first": {
+    "start": 0,
+    "layout": "bubble",
+    "bubble": {
+      "anchor": "bottomRight",
+      "size": 0.24,
+      "offsetX": 0,
+      "offsetY": 0
+    },
+    "split": {
+      "cameraSide": "trailing",
+      "cameraFraction": 0.3
+    },
+    "transition": {
+      "kind": "cut",
+      "duration": 0.35
+    }
+  },
+  "cameraCorners": [
+    {
+      "t": 0,
+      "corner": "bottomRight"
+    },
+    {
+      "t": 5,
+      "corner": "topLeft"
+    },
+    {
+      "t": 5.35,
+      "corner": "topRight"
+    }
+  ],
+  "markers": [],
+  "expected": [
+    {
+      "start": 0,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "bottomRight",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "cut",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 5,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "topLeft",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 5.35,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "topRight",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    }
+  ]
+}

@@ -2,7 +2,8 @@
 """Generate Tiny Clips Studio shared golden fixtures.
 
 This is a stdlib-only reference implementation of docs/studio-project-format.md
-sections 5 to 8, including scene transitions (section 6.9) and speed in the time map (section 7).
+sections 5 to 8, including scene transitions (section 6.9) and speed in the time map (section 7),
+and of the scenes a new project gets from its recording (section 9.1).
 It intentionally does not import platform code.
 """
 
@@ -23,7 +24,8 @@ CANVAS_DIR = FIXTURES / "canvas"
 LAYOUT_DIR = FIXTURES / "layout"
 TIMEMAP_DIR = FIXTURES / "timemap"
 AUTOZOOM_DIR = FIXTURES / "autozoom"
-FIXTURE_DIRS = [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR, AUTOZOOM_DIR]
+RECORDING_DIR = FIXTURES / "recording"
+FIXTURE_DIRS = [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR, AUTOZOOM_DIR, RECORDING_DIR]
 STAMP = "2026-10-02T22:41:00Z"
 EPS = 1e-9
 CLAIMS = {}
@@ -49,6 +51,10 @@ SUGGEST_EASE = 0.5
 # Section 7: speed.
 SPEED_SLOWEST = 0.25
 SPEED_FASTEST = 8
+
+# Section 9.1: scenes from the recording.
+RECORDED_SCENE_SHORTEST = 0.3
+RECORDED_MOVE = {"kind": "morph", "duration": 0.35}
 
 
 class BoundaryLog:
@@ -1011,6 +1017,77 @@ def output_to_source(u, start, pieces, output_duration):
             return s + from_rate(u - cumulative, rate)
         cumulative = cumulative + length
     return pieces[-1]["end"]
+
+
+def same_picture(a, b):
+    """The same layout, and the bubble in the same place. Nothing else is changed by a recording."""
+    return (
+        a["layout"] == b["layout"]
+        and a["bubble"]["anchor"] == b["bubble"]["anchor"]
+        and a["bubble"]["offsetX"] == b["bubble"]["offsetX"]
+        and a["bubble"]["offsetY"] == b["bubble"]["offsetY"]
+    )
+
+
+def scenes_from_recording(first, corners, markers, duration):
+    """Section 9.1: the scenes a new project gets from what was changed while recording."""
+    changes = []
+    for index, entry in enumerate(corners):
+        if math.isfinite(entry["t"]):
+            changes.append((entry["t"], 0, index, "corner", entry["corner"]))
+    for index, entry in enumerate(markers):
+        if math.isfinite(entry["t"]):
+            changes.append((entry["t"], 1, index, "layout", entry["layout"]))
+    changes.sort(key=lambda change: change[:3])
+
+    start = normalize_scene(first)
+    start["start"] = 0
+    scenes = [start]
+    for t, _, _, kind, value in changes:
+        last = scenes[-1]
+        changed = copy.deepcopy(last)
+        if kind == "layout":
+            changed["layout"] = value
+        elif last["bubble"]["anchor"] != value:
+            # The offsets are from the corner the bubble was in, so they do not go with it.
+            changed["bubble"]["anchor"] = value
+            changed["bubble"]["offsetX"] = 0
+            changed["bubble"]["offsetY"] = 0
+        if same_picture(changed, last):
+            continue
+        if kind == "corner" and last["layout"] != "bubble":
+            scenes[-1] = changed
+            continue
+        if lt(t, last["start"] + RECORDED_SCENE_SHORTEST, "recorded change soon after the last scene started"):
+            scenes[-1] = changed
+            if len(scenes) > 1 and same_picture(scenes[-1], scenes[-2]):
+                scenes.pop()
+            continue
+        if gt(t, duration - RECORDED_SCENE_SHORTEST, "recorded change near the end of the recording"):
+            continue
+        changed["start"] = t
+        changed["transition"] = copy.deepcopy(RECORDED_MOVE)
+        scenes.append(changed)
+    return scenes
+
+
+def recording_fixture(description, duration, first, corners, markers):
+    return {
+        "description": description,
+        "duration": duration,
+        "first": normalize_scene(first),
+        "cameraCorners": corners,
+        "markers": markers,
+        "expected": scenes_from_recording(first, corners, markers, duration),
+    }
+
+
+def corner(t, anchor):
+    return {"t": t, "corner": anchor}
+
+
+def marker(t, layout):
+    return {"t": t, "layout": layout}
 
 
 def layout_fixture(description, p, cases, events=None):
@@ -2415,6 +2492,155 @@ def speed(start, end, rate):
     return {"start": start, "end": end, "rate": rate}
 
 
+def generate_recordings():
+    bottom_right = scene(bubble={"anchor": "bottomRight"})
+    fixtures = {
+        "no-changes.json": recording_fixture(
+            "A recording in which nothing was changed has its one scene.",
+            20, bottom_right, [corner(0, "bottomRight")], [],
+        ),
+        "corner-changes.json": recording_fixture(
+            "Each move of the camera to another corner starts a scene that is entered by moving. The offsets a look gave the bubble belong to the first corner only.",
+            20, scene(bubble={"anchor": "bottomRight", "size": 0.3, "offsetX": 0.04, "offsetY": -0.02}),
+            [corner(0, "bottomRight"), corner(5, "topLeft"), corner(12.5, "bottomLeft")], [],
+        ),
+        "same-corner-again.json": recording_fixture(
+            "A corner the bubble is already in changes nothing.",
+            20, bottom_right,
+            [corner(0, "bottomRight"), corner(4, "bottomRight"), corner(8, "topLeft"), corner(9, "topLeft")], [],
+        ),
+        "changes-in-quick-succession.json": recording_fixture(
+            "Corners passed through on the way: a change less than 0.3 s after the last scene started changes that scene, so it starts where it did and shows the last of them.",
+            20, bottom_right,
+            [corner(0, "bottomRight"), corner(5, "topLeft"), corner(5.2, "topRight"), corner(5.25, "bottomLeft")], [],
+        ),
+        "just-past-the-shortest-scene.json": recording_fixture(
+            "A change a little more than 0.3 s after the last scene started gets a scene of its own.",
+            20, bottom_right, [corner(0, "bottomRight"), corner(5, "topLeft"), corner(5.35, "topRight")], [],
+        ),
+        "change-undone-at-once.json": recording_fixture(
+            "A change that is taken back within 0.3 s leaves no scene.",
+            20, bottom_right,
+            [corner(0, "bottomRight"), corner(5, "topLeft"), corner(5.1, "bottomRight"), corner(9, "topRight")], [],
+        ),
+        "change-undone-from-an-offset.json": recording_fixture(
+            "A bubble that was moved off its corner, sent to another corner and back at once: it is in the corner now and not where it was, so the scene stays.",
+            20, scene(bubble={"anchor": "bottomRight", "offsetX": 0.04, "offsetY": -0.02}),
+            [corner(0, "bottomRight"), corner(5, "topLeft"), corner(5.1, "bottomRight")], [],
+        ),
+        "change-at-the-start.json": recording_fixture(
+            "A change in the first 0.3 s, or from before the recording has any time, changes the first scene, which stays one that is cut to.",
+            20, bottom_right, [corner(-0.5, "topRight"), corner(0.2, "topLeft"), corner(0.35, "bottomLeft")], [],
+        ),
+        "changes-near-the-end.json": recording_fixture(
+            "A change in the last 0.3 s of the recording is left out. One a little before that is kept.",
+            20, bottom_right, [corner(0, "bottomRight"), corner(19.6, "topLeft"), corner(19.95, "topRight")], [],
+        ),
+        "short-recording.json": recording_fixture(
+            "A recording too short for a second scene: a change in its first 0.3 s changes the one scene, and a later one is left out.",
+            0.5, bottom_right, [corner(0, "bottomRight"), corner(0.1, "topLeft"), corner(0.4, "topRight")], [],
+        ),
+        "same-time-same-kind.json": recording_fixture(
+            "Two corners at the same time: the later one in the list is where the bubble ends up.",
+            20, bottom_right, [corner(0, "bottomRight"), corner(6, "topLeft"), corner(6, "bottomLeft")], [],
+        ),
+        "layout-markers.json": recording_fixture(
+            "A change of layout made while recording starts a scene with that layout. The bubble and the split stay as they were.",
+            30, scene(bubble={"anchor": "topRight", "size": 0.2}, split={"cameraSide": "leading", "cameraFraction": 0.4}),
+            [corner(0, "topRight")],
+            [marker(4, "camera"), marker(9.5, "sideBySide"), marker(15, "sideBySide"), marker(21, "bubble"), marker(26, "screen")],
+        ),
+        "corner-and-marker-at-the-same-time.json": recording_fixture(
+            "A corner and a marker at the same time make one scene: the corner comes first, and the marker changes the scene the corner started.",
+            20, bottom_right, [corner(0, "bottomRight"), corner(6, "topLeft")], [marker(6, "sideBySide")],
+        ),
+        "corner-while-no-bubble-shows.json": recording_fixture(
+            "A corner chosen while the camera fills the frame starts no scene. It counts from when the bubble shows again.",
+            20, bottom_right, [corner(0, "bottomRight"), corner(8, "topLeft")], [marker(3, "camera"), marker(12, "bubble")],
+        ),
+        "corner-and-marker-back-to-the-bubble.json": recording_fixture(
+            "A corner and a marker at the same time while the camera fills the frame: the corner comes first and goes to the scene that is showing, and the marker then starts the scene with the bubble.",
+            20, bottom_right, [corner(0, "bottomRight"), corner(8, "topLeft")], [marker(3, "camera"), marker(8, "bubble")],
+        ),
+        "unsorted-changes.json": recording_fixture(
+            "Changes are taken in the order of their times, whatever order the lists are in.",
+            20, bottom_right,
+            [corner(10, "topLeft"), corner(0, "bottomRight"), corner(4, "topRight")],
+            [marker(15, "camera"), marker(7, "sideBySide")],
+        ),
+    }
+
+    def told(name):
+        return [
+            (s["start"], s["layout"], s["bubble"]["anchor"], s["transition"]["kind"])
+            for s in fixtures[name]["expected"]
+        ]
+
+    assert_equal(told("no-changes.json"), [(0, "bubble", "bottomRight", "cut")], "no changes")
+    assert_equal(
+        told("corner-changes.json"),
+        [(0, "bubble", "bottomRight", "cut"), (5, "bubble", "topLeft", "morph"), (12.5, "bubble", "bottomLeft", "morph")],
+        "corner changes",
+    )
+    moved = fixtures["corner-changes.json"]["expected"]
+    assert_equal((moved[0]["bubble"]["offsetX"], moved[0]["bubble"]["offsetY"]), (0.04, -0.02), "the first corner keeps its offsets")
+    assert_equal((moved[1]["bubble"]["offsetX"], moved[1]["bubble"]["offsetY"], moved[1]["bubble"]["size"]), (0, 0, 0.3), "a new corner has none")
+    assert_equal(moved[1]["transition"], {"kind": "morph", "duration": 0.35}, "entered by moving")
+    assert_equal(told("same-corner-again.json"), [(0, "bubble", "bottomRight", "cut"), (8, "bubble", "topLeft", "morph")], "same corner")
+    assert_equal(told("changes-in-quick-succession.json"), [(0, "bubble", "bottomRight", "cut"), (5, "bubble", "bottomLeft", "morph")], "quick succession")
+    assert_equal(
+        told("just-past-the-shortest-scene.json"),
+        [(0, "bubble", "bottomRight", "cut"), (5, "bubble", "topLeft", "morph"), (5.35, "bubble", "topRight", "morph")],
+        "just past",
+    )
+    assert_equal(told("change-undone-at-once.json"), [(0, "bubble", "bottomRight", "cut"), (9, "bubble", "topRight", "morph")], "undone")
+    assert_equal(told("change-undone-from-an-offset.json"), [(0, "bubble", "bottomRight", "cut"), (5, "bubble", "bottomRight", "morph")], "undone from an offset")
+    back = fixtures["change-undone-from-an-offset.json"]["expected"]
+    assert_equal((back[0]["bubble"]["offsetX"], back[1]["bubble"]["offsetX"]), (0.04, 0), "back in the corner itself")
+    assert_equal(
+        told("corner-and-marker-back-to-the-bubble.json"),
+        [(0, "bubble", "bottomRight", "cut"), (3, "camera", "topLeft", "morph"), (8, "bubble", "topLeft", "morph")],
+        "corner and marker back to the bubble",
+    )
+    assert_equal(told("change-at-the-start.json"), [(0, "bubble", "topLeft", "cut"), (0.35, "bubble", "bottomLeft", "morph")], "at the start")
+    assert_equal(told("changes-near-the-end.json"), [(0, "bubble", "bottomRight", "cut"), (19.6, "bubble", "topLeft", "morph")], "near the end")
+    assert_equal(told("short-recording.json"), [(0, "bubble", "topLeft", "cut")], "short recording")
+    assert_equal(told("same-time-same-kind.json"), [(0, "bubble", "bottomRight", "cut"), (6, "bubble", "bottomLeft", "morph")], "same time")
+    assert_equal(
+        told("layout-markers.json"),
+        [
+            (0, "bubble", "topRight", "cut"),
+            (4, "camera", "topRight", "morph"),
+            (9.5, "sideBySide", "topRight", "morph"),
+            (21, "bubble", "topRight", "morph"),
+            (26, "screen", "topRight", "morph"),
+        ],
+        "layout markers",
+    )
+    assert_equal(fixtures["layout-markers.json"]["expected"][2]["split"], {"cameraSide": "leading", "cameraFraction": 0.4}, "the split stays")
+    assert_equal(
+        told("corner-and-marker-at-the-same-time.json"),
+        [(0, "bubble", "bottomRight", "cut"), (6, "sideBySide", "topLeft", "morph")],
+        "corner and marker together",
+    )
+    assert_equal(
+        told("corner-while-no-bubble-shows.json"),
+        [(0, "bubble", "bottomRight", "cut"), (3, "camera", "topLeft", "morph"), (12, "bubble", "topLeft", "morph")],
+        "corner while no bubble shows",
+    )
+    assert_equal(
+        told("unsorted-changes.json"),
+        [
+            (0, "bubble", "bottomRight", "cut"),
+            (4, "bubble", "topRight", "morph"),
+            (7, "sideBySide", "topLeft", "morph"),
+            (15, "camera", "topLeft", "morph"),
+        ],
+        "unsorted changes",
+    )
+    return fixtures
+
+
 def generate_canvases():
     fixtures = {
         "limits-no-limit-and-no-upscale.json": canvas_fixture(
@@ -2510,6 +2736,8 @@ def generated_files():
         files[Path("timemap") / filename] = fixture
     for filename, fixture in generate_autozooms().items():
         files[Path("autozoom") / filename] = fixture
+    for filename, fixture in generate_recordings().items():
+        files[Path("recording") / filename] = fixture
     verify_claims(files)
     return files
 
