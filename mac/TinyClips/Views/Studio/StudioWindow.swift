@@ -208,8 +208,8 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioSuggestZooms(_ sender: Any?) { viewModel.suggestZooms() }
     @objc func studioSplitScene(_ sender: Any?) { viewModel.splitSceneAtPlayhead() }
     @objc func studioDeleteScene(_ sender: Any?) { viewModel.removeCurrentScene() }
-    @objc func studioPreviousScene(_ sender: Any?) { viewModel.showPreviousScene() }
-    @objc func studioNextScene(_ sender: Any?) { viewModel.showNextScene() }
+    @objc func studioPreviousScene(_ sender: Any?) { viewModel.stepToPreviousScene() }
+    @objc func studioNextScene(_ sender: Any?) { viewModel.stepToNextScene() }
     @objc func studioLayoutScreen(_ sender: Any?) { viewModel.setLayout(.screen) }
     @objc func studioLayoutBubble(_ sender: Any?) { viewModel.setLayout(.bubble) }
     @objc func studioLayoutSideBySide(_ sender: Any?) { viewModel.setLayout(.sideBySide) }

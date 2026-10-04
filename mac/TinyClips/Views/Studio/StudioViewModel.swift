@@ -558,6 +558,26 @@ final class StudioViewModel: ObservableObject {
         selectAndShowCut(editor?.cutIndex(before: selectedCutIndex, playhead: playhead))
     }
 
+    /// The Previous cut button and menu item. The cut it lands on is read out: neither says
+    /// anything of where it lands by itself.
+    func showPreviousCut() {
+        if selectPreviousCut() {
+            announceSelectedCut()
+        }
+    }
+
+    /// The Next cut button and menu item. The cut it lands on is read out.
+    func showNextCut() {
+        if selectNextCut() {
+            announceSelectedCut()
+        }
+    }
+
+    private func announceSelectedCut() {
+        guard let index = selectedCutIndex, let cut = selectedCut else { return }
+        announce(StudioEditorModel.cutStepText(index: index, count: cuts.count, cut: cut))
+    }
+
     /// Adds a cut at the playhead and selects it. Where a cut already is, that one is selected
     /// instead. The playhead stays where the cut starts.
     func addCutAtPlayhead() {
@@ -762,6 +782,26 @@ final class StudioViewModel: ObservableObject {
     @discardableResult
     func showPreviousScene() -> Bool {
         showScene(currentSceneIndex - 1)
+    }
+
+    /// The Previous scene button and menu item. The scene it lands on is read out: neither says
+    /// anything of where it lands by itself.
+    func stepToPreviousScene() {
+        if showPreviousScene() {
+            announceCurrentScene()
+        }
+    }
+
+    /// The Next scene button and menu item. The scene it lands on is read out.
+    func stepToNextScene() {
+        if showNextScene() {
+            announceCurrentScene()
+        }
+    }
+
+    private func announceCurrentScene() {
+        guard let editor else { return }
+        announce(editor.sceneAccessibilityText(at: editor.currentSceneIndex))
     }
 
     // MARK: - Trim

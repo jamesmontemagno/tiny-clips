@@ -1475,6 +1475,14 @@ struct StudioEditorModel: Equatable, Sendable {
         "Cut \(index + 1) of \(count)"
     }
 
+    /// What is read out when a cut is stepped to with Previous or Next, which say nothing of where
+    /// they land by themselves: which cut it is and its times, such as
+    /// "Cut 2 of 3, 12.0 to 16.5 seconds". A scene that is stepped to is read out with
+    /// `sceneAccessibilityText(at:)`, which already says which scene it is.
+    static func cutStepText(index: Int, count: Int, cut: StudioTimeRange) -> String {
+        "\(cutPositionText(index: index, count: count)), \(cutRangeText(cut))"
+    }
+
     /// For example "0:02.5 of 0:10.0".
     func playheadText(sourceTime: Double) -> String {
         "\(Self.formattedTime(outputTime(forSourceTime: sourceTime))) of \(Self.formattedTime(outputDuration))"

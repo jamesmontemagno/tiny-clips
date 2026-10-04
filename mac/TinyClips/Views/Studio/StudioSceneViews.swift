@@ -225,7 +225,7 @@ struct StudioSceneInspectorSection: View {
     private var navigationRow: some View {
         HStack(spacing: 8) {
             Button {
-                _ = viewModel.showPreviousScene()
+                viewModel.stepToPreviousScene()
             } label: {
                 Image(systemName: "chevron.left")
             }
@@ -244,7 +244,7 @@ struct StudioSceneInspectorSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                _ = viewModel.showNextScene()
+                viewModel.stepToNextScene()
             } label: {
                 Image(systemName: "chevron.right")
             }

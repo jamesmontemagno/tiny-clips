@@ -2216,6 +2216,7 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.cutLengthText(cut(12, 16.5)), "4.5 seconds long")
         XCTAssertEqual(StudioEditorModel.cutLengthText(cut(3, .nan)), "0.0 seconds long")
         XCTAssertEqual(StudioEditorModel.cutPositionText(index: 1, count: 3), "Cut 2 of 3")
+        XCTAssertEqual(StudioEditorModel.cutStepText(index: 1, count: 3, cut: cut(12, 16.5)), "Cut 2 of 3, 12.0 to 16.5 seconds")
     }
 
     private func assertCuts(_ model: StudioEditorModel, _ expected: [(Double, Double)], line: UInt = #line) {
