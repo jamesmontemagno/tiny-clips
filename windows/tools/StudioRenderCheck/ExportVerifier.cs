@@ -51,6 +51,12 @@ internal sealed class ExportReading
 
     /// <summary>The largest distance, in pixels, between an edge in the picture and where the layout puts it.</summary>
     public double WorstEdge { get; set; }
+
+    /// <summary>How many stretches of the video play at another speed than the recording, and so have to be silent.</summary>
+    public int SilentPieces { get; set; }
+
+    /// <summary>The loudest of those stretches, as the root mean square of its samples, of 32767.</summary>
+    public double LoudestSilence { get; set; }
 }
 
 /// <summary>
@@ -76,6 +82,18 @@ internal static class ExportVerifier
     /// move edges by two pixels and more.
     /// </summary>
     public const double EdgeTolerance = 1;
+
+    /// <summary>
+    /// A stretch that has to be silent may be this loud, as the root mean square of its samples,
+    /// of 32767. One tone burst in a second of silence comes to about 2,600.
+    /// </summary>
+    public const double SilenceLevel = 200;
+
+    /// <summary>
+    /// How much of each end of a silent stretch is not listened to, in seconds: an AAC frame is
+    /// 21 ms long, and a burst that ends at the edge of the stretch rings on inside one.
+    /// </summary>
+    public const double SilenceMargin = 0.03;
 
     private const long FrameTimeToleranceTicks = 5000;
 
@@ -295,14 +313,22 @@ internal static class ExportVerifier
             Math.Abs(audio.DurationSeconds - videoSeconds) <= (1 / fps) + 1e-9,
             string.Create(c, $"{prefix}sound lasts {audio.DurationSeconds:0.0000} s and picture {videoSeconds:0.0000} s: more than one frame apart"));
 
-        // The kept ranges in samples, worked out here from the time map.
+        // The ranges that keep their sound, in samples, worked out here from the time map: the
+        // pieces that play at the recording's own speed. A piece at another speed takes its time
+        // in the video and has no sound.
         var map = StudioTimeMap.FromProject(expectation.Project);
         var ranges = new List<(long SourceStart, long SourceEnd, long OutputStart)>();
         long outputCursor = 0;
-        foreach (var segment in map.Segments)
+        foreach (var piece in map.Pieces)
         {
-            var start = (long)Math.Round(segment.Start * rate, MidpointRounding.AwayFromZero);
-            var end = (long)Math.Round(segment.End * rate, MidpointRounding.AwayFromZero);
+            if (piece.Rate != 1)
+            {
+                outputCursor += (long)Math.Round(piece.OutputDuration * rate, MidpointRounding.AwayFromZero);
+                continue;
+            }
+
+            var start = (long)Math.Round(piece.Start * rate, MidpointRounding.AwayFromZero);
+            var end = (long)Math.Round(piece.End * rate, MidpointRounding.AwayFromZero);
             ranges.Add((start, end, outputCursor));
             outputCursor += end - start;
         }
@@ -328,12 +354,12 @@ internal static class ExportVerifier
         context.Expect(match > 0.5, string.Create(c, $"{prefix}the sound does not match what the kept ranges contain (correlation {match:0.00})"));
         context.Expect(Math.Abs(lag) <= AudioLagToleranceSamples, $"{prefix}sound is {lag} samples from where the picture puts it");
 
-        // Each burst that lies whole inside a kept range and inside the video.
+        // Each burst that lies whole inside a range that keeps its sound, and inside the video.
         var detected = Tones.DetectBursts(audio.Left, rate);
         var missing = new List<string>();
         var maxOffset = 0.0;
         var bursts = 0;
-        foreach (var segment in map.Segments)
+        foreach (var segment in map.Pieces.Where(piece => piece.Rate == 1))
         {
             for (var second = (int)Math.Ceiling(segment.Start - 1e-9); second + Tones.BurstSeconds <= segment.End && second < expectation.Screen.AudioSeconds; second++)
             {
@@ -367,6 +393,49 @@ internal static class ExportVerifier
         reading.MaxBurstOffsetMs = maxOffset;
         context.Expect(missing.Count == 0, $"{prefix}{missing.Count} of {bursts} tone bursts wrong ({missing.FirstOrDefault()})");
 
+        // Where the video plays at another speed there is no sound, whatever the recording has there.
+        var loudest = 0.0;
+        var loudestWhere = string.Empty;
+        var silentPieces = 0;
+        double pieceStart = 0;
+        foreach (var piece in map.Pieces)
+        {
+            var from = pieceStart;
+            pieceStart += piece.OutputDuration;
+            if (piece.Rate == 1)
+            {
+                continue;
+            }
+
+            silentPieces++;
+            var first = (long)Math.Ceiling((from + SilenceMargin) * rate);
+            var last = Math.Min(audio.Left.Length, (long)Math.Floor((Math.Min(pieceStart, videoSeconds) - SilenceMargin) * rate));
+            if (last <= first)
+            {
+                continue;
+            }
+
+            double sum = 0;
+            for (var index = first; index < last; index++)
+            {
+                sum += (double)audio.Left[index] * audio.Left[index];
+            }
+
+            var level = Math.Sqrt(sum / (last - first));
+            if (level >= loudest)
+            {
+                loudest = level;
+                loudestWhere = string.Create(c, $"{from:0.000} to {pieceStart:0.000} s of the video, the recording from {piece.Start:0.000} to {piece.End:0.000} s at {piece.Rate:0.##}×");
+            }
+        }
+
+        reading.SilentPieces = silentPieces;
+        reading.LoudestSilence = loudest;
+        if (silentPieces > 0)
+        {
+            context.Expect(loudest <= SilenceLevel, string.Create(c, $"{prefix}there is sound where the video plays at another speed: level {loudest:0} of 32767 in {loudestWhere}; silence may be {SilenceLevel:0}"));
+        }
+
         if (audio.Channels > 1)
         {
             var left = Tones.Rms(audio.Left);
@@ -374,7 +443,7 @@ internal static class ExportVerifier
             context.Expect(ratio is > 0.35 and < 0.65, string.Create(c, $"{prefix}right channel is {ratio:0.00} of the left, want 0.50"));
         }
 
-        context.Note(string.Create(c, $"{summary}; sound {rate} Hz × {audio.Channels}, {audio.DurationSeconds:0.000} s against picture {videoSeconds:0.000} s ({reading.AudioMinusVideoMs:+0.0;-0.0} ms), {bursts} bursts within {maxOffset:0.00} ms, lag {lag} samples (correlation {match:0.00})"));
+        context.Note(string.Create(c, $"{summary}; sound {rate} Hz × {audio.Channels}, {audio.DurationSeconds:0.000} s against picture {videoSeconds:0.000} s ({reading.AudioMinusVideoMs:+0.0;-0.0} ms), {bursts} bursts within {maxOffset:0.00} ms, lag {lag} samples (correlation {match:0.00}){(silentPieces > 0 ? string.Create(c, $"; {silentPieces} stretch(es) at another speed, the loudest at level {loudest:0.0} of 32767") : string.Empty)}"));
         return reading;
     }
 

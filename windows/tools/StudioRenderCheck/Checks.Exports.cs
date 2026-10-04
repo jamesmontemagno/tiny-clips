@@ -194,6 +194,91 @@ internal static class ExportChecks
             ExpectNumbers(context, reading, 94, index => index < 54 ? 16 + index : 114 + (index - 54), index => index < 54 ? 10 + index : 108 + (index - 54));
         });
 
+        await harness.Check("exports", "export (y): twice as fast in the middle", async context =>
+        {
+            // Two seconds of the recording, from a quarter of a frame after 1.5 s, at twice the
+            // speed. Times below are in 120ths of a second, a quarter of a frame; the middle of
+            // output frame i is 4i + 2.
+            var project = Projects.Create(clips.Screen, clips.Camera) with
+            {
+                Edits = new StudioEdits { Speed = [new StudioSpeedRange { Start = 181 / 120.0, End = 421 / 120.0, Rate = 2 }] },
+            };
+            var (_, reading, _) = await Exporting.ExportAndVerify(context, "y", project, clips.Screen, clips.Camera, 1920, 1080, 30, 1, expectAudio: true);
+
+            // The video: the recording to 181, then 181 to 421 in 120 (to 301), then 421 to 720 in
+            // 299 (to 600): 5 s, 150 frames.
+            //   i up to 44    (4i + 2 < 181): the recording at 4i + 2, screen frame i.
+            //   i = 45 to 74  (to 301): at 181 + 2 × (4i + 2 − 181) = 8i − 177, frame 2i − 44.25, so 2i − 45.
+            //   i from 75:    at 421 + (4i + 2 − 301) = 4i + 122, frame i + 30.5, so i + 30.
+            // The camera starts six frames after the screen and is hidden before that.
+            ExpectNumbers(
+                context,
+                reading,
+                150,
+                index => index < 45 ? index : index < 75 ? (2 * index) - 45 : index + 30,
+                index => index < 6 ? Hidden : index < 45 ? index - 6 : index < 75 ? (2 * index) - 51 : index + 24);
+
+            // The sound: the bursts of seconds 0 and 1 where they were, none of seconds 2 and 3,
+            // which are in the faster stretch, and those of 4 and 5 at 301 + (480 − 421) = 360 and
+            // at 480, which is 3 s and 4 s.
+            ExpectSound(context, reading, bursts: 4, silentPieces: 1);
+        });
+
+        await harness.Check("exports", "export (z): half as fast, then four times as fast across a cut and to the end", async context =>
+        {
+            // In 120ths of a second: half as fast from 241 to 301, four times as fast from 421 to
+            // the end at 720, and a cut from 480 to 600 inside that.
+            var project = Projects.Create(clips.Screen, clips.Camera) with
+            {
+                Edits = new StudioEdits
+                {
+                    Cuts = [new StudioTimeRange { Start = 4, End = 5 }],
+                    Speed =
+                    [
+                        new StudioSpeedRange { Start = 421 / 120.0, End = 6, Rate = 4 },
+                        new StudioSpeedRange { Start = 241 / 120.0, End = 301 / 120.0, Rate = 0.5 },
+                    ],
+                },
+            };
+            var (_, reading, _) = await Exporting.ExportAndVerify(context, "z", project, clips.Screen, clips.Camera, 1920, 1080, 30, 1, expectAudio: true);
+
+            // The pieces and where each begins in the video:
+            //   0 to 241 at 1×                      0
+            //   241 to 301 at 0.5×, 120 long        241
+            //   301 to 421 at 1×                    361
+            //   421 to 480 at 4×, 14.75 long        481
+            //   600 to 720 at 4×, 30 long           495.75, ending at 525.75: 4.38 s, 131 frames.
+            // The screen frame in output frame i, whose middle is 4i + 2:
+            //   i up to 59:    i
+            //   i = 60 to 89:  the recording at 241 + (4i + 2 − 241) / 2, frame i / 2 + 30.375, so 30 + i / 2 rounded down:
+            //                  every frame of the recording twice
+            //   i = 90 to 119: at 301 + (4i + 2 − 361), frame i − 14.5, so i − 15
+            //   i = 120 to 123: at 421 + 4 × (4i + 2 − 481), frame 4i − 373.75, so 4i − 374
+            //   i from 124:    at 600 + 4 × (4i + 2 − 495.75), frame 4i − 343.75, so 4i − 344, up to 176 in frame 130
+            ExpectNumbers(
+                context,
+                reading,
+                131,
+                index => index < 60 ? index
+                    : index < 90 ? 30 + (index / 2)
+                    : index < 120 ? index - 15
+                    : index < 124 ? (4 * index) - 374
+                    : (4 * index) - 344,
+                index => index < 6 ? Hidden
+                    : index < 60 ? index - 6
+                    : index < 90 ? 24 + (index / 2)
+                    : index < 120 ? index - 21
+                    : index < 124 ? (4 * index) - 380
+                    : (4 * index) - 350);
+
+            // The sound: the bursts of seconds 0 and 1, and that of second 3 at 361 + (360 − 301) = 420,
+            // which is 3.5 s. Second 2 begins a 120th of a second before the slower stretch and is
+            // cut off there; seconds 4 and 5 are in the cut and in the faster stretch. The video
+            // ends in that stretch, so its sound is silent from 4.008 s to its end and still has
+            // to last as long as the picture, which the verifier holds it to.
+            ExpectSound(context, reading, bursts: 3, silentPieces: 3);
+        });
+
         await harness.Check("exports", "export (m): HEVC sources, the screen at 1080 lines", async context =>
         {
             var screen = clips.HevcScreen;
@@ -483,6 +568,24 @@ internal static class ExportChecks
         context.Expect(frames == 30, $"{frames} frames read back, want 30");
         context.Expect(worst <= ExportVerifier.ColorTolerance, string.Create(CultureInfo.InvariantCulture, $"the edge of the picture is {worst:0.0} of 255 off ({where})"));
         context.Note(string.Create(CultureInfo.InvariantCulture, $"the outermost rows and columns of all 30 frames are within {worst:0.0} of 255 of the screen's own colours"));
+    }
+
+    /// <summary>
+    /// Compares what the verifier found of the sound with numbers worked out by hand: how many
+    /// whole tone bursts the video has, and how many stretches of it have to be silent because
+    /// they play at another speed. The verifier has already placed each burst and listened to
+    /// each of those stretches.
+    /// </summary>
+    public static void ExpectSound(CheckContext context, ExportReading? reading, int bursts, int silentPieces)
+    {
+        if (reading is null)
+        {
+            return;
+        }
+
+        context.Expect(reading.Audio is not null, "the sound could not be read back");
+        context.Expect(reading.Bursts == bursts, $"{reading.Bursts} whole tone bursts were looked for, worked out by hand as {bursts}");
+        context.Expect(reading.SilentPieces == silentPieces, $"{reading.SilentPieces} stretches at another speed were listened to, worked out by hand as {silentPieces}");
     }
 
     /// <summary>
