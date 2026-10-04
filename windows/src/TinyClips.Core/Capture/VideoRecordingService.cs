@@ -47,6 +47,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private FileStream? _fileStream;
     private MediaStreamSource? _mediaStreamSource;
     private string? _outputPath;
+    private int _frameRate;
     private TimeSpan _frameDuration;
     private Timer? _limitTimer;
     private int _stopping;
@@ -269,6 +270,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
 
         var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
+        _frameRate = fps;
         _frameDuration = TimeSpan.FromSeconds(1.0 / fps);
         Interlocked.Exchange(ref _videoFramesDropped, 0);
 
@@ -2113,7 +2115,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         try
         {
-            var screen = MediaFileProbe.Probe(paths.ScreenPath, Math.Clamp(_settings.VideoFrameRate, 1, 60));
+            // The project gets the frame rate the recording was made at. The file's own figure is
+            // its frames divided by its length, which is lower whenever a frame was dropped.
+            var screen = MediaFileProbe.Probe(paths.ScreenPath) with { FrameRate = _frameRate };
             var camera = BuildStudioCameraSource(paths);
             var clickStyle = _settings.MouseClickOverlayStyleFor(CaptureType.Video);
             var request = StudioRecordingBuilder.BuildCreationRequest(

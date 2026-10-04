@@ -16,7 +16,6 @@ internal sealed class StudioCameraRecorder : IDisposable
     private readonly TimeSpan _minFrameSpacing;
     private readonly object _gate = new();
     private MfSinkWriterEncoder? _encoder;
-    private byte[]? _flipBuffer;
     private int _encodedWidth;
     private int _encodedHeight;
     private TimeSpan? _firstTimelineTime;
@@ -51,6 +50,12 @@ internal sealed class StudioCameraRecorder : IDisposable
     public long FramesWritten => Interlocked.Read(ref _framesWritten);
 
     public bool HasFrames => FramesWritten > 0;
+
+    /// <summary>For StudioRenderCheck: go straight to the software encoder.</summary>
+    internal bool ForceSoftwareEncoder { get; init; }
+
+    /// <summary>For StudioRenderCheck: the encoder the track is written with, once the first frame has come.</summary>
+    internal string? EncoderDescription { get; private set; }
 
     public double DurationSeconds
     {
@@ -98,6 +103,7 @@ internal sealed class StudioCameraRecorder : IDisposable
                 if (_encoder is null)
                 {
                     _encoder = CreateEncoder(width, height);
+                    EncoderDescription = _encoder.Description;
                     _encodedWidth = width;
                     _encodedHeight = height;
                 }
@@ -108,7 +114,7 @@ internal sealed class StudioCameraRecorder : IDisposable
                     return;
                 }
 
-                _encoder.WriteVideo(CopyBottomUp(frame, width, height), pts, _frameDuration);
+                _encoder.WriteVideoTopDown(frame.BgraPixels.Span, frame.Width * 4, pts, _frameDuration);
                 _firstTimelineTime ??= timelineTime;
                 _lastPts = pts;
                 Interlocked.Increment(ref _framesWritten);
@@ -137,7 +143,6 @@ internal sealed class StudioCameraRecorder : IDisposable
             _finished = true;
             var encoder = _encoder;
             _encoder = null;
-            _flipBuffer = null;
             if (encoder is null)
             {
                 return;
@@ -170,6 +175,11 @@ internal sealed class StudioCameraRecorder : IDisposable
     {
         var bitrate = (uint)Math.Clamp((long)width * height * _targetFps / 10, 2_000_000, 18_000_000);
         var device = WgcInterop.GetSharedDevice().D3D;
+        if (ForceSoftwareEncoder)
+        {
+            return CreateEncoder(width, height, bitrate, device, enableHardwareTransforms: false);
+        }
+
         try
         {
             return CreateEncoder(width, height, bitrate, device, enableHardwareTransforms: true);
@@ -195,29 +205,11 @@ internal sealed class StudioCameraRecorder : IDisposable
             AudioCaptureService.Channels,
             AudioCaptureService.BitsPerSample,
             0,
-            enableHardwareTransforms);
-
-    /// <summary>
-    /// Media Foundation BGRA samples are bottom-up; camera frames arrive top-down. The buffer is
-    /// reused because the encoder copies it before <c>WriteVideo</c> returns.
-    /// </summary>
-    private byte[] CopyBottomUp(WebcamFrame frame, int width, int height)
-    {
-        var sourceStride = frame.Width * 4;
-        var stride = width * 4;
-        var length = stride * height;
-        if (_flipBuffer is null || _flipBuffer.Length != length)
-        {
-            _flipBuffer = new byte[length];
-        }
-
-        var source = frame.BgraPixels.Span;
-        var destination = _flipBuffer.AsSpan();
-        for (var y = 0; y < height; y++)
-        {
-            source.Slice((height - 1 - y) * sourceStride, stride).CopyTo(destination.Slice(y * stride, stride));
-        }
-
-        return _flipBuffer;
-    }
+            enableHardwareTransforms,
+            // Camera frames arrive top-down. Saying so makes the track upright whichever
+            // component reads the frame: left unsaid, an encoder that takes BGRA itself reads
+            // the rows top-down and a converter in front of one that does not reads them bottom-up.
+            topDownMemoryFrames: true,
+            // Frames carry the time they arrived, and a camera's frames are not evenly spaced.
+            keepFrameTimes: true);
 }

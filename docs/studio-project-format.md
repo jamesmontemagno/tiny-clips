@@ -65,8 +65,8 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 | Property | Type | Default | Notes |
 |---|---|---|---|
 | `screen.file` | string | `"screen.mp4"` | Relative to the project folder, or an absolute path when `external` is true |
-| `screen.width`, `screen.height` | int | | Pixels of the encoded video |
-| `screen.frameRate` | number | 30 | |
+| `screen.width`, `screen.height` | int | | Pixels of the picture. Not the coded size: a 1080-line HEVC file is coded as 1088 rows |
+| `screen.frameRate` | number | 30 | The rate the recording was made at. It sets the frame step in the editor and the frame rate of an export. See the note below |
 | `screen.duration` | number | | Seconds |
 | `screen.external` | bool | false | True for flat projects |
 | `camera` | object or null | null | Null when there is no camera track |
@@ -75,6 +75,8 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 | `camera.duration` | number | | |
 | `camera.startOffset` | number | 0 | Source time of the camera's first frame. May be negative |
 | `events` | string or null | null | `"events.json"` when present |
+
+A screen recording gets a frame only when something on screen changed, so its frames are not evenly spaced and the frame rate a media library reads from the file is an average, often far below the rate the recording was made at. `screen.frameRate` is therefore the configured rate, written by the recorder. A reader shows each source frame from the instant it starts until the next one starts.
 
 ### Canvas
 
@@ -368,8 +370,8 @@ Draw order: background, screen shadow, screen, click rings (clipped to the scree
 
 These are not covered by fixtures, because they describe pixels rather than geometry. Both renderers follow them so an export looks the same on either platform.
 
-- **Color.** Colors are sRGB. Gradients are interpolated, and layers are blended, on the encoded (gamma) values, as the screenshot editors do. Screen pixels are not color-converted.
-- **Shadow.** The layer's shape, moved down by `offsetY`, is blurred with a Gaussian whose standard deviation is `blur` pixels, then drawn in black at `opacity` under the layer.
+- **Color.** Colors are sRGB. Gradients are interpolated, and layers are blended, on the encoded (gamma) values, as the screenshot editors do. Screen pixels are not color-converted. The frame is opaque: a background color with alpha is that color over black.
+- **Shadow.** The layer's shape, moved down by `offsetY`, is blurred with a Gaussian whose standard deviation is `blur` pixels, then drawn in black at `opacity` under the layer. A renderer may limit the blur; Direct2D stops at 250 pixels, which no canvas up to 3840 pixels reaches.
 - **Layer edges.** A renderer may move a layer's edges to the nearest whole pixel before drawing.
 - **Camera border.** A stroke of `borderWidth` pixels (at least 1 when the width is above 0) drawn inside the camera shape, in `camera.borderColor`.
 - **Click rings.** A click at time `tc` is drawn while `0 <= t - tc <= overlays.clicks.duration`, with `p = (t - tc) / duration`:
