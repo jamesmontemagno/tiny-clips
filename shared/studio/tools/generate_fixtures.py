@@ -2,7 +2,7 @@
 """Generate Tiny Clips Studio shared golden fixtures.
 
 This is a stdlib-only reference implementation of docs/studio-project-format.md
-sections 5, 6, and 7. It intentionally does not import platform code.
+sections 5 to 8. It intentionally does not import platform code.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ FIXTURES = ROOT / "shared" / "studio" / "fixtures"
 CANVAS_DIR = FIXTURES / "canvas"
 LAYOUT_DIR = FIXTURES / "layout"
 TIMEMAP_DIR = FIXTURES / "timemap"
+AUTOZOOM_DIR = FIXTURES / "autozoom"
+FIXTURE_DIRS = [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR, AUTOZOOM_DIR]
 STAMP = "2026-10-02T22:41:00Z"
 EPS = 1e-9
 CLAIMS = {}
@@ -30,6 +32,17 @@ VALID_LAYOUTS = {"screen", "bubble", "sideBySide", "camera"}
 VALID_SHAPES = {"circle", "roundedRectangle", "squircle", "rectangle"}
 VALID_ANCHORS = {"topLeft", "topRight", "bottomLeft", "bottomRight"}
 VALID_CAMERA_SIDES = {"leading", "trailing"}
+VALID_FOCUS_MODES = {"point", "cursor"}
+VALID_ZOOM_ORIGINS = {"manual", "auto"}
+
+# Section 8: zoom suggestions.
+SUGGEST_SCALE = 2
+SUGGEST_LEAD = 0.6
+SUGGEST_HOLD = 1.5
+SUGGEST_JOIN = 4
+SUGGEST_INSET = 0.15
+SUGGEST_SHORTEST = 0.3
+SUGGEST_EASE = 0.5
 
 
 class BoundaryLog:
@@ -136,6 +149,16 @@ DEFAULT_SCENE = {
     "transition": DEFAULT_TRANSITION,
 }
 DEFAULT_EDITS = {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": []}
+DEFAULT_ZOOM_FOCUS = {"mode": "point", "x": 0.5, "y": 0.5}
+DEFAULT_ZOOM = {
+    "start": 0,
+    "end": 0,
+    "scale": 2,
+    "focus": DEFAULT_ZOOM_FOCUS,
+    "easeIn": 0.5,
+    "easeOut": 0.5,
+    "origin": "manual",
+}
 DEFAULT_AUDIO = {"muted": False, "systemVolume": 1, "microphoneVolume": 1}
 DEFAULT_OVERLAYS = {
     "clicks": {
@@ -218,6 +241,25 @@ def normalize_edits(value):
     return deep_merge(DEFAULT_EDITS, value)
 
 
+def normalize_zoom(value):
+    z = deep_merge(DEFAULT_ZOOM, value)
+    z["focus"]["mode"] = enum(z["focus"].get("mode"), VALID_FOCUS_MODES, "point")
+    z["origin"] = enum(z.get("origin"), VALID_ZOOM_ORIGINS, "manual")
+    return z
+
+
+def zoom(start, end, **overrides):
+    z = copy.deepcopy(DEFAULT_ZOOM)
+    z["start"] = start
+    z["end"] = end
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(z.get(key), dict):
+            z[key] = deep_merge(z[key], value)
+        else:
+            z[key] = value
+    return z
+
+
 def scene(**overrides):
     base = copy.deepcopy(DEFAULT_SCENE)
     for key, value in overrides.items():
@@ -242,6 +284,7 @@ def project(
     screen_style=None,
     camera_style=None,
     scenes=None,
+    zooms=None,
     edits=None,
     app_platform="windows",
     omit=None,
@@ -272,7 +315,7 @@ def project(
         "screen": deep_merge(DEFAULT_SCREEN, screen_style or {}),
         "camera": deep_merge(DEFAULT_CAMERA, camera_style or {}),
         "scenes": scenes if scenes is not None else [scene(layout="bubble" if has_camera else "screen")],
-        "zooms": [],
+        "zooms": zooms if zooms is not None else [],
         "edits": deep_merge(DEFAULT_EDITS, edits or {}),
         "audio": copy.deepcopy(DEFAULT_AUDIO),
         "overlays": copy.deepcopy(DEFAULT_OVERLAYS),
@@ -450,7 +493,197 @@ def camera_source_rect(p, camera_rect, label="camera source"):
     return rect(c["x"], c["y"] + c["height"] * (1 - k) / 2, c["width"], c["height"] * k)
 
 
-def resolve_layout(p, t, canvas_size):
+def screen_base_rect(p):
+    style = get_screen_style(p)
+    return style.get("crop") if valid_crop(style.get("crop"), "screen crop") else rect(0, 0, 1, 1)
+
+
+def normalize_zooms(raw):
+    prepared = []
+    for item in raw or []:
+        if item is None:
+            continue
+        z = normalize_zoom(item)
+        z["start"] = max(0, z["start"])
+        if le(z["end"], z["start"], "zoom normalization: end <= start"):
+            continue
+        prepared.append(z)
+    prepared.sort(key=lambda z: z["start"])
+    kept = []
+    for z in prepared:
+        if kept and z["start"] == kept[-1]["start"]:
+            BOUNDARIES.exact.add("zoom normalization: exact duplicate start")
+            kept[-1] = z
+        else:
+            kept.append(z)
+    for index in range(len(kept) - 1):
+        if lt(kept[index + 1]["start"], kept[index]["end"], "zoom normalization: next starts before previous ends"):
+            kept[index]["end"] = kept[index + 1]["start"]
+    return kept
+
+
+def cursor_samples(events):
+    raw = [s for s in ((events or {}).get("cursor") or []) if s is not None]
+    raw.sort(key=lambda s: s.get("t", 0))
+    return [(s.get("t", 0), clamp(s.get("x", 0), 0, 1), clamp(s.get("y", 0), 0, 1)) for s in raw]
+
+
+def cursor_focus(samples, t):
+    a = t - 0.5
+    b = t + 0.5
+    fx = 0.0
+    fy = 0.0
+    count = len(samples)
+    for index, (sample_t, x, y) in enumerate(samples):
+        start = -math.inf if index == 0 else sample_t
+        until = math.inf if index == count - 1 else samples[index + 1][0]
+        length = max(0.0, min(b, until) - max(a, start))
+        fx += x * length
+        fy += y * length
+    return fx, fy
+
+
+def zoom_focus(z, samples, t):
+    focus = z["focus"]
+    if focus["mode"] == "cursor" and samples:
+        return cursor_focus(samples, t)
+    return clamp(focus["x"], 0, 1), clamp(focus["y"], 0, 1)
+
+
+def held_window(base, scale, fx, fy):
+    s = clamp(scale, 1, 5)
+    w = base["width"] / s
+    h = base["height"] / s
+    x = max(base["x"], min(fx - w / 2, base["x"] + base["width"] - w))
+    y = max(base["y"], min(fy - h / 2, base["y"] + base["height"] - h))
+    return rect(x, y, w, h)
+
+
+def lerp_rect(a, b, k):
+    return rect(*(a[key] + (b[key] - a[key]) * k for key in ("x", "y", "width", "height")))
+
+
+def ease(u):
+    return u * u * (3 - 2 * u)
+
+
+def zoom_window(p, events, t):
+    base = screen_base_rect(p)
+    zooms = normalize_zooms(p.get("zooms"))
+    active = None
+    for index, z in enumerate(zooms):
+        if ge(t, z["start"], "zoom selection: t >= start") and lt(t, z["end"], "zoom selection: t < end"):
+            active = index
+            break
+    if active is None:
+        return base
+
+    z = zooms[active]
+    samples = cursor_samples(events)
+    chained_to_previous = active > 0 and zooms[active - 1]["end"] == z["start"]
+    next_is_chained = active + 1 < len(zooms) and zooms[active + 1]["start"] == z["end"]
+    if chained_to_previous or next_is_chained:
+        BOUNDARIES.exact.add("zoom chaining: start equals previous end")
+    ease_in = clamp(z["easeIn"], 0, 3)
+    ease_out = 0 if next_is_chained else clamp(z["easeOut"], 0, 3)
+    duration = z["end"] - z["start"]
+    if gt(ease_in + ease_out, duration, "zoom easing: in + out > duration"):
+        factor = duration / (ease_in + ease_out)
+        ease_in *= factor
+        ease_out *= factor
+
+    held = held_window(base, z["scale"], *zoom_focus(z, samples, t))
+    if t < z["start"] + ease_in:
+        if chained_to_previous:
+            previous = zooms[active - 1]
+            origin = held_window(base, previous["scale"], *zoom_focus(previous, samples, t))
+        else:
+            origin = base
+        return lerp_rect(origin, held, ease((t - z["start"]) / ease_in))
+    if t > z["end"] - ease_out:
+        return lerp_rect(base, held, ease((z["end"] - t) / ease_out))
+    return held
+
+
+def suggest_zooms(p, events):
+    base = screen_base_rect(p)
+    duration = p["sources"]["screen"]["duration"]
+    raw = [c for c in ((events or {}).get("clicks") or []) if c is not None]
+    raw.sort(key=lambda c: c.get("t", 0))
+    clicks = []
+    for c in raw:
+        t, x, y = c.get("t", 0), c.get("x", 0), c.get("y", 0)
+        if not (ge(t, 0, "suggest: click t >= 0") and le(t, duration, "suggest: click t <= duration")):
+            continue
+        inside_base = (
+            ge(x, base["x"], "suggest: click x >= base left")
+            and le(x, base["x"] + base["width"], "suggest: click x <= base right")
+            and ge(y, base["y"], "suggest: click y >= base top")
+            and le(y, base["y"] + base["height"], "suggest: click y <= base bottom")
+        )
+        if inside_base:
+            clicks.append((t, x, y))
+
+    groups = []
+    for t, x, y in clicks:
+        g = groups[-1] if groups else None
+        if g is not None and le(t - g["last"], SUGGEST_JOIN, "suggest: click within join of the group"):
+            w = held_window(base, SUGGEST_SCALE, g["x"], g["y"])
+            inner = rect(
+                w["x"] + SUGGEST_INSET * w["width"],
+                w["y"] + SUGGEST_INSET * w["height"],
+                (1 - 2 * SUGGEST_INSET) * w["width"],
+                (1 - 2 * SUGGEST_INSET) * w["height"],
+            )
+            same_place = (
+                ge(x, inner["x"], "suggest: click x >= inner left")
+                and le(x, inner["x"] + inner["width"], "suggest: click x <= inner right")
+                and ge(y, inner["y"], "suggest: click y >= inner top")
+                and le(y, inner["y"] + inner["height"], "suggest: click y <= inner bottom")
+            )
+            if same_place:
+                g["last"] = t
+            else:
+                g["end"] = max(t - SUGGEST_LEAD, (g["last"] + t) / 2)
+                groups.append({"start": g["end"], "x": x, "y": y, "last": t, "end": None})
+        else:
+            groups.append({"start": max(0, t - SUGGEST_LEAD), "x": x, "y": y, "last": t, "end": None})
+
+    suggestions = []
+    for g in groups:
+        end = g["end"] if g["end"] is not None else min(duration, g["last"] + SUGGEST_HOLD)
+        if ge(end - g["start"], SUGGEST_SHORTEST, "suggest: group is long enough"):
+            suggestions.append(
+                {
+                    "start": g["start"],
+                    "end": end,
+                    "scale": SUGGEST_SCALE,
+                    "focus": {"mode": "point", "x": g["x"], "y": g["y"]},
+                    "easeIn": SUGGEST_EASE,
+                    "easeOut": SUGGEST_EASE,
+                    "origin": "auto",
+                }
+            )
+
+    manual = normalize_zooms(
+        [
+            z
+            for z in (p.get("zooms") or [])
+            if z is not None and enum(z.get("origin"), VALID_ZOOM_ORIGINS, "manual") != "auto"
+        ]
+    )
+    return [
+        s
+        for s in suggestions
+        if not any(
+            lt(s["start"], m["end"], "suggest: suggestion starts before manual ends")
+            and lt(m["start"], s["end"], "suggest: manual starts before suggestion ends")
+            for m in manual
+        )
+    ]
+
+
+def resolve_layout(p, t, canvas_size, events=None):
     w, h = canvas_size["width"], canvas_size["height"]
     m = min(w, h)
     canvas = get_canvas(p)
@@ -523,10 +756,9 @@ def resolve_layout(p, t, canvas_size):
 
     screen_out = None
     if screen_rect is not None:
-        screen_crop = screen_style.get("crop") if valid_crop(screen_style.get("crop"), "screen crop") else rect(0, 0, 1, 1)
         screen_out = {
             "rect": screen_rect,
-            "source": screen_crop,
+            "source": zoom_window(p, events, t),
             "cornerRadius": min(rs, min(screen_rect["width"], screen_rect["height"]) / 2),
             "shadow": shadow(screen_style.get("shadow", 0.5), m),
         }
@@ -639,20 +871,50 @@ def output_to_source(u, start, segments, output_duration):
     return segments[-1]["end"]
 
 
-def layout_fixture(description, p, cases):
+def layout_fixture(description, p, cases, events=None):
     natural = natural_canvas(p)
+    fixture = {"description": description, "project": p}
+    if events is not None:
+        fixture["events"] = events
+    fixture["naturalCanvas"] = natural
+    fixture["cases"] = [
+        {"time": t, "canvas": canvas, "expected": resolve_layout(p, t, canvas, events)} for t, canvas in cases
+    ]
+    return fixture
+
+
+def autozoom_fixture(description, p, events):
     return {
         "description": description,
         "project": p,
-        "naturalCanvas": natural,
-        "cases": [{"time": t, "canvas": canvas, "expected": resolve_layout(p, t, canvas)} for t, canvas in cases],
+        "events": events,
+        "expected": {"zooms": suggest_zooms(p, events)},
     }
 
 
-def add_fixture(fixtures, filename, fixture, *, null=None, omitted=None, unknown=None):
+def events_file(*, clicks=None, cursor=None, kind="display", capture_size=(1920, 1080)):
+    return {
+        "schemaVersion": 1,
+        "capture": {"width": capture_size[0], "height": capture_size[1], "scale": 1.0, "kind": kind},
+        "clicks": clicks or [],
+        "cursor": cursor or [],
+        "cameraCorners": [],
+        "markers": [],
+    }
+
+
+def click(t, x, y, button="left"):
+    return {"t": t, "x": x, "y": y, "button": button}
+
+
+def cursor_sample(t, x, y):
+    return {"t": t, "x": x, "y": y}
+
+
+def add_fixture(fixtures, filename, fixture, *, folder="layout", null=None, omitted=None, unknown=None):
     fixtures[filename] = fixture
     if null or omitted or unknown:
-        CLAIMS[Path("layout") / filename] = {
+        CLAIMS[Path(folder) / filename] = {
             "null": null or [],
             "omitted": omitted or [],
             "unknown": unknown or {},
@@ -1045,6 +1307,441 @@ def generate_layouts():
     return fixtures
 
 
+def assert_rect_close(actual, expected, label):
+    for key, value in zip(("x", "y", "width", "height"), expected):
+        assert_close(actual[key], value, f"{label}.{key}")
+
+
+def zoom_source(fixture, case_index):
+    return fixture["cases"][case_index]["expected"]["screen"]["source"]
+
+
+def assert_suggestions(fixture, expected, label):
+    zooms = fixture["expected"]["zooms"]
+    assert_equal(len(zooms), len(expected), f"{label}: suggestion count")
+    for index, (start, end, x, y) in enumerate(expected):
+        assert_close(zooms[index]["start"], start, f"{label}[{index}].start")
+        assert_close(zooms[index]["end"], end, f"{label}[{index}].end")
+        assert_close(zooms[index]["focus"]["x"], x, f"{label}[{index}].focus.x")
+        assert_close(zooms[index]["focus"]["y"], y, f"{label}[{index}].focus.y")
+        assert_equal(zooms[index]["origin"], "auto", f"{label}[{index}].origin")
+
+
+def generate_zoom_layouts():
+    fixtures = {}
+    full = size(1920, 1080)
+
+    def screen_project(number, name, zooms, **kwargs):
+        return project(
+            f"00000000-0000-4000-8000-{number:012d}",
+            name=name,
+            has_camera=False,
+            scenes=[scene(layout="screen")],
+            zooms=zooms,
+            **kwargs,
+        )
+
+    p = screen_project(48, "Zoom on the center", [zoom(2, 8)])
+    f = layout_fixture(
+        "One zoom on the center at scale 2: before it, the ease in, the held window, the ease out, the instant it ends, and after it.",
+        p,
+        [(t, full) for t in (0, 2, 2.25, 2.5, 5, 7.5, 7.75, 8, 12)],
+    )
+    assert_rect_close(zoom_source(f, 0), (0, 0, 1, 1), "zoom center before")
+    assert_rect_close(zoom_source(f, 1), (0, 0, 1, 1), "zoom center at start")
+    assert_rect_close(zoom_source(f, 2), (0.125, 0.125, 0.75, 0.75), "zoom center half way in")
+    assert_rect_close(zoom_source(f, 3), (0.25, 0.25, 0.5, 0.5), "zoom center held from start + in")
+    assert_rect_close(zoom_source(f, 5), (0.25, 0.25, 0.5, 0.5), "zoom center held until end - out")
+    assert_rect_close(zoom_source(f, 6), (0.125, 0.125, 0.75, 0.75), "zoom center half way out")
+    assert_rect_close(zoom_source(f, 7), (0, 0, 1, 1), "zoom center at end")
+    assert_equal(f["cases"][4]["expected"]["screen"]["rect"], f["cases"][0]["expected"]["screen"]["rect"], "zoom leaves the card alone")
+    fixtures["zoom-point-center.json"] = f
+
+    p = screen_project(
+        49,
+        "Zoom pushed back inside",
+        [
+            zoom(1, 4, scale=3, focus={"x": 0.05, "y": 0.9}, easeIn=0, easeOut=0),
+            zoom(6, 9, focus={"x": -0.2, "y": 1.4}, easeIn=0, easeOut=0),
+            zoom(11, 14, scale=4, focus={"x": 1, "y": 0}, easeIn=0, easeOut=0),
+        ],
+    )
+    f = layout_fixture(
+        "Windows that would stick out are pushed back inside the frame, a focus outside 0 to 1 is clamped, and a zoom without eases cuts in and out.",
+        p,
+        [(t, full) for t in (1, 2, 4, 7, 12, 13.5)],
+    )
+    assert_rect_close(zoom_source(f, 0), (0, 2 / 3, 1 / 3, 1 / 3), "zoom cut in at start")
+    assert_rect_close(zoom_source(f, 2), (0, 0, 1, 1), "zoom cut out at end")
+    assert_rect_close(zoom_source(f, 3), (0, 0.5, 0.5, 0.5), "zoom focus clamped")
+    assert_rect_close(zoom_source(f, 4), (0.75, 0, 0.25, 0.25), "zoom corner focus")
+    fixtures["zoom-point-pushed-back-inside.json"] = f
+
+    p = screen_project(
+        50,
+        "Zoom inside a crop",
+        [zoom(1, 5, focus={"x": 0.4, "y": 0.45}), zoom(7, 11, focus={"x": 0.95, "y": 0.05})],
+        screen_size=(2000, 1000),
+        screen_style={"crop": rect(0.1, 0.2, 0.6, 0.5)},
+    )
+    f = layout_fixture(
+        "A zoom works inside the screen crop: scale 2 shows half of the cropped view, a focus outside the crop is pushed to its edge, and the natural canvas is the crop's.",
+        p,
+        [(t, size(1200, 500)) for t in (0, 1.25, 3, 6, 9)],
+    )
+    assert_equal(f["naturalCanvas"], size(1200, 500), "zoom crop natural canvas")
+    assert_rect_close(zoom_source(f, 0), (0.1, 0.2, 0.6, 0.5), "zoom crop base")
+    assert_rect_close(zoom_source(f, 2), (0.25, 0.325, 0.3, 0.25), "zoom crop held")
+    assert_rect_close(zoom_source(f, 1), (0.175, 0.2625, 0.45, 0.375), "zoom crop half way in")
+    assert_rect_close(zoom_source(f, 4), (0.4, 0.2, 0.3, 0.25), "zoom crop focus outside")
+    fixtures["zoom-inside-screen-crop.json"] = f
+
+    p = screen_project(
+        51,
+        "Zoom clamps",
+        [
+            zoom(1, 4, scale=0.5),
+            zoom(5, 9, scale=9, easeIn=-1),
+            zoom(10, 18, easeIn=10, easeOut=0.25),
+        ],
+    )
+    f = layout_fixture(
+        "Scale clamps to 1 through 5 and the eases to 0 through 3 when they are used: a scale under 1 shows no zoom, a negative ease in is a cut, and an ease in of 10 takes 3 seconds.",
+        p,
+        [(t, full) for t in (2, 5, 7, 11.5, 13, 17.75, 17.875)],
+    )
+    assert_rect_close(zoom_source(f, 0), (0, 0, 1, 1), "zoom scale under 1")
+    assert_rect_close(zoom_source(f, 1), (0.4, 0.4, 0.2, 0.2), "zoom scale over 5 cut in")
+    assert_rect_close(zoom_source(f, 3), (0.125, 0.125, 0.75, 0.75), "zoom ease in clamped to 3")
+    assert_rect_close(zoom_source(f, 4), (0.25, 0.25, 0.5, 0.5), "zoom held after 3 seconds")
+    assert_rect_close(zoom_source(f, 5), (0.25, 0.25, 0.5, 0.5), "zoom held until end - out")
+    assert_rect_close(zoom_source(f, 6), (0.125, 0.125, 0.75, 0.75), "zoom short ease out")
+    assert_equal(p["zooms"][1]["scale"], 9, "zoom scale is stored unclamped")
+    fixtures["zoom-scale-and-ease-clamps.json"] = f
+
+    p = screen_project(
+        52,
+        "Zoom shorter than its eases",
+        [zoom(2, 2.75), zoom(5, 6, easeIn=3, easeOut=1), zoom(8, 9)],
+    )
+    f = layout_fixture(
+        "Eases that add up to more than the zoom are shortened in proportion, and eases that add up to exactly the zoom are left alone.",
+        p,
+        [(t, full) for t in (2.1875, 2.375, 2.5625, 5.375, 5.75, 5.875, 8.25, 8.5, 8.75)],
+    )
+    for index in (0, 2, 3, 5, 6, 8):
+        assert_rect_close(zoom_source(f, index), (0.125, 0.125, 0.75, 0.75), f"zoom short ease case {index}")
+    for index in (1, 4, 7):
+        assert_rect_close(zoom_source(f, index), (0.25, 0.25, 0.5, 0.5), f"zoom short held case {index}")
+    fixtures["zoom-eases-longer-than-zoom.json"] = f
+
+    p = screen_project(
+        53,
+        "Zoom normalization",
+        [
+            zoom(12, 16, scale=3),
+            zoom(4, 9, focus={"x": 0.25, "y": 0.25}),
+            None,
+            zoom(7, 6),
+            zoom(-2, 3, scale=4, easeIn=0, easeOut=0),
+            zoom(8, 13, focus={"x": 0.75, "y": 0.75}),
+            zoom(12, 15, scale=5),
+        ],
+    )
+    f = layout_fixture(
+        "Zooms out of order, one that ends before it starts, a negative start, a null entry, two sharing a start, and overlaps: the later zoom takes over where it starts, which chains it to the one before.",
+        p,
+        [(t, full) for t in (1, 3.5, 6, 7.9, 8, 8.25, 10, 12, 12.25, 14, 14.75, 15.5)],
+    )
+    assert_rect_close(zoom_source(f, 0), (0.375, 0.375, 0.25, 0.25), "zoom negative start becomes 0")
+    assert_rect_close(zoom_source(f, 1), (0, 0, 1, 1), "zoom gap")
+    assert_rect_close(zoom_source(f, 3), (0, 0, 0.5, 0.5), "zoom cut short has no ease out")
+    assert_rect_close(zoom_source(f, 4), (0, 0, 0.5, 0.5), "zoom chained starts from the one before")
+    assert_rect_close(zoom_source(f, 5), (0.25, 0.25, 0.5, 0.5), "zoom chained half way")
+    assert_rect_close(zoom_source(f, 6), (0.5, 0.5, 0.5, 0.5), "zoom second held")
+    assert_rect_close(zoom_source(f, 8), (0.45, 0.45, 0.35, 0.35), "zoom last of a shared start wins")
+    assert_rect_close(zoom_source(f, 10), (0.2, 0.2, 0.6, 0.6), "zoom last eases out")
+    add_fixture(fixtures, "zoom-normalization.json", f, null=["project.zooms[2]"])
+
+    p = screen_project(
+        54,
+        "Chained zooms",
+        [
+            zoom(2, 5, focus={"x": 0.25, "y": 0.25}),
+            zoom(5, 9, scale=3, focus={"x": 0.75, "y": 0.7}),
+            zoom(9.5, 12),
+        ],
+    )
+    f = layout_fixture(
+        "A zoom that starts exactly where the one before ends is chained to it: the first has no ease out and the window moves straight to the second. A zoom after a gap starts from the full view.",
+        p,
+        [(t, full) for t in (4.75, 5, 5.25, 5.5, 7, 8.75, 9.25, 9.75)],
+    )
+    held_second = (0.75 - 1 / 6, 0.7 - 1 / 6, 1 / 3, 1 / 3)
+    assert_rect_close(zoom_source(f, 0), (0, 0, 0.5, 0.5), "zoom chain first stays held")
+    assert_rect_close(zoom_source(f, 1), (0, 0, 0.5, 0.5), "zoom chain second starts on the first")
+    assert_rect_close(zoom_source(f, 2), tuple((a + b) / 2 for a, b in zip((0, 0, 0.5, 0.5), held_second)), "zoom chain half way")
+    assert_rect_close(zoom_source(f, 3), held_second, "zoom chain second held")
+    assert_rect_close(zoom_source(f, 5), tuple((a + b) / 2 for a, b in zip((0, 0, 1, 1), held_second)), "zoom chain second eases out")
+    assert_rect_close(zoom_source(f, 6), (0, 0, 1, 1), "zoom chain gap")
+    assert_rect_close(zoom_source(f, 7), (0.125, 0.125, 0.75, 0.75), "zoom after a gap eases in from the full view")
+    fixtures["zoom-chained.json"] = f
+
+    follow = events_file(
+        cursor=[
+            cursor_sample(2.0, 0.2, 0.2),
+            cursor_sample(3.0, 0.8, 0.2),
+            cursor_sample(6.0, 0.8, 0.9),
+            cursor_sample(9.0, 1.6, -0.3),
+        ]
+    )
+    p = screen_project(55, "Zoom that follows the pointer", [zoom(1, 12, focus={"mode": "cursor"})])
+    f = layout_fixture(
+        "A zoom in cursor mode centers on the pointer's mean position over the second around each time: before the first sample, across a move, at rest, and with a sample outside the frame.",
+        p,
+        [(t, full) for t in (1.25, 1.75, 3, 3.25, 4, 6.25, 10, 11.5)],
+        events=follow,
+    )
+    assert_rect_close(zoom_source(f, 0), (0, 0, 0.75, 0.75), "zoom cursor easing in")
+    assert_rect_close(zoom_source(f, 1), (0, 0, 0.5, 0.5), "zoom cursor before the first sample")
+    assert_rect_close(zoom_source(f, 2), (0.25, 0, 0.5, 0.5), "zoom cursor half way through a move")
+    assert_rect_close(zoom_source(f, 3), (0.4, 0, 0.5, 0.5), "zoom cursor three quarters through a move")
+    assert_rect_close(zoom_source(f, 4), (0.5, 0, 0.5, 0.5), "zoom cursor at rest")
+    assert_rect_close(zoom_source(f, 5), (0.5, 0.475, 0.5, 0.5), "zoom cursor vertical move")
+    assert_rect_close(zoom_source(f, 6), (0.5, 0, 0.5, 0.5), "zoom cursor sample outside the frame")
+    assert_rect_close(zoom_source(f, 7), (0.5, 0, 0.5, 0.5), "zoom cursor after the last sample")
+    fixtures["zoom-follows-cursor.json"] = f
+
+    shuffled = events_file(
+        cursor=[
+            cursor_sample(6.0, 0.8, 0.9),
+            cursor_sample(2.0, 0.2, 0.2),
+            None,
+            cursor_sample(9.0, 1.6, -0.3),
+            cursor_sample(3.0, 0.8, 0.2),
+        ]
+    )
+    p = screen_project(56, "Zoom with unsorted cursor samples", [zoom(1, 12, focus={"mode": "cursor"})])
+    g = layout_fixture(
+        "Cursor samples out of order, with a null entry among them, give the same windows as the sorted list.",
+        p,
+        [(t, full) for t in (1.75, 3.25, 6.25, 10)],
+        events=shuffled,
+    )
+    for index, same in enumerate((1, 3, 5, 6)):
+        assert_equal(zoom_source(g, index), zoom_source(f, same), f"zoom unsorted cursor case {index}")
+    add_fixture(fixtures, "zoom-cursor-samples-unsorted.json", g, null=["events.cursor[2]"])
+
+    p = screen_project(57, "Cursor zoom without samples", [zoom(1, 6, focus={"mode": "cursor", "x": 0.3, "y": 0.6}, easeIn=0, easeOut=0)])
+    f = layout_fixture(
+        "A zoom in cursor mode on a recording with no cursor samples looks at its own focus point.",
+        p,
+        [(3, full)],
+        events=events_file(kind="window"),
+    )
+    assert_rect_close(zoom_source(f, 0), (0.05, 0.35, 0.5, 0.5), "zoom cursor without samples")
+    fixtures["zoom-cursor-without-samples.json"] = f
+
+    p = screen_project(58, "Cursor zoom without events", [zoom(1, 6, focus={"mode": "cursor", "x": 0.3, "y": 0.6}, easeIn=0, easeOut=0)])
+    p["sources"]["events"] = None
+    f = layout_fixture(
+        "A zoom in cursor mode on a project with no events file looks at its own focus point.",
+        p,
+        [(3, full)],
+    )
+    assert_rect_close(zoom_source(f, 0), (0.05, 0.35, 0.5, 0.5), "zoom cursor without events")
+    add_fixture(fixtures, "zoom-cursor-without-events.json", f, null=["project.sources.events"], omitted=["events"])
+
+    p = project(
+        "00000000-0000-4000-8000-000000000059",
+        name="Zoom in every layout",
+        scenes=[
+            scene(start=0, layout="bubble"),
+            scene(start=5, layout="sideBySide"),
+            scene(start=10, layout="camera"),
+            scene(start=15, layout="screen"),
+        ],
+        zooms=[zoom(1, 19, easeIn=0, easeOut=0)],
+    )
+    f = layout_fixture(
+        "A zoom changes only the screen's source rectangle: the screen card and the camera are where they are without it, and the camera layout has no screen to zoom.",
+        p,
+        [(t, full) for t in (0.5, 2, 7, 12, 17)],
+    )
+    assert_rect_close(zoom_source(f, 1), (0.25, 0.25, 0.5, 0.5), "zoom in bubble layout")
+    assert_rect_close(zoom_source(f, 2), (0.25, 0.25, 0.5, 0.5), "zoom in side by side layout")
+    assert_equal(f["cases"][3]["expected"]["screen"], None, "zoom in camera layout has no screen")
+    assert_rect_close(zoom_source(f, 4), (0.25, 0.25, 0.5, 0.5), "zoom in screen layout")
+    assert_equal(f["cases"][1]["expected"]["screen"]["rect"], f["cases"][0]["expected"]["screen"]["rect"], "zoom keeps the bubble layout's card")
+    assert_equal(f["cases"][1]["expected"]["camera"]["rect"], f["cases"][0]["expected"]["camera"]["rect"], "zoom keeps the camera")
+    assert_equal(f["cases"][1]["expected"]["camera"]["source"], f["cases"][0]["expected"]["camera"]["source"], "zoom keeps the camera source")
+    fixtures["zoom-in-every-layout.json"] = f
+
+    p = screen_project(
+        60,
+        "Zoom defaults",
+        [
+            {"start": 1, "end": 5},
+            {"start": 6, "end": 9, "scale": None, "focus": None, "easeIn": None, "origin": "robot"},
+            {"start": 10, "end": 13, "focus": {"mode": "magnet", "x": 0.9}, "futureField": 7},
+            {"start": 14},
+        ],
+    )
+    f = layout_fixture(
+        "Zooms with members missing or null take the defaults (scale 2, the center, half-second eases), an unknown focus mode reads as point, an unknown member is kept, and a zoom without an end is dropped.",
+        p,
+        [(t, full) for t in (1.25, 3, 6.25, 7.5, 11.5, 14.5)],
+    )
+    assert_rect_close(zoom_source(f, 0), (0.125, 0.125, 0.75, 0.75), "zoom default ease in")
+    assert_rect_close(zoom_source(f, 1), (0.25, 0.25, 0.5, 0.5), "zoom default scale and focus")
+    assert_rect_close(zoom_source(f, 2), (0.125, 0.125, 0.75, 0.75), "zoom null ease in is the default")
+    assert_rect_close(zoom_source(f, 3), (0.25, 0.25, 0.5, 0.5), "zoom null scale and focus are the defaults")
+    assert_rect_close(zoom_source(f, 4), (0.5, 0.25, 0.5, 0.5), "zoom unknown focus mode is point")
+    assert_rect_close(zoom_source(f, 5), (0, 0, 1, 1), "zoom without an end is dropped")
+    add_fixture(
+        fixtures,
+        "zoom-defaults-and-tolerant-reading.json",
+        f,
+        null=["project.zooms[1].scale", "project.zooms[1].focus", "project.zooms[1].easeIn"],
+        omitted=[
+            "project.zooms[0].scale",
+            "project.zooms[0].focus",
+            "project.zooms[0].easeIn",
+            "project.zooms[0].origin",
+            "project.zooms[2].focus.y",
+            "project.zooms[3].end",
+        ],
+        unknown={"project.zooms[2].futureField": 7},
+    )
+
+    return fixtures
+
+
+def generate_autozooms():
+    fixtures = {}
+
+    def screen_project(number, name, **kwargs):
+        return project(
+            f"00000000-0000-4000-8000-{number:012d}",
+            name=name,
+            has_camera=False,
+            scenes=[scene(layout="screen")],
+            **kwargs,
+        )
+
+    f = autozoom_fixture(
+        "One click gives one zoom on it, from 0.6 seconds before the click until 1.5 seconds after.",
+        screen_project(70, "One click"),
+        events_file(clicks=[click(3.0, 0.2, 0.3)]),
+    )
+    assert_suggestions(f, [(2.4, 4.5, 0.2, 0.3)], "one click")
+    assert_equal(f["expected"]["zooms"][0]["scale"], 2, "suggested scale")
+    assert_equal(f["expected"]["zooms"][0]["focus"]["mode"], "point", "suggested focus mode")
+    fixtures["single-click.json"] = f
+
+    f = autozoom_fixture(
+        "Clicks that follow each other within 4 seconds and land inside the middle of the first click's window stay in one zoom, which ends 1.5 seconds after the last of them.",
+        screen_project(71, "Clicks in one place"),
+        events_file(clicks=[click(3.0, 0.61, 0.72), click(3.2, 0.61, 0.72), click(5.5, 0.55, 0.8), click(9.0, 0.7, 0.6)]),
+    )
+    assert_suggestions(f, [(2.4, 10.5, 0.61, 0.72)], "clicks in one place")
+    fixtures["clicks-in-one-place.json"] = f
+
+    f = autozoom_fixture(
+        "A click somewhere else within 4 seconds ends the zoom and starts the next one at the same instant, so the two are chained: 0.6 seconds before the click, or half way between the two clicks when that is later.",
+        screen_project(72, "Clicks that move"),
+        events_file(clicks=[click(3.0, 0.2, 0.3), click(5.0, 0.8, 0.7), click(5.4, 0.85, 0.75), click(6.0, 0.1, 0.1)]),
+    )
+    assert_suggestions(f, [(2.4, 4.4, 0.2, 0.3), (4.4, 5.7, 0.8, 0.7), (5.7, 7.5, 0.1, 0.1)], "clicks that move")
+    assert_equal(f["expected"]["zooms"][0]["end"], f["expected"]["zooms"][1]["start"], "moved zooms are chained")
+    assert_equal(f["expected"]["zooms"][1]["end"], f["expected"]["zooms"][2]["start"], "moved zooms are chained again")
+    fixtures["clicks-that-move.json"] = f
+
+    f = autozoom_fixture(
+        "Clicks more than 4 seconds apart get separate zooms even in the same place, and a click exactly 4 seconds after the one before still belongs with it.",
+        screen_project(73, "Clicks far apart"),
+        events_file(clicks=[click(2.0, 0.5, 0.5), click(8.0, 0.5, 0.5), click(12.0, 0.5, 0.5)]),
+    )
+    assert_suggestions(f, [(1.4, 3.5, 0.5, 0.5), (7.4, 13.5, 0.5, 0.5)], "clicks far apart")
+    fixtures["clicks-far-apart.json"] = f
+
+    f = autozoom_fixture(
+        "A zoom cannot start before the recording or end after it, a click at the very end still counts, and clicks outside the recording's time are ignored.",
+        screen_project(74, "Clicks at the start and the end", screen_duration=10),
+        events_file(
+            clicks=[
+                click(-0.5, 0.5, 0.5),
+                click(0.2, 0.3, 0.3),
+                click(9.5, 0.7, 0.7),
+                click(10, 0.7, 0.7),
+                click(10.5, 0.7, 0.7),
+            ]
+        ),
+    )
+    assert_suggestions(f, [(0, 1.7, 0.3, 0.3), (8.9, 10, 0.7, 0.7)], "clicks at the start and the end")
+    fixtures["clicks-at-the-start-and-end.json"] = f
+
+    f = autozoom_fixture(
+        "Three quick clicks in three places: the zoom for the middle one would last a tenth of a second, which is under the shortest allowed, so it is left out and its neighbours are not chained.",
+        screen_project(75, "Quick clicks in different places"),
+        events_file(clicks=[click(5.0, 0.1, 0.1), click(5.1, 0.9, 0.9), click(5.2, 0.1, 0.9)]),
+    )
+    assert_suggestions(f, [(4.4, 5.05, 0.1, 0.1), (5.15, 6.7, 0.1, 0.9)], "quick clicks")
+    fixtures["quick-clicks-in-different-places.json"] = f
+
+    f = autozoom_fixture(
+        "With a screen crop, clicks outside it are ignored, a click on its edge counts, and the window that decides whether a click is in the same place is the cropped view's.",
+        screen_project(76, "Clicks with a crop", screen_style={"crop": rect(0.25, 0.25, 0.5, 0.5)}),
+        events_file(
+            clicks=[
+                click(2.0, 0.1, 0.1),
+                click(3.0, 0.3, 0.3),
+                click(4.0, 0.45, 0.45),
+                click(5.0, 0.7, 0.7),
+                click(12.0, 0.75, 0.5),
+            ]
+        ),
+    )
+    assert_suggestions(f, [(2.4, 4.5, 0.3, 0.3), (4.5, 6.5, 0.7, 0.7), (11.4, 13.5, 0.75, 0.5)], "clicks with a crop")
+    fixtures["clicks-with-a-crop.json"] = f
+
+    manual_project = screen_project(
+        77,
+        "Manual zooms win",
+        zooms=[
+            zoom(2, 4),
+            zoom(7, 9, origin="auto"),
+            {"start": 12.5, "end": 14},
+            zoom(19.5, 20),
+        ],
+    )
+    f = autozoom_fixture(
+        "A suggestion that overlaps a zoom the user made is dropped. One that overlaps only an earlier suggestion is kept, because applying replaces those, and one that ends exactly where a manual zoom starts does not overlap it. A zoom without an origin is manual.",
+        manual_project,
+        events_file(clicks=[click(3.0, 0.5, 0.5), click(8.0, 0.5, 0.5), click(13.0, 0.2, 0.2), click(18.0, 0.5, 0.5)]),
+    )
+    assert_suggestions(f, [(7.4, 9.5, 0.5, 0.5), (17.4, 19.5, 0.5, 0.5)], "manual zooms win")
+    add_fixture(fixtures, "manual-zooms-win.json", f, folder="autozoom", omitted=["project.zooms[2].origin"])
+
+    f = autozoom_fixture(
+        "A recording without clicks, which is what a window recording is, gets no suggestions.",
+        screen_project(78, "No clicks"),
+        events_file(kind="window", cursor=[cursor_sample(1.0, 0.5, 0.5)]),
+    )
+    assert_suggestions(f, [], "no clicks")
+    fixtures["no-clicks.json"] = f
+
+    f = autozoom_fixture(
+        "Clicks are taken in time order whatever order they are stored in, every mouse button counts, and a null entry is skipped.",
+        screen_project(79, "Unsorted clicks"),
+        events_file(clicks=[click(9.0, 0.5, 0.5, "right"), None, click(2.0, 0.5, 0.5), click(2.5, 0.52, 0.5, "middle")]),
+    )
+    assert_suggestions(f, [(1.4, 4.0, 0.5, 0.5), (8.4, 10.5, 0.5, 0.5)], "unsorted clicks")
+    add_fixture(fixtures, "unsorted-clicks.json", f, folder="autozoom", null=["events.clicks[1]"])
+
+    return fixtures
+
+
 def generate_timemaps():
     return {
         "no-edits.json": timemap_fixture("No trim or cuts maps the full source directly.", 20, {"trimStart": 0, "trimEnd": None, "cuts": [], "speed": []}, [-1, 0, 7.5, 20, 25], [-1, 0, 7.5, 20, 25]),
@@ -1146,8 +1843,12 @@ def generated_files():
         files[Path("canvas") / filename] = fixture
     for filename, fixture in generate_layouts().items():
         files[Path("layout") / filename] = fixture
+    for filename, fixture in generate_zoom_layouts().items():
+        files[Path("layout") / filename] = fixture
     for filename, fixture in generate_timemaps().items():
         files[Path("timemap") / filename] = fixture
+    for filename, fixture in generate_autozooms().items():
+        files[Path("autozoom") / filename] = fixture
     verify_claims(files)
     return files
 
@@ -1164,7 +1865,7 @@ def write_json(path, value):
 def check_files(files):
     expected = {FIXTURES / rel for rel in files}
     actual = set()
-    for directory in [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR]:
+    for directory in FIXTURE_DIRS:
         if directory.exists():
             actual.update(path for path in directory.rglob("*.json"))
     stray = sorted(actual - expected)
@@ -1186,7 +1887,7 @@ def check_files(files):
 
 
 def write_files(files):
-    for directory in [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR]:
+    for directory in FIXTURE_DIRS:
         if directory.exists():
             shutil.rmtree(directory)
     for rel, fixture in files.items():

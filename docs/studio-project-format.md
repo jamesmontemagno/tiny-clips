@@ -2,7 +2,7 @@
 
 This is the contract between the macOS and Windows implementations of Tiny Clips Studio: the files a project is made of, every field in them, and the math that turns a project into a frame layout. The design it serves is in [plans/video-studio-plan.md](../plans/video-studio-plan.md).
 
-Both platforms implement sections 5 to 7 as pure functions, and both test suites run the shared fixtures in `shared/studio/fixtures/`. If the two implementations disagree, this document decides which one is wrong.
+Both platforms implement sections 5 to 8 as pure functions, and both test suites run the shared fixtures in `shared/studio/fixtures/`. If the two implementations disagree, this document decides which one is wrong.
 
 ## 1. Files
 
@@ -10,7 +10,7 @@ Both platforms implement sections 5 to 7 as pure functions, and both test suites
 <projects root>/<project id>/
   project.json   required
   events.json    optional: cursor, click, and camera-corner data
-  screen.mp4     the screen source (absent for flat projects, see section 9)
+  screen.mp4     the screen source (absent for flat projects, see section 10)
   camera.mp4     optional
   poster.jpg     optional thumbnail
 ```
@@ -54,7 +54,7 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 | `screen` | ScreenStyle | | |
 | `camera` | CameraStyle | | |
 | `scenes` | Scene[] | one default scene | See normalization in section 6.1 |
-| `zooms` | Zoom[] | `[]` | Stored and round-tripped in v1. Evaluation is defined in a later revision |
+| `zooms` | Zoom[] | `[]` | See section 6.8 |
 | `edits` | Edits | | |
 | `audio` | Audio | | |
 | `overlays` | Overlays | | |
@@ -129,9 +129,16 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `transition.kind` | enum | `cut` | | `cut`, `morph`. How this scene is entered. Evaluated in a later revision |
 | `transition.duration` | number | 0.35 | 0 to 2 | Seconds |
 
-### Zoom (reserved)
+### Zoom
 
-`{ "start", "end", "scale", "focus": { "mode": "point" or "cursor", "x", "y" }, "easeIn", "easeOut", "origin": "manual" or "auto" }`
+| Property | Type | Default | Clamp | Notes |
+|---|---|---|---|---|
+| `start`, `end` | number | 0 | | Source time. See normalization in section 6.8 |
+| `scale` | number | 2 | 1 to 5 | How much the screen is magnified inside its card |
+| `focus.mode` | enum | `point` | | `point` looks at one place. `cursor` follows the pointer |
+| `focus.x`, `focus.y` | number | 0.5 | 0 to 1 | Normalized in the screen frame, like a click. Where a `point` zoom looks, and where a `cursor` zoom looks when the recording has no cursor samples |
+| `easeIn`, `easeOut` | number | 0.5 | 0 to 3 | Seconds spent moving in at the start and back out at the end |
+| `origin` | enum | `manual` | | `manual` or `auto`. `auto` marks a suggestion (section 8) that has not been edited since it was made |
 
 ### Edits
 
@@ -218,7 +225,7 @@ The layout resolver accepts any `(W, H)` and is scale invariant: doubling the ca
 
 ## 6. Layout resolution
 
-Inputs: a project, a source time `t`, and a canvas size `(W, H)`. Output: a resolved frame (section 6.6). All arithmetic is in doubles with no rounding.
+Inputs: a project, its events, a source time `t`, and a canvas size `(W, H)`. Output: a resolved frame (section 6.6). All arithmetic is in doubles with no rounding. Of the events only the cursor samples are used, and only by a zoom that follows the pointer (section 6.8); a project without events resolves as one with none.
 
 `W` and `H` are positive doubles. They need not be integers, and they need not match the natural canvas aspect: a preview resolves at whatever size its view happens to be.
 
@@ -301,7 +308,7 @@ vertical (W < H):
 
 ### 6.4 Source rectangles
 
-- Screen: the valid screen crop, or `Rect(0, 0, 1, 1)`.
+- Screen: the zoom window at `t` (section 6.8). When no zoom is active that is the valid screen crop, or `Rect(0, 0, 1, 1)`.
 - Camera: the camera content is aspect-filled into `cameraRect`, centered.
 
 ```
@@ -388,6 +395,76 @@ These are not covered by fixtures, because they describe pixels rather than geom
   `k` is canvas pixels per point of the captured screen. `source` is the resolved screen source rect. When `capture.width` is missing or 0 the ratio `sources.screen.width / capture.width` is 1. A click whose center falls outside the visible source rect is not drawn.
 - **Cursor samples** are steps, not line segments: at time `t` the pointer is at the latest sample at or before `t`. That is why a resting pointer needs no repeated samples.
 
+### 6.8 Zoom
+
+A zoom magnifies the screen inside its card. For as long as it lasts, the screen's source rectangle is a smaller one, the zoom window. The card, the camera, and the canvas do not move, and the natural canvas size does not change. The `camera` layout shows no screen, so a zoom does nothing there.
+
+```
+base = the valid screen crop, or Rect(0, 0, 1, 1)
+```
+
+**Normalization.** Before use, in this order:
+
+1. Replace a negative `start` with 0.
+2. Drop every zoom with `end <= start`.
+3. Sort by `start` ascending (stable), and keep only the last zoom among those sharing a `start`.
+4. Where a zoom starts before the one before it ends, the earlier one ends there: `earlier.end = later.start`.
+
+Normalized zooms do not overlap. A zoom is **chained** to the one before it when its `start` equals that zoom's `end` exactly. An editor that wants two zooms chained stores the same number in both.
+
+The **active zoom** at `t` is the one with `start <= t < end`. With no active zoom the window is `base`.
+
+**The window a zoom holds** at time `t`:
+
+```
+s        = clamp(scale, 1, 5)
+w        = base.width  / s
+h        = base.height / s
+(fx, fy) = the focus at t (below)
+x        = max(base.x, min(fx - w / 2, base.x + base.width  - w))
+y        = max(base.y, min(fy - h / 2, base.y + base.height - h))
+held(zoom, t) = Rect(x, y, w, h)
+```
+
+The window is centered on the focus and pushed back inside `base` where it would stick out. The lower bound is applied last, so it wins if rounding puts the upper bound below it.
+
+**Focus.** For `point`, `(clamp(focus.x, 0, 1), clamp(focus.y, 0, 1))`. For `cursor`, the pointer's mean position over the second centered on `t`:
+
+```
+samples = events.cursor sorted by t (stable), each x and y clamped to 0..1
+none:     use the point focus
+
+a = t - 0.5,  b = t + 0.5
+sample i lasts from from_i to until_i:
+  from_i  = samples[i].t,      or minus infinity for the first sample
+  until_i = samples[i + 1].t,  or plus infinity for the last sample
+fx = sum over i of samples[i].x * max(0, min(b, until_i) - max(a, from_i))
+fy = the same with y
+```
+
+The second is one long, so the sum is the mean. Before the first sample the pointer counts as being at the first sample, and after the last one at the last.
+
+**Moving in and out.**
+
+```
+in   = clamp(easeIn, 0, 3)
+out  = clamp(easeOut, 0, 3), or 0 when the next zoom is chained to this one
+d    = end - start
+if in + out > d:   f = d / (in + out),  in = in * f,  out = out * f
+
+from(t)       = held(previous zoom, t) when this zoom is chained to it, otherwise base
+ease(u)       = u * u * (3 - 2 * u)
+lerp(A, B, k) = A + (B - A) * k        for x, y, width, and height separately
+
+if t < start + in:        window = lerp(from(t), held(zoom, t), ease((t - start) / in))
+else if t > end - out:    window = lerp(base,    held(zoom, t), ease((end - t) / out))
+else:                     window = held(zoom, t)
+```
+
+A zoom with `easeIn` 0 cuts in, and one with `easeOut` 0 cuts out. Between two chained zooms the window moves straight from the first place to the second and does not open out in between.
+
+Nothing else changes for a zoom. The click rings follow by themselves, because their size and position are already computed from the resolved source rectangle (section 6.7).
+
 ## 7. Time map
 
 The time map converts between source time and output time. v1 covers trim and cuts; speed is reserved.
@@ -416,7 +493,51 @@ outputToSource(u):   u is clamped to [0, outputDuration]
   no kept segments                 start
 ```
 
-## 8. Defaults for a new project
+## 8. Zoom suggestions
+
+Suggestions are zooms worked out from the clicks of a recording. They are a pure function of the project and its events, and they are only ever a proposal: the editor adds them as zooms with `origin` `auto`, and the user keeps, changes, or deletes them.
+
+```
+scale = 2    lead = 0.6    hold = 1.5    join = 4    inset = 0.15    shortest = 0.3
+
+base   = the valid screen crop, or Rect(0, 0, 1, 1)
+D      = sources.screen.duration
+clicks = events.clicks sorted by t (stable), keeping those with 0 <= t <= D
+         whose point is inside base, edges included
+
+groups = []
+for each click c:
+    g = the last group, if there is one
+    if g exists and c.t - g.last <= join:
+        w     = the window a point zoom of this scale at g.focus holds (section 6.8)
+        inner = Rect(w.x + inset * w.width, w.y + inset * w.height,
+                     (1 - 2 * inset) * w.width, (1 - 2 * inset) * w.height)
+        if c is inside inner, edges included:
+            g.last = c.t                                      the same place: stay
+        else:
+            g.end = max(c.t - lead, (g.last + c.t) / 2)       another place, soon after: move there
+            add the group { start: g.end, focus: (c.x, c.y), last: c.t }
+    else:
+        add the group { start: max(0, c.t - lead), focus: (c.x, c.y), last: c.t }
+
+a group that was not given an end:   end = min(D, last + hold)
+```
+
+Each group with `end - start >= shortest` becomes one suggestion, in order:
+
+```json
+{ "start": 2.4, "end": 4.5, "scale": 2, "focus": { "mode": "point", "x": 0.2, "y": 0.3 }, "easeIn": 0.5, "easeOut": 0.5, "origin": "auto" }
+```
+
+A group that follows another within `join` starts exactly where that one ends, so the two zooms are chained and the picture moves from one place to the next. Groups further apart never touch, because `join` is longer than `lead + hold`.
+
+**Manual zooms win.** Take the project's zooms whose `origin` is not `auto` and normalize them by themselves (section 6.8). A suggestion that overlaps one of them (`suggestion.start < manual.end` and `manual.start < suggestion.end`) is dropped.
+
+**Applying suggestions** replaces the project's `auto` zooms with the new list and leaves every other zoom as it is stored. A zoom stops being `auto` the first time the user changes it.
+
+A window recording carries no clicks today, so it gets no suggestions.
+
+## 9. Defaults for a new project
 
 - Canvas `auto`, padding 0.06, background gradient `ocean` (`#2687E8` to `#2EE0BF`).
 - Screen `cornerRadius` 0.02, `shadow` 0.5. Camera `circle`, mirrored, `shadow` 0.35.
@@ -427,11 +548,11 @@ outputToSource(u):   u is clamped to [0, outputDuration]
 
 The classic look, matching a recording made without Studio, is background `none`, padding 0, screen `cornerRadius` 0, and screen `shadow` 0.
 
-## 9. Flat projects
+## 10. Flat projects
 
 Opening an existing video that has no project creates a flat project: `sources.screen.external` is true, `screen.file` is the absolute path, and `camera` and `events` are null. The caller reads the video's width, height, duration, and frame rate and passes them in; the store does not open media files. There is at most one flat project per video path. Camera layouts are unavailable, so every scene resolves as `screen`.
 
-## 10. Export links
+## 11. Export links
 
 Each export adds `{ path, exportedAt }` to `exports`. The project store indexes those paths, compared case-insensitively, so the Clips Library can find the project for a video.
 
@@ -439,7 +560,7 @@ Each export adds `{ path, exportedAt }` to `exports`. The project store indexes 
 - A path belongs to one project. Recording an export removes the same path from every other project, because the file there has been overwritten.
 - Renaming or moving an exported video updates its entry; deleting the video removes it.
 
-## 11. Cleanup
+## 12. Cleanup
 
 - A project is **eligible** for automatic cleanup when it has at least one export, `keepSources` is false, and it is not a flat project.
 - A project that is open in Studio, or still being recorded, is never deleted. The app passes those ids to every cleanup.
@@ -453,7 +574,7 @@ Each export adds `{ path, exportedAt }` to `exports`. The project store indexes 
 - A folder that cannot be deleted because a file is in use is skipped and tried again next time. One failure does not stop the rest.
 - Cleanup runs at app launch and after each export.
 
-## 12. Fixtures
+## 13. Fixtures
 
 `shared/studio/fixtures/` holds JSON files loaded by both test suites.
 
@@ -470,7 +591,20 @@ Layout fixtures, in `layout/`:
 }
 ```
 
-`project` is a complete `project.json`, `naturalCanvas` is the expected result of section 5, and each `expected` is a resolved frame from section 6.6.
+`project` is a complete `project.json`, `naturalCanvas` is the expected result of section 5, and each `expected` is a resolved frame from section 6.6. A fixture may also have an `events` member holding an `events.json`; the layout is then resolved with those events. Without the member there are no events.
+
+Zoom suggestion fixtures, in `autozoom/`:
+
+```json
+{
+  "description": "what this case covers",
+  "project": { },
+  "events": { },
+  "expected": { "zooms": [ ] }
+}
+```
+
+`expected.zooms` is the list of suggestions from section 8 for that project and those events, after the ones that overlap a manual zoom have been dropped. It does not include the project's other zooms.
 
 Time map fixtures, in `timemap/`:
 

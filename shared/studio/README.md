@@ -4,9 +4,10 @@
 
 ## Formats
 
-- `fixtures/layout/*.json`: a description, a complete `project` (except fixtures whose description says optional defaults were deliberately omitted), the expected `naturalCanvas`, and resolved layout `cases` for section 6.
+- `fixtures/layout/*.json`: a description, a complete `project` (except fixtures whose description says optional defaults were deliberately omitted), the expected `naturalCanvas`, and resolved layout `cases` for section 6. A fixture may carry an `events` member, an `events.json`, which the layout is then resolved with; the `zoom-*.json` files cover section 6.8.
 - `fixtures/timemap/*.json`: a source duration, edits, expected kept segments, output duration, and source/output query pairs for section 7.
 - `fixtures/canvas/*.json`: export-size cases for section 5, each with a natural canvas size, long-side limit, and expected export size.
+- `fixtures/autozoom/*.json`: a `project`, its `events`, and the zoom suggestions section 8 gives for them.
 
 ## Regenerating
 
