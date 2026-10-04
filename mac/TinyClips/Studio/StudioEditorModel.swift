@@ -519,12 +519,7 @@ struct StudioEditorModel: Equatable, Sendable {
         if let existing = zoomIndex(at: start) {
             return StudioZoomEditResult(changed: false, index: existing)
         }
-
-        let zooms = project.zooms
-        let index = zooms.firstIndex { $0.start > start } ?? zooms.count
-        let nextStart = index < zooms.count ? zooms[index].start : sourceDuration
-        let end = min(start + Self.newZoomDuration, nextStart, sourceDuration)
-        guard end - start >= Self.minimumZoomDuration else {
+        guard let place = newZoomPlace(startingAt: start) else {
             return StudioZoomEditResult(changed: false, index: nil)
         }
 
@@ -532,15 +527,23 @@ struct StudioEditorModel: Equatable, Sendable {
         let pointer = events?.preparedCursorSamples.focus(at: start)
         let zoom = StudioZoom(
             start: start,
-            end: end,
+            end: place.end,
             focus: StudioZoomFocus(
                 mode: .point,
                 x: StudioCanvasMath.clamped(pointer?.x ?? 0.5, 0, 1),
                 y: StudioCanvasMath.clamped(pointer?.y ?? 0.5, 0, 1)
             )
         )
-        mutate { $0.zooms.insert(zoom, at: index) }
-        return StudioZoomEditResult(changed: true, index: index)
+        mutate { $0.zooms.insert(zoom, at: place.index) }
+        return StudioZoomEditResult(changed: true, index: place.index)
+    }
+
+    /// Whether `addZoom(at:events:)` at this time has a zoom to answer with: a new one, or the one
+    /// that is already there. False where less than `minimumZoomDuration` fits.
+    func canAddZoom(at sourceTime: Double) -> Bool {
+        guard sourceTime.isFinite else { return false }
+        let start = clampedSourceTime(sourceTime)
+        return zoomIndex(at: start) != nil || newZoomPlace(startingAt: start) != nil
     }
 
     @discardableResult
@@ -1035,6 +1038,18 @@ struct StudioEditorModel: Equatable, Sendable {
 
     private mutating func sortStoredZooms() {
         project.zooms = Self.sortedByStart(project.zooms)
+    }
+
+    /// Where a zoom starting at a time that no zoom contains goes in the list, and where it ends:
+    /// after `newZoomDuration`, or at the next zoom or the end of the recording when that comes
+    /// sooner. Nil when that leaves less than the shortest zoom.
+    private func newZoomPlace(startingAt start: Double) -> (index: Int, end: Double)? {
+        let zooms = project.zooms
+        let index = zooms.firstIndex { $0.start > start } ?? zooms.count
+        let nextStart = index < zooms.count ? zooms[index].start : sourceDuration
+        let end = min(start + Self.newZoomDuration, nextStart, sourceDuration)
+        guard end - start >= Self.minimumZoomDuration else { return nil }
+        return (index, end)
     }
 
     /// In time order, and for equal starts in the order they were in.

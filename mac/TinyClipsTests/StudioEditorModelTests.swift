@@ -1095,6 +1095,41 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(crowded.project.zooms[1].start, 4, accuracy: 1e-9)
     }
 
+    // MARK: - Zooms: Whether One Can Be Added
+
+    func testAZoomCanBeAddedExactlyWhereAddingOneAnswersWithAZoom() {
+        var project = makeProject(duration: 10, camera: false)
+        project.zooms = [zoom(1, 3), zoom(3.2, 7), zoom(9.8, 10)]
+
+        for step in -4...208 {
+            let time = Double(step) * 0.05
+            var model = StudioEditorModel(project: project)
+            let canAdd = model.canAddZoom(at: time)
+            let result = model.addZoom(at: time)
+
+            XCTAssertEqual(canAdd, result.index != nil, "at \(time): adding gave \(result)")
+        }
+
+        let untouched = StudioEditorModel(project: project)
+
+        // A second before the first zoom, and inside a zoom, which adding selects.
+        XCTAssertTrue(untouched.canAddZoom(at: 0))
+        XCTAssertTrue(untouched.canAddZoom(at: 2))
+
+        // 0.15 seconds before the next zoom, and 0.2 before the last.
+        XCTAssertFalse(untouched.canAddZoom(at: 3.05))
+        XCTAssertFalse(untouched.canAddZoom(at: 9.6))
+
+        // At the end of a zoom, chained to it.
+        XCTAssertTrue(untouched.canAddZoom(at: 7))
+
+        // Times outside the recording count as its ends.
+        XCTAssertTrue(untouched.canAddZoom(at: -3))
+        XCTAssertFalse(untouched.canAddZoom(at: 40))
+        XCTAssertFalse(untouched.canAddZoom(at: .nan))
+        XCTAssertFalse(untouched.canAddZoom(at: .infinity))
+    }
+
     // MARK: - Zooms: Stepping Through Them
 
     func testTheNextZoomFollowsTheSelectedOneOrIsTheOneAtOrAfterThePlayhead() {

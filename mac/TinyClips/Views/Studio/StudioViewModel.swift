@@ -30,6 +30,14 @@ final class StudioViewModel: ObservableObject {
     @Published private(set) var isExporting = false
     @Published private(set) var exportProgress: Double = 0
 
+    /// The zoom the inspector shows, as its place in the project's zooms, or nil. It stays on its
+    /// zoom while edits, undo, and redo change the list around it.
+    @Published private(set) var selectedZoomIndex: Int?
+
+    /// The size the preview is drawn at. It follows the project, except during a drag, when a new
+    /// size waits for the drag to end so the player is not rebuilt for every step of it.
+    @Published private(set) var previewSize = CGSize.zero
+
     /// Set by the window. Called to close it once an export started from the close prompt is done.
     var requestClose: (() -> Void)?
 
@@ -37,7 +45,9 @@ final class StudioViewModel: ObservableObject {
     private var events = StudioEvents()
     private var paths: StudioProjectPaths?
     private var playback: StudioPlayback?
-    private var previewSize = CGSize.zero
+    private var isInGesture = false
+    private var needsPreviewRefresh = false
+    private var isRefreshingPreview = false
     private var timeObserver: Any?
     private var rateObservation: NSKeyValueObservation?
     private var saveTask: Task<Void, Never>?
@@ -68,7 +78,12 @@ final class StudioViewModel: ObservableObject {
         return name.isEmpty ? "Untitled Recording" : name
     }
 
+    /// The canvas the preview shows, in pixels. This is the size the player was last built for, so
+    /// what is laid out over the preview matches what is drawn in it.
     var previewRenderSize: CGSize {
+        if previewSize.width > 0, previewSize.height > 0 {
+            return previewSize
+        }
         guard let project else { return CGSize(width: 1280, height: 720) }
         return Self.renderSize(for: project, longSide: Self.previewLongSide)
     }
@@ -83,6 +98,27 @@ final class StudioViewModel: ObservableObject {
         let position = StudioEditorModel.formattedTime(editor.outputTime(forSourceTime: playhead))
         return "\(position) / \(StudioEditorModel.formattedTime(editor.outputDuration))"
     }
+
+    var zooms: [StudioZoom] { project?.zooms ?? [] }
+
+    var selectedZoom: StudioZoom? {
+        guard let index = selectedZoomIndex, zooms.indices.contains(index) else { return nil }
+        return zooms[index]
+    }
+
+    /// Whether the recording has clicks to suggest zooms from. A recording of a window has none.
+    var hasClicks: Bool { !events.clicks.isEmpty }
+
+    /// Whether the recording has pointer positions for a zoom to follow. A recording of a window has none.
+    var hasPointerPositions: Bool { !events.cursor.isEmpty }
+
+    /// Whether adding a zoom at the playhead has a zoom to answer with: one fits there, or one is
+    /// already there to select.
+    var canAddZoomAtPlayhead: Bool { isEditable && (editor?.canAddZoom(at: playhead) ?? false) }
+
+    var canSuggestZooms: Bool { isEditable && hasClicks }
+
+    var hasSuggestedZooms: Bool { (editor?.suggestedZoomCount ?? 0) > 0 }
 
     /// The camera bubble on a canvas of `canvasSize`, when the bubble layout is showing.
     func bubbleRect(canvasSize: CGSize) -> StudioRect? {
@@ -137,11 +173,18 @@ final class StudioViewModel: ObservableObject {
     /// Starts a gesture such as a drag, so everything until `endGesture()` is one undo step.
     func beginGesture() {
         guard isEditable else { return }
+        isInGesture = true
         editor?.beginEditingGroup()
     }
 
     func endGesture() {
         editor?.commitEditingGroup()
+        guard isInGesture else { return }
+        isInGesture = false
+        // A canvas size that waited for the drag to end is applied now.
+        if let project, Self.renderSize(for: project, longSide: Self.previewLongSide) != previewSize {
+            refreshPreview()
+        }
     }
 
     func undo() {
@@ -244,6 +287,192 @@ final class StudioViewModel: ObservableObject {
     func setBrandingEnabled(_ value: Bool) {
         edit { $0.setBrandingEnabled(value) }
     }
+
+    // MARK: - Crops
+
+    func setScreenCropInset(_ edge: StudioCropEdge, to value: Double) {
+        edit { $0.setScreenCropInset(edge, to: value) }
+    }
+
+    func clearScreenCrop() {
+        edit { $0.clearScreenCrop() }
+    }
+
+    func setCameraCropInset(_ edge: StudioCropEdge, to value: Double) {
+        edit { $0.setCameraCropInset(edge, to: value) }
+    }
+
+    func clearCameraCrop() {
+        edit { $0.clearCameraCrop() }
+    }
+
+    // MARK: - Zooms
+    //
+    // An index is a zoom's place in `project.zooms`, which is kept in time order. One zoom can be
+    // selected. An edit to the selected zoom takes the selection with it, and so does adding a
+    // zoom. Through every other edit, and undo and redo, the selection follows its zoom as
+    // `StudioEditorModel.zoomIndex(following:from:to:)` finds it, or lets go when the zoom is gone.
+
+    /// Selects a zoom, or none with nil or a place that has no zoom. The playhead stays.
+    func selectZoom(_ index: Int?) {
+        setSelectedZoomIndex(index)
+    }
+
+    /// Selects a zoom and moves the playhead to where it has moved in.
+    @discardableResult
+    func selectAndShowZoom(_ index: Int?) -> Bool {
+        guard isEditable, let index, let time = editor?.zoomLookTime(at: index) else { return false }
+        setSelectedZoomIndex(index)
+        scrub(to: time)
+        return true
+    }
+
+    /// Selects the zoom after the selected one and shows it. With nothing selected, the zoom at the
+    /// playhead or the first one after it. False when there is none.
+    @discardableResult
+    func selectNextZoom() -> Bool {
+        selectAndShowZoom(editor?.zoomIndex(after: selectedZoomIndex, playhead: playhead))
+    }
+
+    /// Selects the zoom before the selected one and shows it. With nothing selected, the zoom at
+    /// the playhead or the last one before it. False when there is none.
+    @discardableResult
+    func selectPreviousZoom() -> Bool {
+        selectAndShowZoom(editor?.zoomIndex(before: selectedZoomIndex, playhead: playhead))
+    }
+
+    /// Adds a zoom at the playhead and selects it. Where a zoom already is, that one is selected
+    /// instead. A zoom starts unzoomed, so a paused playhead then moves to where the new zoom has
+    /// moved in, which shows what it looks at.
+    func addZoomAtPlayhead() {
+        guard isEditable else { return }
+        let time = playhead
+        let recordedEvents = events
+        var result = StudioZoomEditResult(changed: false, index: nil)
+        editAndSelect { model in
+            result = model.addZoom(at: time, events: recordedEvents)
+            if let index = result.index {
+                return .select(index)
+            }
+            return .follow
+        }
+
+        if result.changed {
+            announce(StudioEditorModel.zoomAddedMessage)
+            if !isPlaying, let index = result.index, let lookTime = editor?.zoomLookTime(at: index) {
+                scrub(to: lookTime)
+            }
+        } else if result.index != nil {
+            announce(StudioEditorModel.zoomAlreadyThereMessage)
+        } else {
+            announce(StudioEditorModel.noRoomForZoomMessage)
+        }
+    }
+
+    func removeSelectedZoom() {
+        guard let index = selectedZoomIndex else { return }
+        let result = editZoom(at: index) { $0.removeZoom(at: index) }
+        if result.changed {
+            announce(StudioEditorModel.zoomDeletedMessage)
+        }
+    }
+
+    /// Moves a zoom's start, from the lane or the inspector, and shows the frame it now starts on.
+    /// Returns where the zoom is afterwards.
+    @discardableResult
+    func setZoomStart(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editZoom(at: index) { $0.setZoomStart(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, zooms.indices.contains(place) {
+            scrub(to: zooms[place].start)
+        }
+        return result.index
+    }
+
+    /// Moves a zoom's end and shows the frame it now ends on. Returns where the zoom is afterwards.
+    @discardableResult
+    func setZoomEnd(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editZoom(at: index) { $0.setZoomEnd(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, zooms.indices.contains(place) {
+            scrub(to: zooms[place].end)
+        }
+        return result.index
+    }
+
+    /// Moves a whole zoom so it starts at `sourceTime`, keeping its length. The playhead stays.
+    /// Returns where the zoom is afterwards.
+    @discardableResult
+    func moveZoom(at index: Int, to sourceTime: Double) -> Int? {
+        editZoom(at: index) { $0.moveZoom(at: index, to: sourceTime) }.index
+    }
+
+    func setSelectedZoomStartAtPlayhead() {
+        guard let index = selectedZoomIndex else { return }
+        setZoomStart(at: index, to: playhead)
+    }
+
+    func setSelectedZoomEndAtPlayhead() {
+        guard let index = selectedZoomIndex else { return }
+        setZoomEnd(at: index, to: playhead)
+    }
+
+    /// Moves the selected zoom's start by `seconds`, for the inspector's step buttons.
+    func nudgeSelectedZoomStart(by seconds: Double) {
+        guard let index = selectedZoomIndex, let zoom = selectedZoom else { return }
+        setZoomStart(at: index, to: zoom.start + seconds)
+    }
+
+    /// Moves the selected zoom's end by `seconds`, for the inspector's step buttons.
+    func nudgeSelectedZoomEnd(by seconds: Double) {
+        guard let index = selectedZoomIndex, let zoom = selectedZoom else { return }
+        setZoomEnd(at: index, to: zoom.end + seconds)
+    }
+
+    func setSelectedZoomScale(_ value: Double) {
+        guard let index = selectedZoomIndex else { return }
+        editZoom(at: index) { $0.setZoomScale(at: index, to: value) }
+    }
+
+    func setSelectedZoomFocusMode(_ mode: StudioZoomFocusMode) {
+        guard let index = selectedZoomIndex else { return }
+        editZoom(at: index) { $0.setZoomFocusMode(at: index, to: mode) }
+    }
+
+    /// Points the selected zoom at a place on its focus pad, from 0 to 1 across and down the pad.
+    func setSelectedZoomFocusOnPad(x: Double, y: Double) {
+        guard let index = selectedZoomIndex else { return }
+        editZoom(at: index) { $0.setZoomFocusOnPad(at: index, x: x, y: y) }
+    }
+
+    func setSelectedZoomEaseIn(_ seconds: Double) {
+        guard let index = selectedZoomIndex else { return }
+        editZoom(at: index) { $0.setZoomEaseIn(at: index, to: seconds) }
+    }
+
+    func setSelectedZoomEaseOut(_ seconds: Double) {
+        guard let index = selectedZoomIndex else { return }
+        editZoom(at: index) { $0.setZoomEaseOut(at: index, to: seconds) }
+    }
+
+    /// Replaces the suggested zooms with new ones worked out from the recording's clicks, as one
+    /// undo step, and says how many there are. Zooms the user made or changed stay.
+    func suggestZooms() {
+        guard canSuggestZooms else { return }
+        let recordedEvents = events
+        edit { model in
+            let suggestions = StudioLayoutResolver.suggestZooms(project: model.project, events: recordedEvents)
+            model.applyZoomSuggestions(suggestions)
+        }
+        announce(StudioEditorModel.zoomSuggestionsText(count: editor?.suggestedZoomCount ?? 0))
+    }
+
+    /// Removes the suggested zooms, as one undo step.
+    func removeZoomSuggestions() {
+        guard isEditable, hasSuggestedZooms else { return }
+        edit { $0.applyZoomSuggestions([]) }
+        announce(StudioEditorModel.zoomSuggestionsRemovedMessage)
+    }
+
+    // MARK: - Trim
 
     /// Moves the trim start and shows the frame it now starts on.
     func setTrimStart(_ sourceTime: Double) {
@@ -494,12 +723,59 @@ final class StudioViewModel: ObservableObject {
 
     // MARK: - Private: Edits
 
+    /// Where the zoom selection goes after an edit.
+    private enum ZoomSelectionAfterEdit {
+        /// The edit did not say. The selection follows the zoom it was on.
+        case follow
+
+        /// The edit knows where its zoom went, or that it is gone.
+        case select(Int?)
+    }
+
     private func edit(_ change: (inout StudioEditorModel) -> Void) {
+        editAndSelect { model in
+            change(&model)
+            return .follow
+        }
+    }
+
+    /// An edit to one zoom. The selection goes with the zoom when it is the selected one. An edit
+    /// that is refused, because the project cannot be edited just now, leaves the zoom where it was.
+    @discardableResult
+    private func editZoom(
+        at index: Int,
+        _ change: (inout StudioEditorModel) -> StudioZoomEditResult
+    ) -> StudioZoomEditResult {
+        var result = StudioZoomEditResult(changed: false, index: index)
+        let isSelected = selectedZoomIndex == index
+        editAndSelect { model in
+            result = change(&model)
+            return isSelected ? .select(result.index) : .follow
+        }
+        return result
+    }
+
+    private func editAndSelect(_ change: (inout StudioEditorModel) -> ZoomSelectionAfterEdit) {
         guard isEditable, var model = editor else { return }
         let before = model.editableState
-        change(&model)
+        let zoomsBefore = model.project.zooms
+        let selectedBefore = selectedZoomIndex
+        let selection = change(&model)
         editor = model
-        guard model.editableState != before else { return }
+        let isChanged = model.editableState != before
+
+        switch selection {
+        case .select(let index):
+            setSelectedZoomIndex(index)
+        case .follow:
+            if isChanged, let selectedBefore {
+                setSelectedZoomIndex(
+                    StudioEditorModel.zoomIndex(following: selectedBefore, from: zoomsBefore, to: model.project.zooms)
+                )
+            }
+        }
+
+        guard isChanged else { return }
         hasUnsavedEdits = true
         scheduleSave()
         player?.isMuted = model.project.audio.muted
@@ -509,32 +785,66 @@ final class StudioViewModel: ObservableObject {
         refreshPreview()
     }
 
-    /// Redraws the preview for the current project. Only a new canvas size rebuilds the player item.
+    /// Sets the selection to a zoom that exists, or to none. It is published only when it changes.
+    private func setSelectedZoomIndex(_ index: Int?) {
+        var valid: Int?
+        if let index, zooms.indices.contains(index) {
+            valid = index
+        }
+        if selectedZoomIndex != valid {
+            selectedZoomIndex = valid
+        }
+    }
+
+    /// Says through VoiceOver what the screen alone shows.
+    private func announce(_ message: String) {
+        AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
+    }
+
+    /// Redraws the preview for the current project. Only a new canvas size rebuilds the player
+    /// item, and one rebuild runs at a time: an edit that arrives during one is applied when it
+    /// has ended, so the preview always ends on the latest edit.
     private func refreshPreview() {
-        guard let model = editor, let playback else { return }
-        let project = model.previewProject
-        let size = Self.renderSize(for: model.project, longSide: Self.previewLongSide)
-        let newSize: CGSize? = size == previewSize ? nil : size
-        previewSize = size
-        let resumeTime = playhead
-        let wasPlaying = isPlaying
+        guard editor != nil, let playback else { return }
+        needsPreviewRefresh = true
+        guard !isRefreshingPreview else { return }
+        isRefreshingPreview = true
 
         previewTask = Task { [weak self] in
-            do {
-                let previousItem = playback.player.currentItem
-                let item = try await playback.apply(project: project, renderSize: newSize)
-                guard let self, !self.isTornDown else { return }
-                if item !== previousItem {
-                    // A new player item starts at zero, so put the playhead back.
-                    self.seek(to: resumeTime)
-                    if wasPlaying {
-                        playback.player.play()
-                    }
-                }
-            } catch {
-                guard let self, !self.isTornDown else { return }
-                SaveService.shared.showError("Studio preview failed: \(error.localizedDescription)")
+            while true {
+                guard let self, !self.isTornDown, self.needsPreviewRefresh else { break }
+                self.needsPreviewRefresh = false
+                await self.applyPreview(to: playback)
             }
+            self?.isRefreshingPreview = false
+        }
+    }
+
+    private func applyPreview(to playback: StudioPlayback) async {
+        guard let model = editor else { return }
+        let size = Self.renderSize(for: model.project, longSide: Self.previewLongSide)
+        // During a drag the canvas keeps its size. A crop changes the size with every step, and
+        // every new size rebuilds the player item. The size is applied when the drag ends.
+        let newSize: CGSize? = (size == previewSize || isInGesture) ? nil : size
+        if let newSize {
+            previewSize = newSize
+        }
+        let wasPlaying = isPlaying
+
+        do {
+            let previousItem = playback.player.currentItem
+            let item = try await playback.apply(project: model.previewProject, renderSize: newSize)
+            guard !isTornDown else { return }
+            if item !== previousItem {
+                // A new player item starts at zero, so put the playhead back.
+                seek(to: playhead)
+                if wasPlaying {
+                    playback.player.play()
+                }
+            }
+        } catch {
+            guard !isTornDown else { return }
+            SaveService.shared.showError("Studio preview failed: \(error.localizedDescription)")
         }
     }
 
