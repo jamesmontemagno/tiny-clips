@@ -1,0 +1,108 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    StudioWindowCheck: opens the app's Studio editor window in a process of its own and checks
+    what it does, reading every result back from screenshots of its own windows, from the UI
+    Automation tree and from the frames of exported files. See README.md.
+
+    One unpackaged WinUI 3 executable with a console subsystem. The window's source files are
+    compiled into it; nothing is packaged, registered or installed, and TinyClips.App is never
+    started. Not part of TinyClips.Windows.slnx; build and run it by hand.
+
+    x64 only: what keeps the tool's windows out of the foreground (Host\ForegroundGuard.cs) is
+    x64 code. Not AOT compatible: the UI Automation client is used through classic COM interop.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>TinyClips.Tools.StudioWindowCheck</RootNamespace>
+    <AssemblyName>StudioWindowCheck</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <!-- Unpackaged, with the Windows App SDK next to the executable. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!--
+      Needed although nothing is packaged: without it the tool's .pri file, which holds the
+      compiled XAML, is left out, and the first window fails with XamlParseException 0x802B000A.
+    -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Program.Main decides what runs, so the XAML compiler must not emit an entry point. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- WinUI 3 has no AnyCPU. -->
+  <PropertyGroup>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!--
+    The XAML application object is not called App.xaml and is not in the project root, so the SDK
+    would compile it as an ordinary page, and nothing would implement IXamlMetadataProvider.
+  -->
+  <ItemGroup>
+    <Page Remove="Host\CheckApp.xaml" />
+    <ApplicationDefinition Include="Host\CheckApp.xaml" />
+  </ItemGroup>
+
+  <!-- Same versions as TinyClips.App. Win2D is what the screenshot editor's EditorController needs. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260528001" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+    <!-- The UI Automation client interfaces (UIAutomationCore's type library), to read the tree as a screen reader does. -->
+    <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TinyClips.Core\TinyClips.Core.csproj" />
+  </ItemGroup>
+
+  <!-- The real Studio window, not a copy: the app's source files are compiled into this tool. -->
+  <PropertyGroup>
+    <AppSource>..\..\src\TinyClips.App</AppSource>
+  </PropertyGroup>
+  <ItemGroup>
+    <Page Include="$(AppSource)\Views\Studio\*.xaml" Link="Views\Studio\%(Filename)%(Extension)" />
+    <Page Include="$(AppSource)\Controls\Studio\*.xaml" Link="Controls\Studio\%(Filename)%(Extension)" />
+    <Compile Include="$(AppSource)\Views\Studio\*.cs" Link="Views\Studio\%(Filename)%(Extension)" />
+    <Compile Include="$(AppSource)\Controls\Studio\*.cs" Link="Controls\Studio\%(Filename)%(Extension)" />
+    <Compile Include="$(AppSource)\ViewModels\Studio\*.cs" Link="ViewModels\Studio\%(Filename)%(Extension)" />
+    <Compile Include="$(AppSource)\Models\Studio\*.cs" Link="Models\Studio\%(Filename)%(Extension)" />
+    <Compile Include="$(AppSource)\Services\Studio\*.cs" Link="Services\Studio\%(Filename)%(Extension)" />
+
+    <!-- What those need from the rest of the app. WindowIcon is replaced: see Host\StandIns.cs. -->
+    <Compile Include="$(AppSource)\Infrastructure\WindowChromeController.cs" Link="Infrastructure\WindowChromeController.cs" />
+    <Compile Include="$(AppSource)\Infrastructure\AppWindowPlacement.cs" Link="Infrastructure\AppWindowPlacement.cs" />
+    <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorController.cs" Link="Controls\ScreenshotEditor\EditorController.cs" />
+    <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorModels.cs" Link="Controls\ScreenshotEditor\EditorModels.cs" />
+
+    <!-- The title bar's icon. -->
+    <Content Include="$(AppSource)\Assets\AppIcon.ico" Link="Assets\AppIcon.ico" />
+  </ItemGroup>
+
+  <!-- The test clips, the project folders made from them and the frame-number reader of StudioPreviewCheck. -->
+  <ItemGroup>
+    <Compile Include="..\StudioPreviewCheck\Media\TestMedia.cs" Link="Media\TestMedia.cs" />
+    <Compile Include="..\StudioPreviewCheck\Media\TestFolder.cs" Link="Media\TestFolder.cs" />
+    <Compile Include="..\StudioPreviewCheck\Media\FrameCode.cs" Link="Media\FrameCode.cs" />
+    <Compile Include="..\StudioPreviewCheck\Report.cs" Link="Shared\Report.cs" />
+    <Compile Include="..\StudioPreviewCheck\PngWriter.cs" Link="Shared\PngWriter.cs" />
+  </ItemGroup>
+
+  <!-- Reports and screenshots never belong in the compilation. -->
+  <ItemGroup>
+    <Compile Remove="out\**" />
+    <None Remove="out\**" />
+    <Content Remove="out\**" />
+  </ItemGroup>
+
+</Project>

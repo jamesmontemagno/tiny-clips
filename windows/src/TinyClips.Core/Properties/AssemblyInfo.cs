@@ -6,3 +6,4 @@ using System.Runtime.CompilerServices;
 // players mute, and simulate a lost device. None of that belongs in the public surface.
 [assembly: InternalsVisibleTo("StudioRenderCheck")]
 [assembly: InternalsVisibleTo("StudioPreviewCheck")]
+[assembly: InternalsVisibleTo("StudioWindowCheck")]

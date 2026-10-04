@@ -82,6 +82,7 @@ windows/
     RecordingBenchmark/         Headless CPU-vs-GPU recording benchmark (manual; see docs)
     StudioRenderCheck/          Headless check of the Studio renderer, exporter and camera recorder
     StudioPreviewCheck/         Check of the Studio live preview engine and its panel
+    StudioWindowCheck/          Check of the Studio editor window, opened in a process of its own
   packaging/
     msix/  winget/              Packaging artifacts (later phases)
   spikes/                       Throwaway de-risking prototypes (not in the solution/CI)
@@ -165,8 +166,8 @@ shared with the macOS app; the design and its status are in
 [`/plans/video-studio-plan.md`](../plans/video-studio-plan.md). The renderer and exporter are
 described in [`docs/studio-rendering.md`](docs/studio-rendering.md) and the live preview in
 [`docs/studio-preview.md`](docs/studio-preview.md). Each has a check tool that runs without the
-app, plays no sound and sends no input. Neither runs in CI, and the preview tool is not in the
-solution.
+app, plays no sound and sends no input, and so has the editor window. None runs in CI, and the
+preview and window tools are not in the solution.
 
 ```powershell
 # Renderer, exporter and camera recorder. No window; about six minutes.
@@ -176,6 +177,12 @@ dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c
 # Its window stays behind every other window. Options are in the tool's README.
 dotnet build windows/tools/StudioPreviewCheck/StudioPreviewCheck.csproj -c Debug -p:Platform=x64
 windows\tools\StudioPreviewCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioPreviewCheck.exe
+
+# Editor window: the real window on real projects, with the real preview and exporter. Needs
+# ffmpeg and ffprobe on PATH and a desktop session; about a minute and a half. Its windows stay behind
+# every other window and cannot take the keyboard focus. What it checks is in the tool's README.
+dotnet build windows/tools/StudioWindowCheck/StudioWindowCheck.csproj -c Debug -p:Platform=x64
+windows\tools\StudioWindowCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioWindowCheck.exe
 ```
 
 ## CI
