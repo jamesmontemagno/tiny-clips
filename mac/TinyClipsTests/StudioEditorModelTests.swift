@@ -2596,6 +2596,157 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.speedRateName(.nan), "The recording's own speed")
     }
 
+    // MARK: - Sound
+
+    func testEachSoundTrackPlaysAtTheVolumeOfWhatItHolds() {
+        var project = withSoundTracks(["system", "microphone"])
+        project.audio = StudioAudio(systemVolume: 0.4, microphoneVolume: 0.9)
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.4, 0.9])
+        XCTAssertEqual(StudioSound.trackKinds(project: project, trackCount: 2), [.system, .microphone])
+
+        // The order is the file's, not a fixed one.
+        project.sources.screen.audioTracks = ["microphone", "system"]
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.9, 0.4])
+
+        // One track that holds both, and a track named by a word this version does not know,
+        // play as recorded.
+        project.sources.screen.audioTracks = ["mixed"]
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 1), [1])
+        project.sources.screen.audioTracks = ["system", "music"]
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.4, 1])
+        XCTAssertEqual(StudioSound.trackKinds(project: project, trackCount: 2), [.system, .mixed])
+
+        // Muting is not a gain: the gains are what they are, and a muted project has no sound.
+        project.audio.muted = true
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.4, 1])
+    }
+
+    func testAListThatDoesNotFitTheFileIsNotUsed() {
+        var project = withSoundTracks(nil)
+        project.audio = StudioAudio(systemVolume: 0.4, microphoneVolume: 0.9)
+
+        // The project does not say what the tracks hold.
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [1, 1])
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 0), [])
+
+        // It lists more tracks than the file has, or fewer.
+        project.sources.screen.audioTracks = ["system", "microphone"]
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 1), [1])
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 3), [1, 1, 1])
+        project.sources.screen.audioTracks = ["system"]
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [1, 1])
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 1), [0.4])
+
+        // A file without sound, with and without a list that says so.
+        project.sources.screen.audioTracks = []
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 0), [])
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 1), [1])
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: -1), [])
+    }
+
+    func testAStoredVolumeIsUsedBetweenSilentAndAsRecorded() {
+        XCTAssertEqual(StudioSound.volume(0.35), 0.35)
+        XCTAssertEqual(StudioSound.volume(0), 0)
+        XCTAssertEqual(StudioSound.volume(1), 1)
+        XCTAssertEqual(StudioSound.volume(1.5), 1)
+        XCTAssertEqual(StudioSound.volume(-0.2), 0)
+        XCTAssertEqual(StudioSound.volume(.infinity), 1)
+        XCTAssertEqual(StudioSound.volume(-.infinity), 0)
+        XCTAssertEqual(StudioSound.volume(.nan), 1)
+
+        var project = withSoundTracks(["system", "microphone"])
+        project.audio = StudioAudio(systemVolume: 2.5, microphoneVolume: -1)
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [1, 0])
+
+        // The model shows what is used, and leaves the stored numbers alone until they are set.
+        let model = StudioEditorModel(project: project)
+        XCTAssertEqual(model.systemVolume, 1)
+        XCTAssertEqual(model.microphoneVolume, 0)
+        XCTAssertEqual(model.project.audio.systemVolume, 2.5)
+        XCTAssertEqual(model.project.audio.microphoneVolume, -1)
+    }
+
+    func testAVolumeCanBeSetForATrackOfItsOwn() {
+        var both = StudioEditorModel(project: withSoundTracks(["system", "microphone"]))
+        XCTAssertTrue(both.hasSystemSoundTrack)
+        XCTAssertTrue(both.hasMicrophoneTrack)
+
+        let microphoneOnly = StudioEditorModel(project: withSoundTracks(["microphone"]))
+        XCTAssertFalse(microphoneOnly.hasSystemSoundTrack)
+        XCTAssertTrue(microphoneOnly.hasMicrophoneTrack)
+        let systemOnly = StudioEditorModel(project: withSoundTracks(["system"]))
+        XCTAssertTrue(systemOnly.hasSystemSoundTrack)
+        XCTAssertFalse(systemOnly.hasMicrophoneTrack)
+
+        // One track with everything in it, no sound, and a project that does not say.
+        for tracks in [["mixed"], [], nil] as [[String]?] {
+            let model = StudioEditorModel(project: withSoundTracks(tracks))
+            XCTAssertFalse(model.hasSystemSoundTrack)
+            XCTAssertFalse(model.hasMicrophoneTrack)
+        }
+
+        // Each volume is its own, and each change is one step to undo.
+        XCTAssertEqual(both.systemVolume, 1)
+        XCTAssertEqual(both.microphoneVolume, 1)
+        both.setSystemVolume(0.5)
+        XCTAssertEqual(both.project.audio.systemVolume, 0.5)
+        XCTAssertEqual(both.project.audio.microphoneVolume, 1)
+        both.setMicrophoneVolume(0.25)
+        XCTAssertEqual(both.project.audio.systemVolume, 0.5)
+        XCTAssertEqual(both.project.audio.microphoneVolume, 0.25)
+        XCTAssertEqual(both.systemVolume, 0.5)
+        XCTAssertEqual(both.microphoneVolume, 0.25)
+        XCTAssertEqual(undoDepth(&both), 2)
+
+        both.undo()
+        XCTAssertEqual(both.project.audio.microphoneVolume, 1)
+        XCTAssertEqual(both.project.audio.systemVolume, 0.5)
+        both.redo()
+        XCTAssertEqual(both.project.audio.microphoneVolume, 0.25)
+
+        // The preview plays the project with its volumes, and mutes by itself.
+        both.setMuted(true)
+        XCTAssertEqual(both.previewProject.audio.systemVolume, 0.5)
+        XCTAssertEqual(both.previewProject.audio.microphoneVolume, 0.25)
+        XCTAssertFalse(both.previewProject.audio.muted)
+    }
+
+    func testAVolumePastTheEndsStopsThere_AndOneThatIsNoNumberIsNotTaken() {
+        var model = StudioEditorModel(project: withSoundTracks(["system", "microphone"]))
+
+        model.setSystemVolume(1.7)
+        XCTAssertEqual(model.project.audio.systemVolume, 1)
+        XCTAssertFalse(model.canUndo)
+
+        model.setSystemVolume(-3)
+        XCTAssertEqual(model.project.audio.systemVolume, 0)
+        model.setMicrophoneVolume(.infinity)
+        XCTAssertEqual(model.project.audio.microphoneVolume, 1)
+        model.setMicrophoneVolume(-.infinity)
+        XCTAssertEqual(model.project.audio.microphoneVolume, 0)
+        XCTAssertEqual(undoDepth(&model), 2)
+
+        model.setSystemVolume(0.6)
+        model.setMicrophoneVolume(0.7)
+        let depth = undoDepth(&model)
+        model.setSystemVolume(.nan)
+        model.setMicrophoneVolume(.nan)
+        XCTAssertEqual(model.project.audio.systemVolume, 0.6)
+        XCTAssertEqual(model.project.audio.microphoneVolume, 0.7)
+        XCTAssertEqual(undoDepth(&model), depth)
+
+        // The same value again is no edit.
+        model.setSystemVolume(0.6)
+        XCTAssertEqual(undoDepth(&model), depth)
+    }
+
+    /// A recording 10 s long whose screen file has these sound tracks, or does not say.
+    private func withSoundTracks(_ tracks: [String]?) -> StudioProject {
+        var project = makeProject()
+        project.sources.screen.audioTracks = tracks
+        return project
+    }
+
     private func assertSpeed(_ model: StudioEditorModel, _ expected: [(Double, Double, Double)], line: UInt = #line) {
         let speed = model.project.edits.speed
         XCTAssertEqual(speed.count, expected.count, "count", line: line)

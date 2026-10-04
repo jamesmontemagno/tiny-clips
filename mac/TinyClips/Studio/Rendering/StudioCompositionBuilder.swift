@@ -4,6 +4,12 @@ import Foundation
 
 // MARK: - Composition Builder
 
+/// A sound track of the composition and which of the screen file's sound tracks it plays.
+struct StudioCompositionSoundTrack {
+    var trackID: CMPersistentTrackID
+    var indexInFile: Int
+}
+
 struct StudioCompositionBuildResult {
     var composition: AVMutableComposition
     var videoComposition: AVMutableVideoComposition
@@ -11,6 +17,29 @@ struct StudioCompositionBuildResult {
     var duration: CMTime
     var screenTrackID: CMPersistentTrackID
     var cameraTrackID: CMPersistentTrackID?
+
+    /// The composition's sound tracks. Empty for a muted project, which has none.
+    var soundTracks: [StudioCompositionSoundTrack] = []
+
+    /// How many sound tracks the screen file has, which is what the project's list of them is
+    /// matched against.
+    var soundTrackCountInFile = 0
+
+    /// The mix that plays each sound track at the gain the project gives it (section 7 of the
+    /// project format). Nil when every track plays as recorded, which needs no mix.
+    func audioMix(for project: StudioProject) -> AVAudioMix? {
+        let gains = StudioSound.trackGains(project: project, trackCount: soundTrackCountInFile)
+        guard gains.contains(where: { $0 != 1 }) else { return nil }
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = soundTracks.compactMap { soundTrack -> AVAudioMixInputParameters? in
+            guard gains.indices.contains(soundTrack.indexInFile) else { return nil }
+            let parameters = AVMutableAudioMixInputParameters()
+            parameters.trackID = soundTrack.trackID
+            parameters.setVolume(Float(gains[soundTrack.indexInFile]), at: .zero)
+            return parameters
+        }
+        return mix
+    }
 }
 
 enum StudioCompositionBuilder {
@@ -91,14 +120,21 @@ enum StudioCompositionBuilder {
 
         // A piece at another speed has no sound (section 7 of the project format), so its stretch
         // of the sound tracks is left empty.
+        var soundTracks: [StudioCompositionSoundTrack] = []
+        var soundTrackCountInFile = 0
         if !project.audio.muted {
-            for audioTrack in try await screenAsset.loadTracks(withMediaType: .audio) {
+            let audioTracks = try await screenAsset.loadTracks(withMediaType: .audio)
+            soundTrackCountInFile = audioTracks.count
+            for (indexInFile, audioTrack) in audioTracks.enumerated() {
                 guard let compositionAudioTrack = composition.addMutableTrack(
                     withMediaType: .audio,
                     preferredTrackID: kCMPersistentTrackID_Invalid
                 ) else {
                     continue
                 }
+                soundTracks.append(
+                    StudioCompositionSoundTrack(trackID: compositionAudioTrack.trackID, indexInFile: indexInFile)
+                )
                 let audioTrackRange = try await audioTrack.load(.timeRange)
                 for placement in placements where placement.rate == 1 {
                     let source = placement.source.intersection(audioTrackRange)
@@ -189,7 +225,9 @@ enum StudioCompositionBuilder {
             renderState: state,
             duration: outputDuration,
             screenTrackID: compositionScreenTrack.trackID,
-            cameraTrackID: cameraTrackID
+            cameraTrackID: cameraTrackID,
+            soundTracks: soundTracks,
+            soundTrackCountInFile: soundTrackCountInFile
         )
     }
 

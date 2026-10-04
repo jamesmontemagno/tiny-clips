@@ -309,6 +309,7 @@ private struct StudioInspectorView: View {
                 StudioZoomInspectorSection(viewModel: viewModel)
                 StudioCutInspectorSection(viewModel: viewModel)
                 StudioSpeedInspectorSection(viewModel: viewModel)
+                audioSection
                 extrasSection
                 Divider()
                 Button("Save as Default Look") {
@@ -519,14 +520,47 @@ private struct StudioInspectorView: View {
         )
     }
 
+    /// Mute, and a volume for each kind of sound the recording has in a track of its own. A
+    /// recording with everything in one track, or one that does not say, has only Mute.
+    private var audioSection: some View {
+        StudioInspectorSection(title: "Audio") {
+            Toggle("Mute audio", isOn: muteBinding)
+                .toggleStyle(.checkbox)
+            if viewModel.editor?.hasSystemSoundTrack == true {
+                StudioSliderRow(
+                    title: "System audio",
+                    value: systemVolume,
+                    range: 0...1,
+                    step: 0.05,
+                    valueText: percentText(systemVolume),
+                    onChange: { viewModel.setSystemVolume($0) },
+                    onEditingChanged: { gestureChanged($0) }
+                )
+                .disabled(isMuted)
+                .help("How loud the computer's sound is in the video")
+            }
+            if viewModel.editor?.hasMicrophoneTrack == true {
+                StudioSliderRow(
+                    title: "Microphone",
+                    value: microphoneVolume,
+                    range: 0...1,
+                    step: 0.05,
+                    valueText: percentText(microphoneVolume),
+                    onChange: { viewModel.setMicrophoneVolume($0) },
+                    onEditingChanged: { gestureChanged($0) }
+                )
+                .disabled(isMuted)
+                .help("How loud the microphone is in the video")
+            }
+        }
+    }
+
     private var extrasSection: some View {
         StudioInspectorSection(title: "Extras") {
             Toggle("Click rings", isOn: clickRingsBinding)
                 .toggleStyle(.checkbox)
                 .help("Draws a ring where each mouse click happened")
             Toggle("Tiny Clips badge", isOn: brandingBinding)
-                .toggleStyle(.checkbox)
-            Toggle("Mute audio", isOn: muteBinding)
                 .toggleStyle(.checkbox)
         }
     }
@@ -565,6 +599,9 @@ private struct StudioInspectorView: View {
     private var background: StudioBackground { viewModel.project?.canvas.background ?? StudioBackground() }
     private var canvasPadding: Double { viewModel.project?.canvas.padding ?? 0 }
     private var layout: StudioLayout { viewModel.editor?.effectiveLayout ?? .screen }
+    private var isMuted: Bool { viewModel.project?.audio.muted ?? false }
+    private var systemVolume: Double { viewModel.editor?.systemVolume ?? 1 }
+    private var microphoneVolume: Double { viewModel.editor?.microphoneVolume ?? 1 }
 
     private func percentText(_ fraction: Double) -> String {
         "\(Int((fraction * 100).rounded()))%"

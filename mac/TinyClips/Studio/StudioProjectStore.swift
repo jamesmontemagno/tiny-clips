@@ -76,6 +76,10 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
     var screenHeight: Int
     var screenDuration: Double
     var screenFrameRate: Double
+
+    /// What each sound track of the screen file holds, in the file's order, or nil when the
+    /// recorder cannot say (`sources.screen.audioTracks`).
+    var screenAudioTracks: [String]?
     var camera: StudioCameraCreationInfo?
     var bubbleAnchor: StudioAnchor
     var clickOverlay: StudioClickOverlay
@@ -89,6 +93,7 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
         screenHeight: Int,
         screenDuration: Double,
         screenFrameRate: Double = 30,
+        screenAudioTracks: [String]? = nil,
         camera: StudioCameraCreationInfo? = nil,
         bubbleAnchor: StudioAnchor = .bottomRight,
         clickOverlay: StudioClickOverlay = StudioClickOverlay(),
@@ -101,6 +106,7 @@ struct StudioProjectCreationRequest: Equatable, Sendable {
         self.screenHeight = screenHeight
         self.screenDuration = screenDuration
         self.screenFrameRate = screenFrameRate
+        self.screenAudioTracks = screenAudioTracks
         self.camera = camera
         self.bubbleAnchor = bubbleAnchor
         self.clickOverlay = clickOverlay
@@ -530,7 +536,8 @@ final class StudioProjectStore {
                     width: request.screenWidth,
                     height: request.screenHeight,
                     frameRate: request.screenFrameRate,
-                    duration: request.screenDuration
+                    duration: request.screenDuration,
+                    audioTracks: request.screenAudioTracks
                 ),
                 camera: cameraSource,
                 events: "events.json"

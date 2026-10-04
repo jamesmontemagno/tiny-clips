@@ -94,6 +94,7 @@ final class StudioRecordingCoordinator {
         cameraURL: URL?,
         screenFirstSampleTime: CMTime?,
         cameraFirstSampleTime: CMTime?,
+        recordedAudioTracks: [StudioAudioTrackKind],
         mouseClicks: [MouseClickEvent],
         cameraCornerChanges: [BrandingOverlayProcessor.WebcamPositionEvent],
         clickOverlayStyle: MouseClickOverlayStyle,
@@ -141,6 +142,10 @@ final class StudioRecordingCoordinator {
         let request = StudioCaptureEvents.makeProjectCreationRequest(
             name: Self.recordingName(),
             screen: screenInfo,
+            screenAudioTracks: StudioCaptureEvents.screenAudioTracks(
+                recorded: recordedAudioTracks,
+                trackCountInFile: screenInfo.audioTrackCount
+            ),
             camera: cameraInfo,
             cameraStartOffset: cameraStartOffset,
             bubbleAnchor: initialCameraCorner,
@@ -254,12 +259,16 @@ final class StudioRecordingCoordinator {
         let transformedSize = naturalSize.applying(preferredTransform)
         let duration = try await asset.load(.duration)
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
+        // Sound tracks that cannot be listed count as none. The project then does not say what
+        // its sound tracks hold, and they play as recorded.
+        let audioTrackCount = (try? await asset.loadTracks(withMediaType: .audio))?.count ?? 0
 
         return StudioCaptureMediaInfo(
             width: max(1, Int(abs(transformedSize.width).rounded())),
             height: max(1, Int(abs(transformedSize.height).rounded())),
             duration: max(0, duration.seconds.isFinite ? duration.seconds : 0),
-            frameRate: nominalFrameRate > 0 ? Double(nominalFrameRate) : 30
+            frameRate: nominalFrameRate > 0 ? Double(nominalFrameRate) : 30,
+            audioTrackCount: audioTrackCount
         )
     }
 

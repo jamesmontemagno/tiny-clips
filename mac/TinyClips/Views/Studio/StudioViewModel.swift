@@ -300,6 +300,14 @@ final class StudioViewModel: ObservableObject {
         edit { $0.setMuted(value) }
     }
 
+    func setSystemVolume(_ value: Double) {
+        edit { $0.setSystemVolume(value) }
+    }
+
+    func setMicrophoneVolume(_ value: Double) {
+        edit { $0.setMicrophoneVolume(value) }
+    }
+
     func setClickRingsEnabled(_ value: Bool) {
         edit { $0.setClickRingsEnabled(value) }
     }

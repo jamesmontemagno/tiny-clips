@@ -297,6 +297,10 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
     var frameRate: Double
     var duration: Double
     var external: Bool
+
+    /// What each sound track of the file holds, in the file's order: `system`, `microphone` or
+    /// `mixed` (see `StudioAudioTrackKind`). Nil when it is not known.
+    var audioTracks: [String]?
     var extra: [String: StudioJSONValue]
 
     init(
@@ -306,6 +310,7 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
         frameRate: Double = 30,
         duration: Double,
         external: Bool = false,
+        audioTracks: [String]? = nil,
         extra: [String: StudioJSONValue] = [:]
     ) {
         self.file = file
@@ -314,6 +319,7 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
         self.frameRate = frameRate
         self.duration = duration
         self.external = external
+        self.audioTracks = audioTracks
         self.extra = extra
     }
 
@@ -328,7 +334,11 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
         if !external {
             file = try StudioJSON.requirePlainFileName(file, "sources.screen.file")
         }
-        extra = try StudioJSON.decodeExtra(from: container, excluding: ["file", "width", "height", "frameRate", "duration", "external"])
+        audioTracks = try container.decodeIfPresent([String?].self, forKey: StudioJSONKey("audioTracks"))?.compactMap { $0 }
+        extra = try StudioJSON.decodeExtra(
+            from: container,
+            excluding: ["file", "width", "height", "frameRate", "duration", "external", "audioTracks"]
+        )
     }
 
     func encode(to encoder: Encoder) throws {
@@ -340,6 +350,9 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
         try container.encode(frameRate, forKey: StudioJSONKey("frameRate"))
         try container.encode(duration, forKey: StudioJSONKey("duration"))
         try container.encode(external, forKey: StudioJSONKey("external"))
+        if let audioTracks {
+            try container.encode(audioTracks, forKey: StudioJSONKey("audioTracks"))
+        }
     }
 }
 

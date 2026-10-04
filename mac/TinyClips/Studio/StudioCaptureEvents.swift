@@ -30,11 +30,15 @@ struct StudioCaptureMediaInfo: Equatable, Sendable {
     var duration: Double
     var frameRate: Double
 
-    init(width: Int, height: Int, duration: Double, frameRate: Double = 30) {
+    /// How many sound tracks the file has.
+    var audioTrackCount: Int
+
+    init(width: Int, height: Int, duration: Double, frameRate: Double = 30, audioTrackCount: Int = 0) {
         self.width = width
         self.height = height
         self.duration = duration
         self.frameRate = frameRate
+        self.audioTrackCount = audioTrackCount
     }
 }
 
@@ -53,6 +57,17 @@ enum StudioCaptureEvents {
         }
         guard measured.isFinite, measured > 0 else { return 30 }
         return min(max(measured.rounded(.up), 30), 240)
+    }
+
+    /// What a project says its screen file's sound tracks hold (`sources.screen.audioTracks`).
+    ///
+    /// The recorder knows which sound inputs it set up and in which order. The file is what
+    /// counts, though: an input that never got a sample may or may not have become a track. So
+    /// the list is only written when the file has exactly as many sound tracks as the recorder
+    /// set up. Otherwise the project says nothing, and every track plays as recorded.
+    static func screenAudioTracks(recorded: [StudioAudioTrackKind], trackCountInFile: Int) -> [String]? {
+        guard recorded.count == trackCountInFile else { return nil }
+        return recorded.map(\.rawValue)
     }
 
     static func normalizedPoint(
@@ -169,6 +184,7 @@ enum StudioCaptureEvents {
     static func makeProjectCreationRequest(
         name: String,
         screen: StudioCaptureMediaInfo,
+        screenAudioTracks: [String]? = nil,
         camera: StudioCaptureMediaInfo?,
         cameraStartOffset: Double,
         bubbleAnchor: StudioAnchor,
@@ -183,6 +199,7 @@ enum StudioCaptureEvents {
             screenHeight: screen.height,
             screenDuration: screen.duration,
             screenFrameRate: screen.frameRate,
+            screenAudioTracks: screenAudioTracks,
             camera: camera.map {
                 StudioCameraCreationInfo(
                     width: $0.width,

@@ -16,6 +16,9 @@ final class StudioPlayback {
     private var timelineSignature: StudioTimelineSignature
     private var currentBuild: StudioCompositionBuildResult?
 
+    // The gains the player item's sound was last mixed with, in the order of the file's tracks.
+    private var mixedTrackGains: [Double] = []
+
     init(
         project: StudioProject,
         events: StudioEvents = StudioEvents(),
@@ -45,6 +48,8 @@ final class StudioPlayback {
 
         let item = AVPlayerItem(asset: build.composition)
         item.videoComposition = build.videoComposition
+        mixedTrackGains = StudioSound.trackGains(project: project, trackCount: build.soundTrackCountInFile)
+        item.audioMix = build.audioMix(for: project)
         player.replaceCurrentItem(with: item)
         return item
     }
@@ -73,11 +78,22 @@ final class StudioPlayback {
         guard oldSignature != newSignature || paths != nil || sizeChanged || player.currentItem == nil else {
             forceRedraw()
             if let item = player.currentItem {
+                remixSoundIfNeeded(of: item)
                 return item
             }
             return try await makePlayerItem()
         }
         return try await makePlayerItem()
+    }
+
+    /// Gives the playing item a new mix when a volume has changed. The mix is left alone
+    /// otherwise, so that edits to the picture never touch the sound.
+    private func remixSoundIfNeeded(of item: AVPlayerItem) {
+        guard let build = currentBuild else { return }
+        let gains = StudioSound.trackGains(project: project, trackCount: build.soundTrackCountInFile)
+        guard gains != mixedTrackGains else { return }
+        mixedTrackGains = gains
+        item.audioMix = build.audioMix(for: project)
     }
 
     func forceRedraw() {

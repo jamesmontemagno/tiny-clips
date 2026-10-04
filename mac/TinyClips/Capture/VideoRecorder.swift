@@ -659,6 +659,9 @@ class VideoRecorder: NSObject, @unchecked Sendable {
     /// Presentation timestamp (host-clock based) of the first screen frame written.
     /// Used to align the separately-recorded webcam track to the audio timeline.
     private(set) var firstScreenSampleTime: CMTime?
+    /// What the sound inputs given to the writer hold, in the order they were added, which is the
+    /// order of the sound tracks in the file. A Studio project keeps it.
+    private(set) var audioTrackKinds: [StudioAudioTrackKind] = []
     private var writerSessionStartTime: CMTime?
     private let writingQueue = DispatchQueue(label: "com.tinyclips.video-writing")
     private let microphoneQueue = DispatchQueue(label: "com.tinyclips.microphone-capture")
@@ -778,6 +781,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         }
         writer.add(videoInput)
 
+        var audioTrackKinds: [StudioAudioTrackKind] = []
         if recordSystemAudio {
             let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
@@ -788,6 +792,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
             audioInput.expectsMediaDataInRealTime = true
             writer.add(audioInput)
             self.systemAudioInput = audioInput
+            audioTrackKinds.append(.system)
         }
 
         if recordMicrophone {
@@ -800,7 +805,9 @@ class VideoRecorder: NSObject, @unchecked Sendable {
             micInput.expectsMediaDataInRealTime = true
             writer.add(micInput)
             self.micAudioInput = micInput
+            audioTrackKinds.append(.microphone)
         }
+        self.audioTrackKinds = audioTrackKinds
 
         self.writer = writer
         self.videoInput = videoInput
@@ -1317,6 +1324,7 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         videoInput = nil
         systemAudioInput = nil
         micAudioInput = nil
+        audioTrackKinds = []
         hasStartedWriting = false
         hasWrittenVideoFrame = false
         isPaused = false

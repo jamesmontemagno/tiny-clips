@@ -147,6 +147,67 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertNil(project.canvas.background.image)
     }
 
+    func testTheSoundTrackListIsReadAndWritten_AndLeftOutWhenTheProjectDoesNotSay() throws {
+        let project = try decodeProject("""
+        {
+          "schemaVersion": 1,
+          "id": "\(validID)",
+          "sources": {
+            "screen": {
+              "width": 100,
+              "height": 50,
+              "duration": 9,
+              "audioTracks": ["system", null, "microphone", "somethingNew"],
+              "screenUnknown": "kept"
+            }
+          }
+        }
+        """)
+
+        // A null entry is dropped, as in every list. A word that is not known is kept as it is.
+        XCTAssertEqual(project.sources.screen.audioTracks, ["system", "microphone", "somethingNew"])
+        XCTAssertNil(project.sources.screen.extra["audioTracks"])
+        XCTAssertEqual(project.sources.screen.extra["screenUnknown"], .string("kept"))
+
+        let screen = try screenObject(of: project)
+        XCTAssertEqual(screen["audioTracks"] as? [String], ["system", "microphone", "somethingNew"])
+        XCTAssertEqual(screen["screenUnknown"] as? String, "kept")
+
+        // An empty list says the file has no sound, and is written as that.
+        var silent = project
+        silent.sources.screen.audioTracks = []
+        let silentScreen = try screenObject(of: silent)
+        XCTAssertEqual(silentScreen["audioTracks"] as? [String], [])
+
+        // A project that does not say stays one that does not say.
+        for json in [#""audioTracks": null,"#, ""] {
+            let unknown = try decodeProject("""
+            {
+              "schemaVersion": 1,
+              "id": "\(validID)",
+              "sources": { "screen": { \(json) "width": 100, "height": 50, "duration": 9 } }
+            }
+            """)
+            XCTAssertNil(unknown.sources.screen.audioTracks)
+            XCTAssertNil(try screenObject(of: unknown)["audioTracks"])
+        }
+    }
+
+    func testARecordingsSoundTracksGoIntoItsProject() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+
+        var request = creationRequest()
+        request.screenAudioTracks = ["system", "microphone"]
+        let listed = try store.completeRecording(id: store.beginRecording().id, request: request)
+        XCTAssertEqual(listed.sources.screen.audioTracks, ["system", "microphone"])
+        XCTAssertEqual(try store.load(id: listed.id).sources.screen.audioTracks, ["system", "microphone"])
+
+        // A recorder that cannot say leaves it out.
+        let unknown = try store.completeRecording(id: store.beginRecording().id, request: creationRequest())
+        XCTAssertNil(unknown.sources.screen.audioTracks)
+        XCTAssertEqual(unknown.audio, StudioAudio())
+    }
+
     func testNullRequiredPropertiesAreInvalid() {
         XCTAssertThrowsError(try decodeProject("""
         {
@@ -644,6 +705,12 @@ final class StudioProjectTests: XCTestCase {
         try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(json.utf8))
     }
 
+    /// `sources.screen` of a project as it is written.
+    private func screenObject(of project: StudioProject) throws -> [String: Any] {
+        let written = try XCTUnwrap(JSONSerialization.jsonObject(with: StudioJSON.makeEncoder().encode(project)) as? [String: Any])
+        return try XCTUnwrap((written["sources"] as? [String: Any])?["screen"] as? [String: Any])
+    }
+
     private func creationRequest(
         camera: StudioCameraCreationInfo? = StudioCameraCreationInfo(width: 640, height: 480, duration: 10, startOffset: 0.25),
         look: StudioLook? = nil
@@ -691,7 +758,7 @@ final class StudioProjectTests: XCTestCase {
             app: StudioAppInfo(platform: "macos", version: "1.0"),
             keepSources: true,
             sources: StudioSources(
-                screen: StudioScreenSource(file: "screen.mp4", width: 1920, height: 1080, frameRate: 60, duration: 10),
+                screen: StudioScreenSource(file: "screen.mp4", width: 1920, height: 1080, frameRate: 60, duration: 10, audioTracks: ["system", "microphone"]),
                 camera: StudioCameraSource(file: "camera.mp4", width: 640, height: 480, duration: 8, startOffset: 0.5),
                 events: "events.json"
             ),

@@ -123,6 +123,40 @@ final class StudioCaptureEventsTests: XCTestCase {
         XCTAssertTrue(request.branding)
         XCTAssertEqual(request.appVersion, "1.2.3")
         XCTAssertEqual(request.look, look)
+
+        // A recorder that does not say what the sound tracks hold leaves the project without a list.
+        XCTAssertNil(request.screenAudioTracks)
+        let withSound = StudioCaptureEvents.makeProjectCreationRequest(
+            name: "Recording",
+            screen: StudioCaptureMediaInfo(width: 1920, height: 1080, duration: 5, frameRate: 60, audioTrackCount: 2),
+            screenAudioTracks: ["system", "microphone"],
+            camera: nil,
+            cameraStartOffset: 0,
+            bubbleAnchor: .topRight,
+            clickOverlay: overlay,
+            branding: false,
+            appVersion: "1.2.3"
+        )
+        XCTAssertEqual(withSound.screenAudioTracks, ["system", "microphone"])
+    }
+
+    func testTheSoundTracksAreListedOnlyWhenTheFileHasOneForEachInput() {
+        XCTAssertEqual(
+            StudioCaptureEvents.screenAudioTracks(recorded: [.system, .microphone], trackCountInFile: 2),
+            ["system", "microphone"]
+        )
+        XCTAssertEqual(StudioCaptureEvents.screenAudioTracks(recorded: [.microphone], trackCountInFile: 1), ["microphone"])
+        XCTAssertEqual(StudioCaptureEvents.screenAudioTracks(recorded: [.system], trackCountInFile: 1), ["system"])
+
+        // A recording without sound says that it has none.
+        XCTAssertEqual(StudioCaptureEvents.screenAudioTracks(recorded: [], trackCountInFile: 0), [])
+
+        // An input that never got a sample may be missing from the file, and a file can have a
+        // track nobody set up. Either way the list would not fit the file.
+        XCTAssertNil(StudioCaptureEvents.screenAudioTracks(recorded: [.system, .microphone], trackCountInFile: 1))
+        XCTAssertNil(StudioCaptureEvents.screenAudioTracks(recorded: [.system], trackCountInFile: 2))
+        XCTAssertNil(StudioCaptureEvents.screenAudioTracks(recorded: [], trackCountInFile: 1))
+        XCTAssertNil(StudioCaptureEvents.screenAudioTracks(recorded: [.system], trackCountInFile: 0))
     }
 
     func testEventsDocumentCarriesCaptureMetadata() {

@@ -1519,6 +1519,37 @@ struct StudioEditorModel: Equatable, Sendable {
         mutate { $0.audio.muted = isMuted }
     }
 
+    /// Whether the recording has the computer's sound in a track of its own, so that its volume
+    /// can be set. False for one track that holds everything, and when the project does not say
+    /// what its tracks hold.
+    var hasSystemSoundTrack: Bool { hasSoundTrack(.system) }
+
+    /// Whether the recording has the microphone in a track of its own.
+    var hasMicrophoneTrack: Bool { hasSoundTrack(.microphone) }
+
+    /// How loud the computer's sound is in the video, from 0 (silent) to 1 (as recorded).
+    var systemVolume: Double { StudioSound.volume(project.audio.systemVolume) }
+
+    /// How loud the microphone is in the video, from 0 (silent) to 1 (as recorded).
+    var microphoneVolume: Double { StudioSound.volume(project.audio.microphoneVolume) }
+
+    /// Sets how loud the computer's sound is, from 0 to 1. A value that is not a number is not
+    /// taken.
+    mutating func setSystemVolume(_ value: Double) {
+        guard !value.isNaN else { return }
+        mutate { $0.audio.systemVolume = StudioSound.volume(value) }
+    }
+
+    /// Sets how loud the microphone is, from 0 to 1. A value that is not a number is not taken.
+    mutating func setMicrophoneVolume(_ value: Double) {
+        guard !value.isNaN else { return }
+        mutate { $0.audio.microphoneVolume = StudioSound.volume(value) }
+    }
+
+    private func hasSoundTrack(_ kind: StudioAudioTrackKind) -> Bool {
+        project.sources.screen.audioTracks?.contains(kind.rawValue) ?? false
+    }
+
     mutating func setClickRingsEnabled(_ isEnabled: Bool) {
         mutate { $0.overlays.clicks.enabled = isEnabled }
     }
