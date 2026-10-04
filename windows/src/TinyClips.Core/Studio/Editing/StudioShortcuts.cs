@@ -13,6 +13,7 @@ public enum StudioShortcutKey
     Z,
     Y,
     E,
+    Delete,
 
     /// <summary>The 1 key of the number row, whatever it types on the current keyboard layout.</summary>
     Digit1,
@@ -35,6 +36,8 @@ public enum StudioShortcutAction
     ShowBubbleLayout,
     ShowSideBySideLayout,
     ShowCameraLayout,
+    AddZoom,
+    RemoveSelectedZoom,
     Undo,
     Redo,
     Export,
@@ -68,12 +71,16 @@ public readonly record struct StudioShortcutInput(
     /// keeps the keys that type something, and leaves the Ctrl shortcuts to the editor.
     /// </summary>
     public bool IsTypeToSearchFocused { get; init; }
+
+    /// <summary>Whether a zoom is selected. Delete removes it, and without one is left alone.</summary>
+    public bool HasSelectedZoom { get; init; }
 }
 
 /// <summary>
 /// The Studio editor's keyboard model, the same as on the Mac: Space plays or pauses, Left and
-/// Right step a frame, I and O set the trim at the playhead, 1 to 4 choose the layout, and Ctrl+Z,
-/// Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Esc stops a running export.
+/// Right step a frame, I and O set the trim at the playhead, 1 to 4 choose the layout, Z adds a
+/// zoom at the playhead, Delete removes the selected zoom, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and
+/// Ctrl+E undo, redo and export. Esc stops a running export.
 /// </summary>
 /// <remarks>
 /// The window only asks about a key that the focused control did not use, so a focused slider
@@ -143,6 +150,8 @@ public static class StudioShortcuts
             StudioShortcutKey.Space => StudioShortcutAction.TogglePlayback,
             StudioShortcutKey.I => StudioShortcutAction.SetTrimStartAtPlayhead,
             StudioShortcutKey.O => StudioShortcutAction.SetTrimEndAtPlayhead,
+            StudioShortcutKey.Z => StudioShortcutAction.AddZoom,
+            StudioShortcutKey.Delete when input.HasSelectedZoom => StudioShortcutAction.RemoveSelectedZoom,
             StudioShortcutKey.Digit1 => StudioShortcutAction.ShowScreenLayout,
             StudioShortcutKey.Digit2 => StudioShortcutAction.ShowBubbleLayout,
             StudioShortcutKey.Digit3 => StudioShortcutAction.ShowSideBySideLayout,

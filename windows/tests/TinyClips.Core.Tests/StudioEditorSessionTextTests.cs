@@ -239,6 +239,48 @@ public sealed class StudioEditorSessionTextTests : StudioEditorSessionTestBase
         Assert.Equal(expected, StudioEditorText.GetZoomDescription(new StudioZoom { Start = 1, End = 2, Scale = stored }));
     }
 
+    [Theory]
+    [InlineData(2, "2×")]
+    [InlineData(2.5, "2.5×")]
+    [InlineData(1.25, "1.25×")]
+    [InlineData(3.14159, "3.14×")]
+    [InlineData(9, "5×")]
+    [InlineData(0.2, "1×")]
+    [InlineData(double.NaN, "1×")]
+    public void ZoomScaleText_IsTheScaleThatIsDrawn_WithUpToTwoDecimals(double stored, string expected)
+    {
+        Assert.Equal(expected, StudioEditorText.GetZoomScaleText(stored));
+    }
+
+    [Fact]
+    public void ZoomRangeText_SaysTheTimesInSourceTime()
+    {
+        Assert.Equal("12.0 to 16.5 seconds", StudioEditorText.GetZoomRangeText(new StudioZoom { Start = 12, End = 16.5 }));
+        Assert.Equal("0.0 to 0.3 seconds", StudioEditorText.GetZoomRangeText(new StudioZoom { Start = 0, End = 0.3 }));
+        Assert.Equal(
+            "0.0 to 0.0 seconds",
+            StudioEditorText.GetZoomRangeText(new StudioZoom { Start = double.NaN, End = double.PositiveInfinity }));
+    }
+
+    [Fact]
+    public void ZoomPositionText_CountsFromOne()
+    {
+        Assert.Equal("Zoom 1 of 1", StudioEditorText.GetZoomPositionText(0, 1));
+        Assert.Equal("Zoom 2 of 5", StudioEditorText.GetZoomPositionText(1, 5));
+        Assert.Equal("Zoom 12 of 1000", StudioEditorText.GetZoomPositionText(11, 1000));
+    }
+
+    [Theory]
+    [InlineData(0, "No zooms to suggest for this recording.")]
+    [InlineData(-1, "No zooms to suggest for this recording.")]
+    [InlineData(1, "1 zoom suggested.")]
+    [InlineData(2, "2 zooms suggested.")]
+    [InlineData(1200, "1200 zooms suggested.")]
+    public void ZoomSuggestionsText_SaysHowManyThereAre(int count, string expected)
+    {
+        Assert.Equal(expected, StudioEditorText.GetZoomSuggestionsText(count));
+    }
+
     [Fact]
     public async Task PreviewDescription_NamesTheLayout_AndTheCornerOfTheBubble()
     {

@@ -63,7 +63,10 @@ public enum StudioEditorChanges
     /// <summary>Whether an export is running, and how far it is.</summary>
     Export = 8,
 
-    All = State | Project | Playback | Export,
+    /// <summary>Which zoom is selected.</summary>
+    Selection = 16,
+
+    All = State | Project | Playback | Export | Selection,
 }
 
 public sealed class StudioEditorChangedEventArgs(StudioEditorChanges changes) : EventArgs

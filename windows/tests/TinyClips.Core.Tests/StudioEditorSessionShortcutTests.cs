@@ -15,7 +15,8 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Digit2, StudioShortcutAction.ShowBubbleLayout)]
     [InlineData(StudioShortcutKey.Digit3, StudioShortcutAction.ShowSideBySideLayout)]
     [InlineData(StudioShortcutKey.Digit4, StudioShortcutAction.ShowCameraLayout)]
-    [InlineData(StudioShortcutKey.Z, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Z, StudioShortcutAction.AddZoom)]
+    [InlineData(StudioShortcutKey.Delete, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Y, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.E, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Escape, StudioShortcutAction.None)]
@@ -36,6 +37,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Left, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Digit1, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.I, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Delete, false, StudioShortcutAction.None)]
     public void ControlKeys(StudioShortcutKey key, bool shift, StudioShortcutAction expected)
     {
         Assert.Equal(expected, StudioShortcuts.Resolve(Press(key) with { IsControlDown = true, IsShiftDown = shift }));
@@ -45,6 +47,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Space)]
     [InlineData(StudioShortcutKey.Left)]
     [InlineData(StudioShortcutKey.I)]
+    [InlineData(StudioShortcutKey.Z)]
     [InlineData(StudioShortcutKey.Digit2)]
     public void ShiftOrAlt_TurnsAPlainKeyIntoNothing(StudioShortcutKey key)
     {
@@ -62,6 +65,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.I, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.O, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Digit3, false, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Z, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Z, true, StudioShortcutAction.Undo)]
     [InlineData(StudioShortcutKey.Y, true, StudioShortcutAction.Redo)]
     [InlineData(StudioShortcutKey.E, true, StudioShortcutAction.None)]
@@ -76,6 +80,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.I, false)]
     [InlineData(StudioShortcutKey.O, false)]
     [InlineData(StudioShortcutKey.Digit1, false)]
+    [InlineData(StudioShortcutKey.Z, false)]
     [InlineData(StudioShortcutKey.Z, true)]
     [InlineData(StudioShortcutKey.Y, true)]
     [InlineData(StudioShortcutKey.E, true)]
@@ -91,6 +96,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Right, false)]
     [InlineData(StudioShortcutKey.O, false)]
     [InlineData(StudioShortcutKey.Digit4, false)]
+    [InlineData(StudioShortcutKey.Z, false)]
     [InlineData(StudioShortcutKey.Z, true)]
     [InlineData(StudioShortcutKey.E, true)]
     public void NothingActs_UntilTheProjectIsOpen_OrWhileItIsExporting(StudioShortcutKey key, bool control)
@@ -109,6 +115,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.O)]
     [InlineData(StudioShortcutKey.Digit1)]
     [InlineData(StudioShortcutKey.Digit4)]
+    [InlineData(StudioShortcutKey.Z)]
     public void AListThatSearchesAsYouType_KeepsThePlainKeys(StudioShortcutKey key)
     {
         Assert.Equal(
@@ -126,6 +133,43 @@ public sealed class StudioEditorSessionShortcutTests
         var press = Press(key) with { IsControlDown = true, IsShiftDown = shift, IsTypeToSearchFocused = true };
 
         Assert.Equal(expected, StudioShortcuts.Resolve(press));
+    }
+
+    [Fact]
+    public void Delete_RemovesTheSelectedZoom_AndWithoutOneIsLeftAlone()
+    {
+        var delete = Press(StudioShortcutKey.Delete);
+        var selected = delete with { HasSelectedZoom = true };
+
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(delete));
+        Assert.Equal(StudioShortcutAction.RemoveSelectedZoom, StudioShortcuts.Resolve(selected));
+
+        // Once per press, and only as a plain key.
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(selected with { IsRepeat = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(selected with { IsControlDown = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(selected with { IsShiftDown = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(selected with { IsAltDown = true }));
+
+        // Text being edited and a list that searches as you type keep it.
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(selected with { IsTextInputFocused = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(selected with { IsTypeToSearchFocused = true }));
+
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(selected with { IsReady = false }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(selected with { IsExporting = true }));
+    }
+
+    [Fact]
+    public void ASelectedZoom_ChangesNoOtherKey()
+    {
+        foreach (var key in Enum.GetValues<StudioShortcutKey>().Where(key => key != StudioShortcutKey.Delete))
+        {
+            foreach (var control in new[] { false, true })
+            {
+                var press = Press(key) with { IsControlDown = control };
+
+                Assert.Equal(StudioShortcuts.Resolve(press), StudioShortcuts.Resolve(press with { HasSelectedZoom = true }));
+            }
+        }
     }
 
     [Fact]

@@ -56,6 +56,7 @@ public sealed class StudioEditorSession
     private Task? _closeTask;
     private bool _hasUnsavedEdits;
     private bool _isClosed;
+    private int? _selectedZoomIndex;
 
     // Read on the threads the preview raises its events on.
     private int _playGeneration;
@@ -154,6 +155,23 @@ public sealed class StudioEditorSession
 
     /// <summary>True once <see cref="CloseAsync"/> has been called.</summary>
     public bool IsClosed => _isClosed;
+
+    /// <summary>
+    /// The zoom the inspector shows, as its place in <see cref="StudioProject.Zooms"/>, or null.
+    /// It stays on its zoom while edits, undo and redo change the list around it.
+    /// </summary>
+    public int? SelectedZoomIndex =>
+        _selectedZoomIndex is { } index && Model is { } model && index >= 0 && index < model.Project.Zooms.Length
+            ? index
+            : null;
+
+    public StudioZoom? SelectedZoom => SelectedZoomIndex is { } index ? Model?.Project.Zooms[index] : null;
+
+    /// <summary>Whether the recording has clicks to suggest zooms from. One of a window has none.</summary>
+    public bool HasClicks => _events.Clicks is { Length: > 0 };
+
+    /// <summary>Whether the recording has pointer positions for a zoom to follow. One of a window has none.</summary>
+    public bool HasPointerPositions => _events.Cursor is { Length: > 0 };
 
     // Text
 
@@ -354,6 +372,10 @@ public sealed class StudioEditorSession
 
     public void ClearScreenCrop() => Edit(static model => model.ClearScreenCrop());
 
+    /// <summary>Moves one edge of the screen crop to cut off a fraction of the frame.</summary>
+    public void SetScreenCropInset(StudioCropEdge edge, double value) =>
+        Edit(model => model.SetScreenCropInset(edge, value));
+
     public void SetCameraShape(StudioCameraShape shape) => Edit(model => model.SetCameraShape(shape));
 
     public void SetCameraCornerRadius(double value) => Edit(model => model.SetCameraCornerRadius(value));
@@ -379,6 +401,10 @@ public sealed class StudioEditorSession
 
     public void ClearCameraCrop() => Edit(static model => model.ClearCameraCrop());
 
+    /// <summary>Moves one edge of the camera crop to cut off a fraction of the frame.</summary>
+    public void SetCameraCropInset(StudioCropEdge edge, double value) =>
+        Edit(model => model.SetCameraCropInset(edge, value));
+
     public void SetSideBySide(StudioCameraSide cameraSide, double fraction) =>
         Edit(model => model.SetSideBySide(cameraSide, fraction));
 
@@ -391,37 +417,102 @@ public sealed class StudioEditorSession
     // Zooms. An index is a zoom's place in Project.Zooms, which is kept in time order. Every edit
     // answers with the place the zoom has afterwards, or none when it is gone. An edit that is
     // refused, because the project cannot be edited just now, leaves the zoom where it was.
+    //
+    // One zoom can be selected. An edit to the selected zoom takes the selection with it, and so
+    // does adding a zoom. Through every other edit, and undo and redo, the selection follows its
+    // zoom as StudioEditorModel.FindZoomFollowing finds it, or lets go when the zoom is gone.
 
     /// <summary>The zoom that contains a source time, or null.</summary>
     public int? GetZoomIndexAt(double sourceTime) => Model?.GetZoomIndexAt(sourceTime);
 
-    /// <summary>Adds a zoom that starts at a source time and looks at where the pointer is then.</summary>
-    public StudioZoomEditResult AddZoom(double sourceTime) =>
-        Edit(model => model.AddZoom(sourceTime, _events), new StudioZoomEditResult(false, null));
+    /// <summary>Selects a zoom, or none with null or a place that has no zoom. The playhead stays.</summary>
+    public void SelectZoom(int? index)
+    {
+        var before = SelectedZoomIndex;
+        _selectedZoomIndex = index;
+        _selectedZoomIndex = SelectedZoomIndex;
+        if (SelectedZoomIndex != before)
+        {
+            RaiseChanged(StudioEditorChanges.Selection);
+        }
+    }
 
-    public StudioZoomEditResult RemoveZoom(int index) =>
-        Edit(model => model.RemoveZoom(index), new StudioZoomEditResult(false, index));
+    /// <summary>
+    /// Selects the zoom after the selected one and shows it. With nothing selected, the zoom at
+    /// the playhead or the first one after it. False when there is none.
+    /// </summary>
+    public bool SelectNextZoom() => SelectAndShowZoom(Model?.GetZoomIndexAfter(SelectedZoomIndex, Playhead));
+
+    /// <summary>
+    /// Selects the zoom before the selected one and shows it. With nothing selected, the zoom at
+    /// the playhead or the last one before it. False when there is none.
+    /// </summary>
+    public bool SelectPreviousZoom() => SelectAndShowZoom(Model?.GetZoomIndexBefore(SelectedZoomIndex, Playhead));
+
+    /// <summary>
+    /// Adds a zoom that starts at a source time and looks at where the pointer is then, and
+    /// selects it. Where a zoom already is, that one is selected instead.
+    /// </summary>
+    public StudioZoomEditResult AddZoom(double sourceTime)
+    {
+        var result = new StudioZoomEditResult(false, null);
+        EditAndSelect(model =>
+        {
+            result = model.AddZoom(sourceTime, _events);
+            return result.Index is { } index ? new ZoomSelection(index) : null;
+        });
+        return result;
+    }
+
+    /// <summary>
+    /// Adds a zoom at the playhead and selects it. A zoom starts unzoomed, so a paused playhead
+    /// then moves to where the zoom has moved in, which shows what it looks at.
+    /// </summary>
+    public StudioZoomEditResult AddZoomAtPlayhead()
+    {
+        var result = AddZoom(Playhead);
+        if (result is { Changed: true, Index: { } index } && !IsPlaying && Model?.GetZoomLookTime(index) is { } time)
+        {
+            Scrub(time);
+        }
+
+        return result;
+    }
+
+    public StudioZoomEditResult RemoveZoom(int index) => EditZoom(index, model => model.RemoveZoom(index));
+
+    /// <summary>Removes the selected zoom. Unchanged, with no index, when none is selected.</summary>
+    public StudioZoomEditResult RemoveSelectedZoom() =>
+        SelectedZoomIndex is { } index ? RemoveZoom(index) : new StudioZoomEditResult(false, null);
 
     public StudioZoomEditResult SetZoomStart(int index, double sourceTime) =>
-        Edit(model => model.SetZoomStart(index, sourceTime), new StudioZoomEditResult(false, index));
+        EditZoom(index, model => model.SetZoomStart(index, sourceTime));
 
     public StudioZoomEditResult SetZoomEnd(int index, double sourceTime) =>
-        Edit(model => model.SetZoomEnd(index, sourceTime), new StudioZoomEditResult(false, index));
+        EditZoom(index, model => model.SetZoomEnd(index, sourceTime));
+
+    /// <summary>Moves a whole zoom so it starts at a source time, keeping its length.</summary>
+    public StudioZoomEditResult MoveZoom(int index, double sourceTime) =>
+        EditZoom(index, model => model.MoveZoom(index, sourceTime));
 
     public StudioZoomEditResult SetZoomScale(int index, double scale) =>
-        Edit(model => model.SetZoomScale(index, scale), new StudioZoomEditResult(false, index));
+        EditZoom(index, model => model.SetZoomScale(index, scale));
 
     public StudioZoomEditResult SetZoomFocusMode(int index, StudioZoomFocusMode mode) =>
-        Edit(model => model.SetZoomFocusMode(index, mode), new StudioZoomEditResult(false, index));
+        EditZoom(index, model => model.SetZoomFocusMode(index, mode));
 
     public StudioZoomEditResult SetZoomFocusPoint(int index, double x, double y) =>
-        Edit(model => model.SetZoomFocusPoint(index, x, y), new StudioZoomEditResult(false, index));
+        EditZoom(index, model => model.SetZoomFocusPoint(index, x, y));
+
+    /// <summary>Points a zoom at a place on its focus pad, from 0 to 1 across and down the pad.</summary>
+    public StudioZoomEditResult SetZoomFocusOnPad(int index, double x, double y) =>
+        EditZoom(index, model => model.SetZoomFocusOnPad(index, x, y));
 
     public StudioZoomEditResult SetZoomEaseIn(int index, double seconds) =>
-        Edit(model => model.SetZoomEaseIn(index, seconds), new StudioZoomEditResult(false, index));
+        EditZoom(index, model => model.SetZoomEaseIn(index, seconds));
 
     public StudioZoomEditResult SetZoomEaseOut(int index, double seconds) =>
-        Edit(model => model.SetZoomEaseOut(index, seconds), new StudioZoomEditResult(false, index));
+        EditZoom(index, model => model.SetZoomEaseOut(index, seconds));
 
     /// <summary>
     /// Replaces the suggested zooms with new ones worked out from the recording's clicks, as one
@@ -429,6 +520,10 @@ public sealed class StudioEditorSession
     /// </summary>
     public bool ApplyZoomSuggestions() =>
         Edit(model => model.ApplyZoomSuggestions(StudioZoomSuggestions.Suggest(model.Project, _events)), false);
+
+    /// <summary>Removes the suggested zooms, as one undo step. Returns whether there were any.</summary>
+    public bool RemoveZoomSuggestions() =>
+        Edit(static model => model.ApplyZoomSuggestions([]), false);
 
     /// <summary>Moves the trim start, from a handle, and shows the frame the video now starts on.</summary>
     public void SetTrimStart(double sourceTime)
@@ -473,7 +568,16 @@ public sealed class StudioEditorSession
         }
     }
 
-    private void Edit(Action<StudioEditorModel> change)
+    private void Edit(Action<StudioEditorModel> change) =>
+        EditAndSelect(model =>
+        {
+            change(model);
+            return null;
+        });
+
+    // An edit that may say where the zoom selection goes. One that does not leaves it to follow
+    // the zoom it was on.
+    private void EditAndSelect(Func<StudioEditorModel, ZoomSelection?> change)
     {
         if (!IsEditable || Model is not { } model)
         {
@@ -481,9 +585,29 @@ public sealed class StudioEditorSession
         }
 
         var before = model.EditableState;
-        change(model);
-        if (model.EditableState.ContentEquals(before))
+        var zoomsBefore = model.Project.Zooms;
+        var selectedIndex = SelectedZoomIndex;
+        var selection = change(model);
+        var isChanged = !model.EditableState.ContentEquals(before);
+
+        if (selection is { } chosen)
         {
+            _selectedZoomIndex = chosen.Index;
+        }
+        else if (isChanged && selectedIndex is { } index)
+        {
+            _selectedZoomIndex = StudioEditorModel.FindZoomFollowing(zoomsBefore, index, model.Project.Zooms);
+        }
+
+        _selectedZoomIndex = SelectedZoomIndex;
+        var selectionChange = SelectedZoomIndex != selectedIndex ? StudioEditorChanges.Selection : StudioEditorChanges.None;
+        if (!isChanged)
+        {
+            if (selectionChange != StudioEditorChanges.None)
+            {
+                RaiseChanged(selectionChange);
+            }
+
             return;
         }
 
@@ -495,7 +619,7 @@ public sealed class StudioEditorSession
             PausePreview();
         }
 
-        RaiseChanged(StudioEditorChanges.Project | StudioEditorChanges.Playback);
+        RaiseChanged(StudioEditorChanges.Project | StudioEditorChanges.Playback | selectionChange);
     }
 
     // An edit that also has something to say about what it did.
@@ -505,6 +629,34 @@ public sealed class StudioEditorSession
         Edit(model => { result = change(model); });
         return result;
     }
+
+    // An edit to one zoom. The selection goes with the zoom when it is the selected one.
+    private StudioZoomEditResult EditZoom(int index, Func<StudioEditorModel, StudioZoomEditResult> change)
+    {
+        var result = new StudioZoomEditResult(false, index);
+        var isSelected = SelectedZoomIndex == index;
+        EditAndSelect(model =>
+        {
+            result = change(model);
+            return isSelected ? new ZoomSelection(result.Index) : null;
+        });
+        return result;
+    }
+
+    private bool SelectAndShowZoom(int? index)
+    {
+        if (index is not { } zoom || !IsEditable || Model?.GetZoomLookTime(zoom) is not { } time)
+        {
+            return false;
+        }
+
+        SelectZoom(zoom);
+        Scrub(time);
+        return true;
+    }
+
+    // Where the zoom selection goes after an edit that knows.
+    private readonly record struct ZoomSelection(int? Index);
 
     // Transport
 

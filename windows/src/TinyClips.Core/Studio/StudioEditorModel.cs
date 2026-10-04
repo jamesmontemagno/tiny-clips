@@ -143,6 +143,86 @@ public readonly record struct StudioEditorCanvasGeometry(StudioSize ViewSize, St
 public readonly record struct StudioZoomEditResult(bool Changed, int? Index);
 
 /// <summary>
+/// What the focus pad shows for a zoom. The pad stands for the part of the screen that can be
+/// zoomed into, which is the screen crop, or the whole screen without one.
+/// </summary>
+/// <param name="AspectRatio">The pad's width divided by its height.</param>
+/// <param name="Window">The part the zoom holds, from 0 to 1 across and down the pad.</param>
+/// <param name="FocusX">Where the zoom looks, from 0 at the pad's left edge to 1 at its right.</param>
+/// <param name="FocusY">Where the zoom looks, from 0 at the pad's top edge to 1 at its bottom.</param>
+public readonly record struct StudioZoomPad(double AspectRatio, StudioFrameRect Window, double FocusX, double FocusY);
+
+/// <summary>An edge of a crop.</summary>
+public enum StudioCropEdge
+{
+    Left,
+    Top,
+    Right,
+    Bottom,
+}
+
+/// <summary>
+/// A crop as how much is cut off each edge, each a fraction of the frame. This is what the
+/// inspector's four crop sliders show and change.
+/// </summary>
+public readonly record struct StudioCropInsets(double Left, double Top, double Right, double Bottom)
+{
+    /// <summary>The most two opposite edges can cut off together. A crop keeps 0.05 of the frame each way.</summary>
+    public const double MaximumTotal = 0.95;
+
+    public bool IsEmpty => Left == 0 && Top == 0 && Right == 0 && Bottom == 0;
+
+    public double this[StudioCropEdge edge] => edge switch
+    {
+        StudioCropEdge.Left => Left,
+        StudioCropEdge.Top => Top,
+        StudioCropEdge.Right => Right,
+        _ => Bottom,
+    };
+
+    /// <summary>The insets of a crop. A missing crop, or one that is not valid, cuts nothing off.</summary>
+    public static StudioCropInsets From(StudioRect? crop) =>
+        StudioCanvasMath.ValidCropOrNull(crop) is { } valid
+            ? new StudioCropInsets(
+                Tidy(valid.X),
+                Tidy(valid.Y),
+                Tidy(Math.Max(0, 1 - valid.X - valid.Width)),
+                Tidy(Math.Max(0, 1 - valid.Y - valid.Height)))
+            : default;
+
+    /// <summary>
+    /// These insets with one edge moved. The edge stops where it would leave less than 0.05 of the
+    /// frame between it and the opposite edge. A value that is not a number changes nothing.
+    /// </summary>
+    public StudioCropInsets With(StudioCropEdge edge, double value)
+    {
+        if (!double.IsFinite(value))
+        {
+            return this;
+        }
+
+        return edge switch
+        {
+            StudioCropEdge.Left => this with { Left = Limit(value, Right) },
+            StudioCropEdge.Top => this with { Top = Limit(value, Bottom) },
+            StudioCropEdge.Right => this with { Right = Limit(value, Left) },
+            _ => this with { Bottom = Limit(value, Top) },
+        };
+    }
+
+    /// <summary>The crop rectangle, as x, y, width and height. Null when nothing is cut off.</summary>
+    public (double X, double Y, double Width, double Height)? ToCrop() =>
+        IsEmpty ? null : (Left, Top, Tidy(1 - Left - Right), Tidy(1 - Top - Bottom));
+
+    private static double Limit(double value, double opposite) =>
+        Tidy(Math.Max(0, Math.Min(value, MaximumTotal - opposite)));
+
+    // Sums of fractions such as 1 - 0.07 - 0.2 carry binary noise. Six decimals is finer than a
+    // pixel of any recording and keeps the stored numbers, and what is read back from them, plain.
+    private static double Tidy(double value) => Math.Round(value, 6, MidpointRounding.AwayFromZero);
+}
+
+/// <summary>
 /// The Studio editor's state and every edit it can make, with undo. It has no UI or media types in
 /// it so it can be unit tested. Not thread-safe: use it from one thread.
 /// <para>The first version edits one scene, <c>Scenes[0]</c>. Any further scenes are left as they are.</para>
@@ -456,6 +536,23 @@ public sealed class StudioEditorModel
 
     public void ClearCameraCrop() => SetCameraCrop(null);
 
+    /// <summary>How much the screen crop cuts off each edge.</summary>
+    public StudioCropInsets ScreenCropInsets => StudioCropInsets.From(Project.Screen.Crop);
+
+    /// <summary>How much the camera crop cuts off each edge.</summary>
+    public StudioCropInsets CameraCropInsets => StudioCropInsets.From(Project.Camera.Crop);
+
+    /// <summary>
+    /// Moves one edge of the screen crop to cut off <paramref name="value"/> of the frame. With
+    /// nothing cut off any edge, the crop is removed.
+    /// </summary>
+    public void SetScreenCropInset(StudioCropEdge edge, double value) =>
+        SetScreenCrop(WithInsets(Project.Screen.Crop, ScreenCropInsets.With(edge, value)));
+
+    /// <summary>Moves one edge of the camera crop. The same rules as <see cref="SetScreenCropInset"/>.</summary>
+    public void SetCameraCropInset(StudioCropEdge edge, double value) =>
+        SetCameraCrop(WithInsets(Project.Camera.Crop, CameraCropInsets.With(edge, value)));
+
     public void SetCameraBubbleSize(double value)
     {
         if (double.IsFinite(value))
@@ -701,6 +798,210 @@ public sealed class StudioEditorModel
         EditZoom(index, double.IsFinite(seconds), zoom => zoom with { EaseOut = Clamp(seconds, 0, 3) });
 
     /// <summary>
+    /// Moves a whole zoom so it starts at <paramref name="sourceTime"/>, keeping its length. It
+    /// stays between the zoom before it and the zoom after it, or the ends of the recording. Moved
+    /// up against a neighbour it takes exactly the neighbour's number, which chains the two.
+    /// </summary>
+    public StudioZoomEditResult MoveZoom(int index, double sourceTime)
+    {
+        if (!TryGetZoom(index, out var zoom))
+        {
+            return new StudioZoomEditResult(false, null);
+        }
+
+        if (!double.IsFinite(sourceTime))
+        {
+            return new StudioZoomEditResult(false, index);
+        }
+
+        var zooms = Project.Zooms;
+        var length = zoom.End - zoom.Start;
+        var earliest = index > 0 ? zooms[index - 1].End : 0;
+        var latestEnd = index + 1 < zooms.Length ? zooms[index + 1].Start : SourceDuration;
+
+        double start;
+        double end;
+        if (sourceTime <= earliest)
+        {
+            start = earliest;
+            end = Math.Min(earliest + length, latestEnd);
+        }
+        else if (sourceTime + length >= latestEnd)
+        {
+            end = latestEnd;
+            start = Math.Max(earliest, latestEnd - length);
+        }
+        else
+        {
+            start = sourceTime;
+            end = sourceTime + length;
+        }
+
+        // Only a file written elsewhere can leave no room between two neighbours.
+        return end > start
+            ? ReplaceZoom(index, zoom with { Start = start, End = end })
+            : new StudioZoomEditResult(false, index);
+    }
+
+    /// <summary>
+    /// The zoom after the selected one, for stepping through the zooms. With nothing selected, the
+    /// zoom at <paramref name="sourceTime"/> or the first one after it. Null when there is none.
+    /// </summary>
+    public int? GetZoomIndexAfter(int? selectedIndex, double sourceTime)
+    {
+        var zooms = Project.Zooms;
+        if (selectedIndex is { } selected && selected >= 0 && selected < zooms.Length)
+        {
+            return selected + 1 < zooms.Length ? selected + 1 : null;
+        }
+
+        var index = Array.FindIndex(zooms, zoom => zoom.End > sourceTime);
+        return index >= 0 ? index : null;
+    }
+
+    /// <summary>
+    /// The zoom before the selected one. With nothing selected, the zoom at
+    /// <paramref name="sourceTime"/> or the last one before it. Null when there is none.
+    /// </summary>
+    public int? GetZoomIndexBefore(int? selectedIndex, double sourceTime)
+    {
+        var zooms = Project.Zooms;
+        if (selectedIndex is { } selected && selected >= 0 && selected < zooms.Length)
+        {
+            return selected > 0 ? selected - 1 : null;
+        }
+
+        var index = Array.FindLastIndex(zooms, zoom => zoom.Start <= sourceTime);
+        return index >= 0 ? index : null;
+    }
+
+    /// <summary>
+    /// Where the zoom at <paramref name="index"/> of <paramref name="before"/> is in
+    /// <paramref name="after"/>, for an edit that did not say, such as undo. When the two lists
+    /// differ in that one zoom at most, it is that zoom, changed: the same place. Otherwise it is
+    /// the zoom that shares the most time with it, and among equals the one nearest to where it
+    /// was. Null when there was no such zoom, or none shares any time with it.
+    /// </summary>
+    public static int? FindZoomFollowing(IReadOnlyList<StudioZoom> before, int index, IReadOnlyList<StudioZoom> after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        if (index < 0 || index >= before.Count)
+        {
+            return null;
+        }
+
+        if (before.Count == after.Count)
+        {
+            var othersAreTheSame = true;
+            for (var i = 0; i < before.Count && othersAreTheSame; i++)
+            {
+                othersAreTheSame = i == index || before[i] == after[i];
+            }
+
+            if (othersAreTheSame)
+            {
+                return index;
+            }
+        }
+
+        var zoom = before[index];
+        int? best = null;
+        var bestShared = 0.0;
+        for (var i = 0; i < after.Count; i++)
+        {
+            var shared = Math.Min(zoom.End, after[i].End) - Math.Max(zoom.Start, after[i].Start);
+            if (!(shared > 0))
+            {
+                continue;
+            }
+
+            if (best is not { } current
+                || shared > bestShared
+                || (shared == bestShared && Math.Abs(i - index) < Math.Abs(current - index)))
+            {
+                best = i;
+                bestShared = shared;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// A time at which a zoom has moved all the way in, to show it at: the end of its ease in. Kept
+    /// a frame inside the zoom, which contains its start and not its end.
+    /// </summary>
+    public double? GetZoomLookTime(int index)
+    {
+        if (!TryGetZoom(index, out var zoom))
+        {
+            return null;
+        }
+
+        // The eases as the layout applies them (section 6.8 of the project format).
+        var zooms = Project.Zooms;
+        var nextIsChained = index + 1 < zooms.Length && zooms[index + 1].Start == zoom.End;
+        var easeIn = Clamp(zoom.EaseIn, 0, 3);
+        var easeOut = nextIsChained ? 0 : Clamp(zoom.EaseOut, 0, 3);
+        var length = zoom.End - zoom.Start;
+        if (easeIn + easeOut > length && easeIn + easeOut > 0)
+        {
+            easeIn *= length / (easeIn + easeOut);
+        }
+
+        var time = Math.Max(zoom.Start, Math.Min(zoom.Start + easeIn, zoom.End - FrameDuration));
+        return ClampSourceTime(time);
+    }
+
+    /// <summary>What the focus pad shows for a zoom, with the point the zoom stores. Null when there is no such zoom.</summary>
+    public StudioZoomPad? GetZoomPad(int index)
+    {
+        if (!TryGetZoom(index, out var zoom))
+        {
+            return null;
+        }
+
+        var area = ZoomArea;
+        var focusX = Clamp(zoom.Focus.X, 0, 1);
+        var focusY = Clamp(zoom.Focus.Y, 0, 1);
+        var held = StudioZoomMath.HeldWindow(area, zoom.Scale, focusX, focusY);
+        var screen = Project.Sources.Screen;
+        var aspect = screen.Width > 0 && screen.Height > 0
+            ? (screen.Width * area.Width) / (screen.Height * area.Height)
+            : 16.0 / 9;
+        return new StudioZoomPad(
+            aspect,
+            new StudioFrameRect(
+                (held.X - area.X) / area.Width,
+                (held.Y - area.Y) / area.Height,
+                held.Width / area.Width,
+                held.Height / area.Height),
+            Clamp((focusX - area.X) / area.Width, 0, 1),
+            Clamp((focusY - area.Y) / area.Height, 0, 1));
+    }
+
+    /// <summary>
+    /// Points a zoom at a place on its focus pad, from 0 to 1 across and down the pad.
+    /// </summary>
+    public StudioZoomEditResult SetZoomFocusOnPad(int index, double x, double y)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y))
+        {
+            return new StudioZoomEditResult(false, TryGetZoom(index, out _) ? index : null);
+        }
+
+        var area = ZoomArea;
+        return SetZoomFocusPoint(
+            index,
+            area.X + (Clamp(x, 0, 1) * area.Width),
+            area.Y + (Clamp(y, 0, 1) * area.Height));
+    }
+
+    /// <summary>How many of the zooms are suggestions that have not been changed since they were made.</summary>
+    public int SuggestedZoomCount => Project.Zooms.Count(static zoom => zoom.Origin == StudioZoomOrigin.Auto);
+
+    /// <summary>
     /// Replaces the suggested zooms (<see cref="StudioZoomOrigin.Auto"/>) with
     /// <paramref name="suggestions"/> and leaves every other zoom as it is. One undo step.
     /// </summary>
@@ -922,6 +1223,11 @@ public sealed class StudioEditorModel
         return zoom is not null;
     }
 
+    // The part of the screen a zoom works inside: the valid crop, or the whole frame (section 6.8).
+    private StudioFrameRect ZoomArea => StudioCanvasMath.ValidCropOrNull(Project.Screen.Crop) is { } crop
+        ? new StudioFrameRect(crop.X, crop.Y, crop.Width, crop.Height)
+        : new StudioFrameRect(0, 0, 1, 1);
+
     private static StudioProject WithScene(StudioProject project, Func<StudioScene, StudioScene> change)
     {
         var scenes = (StudioScene[])project.Scenes.Clone();
@@ -952,6 +1258,13 @@ public sealed class StudioEditorModel
             Height = height,
         };
     }
+
+    // The crop for a set of insets. It is made from the crop that is there, so members of it that
+    // this version does not know are kept.
+    private static StudioRect? WithInsets(StudioRect? current, StudioCropInsets insets) =>
+        insets.ToCrop() is { } crop
+            ? (current ?? new StudioRect()) with { X = crop.X, Y = crop.Y, Width = crop.Width, Height = crop.Height }
+            : null;
 
     private void PushUndo(StudioEditableState snapshot)
     {

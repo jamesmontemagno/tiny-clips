@@ -11,6 +11,30 @@ public static class StudioEditorText
     /// <summary>What a project with no name is called.</summary>
     public const string UntitledName = "Untitled recording";
 
+    /// <summary>Said when a zoom has been added at the playhead.</summary>
+    public const string ZoomAddedMessage = "Zoom added.";
+
+    /// <summary>Said when a zoom was asked for where one already is. That zoom is selected instead.</summary>
+    public const string ZoomAlreadyThereMessage = "There is already a zoom here.";
+
+    /// <summary>Said when a zoom was asked for where less than the shortest zoom fits.</summary>
+    public const string NoRoomForZoomMessage = "There is no room for a zoom here.";
+
+    /// <summary>Said when the selected zoom has been deleted.</summary>
+    public const string ZoomDeletedMessage = "Zoom deleted.";
+
+    /// <summary>Said when the suggested zooms have been removed.</summary>
+    public const string ZoomSuggestionsRemovedMessage = "Suggested zooms removed.";
+
+    /// <summary>Said when zooms were asked for and the clicks give none.</summary>
+    public const string NoZoomSuggestionsMessage = "No zooms to suggest for this recording.";
+
+    /// <summary>Why zooms cannot be suggested for a recording without clicks, such as one of a window.</summary>
+    public const string NoClicksExplanation = "This recording has no clicks to suggest zooms from.";
+
+    /// <summary>Why a zoom cannot follow the pointer in a recording without pointer positions.</summary>
+    public const string NoPointerExplanation = "This recording has no pointer positions to follow.";
+
     // How far a number that went through single precision may be from what was meant, as a part of
     // its size. One unit in the last place is 2^-23 of it at most, and the value a screen reader
     // read, the step it read and the sum it sent back each lose up to half of one.
@@ -125,11 +149,7 @@ public static class StudioEditorText
     {
         ArgumentNullException.ThrowIfNull(zoom);
 
-        // The scale that is drawn, which is the stored one kept within 1 to 5.
-        var scale = double.IsFinite(zoom.Scale) ? Math.Min(5, Math.Max(1, zoom.Scale)) : 1;
-        var start = double.IsFinite(zoom.Start) ? zoom.Start : 0;
-        var end = double.IsFinite(zoom.End) ? zoom.End : 0;
-        var text = string.Create(CultureInfo.InvariantCulture, $"Zoom {scale:0.##}×, {start:0.0} to {end:0.0} seconds");
+        var text = $"Zoom {GetZoomScaleText(zoom.Scale)}, {GetZoomRangeText(zoom)}";
         if (zoom.Focus.Mode == StudioZoomFocusMode.Cursor)
         {
             text += ", follows the pointer";
@@ -137,6 +157,37 @@ public static class StudioEditorText
 
         return zoom.Origin == StudioZoomOrigin.Auto ? text + ", suggested" : text;
     }
+
+    /// <summary>
+    /// How much a zoom magnifies, such as <c>2×</c> or <c>1.25×</c>: the scale that is drawn, which
+    /// is the stored one kept within 1 to 5, with up to two decimals.
+    /// </summary>
+    public static string GetZoomScaleText(double scale)
+    {
+        var drawn = double.IsFinite(scale) ? Math.Min(5, Math.Max(1, scale)) : 1;
+        return string.Create(CultureInfo.InvariantCulture, $"{drawn:0.##}×");
+    }
+
+    /// <summary>When a zoom starts and ends, in source time: <c>12.0 to 16.5 seconds</c>.</summary>
+    public static string GetZoomRangeText(StudioZoom zoom)
+    {
+        ArgumentNullException.ThrowIfNull(zoom);
+        var start = double.IsFinite(zoom.Start) ? zoom.Start : 0;
+        var end = double.IsFinite(zoom.End) ? zoom.End : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{start:0.0} to {end:0.0} seconds");
+    }
+
+    /// <summary>Which zoom is selected, counting from one: <c>Zoom 2 of 5</c>.</summary>
+    public static string GetZoomPositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Zoom {index + 1} of {count}");
+
+    /// <summary>What to say after zooms were suggested, given how many suggestions there are now.</summary>
+    public static string GetZoomSuggestionsText(int count) => count switch
+    {
+        <= 0 => NoZoomSuggestionsMessage,
+        1 => "1 zoom suggested.",
+        _ => string.Create(CultureInfo.InvariantCulture, $"{count} zooms suggested."),
+    };
 
     private static long WholePercent(double fraction) =>
         double.IsFinite(fraction) ? (long)Math.Round(fraction * 100, MidpointRounding.AwayFromZero) : 0;
