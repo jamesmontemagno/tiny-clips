@@ -76,7 +76,7 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 | `camera.startOffset` | number | 0 | Source time of the camera's first frame. May be negative |
 | `events` | string or null | null | `"events.json"` when present |
 
-A screen recording gets a frame only when something on screen changed, so its frames are not evenly spaced and the frame rate a media library reads from the file is an average, often far below the rate the recording was made at. `screen.frameRate` is therefore the configured rate, written by the recorder. A reader shows each source frame from the instant it starts until the next one starts.
+A recording's frames are not always evenly spaced. The macOS recorder writes a frame only when something on screen changed, and either recorder can drop frames under load. The frame rate a media library reads from the file is then an average, below the rate the recording was made at and on macOS often far below it. `screen.frameRate` is therefore the configured rate, written by the recorder. A reader shows each source frame from the instant it starts until the next one starts.
 
 ### Canvas
 
