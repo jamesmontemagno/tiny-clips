@@ -427,15 +427,15 @@ internal sealed class StudioExportJob
             var audioFormat = audio?.Format;
             if (audio is not null && audioFormat is not null)
             {
-                var ranges = StudioRenderingMath.BuildAudioRanges(_project, audioFormat.SampleRate);
-                var kept = ranges.Count == 0 ? 0 : ranges[^1].OutputStartSample + ranges[^1].SampleCount;
-                var samples = StudioRenderingMath.AudioSampleCount(kept, plan.Count, rate, audioFormat.SampleRate);
+                var audioPlan = StudioRenderingMath.BuildAudioPlan(_project, audioFormat.SampleRate);
+                var samples = StudioRenderingMath.AudioSampleCount(audioPlan.TotalSamples, plan.Count, rate, audioFormat.SampleRate);
                 var sink = encoder;
                 pump = new StudioAudioPump(
                     audio,
-                    StudioRenderingMath.LimitAudioRanges(ranges, samples),
+                    StudioRenderingMath.LimitAudioRanges(audioPlan.Ranges, samples),
                     audioFormat.BlockAlign,
-                    (pcm, start) => WriteAudio(sink, pcm, start, audioFormat));
+                    (pcm, start) => WriteAudio(sink, pcm, start, audioFormat),
+                    samples);
             }
 
             byte[]? pixels = null;

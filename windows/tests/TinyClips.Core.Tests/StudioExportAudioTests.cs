@@ -55,6 +55,78 @@ public sealed class StudioExportAudioTests
     public void BuildAudioRanges_RejectsAnImpossibleSampleRate()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => StudioRenderingMath.BuildAudioRanges(Project(), 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => StudioRenderingMath.BuildAudioPlan(Project(), 0));
+    }
+
+    // Speed: sound only where the video plays at the recording's own speed
+
+    [Fact]
+    public void BuildAudioPlan_WithoutSpeed_IsTheRangesAndWhereTheLastOneEnds()
+    {
+        var project = Project() with
+        {
+            Edits = new StudioEdits { TrimStart = 1.25, TrimEnd = 4.75, Cuts = [new StudioTimeRange { Start = 2, End = 3 }] },
+        };
+
+        var plan = StudioRenderingMath.BuildAudioPlan(project, 48000);
+
+        Assert.Equal([new StudioAudioSampleRange(60_000, 96_000, 0), new StudioAudioSampleRange(144_000, 228_000, 36_000)], plan.Ranges);
+        Assert.Equal(120_000, plan.TotalSamples);
+        Assert.Equal(new StudioAudioPlan([], 0).TotalSamples, StudioRenderingMath.BuildAudioPlan(Project() with { Audio = new StudioAudio { Muted = true } }, 48000).TotalSamples);
+        Assert.Empty(StudioRenderingMath.BuildAudioPlan(Project() with { Audio = new StudioAudio { Muted = true } }, 48000).Ranges);
+    }
+
+    [Fact]
+    public void BuildAudioPlan_Speed_KeepsTheSoundOfWhatPlaysAtItsOwnSpeed_AndLeavesRoomForTheRest()
+    {
+        // Ten seconds: twice as fast from 2 to 4, which takes one second of video, half as fast
+        // from 6 to 7, which takes two, and a cut from 8 to 9.
+        var project = Project() with
+        {
+            Edits = new StudioEdits
+            {
+                Cuts = [new StudioTimeRange { Start = 8, End = 9 }],
+                Speed = [new StudioSpeedRange { Start = 2, End = 4, Rate = 2 }, new StudioSpeedRange { Start = 6, End = 7, Rate = 0.5 }],
+            },
+        };
+
+        var plan = StudioRenderingMath.BuildAudioPlan(project, 48000);
+
+        // The video: 0 to 2 with sound, 2 to 3 silent, 3 to 5 with the sound of 4 to 6, 5 to 7
+        // silent, 7 to 8 with the sound of 7 to 8, and 8 to 9 with the sound of 9 to 10.
+        Assert.Equal(
+            [
+                new StudioAudioSampleRange(0, 96_000, 0),
+                new StudioAudioSampleRange(192_000, 288_000, 144_000),
+                new StudioAudioSampleRange(336_000, 384_000, 336_000),
+                new StudioAudioSampleRange(432_000, 480_000, 384_000),
+            ],
+            plan.Ranges);
+        Assert.Equal(432_000, plan.TotalSamples);
+        Assert.Equal(plan.Ranges, StudioRenderingMath.BuildAudioRanges(project, 48000));
+    }
+
+    [Fact]
+    public void BuildAudioPlan_WhenTheVideoEndsFaster_TheTrackLastsAsLongAsTheVideo()
+    {
+        // Six seconds as they are, then four at four times the speed: one more second, silent.
+        var project = Project() with { Edits = new StudioEdits { Speed = [new StudioSpeedRange { Start = 6, End = 10, Rate = 4 }] } };
+
+        var plan = StudioRenderingMath.BuildAudioPlan(project, 48000);
+
+        Assert.Equal([new StudioAudioSampleRange(0, 288_000, 0)], plan.Ranges);
+        Assert.Equal(336_000, plan.TotalSamples);
+    }
+
+    [Fact]
+    public void BuildAudioPlan_AllAtAnotherSpeed_HasNoRangesAndTheLengthOfTheVideo()
+    {
+        var project = Project() with { Edits = new StudioEdits { Speed = [new StudioSpeedRange { Start = 0, End = 10, Rate = 8 }] } };
+
+        var plan = StudioRenderingMath.BuildAudioPlan(project, 48000);
+
+        Assert.Empty(plan.Ranges);
+        Assert.Equal(60_000, plan.TotalSamples);
     }
 
     // How many samples go next to the picture
@@ -225,6 +297,104 @@ public sealed class StudioExportAudioTests
                 .Concat(Enumerable.Range(2_500, 3_500))
                 .Concat(Enumerable.Repeat(FakeSource.Silence, 1_500))
                 .Concat(Enumerable.Range(7_500, 3_500)));
+    }
+
+    [Fact]
+    public void Pump_WhereARangeBeginsLaterInTheOutput_WritesSilenceUpToIt()
+    {
+        var source = new FakeSource(total: 40_000, blockSamples: 1000, runIn: 4096);
+        var sink = new Sink();
+
+        // 2,000 samples, 9,000 of nothing, which is more than two blocks of silence, then 3,000 more.
+        StudioAudioSampleRange[] ranges = [new(1_000, 3_000, 0), new(20_000, 23_000, 11_000)];
+        var pump = new StudioAudioPump(source, ranges, 2, sink.Write);
+
+        pump.PumpToEnd(CancellationToken.None);
+
+        sink.AssertIs(Enumerable.Range(1_000, 2_000).Concat(Enumerable.Repeat(FakeSource.Silence, 9_000)).Concat(Enumerable.Range(20_000, 3_000)));
+        Assert.Equal(14_000, pump.TotalSamples);
+        Assert.Equal(14_000, pump.OutputSamples);
+        Assert.True(pump.Done);
+        Assert.Equal([1_000L, 20_000L], source.Seeks);
+    }
+
+    [Fact]
+    public void Pump_ARangeThatDoesNotBeginTheTrack_HasSilenceBeforeIt()
+    {
+        var source = new FakeSource(total: 40_000, blockSamples: 1000);
+        var sink = new Sink();
+        var pump = new StudioAudioPump(source, [new StudioAudioSampleRange(5_000, 6_000, 3_000)], 2, sink.Write);
+
+        pump.PumpToEnd(CancellationToken.None);
+
+        sink.AssertIs(Enumerable.Repeat(FakeSource.Silence, 3_000).Concat(Enumerable.Range(5_000, 1_000)));
+        Assert.Equal(4_000, pump.TotalSamples);
+    }
+
+    [Fact]
+    public void Pump_WithALengthPastItsLastRange_WritesSilenceToTheEnd()
+    {
+        var source = new FakeSource(total: 40_000, blockSamples: 1000);
+        var sink = new Sink();
+        var pump = new StudioAudioPump(source, [new StudioAudioSampleRange(100, 2_100, 0)], 2, sink.Write, totalSamples: 7_500);
+
+        pump.PumpToEnd(CancellationToken.None);
+
+        sink.AssertIs(Enumerable.Range(100, 2_000).Concat(Enumerable.Repeat(FakeSource.Silence, 5_500)));
+        Assert.Equal(7_500, pump.TotalSamples);
+        Assert.Equal(7_500, pump.OutputSamples);
+        Assert.True(pump.Done);
+    }
+
+    [Fact]
+    public void Pump_WithNoRangesAndALength_WritesThatMuchSilence_AndReadsNothing()
+    {
+        var source = new FakeSource(total: 40_000, blockSamples: 1000);
+        var sink = new Sink();
+        var pump = new StudioAudioPump(source, [], 2, sink.Write, totalSamples: 5_000);
+        Assert.False(pump.Done);
+
+        pump.PumpToEnd(CancellationToken.None);
+
+        sink.AssertIs(Enumerable.Repeat(FakeSource.Silence, 5_000));
+        Assert.True(pump.Done);
+        Assert.Equal(0, source.Reads);
+        Assert.Empty(source.Seeks);
+    }
+
+    [Fact]
+    public void Pump_ALengthShorterThanTheRanges_ChangesNothing()
+    {
+        var source = new FakeSource(total: 40_000, blockSamples: 1000);
+        var sink = new Sink();
+        var pump = new StudioAudioPump(source, [new StudioAudioSampleRange(100, 2_100, 0)], 2, sink.Write, totalSamples: 500);
+
+        pump.PumpToEnd(CancellationToken.None);
+
+        sink.AssertIs(Enumerable.Range(100, 2_000));
+        Assert.Equal(2_000, pump.TotalSamples);
+    }
+
+    [Fact]
+    public void PumpTo_StopsInsideTheSilence_AndGoesOnFromThere()
+    {
+        var source = new FakeSource(total: 40_000, blockSamples: 1000);
+        var sink = new Sink();
+        StudioAudioSampleRange[] ranges = [new(100, 1_100, 0), new(10_000, 11_000, 20_000)];
+        var pump = new StudioAudioPump(source, ranges, 2, sink.Write);
+
+        pump.PumpTo(5_000, CancellationToken.None);
+
+        // Never less than was asked for, and no more than one block of silence past it.
+        Assert.InRange(pump.OutputSamples, 5_000, 5_000 + 4_096);
+        Assert.False(pump.Done);
+        Assert.Equal(sink.Count, pump.OutputSamples);
+
+        pump.PumpToEnd(CancellationToken.None);
+
+        sink.AssertIs(Enumerable.Range(100, 1_000).Concat(Enumerable.Repeat(FakeSource.Silence, 19_000)).Concat(Enumerable.Range(10_000, 1_000)));
+        Assert.Equal(21_000, pump.TotalSamples);
+        Assert.True(pump.Done);
     }
 
     [Fact]

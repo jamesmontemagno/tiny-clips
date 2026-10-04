@@ -5,7 +5,10 @@ internal delegate void StudioPcmWriter(ReadOnlySpan<byte> pcm, long outputStartS
 
 /// <summary>
 /// Turns the decoded audio of the screen file into the audio of an export: for every kept range
-/// it writes exactly the samples of that range, in order and without a gap in the output.
+/// it writes exactly the samples of that range, in order, each where the range says it belongs in
+/// the output. Where a range begins later than the one before it ended, and after the last range
+/// up to the length of the track, it writes silence: that is where the video plays at another
+/// speed and has no sound. What it writes has no hole and no overlap.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -34,7 +37,10 @@ internal sealed class StudioAudioPump
     private bool _rangeStarted;
     private bool _sourceEnded;
 
-    public StudioAudioPump(IStudioPcmSource source, IReadOnlyList<StudioAudioSampleRange> ranges, int blockAlign, StudioPcmWriter write)
+    /// <param name="totalSamples">
+    /// How many samples the finished track has. Null for a track that ends with its last range.
+    /// </param>
+    public StudioAudioPump(IStudioPcmSource source, IReadOnlyList<StudioAudioSampleRange> ranges, int blockAlign, StudioPcmWriter write, long? totalSamples = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(ranges);
@@ -45,10 +51,13 @@ internal sealed class StudioAudioPump
         _blockAlign = blockAlign;
         _write = write;
         _silence = new byte[SilenceSamples * blockAlign];
+        long end = 0;
         foreach (var range in ranges)
         {
-            TotalSamples += Math.Max(0, range.SampleCount);
+            end = Math.Max(end, range.OutputStartSample) + Math.Max(0, range.SampleCount);
         }
+
+        TotalSamples = Math.Max(end, totalSamples ?? 0);
     }
 
     /// <summary>Samples the finished track has.</summary>
@@ -57,7 +66,7 @@ internal sealed class StudioAudioPump
     /// <summary>Samples written so far.</summary>
     public long OutputSamples { get; private set; }
 
-    public bool Done => _rangeIndex >= _ranges.Count;
+    public bool Done => _rangeIndex >= _ranges.Count && OutputSamples >= TotalSamples;
 
     /// <summary>Writes until at least <paramref name="outputSample"/> samples are out, or the track is complete.</summary>
     public void PumpTo(long outputSample, CancellationToken cancellationToken)
@@ -73,7 +82,21 @@ internal sealed class StudioAudioPump
 
     private void Step()
     {
+        if (_rangeIndex >= _ranges.Count)
+        {
+            // After the last range: the track is silent to its end.
+            WriteGap(TotalSamples - OutputSamples);
+            return;
+        }
+
         var range = _ranges[_rangeIndex];
+        if (!_rangeStarted && range.OutputStartSample > OutputSamples)
+        {
+            // The range belongs later in the output than the one before it ended.
+            WriteGap(range.OutputStartSample - OutputSamples);
+            return;
+        }
+
         if (!_rangeStarted)
         {
             _rangeStarted = true;
@@ -123,6 +146,17 @@ internal sealed class StudioAudioPump
         _write(slice, OutputSamples);
         OutputSamples += to - from;
         _sourceCursor = to;
+    }
+
+    /// <summary>Writes silence that stands for no part of the source, one block of it at a call.</summary>
+    private void WriteGap(long samples)
+    {
+        var count = (int)Math.Min(samples, SilenceSamples);
+        if (count > 0)
+        {
+            _write(_silence.AsSpan(0, count * _blockAlign), OutputSamples);
+            OutputSamples += count;
+        }
     }
 
     private void WriteSilence(long samples)

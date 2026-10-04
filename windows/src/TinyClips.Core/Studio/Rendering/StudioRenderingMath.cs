@@ -12,6 +12,14 @@ public readonly record struct StudioAudioSampleRange(long SourceStartSample, lon
     public long SampleCount => SourceEndSample - SourceStartSample;
 }
 
+/// <summary>
+/// The sound of an export: the runs of the screen track it keeps, each with its place in the
+/// output, and how many samples the finished track has. Between two runs that do not follow each
+/// other in the output, and after the last one up to <paramref name="TotalSamples"/>, the track is
+/// silent: that is where the video plays at another speed.
+/// </summary>
+public sealed record StudioAudioPlan(IReadOnlyList<StudioAudioSampleRange> Ranges, long TotalSamples);
+
 /// <summary>Resolved click-ring geometry in canvas pixels.</summary>
 public readonly record struct StudioClickRing(double CenterX, double CenterY, double Radius, double StrokeWidth, double Alpha);
 
@@ -129,11 +137,13 @@ public static class StudioRenderingMath
     }
 
     /// <summary>
-    /// The audio an export keeps, as sample ranges of the screen track: one range per kept segment
-    /// of the time map, each starting and ending on the sample nearest the segment's edge. Empty
-    /// when the project is muted.
+    /// The audio an export keeps, as sample ranges of the screen track: one range for each piece
+    /// of the time map that plays at the recording's own speed, each starting and ending on the
+    /// sample nearest the piece's edge. A piece at another speed has no sound (section 7 of the
+    /// project format): the output moves on by the time it takes, and the track is silent there.
+    /// A muted project has no ranges and no samples.
     /// </summary>
-    public static IReadOnlyList<StudioAudioSampleRange> BuildAudioRanges(StudioProject project, int sampleRate)
+    public static StudioAudioPlan BuildAudioPlan(StudioProject project, int sampleRate)
     {
         ArgumentNullException.ThrowIfNull(project);
         if (sampleRate <= 0)
@@ -143,16 +153,22 @@ public static class StudioRenderingMath
 
         if (project.Audio.Muted)
         {
-            return [];
+            return new StudioAudioPlan([], 0);
         }
 
         var map = StudioTimeMap.FromProject(project);
-        var ranges = new List<StudioAudioSampleRange>(map.Segments.Count);
+        var ranges = new List<StudioAudioSampleRange>(map.Pieces.Count);
         long outputCursor = 0;
-        foreach (var segment in map.Segments)
+        foreach (var piece in map.Pieces)
         {
-            var start = SecondsToSamples(segment.Start, sampleRate);
-            var end = SecondsToSamples(segment.End, sampleRate);
+            if (piece.Rate != 1)
+            {
+                outputCursor += SecondsToSamples(piece.OutputDuration, sampleRate);
+                continue;
+            }
+
+            var start = SecondsToSamples(piece.Start, sampleRate);
+            var end = SecondsToSamples(piece.End, sampleRate);
             if (end > start)
             {
                 ranges.Add(new StudioAudioSampleRange(start, end, outputCursor));
@@ -160,8 +176,12 @@ public static class StudioRenderingMath
             }
         }
 
-        return ranges;
+        return new StudioAudioPlan(ranges, outputCursor);
     }
+
+    /// <summary>The ranges of <see cref="BuildAudioPlan"/>.</summary>
+    public static IReadOnlyList<StudioAudioSampleRange> BuildAudioRanges(StudioProject project, int sampleRate) =>
+        BuildAudioPlan(project, sampleRate).Ranges;
 
     /// <summary>
     /// How many audio samples to write next to <paramref name="frameCount"/> video frames. An AAC
