@@ -159,6 +159,34 @@ The same design on both platforms. The rule behind every control is in the edito
 
 **Not in this pass:** crop handles on the canvas, and dragging the zoomed picture in the preview to move the focus. The inspector controls are their equivalents and stay when those arrive. The timeline does not magnify, so short zooms in a long recording sit close together on the lane; Start and End in the inspector are exact.
 
+### Scenes in the editor (Milestone 3)
+
+The same design on both platforms, with the rules in the editor model and unit tested there, as for zooms.
+
+**The current scene.** Every moment of the recording is in exactly one scene, so a scene is not selected the way a zoom is: the current scene is the one the playhead is in. The layout buttons, the bubble and side-by-side controls, dragging the bubble in the preview, and the keys 1 to 4 all change the current scene. Undo and redo need no selection to restore.
+
+**Scene lane.** A lane above the zoom lane, on the same time scale, with one block for each scene.
+
+- A block shows the name of its layout, and the current scene's block is marked. Pressing a block moves the playhead to where it was pressed, which makes that scene the current one.
+- Dragging the first 6 px of a block, except the first block's, moves where that scene starts. The playhead follows, and a drag is one undo step.
+- To a screen reader each block is an item named like "Scene 2 of 3, Side by side, 12.0 to 30.5 seconds", and says whether it is the current one.
+- A recording without a camera has one scene and no lane, because every layout without a camera is the screen alone.
+
+**Split** (also S) starts a new scene at the playhead. It is a copy of the current scene, entered by moving for 0.35 seconds, so nothing looks different until one of the two is changed. A paused playhead then moves to where the new scene has been entered. Otherwise a change of layout would show nothing, because at its first instant a scene still looks like the one before.
+
+- Both halves have to last at least 0.3 seconds, and the current scene has to be at rest at the playhead: a scene is not split while its layers are still moving into place. Where a split is not possible the button is disabled and says why.
+
+**Scene section in the inspector.**
+
+- Previous and Next move the playhead from scene to scene, each to where that scene has been entered. Between them: "Scene 2 of 3" and its times.
+- Start, with buttons that step 0.1 s and one that sets it to the playhead. Not for the first scene, which starts at 0.
+- Entered by: a cut, or moving, with how long the move takes (0.1 to 2 s). Not for the first scene, which has nothing to move from. A move is never longer than its scene; when the scene is shorter than the time asked for, the section says how long the move really is.
+- Delete removes the current scene, and the scene before it then lasts until the next one. Deleting the first scene hands its time to the second. The only scene cannot be deleted. The Delete key does the same while a block of the lane has the keyboard focus.
+
+**Limits.** A scene made or moved in the editor is never shorter than 0.3 seconds. A start dragged against a neighbor stops 0.3 seconds from it. Scenes in a project file that are shorter, out of order, or past the end of the recording are put in order when the project is opened, as section 6.1 of the format reads them, and those that start at or after the end of the recording are dropped.
+
+**The preview inside a move.** A paused playhead inside a move shows the layers on their way, as the export will. The bubble's handle is drawn where the current scene has the bubble at rest, because that is what dragging it changes.
+
 ## Platform architecture
 
 ### macOS
@@ -256,10 +284,11 @@ A project file with zooms in it is drawn with them on both platforms. On the Mac
 | Spec and fixtures for scenes entered with a morph (section 6.9 of the format) | Done. 22 layout fixtures | The same files |
 | Moving and fading layers in the layout | Done. Passes the fixtures | Done. Passes the fixtures |
 | Drawing them in the preview and the export | The compositor draws a fading layer as one with its shadow. Compiled only | Drawn, exported and postered moves are measured from pixels by `StudioRenderCheck`. The live preview has not shown one yet |
-| Making and changing scenes in the editor: splitting, the scene lane, choosing how a scene is entered | Not started | Not started |
+| Editing operations for scenes, with undo: the scene the playhead is in, splitting, deleting, moving a start, how a scene is entered | Done in the editor model. Unit tested. The view model does not tell the model where the playhead is yet | Done in the editor model and session, with the S key and Delete on a scene in the key rules. Unit tested. The window does not use them yet |
+| Scene lane, Scene section in the inspector, the Split button | Not started | Not started |
 | Cuts in the editor and the preview, speed, volumes, switching layouts while recording | Not started | Not started |
 
-A project file with more than one scene is drawn with its transitions on both platforms, and nothing in either app can make one yet. On Windows `StudioRenderCheck` works out by hand where each layer is on its way, measures the test pattern inside the screen and the camera there, looks for their outlines, and compares a fading layer with what is under it. The frames have been looked at. On the Mac the same rules are in the layout, which the fixtures cover, and in the compositor, which has only been compiled.
+A project file with more than one scene is drawn with its transitions on both platforms, and nothing in either app can make one yet: the rules for making and changing scenes are in both editor models, and no window has a control for them. Until the windows follow the playhead, the layout controls of a project that already has several scenes show and change its first scene on the Mac, and on Windows change the right scene while showing a stale one. On Windows `StudioRenderCheck` works out by hand where each layer is on its way, measures the test pattern inside the screen and the camera there, looks for their outlines, and compares a fading layer with what is under it. The frames have been looked at. On the Mac the same rules are in the layout, which the fixtures cover, and in the compositor, which has only been compiled.
 
 ### Hidden switch
 
@@ -299,6 +328,8 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **Entering a scene.** A scene is cut to, or its layers move into place from where the scene before had them, over at most 2 seconds and never longer than the scene itself. A layer both scenes have moves in a straight line and changes size and corner radius on the way; the camera keeps its picture cropped to the shape it has at each instant. A layer only one of them has stays where that scene has it and fades. So entering the camera layout still shows the screen for a moment, fading out under the camera as it grows.
 - **A layer fades as one.** Its shadow, its border and its click rings are put together with it first, and the whole is laid on the frame. Fading each part by itself is simpler to draw and was tried first on Windows: the card's own shadow then shows through the card, which makes it look darker halfway than at either end.
 - **A camera that changes shape** moves as a rounded rectangle. A circle is one whose radius is half its side. A squircle reaches further into the corners of its box, so it counts as a rounded rectangle with a radius of 0.22 of its side: on a bubble 389 pixels across, the outline then moves by under 4 pixels as the move starts, where half the side would move it by about 45.
+- **The current scene is the one the playhead is in.** There is no selected scene. The layout controls, the bubble and the keys 1 to 4 change the scene under the playhead, and a change of current scene is reported to the window like a change of selection.
+- **Editing rules for scenes**, the same on both platforms and unit tested on each: a split makes a copy that is entered by moving for 0.35 seconds; both halves last at least 0.3 seconds; a scene is not split while it is still moving into place, or in a recording without a camera; deleting a scene gives its time to the one before, and deleting the first gives it to the second; a start stays 0.3 seconds clear of the start before it and of its own end; the first scene always starts at 0 and is never entered by moving. Opening a project puts its scenes in order and drops those that start at or after the end of the recording.
 - **Crops.** The editor only stores valid crops. A rectangle that is not one is made valid by its size first and its position second, so a rectangle dragged past an edge stops there with its size. A saved look still never carries a crop.
 - **macOS preview.** The preview always plays the whole recording. Trim and mute are applied by the transport and by export, so changing them does not rebuild the player. Only a change of canvas shape does.
 - **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
