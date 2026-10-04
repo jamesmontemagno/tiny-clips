@@ -63,30 +63,6 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Verify NativeAOT toolchain
-        if: ${{ needs.changes.outputs.windows == 'true' }}
-        shell: pwsh
-        run: |
-          $vswhereDirectory = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer"
-          $vswhere = Join-Path $vswhereDirectory "vswhere.exe"
-          if (-not (Test-Path $vswhere)) {
-            throw "vswhere.exe was not found; NativeAOT requires Visual Studio with Desktop development with C++."
-          }
-
-          $visualStudio = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (-not $visualStudio) {
-            throw "Visual Studio Desktop development with C++ was not found."
-          }
-
-          $linker = Get-ChildItem "$visualStudio\VC\Tools\MSVC" -Recurse -Filter link.exe |
-            Where-Object { $_.FullName -match "\\Hostx64\\${{ matrix.architecture }}\\link\.exe$" } |
-            Select-Object -First 1
-          if (-not $linker) {
-            throw "NativeAOT linker for ${{ matrix.architecture }} was not found."
-          }
-
-          $vswhereDirectory >> $env:GITHUB_PATH
-
       - name: Restore direct app for ${{ matrix.platform }}
         if: ${{ needs.changes.outputs.windows == 'true' }}
         run: >-

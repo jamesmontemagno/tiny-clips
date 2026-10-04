@@ -139,8 +139,8 @@ automation review does not replace the documented hands-on results.
 
 - **Direct (available now):** install with `winget install Refractored.TinyClips`, or use the
   architecture-specific `.appinstaller` from a Windows GitHub Release as a stable bootstrap for the
-  current version. Both routes install the same signed x64/ARM64 NativeAOT MSIX, which bundles its
-  .NET native code and Windows App SDK runtime. Clean Windows 11 machines need no separate runtime
+  current version. Both routes install the same signed x64/ARM64 MSIX, which bundles the .NET
+  runtime and Windows App SDK runtime. Clean Windows 11 machines need no separate runtime
   installation. Installs made through the `.appinstaller` check for signed updates in the
   background and on launch; winget installs update with `winget upgrade`. Both operate on the same
   package family. Fully free.
