@@ -187,6 +187,27 @@ The same design on both platforms, with the rules in the editor model and unit t
 
 **The preview inside a move.** A paused playhead inside a move shows the layers on their way, as the export will. The bubble's handle is drawn where the current scene has the bubble at rest, because that is what dragging it changes.
 
+**Where the Mac differs.** The blocks of the lane cannot take the keyboard focus there, so the Delete key keeps meaning "delete the selected zoom"; a scene is deleted from the inspector or the Studio menu. The line between two blocks can be dragged from either side.
+
+### Cuts in the editor (Milestone 3)
+
+A cut is a stretch of the recording that the video leaves out. It is a range on the timeline with a start and an end, like a zoom, and it is made, selected, moved, and deleted the same way. Nothing else moves when a cut is made: zooms, scenes, and the trim are stored in recording time and stay where they are.
+
+**Cut lane.** A lane under the zoom lane, on the same time scale, with one block for each cut. The clip bar under it shows the same stretches as gaps.
+
+- Pressing a block selects its cut, dragging it moves the cut, and dragging one of its ends changes where the cut starts or stops. A drag is one undo step.
+- To a screen reader each block is an item named like "Cut, 12.0 to 16.5 seconds", and says whether it is selected.
+
+**Cut** (also X) starts a cut at the playhead and selects it. It lasts 1 second, or until the next cut or the end of the recording when that comes sooner. Where a cut already is, that one is selected instead. The usual next step is to move the playhead to where the video should pick up again and choose End: At Playhead, or to drag the end of the block there.
+
+**One selection.** A zoom or a cut is selected, never both: selecting one lets go of the other, and Delete removes whichever is selected.
+
+**Cut section in the inspector.** Previous and Next step through the cuts. Between them: "Cut 2 of 3", its times, and how long it is. With a cut selected: Start and End, each with buttons that step 0.1 s and one that sets it to the playhead, and Delete Cut, which puts the stretch back.
+
+**Playing.** Playback jumps over cuts, as the exported video does. A paused playhead can be inside a cut and shows the picture there, so its ends can be judged, and stepping by frames goes through it. The time display counts the video's time, so it stands still inside a cut. The jump in the preview is not exact to the frame: a few frames of a cut can show while playing. The export is exact.
+
+**Limits.** A cut is at least 0.1 seconds long. Cuts do not overlap: an end dragged against another cut stops there, and two cuts that touch play as one. At least 0.1 seconds of video has to stay, counting the trim, so an edit to a cut or to the trim that would leave less is not made. A cut outside the trim does nothing and is kept, so widening the trim brings it back. Cuts in a project file that overlap or are out of order are put in order and joined when the project is opened.
+
 ## Platform architecture
 
 ### macOS
@@ -284,11 +305,16 @@ A project file with zooms in it is drawn with them on both platforms. On the Mac
 | Spec and fixtures for scenes entered with a morph (section 6.9 of the format) | Done. 22 layout fixtures | The same files |
 | Moving and fading layers in the layout | Done. Passes the fixtures | Done. Passes the fixtures |
 | Drawing them in the preview and the export | The compositor draws a fading layer as one with its shadow. Compiled only | Drawn, exported and postered moves are measured from pixels by `StudioRenderCheck`. The live preview has not shown one yet |
-| Editing operations for scenes, with undo: the scene the playhead is in, splitting, deleting, moving a start, how a scene is entered | Done in the editor model. Unit tested. The view model does not tell the model where the playhead is yet | Done in the editor model and session, with the S key and Delete on a scene in the key rules. Unit tested. The window does not use them yet |
-| Scene lane, Scene section in the inspector, the Split button | Not started | Not started |
-| Cuts in the editor and the preview, speed, volumes, switching layouts while recording | Not started | Not started |
+| Editing operations for scenes, with undo: the scene the playhead is in, splitting, deleting, moving a start, how a scene is entered | Done in the editor model, which is unit tested, and the view model | Done in the editor model and session, with the S key and Delete on a scene in the key rules. Unit tested. The window does not use them yet |
+| Scene lane, Scene section in the inspector, the Split button | Done. Compiled, never run | Not started |
+| Cuts in the export | The composition is built from the stretches that are kept, picture and sound. Compiled only | Done. `StudioRenderCheck` exports a project with a cut and reads every frame and the sound back |
+| Editing operations for cuts, with undo: adding, moving, and deleting a cut, one selection shared with the zooms, and playback that jumps over cuts | Done in the editor model, which is unit tested, and the view model | Done in the editor model and session, with the X key and Delete on a cut in the key rules. Unit tested. The window does not use them yet |
+| Cut lane, Cut section in the inspector, the Cut button | Not started | Not started |
+| Speed, volumes, switching layouts while recording | Not started | Not started |
 
-A project file with more than one scene is drawn with its transitions on both platforms, and nothing in either app can make one yet: the rules for making and changing scenes are in both editor models, and no window has a control for them. Until the windows follow the playhead, the layout controls of a project that already has several scenes show and change its first scene on the Mac, and on Windows change the right scene while showing a stale one. On Windows `StudioRenderCheck` works out by hand where each layer is on its way, measures the test pattern inside the screen and the camera there, looks for their outlines, and compares a fading layer with what is under it. The frames have been looked at. On the Mac the same rules are in the layout, which the fixtures cover, and in the compositor, which has only been compiled.
+A project file with more than one scene is drawn with its transitions on both platforms. On the Mac the editor can now split a recording into scenes and change each one, in views that have been compiled and never run. On Windows no window has a control for scenes yet, and until it does, the layout controls of a project that already has several scenes change the scene under the playhead while showing the layout of another.
+
+A project file with cuts in it is exported without them on both platforms. The rules for making and changing cuts are in both editor models, and playback in both editors jumps over them, but no window has a control for cuts yet. The jump while playing has only been run against a stand-in for the preview: no real preview has played over a cut. On Windows `StudioRenderCheck` works out by hand where each layer is on its way, measures the test pattern inside the screen and the camera there, looks for their outlines, and compares a fading layer with what is under it. The frames have been looked at. On the Mac the same rules are in the layout, which the fixtures cover, and in the compositor, which has only been compiled.
 
 ### Hidden switch
 
@@ -330,6 +356,9 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **A camera that changes shape** moves as a rounded rectangle. A circle is one whose radius is half its side. A squircle reaches further into the corners of its box, so it counts as a rounded rectangle with a radius of 0.22 of its side: on a bubble 389 pixels across, the outline then moves by under 4 pixels as the move starts, where half the side would move it by about 45.
 - **The current scene is the one the playhead is in.** There is no selected scene. The layout controls, the bubble and the keys 1 to 4 change the scene under the playhead, and a change of current scene is reported to the window like a change of selection.
 - **Editing rules for scenes**, the same on both platforms and unit tested on each: a split makes a copy that is entered by moving for 0.35 seconds; both halves last at least 0.3 seconds; a scene is not split while it is still moving into place, or in a recording without a camera; deleting a scene gives its time to the one before, and deleting the first gives it to the second; a start stays 0.3 seconds clear of the start before it and of its own end; the first scene always starts at 0 and is never entered by moving. Opening a project puts its scenes in order and drops those that start at or after the end of the recording.
+- **A cut is a range, like a zoom.** It is added at the playhead with a length of one second and then adjusted, it is selected, moved and deleted the way a zoom is, and a zoom or a cut is selected, never both. Cuts are stored in recording time, so a cut moves nothing else.
+- **Editing rules for cuts**, the same on both platforms and unit tested on each: a cut is never shorter than 0.1 seconds and never overlaps another; two that touch play as one; at least 0.1 seconds of video has to stay, so an edit to a cut or to the trim that would leave less is not made; a cut outside the trim is kept. Opening a project puts its cuts in order and joins those that overlap.
+- **Playing over a cut** is done by the editor, which sends the preview on to the end of the cut when playback reaches it. The export is exact; the preview can show a few frames of the cut first.
 - **Crops.** The editor only stores valid crops. A rectangle that is not one is made valid by its size first and its position second, so a rectangle dragged past an edge stops there with its size. A saved look still never carries a crop.
 - **macOS preview.** The preview always plays the whole recording. Trim and mute are applied by the transport and by export, so changing them does not rebuild the player. Only a change of canvas shape does.
 - **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
