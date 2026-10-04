@@ -1566,6 +1566,23 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.zoomPositionText(index: 11, count: 1000), "Zoom 12 of 1000")
     }
 
+    func testZoomStepTextSaysWhichZoomItIsAndThenWhatTheZoomIs() {
+        XCTAssertEqual(
+            StudioEditorModel.zoomStepText(index: 1, count: 5, zoom: zoom(12, 16.5, scale: 2)),
+            "Zoom 2 of 5, 2×, 12.0 to 16.5 seconds"
+        )
+        XCTAssertEqual(
+            StudioEditorModel.zoomStepText(index: 0, count: 1, zoom: zoom(1, 3, scale: 2.5, mode: .cursor, origin: .auto)),
+            "Zoom 1 of 1, 2.5×, 1.0 to 3.0 seconds, follows the pointer, suggested"
+        )
+
+        // The scale that is drawn, as everywhere else.
+        XCTAssertEqual(
+            StudioEditorModel.zoomStepText(index: 2, count: 3, zoom: zoom(0, 0.3, scale: 9)),
+            "Zoom 3 of 3, 5×, 0.0 to 0.3 seconds"
+        )
+    }
+
     func testZoomSuggestionsTextSaysHowManyThereAre() {
         XCTAssertEqual(StudioEditorModel.zoomSuggestionsText(count: 0), "No zooms to suggest for this recording.")
         XCTAssertEqual(StudioEditorModel.zoomSuggestionsText(count: -1), "No zooms to suggest for this recording.")

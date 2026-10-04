@@ -1332,7 +1332,19 @@ struct StudioEditorModel: Equatable, Sendable {
     /// A zoom for VoiceOver, such as "Zoom 2×, 12.0 to 16.5 seconds". The times are source time, as
     /// the trim handles read. "Follows the pointer" and "suggested" are added where they apply.
     static func zoomAccessibilityText(_ zoom: StudioZoom) -> String {
-        var text = "Zoom \(zoomScaleText(zoom.scale)), \(zoomRangeText(zoom))"
+        "Zoom \(zoomDetailText(zoom))"
+    }
+
+    /// What is read out when a zoom is stepped to with Previous or Next, which say nothing of where
+    /// they land by themselves: which zoom it is, and then what `zoomAccessibilityText` says of it,
+    /// such as "Zoom 2 of 5, 2×, 12.0 to 16.5 seconds".
+    static func zoomStepText(index: Int, count: Int, zoom: StudioZoom) -> String {
+        "\(zoomPositionText(index: index, count: count)), \(zoomDetailText(zoom))"
+    }
+
+    /// "2×, 12.0 to 16.5 seconds", with "follows the pointer" and "suggested" where they apply.
+    private static func zoomDetailText(_ zoom: StudioZoom) -> String {
+        var text = "\(zoomScaleText(zoom.scale)), \(zoomRangeText(zoom))"
         if zoom.focus.mode == .cursor {
             text += ", follows the pointer"
         }

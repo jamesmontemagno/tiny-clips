@@ -355,6 +355,26 @@ final class StudioViewModel: ObservableObject {
         selectAndShowZoom(editor?.zoomIndex(before: selectedZoomIndex, playhead: playhead))
     }
 
+    /// The Previous zoom button and menu item. The zoom it lands on is read out: neither says
+    /// anything of where it lands by itself.
+    func showPreviousZoom() {
+        if selectPreviousZoom() {
+            announceSelectedZoom()
+        }
+    }
+
+    /// The Next zoom button and menu item. The zoom it lands on is read out.
+    func showNextZoom() {
+        if selectNextZoom() {
+            announceSelectedZoom()
+        }
+    }
+
+    private func announceSelectedZoom() {
+        guard let index = selectedZoomIndex, let zoom = selectedZoom else { return }
+        announce(StudioEditorModel.zoomStepText(index: index, count: zooms.count, zoom: zoom))
+    }
+
     /// Adds a zoom at the playhead and selects it. Where a zoom already is, that one is selected
     /// instead. A zoom starts unzoomed, so a paused playhead then moves to where the new zoom has
     /// moved in, which shows what it looks at.

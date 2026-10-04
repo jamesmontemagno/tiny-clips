@@ -233,7 +233,7 @@ struct StudioZoomInspectorSection: View {
     private var navigationRow: some View {
         HStack(spacing: 8) {
             Button {
-                _ = viewModel.selectPreviousZoom()
+                viewModel.showPreviousZoom()
             } label: {
                 Image(systemName: "chevron.left")
             }
@@ -252,7 +252,7 @@ struct StudioZoomInspectorSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                _ = viewModel.selectNextZoom()
+                viewModel.showNextZoom()
             } label: {
                 Image(systemName: "chevron.right")
             }

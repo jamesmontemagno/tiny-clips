@@ -203,8 +203,8 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioMarkOut(_ sender: Any?) { viewModel.setTrimEndAtPlayhead() }
     @objc func studioAddZoom(_ sender: Any?) { viewModel.addZoomAtPlayhead() }
     @objc func studioDeleteZoom(_ sender: Any?) { viewModel.removeSelectedZoom() }
-    @objc func studioPreviousZoom(_ sender: Any?) { viewModel.selectPreviousZoom() }
-    @objc func studioNextZoom(_ sender: Any?) { viewModel.selectNextZoom() }
+    @objc func studioPreviousZoom(_ sender: Any?) { viewModel.showPreviousZoom() }
+    @objc func studioNextZoom(_ sender: Any?) { viewModel.showNextZoom() }
     @objc func studioSuggestZooms(_ sender: Any?) { viewModel.suggestZooms() }
     @objc func studioSplitScene(_ sender: Any?) { viewModel.splitSceneAtPlayhead() }
     @objc func studioDeleteScene(_ sender: Any?) { viewModel.removeCurrentScene() }
