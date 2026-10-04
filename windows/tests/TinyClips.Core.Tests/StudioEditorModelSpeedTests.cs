@@ -84,6 +84,30 @@ public sealed class StudioEditorModelSpeedTests
     }
 
     [Fact]
+    public void Playback_GoesAtTheRateOfTheStretchItIsIn()
+    {
+        var model = new StudioEditorModel(ThreeSpeedChanges());
+        Assert.Equal(1, model.GetPlaybackRate(1), Precision);
+        Assert.Equal(2, model.GetPlaybackRate(2), Precision);
+        Assert.Equal(2, model.GetPlaybackRate(2.99), Precision);
+        Assert.Equal(1, model.GetPlaybackRate(3), Precision);
+        Assert.Equal(4, model.GetPlaybackRate(5.5), Precision);
+        Assert.Equal(0.5, model.GetPlaybackRate(8), Precision);
+        Assert.Equal(1, model.GetPlaybackRate(9), Precision);
+        Assert.Equal(1, model.GetPlaybackRate(double.NaN), Precision);
+
+        // What the video leaves out has no rate: playback does not stay there.
+        model.SetTrim(2.5, 8.5);
+        model.AddCut(5.2);
+        Assert.Equal(1, model.GetPlaybackRate(2.2), Precision);
+        Assert.Equal(2, model.GetPlaybackRate(2.5), Precision);
+        Assert.Equal(4, model.GetPlaybackRate(5.1), Precision);
+        Assert.Equal(1, model.GetPlaybackRate(5.5), Precision);
+        Assert.Equal(0.5, model.GetPlaybackRate(8.4), Precision);
+        Assert.Equal(1, model.GetPlaybackRate(8.5), Precision);
+    }
+
+    [Fact]
     public void TheRateOfASpeedChange_IsKeptWithinItsLimits_AndOneIsNoRate()
     {
         var model = new StudioEditorModel(WithSpeed((2, 6, 2)));

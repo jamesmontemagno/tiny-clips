@@ -52,6 +52,13 @@ public sealed partial class StudioEditorModel
     }
 
     /// <summary>
+    /// How fast a playing preview goes at <paramref name="sourceTime"/>: how many seconds of the
+    /// recording pass in one second, as in the video. 1 outside every speed change, and where
+    /// the video keeps nothing.
+    /// </summary>
+    public double GetPlaybackRate(double sourceTime) => TimeMap.GetRate(sourceTime);
+
+    /// <summary>
     /// Adds a speed change that starts at <paramref name="sourceTime"/>, plays at
     /// <see cref="NewSpeedRate"/>, and covers <see cref="NewSpeedDuration"/> of the recording, or
     /// up to the next speed change or the end of the recording when that comes sooner.

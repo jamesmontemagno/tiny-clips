@@ -1243,6 +1243,13 @@ struct StudioEditorModel: Equatable, Sendable {
         project.edits.speed.firstIndex { $0.start <= sourceTime && sourceTime < $0.end }
     }
 
+    /// How fast a playing preview goes at `sourceTime`: how many seconds of the recording pass in
+    /// one second, as in the video. 1 outside every speed change, and where the video keeps
+    /// nothing.
+    func playbackRate(at sourceTime: Double) -> Double {
+        timeMap.rate(at: sourceTime)
+    }
+
     /// Adds a speed change that starts at `sourceTime`, plays at `newSpeedRate`, and covers
     /// `newSpeedDuration` of the recording, or up to the next speed change or the end of the
     /// recording when that comes sooner.

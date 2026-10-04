@@ -2284,6 +2284,28 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(model.sourceTime(forOutputTime: 4), 4.5, accuracy: 1e-9)
     }
 
+    func testPlaybackGoesAtTheRateOfTheStretchItIsIn() {
+        var model = StudioEditorModel(project: threeSpeedChanges())
+        XCTAssertEqual(model.playbackRate(at: 1), 1, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 2), 2, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 2.99), 2, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 3), 1, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 5.5), 4, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 8), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 9), 1, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: .nan), 1, accuracy: 1e-9)
+
+        // What the video leaves out has no rate: playback does not stay there.
+        model.setTrim(start: 2.5, end: 8.5)
+        model.addCut(at: 5.2)
+        XCTAssertEqual(model.playbackRate(at: 2.2), 1, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 2.5), 2, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 5.1), 4, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 5.5), 1, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 8.4), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(model.playbackRate(at: 8.5), 1, accuracy: 1e-9)
+    }
+
     func testTheRateOfASpeedChangeIsKeptWithinItsLimitsAndOneIsNoRate() {
         var model = StudioEditorModel(project: withSpeed([(2, 6, 2)]))
         XCTAssertEqual(model.outputDuration, 8, accuracy: 1e-9)

@@ -71,6 +71,13 @@ final class StudioViewModel: ObservableObject {
     /// the same cut again only after Play has been pressed, which forgets this.
     private var cutSkipTarget: Double?
 
+    /// The rate the player was last asked to play at. It is compared with this and not with what
+    /// the player says, which need not be the number it was given.
+    private var requestedRate: Float = 1
+
+    /// When the playhead was last moved by the playing player, on the system's clock.
+    private var lastPlayheadMove: TimeInterval = 0
+
     init(projectID: String, store: StudioProjectStore = .shared) {
         self.projectID = projectID
         self.store = store
@@ -687,8 +694,8 @@ final class StudioViewModel: ObservableObject {
     // redo, the selection follows its speed change as
     // `StudioEditorModel.speedIndex(following:from:to:)` finds it, or lets go when it is gone.
     //
-    // The preview plays every stretch at the recording's own speed for now; the export follows
-    // the speed changes.
+    // While playing, the preview goes through a speed change at its rate and without sound, as
+    // the export does. See `applySpeedAndSound(at:)`.
 
     var speedChanges: [StudioSpeedRange] { project?.edits.speed ?? [] }
 
@@ -1034,13 +1041,14 @@ final class StudioViewModel: ObservableObject {
             seek(to: start)
         }
         cutSkipTarget = nil
-        player.play()
         isPlaying = true
+        play(player, from: start)
     }
 
     func pause() {
         player?.pause()
         isPlaying = false
+        applySpeedAndSound(at: playhead)
     }
 
     func stepFrame(by count: Int) {
@@ -1363,10 +1371,11 @@ final class StudioViewModel: ObservableObject {
         guard isChanged else { return }
         hasUnsavedEdits = true
         scheduleSave()
-        player?.isMuted = model.project.audio.muted
         if isPlaying, model.isAtPlaybackEnd(playhead) {
             pause()
         }
+        // The edit may have changed whether the project is muted, or how fast it plays here.
+        applySpeedAndSound(at: playhead)
         refreshPreview()
     }
 
@@ -1454,7 +1463,7 @@ final class StudioViewModel: ObservableObject {
                 // A new player item starts at zero, so put the playhead back.
                 seek(to: playhead)
                 if wasPlaying {
-                    playback.player.play()
+                    play(playback.player, from: playhead)
                 }
             }
         } catch {
@@ -1532,14 +1541,25 @@ final class StudioViewModel: ObservableObject {
             if target != cutSkipTarget {
                 cutSkipTarget = target
                 seek(to: target)
+                applySpeedAndSound(at: target)
             }
             return
         }
 
-        playhead = editor.clampedSourceTime(seconds)
-        if editor.isAtPlaybackEnd(seconds) {
+        // The player reports once for every thirtieth of a second of the recording, which at
+        // eight times the speed is eight times as often by the clock. The playhead, and all that
+        // is drawn from it, moves no more often than it does at the recording's own speed.
+        let isAtEnd = editor.isAtPlaybackEnd(seconds)
+        let now = ProcessInfo.processInfo.systemUptime
+        if isAtEnd || now - lastPlayheadMove >= 1.0 / 60 {
+            lastPlayheadMove = now
+            playhead = editor.clampedSourceTime(seconds)
+        }
+        if isAtEnd {
             pause()
             seek(to: editor.playbackEnd)
+        } else {
+            applySpeedAndSound(at: seconds)
         }
     }
 
@@ -1550,6 +1570,31 @@ final class StudioViewModel: ObservableObject {
         let seconds = player.currentTime().seconds
         if seconds.isFinite, let editor {
             playhead = editor.clampedSourceTime(seconds)
+        }
+        applySpeedAndSound(at: playhead)
+    }
+
+    /// Starts the player at the speed the video has at a source time.
+    private func play(_ player: AVPlayer, from sourceTime: Double) {
+        requestedRate = Float(editor?.playbackRate(at: sourceTime) ?? 1)
+        player.rate = requestedRate
+        applySpeedAndSound(at: sourceTime)
+    }
+
+    /// Sets how fast the player plays and whether it is heard, for where playback is. A stretch
+    /// at another speed plays at its rate and without sound, as in the export (section 7 of the
+    /// project format). A player that is paused, or that has stopped by itself, is not started
+    /// by this.
+    private func applySpeedAndSound(at sourceTime: Double) {
+        guard let player, let editor else { return }
+        let rate = isPlaying ? Float(editor.playbackRate(at: sourceTime)) : 1
+        if isPlaying, player.rate != 0, requestedRate != rate {
+            requestedRate = rate
+            player.rate = rate
+        }
+        let isMuted = editor.project.audio.muted || rate != 1
+        if player.isMuted != isMuted {
+            player.isMuted = isMuted
         }
     }
 
