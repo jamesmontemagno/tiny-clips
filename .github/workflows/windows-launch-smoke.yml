@@ -251,14 +251,15 @@ jobs:
           }
           "launch_start=$($start.ToString('o'))" | Out-File $env:GITHUB_OUTPUT -Append
 
-      - name: Open a screenshot in the editor
+      - name: Second launch and "Open with" reuse the running instance
         id: editor
         if: steps.launch.outputs.crashed == 'false'
         shell: pwsh
         run: |
-          # "Open with Tiny Clips" file activation opens the screenshot editor without driving the
-          # capture UI. The editor window must appear and the process must stay alive: a launch-only
-          # check does not load the editor.
+          # Tiny Clips is single-instance. With one instance running, a second launch must hand
+          # over and exit cleanly (winget's validator also starts the app more than once), and
+          # "Open with Tiny Clips" must open the screenshot editor in the instance that is already
+          # running. Opening the editor also covers UI that a launch-only check never loads.
           Add-Type -AssemblyName System.Drawing
           $png = Join-Path $env:RUNNER_TEMP 'tinyclips-smoke.png'
           $bmp = New-Object System.Drawing.Bitmap 640, 400
@@ -358,6 +359,33 @@ jobs:
           }
           '@
 
+          $failures = New-Object System.Collections.Generic.List[string]
+          $exe = Join-Path $env:PKG_INSTALL 'TinyClips.App.exe'
+          Get-Process TinyClips.App -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
+
+          $first = Start-Process $exe -WorkingDirectory $env:TEMP -PassThru
+          $null = $first.Handle
+          Start-Sleep -Seconds 15
+          $first.Refresh()
+          if ($first.HasExited) { throw "The first instance exited with 0x$('{0:X8}' -f $first.ExitCode) before the second launch." }
+          "First instance running (PID $($first.Id))"
+
+          # --- Second launch ---
+          $second = Start-Process $exe -WorkingDirectory $env:TEMP -PassThru
+          $null = $second.Handle
+          $secondExited = $second.WaitForExit(30000)
+          $first.Refresh()
+          if (-not $secondExited) {
+            $failures.Add("The second launch (PID $($second.Id)) kept running as its own instance instead of handing over.")
+          } elseif ($second.ExitCode -ne 0) {
+            $failures.Add("The second launch exited with 0x$('{0:X8}' -f $second.ExitCode).")
+          } else {
+            "Second launch handed over and exited with code 0"
+          }
+          if ($first.HasExited) { $failures.Add("The first instance exited with 0x$('{0:X8}' -f $first.ExitCode) after the second launch.") }
+
+          # --- "Open with Tiny Clips" ---
           # Full-trust packaged apps register their file types as classic ProgIDs, so open the PNG
           # with Tiny Clips' own ProgID rather than whatever the machine default for .png is.
           $packageFullName = (Get-AppxPackage Refractored.TinyClips).PackageFullName
@@ -367,45 +395,43 @@ jobs:
           "Opening $png with ProgID $progId"
           [TinyClipsSmoke]::OpenWithProgId($png, $progId)
 
-          $proc = $null
-          $launchDeadline = (Get-Date).AddSeconds(30)
-          while (-not $proc -and (Get-Date) -lt $launchDeadline) {
-            Start-Sleep -Milliseconds 500
-            $proc = Get-Process TinyClips.App -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $proc) { throw "File activation did not start TinyClips.App.exe." }
-          $appPid = [uint32]$proc.Id
-          "File activation started PID $appPid"
-          $null = $proc.Handle
-
           # The editor must show up, then survive its first layout passes.
           $deadline = (Get-Date).AddSeconds(45)
           $editorSeen = $null
+          $editorPid = 0
           while ((Get-Date) -lt $deadline) {
             Start-Sleep -Milliseconds 500
-            $proc.Refresh()
-            if ($proc.HasExited) { break }
-            if (-not $editorSeen -and ([TinyClipsSmoke]::VisibleWindowTitles($appPid) -match 'Edit Screenshot')) {
-              $editorSeen = Get-Date
-              "Editor window visible"
+            foreach ($candidate in @(Get-Process TinyClips.App -ErrorAction SilentlyContinue)) {
+              if (-not $editorSeen -and ([TinyClipsSmoke]::VisibleWindowTitles([uint32]$candidate.Id) -match 'Edit Screenshot')) {
+                $editorSeen = Get-Date
+                $editorPid = $candidate.Id
+                "Editor window visible in PID $editorPid"
+              }
             }
             if ($editorSeen -and ((Get-Date) - $editorSeen).TotalSeconds -ge 15) { break }
           }
 
-          $proc.Refresh()
-          if ($proc.HasExited) {
-            "::error::TinyClips.App.exe exited with 0x$('{0:X8}' -f $proc.ExitCode) after opening a screenshot in the editor"
-            "failed=true" | Out-File $env:GITHUB_OUTPUT -Append
-          } elseif (-not $editorSeen) {
-            "::error::The screenshot editor window never appeared. Visible windows: $([TinyClipsSmoke]::VisibleWindowTitles($appPid) -join '; ')"
-            Stop-Process -Id $appPid -Force
+          $running = @(Get-Process TinyClips.App -ErrorAction SilentlyContinue)
+          "Tiny Clips processes at the end: $(($running | ForEach-Object Id) -join ', ')"
+          $first.Refresh()
+          if ($first.HasExited) {
+            $failures.Add("The first instance exited with 0x$('{0:X8}' -f $first.ExitCode) after opening a screenshot in the editor.")
+          }
+          if (-not $editorSeen) {
+            $failures.Add("The screenshot editor window never appeared. Visible windows: $(($running | ForEach-Object { [TinyClipsSmoke]::VisibleWindowTitles([uint32]$_.Id) }) -join '; ')")
+          } elseif ($editorPid -ne $first.Id) {
+            $failures.Add("The editor opened in a new process (PID $editorPid) instead of the running instance (PID $($first.Id)).")
+          }
+          if ($running.Count -gt 1) { $failures.Add("$($running.Count) Tiny Clips processes are running; expected exactly one.") }
+
+          $running | Stop-Process -Force -ErrorAction SilentlyContinue
+          if ($failures.Count -gt 0) {
+            $failures | ForEach-Object { "::error::$_" }
             "failed=true" | Out-File $env:GITHUB_OUTPUT -Append
           } else {
-            "Screenshot editor open and process alive (PID $appPid) -> PASS"
-            Stop-Process -Id $appPid -Force
+            "Single instance kept, editor open in PID $($first.Id) and process alive -> PASS"
             "failed=false" | Out-File $env:GITHUB_OUTPUT -Append
           }
-
       - name: Collect diagnostics
         if: always()
         shell: pwsh
