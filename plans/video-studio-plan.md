@@ -242,9 +242,10 @@ On Windows the pieces under the window have each been run by a check tool on one
 | Zooms in the preview and the export | The compositor passes the events to the layout. Compiled only | The renderer and the exporter pass the events to the layout. No check tool draws a zoom yet |
 | Editing operations for zooms and crops, with undo | Done in the editor model. Unit tested | Done in the editor model and session. Unit tested |
 | What the lane and the inspector need: moving a whole zoom, stepping through the zooms, the focus pad, a crop as what it cuts off each edge | Done in the editor model. Unit tested | Done in the editor model. The session also keeps the selected zoom. Unit tested |
-| Zoom lane, crop handles, inspector controls | Not started | Not started |
+| Zoom lane, Zoom section in the inspector, crop sliders, the Z and Delete keys | Done. Compiled, never run | Not started |
+| Crop handles on the canvas, and dragging the zoomed picture to move the focus | Left out of this pass | Left out of this pass |
 
-A project file with zooms in it is drawn with them on both platforms, but nothing in either app can make or change a zoom or a crop yet.
+A project file with zooms in it is drawn with them on both platforms. On the Mac the editor can now make and change zooms and crops; that UI has been compiled and never run. On Windows nothing in the app can make or change one yet. No check on either platform has rendered a zoom and looked at it.
 
 ### Hidden switch
 
