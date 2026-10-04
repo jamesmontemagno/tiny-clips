@@ -541,7 +541,10 @@ public sealed class StudioEditorSession
         }
     }
 
-    /// <summary>Moves the trim end, from a handle, and shows the frame the video now ends on.</summary>
+    /// <summary>
+    /// Moves the trim end, from a handle, and shows the picture at the new end. That picture is
+    /// just past the last frame the video keeps: an export holds the frames before this instant.
+    /// </summary>
     public void SetTrimEnd(double sourceTime)
     {
         Edit(model => model.SetTrimEnd(sourceTime));

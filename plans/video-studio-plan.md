@@ -171,7 +171,7 @@ The same design on both platforms. The rule behind every control is in the edito
 
 ### Windows
 
-- New `TinyClips.Core/Studio/`: models as records with a `JsonSerializerContext` (the release build is NativeAOT), `StudioProjectStore`, `StudioLayoutResolver`, `StudioTimeMap`, `StudioAutoZoom`, `StudioSceneRenderer`, `StudioExporter`.
+- New `TinyClips.Core/Studio/`: models as records with a `JsonSerializerContext` (written so that it also works compiled ahead of time, which the release build was until 1.8.2), `StudioProjectStore`, `StudioLayoutResolver`, `StudioTimeMap`, `StudioAutoZoom`, `StudioSceneRenderer`, `StudioExporter`.
 - `StudioSceneRenderer` draws with Direct2D on the shared D3D11 device, as `GpuOverlayCompositor` does, and reuses its camera brush, click ring, and branding badge code. It lives in Core because Win2D is app-only.
 - Preview (`Controls/Studio/StudioPreview` in the app): two `MediaPlayer`s in frame-server mode, one per track, locked together by a `MediaTimelineController`. Each frame is copied to a texture, drawn by the renderer, and presented through a swap chain panel.
 - Export: Media Foundation source readers decode both tracks, the renderer draws each output frame, and the existing `MfSinkWriterEncoder` encodes. Because this works frame by frame, it can apply speed to the output, which the current trimmer cannot.
@@ -227,25 +227,29 @@ This section records what was built and how it differs from the plan above. It i
 | Studio capture mode | Done | Done. Checked with the recording benchmark and `tools/StudioRenderCheck` |
 | Renderer and exporter | Done | Done. Checked with `tools/StudioRenderCheck` |
 | Live preview | Done (part of the renderer) | Done. Checked with `tools/StudioPreviewCheck`; one open problem on the software adapter (see `windows/docs/studio-preview.md`) |
-| Studio window | Done | Done. Not yet run with the real preview and exporter |
+| Studio window | Done | Done. Run by `tools/StudioWindowCheck` with the real preview and exporter, without a person at the controls |
 | Settings, Record for Studio, reopening projects | Done | Done |
 
 Nothing on macOS has been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. Capture, the compositor, the preview, export, and the whole Studio window are unverified at runtime. Until someone has run them, Studio stays off on macOS.
 
-On Windows the pieces under the window have each been run by a check tool on one PC (AMD graphics, Windows 11): the renderer, exporter and camera recorder by `StudioRenderCheck`, and the preview engine with its panel by `StudioPreviewCheck`. Both read their results back from pixels. The editor's behavior is in Core and unit tested. The window itself was run only while it was being built, with stand-ins for the preview and the exporter. The finished window has not been run, because the PC this was built on was in use and the app could not be installed or started there. Not yet seen on Windows at all: a real recording arriving in the editor, the preview's sound, dragging the camera bubble and the trim bar with a pointer, the dark and high-contrast themes, and Narrator. Until someone has gone through those, Studio stays off on Windows.
+On Windows each piece has been run by a check tool on one PC (AMD graphics, Windows 11): the renderer, exporter and camera recorder by `StudioRenderCheck`, the preview engine with its panel by `StudioPreviewCheck`, and the editor window by `StudioWindowCheck`. Each reads its results back itself, from pixels, from decoded files, or from the UI Automation tree. The editor's behavior is in Core and unit tested.
+
+`StudioWindowCheck` opens the real window on real projects in a process of its own, with the real preview and exporter, and works it through UI Automation: opening, playing, every inspector control with undo and redo, trimming, exporting, closing, and two windows at once. It found three defects in the window, which are fixed. A window in the background took the keyboard focus when its project had opened or its export ended. Five sliders could not be set to an end of their range by a screen reader. Three elements had no name.
+
+The PC was in use, so the tool sends no input and its windows never come to the front, and the Tiny Clips app itself was never started. That leaves out everything a person does with their hands: no key was pressed, nothing was dragged, and no drop-down was opened. Also not yet seen on Windows: a real recording arriving in the editor, the preview's sound, the high-contrast themes, Narrator reading the window, display scales other than 150 percent, and the app around the window, which is how a recording or a draft gets to it. Until someone has gone through those, Studio stays off on Windows.
 
 | Milestone 2 piece | macOS | Windows |
 |---|---|---|
 | Spec and fixtures for zooms and zoom suggestions (sections 6.8 and 8 of the format) | Done. 13 layout fixtures and 10 suggestion fixtures | The same files |
 | Zooms in the layout, with a zoom that follows the pointer | Done. Passes the fixtures | Done. Passes the fixtures |
 | Zoom suggestions from clicks | Done. Passes the fixtures | Done. Passes the fixtures |
-| Zooms in the preview and the export | The compositor passes the events to the layout. Compiled only | The renderer and the exporter pass the events to the layout. No check tool draws a zoom yet |
+| Zooms in the preview and the export | The compositor passes the events to the layout. Compiled only | Drawn, exported and postered zooms are measured from pixels by `StudioRenderCheck`. The live preview has not shown one yet |
 | Editing operations for zooms and crops, with undo | Done in the editor model. Unit tested | Done in the editor model and session. Unit tested |
 | What the lane and the inspector need: moving a whole zoom, stepping through the zooms, the focus pad, a crop as what it cuts off each edge | Done in the editor model. Unit tested | Done in the editor model. The session also keeps the selected zoom. Unit tested |
 | Zoom lane, Zoom section in the inspector, crop sliders, the Z and Delete keys | Done. Compiled, never run | Not started |
 | Crop handles on the canvas, and dragging the zoomed picture to move the focus | Left out of this pass | Left out of this pass |
 
-A project file with zooms in it is drawn with them on both platforms. On the Mac the editor can now make and change zooms and crops; that UI has been compiled and never run. On Windows nothing in the app can make or change one yet. No check on either platform has rendered a zoom and looked at it.
+A project file with zooms in it is drawn with them on both platforms. On the Mac the editor can now make and change zooms and crops; that UI has been compiled and never run, and no zoom has been rendered there. On Windows nothing in the app can make or change one yet. The Windows renderer and exporter draw a zoom where the format says: `StudioRenderCheck` finds four edges of its test pattern in each frame and they are within a quarter of a pixel of their places, and the frames have been looked at. The live preview on Windows has not shown a zoom yet.
 
 ### Hidden switch
 
@@ -270,8 +274,11 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **Windows preview and export.** The preview engine is in Core (`Studio/Preview`), not in the app as planned; the app has only the panel it draws into. The preview owns one Direct3D device per editor window and each export creates its own, so neither shares a device with a recording in progress. The exporter writes through its own sink-writer wrapper rather than the recorder's `MfSinkWriterEncoder`.
 - **Frame rate.** `sources.screen.frameRate` is the rate the recording was set to, on both platforms. The rate a media library reads from the file is an average of unevenly spaced frames and can be far lower.
 - **Small differences between the two exporters**, accepted for now. Windows samples each output frame at its middle, drops a partial last frame, and keeps NTSC rates exact. macOS samples at the frame's start, keeps the partial frame, and rounds the rate up. Windows will not open or export a project whose camera file is missing; macOS exports it without the camera.
+- **The picture at the trim end on Windows.** With the playhead at the trim end, the preview shows the picture at that instant. An export holds the frames before it, so that picture is one or two frames past the last one the video keeps. What the Mac shows there is not known until it has been run.
 - **Color on Windows.** Media Foundation's encoders convert with BT.601 up to 576 lines and BT.709 above, whatever the stream says, so an export is tagged with the matrix that was really used.
 - **Windows without graphics hardware.** Exports on the software adapter sample linearly, which measured 43 to 58 frames per second against 16 to 21 for the high-quality sampler.
+- **Keyboard focus on Windows.** The editor puts the focus on Play when a project has opened, on Cancel while an export runs, and on Export when it ends, but only while its window is the active one. Otherwise it waits until the user comes back to the window, because asking for the focus brings a window to the front. A click that brings the window back decides the focus itself.
+- **The window check tool uses one package the app does not**, `Interop.UIAutomationClient`, to read the window as a screen reader does. The tool is not in the solution and is not shipped.
 - **Windows keys and closing.** Esc stops a running export and does nothing otherwise, because the Windows trimmer does not close on Esc either. Closing a project that was never exported asks Export, Keep as draft, or Cancel; Delete is a separate button in the dialog and never the default.
 - **Background swatches** are each platform's own screenshot editor presets. The Windows list has `slate`, which the Mac's does not. A project stores a preset's colors with its id and is drawn from the colors.
 - **What a zoom is.** A zoom changes which part of the screen its card shows. The card, the camera, and the canvas stay where they are, so a zoom never changes the size of the exported video. Zooms do not overlap; one that starts on the number another ends on is chained to it, and the picture moves from the first place to the second without opening out in between.
