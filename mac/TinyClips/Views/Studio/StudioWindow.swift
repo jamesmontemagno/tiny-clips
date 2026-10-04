@@ -87,9 +87,9 @@ final class StudioWindowRegistry {
 /// responder chain and are disabled while another window is in front.
 ///
 /// Only Export has a key equivalent here. The other shortcuts are single keys (Space, arrows, I, O,
-/// 1 to 4), which as menu key equivalents would be taken from text fields in every window, so
-/// `StudioWindow` handles them itself. That also keeps them working while Tiny Clips runs without a
-/// Dock icon and its menu bar is not shown.
+/// Z, Delete, and 1 to 4), which as menu key equivalents would be taken from text fields in every
+/// window, so `StudioWindow` handles them itself. That also keeps them working while Tiny Clips
+/// runs without a Dock icon and its menu bar is not shown.
 @MainActor
 enum StudioMenuCommands {
     private static let menuTitle = "Studio"
@@ -112,6 +112,12 @@ enum StudioMenuCommands {
         menu.addItem(.separator())
         menu.addItem(menuItem("Start Here", action: "studioMarkIn:"))
         menu.addItem(menuItem("End Here", action: "studioMarkOut:"))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Add Zoom", action: "studioAddZoom:"))
+        menu.addItem(menuItem("Delete Zoom", action: "studioDeleteZoom:"))
+        menu.addItem(menuItem("Previous Zoom", action: "studioPreviousZoom:"))
+        menu.addItem(menuItem("Next Zoom", action: "studioNextZoom:"))
+        menu.addItem(menuItem("Suggest Zooms", action: "studioSuggestZooms:"))
         menu.addItem(.separator())
         menu.addItem(menuItem("Screen Only", action: "studioLayoutScreen:"))
         menu.addItem(menuItem("Screen with Camera Bubble", action: "studioLayoutBubble:"))
@@ -190,6 +196,11 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioNextFrame(_ sender: Any?) { viewModel.stepFrame(by: 1) }
     @objc func studioMarkIn(_ sender: Any?) { viewModel.setTrimStartAtPlayhead() }
     @objc func studioMarkOut(_ sender: Any?) { viewModel.setTrimEndAtPlayhead() }
+    @objc func studioAddZoom(_ sender: Any?) { viewModel.addZoomAtPlayhead() }
+    @objc func studioDeleteZoom(_ sender: Any?) { viewModel.removeSelectedZoom() }
+    @objc func studioPreviousZoom(_ sender: Any?) { viewModel.selectPreviousZoom() }
+    @objc func studioNextZoom(_ sender: Any?) { viewModel.selectNextZoom() }
+    @objc func studioSuggestZooms(_ sender: Any?) { viewModel.suggestZooms() }
     @objc func studioLayoutScreen(_ sender: Any?) { viewModel.setLayout(.screen) }
     @objc func studioLayoutBubble(_ sender: Any?) { viewModel.setLayout(.bubble) }
     @objc func studioLayoutSideBySide(_ sender: Any?) { viewModel.setLayout(.sideBySide) }
@@ -218,6 +229,15 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             #selector(studioMarkIn(_:)),
             #selector(studioMarkOut(_:)):
             return viewModel.isEditable
+        case #selector(studioAddZoom(_:)):
+            return viewModel.canAddZoomAtPlayhead
+        case #selector(studioDeleteZoom(_:)):
+            return viewModel.isEditable && viewModel.selectedZoomIndex != nil
+        case #selector(studioPreviousZoom(_:)),
+            #selector(studioNextZoom(_:)):
+            return viewModel.isEditable && !viewModel.zooms.isEmpty
+        case #selector(studioSuggestZooms(_:)):
+            return viewModel.canSuggestZooms
         default:
             return super.validateMenuItem(menuItem)
         }
@@ -301,6 +321,11 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
 
         // Holding an arrow key keeps stepping through frames. The other keys act once per press.
         let isFirstPress = !event.isARepeat
+        if (keyCode == kVK_Delete || keyCode == kVK_ForwardDelete) && viewModel.selectedZoomIndex != nil {
+            if isFirstPress { viewModel.removeSelectedZoom() }
+            return true
+        }
+
         switch keyCode {
         case kVK_LeftArrow:
             viewModel.stepFrame(by: -1)
@@ -335,6 +360,9 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return true
         case "o":
             if isFirstPress { viewModel.setTrimEndAtPlayhead() }
+            return true
+        case "z":
+            if isFirstPress { viewModel.addZoomAtPlayhead() }
             return true
         default:
             return false

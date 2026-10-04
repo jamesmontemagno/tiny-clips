@@ -303,6 +303,7 @@ private struct StudioInspectorView: View {
                 if viewModel.hasCamera {
                     cameraSection
                 }
+                StudioZoomInspectorSection(viewModel: viewModel)
                 extrasSection
                 Divider()
                 Button("Save as Default Look") {
@@ -380,6 +381,14 @@ private struct StudioInspectorView: View {
                 valueText: percentText(screenStyle.shadow),
                 onChange: { viewModel.setScreenShadow($0) },
                 onEditingChanged: { gestureChanged($0) }
+            )
+            Text("Crop")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            cropControls(
+                insets: viewModel.editor?.screenCropInsets ?? StudioCropInsets(),
+                set: { edge, value in viewModel.setScreenCropInset(edge, to: value) },
+                reset: { viewModel.clearScreenCrop() }
             )
         }
     }
@@ -495,6 +504,14 @@ private struct StudioInspectorView: View {
             onChange: { viewModel.setCameraShadow($0) },
             onEditingChanged: { gestureChanged($0) }
         )
+        Text("Crop")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        cropControls(
+            insets: viewModel.editor?.cameraCropInsets ?? StudioCropInsets(),
+            set: { edge, value in viewModel.setCameraCropInset(edge, to: value) },
+            reset: { viewModel.clearCameraCrop() }
+        )
     }
 
     private var extrasSection: some View {
@@ -551,6 +568,39 @@ private struct StudioInspectorView: View {
     private func signedPercentText(_ fraction: Double) -> String {
         let percent = Int((fraction * 100).rounded())
         return percent > 0 ? "+\(percent)%" : "\(percent)%"
+    }
+
+    @ViewBuilder
+    private func cropControls(
+        insets: StudioCropInsets,
+        set: @escaping (StudioCropEdge, Double) -> Void,
+        reset: @escaping () -> Void
+    ) -> some View {
+        cropSlider("Crop left", edge: .left, value: insets.left, set: set)
+        cropSlider("Crop top", edge: .top, value: insets.top, set: set)
+        cropSlider("Crop right", edge: .right, value: insets.right, set: set)
+        cropSlider("Crop bottom", edge: .bottom, value: insets.bottom, set: set)
+        Button("Reset Crop") {
+            reset()
+        }
+        .disabled(insets.isEmpty)
+    }
+
+    private func cropSlider(
+        _ title: String,
+        edge: StudioCropEdge,
+        value: Double,
+        set: @escaping (StudioCropEdge, Double) -> Void
+    ) -> some View {
+        StudioSliderRow(
+            title: title,
+            value: value,
+            range: 0...0.95,
+            step: 0.01,
+            valueText: percentText(value),
+            onChange: { set(edge, $0) },
+            onEditingChanged: { gestureChanged($0) }
+        )
     }
 
     /// One slider drag is one undo step.
@@ -634,7 +684,7 @@ private struct StudioInspectorView: View {
     }
 }
 
-private struct StudioInspectorSection<Content: View>: View {
+struct StudioInspectorSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
 
@@ -651,7 +701,7 @@ private struct StudioInspectorSection<Content: View>: View {
 
 /// A labelled slider. Values snap to `step` without a tick mark for every step, and
 /// `onEditingChanged` reports the start and end of a drag so it can be a single undo step.
-private struct StudioSliderRow: View {
+struct StudioSliderRow: View {
     let title: String
     let value: Double
     let range: ClosedRange<Double>
@@ -689,6 +739,10 @@ private struct StudioSliderRow: View {
 }
 
 // MARK: - Timeline
+
+enum StudioTimelineMetrics {
+    static let edgeInset: CGFloat = 12
+}
 
 private struct StudioTimelineView: View {
     @ObservedObject var viewModel: StudioViewModel
@@ -729,6 +783,12 @@ private struct StudioTimelineView: View {
 
                 Spacer()
 
+                Button("Add Zoom") {
+                    viewModel.addZoomAtPlayhead()
+                }
+                .disabled(!viewModel.canAddZoomAtPlayhead)
+                .help("Add a zoom at the playhead (Z)")
+
                 Button("Start Here") {
                     viewModel.setTrimStartAtPlayhead()
                 }
@@ -739,6 +799,9 @@ private struct StudioTimelineView: View {
                 }
                 .help("End the video at the playhead (O)")
             }
+
+            StudioZoomLane(viewModel: viewModel)
+                .frame(height: 26)
 
             StudioTrimBar(viewModel: viewModel)
                 .frame(height: 36)
@@ -755,7 +818,7 @@ private struct StudioTrimBar: View {
     @State private var dragStartTime: Double?
 
     private static let space = "studioTrimBar"
-    private let handleWidth: CGFloat = 12
+    private let handleWidth = StudioTimelineMetrics.edgeInset
 
     var body: some View {
         GeometryReader { proxy in
