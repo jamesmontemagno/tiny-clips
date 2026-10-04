@@ -87,7 +87,7 @@ final class StudioWindowRegistry {
 /// responder chain and are disabled while another window is in front.
 ///
 /// Only Export has a key equivalent here. The other shortcuts are single keys (Space, arrows, I, O,
-/// S, X, Z, Delete, and 1 to 4), which as menu key equivalents would be taken from text fields in every
+/// S, X, R, Z, Delete, and 1 to 4), which as menu key equivalents would be taken from text fields in every
 /// window, so `StudioWindow` handles them itself. That also keeps them working while Tiny Clips
 /// runs without a Dock icon and its menu bar is not shown.
 @MainActor
@@ -129,6 +129,11 @@ enum StudioMenuCommands {
         menu.addItem(menuItem("Previous Cut", action: "studioPreviousCut:"))
         menu.addItem(menuItem("Next Cut", action: "studioNextCut:"))
         menu.addItem(.separator())
+        menu.addItem(menuItem("Add Speed Change", action: "studioAddSpeed:"))
+        menu.addItem(menuItem("Delete Speed Change", action: "studioDeleteSpeed:"))
+        menu.addItem(menuItem("Previous Speed Change", action: "studioPreviousSpeed:"))
+        menu.addItem(menuItem("Next Speed Change", action: "studioNextSpeed:"))
+        menu.addItem(.separator())
         menu.addItem(menuItem("Screen Only", action: "studioLayoutScreen:"))
         menu.addItem(menuItem("Screen with Camera Bubble", action: "studioLayoutBubble:"))
         menu.addItem(menuItem("Side by Side", action: "studioLayoutSideBySide:"))
@@ -165,7 +170,7 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
 
         title = "Tiny Clips Studio"
         isReleasedWhenClosed = false
-        minSize = NSSize(width: 980, height: 640)
+        minSize = NSSize(width: 980, height: 672)
         delegate = self
         center()
         StudioMenuCommands.installIfNeeded()
@@ -219,6 +224,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioDeleteCut(_ sender: Any?) { viewModel.removeSelectedCut() }
     @objc func studioPreviousCut(_ sender: Any?) { viewModel.showPreviousCut() }
     @objc func studioNextCut(_ sender: Any?) { viewModel.showNextCut() }
+    @objc func studioAddSpeed(_ sender: Any?) { viewModel.addSpeedAtPlayhead() }
+    @objc func studioDeleteSpeed(_ sender: Any?) { viewModel.removeSelectedSpeed() }
+    @objc func studioPreviousSpeed(_ sender: Any?) { viewModel.showPreviousSpeed() }
+    @objc func studioNextSpeed(_ sender: Any?) { viewModel.showNextSpeed() }
     @objc func studioLayoutScreen(_ sender: Any?) { viewModel.setLayout(.screen) }
     @objc func studioLayoutBubble(_ sender: Any?) { viewModel.setLayout(.bubble) }
     @objc func studioLayoutSideBySide(_ sender: Any?) { viewModel.setLayout(.sideBySide) }
@@ -271,6 +280,13 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         case #selector(studioPreviousCut(_:)),
             #selector(studioNextCut(_:)):
             return viewModel.isEditable && !viewModel.cuts.isEmpty
+        case #selector(studioAddSpeed(_:)):
+            return viewModel.canAddSpeedAtPlayhead
+        case #selector(studioDeleteSpeed(_:)):
+            return viewModel.isEditable && viewModel.selectedSpeedIndex != nil
+        case #selector(studioPreviousSpeed(_:)),
+            #selector(studioNextSpeed(_:)):
+            return viewModel.isEditable && !viewModel.speedChanges.isEmpty
         default:
             return super.validateMenuItem(menuItem)
         }
@@ -363,6 +379,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
                 if isFirstPress { viewModel.removeSelectedZoom() }
                 return true
             }
+            if viewModel.selectedSpeedIndex != nil {
+                if isFirstPress { viewModel.removeSelectedSpeed() }
+                return true
+            }
         }
 
         switch keyCode {
@@ -402,6 +422,9 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return true
         case "s":
             if isFirstPress { viewModel.splitSceneAtPlayhead() }
+            return true
+        case "r":
+            if isFirstPress { viewModel.addSpeedAtPlayhead() }
             return true
         case "x":
             if isFirstPress { viewModel.addCutAtPlayhead() }

@@ -18,7 +18,7 @@ struct StudioRootView: View {
                 StudioEditorView(viewModel: viewModel)
             }
         }
-        .frame(minWidth: 980, maxWidth: .infinity, minHeight: 640, maxHeight: .infinity)
+        .frame(minWidth: 980, maxWidth: .infinity, minHeight: 672, maxHeight: .infinity)
         .task {
             await viewModel.load()
         }
@@ -308,6 +308,7 @@ private struct StudioInspectorView: View {
                 }
                 StudioZoomInspectorSection(viewModel: viewModel)
                 StudioCutInspectorSection(viewModel: viewModel)
+                StudioSpeedInspectorSection(viewModel: viewModel)
                 extrasSection
                 Divider()
                 Button("Save as Default Look") {
@@ -809,6 +810,13 @@ private struct StudioTimelineView: View {
                 .help("Cut a second out of the video at the playhead (X)")
                 .accessibilityLabel("Add cut")
 
+                Button("Speed") {
+                    viewModel.addSpeedAtPlayhead()
+                }
+                .disabled(!viewModel.canAddSpeedAtPlayhead)
+                .help("Play two seconds of the video twice as fast from the playhead (R)")
+                .accessibilityLabel("Add speed change")
+
                 Button("Start Here") {
                     viewModel.setTrimStartAtPlayhead()
                 }
@@ -829,6 +837,9 @@ private struct StudioTimelineView: View {
                 .frame(height: 26)
 
             StudioCutLane(viewModel: viewModel)
+                .frame(height: 22)
+
+            StudioSpeedLane(viewModel: viewModel)
                 .frame(height: 22)
 
             StudioTrimBar(viewModel: viewModel)
