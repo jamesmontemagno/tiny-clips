@@ -25,7 +25,9 @@ final class StudioViewModel: ObservableObject {
     @Published private(set) var state: LoadState = .loading
     @Published private(set) var editor: StudioEditorModel?
     @Published private(set) var player: AVPlayer?
-    @Published private(set) var playhead: Double = 0
+    @Published private(set) var playhead: Double = 0 {
+        didSet { followPlayheadIntoScene() }
+    }
     @Published private(set) var isPlaying = false
     @Published private(set) var isExporting = false
     @Published private(set) var exportProgress: Double = 0
@@ -472,6 +474,125 @@ final class StudioViewModel: ObservableObject {
         announce(StudioEditorModel.zoomSuggestionsRemovedMessage)
     }
 
+    // MARK: - Scenes
+    //
+    // Every moment of the recording is in one scene, so a scene is not selected the way a zoom is:
+    // the current scene is the one the playhead is in. The layout controls, the bubble in the
+    // preview, and the keys 1 to 4 change that scene.
+
+    var scenes: [StudioScene] { project?.scenes ?? [] }
+
+    /// The scene the playhead is in, as its place in the project's scenes.
+    var currentSceneIndex: Int { editor?.currentSceneIndex ?? 0 }
+
+    /// Whether Split would start a new scene at the playhead.
+    var canSplitSceneAtPlayhead: Bool { isEditable && (editor?.canSplitScene(at: playhead) ?? false) }
+
+    /// Why the scene cannot be split at the playhead, in words, or nil when it can be.
+    var splitSceneExplanation: String? { editor?.splitSceneExplanation(at: playhead) }
+
+    /// Whether the current scene can be deleted: any scene but the only one.
+    var canRemoveCurrentScene: Bool { isEditable && (editor?.canRemoveScene(at: currentSceneIndex) ?? false) }
+
+    /// Starts a new scene at the playhead, a copy of the current one that is entered by moving.
+    /// At its first instant a scene still looks like the one before, so a paused playhead then
+    /// moves to where the new scene has been entered, which shows what is changed in it next.
+    func splitSceneAtPlayhead() {
+        guard isEditable else { return }
+        let time = playhead
+        var result = StudioSceneEditResult(changed: false, index: currentSceneIndex)
+        edit { model in
+            result = model.splitScene(at: time)
+        }
+
+        guard result.changed else {
+            if let explanation = splitSceneExplanation {
+                announce(explanation)
+            }
+            return
+        }
+        announce(StudioEditorModel.sceneSplitMessage)
+        if !isPlaying, let lookTime = editor?.sceneLookTime(at: result.index) {
+            scrub(to: lookTime)
+        }
+    }
+
+    /// Deletes the scene the playhead is in. The scene before it then lasts until the next one,
+    /// and deleting the first scene hands its time to the second.
+    func removeCurrentScene() {
+        guard isEditable else { return }
+        let index = currentSceneIndex
+        var result = StudioSceneEditResult(changed: false, index: index)
+        edit { model in
+            result = model.removeScene(at: index)
+        }
+        announce(result.changed ? StudioEditorModel.sceneDeletedMessage : StudioEditorModel.onlySceneExplanation)
+    }
+
+    /// Moves where a scene starts, from the lane or the inspector, and shows the picture there:
+    /// the playhead follows the start as it does a trim handle. The first scene starts with the
+    /// recording and is left alone.
+    func setSceneStart(at index: Int, to sourceTime: Double) {
+        edit { model in
+            model.setSceneStart(at: index, to: sourceTime)
+        }
+        if isEditable, index >= 1, let range = editor?.sceneRange(at: index) {
+            scrub(to: range.start)
+        }
+    }
+
+    /// Makes the current scene start at the playhead. The playhead stays where it is.
+    func setCurrentSceneStartAtPlayhead() {
+        let index = currentSceneIndex
+        let time = playhead
+        edit { model in
+            model.setSceneStart(at: index, to: time)
+        }
+    }
+
+    /// Moves the current scene's start by `seconds`, for the inspector's step buttons.
+    func nudgeCurrentSceneStart(by seconds: Double) {
+        let index = currentSceneIndex
+        guard let range = editor?.sceneRange(at: index) else { return }
+        setSceneStart(at: index, to: range.start + seconds)
+    }
+
+    /// Sets whether the current scene is cut to or entered by moving. Not for the first scene.
+    func setCurrentSceneTransitionKind(_ kind: StudioTransitionKind) {
+        let index = currentSceneIndex
+        edit { model in
+            model.setSceneTransitionKind(at: index, to: kind)
+        }
+    }
+
+    /// Sets how long the move into the current scene takes. Not for the first scene.
+    func setCurrentSceneTransitionDuration(_ seconds: Double) {
+        let index = currentSceneIndex
+        edit { model in
+            model.setSceneTransitionDuration(at: index, to: seconds)
+        }
+    }
+
+    /// Moves the playhead to where a scene has been entered. False when there is no such scene.
+    @discardableResult
+    func showScene(_ index: Int) -> Bool {
+        guard isEditable, let time = editor?.sceneLookTime(at: index) else { return false }
+        scrub(to: time)
+        return true
+    }
+
+    /// Moves the playhead into the scene after the current one. False in the last scene.
+    @discardableResult
+    func showNextScene() -> Bool {
+        showScene(currentSceneIndex + 1)
+    }
+
+    /// Moves the playhead into the scene before the current one. False in the first scene.
+    @discardableResult
+    func showPreviousScene() -> Bool {
+        showScene(currentSceneIndex - 1)
+    }
+
     // MARK: - Trim
 
     /// Moves the trim start and shows the frame it now starts on.
@@ -757,6 +878,8 @@ final class StudioViewModel: ObservableObject {
 
     private func editAndSelect(_ change: (inout StudioEditorModel) -> ZoomSelectionAfterEdit) {
         guard isEditable, var model = editor else { return }
+        // An edit to the layout changes the scene the playhead is in.
+        model.sceneTime = playhead
         let before = model.editableState
         let zoomsBefore = model.project.zooms
         let selectedBefore = selectedZoomIndex
@@ -794,6 +917,13 @@ final class StudioViewModel: ObservableObject {
         if selectedZoomIndex != valid {
             selectedZoomIndex = valid
         }
+    }
+
+    /// Tells the model where the playhead is once it has moved into another scene. The model is
+    /// published, so it is told then and not for every frame that plays. Every edit tells it again.
+    private func followPlayheadIntoScene() {
+        guard let editor, editor.sceneIndex(at: playhead) != editor.currentSceneIndex else { return }
+        self.editor?.sceneTime = playhead
     }
 
     /// Says through VoiceOver what the screen alone shows.
