@@ -113,6 +113,121 @@ internal static class StudioRecordingBuilder
             : result.ToArray();
     }
 
+    /// <summary>
+    /// The shortest scene that a change made while recording gets (section 9.1 of the project
+    /// format). It is the shortest scene the editor makes.
+    /// </summary>
+    public const double ShortestRecordedScene = StudioEditorModel.MinimumSceneDuration;
+
+    /// <summary>
+    /// The scenes a new project gets from what was changed while recording (section 9.1 of the
+    /// project format): a scene for each move of the camera to another corner and for each change
+    /// of layout, entered by moving, after <paramref name="first"/>, which starts at 0.
+    /// </summary>
+    /// <param name="first">The scene the recording starts with.</param>
+    /// <param name="corners">The corners the camera was in, with the time it got there.</param>
+    /// <param name="markers">The layouts that were chosen, with the time they were chosen.</param>
+    /// <param name="duration">How long the recording is, in seconds.</param>
+    public static StudioScene[] BuildScenes(
+        StudioScene first,
+        IEnumerable<StudioCameraCornerEvent>? corners,
+        IEnumerable<StudioLayoutMarker>? markers,
+        double duration)
+    {
+        var changes = new List<RecordedChange>();
+        var index = 0;
+        foreach (var corner in corners ?? [])
+        {
+            if (double.IsFinite(corner.T))
+            {
+                changes.Add(new RecordedChange(corner.T, IsCorner: true, index, corner.Corner, default));
+            }
+
+            index++;
+        }
+
+        index = 0;
+        foreach (var marker in markers ?? [])
+        {
+            if (double.IsFinite(marker.T))
+            {
+                changes.Add(new RecordedChange(marker.T, IsCorner: false, index, default, marker.Layout));
+            }
+
+            index++;
+        }
+
+        // By time. At the same time a corner comes before a marker, and two of a kind keep the
+        // order of their list.
+        changes.Sort(static (a, b) =>
+            a.Time != b.Time ? a.Time.CompareTo(b.Time)
+            : a.IsCorner != b.IsCorner ? (a.IsCorner ? -1 : 1)
+            : a.Index.CompareTo(b.Index));
+
+        var scenes = new List<StudioScene> { first with { Start = 0 } };
+        foreach (var change in changes)
+        {
+            var last = scenes[^1];
+            var changed = last;
+            if (!change.IsCorner)
+            {
+                changed = last with { Layout = change.Layout };
+            }
+            else if (last.Bubble.Anchor != change.Corner)
+            {
+                // The offsets are from the corner the bubble was in, so they do not go with it.
+                changed = last with { Bubble = last.Bubble with { Anchor = change.Corner, OffsetX = 0, OffsetY = 0 } };
+            }
+
+            if (ShowsTheSame(changed, last))
+            {
+                continue;
+            }
+
+            if (change.IsCorner && last.Layout != StudioLayout.Bubble)
+            {
+                // No bubble is showing. The corner counts from when one shows again.
+                scenes[^1] = changed;
+                continue;
+            }
+
+            if (change.Time < last.Start + ShortestRecordedScene)
+            {
+                // Too soon after the last scene started for that one to last: it takes the change.
+                scenes[^1] = changed;
+                if (scenes.Count > 1 && ShowsTheSame(changed, scenes[^2]))
+                {
+                    scenes.RemoveAt(scenes.Count - 1);
+                }
+
+                continue;
+            }
+
+            if (change.Time > duration - ShortestRecordedScene)
+            {
+                continue;
+            }
+
+            scenes.Add(changed with
+            {
+                Start = change.Time,
+                Transition = new StudioTransition { Kind = StudioTransitionKind.Morph },
+            });
+        }
+
+        return [.. scenes];
+    }
+
+    // Whether two scenes have the same layout and the bubble in the same place. A recording
+    // changes nothing else about a scene.
+    private static bool ShowsTheSame(StudioScene a, StudioScene b) =>
+        a.Layout == b.Layout
+        && a.Bubble.Anchor == b.Bubble.Anchor
+        && a.Bubble.OffsetX == b.Bubble.OffsetX
+        && a.Bubble.OffsetY == b.Bubble.OffsetY;
+
+    private readonly record struct RecordedChange(double Time, bool IsCorner, int Index, StudioAnchor Corner, StudioLayout Layout);
+
     public static StudioProjectCreationRequest BuildCreationRequest(
         string name,
         StudioRecordingSourceInfo screen,
@@ -122,7 +237,8 @@ internal static class StudioRecordingBuilder
         bool clickVisualsEnabled,
         bool branding,
         string appVersion,
-        StudioLook? look = null)
+        StudioLook? look = null,
+        IReadOnlyList<StudioCameraCornerEvent>? cameraCorners = null)
     {
         return new StudioProjectCreationRequest(
             name,
@@ -140,7 +256,8 @@ internal static class StudioRecordingBuilder
             },
             branding,
             appVersion,
-            look);
+            look,
+            cameraCorners);
     }
 
     public static StudioCaptureKind ToCaptureKind(CaptureTarget target, PixelRect? region) =>

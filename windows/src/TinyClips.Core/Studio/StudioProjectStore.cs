@@ -460,6 +460,11 @@ public sealed class StudioProjectStore : IStudioProjectStore
         var look = request.Look;
         var screen = (look?.Screen ?? new StudioScreenStyle()) with { Crop = null };
         var camera = (look?.Camera ?? new StudioCameraStyle()) with { Crop = null };
+        var firstScene = new StudioScene
+        {
+            Layout = hasCamera ? StudioLayout.Bubble : StudioLayout.Screen,
+            Bubble = new StudioBubble { Anchor = request.BubbleAnchor },
+        };
 
         return new StudioProject
         {
@@ -494,14 +499,10 @@ public sealed class StudioProjectStore : IStudioProjectStore
             Canvas = look?.Canvas ?? new StudioCanvas(),
             Screen = screen,
             Camera = camera,
-            Scenes =
-            [
-                new StudioScene
-                {
-                    Layout = hasCamera ? StudioLayout.Bubble : StudioLayout.Screen,
-                    Bubble = new StudioBubble { Anchor = request.BubbleAnchor },
-                },
-            ],
+            // With a camera, what was changed while recording becomes scenes (section 9.1).
+            Scenes = hasCamera
+                ? StudioRecordingBuilder.BuildScenes(firstScene, request.CameraCorners, request.LayoutMarkers, request.Screen.Duration)
+                : [firstScene],
             Edits = new StudioEdits { TrimStart = hasCamera ? Math.Max(0, request.Camera!.StartOffset) : 0 },
             Overlays = new StudioOverlays { Clicks = request.ClickOverlay, Branding = request.Branding },
         };
@@ -685,6 +686,11 @@ public sealed record StudioRecordingSourceInfo(int Width, int Height, double Dur
 
 public sealed record StudioCameraSourceInfo(int Width, int Height, double Duration, double StartOffset = 0);
 
+/// <param name="CameraCorners">
+/// The corners the camera was in while recording, with the time it got to each. With
+/// <paramref name="LayoutMarkers"/> they become the project's scenes (section 9.1 of the format).
+/// </param>
+/// <param name="LayoutMarkers">The layouts chosen while recording, with the time of each.</param>
 public sealed record StudioProjectCreationRequest(
     string Name,
     StudioRecordingSourceInfo Screen,
@@ -693,7 +699,9 @@ public sealed record StudioProjectCreationRequest(
     StudioClickOverlay ClickOverlay,
     bool Branding,
     string AppVersion,
-    StudioLook? Look = null);
+    StudioLook? Look = null,
+    IReadOnlyList<StudioCameraCornerEvent>? CameraCorners = null,
+    IReadOnlyList<StudioLayoutMarker>? LayoutMarkers = null);
 
 public sealed record StudioProjectPaths(
     string ProjectId,

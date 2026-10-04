@@ -23,11 +23,15 @@ public sealed class StudioFixtureTests
         var autoZoomFiles = Directory.Exists(Path.Combine(fixtureRoot, "autozoom"))
             ? Directory.EnumerateFiles(Path.Combine(fixtureRoot, "autozoom"), "*.json").Order().ToArray()
             : [];
+        var recordingFiles = Directory.Exists(Path.Combine(fixtureRoot, "recording"))
+            ? Directory.EnumerateFiles(Path.Combine(fixtureRoot, "recording"), "*.json").Order().ToArray()
+            : [];
 
         Assert.True(layoutFiles.Length > 0, $"No Studio layout fixtures were copied to {Path.Combine(fixtureRoot, "layout")}.");
         Assert.True(timeMapFiles.Length > 0, $"No Studio timemap fixtures were copied to {Path.Combine(fixtureRoot, "timemap")}.");
         Assert.True(canvasFiles.Length > 0, $"No Studio canvas fixtures were copied to {Path.Combine(fixtureRoot, "canvas")}.");
         Assert.True(autoZoomFiles.Length > 0, $"No Studio autozoom fixtures were copied to {Path.Combine(fixtureRoot, "autozoom")}.");
+        Assert.True(recordingFiles.Length > 0, $"No Studio recording fixtures were copied to {Path.Combine(fixtureRoot, "recording")}.");
 
         foreach (var file in layoutFiles)
         {
@@ -48,7 +52,91 @@ public sealed class StudioFixtureTests
         {
             VerifyAutoZoomFixture(file);
         }
+
+        foreach (var file in recordingFiles)
+        {
+            VerifyRecordingFixture(file);
+        }
     }
+
+    // Section 9.1: the scenes a new project gets from what was changed while recording.
+    private static void VerifyRecordingFixture(string file)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(file));
+        var root = document.RootElement;
+        var first = ReadScene(root.GetProperty("first"));
+        var corners = root.GetProperty("cameraCorners").EnumerateArray()
+            .Select(entry => new StudioCameraCornerEvent
+            {
+                T = entry.GetProperty("t").GetDouble(),
+                Corner = ParseAnchor(entry.GetProperty("corner").GetString()),
+            })
+            .ToArray();
+        var markers = root.GetProperty("markers").EnumerateArray()
+            .Select(entry => new StudioLayoutMarker(entry.GetProperty("t").GetDouble(), ParseLayout(entry.GetProperty("layout").GetString())))
+            .ToArray();
+
+        var actual = StudioRecordingBuilder.BuildScenes(first, corners, markers, root.GetProperty("duration").GetDouble());
+
+        var expected = root.GetProperty("expected").EnumerateArray().ToArray();
+        Assert.True(expected.Length == actual.Length, $"{Path.GetFileName(file)}: {actual.Length} scenes, expected {expected.Length}");
+        for (var i = 0; i < expected.Length; i++)
+        {
+            CompareNumber(file, i, "scene.start", expected[i].GetProperty("start").GetDouble(), actual[i].Start);
+            CompareString(file, i, "scene.layout", expected[i].GetProperty("layout").GetString(), LayoutString(actual[i].Layout));
+            var bubble = expected[i].GetProperty("bubble");
+            CompareString(file, i, "scene.bubble.anchor", bubble.GetProperty("anchor").GetString(), AnchorString(actual[i].Bubble.Anchor));
+            CompareNumber(file, i, "scene.bubble.size", bubble.GetProperty("size").GetDouble(), actual[i].Bubble.Size);
+            CompareNumber(file, i, "scene.bubble.offsetX", bubble.GetProperty("offsetX").GetDouble(), actual[i].Bubble.OffsetX);
+            CompareNumber(file, i, "scene.bubble.offsetY", bubble.GetProperty("offsetY").GetDouble(), actual[i].Bubble.OffsetY);
+            var split = expected[i].GetProperty("split");
+            CompareString(file, i, "scene.split.cameraSide", split.GetProperty("cameraSide").GetString(), actual[i].Split.CameraSide == StudioCameraSide.Leading ? "leading" : "trailing");
+            CompareNumber(file, i, "scene.split.cameraFraction", split.GetProperty("cameraFraction").GetDouble(), actual[i].Split.CameraFraction);
+            var transition = expected[i].GetProperty("transition");
+            CompareString(file, i, "scene.transition.kind", transition.GetProperty("kind").GetString(), actual[i].Transition.Kind == StudioTransitionKind.Morph ? "morph" : "cut");
+            CompareNumber(file, i, "scene.transition.duration", transition.GetProperty("duration").GetDouble(), actual[i].Transition.Duration);
+        }
+    }
+
+    // A scene as the project reader reads it.
+    private static StudioScene ReadScene(JsonElement scene) =>
+        StudioProjectJson.ReadProject($$"""
+            {
+              "schemaVersion": 1,
+              "id": "3f0013cf-ba10-4453-af91-792b7882dae6",
+              "sources": { "screen": { "width": 1920, "height": 1080, "duration": 60 }, "camera": { "width": 1280, "height": 720, "duration": 60 } },
+              "scenes": [ {{scene.GetRawText()}} ]
+            }
+            """).Scenes[0];
+
+    private static StudioAnchor ParseAnchor(string? name) =>
+        name switch
+        {
+            "topLeft" => StudioAnchor.TopLeft,
+            "topRight" => StudioAnchor.TopRight,
+            "bottomLeft" => StudioAnchor.BottomLeft,
+            "bottomRight" => StudioAnchor.BottomRight,
+            _ => throw new InvalidOperationException($"A fixture names the corner {name}."),
+        };
+
+    private static string AnchorString(StudioAnchor anchor) =>
+        anchor switch
+        {
+            StudioAnchor.TopLeft => "topLeft",
+            StudioAnchor.TopRight => "topRight",
+            StudioAnchor.BottomLeft => "bottomLeft",
+            _ => "bottomRight",
+        };
+
+    private static StudioLayout ParseLayout(string? name) =>
+        name switch
+        {
+            "screen" => StudioLayout.Screen,
+            "bubble" => StudioLayout.Bubble,
+            "sideBySide" => StudioLayout.SideBySide,
+            "camera" => StudioLayout.Camera,
+            _ => throw new InvalidOperationException($"A fixture names the layout {name}."),
+        };
 
     private static void VerifyLayoutFixture(string file)
     {

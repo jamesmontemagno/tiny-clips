@@ -207,4 +207,178 @@ public sealed class StudioRecordingBuilderTests
         Assert.Equal(StudioCameraShape.Rectangle, project.Camera.Shape);
         Assert.False(project.Camera.Mirror);
     }
+
+    // Scenes from the recording (section 9.1 of the format). The shared fixtures hold the cases;
+    // these are the ones a fixture cannot hold.
+
+    [Fact]
+    public void BuildScenes_AChangeExactlyAShortestSceneAfterTheLast_GetsItsOwnScene()
+    {
+        var first = new StudioScene { Bubble = new StudioBubble { Anchor = StudioAnchor.BottomRight } };
+        var shortest = StudioRecordingBuilder.ShortestRecordedScene;
+        Assert.Equal(StudioEditorModel.MinimumSceneDuration, shortest);
+        Assert.Equal(0.3, shortest);
+
+        var scenes = StudioRecordingBuilder.BuildScenes(
+            first,
+            [Corner(0, StudioAnchor.BottomRight), Corner(5, StudioAnchor.TopLeft), Corner(5 + shortest, StudioAnchor.TopRight)],
+            null,
+            20);
+
+        Assert.Equal(new[] { 0, 5, 5 + shortest }, scenes.Select(scene => scene.Start));
+        Assert.Equal(
+            new[] { StudioAnchor.BottomRight, StudioAnchor.TopLeft, StudioAnchor.TopRight },
+            scenes.Select(scene => scene.Bubble.Anchor));
+
+        // And a change exactly that long after the start of the recording.
+        scenes = StudioRecordingBuilder.BuildScenes(first, [Corner(shortest, StudioAnchor.TopLeft)], null, 20);
+        Assert.Equal(new[] { 0, shortest }, scenes.Select(scene => scene.Start));
+        Assert.Equal(StudioAnchor.BottomRight, scenes[0].Bubble.Anchor);
+    }
+
+    [Fact]
+    public void BuildScenes_AChangeExactlyAShortestSceneBeforeTheEnd_IsKept()
+    {
+        var first = new StudioScene { Bubble = new StudioBubble { Anchor = StudioAnchor.BottomRight } };
+        var shortest = StudioRecordingBuilder.ShortestRecordedScene;
+
+        var scenes = StudioRecordingBuilder.BuildScenes(first, [Corner(20 - shortest, StudioAnchor.TopLeft)], null, 20);
+        Assert.Equal(new[] { 0, 20 - shortest }, scenes.Select(scene => scene.Start));
+
+        // The next number after it is too late.
+        scenes = StudioRecordingBuilder.BuildScenes(first, [Corner(Math.BitIncrement(20 - shortest), StudioAnchor.TopLeft)], null, 20);
+        Assert.Single(scenes);
+        Assert.Equal(StudioAnchor.BottomRight, scenes[0].Bubble.Anchor);
+    }
+
+    [Fact]
+    public void BuildScenes_LeavesOutTimesThatAreNoNumbers_AndTakesMissingLists()
+    {
+        var first = new StudioScene
+        {
+            Start = 4,
+            Layout = StudioLayout.Bubble,
+            Bubble = new StudioBubble { Anchor = StudioAnchor.BottomRight },
+            Transition = new StudioTransition { Kind = StudioTransitionKind.Morph, Duration = 1 },
+        };
+
+        var scenes = StudioRecordingBuilder.BuildScenes(
+            first,
+            [
+                Corner(double.NaN, StudioAnchor.TopLeft),
+                Corner(double.PositiveInfinity, StudioAnchor.TopRight),
+                Corner(double.NegativeInfinity, StudioAnchor.BottomLeft),
+                Corner(6, StudioAnchor.TopRight),
+            ],
+            [new StudioLayoutMarker(double.NaN, StudioLayout.Camera), new StudioLayoutMarker(10, StudioLayout.SideBySide)],
+            20);
+
+        Assert.Equal(new[] { 0.0, 6, 10 }, scenes.Select(scene => scene.Start));
+        Assert.Equal(
+            new[] { StudioAnchor.BottomRight, StudioAnchor.TopRight, StudioAnchor.TopRight },
+            scenes.Select(scene => scene.Bubble.Anchor));
+        Assert.Equal(new[] { StudioLayout.Bubble, StudioLayout.Bubble, StudioLayout.SideBySide }, scenes.Select(scene => scene.Layout));
+
+        // The first scene starts at 0 whatever it was given, and is entered as it was given.
+        Assert.Equal(StudioTransitionKind.Morph, scenes[0].Transition.Kind);
+        Assert.Equal(1, scenes[0].Transition.Duration);
+        Assert.Equal(0.35, scenes[1].Transition.Duration);
+
+        // No lists at all.
+        var alone = StudioRecordingBuilder.BuildScenes(first, null, null, 20);
+        Assert.Equal(0, Assert.Single(alone).Start);
+    }
+
+    [Fact]
+    public void ANewProject_HasASceneForEachCornerTheCameraWasMovedTo()
+    {
+        var placements = new[]
+        {
+            new WebcamPlacementEvent(TimeSpan.Zero, WebcamCornerPosition.TopRight),
+            new WebcamPlacementEvent(TimeSpan.FromSeconds(3), WebcamCornerPosition.BottomLeft),
+            new WebcamPlacementEvent(TimeSpan.FromSeconds(7.5), WebcamCornerPosition.TopLeft),
+        };
+        var request = StudioRecordingBuilder.BuildCreationRequest(
+            "Clip",
+            new StudioRecordingSourceInfo(1920, 1080, 12, 30),
+            new StudioCameraSourceInfo(1280, 720, 12, 0.2),
+            WebcamCornerPosition.TopRight,
+            new MouseClickOverlayStyle("#FF0000", 44, 4, 0.5, 0.6),
+            clickVisualsEnabled: true,
+            branding: false,
+            appVersion: "1.2.3",
+            cameraCorners: StudioRecordingBuilder.BuildCameraCornerEvents(placements));
+
+        var project = StudioProjectStore.BuildDefaultProjectForRecording(
+            "3f0013cf-ba10-4453-af91-792b7882dae6",
+            request,
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(new[] { 0, 3, 7.5 }, project.Scenes.Select(scene => scene.Start));
+        Assert.Equal(
+            new[] { StudioAnchor.TopRight, StudioAnchor.BottomLeft, StudioAnchor.TopLeft },
+            project.Scenes.Select(scene => scene.Bubble.Anchor));
+        Assert.All(project.Scenes, scene => Assert.Equal(StudioLayout.Bubble, scene.Layout));
+        Assert.Equal(
+            new[] { StudioTransitionKind.Cut, StudioTransitionKind.Morph, StudioTransitionKind.Morph },
+            project.Scenes.Select(scene => scene.Transition.Kind));
+        Assert.Equal(0.2, project.Edits.TrimStart);
+
+        // The recording's length is what decides which changes come too late.
+        var shorter = StudioProjectStore.BuildDefaultProjectForRecording(
+            "3f0013cf-ba10-4453-af91-792b7882dae6",
+            request with { Screen = new StudioRecordingSourceInfo(1920, 1080, 7.6, 30) },
+            DateTimeOffset.UnixEpoch);
+        Assert.Equal(new[] { 0.0, 3 }, shorter.Scenes.Select(scene => scene.Start));
+
+        // Layouts chosen while recording become scenes as well.
+        var withLayouts = StudioProjectStore.BuildDefaultProjectForRecording(
+            "3f0013cf-ba10-4453-af91-792b7882dae6",
+            request with { LayoutMarkers = [new StudioLayoutMarker(5, StudioLayout.Camera)] },
+            DateTimeOffset.UnixEpoch);
+        Assert.Equal(new[] { 0.0, 3, 5 }, withLayouts.Scenes.Select(scene => scene.Start));
+        Assert.Equal(StudioLayout.Camera, withLayouts.Scenes[2].Layout);
+        Assert.Equal(StudioAnchor.TopLeft, withLayouts.Scenes[2].Bubble.Anchor);
+    }
+
+    [Fact]
+    public void ANewProject_WithoutACamera_HasItsOneScreenScene_WhateverWasChanged()
+    {
+        var request = StudioRecordingBuilder.BuildCreationRequest(
+            "Clip",
+            new StudioRecordingSourceInfo(1920, 1080, 12, 30),
+            null,
+            WebcamCornerPosition.TopRight,
+            new MouseClickOverlayStyle("#FF0000", 44, 4, 0.5, 0.6),
+            clickVisualsEnabled: true,
+            branding: false,
+            appVersion: "1.2.3",
+            cameraCorners: [Corner(0, StudioAnchor.TopRight), Corner(4, StudioAnchor.TopLeft)]);
+
+        var project = StudioProjectStore.BuildDefaultProjectForRecording(
+            "3f0013cf-ba10-4453-af91-792b7882dae6",
+            request with { LayoutMarkers = [new StudioLayoutMarker(6, StudioLayout.Camera)] },
+            DateTimeOffset.UnixEpoch);
+
+        var scene = Assert.Single(project.Scenes);
+        Assert.Equal(StudioLayout.Screen, scene.Layout);
+        Assert.Equal(0, scene.Start);
+
+        // A request that says nothing about corners gives the one scene, as before.
+        var plain = StudioProjectStore.BuildDefaultProjectForRecording(
+            "3f0013cf-ba10-4453-af91-792b7882dae6",
+            StudioRecordingBuilder.BuildCreationRequest(
+                "Clip",
+                new StudioRecordingSourceInfo(1920, 1080, 12, 30),
+                new StudioCameraSourceInfo(1280, 720, 12, 0),
+                WebcamCornerPosition.BottomLeft,
+                new MouseClickOverlayStyle("#FF0000", 44, 4, 0.5, 0.6),
+                clickVisualsEnabled: true,
+                branding: false,
+                appVersion: "1.2.3"),
+            DateTimeOffset.UnixEpoch);
+        Assert.Equal(StudioAnchor.BottomLeft, Assert.Single(plain.Scenes).Bubble.Anchor);
+    }
+
+    private static StudioCameraCornerEvent Corner(double t, StudioAnchor corner) => new() { T = t, Corner = corner };
 }

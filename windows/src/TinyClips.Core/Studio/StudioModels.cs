@@ -434,3 +434,9 @@ public sealed record StudioCameraCornerEvent
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
 }
+
+/// <summary>
+/// A layout chosen while recording, at a time on the recording timeline. In events.json these
+/// are the entries of <c>markers</c>.
+/// </summary>
+public sealed record StudioLayoutMarker(double T, StudioLayout Layout);

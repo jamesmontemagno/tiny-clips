@@ -2129,7 +2129,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 _settings.ShouldShowMouseClickVisuals(CaptureType.Video),
                 _settings.ShowBrandingOverlay,
                 _activeOptions.AppVersion ?? typeof(VideoRecordingService).Assembly.GetName().Version?.ToString() ?? string.Empty,
-                _activeOptions.Look);
+                _activeOptions.Look,
+                BuildStudioCameraCorners());
 
             _studioProjects.CompleteRecording(paths.ProjectId, request);
             SaveStudioEvents(paths.ProjectId, screen, timeline);
@@ -2234,11 +2235,16 @@ public sealed class VideoRecordingService : IVideoRecordingService
             Cursor = pointerEventsEnabled
                 ? StudioRecordingBuilder.BuildCursorSamples(cursorSamples, _studioCaptureOriginX, _studioCaptureOriginY, screen.Width, screen.Height)
                 : [],
-            CameraCorners = _webcamPlacements is null
-                ? [new StudioCameraCornerEvent { T = 0, Corner = StudioRecordingBuilder.ToStudioAnchor(_studioInitialCorner) }]
-                : StudioRecordingBuilder.BuildCameraCornerEvents(_webcamPlacements.Events),
+            CameraCorners = BuildStudioCameraCorners(),
         };
     }
+
+    // The corners the camera was in while recording. They go into the events file, and the
+    // moves from one to another become the scenes of the project.
+    private StudioCameraCornerEvent[] BuildStudioCameraCorners() =>
+        _webcamPlacements is null
+            ? [new StudioCameraCornerEvent { T = 0, Corner = StudioRecordingBuilder.ToStudioAnchor(_studioInitialCorner) }]
+            : StudioRecordingBuilder.BuildCameraCornerEvents(_webcamPlacements.Events);
 
     private void CleanupStudioRecording(bool deleteProject)
     {
