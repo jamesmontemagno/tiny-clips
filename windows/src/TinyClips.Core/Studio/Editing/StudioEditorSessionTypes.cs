@@ -66,7 +66,10 @@ public enum StudioEditorChanges
     /// <summary>Which zoom is selected.</summary>
     Selection = 16,
 
-    All = State | Project | Playback | Export | Selection,
+    /// <summary>Which scene the playhead is in. The layout controls show and change that scene.</summary>
+    Scene = 32,
+
+    All = State | Project | Playback | Export | Selection | Scene,
 }
 
 public sealed class StudioEditorChangedEventArgs(StudioEditorChanges changes) : EventArgs

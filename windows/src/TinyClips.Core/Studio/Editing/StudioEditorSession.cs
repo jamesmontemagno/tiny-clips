@@ -21,7 +21,7 @@ namespace TinyClips.Core.Studio.Editing;
 /// trim is applied here, by deciding where playback starts and where it stops.
 /// </para>
 /// </remarks>
-public sealed class StudioEditorSession
+public sealed partial class StudioEditorSession
 {
     /// <summary>Shown when the project is there but its screen recording is not.</summary>
     public const string MissingRecordingMessage =
@@ -57,6 +57,7 @@ public sealed class StudioEditorSession
     private bool _hasUnsavedEdits;
     private bool _isClosed;
     private int? _selectedZoomIndex;
+    private double _playhead;
 
     // Read on the threads the preview raises its events on.
     private int _playGeneration;
@@ -126,7 +127,19 @@ public sealed class StudioEditorSession
     /// Where the editor is in the recording, in source time. It moves at once when the user seeks,
     /// steps or scrubs, and follows the preview only while that is playing.
     /// </summary>
-    public double Playhead { get; private set; }
+    public double Playhead
+    {
+        get => _playhead;
+        private set
+        {
+            // The model is told as well: its layout controls change the scene the playhead is in.
+            _playhead = value;
+            if (Model is { } model)
+            {
+                model.SceneTime = value;
+            }
+        }
+    }
 
     public bool IsPlaying { get; private set; }
 
@@ -1247,8 +1260,18 @@ public sealed class StudioEditorSession
         return completion.Task;
     }
 
-    private void RaiseChanged(StudioEditorChanges changes) =>
+    private void RaiseChanged(StudioEditorChanges changes)
+    {
+        // Whatever moved the playhead or changed the scenes, a different current scene is said once.
+        var sceneIndex = CurrentSceneIndex;
+        if (sceneIndex != _raisedSceneIndex)
+        {
+            _raisedSceneIndex = sceneIndex;
+            changes |= StudioEditorChanges.Scene;
+        }
+
         Changed?.Invoke(this, new StudioEditorChangedEventArgs(changes));
+    }
 
     private void ReportError(StudioEditorErrorKind kind, string message) =>
         ErrorReported?.Invoke(this, new StudioEditorErrorEventArgs(kind, message));

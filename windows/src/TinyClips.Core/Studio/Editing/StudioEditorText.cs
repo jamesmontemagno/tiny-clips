@@ -35,6 +35,27 @@ public static class StudioEditorText
     /// <summary>Why a zoom cannot follow the pointer in a recording without pointer positions.</summary>
     public const string NoPointerExplanation = "This recording has no pointer positions to follow.";
 
+    /// <summary>Said when a scene has been split at the playhead.</summary>
+    public const string SceneSplitMessage = "Scene split.";
+
+    /// <summary>Said when the current scene has been deleted.</summary>
+    public const string SceneDeletedMessage = "Scene deleted.";
+
+    /// <summary>Why a recording without a camera has one scene.</summary>
+    public const string NoCameraForScenesExplanation = "This recording has no camera, so there is nothing to arrange differently.";
+
+    /// <summary>Why a scene cannot be split near where it starts or ends.</summary>
+    public const string SceneTooShortToSplitExplanation = "Both scenes would have to last at least 0.3 seconds.";
+
+    /// <summary>Why a scene cannot be split while its layers are still moving into place.</summary>
+    public const string SceneStillMovingExplanation = "This scene is still moving into place here.";
+
+    /// <summary>Why the only scene cannot be deleted.</summary>
+    public const string OnlySceneExplanation = "The only scene cannot be deleted.";
+
+    /// <summary>Why the first scene has no start to set and no way of being entered.</summary>
+    public const string FirstSceneExplanation = "The first scene starts with the recording and has nothing to move from.";
+
     // How far a number that went through single precision may be from what was meant, as a part of
     // its size. One unit in the last place is 2^-23 of it at most, and the value a screen reader
     // read, the step it read and the sum it sent back each lose up to half of one.
@@ -180,6 +201,65 @@ public static class StudioEditorText
     /// <summary>Which zoom is selected, counting from one: <c>Zoom 2 of 5</c>.</summary>
     public static string GetZoomPositionText(int index, int count) =>
         string.Create(CultureInfo.InvariantCulture, $"Zoom {index + 1} of {count}");
+
+    /// <summary>Why a scene cannot be split, in words, or null when it can be.</summary>
+    public static string? GetSplitSceneExplanation(StudioSceneSplitObstacle obstacle) => obstacle switch
+    {
+        StudioSceneSplitObstacle.NoCamera => NoCameraForScenesExplanation,
+        StudioSceneSplitObstacle.TooShort => SceneTooShortToSplitExplanation,
+        StudioSceneSplitObstacle.StillMoving => SceneStillMovingExplanation,
+        _ => null,
+    };
+
+    /// <summary>
+    /// A scene for screen readers, such as <c>Scene 2 of 3, Side by side, 12.0 to 30.5 seconds</c>.
+    /// The times are source time, as the trim handles read. Empty when there is no such scene.
+    /// </summary>
+    public static string GetSceneDescription(StudioEditorModel model, int index)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var scenes = model.Project.Scenes;
+        if (index < 0 || index >= scenes.Length)
+        {
+            return string.Empty;
+        }
+
+        var layout = model.HasCamera ? scenes[index].Layout : StudioLayout.Screen;
+        return $"{GetScenePositionText(index, scenes.Length)}, {StudioEditorModel.GetLayoutName(layout)}, {GetSceneRangeText(model, index)}";
+    }
+
+    /// <summary>Which scene the playhead is in, counting from one: <c>Scene 2 of 3</c>.</summary>
+    public static string GetScenePositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Scene {index + 1} of {count}");
+
+    /// <summary>When a scene starts and ends, in source time: <c>12.0 to 30.5 seconds</c>. Empty when there is no such scene.</summary>
+    public static string GetSceneRangeText(StudioEditorModel model, int index)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return model.GetSceneRange(index) is { } range
+            ? string.Create(CultureInfo.InvariantCulture, $"{range.Start:0.0} to {range.End:0.0} seconds")
+            : string.Empty;
+    }
+
+    /// <summary>
+    /// Says how long the move into a scene really is when the scene is shorter than the time
+    /// asked for. Null when the move takes as long as asked, or the scene is cut to.
+    /// </summary>
+    public static string? GetSceneMoveLimitedText(StudioEditorModel model, int index)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var scenes = model.Project.Scenes;
+        if (index < 1 || index >= scenes.Length || scenes[index].Transition.Kind != StudioTransitionKind.Morph)
+        {
+            return null;
+        }
+
+        var asked = Math.Min(2, Math.Max(0, scenes[index].Transition.Duration));
+        var length = model.GetSceneTransitionLength(index);
+        return length < asked
+            ? string.Create(CultureInfo.InvariantCulture, $"The scene is shorter than that, so the move takes {length:0.00} seconds.")
+            : null;
+    }
 
     /// <summary>What to say after zooms were suggested, given how many suggestions there are now.</summary>
     public static string GetZoomSuggestionsText(int count) => count switch

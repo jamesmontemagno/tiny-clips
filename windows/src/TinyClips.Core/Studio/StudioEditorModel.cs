@@ -225,9 +225,13 @@ public readonly record struct StudioCropInsets(double Left, double Top, double R
 /// <summary>
 /// The Studio editor's state and every edit it can make, with undo. It has no UI or media types in
 /// it so it can be unit tested. Not thread-safe: use it from one thread.
-/// <para>The first version edits one scene, <c>Scenes[0]</c>. Any further scenes are left as they are.</para>
+/// <para>
+/// The layout controls change the current scene, which is the one the playhead is in. The owner
+/// says where the playhead is with <see cref="SceneTime"/>. The stored scenes are kept as section
+/// 6.1 of the project format reads them: in time order, each with a start of its own, the first at 0.
+/// </para>
 /// </summary>
-public sealed class StudioEditorModel
+public sealed partial class StudioEditorModel
 {
     public const double MinimumDuration = 0.1;
 
@@ -258,6 +262,7 @@ public sealed class StudioEditorModel
 
         Project = Project with
         {
+            Scenes = NormalizeStoredScenes(Project.Scenes, SourceDuration),
             Zooms = SortStoredZooms(Project.Zooms),
             Edits = ClampedEdits(Project.Edits, Project.Edits.TrimStart, Project.Edits.TrimEnd),
         };
@@ -286,9 +291,13 @@ public sealed class StudioEditorModel
     /// </summary>
     public bool HasUnexportedChanges => _exportedState is null || !_exportedState.ContentEquals(EditableState);
 
-    public StudioScene CurrentScene => Project.Scenes[0];
+    /// <summary>The scene the playhead is in.</summary>
+    public StudioScene CurrentScene => Project.Scenes[CurrentSceneIndex];
 
-    /// <summary>The layout that is drawn: a project without a camera always shows the screen alone.</summary>
+    /// <summary>
+    /// The layout the current scene is drawn with once it has been entered: a project without a
+    /// camera always shows the screen alone.
+    /// </summary>
     public StudioLayout EffectiveLayout => HasCamera ? CurrentScene.Layout : StudioLayout.Screen;
 
     /// <summary>The styling to save as a default. A look never carries a crop.</summary>
@@ -407,7 +416,7 @@ public sealed class StudioEditorModel
 
     // Layout and canvas
 
-    /// <summary>Sets the layout of the edited scene. Layouts that need a camera are ignored without one.</summary>
+    /// <summary>Sets the layout of the current scene. Layouts that need a camera are ignored without one.</summary>
     public void SetLayout(StudioLayout layout)
     {
         // Without a camera the screen is always shown alone, so no choice changes what is drawn.
@@ -600,7 +609,8 @@ public sealed class StudioEditorModel
             return;
         }
 
-        if (GetBubbleRect(Project, canvasWidth, canvasHeight) is not { } size)
+        var sceneIndex = CurrentSceneIndex;
+        if (GetBubbleRect(Project, sceneIndex, canvasWidth, canvasHeight) is not { } size)
         {
             return;
         }
@@ -613,11 +623,11 @@ public sealed class StudioEditorModel
             ? (isLeft ? StudioAnchor.TopLeft : StudioAnchor.TopRight)
             : (isLeft ? StudioAnchor.BottomLeft : StudioAnchor.BottomRight);
 
-        var anchored = WithScene(Project, scene => scene with
+        var anchored = WithScene(Project, sceneIndex, scene => scene with
         {
             Bubble = scene.Bubble with { Anchor = anchor, OffsetX = 0, OffsetY = 0 },
         });
-        if (GetBubbleRect(anchored, canvasWidth, canvasHeight) is not { } origin)
+        if (GetBubbleRect(anchored, sceneIndex, canvasWidth, canvasHeight) is not { } origin)
         {
             return;
         }
@@ -635,15 +645,18 @@ public sealed class StudioEditorModel
 
     public void MoveBubbleCenter(double x, double y, double canvasWidth, double canvasHeight)
     {
-        if (HasCamera && canvasWidth > 0 && canvasHeight > 0 && GetBubbleRect(Project, canvasWidth, canvasHeight) is { } size)
+        if (HasCamera && canvasWidth > 0 && canvasHeight > 0 && GetBubbleRect(Project, CurrentSceneIndex, canvasWidth, canvasHeight) is { } size)
         {
             MoveBubbleTopLeft(x - size.Width / 2, y - size.Height / 2, canvasWidth, canvasHeight);
         }
     }
 
-    /// <summary>The bubble's rectangle on a canvas of the given size, whatever layout is current.</summary>
+    /// <summary>
+    /// The rectangle the current scene's bubble has at rest on a canvas of the given size,
+    /// whatever its layout is.
+    /// </summary>
     public StudioFrameRect? GetBubbleRect(double canvasWidth, double canvasHeight) =>
-        canvasWidth > 0 && canvasHeight > 0 ? GetBubbleRect(Project, canvasWidth, canvasHeight) : null;
+        canvasWidth > 0 && canvasHeight > 0 ? GetBubbleRect(Project, CurrentSceneIndex, canvasWidth, canvasHeight) : null;
 
     // Zooms
     //
@@ -1184,7 +1197,11 @@ public sealed class StudioEditorModel
         }
     }
 
-    private void MutateScene(Func<StudioScene, StudioScene> change) => Mutate(project => WithScene(project, change));
+    private void MutateScene(Func<StudioScene, StudioScene> change)
+    {
+        var index = CurrentSceneIndex;
+        Mutate(project => WithScene(project, index, change));
+    }
 
     private StudioZoomEditResult EditZoom(int index, bool isValid, Func<StudioZoom, StudioZoom> change)
     {
@@ -1252,10 +1269,10 @@ public sealed class StudioEditorModel
         return end - start >= MinimumZoomDuration;
     }
 
-    private static StudioProject WithScene(StudioProject project, Func<StudioScene, StudioScene> change)
+    private static StudioProject WithScene(StudioProject project, int index, Func<StudioScene, StudioScene> change)
     {
         var scenes = (StudioScene[])project.Scenes.Clone();
-        scenes[0] = change(scenes[0]);
+        scenes[index] = change(scenes[index]);
         return project with { Scenes = scenes };
     }
 
@@ -1335,17 +1352,17 @@ public sealed class StudioEditorModel
     }
 
     /// <summary>
-    /// The bubble rectangle the layout resolver produces for <paramref name="project"/>, forcing the
-    /// bubble layout so the answer does not depend on the layout currently shown.
+    /// The bubble rectangle the layout resolver produces for one scene of <paramref name="project"/>
+    /// at rest, forcing the bubble layout so the answer does not depend on the layout currently shown.
     /// </summary>
-    private static StudioFrameRect? GetBubbleRect(StudioProject project, double width, double height)
+    private static StudioFrameRect? GetBubbleRect(StudioProject project, int sceneIndex, double width, double height)
     {
-        if (project.Scenes is not { Length: > 0 })
+        if (project.Scenes is not { Length: > 0 } scenes || sceneIndex < 0 || sceneIndex >= scenes.Length)
         {
             return null;
         }
 
-        var scene = project.Scenes[0] with { Start = 0, Layout = StudioLayout.Bubble };
+        var scene = scenes[sceneIndex] with { Start = 0, Layout = StudioLayout.Bubble };
         return StudioLayoutResolver.Resolve(project with { Scenes = [scene] }, 0, width, height).Camera?.Rect;
     }
 

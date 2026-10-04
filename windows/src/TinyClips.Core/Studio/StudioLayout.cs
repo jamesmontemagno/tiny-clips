@@ -189,16 +189,25 @@ public sealed class StudioLayoutPlan
         var lengths = new double[scenes.Length];
         for (var i = 1; i < scenes.Length; i++)
         {
-            if (scenes[i].Transition.Kind != StudioTransitionKind.Morph)
-            {
-                continue;
-            }
-
-            var length = Clamp(scenes[i].Transition.Duration, 0, 2);
-            lengths[i] = i + 1 < scenes.Length ? Math.Min(length, scenes[i + 1].Start - scenes[i].Start) : length;
+            lengths[i] = TransitionLength(scenes, i);
         }
 
         return lengths;
+    }
+
+    /// <summary>
+    /// How long the layers take to move into scene <paramref name="index"/> of a normalized
+    /// scene list (section 6.9): 0 for a cut, for the first scene and where there is no such scene.
+    /// </summary>
+    internal static double TransitionLength(IReadOnlyList<StudioScene> scenes, int index)
+    {
+        if (index < 1 || index >= scenes.Count || scenes[index].Transition.Kind != StudioTransitionKind.Morph)
+        {
+            return 0;
+        }
+
+        var length = Clamp(scenes[index].Transition.Duration, 0, 2);
+        return index + 1 < scenes.Count ? Math.Min(length, scenes[index + 1].Start - scenes[index].Start) : length;
     }
 
     // A layer on its way from the scene before to this one. One that only one of the two scenes
