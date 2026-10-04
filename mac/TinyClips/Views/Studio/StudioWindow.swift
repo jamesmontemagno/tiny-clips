@@ -87,7 +87,7 @@ final class StudioWindowRegistry {
 /// responder chain and are disabled while another window is in front.
 ///
 /// Only Export has a key equivalent here. The other shortcuts are single keys (Space, arrows, I, O,
-/// Z, Delete, and 1 to 4), which as menu key equivalents would be taken from text fields in every
+/// S, Z, Delete, and 1 to 4), which as menu key equivalents would be taken from text fields in every
 /// window, so `StudioWindow` handles them itself. That also keeps them working while Tiny Clips
 /// runs without a Dock icon and its menu bar is not shown.
 @MainActor
@@ -118,6 +118,11 @@ enum StudioMenuCommands {
         menu.addItem(menuItem("Previous Zoom", action: "studioPreviousZoom:"))
         menu.addItem(menuItem("Next Zoom", action: "studioNextZoom:"))
         menu.addItem(menuItem("Suggest Zooms", action: "studioSuggestZooms:"))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Split Scene", action: "studioSplitScene:"))
+        menu.addItem(menuItem("Delete Scene", action: "studioDeleteScene:"))
+        menu.addItem(menuItem("Previous Scene", action: "studioPreviousScene:"))
+        menu.addItem(menuItem("Next Scene", action: "studioNextScene:"))
         menu.addItem(.separator())
         menu.addItem(menuItem("Screen Only", action: "studioLayoutScreen:"))
         menu.addItem(menuItem("Screen with Camera Bubble", action: "studioLayoutBubble:"))
@@ -201,6 +206,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioPreviousZoom(_ sender: Any?) { viewModel.selectPreviousZoom() }
     @objc func studioNextZoom(_ sender: Any?) { viewModel.selectNextZoom() }
     @objc func studioSuggestZooms(_ sender: Any?) { viewModel.suggestZooms() }
+    @objc func studioSplitScene(_ sender: Any?) { viewModel.splitSceneAtPlayhead() }
+    @objc func studioDeleteScene(_ sender: Any?) { viewModel.removeCurrentScene() }
+    @objc func studioPreviousScene(_ sender: Any?) { viewModel.showPreviousScene() }
+    @objc func studioNextScene(_ sender: Any?) { viewModel.showNextScene() }
     @objc func studioLayoutScreen(_ sender: Any?) { viewModel.setLayout(.screen) }
     @objc func studioLayoutBubble(_ sender: Any?) { viewModel.setLayout(.bubble) }
     @objc func studioLayoutSideBySide(_ sender: Any?) { viewModel.setLayout(.sideBySide) }
@@ -238,6 +247,14 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return viewModel.isEditable && !viewModel.zooms.isEmpty
         case #selector(studioSuggestZooms(_:)):
             return viewModel.canSuggestZooms
+        case #selector(studioSplitScene(_:)):
+            return viewModel.canSplitSceneAtPlayhead
+        case #selector(studioDeleteScene(_:)):
+            return viewModel.canRemoveCurrentScene
+        case #selector(studioPreviousScene(_:)):
+            return viewModel.isEditable && viewModel.currentSceneIndex > 0
+        case #selector(studioNextScene(_:)):
+            return viewModel.isEditable && viewModel.currentSceneIndex + 1 < viewModel.scenes.count
         default:
             return super.validateMenuItem(menuItem)
         }
@@ -360,6 +377,9 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return true
         case "o":
             if isFirstPress { viewModel.setTrimEndAtPlayhead() }
+            return true
+        case "s":
+            if isFirstPress { viewModel.splitSceneAtPlayhead() }
             return true
         case "z":
             if isFirstPress { viewModel.addZoomAtPlayhead() }

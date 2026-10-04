@@ -297,6 +297,9 @@ private struct StudioInspectorView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                if viewModel.hasCamera {
+                    StudioSceneInspectorSection(viewModel: viewModel)
+                }
                 layoutSection
                 backgroundSection
                 screenSection
@@ -783,6 +786,15 @@ private struct StudioTimelineView: View {
 
                 Spacer()
 
+                if viewModel.hasCamera {
+                    Button("Split") {
+                        viewModel.splitSceneAtPlayhead()
+                    }
+                    .disabled(!viewModel.canSplitSceneAtPlayhead)
+                    .help(viewModel.splitSceneExplanation ?? "Start a new scene at the playhead (S)")
+                    .accessibilityLabel("Split scene")
+                }
+
                 Button("Add Zoom") {
                     viewModel.addZoomAtPlayhead()
                 }
@@ -798,6 +810,11 @@ private struct StudioTimelineView: View {
                     viewModel.setTrimEndAtPlayhead()
                 }
                 .help("End the video at the playhead (O)")
+            }
+
+            if viewModel.hasCamera {
+                StudioSceneLane(viewModel: viewModel)
+                    .frame(height: 24)
             }
 
             StudioZoomLane(viewModel: viewModel)

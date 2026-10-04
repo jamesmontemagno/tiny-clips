@@ -185,6 +185,8 @@
 		8AF8CF51250E1E2D92E92738 /* StudioSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94546492B06AE3129ADA918D /* StudioSettingsSection.swift */; };
 		588E5106C515877D432C5028 /* StudioZoomViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCBC2EB4FCC1CA1F83321628 /* StudioZoomViews.swift */; };
 		B5ADC0138CB4DF6942EA3611 /* StudioZoomViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCBC2EB4FCC1CA1F83321628 /* StudioZoomViews.swift */; };
+		377D679ED809740738A2EA8C /* StudioSceneViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DAE410B2D22DD4219DE97A4 /* StudioSceneViews.swift */; };
+		7FAC35F6E54C48937C1F2BD1 /* StudioSceneViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DAE410B2D22DD4219DE97A4 /* StudioSceneViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -298,6 +300,7 @@
 		E308698787C7FE1F661D3513 /* StudioMaintenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioMaintenance.swift; sourceTree = "<group>"; };
 		94546492B06AE3129ADA918D /* StudioSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioSettingsSection.swift; sourceTree = "<group>"; };
 		FCBC2EB4FCC1CA1F83321628 /* StudioZoomViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioZoomViews.swift; sourceTree = "<group>"; };
+		9DAE410B2D22DD4219DE97A4 /* StudioSceneViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioSceneViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -518,6 +521,7 @@
 				A443B55CDD8679016D298256 /* StudioViewModel.swift */,
 				3AB2E4AB53A0A1412FBC5054 /* StudioViews.swift */,
 				FCBC2EB4FCC1CA1F83321628 /* StudioZoomViews.swift */,
+				9DAE410B2D22DD4219DE97A4 /* StudioSceneViews.swift */,
 			);
 			path = Studio;
 			sourceTree = "<group>";
@@ -733,6 +737,7 @@
 				1DB109EA9A3826EF20303E71 /* StudioMaintenance.swift in Sources */,
 				A7372DA762EFCB9B64677416 /* StudioSettingsSection.swift in Sources */,
 				588E5106C515877D432C5028 /* StudioZoomViews.swift in Sources */,
+				377D679ED809740738A2EA8C /* StudioSceneViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -821,6 +826,7 @@
 				BC954663A417203E5E361E44 /* StudioMaintenance.swift in Sources */,
 				8AF8CF51250E1E2D92E92738 /* StudioSettingsSection.swift in Sources */,
 				B5ADC0138CB4DF6942EA3611 /* StudioZoomViews.swift in Sources */,
+				7FAC35F6E54C48937C1F2BD1 /* StudioSceneViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
