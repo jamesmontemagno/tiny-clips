@@ -208,6 +208,38 @@ public sealed class StudioEditorSessionTextTests : StudioEditorSessionTestBase
     }
 
     [Fact]
+    public void ZoomDescription_SaysTheScaleTheTimes_AndWhatElseApplies()
+    {
+        Assert.Equal(
+            "Zoom 2×, 12.0 to 16.5 seconds",
+            StudioEditorText.GetZoomDescription(new StudioZoom { Start = 12, End = 16.5 }));
+
+        Assert.Equal(
+            "Zoom 2.5×, 1.0 to 3.0 seconds, follows the pointer, suggested",
+            StudioEditorText.GetZoomDescription(new StudioZoom
+            {
+                Start = 1,
+                End = 3,
+                Scale = 2.5,
+                Focus = new StudioZoomFocus { Mode = StudioZoomFocusMode.Cursor },
+                Origin = StudioZoomOrigin.Auto,
+            }));
+
+        Assert.Equal(
+            "Zoom 1.25×, 0.0 to 0.3 seconds, suggested",
+            StudioEditorText.GetZoomDescription(new StudioZoom { Start = 0, End = 0.3, Scale = 1.25, Origin = StudioZoomOrigin.Auto }));
+    }
+
+    [Theory]
+    [InlineData(9, "Zoom 5×, 1.0 to 2.0 seconds")]
+    [InlineData(0.2, "Zoom 1×, 1.0 to 2.0 seconds")]
+    [InlineData(double.NaN, "Zoom 1×, 1.0 to 2.0 seconds")]
+    public void ZoomDescription_SaysTheScaleThatIsDrawn(double stored, string expected)
+    {
+        Assert.Equal(expected, StudioEditorText.GetZoomDescription(new StudioZoom { Start = 1, End = 2, Scale = stored }));
+    }
+
+    [Fact]
     public async Task PreviewDescription_NamesTheLayout_AndTheCornerOfTheBubble()
     {
         var session = await OpenAsync(CreateProject(camera: true));

@@ -132,7 +132,9 @@ public sealed class StudioProjectJsonTests
         Assert.Equal(0.3, project.Scenes[0].Split.CameraFraction);
         Assert.Equal(StudioTransitionKind.Cut, project.Scenes[0].Transition.Kind);
         Assert.Equal(0.35, project.Scenes[0].Transition.Duration);
-        Assert.Equal(1, project.Zooms[0].Scale);
+        Assert.Equal(2, project.Zooms[0].Scale);
+        Assert.Equal(0.5, project.Zooms[0].EaseIn);
+        Assert.Equal(0.5, project.Zooms[0].EaseOut);
         Assert.Equal(StudioZoomFocusMode.Point, project.Zooms[0].Focus.Mode);
         Assert.Equal(0.5, project.Zooms[0].Focus.X);
         Assert.Equal(0.5, project.Zooms[0].Focus.Y);

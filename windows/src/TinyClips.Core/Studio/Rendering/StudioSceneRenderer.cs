@@ -180,7 +180,7 @@ public sealed class StudioSceneRenderer : IDisposable
         {
             var project = request.Project;
             var target = GetTarget(request.Target);
-            var frame = request.ResolvedFrame ?? StudioLayoutResolver.Resolve(project, request.SourceTimeSeconds, width, height);
+            var frame = request.ResolvedFrame ?? StudioLayoutResolver.Resolve(project, request.Events, request.SourceTimeSeconds, width, height);
 
             // A layer is drawn when the layout has it and its picture is here. Whole-pixel edges
             // keep a layer, its shadow and its border exactly on top of each other.

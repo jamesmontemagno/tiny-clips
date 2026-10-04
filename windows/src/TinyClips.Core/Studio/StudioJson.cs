@@ -389,13 +389,15 @@ public static class StudioProjectJson
             {
                 Start = HasNonNull(element, "start") ? zoom.Start : 0,
                 End = HasNonNull(element, "end") ? zoom.End : 0,
-                Scale = HasNonNull(element, "scale") ? zoom.Scale : 1,
+                Scale = HasNonNull(element, "scale") ? zoom.Scale : 2,
                 Focus = focus with
                 {
                     Mode = HasNonNull(element, "focus", "mode") ? focus.Mode : StudioZoomFocusMode.Point,
                     X = HasNonNull(element, "focus", "x") ? focus.X : 0.5,
                     Y = HasNonNull(element, "focus", "y") ? focus.Y : 0.5,
                 },
+                EaseIn = HasNonNull(element, "easeIn") ? zoom.EaseIn : 0.5,
+                EaseOut = HasNonNull(element, "easeOut") ? zoom.EaseOut : 0.5,
                 Origin = HasNonNull(element, "origin") ? zoom.Origin : StudioZoomOrigin.Manual,
             };
         }

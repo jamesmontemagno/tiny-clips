@@ -350,6 +350,10 @@ public sealed class StudioEditorSession
 
     public void SetScreenShadow(double value) => Edit(model => model.SetScreenShadow(value));
 
+    public void SetScreenCrop(StudioRect? crop) => Edit(model => model.SetScreenCrop(crop));
+
+    public void ClearScreenCrop() => Edit(static model => model.ClearScreenCrop());
+
     public void SetCameraShape(StudioCameraShape shape) => Edit(model => model.SetCameraShape(shape));
 
     public void SetCameraCornerRadius(double value) => Edit(model => model.SetCameraCornerRadius(value));
@@ -371,6 +375,10 @@ public sealed class StudioEditorSession
 
     public void SetCameraShadow(double value) => Edit(model => model.SetCameraShadow(value));
 
+    public void SetCameraCrop(StudioRect? crop) => Edit(model => model.SetCameraCrop(crop));
+
+    public void ClearCameraCrop() => Edit(static model => model.ClearCameraCrop());
+
     public void SetSideBySide(StudioCameraSide cameraSide, double fraction) =>
         Edit(model => model.SetSideBySide(cameraSide, fraction));
 
@@ -379,6 +387,48 @@ public sealed class StudioEditorSession
     public void SetClickRingsEnabled(bool isEnabled) => Edit(model => model.SetClickRingsEnabled(isEnabled));
 
     public void SetBrandingEnabled(bool isEnabled) => Edit(model => model.SetBrandingEnabled(isEnabled));
+
+    // Zooms. An index is a zoom's place in Project.Zooms, which is kept in time order. Every edit
+    // answers with the place the zoom has afterwards, or none when it is gone. An edit that is
+    // refused, because the project cannot be edited just now, leaves the zoom where it was.
+
+    /// <summary>The zoom that contains a source time, or null.</summary>
+    public int? GetZoomIndexAt(double sourceTime) => Model?.GetZoomIndexAt(sourceTime);
+
+    /// <summary>Adds a zoom that starts at a source time and looks at where the pointer is then.</summary>
+    public StudioZoomEditResult AddZoom(double sourceTime) =>
+        Edit(model => model.AddZoom(sourceTime, _events), new StudioZoomEditResult(false, null));
+
+    public StudioZoomEditResult RemoveZoom(int index) =>
+        Edit(model => model.RemoveZoom(index), new StudioZoomEditResult(false, index));
+
+    public StudioZoomEditResult SetZoomStart(int index, double sourceTime) =>
+        Edit(model => model.SetZoomStart(index, sourceTime), new StudioZoomEditResult(false, index));
+
+    public StudioZoomEditResult SetZoomEnd(int index, double sourceTime) =>
+        Edit(model => model.SetZoomEnd(index, sourceTime), new StudioZoomEditResult(false, index));
+
+    public StudioZoomEditResult SetZoomScale(int index, double scale) =>
+        Edit(model => model.SetZoomScale(index, scale), new StudioZoomEditResult(false, index));
+
+    public StudioZoomEditResult SetZoomFocusMode(int index, StudioZoomFocusMode mode) =>
+        Edit(model => model.SetZoomFocusMode(index, mode), new StudioZoomEditResult(false, index));
+
+    public StudioZoomEditResult SetZoomFocusPoint(int index, double x, double y) =>
+        Edit(model => model.SetZoomFocusPoint(index, x, y), new StudioZoomEditResult(false, index));
+
+    public StudioZoomEditResult SetZoomEaseIn(int index, double seconds) =>
+        Edit(model => model.SetZoomEaseIn(index, seconds), new StudioZoomEditResult(false, index));
+
+    public StudioZoomEditResult SetZoomEaseOut(int index, double seconds) =>
+        Edit(model => model.SetZoomEaseOut(index, seconds), new StudioZoomEditResult(false, index));
+
+    /// <summary>
+    /// Replaces the suggested zooms with new ones worked out from the recording's clicks, as one
+    /// undo step. Zooms the user made or changed stay. Returns whether anything changed.
+    /// </summary>
+    public bool ApplyZoomSuggestions() =>
+        Edit(model => model.ApplyZoomSuggestions(StudioZoomSuggestions.Suggest(model.Project, _events)), false);
 
     /// <summary>Moves the trim start, from a handle, and shows the frame the video now starts on.</summary>
     public void SetTrimStart(double sourceTime)
@@ -446,6 +496,14 @@ public sealed class StudioEditorSession
         }
 
         RaiseChanged(StudioEditorChanges.Project | StudioEditorChanges.Playback);
+    }
+
+    // An edit that also has something to say about what it did.
+    private TResult Edit<TResult>(Func<StudioEditorModel, TResult> change, TResult refused)
+    {
+        var result = refused;
+        Edit(model => { result = change(model); });
+        return result;
     }
 
     // Transport

@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace TinyClips.Core.Studio;
 
 public readonly record struct StudioSize(double Width, double Height);
@@ -104,18 +106,22 @@ public sealed class StudioLayoutPlan
 {
     private readonly StudioProject _project;
     private readonly StudioScene[] _scenes;
-    private readonly StudioFrameRect _screenSourceRect;
+    private readonly StudioFrameRect _screenBaseSourceRect;
+    private readonly StudioZoom[] _zooms;
+    private readonly StudioPreparedCursorSamples _cursorSamples;
     private readonly StudioRect? _cameraCrop;
     private readonly double _screenAspect;
     private readonly double _cameraAspect;
     private readonly bool _hasCamera;
 
-    private StudioLayoutPlan(StudioProject project, StudioScene[] scenes)
+    private StudioLayoutPlan(StudioProject project, StudioScene[] scenes, StudioEvents? events)
     {
         _project = project;
         _scenes = scenes;
         var screenCrop = StudioCanvasMath.ValidCropOrNull(project.Screen.Crop);
-        _screenSourceRect = ToFrameRect(screenCrop ?? new StudioRect(0, 0, 1, 1));
+        _screenBaseSourceRect = ToFrameRect(screenCrop ?? new StudioRect(0, 0, 1, 1));
+        _zooms = NormalizeZooms(project.Zooms);
+        _cursorSamples = StudioPreparedCursorSamples.For(events);
         _screenAspect = (project.Sources.Screen.Width * (screenCrop?.Width ?? 1)) / (project.Sources.Screen.Height * (screenCrop?.Height ?? 1));
         _hasCamera = project.Sources.Camera is not null;
         _cameraCrop = StudioCanvasMath.ValidCropOrNull(project.Camera.Crop);
@@ -128,10 +134,17 @@ public sealed class StudioLayoutPlan
 
     public IReadOnlyList<StudioScene> Scenes => _scenes;
 
-    public static StudioLayoutPlan Create(StudioProject project)
+    /// <summary>A plan for a project without events: a zoom that follows the pointer looks at its own focus point.</summary>
+    public static StudioLayoutPlan Create(StudioProject project) => Create(project, events: null);
+
+    /// <summary>
+    /// A plan for a project and its events. Of the events only the cursor samples are used, by
+    /// zooms that follow the pointer.
+    /// </summary>
+    public static StudioLayoutPlan Create(StudioProject project, StudioEvents? events)
     {
         ArgumentNullException.ThrowIfNull(project);
-        return new StudioLayoutPlan(project, NormalizeScenes(project.Scenes));
+        return new StudioLayoutPlan(project, NormalizeScenes(project.Scenes), events);
     }
 
     public StudioResolvedFrame Resolve(double time, double canvasWidth, double canvasHeight)
@@ -169,7 +182,7 @@ public sealed class StudioLayoutPlan
             ? null
             : new StudioResolvedScreen(
                 screenRect!.Value,
-                _screenSourceRect,
+                ZoomWindow(time),
                 Math.Min(screenRadiusBase, Math.Min(screenRect.Value.Width, screenRect.Value.Height) / 2),
                 Shadow(_project.Screen.Shadow, shortSide));
 
@@ -213,6 +226,45 @@ public sealed class StudioLayoutPlan
         }
 
         normalized[0] = normalized[0] with { Start = 0 };
+        return normalized.ToArray();
+    }
+
+    internal static StudioZoom[] NormalizeZooms(IReadOnlyList<StudioZoom>? zooms)
+    {
+        if (zooms is null || zooms.Count == 0)
+        {
+            return [];
+        }
+
+        var sorted = zooms
+            .Where(static zoom => zoom is not null)
+            .Select((zoom, index) => (Zoom: zoom with { Start = Math.Max(0, zoom.Start) }, Index: index))
+            .Where(static item => item.Zoom.End > item.Zoom.Start)
+            .OrderBy(static item => item.Zoom.Start)
+            .ThenBy(static item => item.Index)
+            .ToArray();
+
+        var normalized = new List<StudioZoom>(sorted.Length);
+        foreach (var item in sorted)
+        {
+            if (normalized.Count > 0 && normalized[^1].Start == item.Zoom.Start)
+            {
+                normalized[^1] = item.Zoom;
+            }
+            else
+            {
+                normalized.Add(item.Zoom);
+            }
+        }
+
+        for (var i = 0; i < normalized.Count - 1; i++)
+        {
+            if (normalized[i + 1].Start < normalized[i].End)
+            {
+                normalized[i] = normalized[i] with { End = normalized[i + 1].Start };
+            }
+        }
+
         return normalized.ToArray();
     }
 
@@ -354,6 +406,89 @@ public sealed class StudioLayoutPlan
         }
     }
 
+    private StudioFrameRect ZoomWindow(double time)
+    {
+        var active = ActiveZoomIndex(time);
+        if (active < 0)
+        {
+            return _screenBaseSourceRect;
+        }
+
+        var zoom = _zooms[active];
+        var chainedToPrevious = active > 0 && _zooms[active - 1].End == zoom.Start;
+        var nextIsChained = active + 1 < _zooms.Length && _zooms[active + 1].Start == zoom.End;
+        var easeIn = Clamp(zoom.EaseIn, 0, 3);
+        var easeOut = nextIsChained ? 0 : Clamp(zoom.EaseOut, 0, 3);
+        var duration = zoom.End - zoom.Start;
+        if (easeIn + easeOut > duration)
+        {
+            var factor = duration / (easeIn + easeOut);
+            easeIn *= factor;
+            easeOut *= factor;
+        }
+
+        var held = HeldWindow(zoom, time);
+        if (time < zoom.Start + easeIn)
+        {
+            var from = chainedToPrevious ? HeldWindow(_zooms[active - 1], time) : _screenBaseSourceRect;
+            return Lerp(from, held, Ease((time - zoom.Start) / easeIn));
+        }
+
+        if (time > zoom.End - easeOut)
+        {
+            return Lerp(_screenBaseSourceRect, held, Ease((zoom.End - time) / easeOut));
+        }
+
+        return held;
+    }
+
+    private int ActiveZoomIndex(double time)
+    {
+        var low = 0;
+        var high = _zooms.Length - 1;
+        var candidate = -1;
+        while (low <= high)
+        {
+            var middle = low + ((high - low) / 2);
+            if (_zooms[middle].Start <= time)
+            {
+                candidate = middle;
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+
+        return candidate >= 0 && time < _zooms[candidate].End ? candidate : -1;
+    }
+
+    private StudioFrameRect HeldWindow(StudioZoom zoom, double time)
+    {
+        var (focusX, focusY) = Focus(zoom, time);
+        return StudioZoomMath.HeldWindow(_screenBaseSourceRect, zoom.Scale, focusX, focusY);
+    }
+
+    private (double X, double Y) Focus(StudioZoom zoom, double time)
+    {
+        if (zoom.Focus.Mode == StudioZoomFocusMode.Cursor && _cursorSamples.Count > 0)
+        {
+            return _cursorSamples.MeanInCenteredSecond(time);
+        }
+
+        return (Clamp(zoom.Focus.X, 0, 1), Clamp(zoom.Focus.Y, 0, 1));
+    }
+
+    private static double Ease(double value) => value * value * (3 - (2 * value));
+
+    private static StudioFrameRect Lerp(StudioFrameRect from, StudioFrameRect to, double amount) =>
+        new(
+            from.X + ((to.X - from.X) * amount),
+            from.Y + ((to.Y - from.Y) * amount),
+            from.Width + ((to.Width - from.Width) * amount),
+            from.Height + ((to.Height - from.Height) * amount));
+
     private static StudioFrameRect Fit(double aspect, StudioFrameRect rect)
     {
         double width;
@@ -387,13 +522,182 @@ public sealed class StudioLayoutPlan
 
 public static class StudioLayoutResolver
 {
+    /// <summary>Resolves a frame of a project without events: a zoom that follows the pointer looks at its own focus point.</summary>
     public static StudioResolvedFrame Resolve(StudioProject project, double time, double canvasWidth, double canvasHeight) =>
         StudioLayoutPlan.Create(project).Resolve(time, canvasWidth, canvasHeight);
 
+    /// <summary>
+    /// Resolves a frame of a project with its events. Whoever resolves many frames of one project
+    /// keeps a <see cref="StudioLayoutPlan"/> instead, which normalizes the scenes and zooms once.
+    /// </summary>
+    public static StudioResolvedFrame Resolve(StudioProject project, StudioEvents? events, double time, double canvasWidth, double canvasHeight) =>
+        StudioLayoutPlan.Create(project, events).Resolve(time, canvasWidth, canvasHeight);
+
     internal static StudioScene[] NormalizeScenes(IReadOnlyList<StudioScene>? scenes) =>
         StudioLayoutPlan.NormalizeScenes(scenes);
+
+    internal static StudioZoom[] NormalizeZooms(IReadOnlyList<StudioZoom>? zooms) =>
+        StudioLayoutPlan.NormalizeZooms(zooms);
 }
 
+internal static class StudioZoomMath
+{
+    /// <summary>
+    /// The part of the screen a zoom shows while it is held (section 6.8 of the project format):
+    /// <paramref name="baseRect"/> made smaller by the scale, centered on the focus, and pushed back
+    /// inside where it would stick out. The lower bound is applied last, so it wins if rounding
+    /// puts the upper bound below it.
+    /// </summary>
+    public static StudioFrameRect HeldWindow(StudioFrameRect baseRect, double scale, double focusX, double focusY)
+    {
+        var clamped = Math.Min(5, Math.Max(1, scale));
+        var width = baseRect.Width / clamped;
+        var height = baseRect.Height / clamped;
+        var x = Math.Max(baseRect.X, Math.Min(focusX - (width / 2), baseRect.X + baseRect.Width - width));
+        var y = Math.Max(baseRect.Y, Math.Min(focusY - (height / 2), baseRect.Y + baseRect.Height - height));
+        return new StudioFrameRect(x, y, width, height);
+    }
+}
+
+/// <summary>
+/// A recording's cursor samples in time order with their points clamped to the frame, ready for
+/// <see cref="MeanInCenteredSecond"/>, which a zoom that follows the pointer asks for every frame.
+/// </summary>
+internal sealed class StudioPreparedCursorSamples
+{
+    private static readonly StudioPreparedCursorSamples Empty = new([]);
+
+    // A long recording has a hundred thousand samples, and the layout is resolved for every frame
+    // of a preview and an export. So the samples are prepared once for each cursor array and kept
+    // for as long as that array is alive. Nothing else refers to an entry, so it goes with its array.
+    private static readonly ConditionalWeakTable<StudioCursorSample[], StudioPreparedCursorSamples> Prepared = new();
+
+    private readonly double[] _times;
+    private readonly double[] _x;
+    private readonly double[] _y;
+
+    private StudioPreparedCursorSamples(StudioCursorSample[] cursor)
+    {
+        var count = 0;
+        var inOrder = true;
+        var samples = new StudioCursorSample[cursor.Length];
+        foreach (var sample in cursor)
+        {
+            if (sample is null)
+            {
+                continue;
+            }
+
+            inOrder &= count == 0 || !(sample.T < samples[count - 1].T);
+            samples[count++] = sample;
+        }
+
+        if (!inOrder)
+        {
+            // By time, and for equal times in the order they are stored.
+            var order = new int[count];
+            for (var i = 0; i < count; i++)
+            {
+                order[i] = i;
+            }
+
+            var unsorted = samples;
+            Array.Sort(order, (left, right) =>
+            {
+                var byTime = unsorted[left].T.CompareTo(unsorted[right].T);
+                return byTime != 0 ? byTime : left.CompareTo(right);
+            });
+            samples = new StudioCursorSample[count];
+            for (var i = 0; i < count; i++)
+            {
+                samples[i] = unsorted[order[i]];
+            }
+        }
+
+        _times = new double[count];
+        _x = new double[count];
+        _y = new double[count];
+        for (var i = 0; i < count; i++)
+        {
+            _times[i] = samples[i].T;
+            _x[i] = Math.Min(1, Math.Max(0, samples[i].X));
+            _y[i] = Math.Min(1, Math.Max(0, samples[i].Y));
+        }
+    }
+
+    public int Count => _times.Length;
+
+    /// <summary>
+    /// The prepared samples of <paramref name="events"/>. The cursor array of an events value is
+    /// never changed in place; a changed recording has a new array and is prepared again.
+    /// </summary>
+    public static StudioPreparedCursorSamples For(StudioEvents? events) =>
+        events?.Cursor is { Length: > 0 } cursor
+            ? Prepared.GetValue(cursor, static samples => new StudioPreparedCursorSamples(samples))
+            : Empty;
+
+    /// <summary>
+    /// The pointer's mean position over the second centered on <paramref name="time"/>. A sample
+    /// lasts until the next one; before the first sample the pointer counts as being at the first,
+    /// and after the last at the last. Only meaningful when there is at least one sample.
+    /// </summary>
+    public (double X, double Y) MeanInCenteredSecond(double time)
+    {
+        var count = _times.Length;
+        if (count == 0)
+        {
+            return (0.5, 0.5);
+        }
+
+        var start = time - 0.5;
+        var end = time + 0.5;
+
+        // The sample the pointer is at when the second begins. Every one before it has ended by then.
+        var first = Math.Max(0, UpperBound(_times, start) - 1);
+        double x = 0;
+        double y = 0;
+        for (var i = first; i < count; i++)
+        {
+            var from = i == 0 ? double.NegativeInfinity : _times[i];
+            if (from >= end)
+            {
+                break;
+            }
+
+            var until = i == count - 1 ? double.PositiveInfinity : _times[i + 1];
+            var length = Math.Max(0, Math.Min(end, until) - Math.Max(start, from));
+            x += _x[i] * length;
+            y += _y[i] * length;
+            if (until >= end)
+            {
+                break;
+            }
+        }
+
+        return (x, y);
+    }
+
+    /// <summary>The index of the first value greater than <paramref name="value"/>.</summary>
+    private static int UpperBound(double[] values, double value)
+    {
+        var low = 0;
+        var high = values.Length;
+        while (low < high)
+        {
+            var middle = low + ((high - low) / 2);
+            if (values[middle] <= value)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
+    }
+}
 public sealed class StudioTimeMap
 {
     private readonly StudioTimeSegment[] _segments;

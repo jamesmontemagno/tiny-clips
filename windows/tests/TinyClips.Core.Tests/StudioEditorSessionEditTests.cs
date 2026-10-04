@@ -300,6 +300,132 @@ public sealed class StudioEditorSessionEditTests : StudioEditorSessionTestBase
     }
 
     [Fact]
+    public async Task ZoomEdits_UseLoadedEvents_AndReachThePreview()
+    {
+        var id = CreateProject();
+        Projects.SaveEvents(id, new StudioEvents
+        {
+            Cursor =
+            [
+                new StudioCursorSample { T = 2, X = 0.25, Y = 0.75 },
+                new StudioCursorSample { T = 3, X = 0.25, Y = 0.75 },
+            ],
+        });
+        var session = await OpenAsync(id);
+        Preview.Calls.Clear();
+
+        var added = session.AddZoom(2.5);
+        var scaled = session.SetZoomScale(added.Index!.Value, 4);
+
+        Assert.True(added.Changed);
+        Assert.True(scaled.Changed);
+        var zoom = Assert.Single(session.Project!.Zooms);
+        Assert.Equal(0.25, zoom.Focus.X, Precision);
+        Assert.Equal(0.75, zoom.Focus.Y, Precision);
+        Assert.Equal(4, zoom.Scale, Precision);
+        Assert.Equal(new[] { "UpdateProject", "UpdateProject" }, Preview.Calls);
+        Assert.Equal(4, Preview.LastProject!.Zooms[0].Scale, Precision);
+    }
+
+    [Fact]
+    public async Task ApplyZoomSuggestions_ReplacesAutoZoomsFromLoadedClicks()
+    {
+        var id = CreateProject();
+        Projects.Save(Projects.Load(id) with
+        {
+            Zooms = [new StudioZoom { Start = 7, End = 8, Origin = StudioZoomOrigin.Auto }],
+        });
+        Projects.SaveEvents(id, new StudioEvents
+        {
+            Clicks = [new StudioClickEvent { T = 3, X = 0.2, Y = 0.3 }],
+        });
+        var session = await OpenAsync(id);
+
+        Assert.True(session.ApplyZoomSuggestions());
+
+        var zoom = Assert.Single(session.Project!.Zooms);
+        Assert.Equal(2.4, zoom.Start, Precision);
+        Assert.Equal(4.5, zoom.End, Precision);
+        Assert.Equal(StudioZoomOrigin.Auto, zoom.Origin);
+        Assert.Equal(2.4, Preview.LastProject!.Zooms[0].Start, Precision);
+    }
+
+    [Fact]
+    public async Task ZoomEdits_AreRefusedWhileExporting_AndTheZoomStaysWhereItWas()
+    {
+        var session = await OpenAsync(CreateProject());
+        session.AddZoom(2);
+        var export = session.ExportAsync(() => ExportPath, default);
+        Preview.Calls.Clear();
+
+        Assert.Equal(new StudioZoomEditResult(false, 0), session.SetZoomScale(0, 4));
+        Assert.Equal(new StudioZoomEditResult(false, 0), session.SetZoomStart(0, 1));
+        Assert.Equal(new StudioZoomEditResult(false, 0), session.SetZoomEnd(0, 9));
+        Assert.Equal(new StudioZoomEditResult(false, 0), session.SetZoomFocusMode(0, StudioZoomFocusMode.Cursor));
+        Assert.Equal(new StudioZoomEditResult(false, 0), session.SetZoomFocusPoint(0, 0.1, 0.1));
+        Assert.Equal(new StudioZoomEditResult(false, 0), session.SetZoomEaseIn(0, 2));
+        Assert.Equal(new StudioZoomEditResult(false, 0), session.SetZoomEaseOut(0, 2));
+        Assert.Equal(new StudioZoomEditResult(false, 0), session.RemoveZoom(0));
+        Assert.Equal(new StudioZoomEditResult(false, null), session.AddZoom(7));
+        Assert.False(session.ApplyZoomSuggestions());
+
+        var zoom = Assert.Single(session.Project!.Zooms);
+        Assert.Equal(2, zoom.Scale, Precision);
+        Assert.Equal(5, zoom.End, Precision);
+        Assert.Empty(Preview.Calls);
+        Assert.Equal(0, session.GetZoomIndexAt(3));
+
+        session.CancelExport();
+        await FinishAsync(export);
+    }
+
+    [Fact]
+    public async Task ADragOfAZoom_IsOneUndoStep_AndEveryStepReachesThePreview()
+    {
+        var session = await OpenAsync(CreateProject());
+        session.AddZoom(2);
+        Preview.Calls.Clear();
+
+        session.BeginGesture();
+        session.SetZoomEnd(0, 5.5);
+        session.SetZoomEnd(0, 6);
+        session.SetZoomEnd(0, 7);
+        session.EndGesture();
+
+        Assert.Equal(new[] { "UpdateProject", "UpdateProject", "UpdateProject" }, Preview.Calls);
+        Assert.Equal(7, session.Project!.Zooms[0].End, Precision);
+        Assert.Equal(7, Preview.LastProject!.Zooms[0].End, Precision);
+
+        session.Undo();
+        Assert.Equal(5, session.Project.Zooms[0].End, Precision);
+        session.Undo();
+        Assert.Empty(session.Project.Zooms);
+        Assert.Empty(Preview.LastProject!.Zooms);
+    }
+
+    [Fact]
+    public async Task ACrop_ReachesThePreview_AndIsSaved()
+    {
+        var id = CreateProject(camera: true);
+        var session = await OpenAsync(id);
+        Preview.Calls.Clear();
+
+        session.SetScreenCrop(new StudioRect(0.25, 0, 0.5, 1));
+        session.SetCameraCrop(new StudioRect(0.1, 0.1, 0.8, 0.8));
+        session.ClearCameraCrop();
+
+        Assert.Equal(new[] { "UpdateProject", "UpdateProject", "UpdateProject" }, Preview.Calls);
+        Assert.Equal(0.25, Preview.LastProject!.Screen.Crop!.X, Precision);
+        Assert.Null(Preview.LastProject.Camera.Crop);
+        Assert.True(session.HasUnsavedEdits);
+
+        await FinishAsync(session.CloseAsync());
+
+        Assert.Equal(0.5, Projects.Load(id).Screen.Crop!.Width, Precision);
+        Assert.Null(Projects.Load(id).Camera.Crop);
+    }
+
+    [Fact]
     public async Task Edit_WhilePlaying_PausesWhenThePlayheadIsNowAtThePlaybackEnd()
     {
         var session = await OpenAsync(CreateProject());

@@ -445,7 +445,7 @@ internal sealed class StudioExportJob
                 pixels = new byte[width * height * 4];
             }
 
-            var layout = StudioLayoutPlan.Create(_project);
+            var layout = StudioLayoutPlan.Create(_project, _events);
             var lastProgress = Stopwatch.GetTimestamp();
             for (var index = 0; index < plan.Count; index++)
             {
@@ -765,7 +765,7 @@ internal sealed class StudioPosterJob
                 readerManager.ResetDevice(graphics.Device).CheckError();
             }
 
-            var resolved = StudioLayoutResolver.Resolve(_project, sourceTime, width, height);
+            var resolved = StudioLayoutResolver.Resolve(_project, _events, sourceTime, width, height);
             StudioGpuVideoFrame? screenFrame = null;
             if (resolved.Screen is not null)
             {

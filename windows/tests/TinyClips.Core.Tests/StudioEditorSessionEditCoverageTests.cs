@@ -13,8 +13,10 @@ public sealed class StudioEditorSessionEditCoverageTests : StudioEditorSessionTe
         { "padding", s => s.SetCanvasPadding(0.25), p => Near(p.Canvas.Padding, 0.25) },
         { "screen radius", s => s.SetScreenCornerRadius(0.1), p => Near(p.Screen.CornerRadius, 0.1) },
         { "screen shadow", s => s.SetScreenShadow(0.8), p => Near(p.Screen.Shadow, 0.8) },
+        { "screen crop", s => s.SetScreenCrop(new StudioRect(0.1, 0.2, 0.5, 0.6)), p => p.Screen.Crop is { X: 0.1, Y: 0.2, Width: 0.5, Height: 0.6 } },
         { "camera shape", s => s.SetCameraShape(StudioCameraShape.RoundedRectangle), p => p.Camera.Shape == StudioCameraShape.RoundedRectangle },
         { "camera radius", s => s.SetCameraCornerRadius(0.3), p => Near(p.Camera.CornerRadius, 0.3) },
+        { "camera crop", s => s.SetCameraCrop(new StudioRect(0.2, 0.1, 0.6, 0.7)), p => p.Camera.Crop is { X: 0.2, Y: 0.1, Width: 0.6, Height: 0.7 } },
         { "bubble size", s => s.SetCameraBubbleSize(0.4), p => Near(p.Scenes[0].Bubble.Size, 0.4) },
         { "anchor", s => s.SetCameraAnchor(StudioAnchor.TopLeft), p => p.Scenes[0].Bubble.Anchor == StudioAnchor.TopLeft },
         {
@@ -35,6 +37,7 @@ public sealed class StudioEditorSessionEditCoverageTests : StudioEditorSessionTe
         { "branding", s => s.SetBrandingEnabled(true), p => p.Overlays.Branding },
         { "trim start", s => s.SetTrimStart(2), p => Near(p.Edits.TrimStart, 2) },
         { "trim end", s => s.SetTrimEnd(8), p => p.Edits.TrimEnd is { } end && Near(end, 8) },
+        { "add zoom", s => s.AddZoom(2), p => p.Zooms.Length == 1 && Near(p.Zooms[0].Start, 2) },
     };
 
     [Theory]

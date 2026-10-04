@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace TinyClips.Core.Studio;
@@ -133,6 +134,14 @@ public readonly record struct StudioEditorCanvasGeometry(StudioSize ViewSize, St
         CanvasRectInView.Y + canvasY / Math.Max(1, CanvasSize.Height) * CanvasRectInView.Height);
 }
 
+/// <summary>What an edit to a zoom did.</summary>
+/// <param name="Changed">Whether the project changed.</param>
+/// <param name="Index">
+/// Where the zoom is in <see cref="StudioProject.Zooms"/> now, or null when it is gone or there is
+/// none. The list is kept in time order, so an edit can move a zoom.
+/// </param>
+public readonly record struct StudioZoomEditResult(bool Changed, int? Index);
+
 /// <summary>
 /// The Studio editor's state and every edit it can make, with undo. It has no UI or media types in
 /// it so it can be unit tested. Not thread-safe: use it from one thread.
@@ -141,6 +150,13 @@ public readonly record struct StudioEditorCanvasGeometry(StudioSize ViewSize, St
 public sealed class StudioEditorModel
 {
     public const double MinimumDuration = 0.1;
+
+    /// <summary>The shortest zoom the editor makes, in seconds. It is also the shortest suggestion (section 8).</summary>
+    public const double MinimumZoomDuration = 0.3;
+
+    /// <summary>How long a zoom is when it is added, in seconds, where there is room for it.</summary>
+    public const double NewZoomDuration = 3;
+
     public const int MaximumUndoDepth = 100;
 
     private readonly List<StudioEditableState> _undoStack = [];
@@ -160,7 +176,11 @@ public sealed class StudioEditorModel
             };
         }
 
-        Project = Project with { Edits = ClampedEdits(Project.Edits, Project.Edits.TrimStart, Project.Edits.TrimEnd) };
+        Project = Project with
+        {
+            Zooms = SortStoredZooms(Project.Zooms),
+            Edits = ClampedEdits(Project.Edits, Project.Edits.TrimStart, Project.Edits.TrimEnd),
+        };
         _exportedState = project.Exports is { Length: > 0 } ? EditableState : null;
     }
 
@@ -409,6 +429,33 @@ public sealed class StudioEditorModel
         }
     }
 
+    /// <summary>
+    /// Shows only part of the screen. A rectangle that is not a valid crop (section 3 of the project
+    /// format) is made one: its size is brought to between 0.05 and 1 first, and then it is moved
+    /// back inside the frame. Null removes the crop. A rectangle with a member that is not a number
+    /// is ignored.
+    /// </summary>
+    public void SetScreenCrop(StudioRect? crop)
+    {
+        if (crop is null || IsFinite(crop))
+        {
+            Mutate(project => project with { Screen = project.Screen with { Crop = crop is null ? null : ClampCrop(crop) } });
+        }
+    }
+
+    public void ClearScreenCrop() => SetScreenCrop(null);
+
+    /// <summary>Shows only part of the camera picture. The same rules as <see cref="SetScreenCrop"/>.</summary>
+    public void SetCameraCrop(StudioRect? crop)
+    {
+        if (crop is null || IsFinite(crop))
+        {
+            Mutate(project => project with { Camera = project.Camera with { Crop = crop is null ? null : ClampCrop(crop) } });
+        }
+    }
+
+    public void ClearCameraCrop() => SetCameraCrop(null);
+
     public void SetCameraBubbleSize(double value)
     {
         if (double.IsFinite(value))
@@ -500,6 +547,176 @@ public sealed class StudioEditorModel
     /// <summary>The bubble's rectangle on a canvas of the given size, whatever layout is current.</summary>
     public StudioFrameRect? GetBubbleRect(double canvasWidth, double canvasHeight) =>
         canvasWidth > 0 && canvasHeight > 0 ? GetBubbleRect(Project, canvasWidth, canvasHeight) : null;
+
+    // Zooms
+    //
+    // The stored list is kept in time order and is never null, so a zoom's index identifies it
+    // between two edits. Every edit that can move or remove a zoom says where it is afterwards.
+
+    /// <summary>
+    /// The zoom that contains <paramref name="sourceTime"/>, or null. A zoom contains its start
+    /// and not its end, as in the layout.
+    /// </summary>
+    public int? GetZoomIndexAt(double sourceTime)
+    {
+        var zooms = Project.Zooms;
+        for (var i = 0; i < zooms.Length; i++)
+        {
+            if (zooms[i].Start <= sourceTime && sourceTime < zooms[i].End)
+            {
+                return i;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Adds a zoom that starts at <paramref name="sourceTime"/> and lasts
+    /// <see cref="NewZoomDuration"/>, or until the next zoom or the end of the recording when that
+    /// comes sooner. It looks at where the pointer is at that time, or at the center when the
+    /// recording has no cursor samples.
+    /// </summary>
+    /// <returns>
+    /// The new zoom's index. Unchanged with the index of the zoom that is already there, and
+    /// unchanged with no index when there is no room for <see cref="MinimumZoomDuration"/>.
+    /// </returns>
+    public StudioZoomEditResult AddZoom(double sourceTime, StudioEvents? events)
+    {
+        if (!double.IsFinite(sourceTime))
+        {
+            return new StudioZoomEditResult(false, null);
+        }
+
+        var start = Clamp(sourceTime, 0, SourceDuration);
+        if (GetZoomIndexAt(start) is { } existing)
+        {
+            return new StudioZoomEditResult(false, existing);
+        }
+
+        var zooms = Project.Zooms;
+        var index = Array.FindIndex(zooms, zoom => zoom.Start > start);
+        if (index < 0)
+        {
+            index = zooms.Length;
+        }
+
+        var nextStart = index < zooms.Length ? zooms[index].Start : SourceDuration;
+        var end = Math.Min(start + NewZoomDuration, Math.Min(nextStart, SourceDuration));
+        if (end - start < MinimumZoomDuration)
+        {
+            return new StudioZoomEditResult(false, null);
+        }
+
+        // The same smoothing as a zoom that follows the pointer, taken once and kept as a point.
+        var cursor = StudioPreparedCursorSamples.For(events);
+        var (focusX, focusY) = cursor.Count > 0 ? cursor.MeanInCenteredSecond(start) : (0.5, 0.5);
+        var added = new StudioZoom
+        {
+            Start = start,
+            End = end,
+            Focus = new StudioZoomFocus { X = Clamp(focusX, 0, 1), Y = Clamp(focusY, 0, 1) },
+        };
+        StudioZoom[] updated = [.. zooms[..index], added, .. zooms[index..]];
+        Mutate(project => project with { Zooms = updated });
+        return new StudioZoomEditResult(true, index);
+    }
+
+    public StudioZoomEditResult RemoveZoom(int index)
+    {
+        if (!TryGetZoom(index, out _))
+        {
+            return new StudioZoomEditResult(false, null);
+        }
+
+        var zooms = Project.Zooms;
+        StudioZoom[] updated = [.. zooms[..index], .. zooms[(index + 1)..]];
+        Mutate(project => project with { Zooms = updated });
+        return new StudioZoomEditResult(true, null);
+    }
+
+    /// <summary>
+    /// Moves a zoom's start. It stays at or after the end of the zoom before it, and at least
+    /// <see cref="MinimumZoomDuration"/> before its own end. Moved up against the zoom before it,
+    /// it takes exactly that zoom's end, which is what chains the two (section 6.8).
+    /// </summary>
+    public StudioZoomEditResult SetZoomStart(int index, double sourceTime)
+    {
+        if (!TryGetZoom(index, out var zoom))
+        {
+            return new StudioZoomEditResult(false, null);
+        }
+
+        if (!double.IsFinite(sourceTime))
+        {
+            return new StudioZoomEditResult(false, index);
+        }
+
+        // Zooms never overlap, so where both limits cannot be kept the zoom before decides.
+        var earliest = index > 0 ? Project.Zooms[index - 1].End : 0;
+        var latest = zoom.End - MinimumZoomDuration;
+        return ReplaceZoom(index, zoom with { Start = Math.Max(earliest, Math.Min(sourceTime, latest)) });
+    }
+
+    /// <summary>
+    /// Moves a zoom's end. It stays at least <see cref="MinimumZoomDuration"/> after its own start,
+    /// and at or before the start of the next zoom and the end of the recording. Moved up against
+    /// the next zoom, it takes exactly that zoom's start.
+    /// </summary>
+    public StudioZoomEditResult SetZoomEnd(int index, double sourceTime)
+    {
+        if (!TryGetZoom(index, out var zoom))
+        {
+            return new StudioZoomEditResult(false, null);
+        }
+
+        if (!double.IsFinite(sourceTime))
+        {
+            return new StudioZoomEditResult(false, index);
+        }
+
+        var zooms = Project.Zooms;
+        var earliest = zoom.Start + MinimumZoomDuration;
+        var latest = index + 1 < zooms.Length ? zooms[index + 1].Start : SourceDuration;
+        return ReplaceZoom(index, zoom with { End = Math.Min(Math.Max(sourceTime, earliest), latest) });
+    }
+
+    public StudioZoomEditResult SetZoomScale(int index, double value) =>
+        EditZoom(index, double.IsFinite(value), zoom => zoom with { Scale = Clamp(value, 1, 5) });
+
+    public StudioZoomEditResult SetZoomFocusMode(int index, StudioZoomFocusMode mode) =>
+        EditZoom(index, true, zoom => zoom with { Focus = zoom.Focus with { Mode = mode } });
+
+    /// <summary>Where a zoom looks, as a point in the screen frame from 0 to 1.</summary>
+    public StudioZoomEditResult SetZoomFocusPoint(int index, double x, double y) =>
+        EditZoom(index, double.IsFinite(x) && double.IsFinite(y), zoom => zoom with
+        {
+            Focus = zoom.Focus with { X = Clamp(x, 0, 1), Y = Clamp(y, 0, 1) },
+        });
+
+    public StudioZoomEditResult SetZoomEaseIn(int index, double seconds) =>
+        EditZoom(index, double.IsFinite(seconds), zoom => zoom with { EaseIn = Clamp(seconds, 0, 3) });
+
+    public StudioZoomEditResult SetZoomEaseOut(int index, double seconds) =>
+        EditZoom(index, double.IsFinite(seconds), zoom => zoom with { EaseOut = Clamp(seconds, 0, 3) });
+
+    /// <summary>
+    /// Replaces the suggested zooms (<see cref="StudioZoomOrigin.Auto"/>) with
+    /// <paramref name="suggestions"/> and leaves every other zoom as it is. One undo step.
+    /// </summary>
+    /// <returns>Whether the project changed.</returns>
+    public bool ApplyZoomSuggestions(IReadOnlyList<StudioZoom> suggestions)
+    {
+        ArgumentNullException.ThrowIfNull(suggestions);
+        var kept = Project.Zooms.Where(static zoom => zoom.Origin != StudioZoomOrigin.Auto);
+        var suggested = suggestions
+            .Where(static zoom => zoom is not null)
+            .Select(static zoom => zoom with { Origin = StudioZoomOrigin.Auto });
+        var updated = SortStoredZooms(kept.Concat(suggested));
+        var before = Project;
+        Mutate(project => project with { Zooms = updated });
+        return !ReferenceEquals(before, Project);
+    }
 
     // Trim, audio, overlays
 
@@ -661,11 +878,79 @@ public sealed class StudioEditorModel
 
     private void MutateScene(Func<StudioScene, StudioScene> change) => Mutate(project => WithScene(project, change));
 
+    private StudioZoomEditResult EditZoom(int index, bool isValid, Func<StudioZoom, StudioZoom> change)
+    {
+        if (!TryGetZoom(index, out var zoom))
+        {
+            return new StudioZoomEditResult(false, null);
+        }
+
+        return isValid ? ReplaceZoom(index, change(zoom)) : new StudioZoomEditResult(false, index);
+    }
+
+    /// <summary>
+    /// Puts <paramref name="edited"/> in the place of the zoom at <paramref name="index"/>. An edit
+    /// that changes a suggested zoom makes it the user's own; one that changes nothing leaves it
+    /// a suggestion.
+    /// </summary>
+    private StudioZoomEditResult ReplaceZoom(int index, StudioZoom edited)
+    {
+        var zooms = Project.Zooms;
+        if (zooms[index] == edited)
+        {
+            return new StudioZoomEditResult(false, index);
+        }
+
+        var replacement = edited with { Origin = StudioZoomOrigin.Manual };
+        var updated = (StudioZoom[])zooms.Clone();
+        updated[index] = replacement;
+        var before = Project;
+        Mutate(project => project with { Zooms = SortStoredZooms(updated) });
+        if (ReferenceEquals(before, Project))
+        {
+            return new StudioZoomEditResult(false, index);
+        }
+
+        var moved = Array.FindIndex(Project.Zooms, zoom => ReferenceEquals(zoom, replacement));
+        return new StudioZoomEditResult(true, moved >= 0 ? moved : index);
+    }
+
+    private bool TryGetZoom(int index, [NotNullWhen(true)] out StudioZoom? zoom)
+    {
+        var zooms = Project.Zooms;
+        zoom = index >= 0 && index < zooms.Length ? zooms[index] : null;
+        return zoom is not null;
+    }
+
     private static StudioProject WithScene(StudioProject project, Func<StudioScene, StudioScene> change)
     {
         var scenes = (StudioScene[])project.Scenes.Clone();
         scenes[0] = change(scenes[0]);
         return project with { Scenes = scenes };
+    }
+
+    // In time order, and for equal starts in the order they were in: OrderBy is a stable sort.
+    private static StudioZoom[] SortStoredZooms(IEnumerable<StudioZoom?>? zooms) =>
+        (zooms ?? [])
+            .OfType<StudioZoom>()
+            .OrderBy(static zoom => zoom.Start)
+            .ToArray();
+
+    private static bool IsFinite(StudioRect rect) =>
+        double.IsFinite(rect.X) && double.IsFinite(rect.Y) && double.IsFinite(rect.Width) && double.IsFinite(rect.Height);
+
+    // The size first, then the position: a rectangle dragged past an edge stops there with its size.
+    private static StudioRect ClampCrop(StudioRect crop)
+    {
+        var width = Clamp(crop.Width, 0.05, 1);
+        var height = Clamp(crop.Height, 0.05, 1);
+        return crop with
+        {
+            X = Clamp(crop.X, 0, 1 - width),
+            Y = Clamp(crop.Y, 0, 1 - height),
+            Width = width,
+            Height = height,
+        };
     }
 
     private void PushUndo(StudioEditableState snapshot)

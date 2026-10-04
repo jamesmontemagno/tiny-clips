@@ -116,6 +116,28 @@ public static class StudioEditorText
         return $"{layout}, camera {corner}";
     }
 
+    /// <summary>
+    /// A zoom for screen readers, such as <c>Zoom 2×, 12.0 to 16.5 seconds</c>. The times are
+    /// source time, as the trim handles read. "Follows the pointer" and "suggested" are added
+    /// where they apply.
+    /// </summary>
+    public static string GetZoomDescription(StudioZoom zoom)
+    {
+        ArgumentNullException.ThrowIfNull(zoom);
+
+        // The scale that is drawn, which is the stored one kept within 1 to 5.
+        var scale = double.IsFinite(zoom.Scale) ? Math.Min(5, Math.Max(1, zoom.Scale)) : 1;
+        var start = double.IsFinite(zoom.Start) ? zoom.Start : 0;
+        var end = double.IsFinite(zoom.End) ? zoom.End : 0;
+        var text = string.Create(CultureInfo.InvariantCulture, $"Zoom {scale:0.##}×, {start:0.0} to {end:0.0} seconds");
+        if (zoom.Focus.Mode == StudioZoomFocusMode.Cursor)
+        {
+            text += ", follows the pointer";
+        }
+
+        return zoom.Origin == StudioZoomOrigin.Auto ? text + ", suggested" : text;
+    }
+
     private static long WholePercent(double fraction) =>
         double.IsFinite(fraction) ? (long)Math.Round(fraction * 100, MidpointRounding.AwayFromZero) : 0;
 

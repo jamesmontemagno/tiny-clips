@@ -20,10 +20,14 @@ public sealed class StudioFixtureTests
         var canvasFiles = Directory.Exists(Path.Combine(fixtureRoot, "canvas"))
             ? Directory.EnumerateFiles(Path.Combine(fixtureRoot, "canvas"), "*.json").Order().ToArray()
             : [];
+        var autoZoomFiles = Directory.Exists(Path.Combine(fixtureRoot, "autozoom"))
+            ? Directory.EnumerateFiles(Path.Combine(fixtureRoot, "autozoom"), "*.json").Order().ToArray()
+            : [];
 
         Assert.True(layoutFiles.Length > 0, $"No Studio layout fixtures were copied to {Path.Combine(fixtureRoot, "layout")}.");
         Assert.True(timeMapFiles.Length > 0, $"No Studio timemap fixtures were copied to {Path.Combine(fixtureRoot, "timemap")}.");
         Assert.True(canvasFiles.Length > 0, $"No Studio canvas fixtures were copied to {Path.Combine(fixtureRoot, "canvas")}.");
+        Assert.True(autoZoomFiles.Length > 0, $"No Studio autozoom fixtures were copied to {Path.Combine(fixtureRoot, "autozoom")}.");
 
         foreach (var file in layoutFiles)
         {
@@ -39,6 +43,11 @@ public sealed class StudioFixtureTests
         {
             VerifyCanvasFixture(file);
         }
+
+        foreach (var file in autoZoomFiles)
+        {
+            VerifyAutoZoomFixture(file);
+        }
     }
 
     private static void VerifyLayoutFixture(string file)
@@ -46,6 +55,9 @@ public sealed class StudioFixtureTests
         using var document = JsonDocument.Parse(File.ReadAllText(file));
         var root = document.RootElement;
         var project = StudioProjectJson.ReadProject(root.GetProperty("project").GetRawText());
+        var events = root.TryGetProperty("events", out var eventsElement)
+            ? StudioProjectJson.ReadEvents(eventsElement.GetRawText())
+            : null;
 
         var natural = StudioCanvasMath.NaturalSize(project);
         CompareNumber(file, -1, "naturalCanvas.width", root.GetProperty("naturalCanvas").GetProperty("width").GetDouble(), natural.Width);
@@ -58,6 +70,7 @@ public sealed class StudioFixtureTests
             var canvas = testCase.GetProperty("canvas");
             var frame = StudioLayoutResolver.Resolve(
                 project,
+                events,
                 testCase.GetProperty("time").GetDouble(),
                 canvas.GetProperty("width").GetDouble(),
                 canvas.GetProperty("height").GetDouble());
@@ -111,6 +124,32 @@ public sealed class StudioFixtureTests
 
             CompareNumber(file, i, "expected.width", expected.GetProperty("width").GetDouble(), actual.Width);
             CompareNumber(file, i, "expected.height", expected.GetProperty("height").GetDouble(), actual.Height);
+        }
+    }
+
+    private static void VerifyAutoZoomFixture(string file)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(file));
+        var root = document.RootElement;
+        var project = StudioProjectJson.ReadProject(root.GetProperty("project").GetRawText());
+        var events = StudioProjectJson.ReadEvents(root.GetProperty("events").GetRawText());
+        var actual = StudioZoomSuggestions.Suggest(project, events);
+        var expected = root.GetProperty("expected").GetProperty("zooms").EnumerateArray().ToArray();
+
+        Assert.Equal(expected.Length, actual.Length);
+        for (var i = 0; i < expected.Length; i++)
+        {
+            CompareZoom(file, i, expected[i], actual[i]);
+        }
+
+        // Two zooms are chained when one ends on the very number the next starts on (section 6.8),
+        // so where the fixture has that, close is not enough.
+        for (var i = 0; i + 1 < expected.Length; i++)
+        {
+            if (expected[i].GetProperty("end").GetDouble() == expected[i + 1].GetProperty("start").GetDouble())
+            {
+                Assert.True(actual[i].End == actual[i + 1].Start, $"{file} zooms {i} and {i + 1} are chained in the fixture: {actual[i].End} and {actual[i + 1].Start} must be the same number.");
+            }
         }
     }
 
@@ -174,6 +213,19 @@ public sealed class StudioFixtureTests
         CompareNumber(file, caseIndex, $"{field}.opacity", expected.GetProperty("opacity").GetDouble(), actual.Opacity);
     }
 
+    private static void CompareZoom(string file, int caseIndex, JsonElement expected, StudioZoom actual)
+    {
+        CompareNumber(file, caseIndex, "zoom.start", expected.GetProperty("start").GetDouble(), actual.Start);
+        CompareNumber(file, caseIndex, "zoom.end", expected.GetProperty("end").GetDouble(), actual.End);
+        CompareNumber(file, caseIndex, "zoom.scale", expected.GetProperty("scale").GetDouble(), actual.Scale);
+        CompareString(file, caseIndex, "zoom.focus.mode", expected.GetProperty("focus").GetProperty("mode").GetString(), FocusModeString(actual.Focus.Mode));
+        CompareNumber(file, caseIndex, "zoom.focus.x", expected.GetProperty("focus").GetProperty("x").GetDouble(), actual.Focus.X);
+        CompareNumber(file, caseIndex, "zoom.focus.y", expected.GetProperty("focus").GetProperty("y").GetDouble(), actual.Focus.Y);
+        CompareNumber(file, caseIndex, "zoom.easeIn", expected.GetProperty("easeIn").GetDouble(), actual.EaseIn);
+        CompareNumber(file, caseIndex, "zoom.easeOut", expected.GetProperty("easeOut").GetDouble(), actual.EaseOut);
+        CompareString(file, caseIndex, "zoom.origin", expected.GetProperty("origin").GetString(), OriginString(actual.Origin));
+    }
+
     private static void CompareNumber(string file, int caseIndex, string field, double expected, double actual) =>
         Assert.True(Math.Abs(expected - actual) <= Tolerance, $"{file} case {caseIndex} field {field}: expected {expected}, actual {actual}.");
 
@@ -200,4 +252,10 @@ public sealed class StudioFixtureTests
             StudioCameraShape.Rectangle => "rectangle",
             _ => "circle",
         };
+
+    private static string FocusModeString(StudioZoomFocusMode mode) =>
+        mode == StudioZoomFocusMode.Cursor ? "cursor" : "point";
+
+    private static string OriginString(StudioZoomOrigin origin) =>
+        origin == StudioZoomOrigin.Auto ? "auto" : "manual";
 }

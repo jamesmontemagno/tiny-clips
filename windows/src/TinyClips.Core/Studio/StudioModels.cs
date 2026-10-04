@@ -267,10 +267,10 @@ public sealed record StudioZoom
 {
     public double Start { get; init; }
     public double End { get; init; }
-    public double Scale { get; init; } = 1;
+    public double Scale { get; init; } = 2;
     public StudioZoomFocus Focus { get; init; } = new();
-    public double EaseIn { get; init; }
-    public double EaseOut { get; init; }
+    public double EaseIn { get; init; } = 0.5;
+    public double EaseOut { get; init; } = 0.5;
     public StudioZoomOrigin Origin { get; init; } = StudioZoomOrigin.Manual;
 
     [JsonExtensionData]
