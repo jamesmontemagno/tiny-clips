@@ -112,7 +112,7 @@ Background drawing: `none` is black. `solid` fills with `primary`. `gradient` is
 | `borderColor` | color | `#FFFFFF` | | |
 | `shadow` | number | 0.35 | 0 to 1 | Intensity |
 | `crop` | Rect or null | null | | Normalized, in the camera frame |
-| `cutout` | enum | `none` | | Reserved for person cutout: `blur`, `remove` |
+| `cutout` | enum | `none` | | What happens to everything in the camera picture that is not a person: `none` keeps it, `blur` blurs it, `remove` takes it away. See the drawing rules in section 6.7 |
 
 A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, `x + width <= 1`, and `y + height <= 1` (allow 1e-9 of slack on the upper bounds). An invalid crop is treated as null.
 
@@ -397,6 +397,10 @@ These are not covered by fixtures, because they describe pixels rather than geom
 
   `k` is canvas pixels per point of the captured screen. `source` is the resolved screen source rect. When `capture.width` is missing or 0 the ratio `sources.screen.width / capture.width` is 1. A click whose center falls outside the visible source rect is not drawn.
 - **Opacity.** A layer whose `opacity` is below 1 is put together by itself first, with everything that belongs to it: its shadow, its picture, its border, and for the screen its click rings. The whole is then laid on the frame that much see-through. So a card that fades does not show its own shadow through itself, and its border and its click rings fade with it. A layer whose `opacity` is 0 is not drawn.
+- **Person cutout.** With `camera.cutout` set to `blur` or `remove`, the renderer finds the people in each camera frame. How it does that is the platform's own (the Vision framework on macOS) and is not specified, so the edge of a person is not the same pixel for pixel on two platforms.
+  - `blur`: everything but the people is blurred with a Gaussian whose standard deviation is 2 percent of the longer side of the camera frame, in camera pixels, before the frame is cropped, mirrored, and scaled into the layer. The layer is otherwise drawn as always.
+  - `remove`: everything but the people is transparent, so the layer shows what is under it there. The shape still clips the layer. The layer has no shadow and no border, because those belong to a frame that is no longer there.
+  - A renderer that cannot find people draws the layer as with `none`. The Windows renderer cannot yet. When finding them fails for one frame, that frame is drawn as with `none`.
 - **Cursor samples** are steps, not line segments: at time `t` the pointer is at the latest sample at or before `t`. That is why a resting pointer needs no repeated samples.
 
 ### 6.8 Zoom
