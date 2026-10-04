@@ -33,7 +33,8 @@ internal static class SingleInstance
         try
         {
             var current = AppInstance.GetCurrent();
-            for (var attempt = 0; attempt < 2; attempt++)
+            const int attempts = 3;
+            for (var attempt = 1; attempt <= attempts; attempt++)
             {
                 var owner = AppInstance.FindOrRegisterForKey(Key);
                 if (owner.IsCurrent)
@@ -59,13 +60,17 @@ internal static class SingleInstance
 
                     return true;
                 }
-                catch (Exception ex) when (attempt == 0)
+                catch (Exception ex)
                 {
-                    // The owner exited between the lookup and the hand-off; try to take its place.
+                    // Usually the owner exited between the lookup and the hand-off; the next
+                    // lookup then makes this process the owner.
                     CrashDiagnostics.Log(nameof(SingleInstance), ex, handled: true);
+                    Thread.Sleep(250);
                 }
             }
 
+            // Another instance still owns the key and could not be reached. Exit rather than start
+            // an unregistered copy next to it.
             return true;
         }
         catch (Exception ex)
