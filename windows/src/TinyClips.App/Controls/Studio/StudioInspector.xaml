@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="TinyClips.App.Controls.Studio.StudioInspector"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TinyClips.App.Controls.Studio"
+    IsTabStop="False">
+
+    <UserControl.Resources>
+        <Style x:Key="StudioSectionHeadingStyle" BasedOn="{StaticResource BodyStrongTextBlockStyle}" TargetType="TextBlock">
+            <Setter Property="AutomationProperties.HeadingLevel" Value="Level2" />
+        </Style>
+        <Style x:Key="StudioCaptionStyle" BasedOn="{StaticResource CaptionTextBlockStyle}" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="StudioNoteStyle" BasedOn="{StaticResource BodyTextBlockStyle}" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <!--  Nine swatches fill one row of the inspector.  -->
+        <Style x:Key="StudioSwatchGridStyle" TargetType="GridView">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="-2,0,-2,0" />
+            <Setter Property="IsItemClickEnabled" Value="False" />
+            <Setter Property="SelectionMode" Value="Single" />
+            <Setter Property="SingleSelectionFollowsFocus" Value="False" />
+            <Setter Property="ScrollViewer.VerticalScrollMode" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden" />
+        </Style>
+        <Style x:Key="StudioSwatchItemStyle" BasedOn="{StaticResource DefaultGridViewItemStyle}" TargetType="GridViewItem">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <!--  The fill is the preset's own color. The edge keeps a swatch visible on a background like itself.  -->
+        <Style x:Key="StudioSwatchFillStyle" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer
+        HorizontalScrollMode="Disabled"
+        IsTabStop="False"
+        VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="16" Spacing="20">
+
+            <!--  Layout  -->
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Layout" />
+                <RadioButtons
+                    x:Name="LayoutChoice"
+                    AutomationProperties.AutomationId="StudioLayoutChoice"
+                    AutomationProperties.Name="Layout"
+                    SelectedIndex="{x:Bind ViewModel.LayoutIndex, Mode=TwoWay}"
+                    ToolTipService.ToolTip="Screen only, screen with a camera bubble, side by side, or camera only (1 to 4)"
+                    Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}">
+                    <RadioButton AutomationProperties.AutomationId="StudioLayoutScreen" Content="Screen" />
+                    <RadioButton AutomationProperties.AutomationId="StudioLayoutBubble" Content="Bubble" />
+                    <RadioButton AutomationProperties.AutomationId="StudioLayoutSideBySide" Content="Side by side" />
+                    <RadioButton AutomationProperties.AutomationId="StudioLayoutCamera" Content="Camera" />
+                </RadioButtons>
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioNoCameraNote"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="This recording has no camera, so it shows the screen only."
+                    Visibility="{x:Bind ViewModel.HasNoCamera, Mode=OneWay}" />
+            </StackPanel>
+
+            <!--  Background  -->
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Background" />
+                <CheckBox
+                    AutomationProperties.AutomationId="StudioShowBackgroundCheckBox"
+                    Content="Show a background"
+                    IsChecked="{x:Bind ViewModel.IsBackgroundShown, Mode=TwoWay}"
+                    ToolTipService.ToolTip="Off leaves the canvas black" />
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsBackgroundShown, Mode=OneWay}">
+                    <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Solid" />
+                    <GridView
+                        x:Name="SolidSwatches"
+                        AutomationProperties.AutomationId="StudioSolidSwatches"
+                        AutomationProperties.Name="Solid backgrounds"
+                        SelectionChanged="OnSwatchSelectionChanged"
+                        Style="{StaticResource StudioSwatchGridStyle}" />
+                    <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Gradient" />
+                    <GridView
+                        x:Name="GradientSwatches"
+                        AutomationProperties.AutomationId="StudioGradientSwatches"
+                        AutomationProperties.Name="Gradient backgrounds"
+                        SelectionChanged="OnSwatchSelectionChanged"
+                        Style="{StaticResource StudioSwatchGridStyle}" />
+                </StackPanel>
+                <local:StudioSliderRow
+                    Title="Padding"
+                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                    Maximum="0.4"
+                    Minimum="0"
+                    SliderAutomationId="StudioPaddingSlider"
+                    Step="0.01"
+                    ValueText="{x:Bind ViewModel.CanvasPaddingText, Mode=OneWay}"
+                    Value="{x:Bind ViewModel.CanvasPadding, Mode=TwoWay}" />
+            </StackPanel>
+
+            <!--  Screen  -->
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Screen" />
+                <local:StudioSliderRow
+                    Title="Corner radius"
+                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                    Maximum="0.2"
+                    Minimum="0"
+                    SliderAutomationId="StudioScreenCornerRadiusSlider"
+                    Step="0.005"
+                    ValueText="{x:Bind ViewModel.ScreenCornerRadiusText, Mode=OneWay}"
+                    Value="{x:Bind ViewModel.ScreenCornerRadius, Mode=TwoWay}" />
+                <local:StudioSliderRow
+                    Title="Shadow"
+                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                    Maximum="1"
+                    Minimum="0"
+                    SliderAutomationId="StudioScreenShadowSlider"
+                    Step="0.05"
+                    ValueText="{x:Bind ViewModel.ScreenShadowText, Mode=OneWay}"
+                    Value="{x:Bind ViewModel.ScreenShadow, Mode=TwoWay}" />
+            </StackPanel>
+
+            <!--  Camera: only for a recording that has one, and following the layout.  -->
+            <StackPanel
+                x:Name="CameraSection"
+                Spacing="8"
+                Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Camera" />
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioCameraHiddenNote"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="The camera is hidden in this layout."
+                    Visibility="{x:Bind ViewModel.IsCameraHiddenNoteVisible, Mode=OneWay}" />
+
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreBubbleControlsVisible, Mode=OneWay}">
+                    <ComboBox
+                        x:Name="ShapeChoice"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="StudioCameraShapeComboBox"
+                        Header="Shape"
+                        SelectedIndex="{x:Bind ViewModel.CameraShapeIndex, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Corner radius"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="0.5"
+                        Minimum="0"
+                        SliderAutomationId="StudioCameraCornerRadiusSlider"
+                        Step="0.01"
+                        ValueText="{x:Bind ViewModel.CameraCornerRadiusText, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsCameraCornerRadiusVisible, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraCornerRadius, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Size"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="0.6"
+                        Minimum="0.08"
+                        SliderAutomationId="StudioCameraSizeSlider"
+                        Step="0.01"
+                        ValueText="{x:Bind ViewModel.CameraBubbleSizeText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraBubbleSize, Mode=TwoWay}" />
+                    <ComboBox
+                        x:Name="PositionChoice"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="StudioCameraPositionComboBox"
+                        Header="Position"
+                        SelectedIndex="{x:Bind ViewModel.CameraAnchorIndex, Mode=TwoWay}"
+                        ToolTipService.ToolTip="Snaps the camera to a corner. Drag it in the preview, or use the offsets, to place it anywhere." />
+                    <local:StudioSliderRow
+                        Title="Horizontal offset"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="1"
+                        Minimum="-1"
+                        SliderAutomationId="StudioCameraOffsetXSlider"
+                        Step="0.005"
+                        ValueText="{x:Bind ViewModel.CameraOffsetXText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraOffsetX, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Vertical offset"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="1"
+                        Minimum="-1"
+                        SliderAutomationId="StudioCameraOffsetYSlider"
+                        Step="0.005"
+                        ValueText="{x:Bind ViewModel.CameraOffsetYText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraOffsetY, Mode=TwoWay}" />
+                </StackPanel>
+
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreSideBySideControlsVisible, Mode=OneWay}">
+                    <ComboBox
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="StudioCameraSideComboBox"
+                        Header="Camera side"
+                        SelectedIndex="{x:Bind ViewModel.CameraSideIndex, Mode=TwoWay}">
+                        <x:String>Left or top</x:String>
+                        <x:String>Right or bottom</x:String>
+                    </ComboBox>
+                    <local:StudioSliderRow
+                        Title="Camera share"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="0.6"
+                        Minimum="0.15"
+                        SliderAutomationId="StudioCameraShareSlider"
+                        Step="0.01"
+                        ValueText="{x:Bind ViewModel.CameraShareText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraShare, Mode=TwoWay}" />
+                </StackPanel>
+
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreCameraStyleControlsVisible, Mode=OneWay}">
+                    <CheckBox
+                        AutomationProperties.AutomationId="StudioCameraMirrorCheckBox"
+                        Content="Mirror"
+                        IsChecked="{x:Bind ViewModel.IsCameraMirrored, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Border"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="0.02"
+                        Minimum="0"
+                        SliderAutomationId="StudioCameraBorderSlider"
+                        Step="0.001"
+                        ValueText="{x:Bind ViewModel.CameraBorderWidthText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraBorderWidth, Mode=TwoWay}" />
+                    <local:StudioSliderRow
+                        Title="Shadow"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="1"
+                        Minimum="0"
+                        SliderAutomationId="StudioCameraShadowSlider"
+                        Step="0.05"
+                        ValueText="{x:Bind ViewModel.CameraShadowText, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.CameraShadow, Mode=TwoWay}" />
+                </StackPanel>
+            </StackPanel>
+
+            <!--  Extras  -->
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Extras" />
+                <CheckBox
+                    AutomationProperties.AutomationId="StudioClickRingsCheckBox"
+                    Content="Click rings"
+                    IsChecked="{x:Bind ViewModel.AreClickRingsEnabled, Mode=TwoWay}"
+                    ToolTipService.ToolTip="Draws a ring where each mouse click happened" />
+                <CheckBox
+                    AutomationProperties.AutomationId="StudioBrandingCheckBox"
+                    Content="Tiny Clips badge"
+                    IsChecked="{x:Bind ViewModel.IsBrandingEnabled, Mode=TwoWay}" />
+                <CheckBox
+                    AutomationProperties.AutomationId="StudioMuteCheckBox"
+                    Content="Mute audio"
+                    IsChecked="{x:Bind ViewModel.IsMuted, Mode=TwoWay}" />
+            </StackPanel>
+
+            <Border
+                Height="1"
+                Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+            <StackPanel Spacing="8">
+                <Button
+                    AutomationProperties.AutomationId="StudioSaveDefaultLookButton"
+                    Click="{x:Bind ViewModel.SaveDefaultLook}"
+                    Content="Save as default look"
+                    ToolTipService.ToolTip="New Studio recordings start with this canvas, background, screen, and camera styling" />
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioDefaultLookStatus"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="{x:Bind ViewModel.DefaultLookStatus, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.HasDefaultLookStatus, Mode=OneWay}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

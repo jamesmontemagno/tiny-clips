@@ -23,6 +23,10 @@ using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
+using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
+using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Rendering;
 using Windows.Storage;
 
 namespace TinyClips.App;
@@ -58,6 +62,7 @@ public partial class App : Application
     private OnboardingWindow? _onboardingWindow;
     private readonly HashSet<ScreenshotEditorWindow> _editorWindows = new(ReferenceEqualityComparer.Instance);
     private Window? _trimmerWindow;
+    private StudioWindowService? _studioWindows;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
     private TeleprompterWindow? _teleprompter;
@@ -79,6 +84,10 @@ public partial class App : Application
     private CaptureType? _activeRecordingType;
     private VideoRecordingOptions _activeVideoRecordingOptions = VideoRecordingOptions.Default;
     private bool _activeRecordingWasPickerInitiated;
+
+    // Whether the recording that completed last was started from the capture picker. A Studio
+    // recording reports its project in a second callback, queued right after the first one.
+    private bool _completedRecordingWasPickerInitiated;
     private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
@@ -101,6 +110,7 @@ public partial class App : Application
     private const int TrayIconMaxRetryAttempts = 6; // 5 + 10 + 20 + 40 + 40 + 40 s ≈ 2.5 min
     // Studio project cleanup waits until launch work has settled. Nothing at startup depends on it.
     private static readonly TimeSpan StudioCleanupStartupDelay = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan StudioStaleExportAge = TimeSpan.FromMinutes(10);
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -121,6 +131,10 @@ public partial class App : Application
             .AddSingleton<IDisplaySleepAssertion, WindowsDisplaySleepAssertion>()
             .AddSingleton<StudioProjectTracker>()
             .AddSingleton<StudioProjectCleanupService>()
+            .AddSingleton<IStudioPreviewFactory, StudioPreviewFactory>()
+            .AddSingleton<IStudioExportService, StudioExportService>()
+            .AddSingleton<IStudioPreviewViewFactory, StudioPreviewViewFactory>()
+            .AddSingleton<StudioWindowService>()
             .BuildServiceProvider();
 
         ApplyTheme();
@@ -166,7 +180,26 @@ public partial class App : Application
         {
             await Task.Delay(StudioCleanupStartupDelay).ConfigureAwait(false);
             await Services.GetRequiredService<StudioProjectCleanupService>().RunAsync().ConfigureAwait(false);
+            DeleteStaleStudioExportFiles();
         });
+    }
+
+    /// <summary>
+    /// An export that was cut short by the app being closed leaves its temporary file next to
+    /// where the video would have gone. Nothing is exporting this soon after launch, and a file
+    /// that is in use is left alone in any case.
+    /// </summary>
+    private static void DeleteStaleStudioExportFiles()
+    {
+        try
+        {
+            var videoFolder = Services.GetRequiredService<IClipStorageService>().OutputDirectory(CaptureType.Video);
+            StudioRenderingMath.DeleteStaleTemporaryFiles(videoFolder, StudioStaleExportAge);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Stale Studio export files could not be removed: {ex}");
+        }
     }
 
     private static void RunStartupStep(string name, Action step)
@@ -1866,6 +1899,7 @@ public partial class App : Application
             _activeRecordingType = null;
             var wasPickerInitiated = _activeRecordingWasPickerInitiated;
             _activeRecordingWasPickerInitiated = false;
+            _completedRecordingWasPickerInitiated = wasPickerInitiated;
             if (_isExiting)
             {
                 return;
@@ -1903,22 +1937,42 @@ public partial class App : Application
         // has already queued the recording UI cleanup ahead of this callback.
         _dispatcher?.TryEnqueue(() =>
         {
+            var wasPickerInitiated = _completedRecordingWasPickerInitiated;
+            _completedRecordingWasPickerInitiated = false;
             if (_isExiting)
             {
                 return;
             }
 
-            OpenStudioProject(projectId);
+            OpenStudioProject(projectId, wasPickerInitiated);
         });
     }
 
     /// <summary>
-    /// Opens a Studio project for editing. This is the seam the Studio window replaces: until that
-    /// window exists the project stays in the store as a draft and the user is only told that it
-    /// was saved. Must be called on the UI thread.
+    /// Opens a Studio project for editing, as a finished Studio recording asks for. While the
+    /// Studio preview is switched off the project stays in the store as a draft and the user is
+    /// only told that it was saved. A recording started from the capture picker goes back to the
+    /// picker afterwards, as it does after the trimmer: here, once the editor window has closed.
+    /// Must be called on the UI thread.
     /// </summary>
-    private void OpenStudioProject(string projectId)
+    private void OpenStudioProject(string projectId, bool pickerInitiated)
     {
+        if (Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            if (OpenStudioWindow(projectId) is { } window && pickerInitiated)
+            {
+                void OnEditorClosed(object sender, WindowEventArgs args)
+                {
+                    window.Closed -= OnEditorClosed;
+                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated: true);
+                }
+
+                window.Closed += OnEditorClosed;
+            }
+
+            return;
+        }
+
         Debug.WriteLine($"Studio project ready: {projectId}");
         Announce(
             AutomationNotificationKind.ActionCompleted,
@@ -1926,6 +1980,53 @@ public partial class App : Application
             "Video saved as a Tiny Clips Studio project.",
             "StudioProjectSaved");
         ShowMessageNotification("Saved as a Tiny Clips Studio project");
+        ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated);
+    }
+
+    /// <summary>
+    /// Opens a project in the Studio editor, or brings the window that already has it open to the
+    /// front. Called for a finished Studio recording, by Settings for a draft, and by the Clips
+    /// Library and the recent captures for a video that was exported from a project. Must be
+    /// called on the UI thread.
+    /// </summary>
+    /// <returns>
+    /// The window, or null when none was opened: the Studio preview is switched off, the app is
+    /// exiting, or the project is being deleted.
+    /// </returns>
+    internal Window? OpenStudioWindow(string projectId)
+    {
+        if (_isExiting || !Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            return null;
+        }
+
+        if (_studioWindows is null)
+        {
+            _studioWindows = Services.GetRequiredService<StudioWindowService>();
+            _studioWindows.ActivateWindow = ActivateWindowToForeground;
+            _studioWindows.Exported += OnStudioExported;
+            _studioWindows.ErrorReported += (_, e) => ShowMessageNotification(e.Message);
+        }
+
+        return _studioWindows.Open(projectId);
+    }
+
+    /// <summary>
+    /// A video exported from Studio is a saved video like any other: it is copied, revealed and
+    /// announced as the settings say, and joins the recent captures, as a trimmed video does.
+    /// </summary>
+    private void OnStudioExported(object? sender, StudioExportedEventArgs e)
+    {
+        _dispatcher?.TryEnqueue(async () =>
+        {
+            if (_isExiting)
+            {
+                return;
+            }
+
+            await FinalizeClipAsync(e.Path, CaptureType.Video);
+            Services.GetRequiredService<IRecentCaptureService>().Record(e.Path, CaptureType.Video);
+        });
     }
 
     private async Task StopActiveRecordingAsync()
@@ -3126,9 +3227,36 @@ public partial class App : Application
         {
             OpenScreenshotEditor(capture.Path, reopenPickerAfterClose: false);
         }
+        else if (capture.Type == CaptureType.Video && TryOpenStudioProjectForVideo(capture.Path))
+        {
+            // A video exported from Studio reopens its project, which is still editable.
+        }
         else
         {
             OpenTrimmer(capture.Path, capture.Type, isRecentCapture: true);
+        }
+    }
+
+    /// <summary>
+    /// Opens the Studio project a video was exported from. Returns false when Studio is switched
+    /// off, or the video did not come from a project that is still stored.
+    /// </summary>
+    private bool TryOpenStudioProjectForVideo(string path)
+    {
+        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            return false;
+        }
+
+        try
+        {
+            var projectId = Services.GetRequiredService<IStudioProjectStore>().FindProjectIdByExportPath(path);
+            return projectId is not null && OpenStudioWindow(projectId) is not null;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio project lookup failed for {path}: {ex}");
+            return false;
         }
     }
 
@@ -3343,6 +3471,19 @@ public partial class App : Application
         }
         _editorWindows.Clear();
         _trimmerWindow?.Close();
+        if (_studioWindows is { } studioWindows)
+        {
+            try
+            {
+                // No questions on the way out: edits are saved and a running export is stopped.
+                await studioWindows.CloseAllForExitAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to close Studio windows on exit: {ex}");
+            }
+        }
+
         CapturePickerWindow.ReleasePooled();
         Application.Current.Exit();
         // No persistent host window keeps the process alive, so force termination

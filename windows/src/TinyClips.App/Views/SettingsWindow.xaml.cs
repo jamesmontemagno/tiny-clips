@@ -49,7 +49,8 @@ public sealed partial class SettingsWindow : Window
             App.Services.GetRequiredService<IClipAnalyticsService>(),
             App.Services.GetRequiredService<IUploadcareCredentialStore>(),
             App.Services.GetRequiredService<IStudioProjectStore>(),
-            App.Services.GetRequiredService<StudioProjectCleanupService>());
+            App.Services.GetRequiredService<StudioProjectCleanupService>(),
+            App.Services.GetRequiredService<StudioProjectTracker>());
 
         InitializeComponent();
 

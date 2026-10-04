@@ -37,6 +37,7 @@ have an accessible name, current state/value, and a keyboard alternative.
 | A11Y-12 | GIF trimmer | Reach frame stepper, trim range, playback, speed, export, save, and cancel. Exercise the same trim-range keyboard commands as A11Y-11. | Announces current frame, trim range help, playback state, controls, labels, and busy state. | Pending hands-on validation |
 | A11Y-13 | Onboarding | Complete, go back, and skip each step with keyboard only. | Announces the current step content, controls, and the changing Next/Get started action. | Pending hands-on validation |
 | A11Y-14 | Guide | Read every section and shortcut with keyboard scrolling; close the window without trapping focus. | Announces guide headings, rows, shortcut labels, and scrollable content in a useful order. | Pending hands-on validation |
+| A11Y-15 | Tiny Clips Studio (only while the Studio preview is switched on) | Open a draft from Settings › General. Reach Undo, Redo, Canvas, Export, every inspector control, Play, the frame steps, Start here, End here, and the trim bar's Start, End, and Playhead with Tab. Move the three trim bar parts with the arrow keys, Page Up/Down, Home, and End. Use Space, Left/Right, I, O, 1–4, Ctrl+Z, Ctrl+Y, and Ctrl+E from the window, and confirm a focused slider, drop-down, or button keeps its own keys. Start an export and stop it with Esc. Close a draft and choose each answer of the close question; confirm Delete is not the default. Delete a draft from Settings and confirm focus moves to a neighbouring row. | Announces the preview with its layout, every slider with its name and percentage, the trim handles and playhead as sliders with a time, background swatches by name with their selected state, "Export started", "Export finished" or "Export cancelled", the layout chosen with a number key, and the message bar when something fails. A project that cannot be opened reads its reason when the window opens. | Pending hands-on validation |
 
 ## Evidence template
 
@@ -62,6 +63,7 @@ A11Y-11 keyboard:     Narrator:
 A11Y-12 keyboard:     Narrator:
 A11Y-13 keyboard:     Narrator:
 A11Y-14 keyboard:     Narrator:
+A11Y-15 keyboard:     Narrator:
 
 Waivers or linked blocking issues:
 ```

@@ -5,6 +5,23 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Tiny Clips Studio (early preview, off by default).** Studio records the screen and the camera
+  as separate layers and opens an editor when the recording ends. Pick a background and padding,
+  round the screen card, choose a camera shape and one of four layouts (screen only, camera
+  bubble, side by side, camera only), drag the bubble where you want it, trim the start and end,
+  and export an MP4. The project stays editable afterward: reopen it from **Open in Studio…** in
+  the Clips Library, from Recent captures, or from the drafts list in Settings › General, which
+  also sets how long projects are kept and how much disk space they may use.
+  - To try it, set the environment variable `TINYCLIPS_STUDIO_PREVIEW` to `1` and restart Tiny
+    Clips (see the README). Then choose **Open in Studio (Preview)** under **After recording** in
+    Settings › Video, or switch on **Record for Studio** in the recording setup panel.
+  - Keys in the editor: **Space** plays or pauses, **Left** and **Right** step a frame, **I** and
+    **O** start and end the video at the playhead, **1** to **4** choose the layout, **Ctrl+Z**
+    and **Ctrl+Y** undo and redo, **Ctrl+E** exports, and **Esc** stops an export.
+  - Known limits: window recordings keep no click or cursor data, and the cursor is part of the
+    screen layer.
+
 ## [v1.8.2-windows] - 2026-10-03
 
 ### Changed

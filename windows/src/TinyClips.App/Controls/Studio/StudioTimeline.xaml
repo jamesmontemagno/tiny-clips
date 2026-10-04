@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="TinyClips.App.Controls.Studio.StudioTimeline"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TinyClips.App.Controls.Studio"
+    IsTabStop="False">
+
+    <StackPanel Padding="16,12" Spacing="12">
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="PlayPauseButton"
+                Grid.Column="0"
+                AutomationProperties.AutomationId="StudioPlayPauseButton"
+                AutomationProperties.Name="{x:Bind ViewModel.PlayPauseLabel, Mode=OneWay}"
+                Click="{x:Bind ViewModel.TogglePlayback}"
+                ToolTipService.ToolTip="Play or pause (Space)">
+                <FontIcon FontSize="14" Glyph="{x:Bind ViewModel.PlayPauseGlyph, Mode=OneWay}" />
+            </Button>
+            <Button
+                Grid.Column="1"
+                AutomationProperties.AutomationId="StudioPreviousFrameButton"
+                AutomationProperties.Name="Previous frame"
+                Click="{x:Bind ViewModel.StepPreviousFrame}"
+                ToolTipService.ToolTip="Previous frame (Left arrow)">
+                <FontIcon FontSize="14" Glyph="&#xE76B;" />
+            </Button>
+            <Button
+                Grid.Column="2"
+                AutomationProperties.AutomationId="StudioNextFrameButton"
+                AutomationProperties.Name="Next frame"
+                Click="{x:Bind ViewModel.StepNextFrame}"
+                ToolTipService.ToolTip="Next frame (Right arrow)">
+                <FontIcon FontSize="14" Glyph="&#xE76C;" />
+            </Button>
+
+            <!--  Output time: where the playhead is in the exported video, and how long that is.  -->
+            <TextBlock
+                Grid.Column="3"
+                Margin="4,0,0,0"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="StudioTimeText"
+                AutomationProperties.Name="{x:Bind ViewModel.TimeAccessibleName, Mode=OneWay}"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.TimeText, Mode=OneWay}"
+                Typography.NumeralAlignment="Tabular" />
+
+            <Button
+                Grid.Column="4"
+                AutomationProperties.AutomationId="StudioStartHereButton"
+                Click="{x:Bind ViewModel.SetTrimStartAtPlayhead}"
+                Content="Start here"
+                ToolTipService.ToolTip="Start the video at the playhead (I)" />
+            <Button
+                Grid.Column="5"
+                AutomationProperties.AutomationId="StudioEndHereButton"
+                Click="{x:Bind ViewModel.SetTrimEndAtPlayhead}"
+                Content="End here"
+                ToolTipService.ToolTip="End the video at the playhead (O)" />
+        </Grid>
+
+        <local:StudioTrimBar
+            x:Name="TrimBar"
+            AutomationProperties.AutomationId="StudioTrimBar"
+            AutomationProperties.Name="Trim bar"
+            GestureCompleted="OnTrimGestureCompleted"
+            GestureStarted="OnTrimGestureStarted"
+            ScrubRequested="OnScrubRequested"
+            TrimEndRequested="OnTrimEndRequested"
+            TrimStartRequested="OnTrimStartRequested" />
+    </StackPanel>
+</UserControl>

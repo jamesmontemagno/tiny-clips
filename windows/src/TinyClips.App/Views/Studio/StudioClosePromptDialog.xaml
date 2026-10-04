@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentDialog
+    x:Class="TinyClips.App.Views.Studio.StudioClosePromptDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Export this recording before closing?"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonText="Export"
+    SecondaryButtonText="Keep as draft"
+    Style="{StaticResource DefaultContentDialogStyle}">
+
+    <StackPanel MinWidth="380" Spacing="16">
+        <TextBlock
+            Text="It has not been exported yet. Export it now, keep it as a draft to finish later, or delete it."
+            TextWrapping="Wrap" />
+
+        <!--
+            A dialog has room for three buttons, and Esc has to mean Cancel, so Delete sits here,
+            looking like the Delete button of the video trimmer. It is taken into the tab order
+            once the dialog has put the first focus on its default button.
+        -->
+        <Button
+            x:Name="DeleteButton"
+            HorizontalAlignment="Left"
+            AutomationProperties.AutomationId="StudioClosePromptDeleteButton"
+            AutomationProperties.Name="Delete recording"
+            Click="OnDeleteClick"
+            IsTabStop="False"
+            ToolTipService.ToolTip="Delete this recording. This cannot be undone.">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <FontIcon FontSize="14" Glyph="&#xE74D;" />
+                <TextBlock Text="Delete" />
+            </StackPanel>
+        </Button>
+    </StackPanel>
+</ContentDialog>

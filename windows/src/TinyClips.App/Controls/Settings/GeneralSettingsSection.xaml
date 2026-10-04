@@ -6,6 +6,7 @@
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:studio="using:TinyClips.App.ViewModels.Studio"
     xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
@@ -208,6 +209,7 @@
                             </StackPanel>
                         </controls:SettingsCard.Description>
                         <Button
+                            x:Name="StudioCleanUpNowButton"
                             AutomationProperties.AutomationId="StudioCleanUpNowButton"
                             AutomationProperties.Name="Clean up now: Studio projects"
                             Click="OnCleanUpStudioProjects"
@@ -241,6 +243,58 @@
                             SpinButtonPlacementMode="Inline"
                             Value="{x:Bind ViewModel.StudioStorageCapGigabytes, Mode=TwoWay}" />
                     </controls:SettingsCard>
+                </StackPanel>
+
+                <!--  Recordings that were kept without exporting. A draft is not in the Clips Library.  -->
+                <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.StudioDraftsVisibility, Mode=OneWay}">
+                    <TextBlock
+                        Margin="4,12,0,0"
+                        AutomationProperties.AutomationId="StudioDraftsHeading"
+                        AutomationProperties.HeadingLevel="Level3"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="Studio drafts" />
+                    <ItemsRepeater
+                        x:Name="StudioDraftsRepeater"
+                        AutomationProperties.AutomationId="StudioDraftsList"
+                        ItemsSource="{x:Bind ViewModel.StudioDrafts, Mode=OneTime}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="2" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="studio:StudioDraftItem">
+                                <controls:SettingsCard Header="{x:Bind Name, Mode=OneTime}">
+                                    <controls:SettingsCard.Description>
+                                        <StackPanel>
+                                            <TextBlock Text="{x:Bind Details, Mode=OneWay}" TextWrapping="Wrap" />
+                                            <!--  A disabled button shows no tooltip, so the reason is written out.  -->
+                                            <TextBlock
+                                                Text="{x:Bind studio:StudioDraftItem.OpenInStudioNote, Mode=OneTime}"
+                                                TextWrapping="Wrap"
+                                                Visibility="{x:Bind IsOpen, Mode=OneWay}" />
+                                        </StackPanel>
+                                    </controls:SettingsCard.Description>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button
+                                            AutomationProperties.AutomationId="{x:Bind OpenButtonId, Mode=OneTime}"
+                                            AutomationProperties.Name="{x:Bind OpenButtonName, Mode=OneTime}"
+                                            Click="OnOpenStudioDraft"
+                                            Content="Open"
+                                            Tag="{x:Bind Mode=OneTime}"
+                                            ToolTipService.ToolTip="Open this draft in Studio" />
+                                        <Button
+                                            AutomationProperties.AutomationId="{x:Bind DeleteButtonId, Mode=OneTime}"
+                                            AutomationProperties.HelpText="{x:Bind DeleteHelpText, Mode=OneWay}"
+                                            AutomationProperties.Name="{x:Bind DeleteButtonName, Mode=OneTime}"
+                                            Click="OnDeleteStudioDraft"
+                                            Content="Delete&#x2026;"
+                                            IsEnabled="{x:Bind CanDelete, Mode=OneWay}"
+                                            Tag="{x:Bind Mode=OneTime}"
+                                            ToolTipService.ToolTip="Delete this draft and its recordings" />
+                                    </StackPanel>
+                                </controls:SettingsCard>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
                 </StackPanel>
             </StackPanel>
 

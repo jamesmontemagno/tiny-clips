@@ -30,6 +30,10 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   (with the stop hotkey) while recording.
 - **Editor & trimmers** — an optional post-capture **screenshot editor** (crop, copy, save / save-a-copy),
   a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture.
+- **Tiny Clips Studio (early preview, off by default)** — records the screen and the camera as
+  separate layers and opens a compositing editor when the recording ends: background and padding,
+  a rounded screen card, camera shape and four layouts, a draggable camera bubble, trim, and MP4
+  export. The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
@@ -76,6 +80,8 @@ windows/
     ui/                         winapp ui automation scripts (run against a live app by PID)
   tools/
     RecordingBenchmark/         Headless CPU-vs-GPU recording benchmark (manual; see docs)
+    StudioRenderCheck/          Headless check of the Studio renderer, exporter and camera recorder
+    StudioPreviewCheck/         Check of the Studio live preview engine and its panel
   packaging/
     msix/  winget/              Packaging artifacts (later phases)
   spikes/                       Throwaway de-risking prototypes (not in the solution/CI)
@@ -122,6 +128,55 @@ the end-of-recording sync report), see [`docs/audio-video-sync.md`](docs/audio-v
 For the experimental **GPU recording pipeline** (zero-copy WGC → Direct2D overlays → hardware
 encoder), the per-recording performance report, and the `RecordingBenchmark` harness with measured
 CPU-vs-GPU numbers, see [`docs/gpu-recording-pipeline.md`](docs/gpu-recording-pipeline.md).
+
+## Tiny Clips Studio (preview)
+
+Studio is hidden until it has been checked on real hardware. It is switched on by the environment
+variable `TINYCLIPS_STUDIO_PREVIEW` set to `1`:
+
+- **An installed build:** run `setx TINYCLIPS_STUDIO_PREVIEW 1`, then exit Tiny Clips from the tray
+  and start it again. `reg delete HKCU\Environment /v TINYCLIPS_STUDIO_PREVIEW /f` switches it off.
+- **A build from source:** a packaged launch does not get the terminal's environment, so start it
+  through the winapp CLI, from `windows/src/TinyClips.App`:
+
+  ```powershell
+  $out = 'bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64'
+  $env:TINYCLIPS_STUDIO_PREVIEW = '1'
+  winapp run $out --manifest "$out\AppxManifest.xml" --output-appx-directory "$out\AppX" --with-alias
+  ```
+
+With the switch on:
+
+- **Settings › Video** offers **Open in Studio (Preview)** under **After recording**, and the
+  recording setup panel has **Record for Studio**. A Studio recording is saved as a project (a
+  clean screen track, a camera track, and click and cursor data) and opens in the editor.
+- **The editor** has a live preview, an inspector (layout, background, padding, screen and camera
+  styling), a trim bar, undo and redo, and Export. Keys: `Space` play or pause, `Left`/`Right` step
+  a frame, `I`/`O` start and end the video at the playhead, `1`–`4` layout, `Ctrl+Z`/`Ctrl+Y` undo
+  and redo, `Ctrl+E` export, `Esc` stop an export.
+- **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
+  choosing such a video in **Recent captures** opens its project instead of the trimmer.
+  **Settings › General** shows the space projects take, the cleanup rules, and the drafts
+  (recordings that were kept without exporting).
+
+Projects are kept in the app's local data folder under `TinyClips\Projects`. The format, layout
+math and drawing rules are in [`/docs/studio-project-format.md`](../docs/studio-project-format.md),
+shared with the macOS app; the design and its status are in
+[`/plans/video-studio-plan.md`](../plans/video-studio-plan.md). The renderer and exporter are
+described in [`docs/studio-rendering.md`](docs/studio-rendering.md) and the live preview in
+[`docs/studio-preview.md`](docs/studio-preview.md). Each has a check tool that runs without the
+app, plays no sound and sends no input. Neither runs in CI, and the preview tool is not in the
+solution.
+
+```powershell
+# Renderer, exporter and camera recorder. No window; about six minutes.
+dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c Release -p:Platform=x64
+
+# Live preview. Needs ffmpeg and ffprobe on PATH and a desktop session; about ten minutes.
+# Its window stays behind every other window. Options are in the tool's README.
+dotnet build windows/tools/StudioPreviewCheck/StudioPreviewCheck.csproj -c Debug -p:Platform=x64
+windows\tools\StudioPreviewCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioPreviewCheck.exe
+```
 
 ## CI
 

@@ -1,0 +1,444 @@
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Input;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using TinyClips.App.Controls.Studio;
+using TinyClips.App.Services.Studio;
+using TinyClips.App.ViewModels.Studio;
+using TinyClips.Core.Models;
+using TinyClips.Core.Services;
+using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
+using Windows.UI.Core;
+using VirtualKey = Windows.System.VirtualKey;
+
+namespace TinyClips.App.Views.Studio;
+
+/// <summary>
+/// The Studio editor for one project: header, preview, inspector and timeline. The window shows
+/// what <see cref="StudioViewModel"/> reports, asks the questions that closing needs, and passes
+/// the keys on. What any of it means is decided in <see cref="StudioEditorSession"/>.
+/// </summary>
+public sealed partial class StudioWindow : Window
+{
+    private const int DefaultWidthDip = 1180;
+    private const int DefaultHeightDip = 760;
+
+    // Below this the header's controls and the 320 wide inspector crowd the preview out.
+    private const int MinimumWidthDip = 980;
+    private const int MinimumHeightDip = 640;
+
+    private readonly IStudioPreviewViewFactory _previewViews;
+    private readonly WindowChromeController _chromeController;
+    private readonly StudioTimeline _timeline;
+    private readonly Action<StudioWindow, Task> _onClosed;
+    private FrameworkElement? _previewView;
+    private Task? _teardown;
+    private bool _wasExporting;
+    private bool _isPromptOpen;
+    private bool _closeConfirmed;
+    private bool _deleteOnClose;
+    private bool _isClosed;
+
+    /// <param name="viewModel">The editor for the project this window shows.</param>
+    /// <param name="previewViews">Makes the element the preview is drawn in.</param>
+    /// <param name="settings">Where the app theme comes from.</param>
+    /// <param name="onClosed">
+    /// Called once when the window is closing for good, with a task that finishes when the
+    /// project's files have been let go of and, if the user chose to delete the project, it is
+    /// gone.
+    /// </param>
+    public StudioWindow(
+        StudioViewModel viewModel,
+        IStudioPreviewViewFactory previewViews,
+        ICaptureSettings settings,
+        Action<StudioWindow, Task> onClosed)
+    {
+        ViewModel = viewModel;
+        _previewViews = previewViews;
+        _onClosed = onClosed;
+
+        InitializeComponent();
+
+        foreach (var aspect in Enum.GetValues<StudioCanvasAspect>())
+        {
+            CanvasChoice.Items.Add(StudioEditorModel.GetAspectName(aspect));
+        }
+
+        InspectorHost.Child = new StudioInspector(viewModel);
+        _timeline = new StudioTimeline(viewModel);
+        TimelineHost.Child = _timeline;
+        CanvasHost.Children.Add(new StudioPreviewOverlay(viewModel));
+
+        // The message bar reads its message out when it opens, but only when it already has an
+        // automation peer, which it otherwise gets when a screen reader happens to look at it.
+        _ = FrameworkElementAutomationPeer.CreatePeerForElement(ErrorBar);
+
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, DefaultWidthDip, DefaultHeightDip);
+
+        // WindowChromeController owns the icon, the minimum size in effective pixels, and keeping
+        // that minimum right when the window moves to a display with another scale.
+        _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
+
+        RootGrid.RequestedTheme = settings.Theme switch
+        {
+            AppTheme.Light => ElementTheme.Light,
+            AppTheme.Dark => ElementTheme.Dark,
+            _ => ElementTheme.Default,
+        };
+
+        ViewModel.StateChanged += OnStateChanged;
+        ViewModel.Announced += OnAnnounced;
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        RootGrid.KeyDown += OnRootKeyDown;
+        AppWindow.Closing += OnAppWindowClosing;
+        Closed += OnClosed;
+
+        // Queued, so the window is on screen saying "Opening" before the project is read.
+        DispatcherQueue.TryEnqueue(() => _ = ViewModel.LoadAsync());
+    }
+
+    public StudioViewModel ViewModel { get; }
+
+    /// <summary>True once the user chose to delete the project. The window is closing by then.</summary>
+    public bool IsDeletingProject => _deleteOnClose;
+
+    /// <summary>
+    /// Closes the window without asking anything, for when the app is exiting. The edits are saved
+    /// and a running export is stopped by the time this returns; the task finishes when the
+    /// project's files have been let go of.
+    /// </summary>
+    public Task CloseForExit()
+    {
+        var teardown = TearDown();
+        CloseWithoutAsking();
+        return teardown;
+    }
+
+    private void CloseWithoutAsking()
+    {
+        _closeConfirmed = true;
+        Close();
+    }
+
+    // State
+
+    private void OnStateChanged(object? sender, EventArgs e)
+    {
+        if (_isClosed)
+        {
+            return;
+        }
+
+        if (ViewModel.IsReady)
+        {
+            AttachPreviewView();
+
+            // Once the editor has been laid out. Space and the arrow keys start from Play.
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                if (!_isClosed && ViewModel.IsEditable)
+                {
+                    _timeline.FocusPlayButton();
+                }
+            });
+            return;
+        }
+
+        DetachPreviewView();
+        if (ViewModel.IsUnavailable)
+        {
+            // The focused element is what a screen reader reads, also in a window that has only
+            // just opened, where a notice sent this early would not arrive.
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                if (!_isClosed && ViewModel.IsUnavailable)
+                {
+                    // The message has only just become visible, and has to be laid out to take focus.
+                    RootGrid.UpdateLayout();
+                    UnavailablePanel.Focus(FocusState.Programmatic);
+                }
+            });
+        }
+    }
+
+    private void AttachPreviewView()
+    {
+        if (_previewView is not null || ViewModel.Preview is not { } preview)
+        {
+            return;
+        }
+
+        try
+        {
+            _previewView = _previewViews.Create(preview);
+
+            // Under the overlay that holds the camera handle.
+            CanvasHost.Children.Insert(0, _previewView);
+        }
+        catch (Exception ex)
+        {
+            _previewView = null;
+            ViewModel.ShowError($"The preview could not be shown: {ex.Message}");
+        }
+    }
+
+    /// <summary>The preview element leaves the tree before the preview it draws is disposed.</summary>
+    private void DetachPreviewView()
+    {
+        if (_previewView is { } view)
+        {
+            _previewView = null;
+            CanvasHost.Children.Remove(view);
+
+            // Not left to the Unloaded event, which comes later, and not at all once the window
+            // has closed.
+            (view as StudioPreviewPanel)?.Detach();
+        }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_isClosed || ViewModel.IsExporting == _wasExporting)
+        {
+            return;
+        }
+
+        // The editor under the overlay is disabled, so focus goes to the one thing that works, and
+        // back to where an export is started when it is over.
+        _wasExporting = ViewModel.IsExporting;
+        var target = _wasExporting ? CancelExportButton : ExportButton;
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (!_isClosed && !target.Focus(FocusState.Programmatic) && !_wasExporting)
+            {
+                _timeline.FocusPlayButton();
+            }
+        });
+    }
+
+    private void OnClipNameTrimmedChanged(TextBlock sender, IsTextTrimmedChangedEventArgs args) =>
+        ToolTipService.SetToolTip(sender, sender.IsTextTrimmed ? sender.Text : null);
+
+    private void OnExportClick(object sender, RoutedEventArgs e) => _ = ViewModel.ExportAsync();
+
+    // Screen readers
+
+    private void OnAnnounced(object? sender, StudioAnnouncementEventArgs e)
+    {
+        var kind = e.Kind switch
+        {
+            StudioAnnouncementKind.Completed => AutomationNotificationKind.ActionCompleted,
+            StudioAnnouncementKind.Stopped => AutomationNotificationKind.ActionAborted,
+            _ => AutomationNotificationKind.Other,
+        };
+        Announce(e.Message, e.ActivityId, kind, AutomationNotificationProcessing.MostRecent);
+    }
+
+    private void Announce(
+        string message,
+        string activityId,
+        AutomationNotificationKind kind,
+        AutomationNotificationProcessing processing)
+    {
+        if (_isClosed)
+        {
+            return;
+        }
+
+        // Raised from the title bar, which is there in every state of the window.
+        var peer = FrameworkElementAutomationPeer.FromElement(AppTitleBar)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(AppTitleBar);
+        peer?.RaiseNotificationEvent(kind, processing, message, activityId);
+    }
+
+    // Keys
+
+    /// <summary>
+    /// Keys arrive here only after the focused control has passed on them, so a focused slider
+    /// keeps its arrow keys and a focused button keeps Space.
+    /// </summary>
+    private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        var key = MapKey(e.Key);
+        if (key == StudioShortcutKey.Other)
+        {
+            return;
+        }
+
+        var focused = RootGrid.XamlRoot is { } root ? FocusManager.GetFocusedElement(root) : null;
+        var input = new StudioShortcutInput(
+            key,
+            IsControlDown: IsKeyDown(VirtualKey.Control),
+            IsShiftDown: IsKeyDown(VirtualKey.Shift),
+            IsAltDown: e.KeyStatus.IsMenuKeyDown,
+            IsRepeat: e.KeyStatus.WasKeyDown,
+            IsTextInputFocused: focused is TextBox or RichEditBox or PasswordBox,
+            IsReady: ViewModel.IsReady,
+            IsExporting: ViewModel.IsExporting)
+        {
+            IsTypeToSearchFocused = focused is ComboBox or ComboBoxItem,
+        };
+
+        var action = StudioShortcuts.Resolve(input);
+        if (action != StudioShortcutAction.None)
+        {
+            e.Handled = true;
+            ViewModel.Run(action);
+        }
+    }
+
+    private static StudioShortcutKey MapKey(VirtualKey key) => key switch
+    {
+        VirtualKey.Space => StudioShortcutKey.Space,
+        VirtualKey.Left => StudioShortcutKey.Left,
+        VirtualKey.Right => StudioShortcutKey.Right,
+        VirtualKey.Escape => StudioShortcutKey.Escape,
+        VirtualKey.I => StudioShortcutKey.I,
+        VirtualKey.O => StudioShortcutKey.O,
+        VirtualKey.Z => StudioShortcutKey.Z,
+        VirtualKey.Y => StudioShortcutKey.Y,
+        VirtualKey.E => StudioShortcutKey.E,
+
+        // The number row, not the number pad.
+        VirtualKey.Number1 => StudioShortcutKey.Digit1,
+        VirtualKey.Number2 => StudioShortcutKey.Digit2,
+        VirtualKey.Number3 => StudioShortcutKey.Digit3,
+        VirtualKey.Number4 => StudioShortcutKey.Digit4,
+        _ => StudioShortcutKey.Other,
+    };
+
+    private static bool IsKeyDown(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+
+    // Closing
+
+    /// <summary>
+    /// Guards the close button, Alt+F4 and a close from the system: anything that raises the
+    /// AppWindow's Closing event.
+    /// </summary>
+    private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_closeConfirmed)
+        {
+            return;
+        }
+
+        var prompt = ViewModel.GetClosePrompt();
+        if (prompt == StudioClosePrompt.None)
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        if (_isPromptOpen)
+        {
+            return;
+        }
+
+        if (prompt == StudioClosePrompt.ExportRunning)
+        {
+            await AskAboutRunningExportAsync();
+        }
+        else
+        {
+            await AskAboutDraftAsync();
+        }
+    }
+
+    /// <summary>Shows one question at a time: a window can hold only one dialog.</summary>
+    private async Task<ContentDialogResult> ShowPromptAsync(ContentDialog dialog)
+    {
+        _isPromptOpen = true;
+        try
+        {
+            dialog.XamlRoot = RootGrid.XamlRoot;
+            dialog.RequestedTheme = RootGrid.RequestedTheme;
+            return await dialog.ShowAsync();
+        }
+        finally
+        {
+            _isPromptOpen = false;
+        }
+    }
+
+    private async Task AskAboutRunningExportAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "An export is still running.",
+            Content = "Closing the window stops the export. Your edits are kept.",
+            PrimaryButtonText = "Stop and close",
+            CloseButtonText = "Keep exporting",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await ShowPromptAsync(dialog) == ContentDialogResult.Primary && !_isClosed)
+        {
+            // Closing the session stops the export.
+            CloseWithoutAsking();
+        }
+    }
+
+    private async Task AskAboutDraftAsync()
+    {
+        ViewModel.Pause();
+        var dialog = new StudioClosePromptDialog(ViewModel.CanExport);
+        await ShowPromptAsync(dialog);
+        if (_isClosed)
+        {
+            return;
+        }
+
+        switch (dialog.Choice)
+        {
+            case StudioClosePromptChoice.Export:
+                // The window closes once the video is written. If the export fails or is
+                // cancelled, it stays open.
+                if (await ViewModel.ExportAsync() == StudioExportOutcome.Exported && !_isClosed)
+                {
+                    CloseWithoutAsking();
+                }
+
+                break;
+            case StudioClosePromptChoice.KeepAsDraft:
+                CloseWithoutAsking();
+                break;
+            case StudioClosePromptChoice.Delete:
+                _deleteOnClose = true;
+                CloseWithoutAsking();
+                break;
+        }
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args) => TearDown();
+
+    /// <summary>Ends the editor, once. The window is closed, or about to be.</summary>
+    private Task TearDown()
+    {
+        if (_teardown is { } started)
+        {
+            return started;
+        }
+
+        _isClosed = true;
+        Closed -= OnClosed;
+        AppWindow.Closing -= OnAppWindowClosing;
+        RootGrid.KeyDown -= OnRootKeyDown;
+        ViewModel.StateChanged -= OnStateChanged;
+        ViewModel.Announced -= OnAnnounced;
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+
+        DetachPreviewView();
+        var teardown = ViewModel.CloseAsync(_deleteOnClose);
+        _teardown = teardown;
+        _onClosed(this, teardown);
+        return teardown;
+    }
+}

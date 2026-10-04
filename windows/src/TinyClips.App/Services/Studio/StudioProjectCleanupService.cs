@@ -29,6 +29,12 @@ public sealed class StudioProjectCleanupService
     }
 
     /// <summary>
+    /// Raised after a cleanup has run, with what it deleted. It comes on a background thread, so a
+    /// UI listener has to switch threads.
+    /// </summary>
+    public event EventHandler<StudioCleanupResult>? CleanupCompleted;
+
+    /// <summary>
     /// Deletes what the current settings allow, skipping every project that is open in an editor
     /// or being recorded into. Returns null when Studio is switched off or the cleanup failed. A
     /// failure is logged, never thrown.
@@ -50,7 +56,9 @@ public sealed class StudioProjectCleanupService
                 inUseProjectIds.Add(recordingProjectId);
             }
 
-            return await Task.Run(() => _store.Cleanup(options, inUseProjectIds)).ConfigureAwait(false);
+            var result = await Task.Run(() => _store.Cleanup(options, inUseProjectIds)).ConfigureAwait(false);
+            CleanupCompleted?.Invoke(this, result);
+            return result;
         }
         catch (Exception ex)
         {
