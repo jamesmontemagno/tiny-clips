@@ -255,6 +255,19 @@ The rule is in section 9.1 of the project format, is the same on both platforms,
 
 **Choosing a layout while recording** uses the same rule. The format has a place for it (`markers` in the events, each a time and a layout), and a marker becomes a scene with that layout. Nothing writes markers yet: that needs a control in each app's recording panel, and it only pays off with keys for it, since a click on the panel is itself in the recording. Which keys is a question for the user.
 
+### Person cutout (Milestone 4)
+
+The camera picture can have everything but the people in it blurred, or taken away so that only the people stand in front of the screen. It is one choice in the Camera section, Background: Keep, Blur, or Remove. It belongs to the look, so saving a look as the default brings it to the next recording.
+
+- **Blur** leaves the camera layer as it is: its shape, its border, its shadow.
+- **Remove** leaves only the people, clipped by the layer's shape. The border and the shadow go, because they belong to a frame around the picture that is no longer there.
+
+Which pixels are a person is for each platform to find, so the edge is not the same pixel for pixel on both. The drawing rule is in section 6.7 of the project format.
+
+**macOS** uses the Vision framework's person segmentation in the compositor, for the preview and the export alike, at its middle quality setting. Nothing is added to the app. While a video plays, Vision steadies the edge from frame to frame; right after a seek the first masks can trail the picture.
+
+**Windows** has nothing built in that does this on an ordinary PC, so it needs a model and something to run it, which is an added dependency and a decision for the user. Until then the Windows renderer draws a project with a blurred or removed background as if it were kept.
+
 ## Platform architecture
 
 ### macOS
@@ -368,6 +381,12 @@ The Windows window has the zoom lane, the Zoom section and the crop sliders. `St
 | Moves of the camera while recording become scenes (section 9.1 of the format) | Done. 16 fixtures. The recorder hands the moves to the new project. Compiled, never run | Done. The same fixtures. The recorder hands the moves to the new project; that hand-over is two lines that no test reaches, and no recording has been made with it |
 | Choosing a layout while recording | The format and the rule are in, with fixtures. No control in the recording panel writes a marker yet | The same |
 
+| Milestone 4 piece | macOS | Windows |
+|---|---|---|
+| The drawing rule for a blurred or removed camera background (section 6.7 of the format) | Done | The same text. Not implemented |
+| Finding the people in a camera frame | Vision person segmentation in the compositor. Compiled, never run | Not started. Needs a model and a runtime: a decision for the user |
+| Background: Keep, Blur, Remove in the Camera section | Done. The rule is unit tested. Compiled, never run | Not started |
+
 A project file with more than one scene is drawn with its transitions on both platforms. On the Mac the editor can now split a recording into scenes and change each one, in views that have been compiled and never run. On Windows no window has a control for scenes yet, and until it does, the layout controls of a project that already has several scenes change the scene under the playhead while showing the layout of another.
 
 A project file with cuts in it is exported without them on both platforms. The rules for making and changing cuts are in both editor models, and playback in both editors jumps over them. The Mac has the controls for cuts, compiled and never run; the Windows window has none yet. The jump while playing has only been run against a stand-in for the preview: no real preview has played over a cut. On Windows `StudioRenderCheck` works out by hand where each layer is on its way, measures the test pattern inside the screen and the camera there, looks for their outlines, and compares a fading layer with what is under it. The frames have been looked at. On the Mac the same rules are in the layout, which the fixtures cover, and in the compositor, which has only been compiled.
@@ -427,6 +446,8 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **Editing rules for speed changes**, the same on both platforms and unit tested on each: a new one plays twice as fast and covers 2 seconds, or up to the next one or the end of the recording; one never covers less than 0.1 seconds and never overlaps another; a rate of 1 is not a speed change, and deleting it is how a stretch goes back to the recording's own speed; at least 0.1 seconds of video has to stay, which a faster rate, a move, and even deleting a slower stretch can break, so those are not made then. Opening a project keeps exactly the entries an export counts, so opening and saving does not change how it plays.
 - **Volumes go down only.** The computer's sound and the microphone each have a volume from silent to as recorded, and only where the recording has them in tracks of their own. Making a track louder than it was recorded is left out, because it needs a limiter to keep it from clipping. On Windows there is nothing to set yet: its recorder mixes both into one track, and changing that touches the sound path of the recorder that ships today (see "Volumes").
 - **What was done while recording arrives as scenes.** A Studio recording used to show the camera in its first corner throughout, even when it had been moved while recording. Each move now starts a scene that the camera glides into, 0.35 seconds as for a scene split off in the editor, where a regular recording jumps. Corners passed through in under 0.3 seconds are skipped, since the editor makes no scene shorter than that.
+- **A removed background takes the border and the shadow with it.** With only the people left, a border and a shadow would be drawn around a frame that is not there. The shape still clips the picture. A blurred background changes nothing else about the layer.
+- **One quality for the person cutout on the Mac**, Vision's middle setting, in the preview and in the export, so that an export shows the edge the preview showed. The finer setting may be worth it for exports; that needs eyes on a Mac.
 - **The project says what its sound tracks hold only when that is certain.** The Mac recorder lists them when the finished file has exactly one sound track for each sound it set out to record. An input that never got a sample may or may not have become a track; then the project lists nothing and every track plays as recorded.
 - **Playing over a cut** is done by the editor, which sends the preview on to the end of the cut when playback reaches it. The export is exact; the preview can show a few frames of the cut first.
 - **Stepping is read out.** Previous and Next, for zooms, scenes and cuts, say nothing of where they land by themselves, and the text between them is not read when it changes. So the editor reads out where it landed: "Zoom 2 of 5, 2×, 12.0 to 16.5 seconds", "Scene 2 of 3, Side by side, 12.0 to 30.5 seconds", "Cut 2 of 3, 12.0 to 16.5 seconds". On Windows a button that sets a time also reads out the new time; on the Mac the stepper speaks for itself.
