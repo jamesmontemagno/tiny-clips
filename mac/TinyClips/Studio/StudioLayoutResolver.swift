@@ -252,7 +252,8 @@ enum StudioLayoutResolver {
         return width / height
     }
 
-    private static func screenBaseRect(project: StudioProject) -> StudioRect {
+    /// The part of the screen a zoom works inside: the valid crop, or the whole frame (section 6.8).
+    static func screenBaseRect(project: StudioProject) -> StudioRect {
         StudioCanvasMath.validCrop(project.screen.crop) ?? unitRect()
     }
 
@@ -297,7 +298,9 @@ enum StudioLayoutResolver {
         return heldWindow(base: base, scale: zoom.scale, focusX: focus.x, focusY: focus.y)
     }
 
-    private static func heldWindow(base: StudioRect, scale: Double, focusX: Double, focusY: Double) -> StudioRect {
+    /// The part of the screen a zoom shows while it is held (section 6.8): `base` made smaller by
+    /// the scale, centered on the focus, and pushed back inside where it would stick out.
+    static func heldWindow(base: StudioRect, scale: Double, focusX: Double, focusY: Double) -> StudioRect {
         let scale = StudioCanvasMath.clamped(scale, 1, 5)
         let width = base.width / scale
         let height = base.height / scale

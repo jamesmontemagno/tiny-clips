@@ -80,6 +80,110 @@ struct StudioZoomEditResult: Equatable, Sendable {
     var index: Int?
 }
 
+/// What the focus pad shows for a zoom. The pad stands for the part of the screen that can be
+/// zoomed into, which is the screen crop, or the whole screen without one.
+struct StudioZoomPad: Equatable, Sendable {
+    /// The pad's width divided by its height.
+    var aspectRatio: Double
+
+    /// The part the zoom holds, from 0 to 1 across and down the pad.
+    var window: StudioRect
+
+    /// Where the zoom looks, from 0 at the pad's left edge to 1 at its right.
+    var focusX: Double
+
+    /// Where the zoom looks, from 0 at the pad's top edge to 1 at its bottom.
+    var focusY: Double
+}
+
+/// An edge of a crop.
+enum StudioCropEdge: Sendable {
+    case left
+    case top
+    case right
+    case bottom
+}
+
+/// A crop as how much is cut off each edge, each a fraction of the frame. This is what the
+/// inspector's four crop sliders show and change.
+struct StudioCropInsets: Equatable, Sendable {
+    /// The most two opposite edges can cut off together. A crop keeps 0.05 of the frame each way.
+    static let maximumTotal = 0.95
+
+    var left: Double
+    var top: Double
+    var right: Double
+    var bottom: Double
+
+    init(left: Double = 0, top: Double = 0, right: Double = 0, bottom: Double = 0) {
+        self.left = left
+        self.top = top
+        self.right = right
+        self.bottom = bottom
+    }
+
+    /// The insets of a crop. A missing crop, or one that is not valid, cuts nothing off.
+    init(crop: StudioRect?) {
+        guard let valid = StudioCanvasMath.validCrop(crop) else {
+            self.init()
+            return
+        }
+        self.init(
+            left: Self.tidy(valid.x),
+            top: Self.tidy(valid.y),
+            right: Self.tidy(max(0, 1 - valid.x - valid.width)),
+            bottom: Self.tidy(max(0, 1 - valid.y - valid.height))
+        )
+    }
+
+    var isEmpty: Bool { left == 0 && top == 0 && right == 0 && bottom == 0 }
+
+    subscript(edge: StudioCropEdge) -> Double {
+        switch edge {
+        case .left: return left
+        case .top: return top
+        case .right: return right
+        case .bottom: return bottom
+        }
+    }
+
+    /// These insets with one edge moved. The edge stops where it would leave less than 0.05 of the
+    /// frame between it and the opposite edge. A value that is not a number changes nothing.
+    func with(_ edge: StudioCropEdge, _ value: Double) -> StudioCropInsets {
+        guard value.isFinite else { return self }
+        var copy = self
+        switch edge {
+        case .left: copy.left = Self.limit(value, opposite: right)
+        case .top: copy.top = Self.limit(value, opposite: bottom)
+        case .right: copy.right = Self.limit(value, opposite: left)
+        case .bottom: copy.bottom = Self.limit(value, opposite: top)
+        }
+        return copy
+    }
+
+    /// The crop for these insets, or nil when nothing is cut off. It is made from `current`, the
+    /// crop that is there, so members of it that this version does not know are kept.
+    func crop(from current: StudioRect?) -> StudioRect? {
+        guard !isEmpty else { return nil }
+        var crop = current ?? StudioRect()
+        crop.x = left
+        crop.y = top
+        crop.width = Self.tidy(1 - left - right)
+        crop.height = Self.tidy(1 - top - bottom)
+        return crop
+    }
+
+    private static func limit(_ value: Double, opposite: Double) -> Double {
+        tidy(max(0, min(value, maximumTotal - opposite)))
+    }
+
+    // Sums of fractions such as 1 - 0.07 - 0.2 carry binary noise. Six decimals is finer than a
+    // pixel of any recording and keeps the stored numbers, and what is read back from them, plain.
+    private static func tidy(_ value: Double) -> Double {
+        (value * 1_000_000).rounded() / 1_000_000
+    }
+}
+
 // MARK: - Editor Model
 
 /// The Studio editor's state and every edit it can make, with undo. It is a plain value with no
@@ -94,6 +198,30 @@ struct StudioEditorModel: Equatable, Sendable {
 
     /// How long a zoom is when it is added, in seconds, where there is room for it.
     static let newZoomDuration = 3.0
+
+    /// Said when a zoom has been added at the playhead.
+    static let zoomAddedMessage = "Zoom added."
+
+    /// Said when a zoom was asked for where one already is. That zoom is selected instead.
+    static let zoomAlreadyThereMessage = "There is already a zoom here."
+
+    /// Said when a zoom was asked for where less than the shortest zoom fits.
+    static let noRoomForZoomMessage = "There is no room for a zoom here."
+
+    /// Said when the selected zoom has been deleted.
+    static let zoomDeletedMessage = "Zoom deleted."
+
+    /// Said when the suggested zooms have been removed.
+    static let zoomSuggestionsRemovedMessage = "Suggested zooms removed."
+
+    /// Said when zooms were asked for and the clicks give none.
+    static let noZoomSuggestionsMessage = "No zooms to suggest for this recording."
+
+    /// Why zooms cannot be suggested for a recording without clicks, such as one of a window.
+    static let noClicksExplanation = "This recording has no clicks to suggest zooms from."
+
+    /// Why a zoom cannot follow the pointer in a recording without pointer positions.
+    static let noPointerExplanation = "This recording has no pointer positions to follow."
 
     static let maximumUndoDepth = 100
 
@@ -350,6 +478,23 @@ struct StudioEditorModel: Equatable, Sendable {
         setCameraCrop(nil)
     }
 
+    /// How much the screen crop cuts off each edge.
+    var screenCropInsets: StudioCropInsets { StudioCropInsets(crop: project.screen.crop) }
+
+    /// How much the camera crop cuts off each edge.
+    var cameraCropInsets: StudioCropInsets { StudioCropInsets(crop: project.camera.crop) }
+
+    /// Moves one edge of the screen crop to cut off `value` of the frame. With nothing cut off any
+    /// edge, the crop is removed.
+    mutating func setScreenCropInset(_ edge: StudioCropEdge, to value: Double) {
+        setScreenCrop(screenCropInsets.with(edge, value).crop(from: project.screen.crop))
+    }
+
+    /// Moves one edge of the camera crop. The same rules as `setScreenCropInset(_:to:)`.
+    mutating func setCameraCropInset(_ edge: StudioCropEdge, to value: Double) {
+        setCameraCrop(cameraCropInsets.with(edge, value).crop(from: project.camera.crop))
+    }
+
     // MARK: - Zooms
     //
     // `project.zooms` is kept in time order, so a zoom's index identifies it between two edits.
@@ -467,6 +612,155 @@ struct StudioEditorModel: Equatable, Sendable {
     @discardableResult
     mutating func setZoomEaseOut(at index: Int, to seconds: Double) -> StudioZoomEditResult {
         editZoom(at: index, isValid: seconds.isFinite) { $0.easeOut = StudioCanvasMath.clamped(seconds, 0, 3) }
+    }
+
+    /// Moves a whole zoom so it starts at `sourceTime`, keeping its length. It stays between the
+    /// zoom before it and the zoom after it, or the ends of the recording. Moved up against a
+    /// neighbour it takes exactly the neighbour's number, which chains the two.
+    @discardableResult
+    mutating func moveZoom(at index: Int, to sourceTime: Double) -> StudioZoomEditResult {
+        guard project.zooms.indices.contains(index) else {
+            return StudioZoomEditResult(changed: false, index: nil)
+        }
+        guard sourceTime.isFinite else { return StudioZoomEditResult(changed: false, index: index) }
+
+        let zoom = project.zooms[index]
+        let length = zoom.end - zoom.start
+        let earliest = index > 0 ? project.zooms[index - 1].end : 0
+        let latestEnd = index + 1 < project.zooms.count ? project.zooms[index + 1].start : sourceDuration
+
+        let start: Double
+        let end: Double
+        if sourceTime <= earliest {
+            start = earliest
+            end = min(earliest + length, latestEnd)
+        } else if sourceTime + length >= latestEnd {
+            end = latestEnd
+            start = max(earliest, latestEnd - length)
+        } else {
+            start = sourceTime
+            end = sourceTime + length
+        }
+
+        // Only a file written elsewhere can leave no room between two neighbours.
+        guard end > start else { return StudioZoomEditResult(changed: false, index: index) }
+        return editZoom(at: index) {
+            $0.start = start
+            $0.end = end
+        }
+    }
+
+    /// The zoom after the selected one, for stepping through the zooms. With nothing selected, the
+    /// zoom at `playhead` or the first one after it. Nil when there is none.
+    func zoomIndex(after selected: Int?, playhead: Double) -> Int? {
+        let zooms = project.zooms
+        if let selected, zooms.indices.contains(selected) {
+            return selected + 1 < zooms.count ? selected + 1 : nil
+        }
+        return zooms.firstIndex { $0.end > playhead }
+    }
+
+    /// The zoom before the selected one. With nothing selected, the zoom at `playhead` or the last
+    /// one before it. Nil when there is none.
+    func zoomIndex(before selected: Int?, playhead: Double) -> Int? {
+        let zooms = project.zooms
+        if let selected, zooms.indices.contains(selected) {
+            return selected > 0 ? selected - 1 : nil
+        }
+        return zooms.lastIndex { $0.start <= playhead }
+    }
+
+    /// Where the zoom at `index` of `before` is in `after`, for an edit that did not say, such as
+    /// undo. When the two lists differ in that one zoom at most, it is that zoom, changed: the same
+    /// place. Otherwise it is the zoom that shares the most time with it, and among equals the one
+    /// nearest to where it was. Nil when there was no such zoom, or none shares any time with it.
+    static func zoomIndex(following index: Int, from before: [StudioZoom], to after: [StudioZoom]) -> Int? {
+        guard before.indices.contains(index) else { return nil }
+
+        if before.count == after.count,
+           before.indices.allSatisfy({ $0 == index || before[$0] == after[$0] }) {
+            return index
+        }
+
+        let zoom = before[index]
+        var best: Int?
+        var bestShared = 0.0
+        for (position, candidate) in after.enumerated() {
+            let shared = min(zoom.end, candidate.end) - max(zoom.start, candidate.start)
+            guard shared > 0 else { continue }
+            if let current = best {
+                let isNearer = shared == bestShared && abs(position - index) < abs(current - index)
+                guard shared > bestShared || isNearer else { continue }
+            }
+            best = position
+            bestShared = shared
+        }
+        return best
+    }
+
+    /// A time at which a zoom has moved all the way in, to show it at: the end of its ease in. Kept
+    /// a frame inside the zoom, which contains its start and not its end.
+    func zoomLookTime(at index: Int) -> Double? {
+        let zooms = project.zooms
+        guard zooms.indices.contains(index) else { return nil }
+        let zoom = zooms[index]
+
+        // The eases as the layout applies them (section 6.8 of the project format).
+        let nextIsChained = index + 1 < zooms.count && zooms[index + 1].start == zoom.end
+        var easeIn = StudioCanvasMath.clamped(zoom.easeIn, 0, 3)
+        let easeOut = nextIsChained ? 0 : StudioCanvasMath.clamped(zoom.easeOut, 0, 3)
+        let length = zoom.end - zoom.start
+        if easeIn + easeOut > length, easeIn + easeOut > 0 {
+            easeIn *= length / (easeIn + easeOut)
+        }
+
+        let time = max(zoom.start, min(zoom.start + easeIn, zoom.end - frameDuration))
+        return clampedSourceTime(time)
+    }
+
+    /// What the focus pad shows for a zoom, with the point the zoom stores. Nil when there is no
+    /// such zoom.
+    func zoomPad(at index: Int) -> StudioZoomPad? {
+        guard project.zooms.indices.contains(index) else { return nil }
+        let zoom = project.zooms[index]
+        let area = StudioLayoutResolver.screenBaseRect(project: project)
+        let focusX = StudioCanvasMath.clamped(zoom.focus.x, 0, 1)
+        let focusY = StudioCanvasMath.clamped(zoom.focus.y, 0, 1)
+        let held = StudioLayoutResolver.heldWindow(base: area, scale: zoom.scale, focusX: focusX, focusY: focusY)
+        let screen = project.sources.screen
+        let aspect = screen.width > 0 && screen.height > 0
+            ? (Double(screen.width) * area.width) / (Double(screen.height) * area.height)
+            : 16.0 / 9
+        return StudioZoomPad(
+            aspectRatio: aspect,
+            window: StudioRect(
+                x: (held.x - area.x) / area.width,
+                y: (held.y - area.y) / area.height,
+                width: held.width / area.width,
+                height: held.height / area.height
+            ),
+            focusX: StudioCanvasMath.clamped((focusX - area.x) / area.width, 0, 1),
+            focusY: StudioCanvasMath.clamped((focusY - area.y) / area.height, 0, 1)
+        )
+    }
+
+    /// Points a zoom at a place on its focus pad, from 0 to 1 across and down the pad.
+    @discardableResult
+    mutating func setZoomFocusOnPad(at index: Int, x: Double, y: Double) -> StudioZoomEditResult {
+        guard x.isFinite, y.isFinite else {
+            return StudioZoomEditResult(changed: false, index: project.zooms.indices.contains(index) ? index : nil)
+        }
+        let area = StudioLayoutResolver.screenBaseRect(project: project)
+        return setZoomFocusPoint(
+            at: index,
+            x: area.x + StudioCanvasMath.clamped(x, 0, 1) * area.width,
+            y: area.y + StudioCanvasMath.clamped(y, 0, 1) * area.height
+        )
+    }
+
+    /// How many of the zooms are suggestions that have not been changed since they were made.
+    var suggestedZoomCount: Int {
+        project.zooms.filter { $0.origin == .auto }.count
     }
 
     /// Replaces the suggested zooms (origin `auto`) with `suggestions` and leaves every other zoom
@@ -628,11 +922,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// A zoom for VoiceOver, such as "Zoom 2×, 12.0 to 16.5 seconds". The times are source time, as
     /// the trim handles read. "Follows the pointer" and "suggested" are added where they apply.
     static func zoomAccessibilityText(_ zoom: StudioZoom) -> String {
-        // The scale that is drawn, which is the stored one kept within 1 to 5.
-        let scale = zoom.scale.isFinite ? StudioCanvasMath.clamped(zoom.scale, 1, 5) : 1
-        let start = String(format: "%.1f", zoom.start.isFinite ? zoom.start : 0)
-        let end = String(format: "%.1f", zoom.end.isFinite ? zoom.end : 0)
-        var text = "Zoom \(scaleText(scale))×, \(start) to \(end) seconds"
+        var text = "Zoom \(zoomScaleText(zoom.scale)), \(zoomRangeText(zoom))"
         if zoom.focus.mode == .cursor {
             text += ", follows the pointer"
         }
@@ -640,6 +930,34 @@ struct StudioEditorModel: Equatable, Sendable {
             text += ", suggested"
         }
         return text
+    }
+
+    /// How much a zoom magnifies, such as "2×" or "1.25×": the scale that is drawn, which is the
+    /// stored one kept within 1 to 5, with up to two decimals.
+    static func zoomScaleText(_ scale: Double) -> String {
+        let drawn = scale.isFinite ? StudioCanvasMath.clamped(scale, 1, 5) : 1
+        return "\(scaleText(drawn))×"
+    }
+
+    /// When a zoom starts and ends, in source time: "12.0 to 16.5 seconds".
+    static func zoomRangeText(_ zoom: StudioZoom) -> String {
+        let start = String(format: "%.1f", zoom.start.isFinite ? zoom.start : 0)
+        let end = String(format: "%.1f", zoom.end.isFinite ? zoom.end : 0)
+        return "\(start) to \(end) seconds"
+    }
+
+    /// Which zoom is selected, counting from one: "Zoom 2 of 5".
+    static func zoomPositionText(index: Int, count: Int) -> String {
+        "Zoom \(index + 1) of \(count)"
+    }
+
+    /// What to say after zooms were suggested, given how many suggestions there are now.
+    static func zoomSuggestionsText(count: Int) -> String {
+        switch count {
+        case ...0: return noZoomSuggestionsMessage
+        case 1: return "1 zoom suggested."
+        default: return "\(count) zooms suggested."
+        }
     }
 
     static func layoutName(_ layout: StudioLayout) -> String {

@@ -994,6 +994,499 @@ final class StudioEditorModelTests: XCTestCase {
         assertRect(source, x: 0.5, y: 0.25, width: 0.25, height: 0.5)
     }
 
+    // MARK: - Zooms: Moving a Whole Zoom
+
+    func testAMovedZoomKeepsItsLengthAndGoesWhereItIsPut() {
+        var project = makeProject(duration: 20, camera: false)
+        project.zooms = [zoom(1, 3), zoom(8, 10.5), zoom(15, 17)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.moveZoom(at: 1, to: 5.25), StudioZoomEditResult(changed: true, index: 1))
+
+        XCTAssertEqual(model.project.zooms[1].start, 5.25, accuracy: 1e-9)
+        XCTAssertEqual(model.project.zooms[1].end, 7.75, accuracy: 1e-9)
+        XCTAssertTrue(model.canUndo)
+
+        model.undo()
+        XCTAssertEqual(model.project.zooms[1].start, 8, accuracy: 1e-9)
+        XCTAssertEqual(model.project.zooms[1].end, 10.5, accuracy: 1e-9)
+    }
+
+    func testAMovedZoomStopsAtTheNeighboursOnExactlyTheirNumbers() {
+        // Numbers that are not exact in binary: 11.1 - 2.3 + 2.3 is not 11.1.
+        var project = makeProject(duration: 20, camera: false)
+        project.zooms = [zoom(1, 3.1), zoom(4, 6.3), zoom(11.1, 13)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.moveZoom(at: 1, to: 19), StudioZoomEditResult(changed: true, index: 1))
+
+        var zooms = model.project.zooms
+        XCTAssertTrue(zooms[1].end == zooms[2].start)
+        XCTAssertEqual(zooms[1].end - zooms[1].start, 2.3, accuracy: 1e-9)
+
+        XCTAssertEqual(model.moveZoom(at: 1, to: 0), StudioZoomEditResult(changed: true, index: 1))
+
+        zooms = model.project.zooms
+        XCTAssertTrue(zooms[1].start == zooms[0].end)
+        XCTAssertEqual(zooms[1].end - zooms[1].start, 2.3, accuracy: 1e-9)
+        XCTAssertEqual(zooms[0].start, 1, accuracy: 1e-9)
+        XCTAssertEqual(zooms[2].start, 11.1, accuracy: 1e-9)
+    }
+
+    func testAMovedZoomStopsAtTheEndsOfTheRecording() {
+        var project = makeProject(duration: 11.1, camera: false)
+        project.zooms = [zoom(4, 6.3)]
+        var model = StudioEditorModel(project: project)
+
+        model.moveZoom(at: 0, to: -5)
+        XCTAssertEqual(model.project.zooms[0].start, 0, accuracy: 1e-9)
+        XCTAssertEqual(model.project.zooms[0].end, 2.3, accuracy: 1e-9)
+
+        // Exactly the end of the recording, not a rounding error past it.
+        model.moveZoom(at: 0, to: 50)
+        XCTAssertEqual(model.project.zooms[0].start, 8.8, accuracy: 1e-9)
+        XCTAssertTrue(model.project.zooms[0].end == 11.1)
+    }
+
+    func testMovingASuggestionMakesItTheUsersOwnAndMovingItNowhereDoesNot() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(4, 6, origin: .auto)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.moveZoom(at: 0, to: 4), StudioZoomEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.project.zooms[0].origin, .auto)
+        XCTAssertFalse(model.canUndo)
+
+        XCTAssertEqual(model.moveZoom(at: 0, to: 5), StudioZoomEditResult(changed: true, index: 0))
+        XCTAssertEqual(model.project.zooms[0].origin, .manual)
+    }
+
+    func testMovingAZoomToWhatIsNotANumberOrNamingNoZoomChangesNothing() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(4, 6)]
+        var model = StudioEditorModel(project: project)
+        let before = model.project
+
+        XCTAssertEqual(model.moveZoom(at: 0, to: .nan), StudioZoomEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.moveZoom(at: 0, to: .infinity), StudioZoomEditResult(changed: false, index: 0))
+        XCTAssertEqual(model.moveZoom(at: 1, to: 2), StudioZoomEditResult(changed: false, index: nil))
+        XCTAssertEqual(model.moveZoom(at: -1, to: 2), StudioZoomEditResult(changed: false, index: nil))
+
+        XCTAssertEqual(model.project, before)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testAZoomLongerThanTheRoomBetweenItsNeighboursIsMovedIntoTheRoom() {
+        // Not something the editor makes: a project written by hand, where a zoom of 3.5 seconds
+        // overlaps the next one and has 3 seconds of room.
+        var project = makeProject(duration: 10, camera: false)
+        project.zooms = [zoom(1, 3), zoom(4, 7.5), zoom(6, 9)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.moveZoom(at: 1, to: 0), StudioZoomEditResult(changed: true, index: 1))
+        XCTAssertEqual(model.project.zooms[1].start, 3, accuracy: 1e-9)
+        XCTAssertEqual(model.project.zooms[1].end, 6, accuracy: 1e-9)
+
+        // And with no room at all between them it stays where it is.
+        project.zooms = [zoom(1, 5), zoom(4, 4.5), zoom(4.2, 9)]
+        var crowded = StudioEditorModel(project: project)
+
+        XCTAssertEqual(crowded.moveZoom(at: 1, to: 0), StudioZoomEditResult(changed: false, index: 1))
+        XCTAssertEqual(crowded.project.zooms[1].start, 4, accuracy: 1e-9)
+    }
+
+    // MARK: - Zooms: Stepping Through Them
+
+    func testTheNextZoomFollowsTheSelectedOneOrIsTheOneAtOrAfterThePlayhead() {
+        var project = makeProject(duration: 12, camera: false)
+        project.zooms = [zoom(1, 3), zoom(5, 7), zoom(9, 11)]
+        let model = StudioEditorModel(project: project)
+        let cases: [(selected: Int?, playhead: Double, expected: Int?)] = [
+            (nil, 0, 0),
+            (nil, 2, 0),
+            (nil, 3, 1),
+            (nil, 6, 1),
+            (nil, 12, nil),
+            (0, 12, 1),
+            (1, 0, 2),
+            (2, 0, nil),
+            (9, 6, 1),
+        ]
+
+        for item in cases {
+            XCTAssertEqual(
+                model.zoomIndex(after: item.selected, playhead: item.playhead),
+                item.expected,
+                "selected \(String(describing: item.selected)), playhead \(item.playhead)"
+            )
+        }
+    }
+
+    func testThePreviousZoomComesBeforeTheSelectedOneOrIsTheOneAtOrBeforeThePlayhead() {
+        var project = makeProject(duration: 12, camera: false)
+        project.zooms = [zoom(1, 3), zoom(5, 7), zoom(9, 11)]
+        let model = StudioEditorModel(project: project)
+        let cases: [(selected: Int?, playhead: Double, expected: Int?)] = [
+            (nil, 0, nil),
+            (nil, 1, 0),
+            (nil, 4, 0),
+            (nil, 6, 1),
+            (nil, 12, 2),
+            (2, 0, 1),
+            (0, 12, nil),
+            (-1, 6, 1),
+        ]
+
+        for item in cases {
+            XCTAssertEqual(
+                model.zoomIndex(before: item.selected, playhead: item.playhead),
+                item.expected,
+                "selected \(String(describing: item.selected)), playhead \(item.playhead)"
+            )
+        }
+    }
+
+    func testWithoutZoomsThereIsNoNextOrPreviousOne() {
+        let model = StudioEditorModel(project: makeProject(camera: false))
+
+        XCTAssertNil(model.zoomIndex(after: nil, playhead: 0))
+        XCTAssertNil(model.zoomIndex(before: nil, playhead: 5))
+        XCTAssertNil(model.zoomIndex(after: 0, playhead: 0))
+    }
+
+    // MARK: - Zooms: Keeping a Selection on Its Zoom
+
+    func testWhenOnlyOneZoomHasChangedItIsFollowedToTheSamePlaceHoweverFarItMoved() {
+        let before = [zoom(1, 2), zoom(4, 5), zoom(8, 9)]
+
+        // The middle zoom, moved to where it shares no time with what it was.
+        XCTAssertEqual(
+            StudioEditorModel.zoomIndex(following: 1, from: before, to: [zoom(1, 2), zoom(6, 7, scale: 3), zoom(8, 9)]),
+            1
+        )
+
+        // Nothing changed at all, as when an edit was to something other than the zooms.
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 2, from: before, to: before), 2)
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 0, from: before, to: before), 0)
+    }
+
+    func testWhenMoreHasChangedAZoomIsFollowedToTheOneThatSharesTheMostTimeWithIt() {
+        let after = [zoom(0, 2), zoom(2, 5), zoom(6, 9)]
+
+        // Itself, one place on, behind a zoom that was added.
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 0, from: [zoom(2, 5), zoom(6, 9)], to: after), 1)
+
+        // Half a second with the first, two seconds with the second.
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 0, from: [zoom(1.5, 4)], to: after), 1)
+
+        // Half a second with the second, two seconds with the third.
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 0, from: [zoom(4.5, 8)], to: after), 2)
+
+        // Touching two zooms is not sharing time with either.
+        XCTAssertNil(StudioEditorModel.zoomIndex(following: 0, from: [zoom(5, 6)], to: after))
+        XCTAssertNil(StudioEditorModel.zoomIndex(following: 0, from: [zoom(10, 12)], to: after))
+        XCTAssertNil(StudioEditorModel.zoomIndex(following: 0, from: [zoom(1, 2)], to: []))
+    }
+
+    func testAmongZoomsThatShareTheSameTimeTheOneNearestToWhereItWasIsFollowed() {
+        // Written by hand: the editor does not make zooms that overlap.
+        let after = [zoom(0, 10), zoom(2, 5), zoom(2, 5, scale: 3)]
+        let before = [zoom(2, 5), zoom(2, 5), zoom(2, 5), zoom(2, 5)]
+
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 0, from: before, to: after), 0)
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 1, from: before, to: after), 1)
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 2, from: before, to: after), 2)
+        XCTAssertEqual(StudioEditorModel.zoomIndex(following: 3, from: before, to: after), 2)
+    }
+
+    func testAZoomThatWasNotThereIsNotFollowedAnywhere() {
+        let zooms = [zoom(1, 2)]
+
+        XCTAssertNil(StudioEditorModel.zoomIndex(following: 1, from: zooms, to: zooms))
+        XCTAssertNil(StudioEditorModel.zoomIndex(following: -1, from: zooms, to: zooms))
+        XCTAssertNil(StudioEditorModel.zoomIndex(following: 0, from: [], to: zooms))
+    }
+
+    // MARK: - Zooms: Showing One
+
+    func testAZoomIsShownAtTheMomentItHasMovedIn() {
+        var project = makeProject(duration: 20, camera: false)
+        project.zooms = [
+            zoom(1, 4),
+            zoom(5, 8, easeIn: 1.25),
+            zoom(10, 12, easeIn: 0),
+            // Eases longer than the zoom are shortened in proportion: 3 and 1 in one second are
+            // 0.75 and 0.25.
+            zoom(14, 15, easeIn: 3, easeOut: 1),
+        ]
+        let model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.zoomLookTime(at: 0) ?? .nan, 1.5, accuracy: 1e-9)
+        XCTAssertEqual(model.zoomLookTime(at: 1) ?? .nan, 6.25, accuracy: 1e-9)
+        XCTAssertEqual(model.zoomLookTime(at: 2) ?? .nan, 10, accuracy: 1e-9)
+        XCTAssertEqual(model.zoomLookTime(at: 3) ?? .nan, 14.75, accuracy: 1e-9)
+        XCTAssertNil(model.zoomLookTime(at: 4))
+        XCTAssertNil(model.zoomLookTime(at: -1))
+
+        // At each of those times the layout shows the whole zoom: twice the size, in the middle.
+        for index in 0..<4 {
+            let source = StudioLayoutResolver.resolve(
+                project: model.project,
+                time: model.zoomLookTime(at: index) ?? .nan,
+                canvasWidth: 1920,
+                canvasHeight: 1080
+            ).screen?.source
+            assertRect(source, x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        }
+    }
+
+    func testAZoomThatNeverMovesAllTheWayInIsShownOnItsLastFrame() {
+        // The next zoom is chained, so this one has no ease out and its ease in takes the whole
+        // second. A zoom does not contain its end, so the time stays one frame inside it.
+        var project = makeProject(duration: 20, camera: false)
+        project.zooms = [zoom(14, 15, easeIn: 3, easeOut: 1), zoom(15, 18)]
+        let model = StudioEditorModel(project: project)
+
+        let time = model.zoomLookTime(at: 0) ?? .nan
+
+        XCTAssertEqual(time, 15 - 1.0 / 30, accuracy: 1e-9)
+        XCTAssertEqual(model.zoomIndex(at: time), 0)
+    }
+
+    func testAZoomShorterThanAFrameIsShownAtItsStart() {
+        var project = makeProject(duration: 20, camera: false)
+        project.zooms = [zoom(3, 3.01, easeIn: 0)]
+        let model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.zoomLookTime(at: 0) ?? .nan, 3, accuracy: 1e-9)
+    }
+
+    // MARK: - Zooms: The Focus Pad
+
+    func testThePadShowsTheWindowAndThePointAcrossTheWholeScreen() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 3, scale: 4, x: 0.5, y: 0.25), zoom(5, 7, scale: 2, x: 0.9, y: 0.05)]
+        let model = StudioEditorModel(project: project)
+
+        let centered = model.zoomPad(at: 0)
+        XCTAssertEqual(centered?.aspectRatio ?? .nan, 16.0 / 9, accuracy: 1e-9)
+        assertRect(centered?.window, x: 0.375, y: 0.125, width: 0.25, height: 0.25)
+        XCTAssertEqual(centered?.focusX ?? .nan, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(centered?.focusY ?? .nan, 0.25, accuracy: 1e-9)
+
+        // Near a corner the window stops at the edges, and the point stays where it was put.
+        let corner = model.zoomPad(at: 1)
+        assertRect(corner?.window, x: 0.5, y: 0, width: 0.5, height: 0.5)
+        XCTAssertEqual(corner?.focusX ?? .nan, 0.9, accuracy: 1e-9)
+        XCTAssertEqual(corner?.focusY ?? .nan, 0.05, accuracy: 1e-9)
+
+        XCTAssertNil(model.zoomPad(at: 2))
+        XCTAssertNil(model.zoomPad(at: -1))
+    }
+
+    func testThePadStandsForTheCropWhenTheScreenIsCropped() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 3, scale: 2, x: 0.75, y: 0.5)]
+        var model = StudioEditorModel(project: project)
+        model.setScreenCrop(StudioRect(x: 0.5, y: 0, width: 0.5, height: 1))
+
+        // The right half of a 16:9 screen, and the zoom looks at the middle of it.
+        let pad = model.zoomPad(at: 0)
+        XCTAssertEqual(pad?.aspectRatio ?? .nan, 8.0 / 9, accuracy: 1e-9)
+        XCTAssertEqual(pad?.focusX ?? .nan, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(pad?.focusY ?? .nan, 0.5, accuracy: 1e-9)
+        assertRect(pad?.window, x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+
+        // A point the crop has cut off is shown on the pad's edge, where the window stops too.
+        model.setZoomFocusPoint(at: 0, x: 0.1, y: 0.5)
+        let outside = model.zoomPad(at: 0)
+        XCTAssertEqual(outside?.focusX ?? .nan, 0, accuracy: 1e-9)
+        assertRect(outside?.window, x: 0, y: 0.25, width: 0.5, height: 0.5)
+    }
+
+    func testThePadsWindowIsTheOneTheLayoutDraws() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 5, scale: 3, x: 0.2, y: 0.9, easeIn: 0)]
+        var model = StudioEditorModel(project: project)
+        model.setScreenCrop(StudioRect(x: 0.1, y: 0.2, width: 0.6, height: 0.5))
+
+        guard let pad = model.zoomPad(at: 0) else {
+            XCTFail("Expected a pad")
+            return
+        }
+        let source = StudioLayoutResolver.resolve(
+            project: model.project,
+            time: 2,
+            canvasWidth: 1920,
+            canvasHeight: 1080
+        ).screen?.source
+
+        assertRect(
+            source,
+            x: 0.1 + pad.window.x * 0.6,
+            y: 0.2 + pad.window.y * 0.5,
+            width: pad.window.width * 0.6,
+            height: pad.window.height * 0.5
+        )
+        XCTAssertEqual(pad.window.width, 1.0 / 3, accuracy: 1e-9)
+        XCTAssertEqual(pad.window.height, 1.0 / 3, accuracy: 1e-9)
+    }
+
+    func testPointingOnThePadSetsTheFocusInTheScreenFrame() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 3)]
+        var model = StudioEditorModel(project: project)
+        model.setScreenCrop(StudioRect(x: 0.5, y: 0.2, width: 0.4, height: 0.6))
+
+        // A quarter of the way across the crop, and below the pad, which counts as its bottom edge.
+        XCTAssertEqual(model.setZoomFocusOnPad(at: 0, x: 0.25, y: 1.5), StudioZoomEditResult(changed: true, index: 0))
+
+        XCTAssertEqual(model.project.zooms[0].focus.x, 0.6, accuracy: 1e-9)
+        XCTAssertEqual(model.project.zooms[0].focus.y, 0.8, accuracy: 1e-9)
+        let pad = model.zoomPad(at: 0)
+        XCTAssertEqual(pad?.focusX ?? .nan, 0.25, accuracy: 1e-9)
+        XCTAssertEqual(pad?.focusY ?? .nan, 1, accuracy: 1e-9)
+    }
+
+    func testPointingOnThePadAtWhatIsNotANumberOrForNoZoomChangesNothing() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 3)]
+        var model = StudioEditorModel(project: project)
+        let before = model.project
+        let unchanged = StudioZoomEditResult(changed: false, index: 0)
+        let noZoom = StudioZoomEditResult(changed: false, index: nil)
+
+        XCTAssertEqual(model.setZoomFocusOnPad(at: 0, x: .nan, y: 0.5), unchanged)
+        XCTAssertEqual(model.setZoomFocusOnPad(at: 0, x: 0.5, y: -.infinity), unchanged)
+        XCTAssertEqual(model.setZoomFocusOnPad(at: 3, x: 0.5, y: 0.5), noZoom)
+        XCTAssertEqual(model.setZoomFocusOnPad(at: 3, x: .nan, y: 0.5), noZoom)
+
+        // Where the zoom already looks.
+        XCTAssertEqual(model.setZoomFocusOnPad(at: 0, x: 0.5, y: 0.5), unchanged)
+
+        XCTAssertEqual(model.project, before)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testSuggestedZoomsAreCountedUntilTheyAreChanged() {
+        var project = makeProject(camera: false)
+        project.zooms = [zoom(1, 2, origin: .auto), zoom(3, 4), zoom(5, 6, origin: .auto)]
+        var model = StudioEditorModel(project: project)
+
+        XCTAssertEqual(model.suggestedZoomCount, 2)
+
+        model.setZoomScale(at: 0, to: 3)
+
+        XCTAssertEqual(model.suggestedZoomCount, 1)
+    }
+
+    // MARK: - Crops: As Insets
+
+    func testCropInsetsAreWhatACropCutsOffEachEdge() {
+        XCTAssertEqual(StudioCropInsets(crop: nil), StudioCropInsets())
+        XCTAssertTrue(StudioCropInsets(crop: nil).isEmpty)
+
+        let insets = StudioCropInsets(crop: StudioRect(x: 0.1, y: 0.2, width: 0.6, height: 0.4))
+
+        // Plain numbers, without what binary leaves behind in 1 - 0.1 - 0.6.
+        XCTAssertEqual(insets, StudioCropInsets(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4))
+        XCTAssertFalse(insets.isEmpty)
+        XCTAssertEqual(insets[.left], 0.1)
+        XCTAssertEqual(insets[.top], 0.2)
+        XCTAssertEqual(insets[.right], 0.3)
+        XCTAssertEqual(insets[.bottom], 0.4)
+
+        // A crop that is not valid is not applied, so it cuts nothing off.
+        XCTAssertEqual(StudioCropInsets(crop: StudioRect(x: 0.5, y: 0.5, width: 0.01, height: 0.5)), StudioCropInsets())
+    }
+
+    func testACropEdgeGoesWhereItIsPutAndTheCropIsStoredInPlainNumbers() {
+        var model = StudioEditorModel(project: makeProject())
+
+        model.setScreenCropInset(.left, to: 0.07)
+        assertRect(model.project.screen.crop, x: 0.07, y: 0, width: 0.93, height: 1)
+
+        model.setScreenCropInset(.right, to: 0.2)
+        model.setScreenCropInset(.top, to: 0.1)
+        model.setScreenCropInset(.bottom, to: 0.25)
+
+        XCTAssertEqual(model.project.screen.crop, StudioRect(x: 0.07, y: 0.1, width: 0.73, height: 0.65))
+        XCTAssertEqual(model.screenCropInsets, StudioCropInsets(left: 0.07, top: 0.1, right: 0.2, bottom: 0.25))
+        XCTAssertNotNil(StudioCanvasMath.validCrop(model.project.screen.crop))
+
+        XCTAssertNil(model.project.camera.crop)
+        model.setCameraCropInset(.top, to: 0.3)
+        assertRect(model.project.camera.crop, x: 0, y: 0.3, width: 1, height: 0.7)
+        XCTAssertEqual(model.cameraCropInsets, StudioCropInsets(top: 0.3))
+        XCTAssertEqual(model.screenCropInsets, StudioCropInsets(left: 0.07, top: 0.1, right: 0.2, bottom: 0.25))
+    }
+
+    func testWithNothingCutOffAnyEdgeTheCropIsRemoved() {
+        var model = StudioEditorModel(project: makeProject(camera: false))
+        model.setScreenCrop(StudioRect(x: 0.1, y: 0.2, width: 0.6, height: 0.4))
+
+        model.setScreenCropInset(.left, to: 0)
+        model.setScreenCropInset(.top, to: 0)
+        model.setScreenCropInset(.right, to: 0)
+        assertRect(model.project.screen.crop, x: 0, y: 0, width: 1, height: 0.6)
+
+        model.setScreenCropInset(.bottom, to: 0)
+        XCTAssertNil(model.project.screen.crop)
+        XCTAssertTrue(model.screenCropInsets.isEmpty)
+    }
+
+    func testACropEdgeStopsWhereAPieceOfTheFrameIsStillLeft() {
+        var model = StudioEditorModel(project: makeProject(camera: false))
+
+        model.setScreenCropInset(.left, to: 0.5)
+        model.setScreenCropInset(.right, to: 0.9)
+        assertRect(model.project.screen.crop, x: 0.5, y: 0, width: 0.05, height: 1)
+
+        // Already as far as it goes.
+        let before = model
+        model.setScreenCropInset(.left, to: 2)
+        XCTAssertEqual(model, before)
+
+        model.setScreenCropInset(.bottom, to: 1)
+        model.setScreenCropInset(.top, to: -3)
+        assertRect(model.project.screen.crop, x: 0.5, y: 0, width: 0.05, height: 0.05)
+        XCTAssertNotNil(StudioCanvasMath.validCrop(model.project.screen.crop))
+    }
+
+    func testACropEdgeThatIsNotANumberOrIsPutWhereItIsChangesNothing() {
+        var model = StudioEditorModel(project: makeProject(camera: false))
+        model.setScreenCropInset(.left, to: 0.1)
+        let before = model
+
+        model.setScreenCropInset(.left, to: .nan)
+        model.setScreenCropInset(.right, to: .infinity)
+        model.setScreenCropInset(.left, to: 0.1)
+        model.setScreenCropInset(.top, to: 0)
+
+        XCTAssertEqual(model, before)
+        model.undo()
+        XCTAssertNil(model.project.screen.crop)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testMovingACropEdgeKeepsWhatTheCropHasThatThisVersionDoesNotKnow() throws {
+        let json = """
+        {
+          "id": "3f0013cf-ba10-4453-af91-792b7882dae6",
+          "sources": { "screen": { "width": 1920, "height": 1080, "duration": 10 } },
+          "screen": { "crop": { "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8, "feather": 4 } }
+        }
+        """
+        let project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(json.utf8))
+        var model = StudioEditorModel(project: project)
+        XCTAssertFalse(project.screen.crop?.extra.isEmpty ?? true)
+
+        model.setScreenCropInset(.left, to: 0.3)
+
+        assertRect(model.project.screen.crop, x: 0.3, y: 0.1, width: 0.6, height: 0.8)
+        XCTAssertEqual(model.project.screen.crop?.extra, project.screen.crop?.extra)
+    }
+
     // MARK: - Zooms: Text
 
     func testZoomAccessibilityText() {
@@ -1014,6 +1507,36 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.zoomAccessibilityText(zoom(1, 2, scale: 9)), "Zoom 5×, 1.0 to 2.0 seconds")
         XCTAssertEqual(StudioEditorModel.zoomAccessibilityText(zoom(1, 2, scale: 0.2)), "Zoom 1×, 1.0 to 2.0 seconds")
         XCTAssertEqual(StudioEditorModel.zoomAccessibilityText(zoom(1, 2, scale: .nan)), "Zoom 1×, 1.0 to 2.0 seconds")
+    }
+
+    func testZoomScaleTextIsTheScaleThatIsDrawnWithUpToTwoDecimals() {
+        XCTAssertEqual(StudioEditorModel.zoomScaleText(2), "2×")
+        XCTAssertEqual(StudioEditorModel.zoomScaleText(2.5), "2.5×")
+        XCTAssertEqual(StudioEditorModel.zoomScaleText(1.25), "1.25×")
+        XCTAssertEqual(StudioEditorModel.zoomScaleText(3.14159), "3.14×")
+        XCTAssertEqual(StudioEditorModel.zoomScaleText(9), "5×")
+        XCTAssertEqual(StudioEditorModel.zoomScaleText(0.2), "1×")
+        XCTAssertEqual(StudioEditorModel.zoomScaleText(.nan), "1×")
+    }
+
+    func testZoomRangeTextSaysTheTimesInSourceTime() {
+        XCTAssertEqual(StudioEditorModel.zoomRangeText(zoom(12, 16.5)), "12.0 to 16.5 seconds")
+        XCTAssertEqual(StudioEditorModel.zoomRangeText(zoom(0, 0.3)), "0.0 to 0.3 seconds")
+        XCTAssertEqual(StudioEditorModel.zoomRangeText(zoom(.nan, .infinity)), "0.0 to 0.0 seconds")
+    }
+
+    func testZoomPositionTextCountsFromOne() {
+        XCTAssertEqual(StudioEditorModel.zoomPositionText(index: 0, count: 1), "Zoom 1 of 1")
+        XCTAssertEqual(StudioEditorModel.zoomPositionText(index: 1, count: 5), "Zoom 2 of 5")
+        XCTAssertEqual(StudioEditorModel.zoomPositionText(index: 11, count: 1000), "Zoom 12 of 1000")
+    }
+
+    func testZoomSuggestionsTextSaysHowManyThereAre() {
+        XCTAssertEqual(StudioEditorModel.zoomSuggestionsText(count: 0), "No zooms to suggest for this recording.")
+        XCTAssertEqual(StudioEditorModel.zoomSuggestionsText(count: -1), "No zooms to suggest for this recording.")
+        XCTAssertEqual(StudioEditorModel.zoomSuggestionsText(count: 1), "1 zoom suggested.")
+        XCTAssertEqual(StudioEditorModel.zoomSuggestionsText(count: 2), "2 zooms suggested.")
+        XCTAssertEqual(StudioEditorModel.zoomSuggestionsText(count: 1200), "1200 zooms suggested.")
     }
 
     // MARK: - Helpers
