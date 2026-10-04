@@ -21,11 +21,12 @@ public interface IStudioExportService
 {
     /// <summary>
     /// Renders the project to an MP4 at <paramref name="outputPath"/>, replacing a file that is
-    /// already there. <paramref name="progress"/> receives values from 0 to 1.
+    /// already there once the new one is complete. <paramref name="progress"/> receives values
+    /// from 0 to 1, and reaches 1 only when the file is in place.
     /// </summary>
     /// <exception cref="OperationCanceledException">
-    /// The export was cancelled. Nothing is left at <paramref name="outputPath"/> in that case, or
-    /// when the export fails.
+    /// The export was cancelled. A cancelled or failed export leaves nothing new at
+    /// <paramref name="outputPath"/>, and does not touch a file that was there before.
     /// </exception>
     Task ExportAsync(
         StudioProject project,
