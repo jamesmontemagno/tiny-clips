@@ -193,11 +193,41 @@ public sealed class StudioEditorSessionZoomTests : StudioEditorSessionTestBase
         session.Scrub(3.1);
         Changes.Clear();
 
+        Assert.False(session.CanAddZoomAtPlayhead);
         var result = session.AddZoomAtPlayhead();
 
         Assert.Equal(new StudioZoomEditResult(false, null), result);
         Assert.Equal(1, session.SelectedZoomIndex);
         Assert.Empty(Changes);
+    }
+
+    [Fact]
+    public async Task AZoomCanBeAdded_WhereOneFits_OrOneIsAlreadyThere()
+    {
+        var session = await OpenAsync(CreateProjectWithZooms(Zoom(1, 3), Zoom(3.2, 7)));
+
+        // At the start of the recording, with a second before the first zoom.
+        Assert.True(session.CanAddZoomAtPlayhead);
+
+        // Inside a zoom, which adding selects.
+        session.Scrub(2);
+        Assert.True(session.CanAddZoomAtPlayhead);
+
+        // In a gap of 0.2 seconds.
+        session.Scrub(3.05);
+        Assert.False(session.CanAddZoomAtPlayhead);
+
+        // At the very end of the recording.
+        session.Scrub(10);
+        Assert.False(session.CanAddZoomAtPlayhead);
+
+        session.Scrub(8);
+        Assert.True(session.CanAddZoomAtPlayhead);
+        var export = session.ExportAsync(() => ExportPath, default);
+        Assert.False(session.CanAddZoomAtPlayhead);
+
+        session.CancelExport();
+        await FinishAsync(export);
     }
 
     [Fact]

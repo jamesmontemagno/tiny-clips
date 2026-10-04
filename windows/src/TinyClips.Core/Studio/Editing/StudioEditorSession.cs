@@ -146,6 +146,12 @@ public sealed class StudioEditorSession
 
     public bool CanExport => IsEditable && Model is { OutputDuration: > 0 };
 
+    /// <summary>
+    /// Whether adding a zoom at the playhead has a zoom to answer with: one fits there, or one is
+    /// already there to select.
+    /// </summary>
+    public bool CanAddZoomAtPlayhead => IsEditable && Model is { } model && model.CanAddZoom(Playhead);
+
     public bool HasCamera => Model?.HasCamera ?? false;
 
     public bool HasNeverExported => Model?.HasNeverExported ?? false;

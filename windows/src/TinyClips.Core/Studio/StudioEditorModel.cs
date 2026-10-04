@@ -691,16 +691,7 @@ public sealed class StudioEditorModel
             return new StudioZoomEditResult(false, existing);
         }
 
-        var zooms = Project.Zooms;
-        var index = Array.FindIndex(zooms, zoom => zoom.Start > start);
-        if (index < 0)
-        {
-            index = zooms.Length;
-        }
-
-        var nextStart = index < zooms.Length ? zooms[index].Start : SourceDuration;
-        var end = Math.Min(start + NewZoomDuration, Math.Min(nextStart, SourceDuration));
-        if (end - start < MinimumZoomDuration)
+        if (!TryGetNewZoomPlace(start, out var index, out var end))
         {
             return new StudioZoomEditResult(false, null);
         }
@@ -714,9 +705,25 @@ public sealed class StudioEditorModel
             End = end,
             Focus = new StudioZoomFocus { X = Clamp(focusX, 0, 1), Y = Clamp(focusY, 0, 1) },
         };
+        var zooms = Project.Zooms;
         StudioZoom[] updated = [.. zooms[..index], added, .. zooms[index..]];
         Mutate(project => project with { Zooms = updated });
         return new StudioZoomEditResult(true, index);
+    }
+
+    /// <summary>
+    /// Whether <see cref="AddZoom"/> at this time has a zoom to answer with: a new one, or the one
+    /// that is already there. False where less than <see cref="MinimumZoomDuration"/> fits.
+    /// </summary>
+    public bool CanAddZoom(double sourceTime)
+    {
+        if (!double.IsFinite(sourceTime))
+        {
+            return false;
+        }
+
+        var start = Clamp(sourceTime, 0, SourceDuration);
+        return GetZoomIndexAt(start) is not null || TryGetNewZoomPlace(start, out _, out _);
     }
 
     public StudioZoomEditResult RemoveZoom(int index)
@@ -1227,6 +1234,23 @@ public sealed class StudioEditorModel
     private StudioFrameRect ZoomArea => StudioCanvasMath.ValidCropOrNull(Project.Screen.Crop) is { } crop
         ? new StudioFrameRect(crop.X, crop.Y, crop.Width, crop.Height)
         : new StudioFrameRect(0, 0, 1, 1);
+
+    // Where a zoom starting at a time that no zoom contains goes in the list, and where it ends:
+    // after NewZoomDuration, or at the next zoom or the end of the recording when that comes
+    // sooner. False when that leaves less than the shortest zoom.
+    private bool TryGetNewZoomPlace(double start, out int index, out double end)
+    {
+        var zooms = Project.Zooms;
+        index = Array.FindIndex(zooms, zoom => zoom.Start > start);
+        if (index < 0)
+        {
+            index = zooms.Length;
+        }
+
+        var nextStart = index < zooms.Length ? zooms[index].Start : SourceDuration;
+        end = Math.Min(start + NewZoomDuration, Math.Min(nextStart, SourceDuration));
+        return end - start >= MinimumZoomDuration;
+    }
 
     private static StudioProject WithScene(StudioProject project, Func<StudioScene, StudioScene> change)
     {

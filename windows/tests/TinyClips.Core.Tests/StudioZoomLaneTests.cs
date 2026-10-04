@@ -126,6 +126,47 @@ public sealed class StudioZoomLaneTests
         Assert.Equal(4, crowded.Project.Zooms[1].Start, Precision);
     }
 
+    // Whether a zoom can be added
+
+    [Fact]
+    public void AZoomCanBeAdded_ExactlyWhereAddingOneAnswersWithAZoom()
+    {
+        var project = MakeProject(duration: 10) with { Zooms = [Zoom(1, 3), Zoom(3.2, 7), Zoom(9.8, 10)] };
+
+        for (var step = -4; step <= 208; step++)
+        {
+            var time = step * 0.05;
+            var model = new StudioEditorModel(project);
+            var canAdd = model.CanAddZoom(time);
+            var result = model.AddZoom(time, null);
+
+            Assert.True(canAdd == result.Index is not null, $"at {time}: can add {canAdd}, adding gave {result}");
+        }
+
+        var untouched = new StudioEditorModel(project);
+
+        // A second before the first zoom, and inside a zoom, which adding selects.
+        Assert.True(untouched.CanAddZoom(0));
+        Assert.True(untouched.CanAddZoom(2));
+
+        // 0.15 seconds before the next zoom, and 0.2 before the last.
+        Assert.False(untouched.CanAddZoom(3.05));
+        Assert.False(untouched.CanAddZoom(9.6));
+
+        // At the end of a zoom, chained to it.
+        Assert.True(untouched.CanAddZoom(7));
+
+        // Times outside the recording count as its ends.
+        Assert.True(untouched.CanAddZoom(-3));
+        Assert.False(untouched.CanAddZoom(40));
+        Assert.False(untouched.CanAddZoom(double.NaN));
+        Assert.False(untouched.CanAddZoom(double.PositiveInfinity));
+
+        // Asking changes nothing.
+        Assert.Equal(3, untouched.Project.Zooms.Length);
+        Assert.False(untouched.CanUndo);
+    }
+
     // Stepping through the zooms
 
     [Theory]
