@@ -1,0 +1,12 @@
+# Build output
+bin/
+obj/
+
+# Generated test clips, reports and screenshots
+out/
+*.mp4
+
+# User-specific files
+*.user
+*.suo
+.vs/

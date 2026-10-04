@@ -1,0 +1,83 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    StudioPreviewCheck: checks the Studio live preview (TinyClips.Core\Studio\Preview and the
+    app's StudioPreviewPanel) against generated test clips, reading every result back from
+    pixels. See README.md.
+
+    One unpackaged WinUI 3 executable with a console subsystem, so the headless checks print to
+    the terminal and the window checks open a XAML window from the same binary. Nothing is
+    packaged, registered or installed. Not part of TinyClips.Windows.slnx; build and run it by hand.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>TinyClips.Tools.StudioPreviewCheck</RootNamespace>
+    <AssemblyName>StudioPreviewCheck</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <!-- Unpackaged, with the Windows App SDK next to the executable. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!--
+      Needed although nothing is packaged: without it a publish leaves the app's own .pri file,
+      which holds the compiled XAML, out of the output, and the window then fails at its first
+      LoadComponent with XamlParseException 0x802B000A.
+    -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Program.Main decides what runs, so the XAML compiler must not emit an entry point. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- Trim and AOT analyzer warnings in ordinary builds: the panel ships in a NativeAOT app. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- WinUI 3 has no AnyCPU: derive the platform from the runtime identifier, or default to x64. -->
+  <PropertyGroup Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">
+    <Platform Condition="'$(RuntimeIdentifier)' == 'win-arm64'">ARM64</Platform>
+    <Platform Condition="'$(RuntimeIdentifier)' != 'win-arm64'">x64</Platform>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!--
+    The XAML application object is not called App.xaml and is not in the project root, so the SDK
+    would compile it as an ordinary page. The build would succeed, and the window would die at
+    start with XamlParseException 0x802B000A because nothing implements IXamlMetadataProvider.
+  -->
+  <ItemGroup>
+    <Page Remove="Windowed\CheckApp.xaml" />
+    <ApplicationDefinition Include="Windowed\CheckApp.xaml" />
+  </ItemGroup>
+
+  <!-- Same versions as TinyClips.App. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260528001" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TinyClips.Core\TinyClips.Core.csproj" />
+  </ItemGroup>
+
+  <!-- The real panel, not a copy: the app's source files are compiled into this tool. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\TinyClips.App\Controls\Studio\StudioPreviewPanel.cs" Link="Panel\StudioPreviewPanel.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Controls\Studio\StudioPreviewPanelInterop.cs" Link="Panel\StudioPreviewPanelInterop.cs" />
+  </ItemGroup>
+
+  <!-- Generated media and reports never belong in the compilation. -->
+  <ItemGroup>
+    <Compile Remove="out\**" />
+    <None Remove="out\**" />
+    <Content Remove="out\**" />
+  </ItemGroup>
+
+</Project>
