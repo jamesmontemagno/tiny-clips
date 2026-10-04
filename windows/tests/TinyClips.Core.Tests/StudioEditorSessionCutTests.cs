@@ -122,6 +122,44 @@ public sealed class StudioEditorSessionCutTests : StudioEditorSessionTestBase
     }
 
     [Fact]
+    public async Task SelectNothing_LetsGoOfAZoomOrACut_AndSaysSoOnce()
+    {
+        var session = await OpenAsync(CreateProjectWithCuts((2, 3), (5, 6)));
+        session.AddZoom(7);
+        session.Scrub(4);
+        Preview.Seeks.Clear();
+
+        // Selecting no zoom leaves a selected cut alone, which is why there is this.
+        session.SelectCut(1);
+        session.SelectZoom(null);
+        Assert.Equal(1, session.SelectedCutIndex);
+
+        Changes.Clear();
+        session.SelectNothing();
+        Assert.Null(session.SelectedCutIndex);
+        Assert.Null(session.SelectedZoomIndex);
+        Assert.Equal(new[] { StudioEditorChanges.Selection }, Changes);
+
+        // With nothing selected it says nothing.
+        Changes.Clear();
+        session.SelectNothing();
+        Assert.Empty(Changes);
+
+        session.SelectZoom(0);
+        Changes.Clear();
+        session.SelectNothing();
+        Assert.Null(session.SelectedZoomIndex);
+        Assert.Null(session.SelectedCutIndex);
+        Assert.Equal(new[] { StudioEditorChanges.Selection }, Changes);
+
+        // The playhead stays, and nothing was edited beyond the zoom that was added.
+        Assert.Equal(4, session.Playhead, Precision);
+        Assert.Empty(Preview.Seeks);
+        Assert.Equal(2, session.CutCount);
+        Assert.Single(session.Project!.Zooms);
+    }
+
+    [Fact]
     public async Task TheSelection_StaysOnItsCut()
     {
         var session = await OpenAsync(CreateProjectWithCuts((2, 3), (5, 6), (8, 9)));

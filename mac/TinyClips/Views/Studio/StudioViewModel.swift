@@ -332,6 +332,13 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
+    /// Lets go of whatever is selected, a zoom or a cut. The playhead stays. A press on an empty
+    /// part of a lane does this: selecting no zoom alone would leave a selected cut as it is.
+    func selectNothing() {
+        setSelectedZoomIndex(nil)
+        setSelectedCutIndex(nil)
+    }
+
     /// Selects a zoom and moves the playhead to where it has moved in.
     @discardableResult
     func selectAndShowZoom(_ index: Int?) -> Bool {

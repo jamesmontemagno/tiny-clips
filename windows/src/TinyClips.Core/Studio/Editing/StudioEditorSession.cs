@@ -467,6 +467,21 @@ public sealed partial class StudioEditorSession
     }
 
     /// <summary>
+    /// Lets go of whatever is selected, a zoom or a cut. The playhead stays. A press on an empty
+    /// part of a lane does this: selecting no zoom alone would leave a selected cut as it is.
+    /// </summary>
+    public void SelectNothing()
+    {
+        var hadSelection = SelectedZoomIndex is not null || SelectedCutIndex is not null;
+        _selectedZoomIndex = null;
+        _selectedCutIndex = null;
+        if (hadSelection)
+        {
+            RaiseChanged(StudioEditorChanges.Selection);
+        }
+    }
+
+    /// <summary>
     /// Selects the zoom after the selected one and shows it. With nothing selected, the zoom at
     /// the playhead or the first one after it. False when there is none.
     /// </summary>
