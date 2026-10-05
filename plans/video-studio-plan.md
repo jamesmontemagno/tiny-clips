@@ -266,7 +266,27 @@ Which pixels are a person is for each platform to find, so the edge is not the s
 
 **macOS** uses the Vision framework's person segmentation in the compositor, for the preview and the export alike, at its middle quality setting. Nothing is added to the app. While a video plays, Vision steadies the edge from frame to frame; right after a seek the first masks can trail the picture.
 
-**Windows** has nothing built in that does this on an ordinary PC, so it needs a model and something to run it, which is an added dependency and a decision for the user. Until then the Windows renderer draws a project with a blurred or removed background as if it were kept. NativeAOT and trimming do not narrow the choice: the releases no longer use NativeAOT, so every runtime is open, Windows ML included.
+**Windows** has nothing built in that finds people in a recording on an ordinary PC. Windows Studio Effects changes the picture of a live camera, and needs a neural processor and a driver from the PC's maker; the Windows AI imaging APIs need a Copilot+ PC. So it takes a segmentation model and something to run it.
+
+*What is built.* The renderer draws a blurred or removed background from a picture of where the people are, in the preview, the export and the poster alike. What finds them is behind one small interface (`IStudioPersonFinder`). The finder that comes with it runs a model on the processor with `Windows.AI.MachineLearning`, the machine learning API that has been part of Windows since version 1809. That adds no package and no library to the app in either flavor. The one thing to add is the model's file, which the app looks for at `Assets\Studio\selfie_segmentation.onnx` next to itself. **The file is not in the repository.** Without it Windows keeps every background, which is what the format asks of a renderer that cannot find people, and nothing in the window offers the choice yet.
+
+*The model* this was built and tried with is MediaPipe Selfie Segmentation, Google's 256 by 256 "general" model under the Apache License 2.0, as an ONNX file of 448 KB. Microsoft's PowerToys ZoomIt uses the same model through the same API for the background blur of its own webcam overlay, and the file in its repository is the one used here. It was kept in a temporary folder, outside the repository.
+
+*Measured on the development PC* (8 cores, AMD graphics): finding the people takes 4 to 5 ms a frame on the processor, and the graphics card is no faster for a model this small. A 1080p frame whose camera background is blurred or removed takes about 10 ms to draw and read back, where one with it kept takes 2. The first frame takes about half a second more, once, to load the model. On one of MediaPipe's own test photographs the person is cut out cleanly, with a few specks left along an arm; the pictures have been looked at. Nothing has been tried on webcam footage, on ARM64, or on a PC without a graphics card that Windows can use.
+
+*How the people are drawn.* The model's answer is used as it is, as how much of each pixel is a person, with no threshold. It is not steadied from frame to frame, so a frame always looks the same however the playhead got to it; an edge may flicker in a way the Mac's does not. The blur is Direct2D's Gaussian in its balanced setting, which measures 25.1 to 25.2 pixels where the format asks for 25.6.
+
+*The choice of what runs the model* is the user's, since it decides what is added to the app:
+
+| | Added to the direct download | Added to the Store package | |
+|---|---|---|---|
+| The API that is part of Windows (`Windows.AI.MachineLearning`), as built | The model, 0.4 MB | The model, 0.4 MB | Takes ONNX models up to opset 12 on Windows 11; this one is opset 11. Microsoft calls this API superseded by the next row and adds nothing to it any more |
+| Windows ML in the Windows App SDK | About 41 MB unpacked, or about half that without DirectML, which Microsoft describes and does not support | The model, 0.4 MB | The direct download carries its own copy of the Windows App SDK, so it would carry this too. The Store package uses the shared one. A current ONNX Runtime, still developed |
+| ONNX Runtime from NuGet | About 16 MB for each architecture | About 16 MB | The same engine at a version the app chooses |
+
+The recommendation is the first row, which is what is built: it costs the app nothing but the model, and Microsoft ships the same pairing. Moving to one of the others later means writing one class of about 250 lines again. NativeAOT and trimming do not narrow the choice: the releases no longer use NativeAOT.
+
+*What a yes takes:* putting the model's file in `windows/src/TinyClips.App/Assets/Studio/` (the project picks it up from there), and saying in the app and the repository that it is there and under which licence, which the Apache License asks for and which Tiny Clips has no place for yet. Then the Background choice in the Windows window, which is not built.
 
 ## Platform architecture
 
@@ -322,7 +342,7 @@ Each milestone lands on both platforms before the next one starts. Studio is lab
 | `m3-win-scenes-cuts`, `m3-mac-scenes-cuts` | Each | Scene lane, transitions, cuts, speed, volumes |
 | `m3-win-live-markers`, `m3-mac-live-markers` | Each | Live layout switching while recording |
 | `m4-mac-person-cutout` | macOS | Vision person segmentation in the compositor |
-| `m4-win-person-cutout` | Windows | Evaluate the options, get a decision on the added dependency, then implement |
+| `m4-win-person-cutout` | Windows | Evaluate the options, get a decision on the added dependency, then implement. (The options are evaluated and the one that adds no package is built; the model file it needs waits for the decision) |
 
 ## Implementation status
 
@@ -383,9 +403,10 @@ The Windows window has the zoom lane, the Zoom section and the crop sliders. `St
 
 | Milestone 4 piece | macOS | Windows |
 |---|---|---|
-| The drawing rule for a blurred or removed camera background (section 6.7 of the format) | Done | The same text. Not implemented |
-| Finding the people in a camera frame | Vision person segmentation in the compositor. Compiled, never run | Not started. Needs a model and a runtime: a decision for the user |
-| Background: Keep, Blur, Remove in the Camera section | Done. The rule is unit tested. Compiled, never run | Not started |
+| The drawing rule for a blurred or removed camera background (section 6.7 of the format) | Done | The same text |
+| Drawing it | In the compositor, with Core Image. Compiled, never run | Done in the renderer, for the preview, the export and the poster. `StudioRenderCheck` measures it from pixels with a stand-in for what finds the people |
+| Finding the people in a camera frame | Vision person segmentation in the compositor. Compiled, never run | Done, with the machine learning API that is part of Windows. It needs a model file that is not in the repository: a decision for the user. Tried with that file on one photograph |
+| Background: Keep, Blur, Remove in the Camera section | Done. The rule is unit tested. Compiled, never run | The rule is in the editor model and session, unit tested. No control in the window |
 
 A project file with more than one scene is drawn with its transitions on both platforms. On the Mac the editor can now split a recording into scenes and change each one, in views that have been compiled and never run. On Windows no window has a control for scenes yet, and until it does, the layout controls of a project that already has several scenes change the scene under the playhead while showing the layout of another.
 
@@ -448,6 +469,9 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **What was done while recording arrives as scenes.** A Studio recording used to show the camera in its first corner throughout, even when it had been moved while recording. Each move now starts a scene that the camera glides into, 0.35 seconds as for a scene split off in the editor, where a regular recording jumps. Corners passed through in under 0.3 seconds are skipped, since the editor makes no scene shorter than that.
 - **A removed background takes the border and the shadow with it.** With only the people left, a border and a shadow would be drawn around a frame that is not there. The shape still clips the picture. A blurred background changes nothing else about the layer.
 - **One quality for the person cutout on the Mac**, Vision's middle setting, in the preview and in the export, so that an export shows the edge the preview showed. The finer setting may be worth it for exports; that needs eyes on a Mac.
+- **On Windows the people are found on the processor, with what Windows has.** The research into this recommended Windows ML from the Windows App SDK, on the grounds that the app has that SDK already. That holds for the Store package only: the direct download bundles the SDK and would grow by about 41 MB. The API that is part of Windows adds nothing but the model, and is what PowerToys ZoomIt uses with the same model. It runs on the processor because the graphics card measured no faster and is busy decoding, drawing and encoding.
+- **The model's file is not committed.** The plan left what is added to the app for the person cutout to the user. With this choice that is one file of 448 KB under the Apache License 2.0, and a notice of it. Everything else is in, and inert without the file.
+- **The same edge however the playhead got there, on Windows.** Each frame's people are found from that frame alone. Steadying the edge over several frames, as MediaPipe's own pipeline and ZoomIt do, would make a frame look different after a seek than after playing up to it, and an export different from the preview.
 - **The project says what its sound tracks hold only when that is certain.** The Mac recorder lists them when the finished file has exactly one sound track for each sound it set out to record. An input that never got a sample may or may not have become a track; then the project lists nothing and every track plays as recorded.
 - **Playing over a cut** is done by the editor, which sends the preview on to the end of the cut when playback reaches it. The export is exact; the preview can show a few frames of the cut first.
 - **Stepping is read out.** Previous and Next, for zooms, scenes and cuts, say nothing of where they land by themselves, and the text between them is not read when it changes. So the editor reads out where it landed: "Zoom 2 of 5, 2×, 12.0 to 16.5 seconds", "Scene 2 of 3, Side by side, 12.0 to 30.5 seconds", "Cut 2 of 3, 12.0 to 16.5 seconds". On Windows a button that sets a time also reads out the new time; on the Mac the stepper speaks for itself.
@@ -512,7 +536,12 @@ Known limits to state up front:
 
 ## Open questions
 
-None. The name, price, cleanup defaults, and first-run look are settled in "Decisions confirmed" above.
+The name, price, cleanup defaults, and first-run look are settled in "Decisions confirmed" above. Open, each written up where it belongs:
+
+- **Windows person cutout: ship the model file?** One file of 448 KB (MediaPipe Selfie Segmentation, Apache License 2.0) and a notice of it. Everything else is built. See "Person cutout (Milestone 4)".
+- **Windows volumes:** the recorder would have to keep the computer's sound and the microphone in two tracks. See "Volumes".
+- **Choosing a layout while recording:** which keys. See "Scenes from the recording".
+- **The regular Windows recorder's CPU path** writes upside down on the development PC; the fix is small and waits for a yes. See "Found in the regular Windows recorder and left alone".
 
 ## Validation
 
