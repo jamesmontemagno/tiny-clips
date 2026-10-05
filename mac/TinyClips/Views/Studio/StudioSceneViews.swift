@@ -264,8 +264,8 @@ struct StudioSceneInspectorSection: View {
 
     /// Why the scene cannot be split here. It is left out while the recording plays: the reason
     /// comes and goes with the playhead, and the rows below it would move up and down with it.
-    /// The button still shows whether a split is possible, and a split that is refused is still
-    /// announced with its reason.
+    /// The Split button above the timeline has the reason as its help at any time, and a split
+    /// that is refused is announced with it.
     @ViewBuilder
     private var splitExplanation: some View {
         if !viewModel.isPlaying, let explanation = viewModel.splitSceneExplanation {
