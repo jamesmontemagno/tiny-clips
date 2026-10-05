@@ -2093,8 +2093,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
     /// <summary>
     /// Turns the finished screen and camera tracks into a Studio project and returns its id. Returns
     /// null when the recording was discarded or the project could not be saved; in the second case
-    /// <paramref name="fallbackPath"/> is the screen track moved into the normal save folder, when
-    /// that worked, so the capture is kept as an ordinary recording.
+    /// <paramref name="fallbackPath"/> is the screen track moved into the normal save folder, so
+    /// the capture is kept as an ordinary recording. When it cannot be moved there either, it is
+    /// the screen track where it lies, in its project folder, which is then left alone: it holds
+    /// the only copy of the recording. Storage cleanup removes such a folder after a day.
     /// </summary>
     private string? FinishStudioRecording(string? screenPath, bool discard, out string? fallbackPath)
     {
@@ -2141,7 +2143,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
         {
             WebcamDiagnostics.Log($"Studio project could not be saved; keeping the screen track as a regular recording (0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}).");
             fallbackPath = TryKeepScreenTrackAsRecording(paths.ScreenPath);
-            CleanupStudioRecording(deleteProject: true);
+            var isOnlyCopy = fallbackPath is null && HasNonEmptyOutputFile(paths.ScreenPath);
+            if (isOnlyCopy)
+            {
+                // Deleting the project now would delete the recording with it.
+                fallbackPath = paths.ScreenPath;
+                WebcamDiagnostics.Log($"The screen recording stays in its Studio project folder, for a day: {paths.ScreenPath}");
+            }
+
+            CleanupStudioRecording(deleteProject: !isOnlyCopy);
             return null;
         }
     }
