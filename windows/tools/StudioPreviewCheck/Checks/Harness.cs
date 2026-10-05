@@ -595,6 +595,9 @@ internal sealed class Session : IAsyncDisposable
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string[]> SecondAttempts = new();
     private static int _opened;
 
+    /// <summary>How many lines of an engine's trace are kept, the newest: more with <c>--trace-lines</c>.</summary>
+    public static int TraceLines { get; set; } = 600;
+
     private readonly Dictionary<(int, int), SceneView> _views = [];
     private readonly bool _ownsEngine;
     private StudioProject _project;
@@ -666,7 +669,7 @@ internal sealed class Session : IAsyncDisposable
     /// </summary>
     public static StudioPreviewEngine OpenEngine(StudioPreviewOptions options, TestFolder folder, out TraceLog trace)
     {
-        var log = trace = new TraceLog(600);
+        var log = trace = new TraceLog(TraceLines);
         IStudioPreviewFactory factory = new StudioPreviewFactory(options with { Trace = log.Add });
         StudioPreviewEngine engine;
         try
@@ -679,7 +682,7 @@ internal sealed class Session : IAsyncDisposable
             throw;
         }
 
-        NoteOpened(engine, log, firstAttemptMadeToFail: options.DevicesLostWhileOpening > 0 || options.PlayersFailedWhileOpening > 0);
+        NoteOpened(engine, log, firstAttemptMadeToFail: options.DevicesLostWhileOpening > 0 || options.PlayersFailedWhileOpening > 0 || options.PlayersStopDecodingWhileOpening > 0);
         return engine;
     }
 
@@ -702,7 +705,7 @@ internal sealed class Session : IAsyncDisposable
     public static void ReportSecondAttempts(Report report, string failuresDirectory)
     {
         var traces = SecondAttempts.ToArray();
-        var text = $"{Volatile.Read(ref _opened)} previews were opened in this run. {traces.Length} of them opened at the second attempt, the first having failed in a way that may pass: a graphics device lost, or a player that failed after every player had handed over a frame. (The previews of the checks that make that happen are not counted.)";
+        var text = $"{Volatile.Read(ref _opened)} previews were opened in this run. {traces.Length} of them opened at the second attempt, the first having failed in a way that may pass: a graphics device lost, a player that failed after every player had handed over a frame, or a player that stopped decoding before that. (The previews of the checks that make that happen are not counted.)";
         if (traces.Length > 0)
         {
             try
@@ -836,10 +839,14 @@ internal sealed class Session : IAsyncDisposable
             : picture.Shown(View(picture.Width, picture.Height), Folder.Screen, Folder.Camera);
     }
 
-    /// <summary>Which frame the texture a clip's player copies into holds, read from its pixels.</summary>
-    public int ReadClipFrame(int clip)
+    /// <summary>
+    /// Which frame a clip's picture holds, read from its pixels: the texture the scene is drawn
+    /// from. With <paramref name="copyTarget"/>, the texture the clip's player copies into, which
+    /// holds the frame the player handed over last, whether or not that became the picture.
+    /// </summary>
+    public int ReadClipFrame(int clip, bool copyTarget = false)
     {
-        var pixels = Engine.ReadClipTexture(clip, out var width, out var height);
+        var pixels = Engine.ReadClipTexture(clip, copyTarget, out var width, out var height);
         if (pixels is null)
         {
             return FrameCode.Unreadable;

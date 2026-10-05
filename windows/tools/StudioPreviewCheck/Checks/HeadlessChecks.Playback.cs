@@ -196,6 +196,7 @@ internal sealed partial class HeadlessChecks
             var watch = Stopwatch.StartNew();
             session.Engine.Play();
             Thread.Sleep(seconds * 1000);
+            var pausedAt = Stopwatch.GetTimestamp();
             session.Engine.Pause();
             var wall = watch.Elapsed.TotalSeconds;
             var cpu = (Process.GetCurrentProcess().TotalProcessorTime - cpuBefore).TotalSeconds;
@@ -203,7 +204,7 @@ internal sealed partial class HeadlessChecks
             var after = session.Engine.GetDiagnostics();
             var composites = session.Recorder.Drain();
             var positions = session.Events.Positions().Select(p => (int)Math.Round(p.Position * Fps)).ToList();
-            ReportPlayback($"run {run + 1}", session, composites, positions, start, wall);
+            ReportPlayback($"run {run + 1}", session, composites, positions, start, wall, pausedAt);
             _report.Note($"run {run + 1}: players delivered screen {after.FramesCopied[0] - before.FramesCopied[0]}, camera {after.FramesCopied[1] - before.FramesCopied[1]} frames in {F(wall, "0.00")} s; process CPU {F(100 * cpu / wall, "0")} % of one core; copy targets screen {after.CopyTargets[0].Width}x{after.CopyTargets[0].Height}, camera {after.CopyTargets[1].Width}x{after.CopyTargets[1].Height}");
         }
 
@@ -212,7 +213,12 @@ internal sealed partial class HeadlessChecks
     }
 
     /// <summary>Judges what was drawn during one stretch of playback: order and correctness fail the check, drops and brief mismatches are reported.</summary>
-    private void ReportPlayback(string label, Session session, List<Composite> composites, List<int> positions, int start, double wallSeconds)
+    /// <param name="pausedAt">
+    /// When the pause that ended it was asked for. A pause can take the picture back, to the
+    /// last frame the engine could tell, when the scene showed a later one of which it could
+    /// not: that is no playing backwards, and it is reported.
+    /// </param>
+    private void ReportPlayback(string label, Session session, List<Composite> composites, List<int> positions, int start, double wallSeconds, long pausedAt)
     {
         var readable = composites.Where(c => c.Screen != FrameCode.Unreadable).ToList();
         var unreadable = composites.Count - readable.Count;
@@ -222,8 +228,9 @@ internal sealed partial class HeadlessChecks
             return;
         }
 
-        // Order: the screen frame never goes back.
+        // Order: the screen frame never goes back while it plays.
         var backwards = 0;
+        var takenBack = 0;
         var worstApart = 0;
         var apart = 0;
         double apartMilliseconds = 0;
@@ -231,7 +238,14 @@ internal sealed partial class HeadlessChecks
         {
             if (index > 0 && readable[index].Screen < readable[index - 1].Screen)
             {
-                backwards++;
+                if (readable[index].At < pausedAt)
+                {
+                    backwards++;
+                }
+                else
+                {
+                    takenBack = Math.Max(takenBack, readable[index - 1].Screen - readable[index].Screen);
+                }
             }
 
             // The camera frame that belongs with this screen frame, against the one drawn.
@@ -260,7 +274,7 @@ internal sealed partial class HeadlessChecks
         }
 
         var first = readable[0].Screen;
-        var last = readable[^1].Screen;
+        var last = readable.Max(c => c.Screen);
         var distinct = readable.Select(c => c.Screen).Distinct().Count();
         var span = last - Math.Max(first, start + 1) + 1;
         var shownOfSpan = readable.Select(c => c.Screen).Where(f => f > start).Distinct().Count();
@@ -287,6 +301,10 @@ internal sealed partial class HeadlessChecks
         _report.Check($"{label}: PositionChanged was raised for every frame shown, in order", positionsBack == 0 && Math.Abs(playing - shownOfSpan) <= 3, $"{positions.Count} events naming {playing} frames after the start, {shownOfSpan} frames drawn, {positionsBack} went back");
         _report.Note($"{label}: {readable.Count} scenes drawn ({F(readable.Count / (totalMilliseconds / 1000))} per second), {unreadable} unreadable; screen frames {first}..{last}: {shownOfSpan} of {span} drawn, {dropped} never drawn ({F(100.0 * dropped / Math.Max(1, span), "0.00")} %); interval between drawn scenes {intervals.Summary()}");
         _report.Note($"{label}: clips one frame apart in {apart} scenes, for {F(apartMilliseconds, "0")} ms of {F(totalMilliseconds, "0")} ms ({F(100 * apartMilliseconds / Math.Max(1, totalMilliseconds), "0.00")} % of the time); {distinct} distinct screen frames");
+        if (takenBack > 0)
+        {
+            _report.Note($"{label}: the pause that ended it took the picture back by {takenBack} frame(s), to the last frame the engine could tell: the scene had shown a later one of which it could not");
+        }
     }
 
     // ---------------------------------------------------------------------------------------
@@ -514,9 +532,10 @@ internal sealed partial class HeadlessChecks
         Thread.Sleep(800);
         var playingAgain = session.Engine.IsPlaying;
         var whilePlaying = Transport(session);
+        var replayPausedAt = Stopwatch.GetTimestamp();
         session.Engine.Pause();
         session.WaitForIdle();
-        var replay = session.Recorder.Drain().Where(c => c.At >= called && c.Screen != FrameCode.Unreadable && c.Screen != last).Select(c => c.Screen).ToList();
+        var replay = session.Recorder.Drain().Where(c => c.At >= called && c.At < replayPausedAt && c.Screen != FrameCode.Unreadable && c.Screen != last).Select(c => c.Screen).ToList();
         var ordered = replay.Count > 5 && replay[0] == 0 && replay.Zip(replay.Skip(1), (a, b) => b >= a).All(x => x);
         _report.Check("Seek(0) and Play() after the end play from the first frame", playingAgain && ordered && replay[^1] > 10, $"drawn: {string.Join(' ', replay.Take(10))} … {(replay.Count == 0 ? -1 : replay[^1])}; while playing: {whilePlaying}");
 
@@ -562,5 +581,81 @@ internal sealed partial class HeadlessChecks
         _report.Check("Play() on the last frame stops again by itself, still on the last frame", !session.Engine.IsPlaying && shown.Screen == last && session.PositionFrame == last && endEvents.Count == 2 && readAtSecondStop == last, $"{shown}, stopped after {F(watch.Elapsed.TotalMilliseconds, "0")} ms, IsPlayingChanged x{endEvents.Count}, its handler read frame {readAtSecondStop}");
         _report.Check("no failure was reported", session.Events.FailedEvents == 0, string.Join("; ", session.Events.Failures()));
         Close(session);
+        EndOfRecordingHeldUp();
+    }
+
+    /// <summary>
+    /// Playing into the end of the recording while the process is held up. When the clock runs
+    /// out, a clip can be showing a frame of which the engine could not tell which one it is.
+    /// The players are then brought to the last frame, and until that is there the picture has
+    /// to stay as it is: it must not go back to an earlier frame first.
+    /// </summary>
+    private void EndOfRecordingHeldUp()
+    {
+        var times = _options.Number("count", _quick ? 3 : 6);
+        foreach (var kind in HoldUpKinds("collector", "draw"))
+        {
+            if (kind == "none")
+            {
+                continue;
+            }
+
+            using var holdUps = new HoldUps(kind, HoldUpMilliseconds);
+            _report.Section($"The end of the recording, with {holdUps.Name}: played into {times} times");
+            var session = OpenSession(TestMedia.Camera, options: holdUps.With(Muted));
+            try
+            {
+                var last = session.Folder.FrameCount - 1;
+                var wrong = new List<string>();
+                var fetched = 0;
+                var before = session.Engine.GetDiagnostics();
+                holdUps.Begin();
+                for (var time = 0; time < times; time++)
+                {
+                    session.SeekTo(last - 40);
+                    session.Recorder.Drain();
+                    var fetchedBefore = session.Engine.GetDiagnostics().RestsFetchedAnew;
+                    session.Engine.Play();
+                    var watch = Stopwatch.StartNew();
+                    while (session.Engine.IsPlaying && watch.Elapsed.TotalSeconds < 8)
+                    {
+                        Thread.Sleep(5);
+                    }
+
+                    var stopped = !session.Engine.IsPlaying;
+                    var idle = session.WaitForIdle();
+                    var shown = session.ReadShown();
+                    var position = session.PositionFrame;
+                    var frames = session.Recorder.Drain().Where(c => c.Screen != FrameCode.Unreadable).Select(c => c.Screen).ToList();
+                    fetched += session.Engine.GetDiagnostics().RestsFetchedAnew > fetchedBefore ? 1 : 0;
+                    var drawn = frames.Where(f => f > last - 40).Distinct().Count();
+                    var problem = !stopped ? "playback did not stop by itself"
+                        : !idle ? "the engine did not come to rest"
+                        : shown != new Shown(last, session.ExpectedCamera(last)) || position != last ? $"at rest the picture showed {shown} and Position was frame {position}; the last frame is {last}"
+                        : Backwards(frames) is { } back ? back
+                        : drawn < 12 ? $"only {drawn} of the last 40 frames were drawn"
+                        : null;
+                    if (problem is not null)
+                    {
+                        wrong.Add($"time {time + 1}: {problem}; the last scenes showed [{string.Join(' ', frames.TakeLast(8))}]{Dump(session, "end")}");
+                    }
+                }
+
+                holdUps.Rest();
+                var end = session.Engine.GetDiagnostics();
+                _report.Check(
+                    $"with {holdUps.Name}: playing into the end of the recording ({times} times), playback stops by itself, the picture comes to rest on the last frame with Position on it, and no scene on the way shows an earlier frame after a later one",
+                    wrong.Count == 0,
+                    wrong.Count == 0 ? null : $"{wrong.Count} of {times} wrong; first: {string.Join(" | ", wrong.Take(3))}");
+                _report.Check($"with {holdUps.Name}: no failure was reported", session.Events.FailedEvents == 0, string.Join("; ", session.Events.Failures()));
+                _report.Note($"with {holdUps.Name}: when the clock ran out, a clip showed a frame without a number, or one whose number was inferred, in {fetched} of the {times} plays, and the last frame was fetched anew; {holdUps.Describe()}");
+                _report.Note($"with {holdUps.Name}: {Naming(before, end)}");
+            }
+            finally
+            {
+                holdUps.Rest();
+                Close(session);
+            }
+        }
     }
 }

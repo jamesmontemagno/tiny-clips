@@ -124,6 +124,9 @@ internal sealed class Samples
 
     public void Add(double value) => _values.Add(value);
 
+    /// <summary>How many of the measurements are exactly this value.</summary>
+    public int CountOf(double value) => _values.Count(v => v == value);
+
     public double Percentile(double percent)
     {
         if (_values.Count == 0)

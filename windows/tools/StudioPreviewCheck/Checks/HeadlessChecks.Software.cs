@@ -117,6 +117,7 @@ internal sealed partial class HeadlessChecks
         var played = Stopwatch.StartNew();
         session.Engine.Play();
         Thread.Sleep(seconds * 1000);
+        var pausedAt = Stopwatch.GetTimestamp();
         session.Engine.Pause();
         var wall = played.Elapsed.TotalSeconds;
         var idle = session.WaitForIdle();
@@ -125,7 +126,8 @@ internal sealed partial class HeadlessChecks
         var worstApart = 0;
         for (var index = 0; index < scenes.Count; index++)
         {
-            backwards += index > 0 && scenes[index].Screen < scenes[index - 1].Screen ? 1 : 0;
+            // The pause can take the picture back to the last frame the engine could tell; that is no playing backwards.
+            backwards += index > 0 && scenes[index].Screen < scenes[index - 1].Screen && scenes[index].At < pausedAt ? 1 : 0;
             var camera = session.ExpectedCamera(scenes[index].Screen);
             if (camera != FrameCode.Unreadable && scenes[index].Camera != FrameCode.Unreadable)
             {
@@ -134,7 +136,7 @@ internal sealed partial class HeadlessChecks
         }
 
         var distinct = scenes.Select(c => c.Screen).Where(f => f > start).Distinct().Count();
-        var reached = scenes.Count == 0 ? start : scenes[^1].Screen;
+        var reached = scenes.Count == 0 ? start : scenes.Max(c => c.Screen);
         shown = session.ReadShown();
         Judge(
             $"{seconds} s of playback: frames are drawn in order, the clock runs at 1x, and after Pause() both clips are on matching frames with Position on the frame shown",

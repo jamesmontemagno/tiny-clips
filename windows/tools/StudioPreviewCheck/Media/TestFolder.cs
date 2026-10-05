@@ -70,7 +70,7 @@ internal sealed class TestFolder : IDisposable
             Name = "Preview check",
             Sources = new StudioSources
             {
-                Screen = new StudioScreenSource { Width = screen.Width, Height = screen.Height, FrameRate = TestMedia.Fps, Duration = screen.Seconds },
+                Screen = new StudioScreenSource { Width = screen.Width, Height = screen.Height, FrameRate = screen.Fps, Duration = screen.Seconds },
                 Camera = camera is null ? null : new StudioCameraSource { Width = camera.Width, Height = camera.Height, Duration = camera.Seconds, StartOffset = cameraOffset },
                 Events = StudioProjectStore.EventsFileName,
             },

@@ -236,19 +236,23 @@ internal sealed partial class HeadlessChecks
             if (!idle
                 || shown.Screen == FrameCode.Unreadable
                 || shown.Screen != position
+                || playheadFrame != shown.Screen
                 || shown.Camera != preview.ExpectedCamera(shown.Screen)
+                || asked != shown.Screen + 1
                 || stepped != new Shown(asked, preview.ExpectedCamera(asked))
                 || preview.PositionFrame != asked)
             {
-                wrong.Add($"cycle {cycle}: idle {idle}; after the pause the picture was on {shown} and the engine's Position on frame {position}; the step asked for frame {asked} and the picture was on {stepped}, Position on frame {preview.PositionFrame}{Dump(preview, "editor")}");
+                wrong.Add($"cycle {cycle}: idle {idle}; after the pause the picture was on {shown}, the engine's Position on frame {position} and the session's playhead on frame {playheadFrame}; the step asked for frame {asked} and the picture was on {stepped}, Position on frame {preview.PositionFrame}{Dump(preview, "editor")}");
             }
         }
 
+        // The session takes its playhead from the engine's Position once its Pause has returned,
+        // so a step starts from the frame the picture stopped on and not from the last position
+        // the session had got round to handling while the preview played.
         _report.Check(
-            $"the session pauses playback and steps a frame ({cycles} times): the engine's Position, read on the session's thread the moment its Pause has returned, is the frame the picture stays on; and after StepFrames(1) the picture is the frame the session asked for",
-            wrong.Count == 0 && readAtOnce == cycles,
-            wrong.Count == 0 ? $"Position was the frame the picture stayed on in {readAtOnce} of {cycles}" : $"{wrong.Count} wrong; first: {string.Join(" | ", wrong.Take(3))}");
-        _report.Note($"the session's own playhead after its Pause, against the frame the picture had stopped on: behind by {behind.Summary("frames")}; its StepFrames(1) then showed the frame that was up already, or an earlier one, in {notForward} of {cycles}. The session takes its playhead from the last PositionChanged it handled while playing, not from Position after the pause");
+            $"the session pauses playback and steps a frame ({cycles} times): the engine's Position, read on the session's thread the moment its Pause has returned, is the frame the picture stays on; the session's playhead is on that frame; and StepFrames(1) shows the frame after it",
+            wrong.Count == 0 && readAtOnce == cycles && notForward == 0,
+            wrong.Count == 0 ? $"Position was the frame the picture stayed on in {readAtOnce} of {cycles}; the playhead was {behind.Summary("frames")} behind it; the step showed a frame that was not later in {notForward}" : $"{wrong.Count} wrong; first: {string.Join(" | ", wrong.Take(3))}");
     }
 
     /// <summary>The frame a time on the timeline lies in.</summary>
@@ -393,6 +397,7 @@ internal sealed partial class HeadlessChecks
     {
         private readonly ManualResetEventSlim _stopped = new(false);
         private readonly List<string> _errors = [];
+        private readonly List<PlayheadNote> _playheads = [];
         private long _stoppedAt;
         private bool _wasPlaying;
         private bool _closed;
@@ -430,7 +435,7 @@ internal sealed partial class HeadlessChecks
             {
                 // The folder is a project of a store whose root is the folder the tool keeps its projects in.
                 var store = new CountingStore(new StudioProjectStore(TestFolder.Root));
-                var trace = new TraceLog(600);
+                var trace = new TraceLog(Session.TraceLines);
                 var editor = new StudioEditorSession(
                     folder.Paths.ProjectId,
                     store,
@@ -481,6 +486,20 @@ internal sealed partial class HeadlessChecks
         /// <summary>Waits until the session has gone from playing to not playing since the last <see cref="Space"/>.</summary>
         public bool WaitForStop(TimeSpan timeout) => _stopped.Wait(timeout);
 
+        /// <summary>
+        /// Where the session's playhead was each time the session said its playback had changed,
+        /// since the last call: that is every position it handled while playing.
+        /// </summary>
+        public List<PlayheadNote> TakePlayheads()
+        {
+            lock (_playheads)
+            {
+                var taken = _playheads.ToList();
+                _playheads.Clear();
+                return taken;
+            }
+        }
+
         public List<string> Errors()
         {
             lock (_errors)
@@ -530,6 +549,11 @@ internal sealed partial class HeadlessChecks
             }
 
             var playing = Editor.IsPlaying;
+            lock (_playheads)
+            {
+                _playheads.Add(new PlayheadNote(Stopwatch.GetTimestamp(), Editor.Playhead, playing));
+            }
+
             if (_wasPlaying && !playing)
             {
                 Interlocked.Exchange(ref _stoppedAt, Stopwatch.GetTimestamp());
@@ -548,6 +572,10 @@ internal sealed partial class HeadlessChecks
         }
     }
 }
+
+/// <summary>The session's playhead at a moment the session said its playback had changed.</summary>
+/// <param name="At">A Stopwatch timestamp.</param>
+internal readonly record struct PlayheadNote(long At, double Playhead, bool IsPlaying);
 
 /// <summary>
 /// The thread an editor session lives on: what is posted to it runs there, one at a time and in

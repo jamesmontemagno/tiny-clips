@@ -36,8 +36,23 @@ internal sealed partial class HeadlessChecks
             case "cycles":
                 InvestigateCycles();
                 break;
+            case "names":
+                InvestigateNames();
+                break;
+            case "reopens":
+                InvestigateReopens();
+                break;
+            case "starts":
+                InvestigateStarts();
+                break;
+            case "waits":
+                InvestigateWaits();
+                break;
+            case "tails":
+                InvestigateTails();
+                break;
             default:
-                throw new ArgumentException("--investigate takes opens, cycles, decoding or players.");
+                throw new ArgumentException("--investigate takes opens, cycles, decoding, players, names, reopens, starts, waits or tails.");
         }
     }
 

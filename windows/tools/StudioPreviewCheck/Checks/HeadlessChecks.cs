@@ -20,6 +20,7 @@ internal sealed partial class HeadlessChecks
     private readonly Report _report;
     private readonly CheckOptions _options;
     private readonly string _media;
+    private readonly string _output;
     private readonly string _failuresDirectory;
     private readonly StudioPreviewFactory _factory;
     private readonly Random _random = new(20261003);
@@ -33,18 +34,31 @@ internal sealed partial class HeadlessChecks
         _report = report;
         _options = options;
         _media = mediaDirectory;
+        _output = outputDirectory;
         // A folder of its own for what the failed checks of this run leave behind, named like the
         // report, so that a run does not write over the evidence of the run before it.
         _failuresDirectory = Path.Combine(outputDirectory, "failures", report.Stamp);
         _quick = options.Flag("quick");
-        Muted = new StudioPreviewOptions { ForceMuted = true, TrustFirstFrames = options.Flag("trust-first-frames") };
+        Session.TraceLines = Math.Max(100, options.Number("trace-lines", 600));
+        Muted = new StudioPreviewOptions
+        {
+            ForceMuted = true,
+            TrustFirstFrames = options.Flag("trust-first-frames"),
+            Naming = new StudioPreviewNamingSettings { BelievePositions = options.Flag("believe-positions"), FetchEveryRestingFrame = options.Flag("fetch-every-rest") },
+            Seek = new StudioPreviewSeekSettings { HoldFirstChangeAfterPlaying = !options.Flag("no-quiet-rule") },
+            StopNotedLate = options.Flag("stop-noted-late"),
+        };
         _factory = new StudioPreviewFactory(Muted);
     }
 
     /// <summary>
     /// What every preview of the run is opened with: every player muted. With
     /// <c>--trust-first-frames</c>, also opened the way the engine opened before it stopped
-    /// believing what the players hand over first, to see which checks notice.
+    /// believing what the players hand over first; with <c>--believe-positions</c>, taking every
+    /// frame of playback for the one its position names, as the engine did before; with
+    /// <c>--no-quiet-rule</c>, without holding the picture during the first position change after
+    /// the clock ran; with <c>--stop-noted-late</c>, noting when the clock stopped only after it
+    /// has, as the engine did before. Each is there to see which checks notice.
     /// </summary>
     private StudioPreviewOptions Muted { get; }
 
@@ -83,6 +97,10 @@ internal sealed partial class HeadlessChecks
         Group("editor", EditorSessionOnTheEngine);
         Group("play", Playback);
         Group("pause", PauseCycles);
+        Group("stalls", PausesHeldUp);
+        Group("zoom", ZoomWhilePlaying);
+        Group("cuts", EditorPlaysOverCuts);
+        Group("scenes", EditorChangesScene);
         Group("end", EndOfRecording);
         Group("update", UpdateProject);
         Group("camera", CameraTiming);
@@ -227,6 +245,15 @@ internal sealed partial class HeadlessChecks
             Muted with { PlayersFailedWhileOpening = 2 },
             "could not be decoded",
             "open");
+
+        // A player that says it cannot decode what it has opened, before any frame. That is
+        // not what a player says of a file that is no video, and it has been seen to pass.
+        FirstAttemptFails<InvalidDataException>(
+            "a player that stops decoding while the preview opens, before any player has handed over a frame",
+            Muted with { PlayersStopDecodingWhileOpening = 1 },
+            Muted with { PlayersStopDecodingWhileOpening = 2 },
+            "could not be decoded",
+            "open");
     }
 
     /// <summary>
@@ -363,6 +390,17 @@ internal sealed partial class HeadlessChecks
                 $"{what} fails OpenAsync with a clear message, at the first attempt",
                 ok,
                 thrown is null ? "it opened" : $"{thrown.GetType().Name} after {F(elapsed, "0")} ms{(AttemptsOf(thrown) == 1 ? string.Empty : $" and {AttemptsOf(thrown)} attempts")}: \"{Shorten(thrown.Message)}\"");
+            if (thrown is InvalidDataException)
+            {
+                // What the player, or whatever read the file, gave as its reason: for a caller
+                // that wants to log it or act on it without taking the sentence apart.
+                var inner = thrown.InnerException;
+                _report.Check(
+                    $"{what}: the exception carries the error code of what failed underneath it, as InnerException.HResult",
+                    inner is { HResult: < 0 },
+                    inner is null ? "no inner exception" : $"0x{inner.HResult:X8} ({inner.GetType().Name})");
+            }
+
             _report.Check($"{what}: the folder can be deleted at once afterwards", TryDelete(folder, out var error), error);
         }
     }

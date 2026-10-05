@@ -20,7 +20,10 @@ internal sealed record ClipSpec(
     int PatchSize,
     int PatchPitch)
 {
-    public int FrameCount => Seconds * TestMedia.Fps;
+    /// <summary>Frames per second. Every clip the checks use has <see cref="TestMedia.Fps"/>; one made for an experiment may have another.</summary>
+    public int Fps { get; init; } = TestMedia.Fps;
+
+    public int FrameCount => Seconds * Fps;
 
     public int CodeWidth => TestMedia.CodeBits * CodeCell;
 
@@ -51,6 +54,9 @@ internal static class TestMedia
     /// <summary>The same camera, half as long, for a camera that ends before the screen does.</summary>
     public static readonly ClipSpec ShortCamera = Camera with { FileName = "camera-short.mp4", Seconds = 6 };
 
+    /// <summary>The screen clip at 60 frames a second, the most Tiny Clips records. Not one of <see cref="All"/>: it is made when something asks for it (<see cref="EnsureClip"/>).</summary>
+    public static readonly ClipSpec Screen60 = Screen with { FileName = "screen-60.mp4", Fps = 60 };
+
     public static readonly ClipSpec[] All = [Screen, Camera, ShortCamera];
 
     /// <summary>Flat patches drawn into every frame: ffmpeg's name and the nominal colour.</summary>
@@ -72,38 +78,50 @@ internal static class TestMedia
         var current = File.Exists(stampPath) && File.ReadAllText(stampPath).Trim() == Stamp;
         foreach (var clip in All)
         {
-            var path = PathOf(mediaDirectory, clip);
-            if (current && File.Exists(path))
-            {
-                report.Line($"{clip.FileName}: present ({new FileInfo(path).Length / 1024.0 / 1024.0:0.0} MB)");
-            }
-            else
-            {
-                var watch = Stopwatch.StartNew();
-                Run("ffmpeg", Arguments(clip, path));
-                report.Line($"{clip.FileName}: generated in {watch.Elapsed.TotalSeconds:0.0} s ({new FileInfo(path).Length / 1024.0 / 1024.0:0.0} MB)");
-            }
-
-            var probe = Run("ffprobe",
-            [
-                "-v", "error", "-select_streams", "v:0", "-count_packets",
-                "-show_entries", "stream=width,height,r_frame_rate,nb_read_packets",
-                "-of", "csv=p=0", path,
-            ]).Trim();
-            var expected = string.Create(CultureInfo.InvariantCulture, $"{clip.Width},{clip.Height},{Fps}/1,{clip.FrameCount}");
-            if (probe != expected)
-            {
-                throw new InvalidOperationException($"{clip.FileName} is not what was asked for: ffprobe says '{probe}', expected '{expected}'.");
-            }
-
-            var audio = Run("ffprobe", ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "csv=p=0", path]).Trim();
-            if ((audio.Length > 0) != clip.HasAudio)
-            {
-                throw new InvalidOperationException($"{clip.FileName}: audio track present = {audio.Length > 0}, expected {clip.HasAudio}.");
-            }
+            EnsureOne(mediaDirectory, clip, report, keep: current);
         }
 
         File.WriteAllText(stampPath, Stamp);
+    }
+
+    /// <summary>Generates one clip that is not among <see cref="All"/> when it is missing, and checks it with ffprobe.</summary>
+    public static void EnsureClip(string mediaDirectory, ClipSpec clip, Report report)
+    {
+        Directory.CreateDirectory(mediaDirectory);
+        EnsureOne(mediaDirectory, clip, report, keep: true);
+    }
+
+    private static void EnsureOne(string mediaDirectory, ClipSpec clip, Report report, bool keep)
+    {
+        var path = PathOf(mediaDirectory, clip);
+        if (keep && File.Exists(path))
+        {
+            report.Line($"{clip.FileName}: present ({new FileInfo(path).Length / 1024.0 / 1024.0:0.0} MB)");
+        }
+        else
+        {
+            var watch = Stopwatch.StartNew();
+            Run("ffmpeg", Arguments(clip, path));
+            report.Line($"{clip.FileName}: generated in {watch.Elapsed.TotalSeconds:0.0} s ({new FileInfo(path).Length / 1024.0 / 1024.0:0.0} MB)");
+        }
+
+        var probe = Run("ffprobe",
+        [
+            "-v", "error", "-select_streams", "v:0", "-count_packets",
+            "-show_entries", "stream=width,height,r_frame_rate,nb_read_packets",
+            "-of", "csv=p=0", path,
+        ]).Trim();
+        var expected = string.Create(CultureInfo.InvariantCulture, $"{clip.Width},{clip.Height},{clip.Fps}/1,{clip.FrameCount}");
+        if (probe != expected)
+        {
+            throw new InvalidOperationException($"{clip.FileName} is not what was asked for: ffprobe says '{probe}', expected '{expected}'.");
+        }
+
+        var audio = Run("ffprobe", ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "csv=p=0", path]).Trim();
+        if ((audio.Length > 0) != clip.HasAudio)
+        {
+            throw new InvalidOperationException($"{clip.FileName}: audio track present = {audio.Length > 0}, expected {clip.HasAudio}.");
+        }
     }
 
     private static List<string> Arguments(ClipSpec clip, string path)
@@ -141,11 +159,11 @@ internal static class TestMedia
         filter.Append("scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[v]");
 
         // The shape of a Tiny Clips recording: H.264 High, a two second GOP, no B-frames.
-        var bitrate = Math.Clamp((long)clip.Width * clip.Height * Fps / 10, 2_000_000, 24_000_000);
+        var bitrate = Math.Clamp((long)clip.Width * clip.Height * clip.Fps / 10, 2_000_000, 24_000_000);
         var args = new List<string>
         {
             "-hide_banner", "-loglevel", "error", "-y",
-            "-f", "lavfi", "-i", string.Create(c, $"testsrc2=size={clip.Width}x{clip.Height}:rate={Fps}:duration={clip.Seconds}"),
+            "-f", "lavfi", "-i", string.Create(c, $"testsrc2=size={clip.Width}x{clip.Height}:rate={clip.Fps}:duration={clip.Seconds}"),
         };
         if (clip.HasAudio)
         {
@@ -168,9 +186,9 @@ internal static class TestMedia
         [
             "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-pix_fmt", "yuv420p",
             "-b:v", bitrate.ToString(c), "-maxrate", bitrate.ToString(c), "-bufsize", (bitrate * 2).ToString(c),
-            "-g", (Fps * 2).ToString(c), "-keyint_min", (Fps * 2).ToString(c), "-sc_threshold", "0", "-bf", "0",
+            "-g", (clip.Fps * 2).ToString(c), "-keyint_min", (clip.Fps * 2).ToString(c), "-sc_threshold", "0", "-bf", "0",
             "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
-            "-r", Fps.ToString(c), "-movflags", "+faststart",
+            "-r", clip.Fps.ToString(c), "-movflags", "+faststart",
             path,
         ]);
         return args;
