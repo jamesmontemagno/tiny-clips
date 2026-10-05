@@ -73,6 +73,17 @@
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
 
+  <!--
+    The model Tiny Clips Studio finds people with, for a camera whose background is blurred or
+    removed. The file is not in the repository: shipping it is a decision that has not been
+    made (see "Person cutout" in plans/video-studio-plan.md). Without it the Windows renderer
+    keeps every camera background. Put the file here and it ships with the app, where
+    StudioPersonFinders.ModelPath looks for it.
+  -->
+  <ItemGroup Condition="Exists('Assets\Studio\selfie_segmentation.onnx')">
+    <Content Include="Assets\Studio\selfie_segmentation.onnx" />
+  </ItemGroup>
+
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>

@@ -71,6 +71,13 @@ public sealed class StudioExporter
     internal StudioEncoderFault? Fault { get; init; }
 
     /// <summary>
+    /// Set by the check tool only: what finds the people in a camera frame, in place of the
+    /// app's own (<see cref="StudioPersonFinders.CreateDefault"/>). Each renderer an export or a
+    /// poster makes calls it once at most.
+    /// </summary>
+    internal Func<IStudioPersonFinder?>? PersonFinderFactory { get; init; }
+
+    /// <summary>
     /// Renders the project to an MP4 at <paramref name="outputPath"/>, replacing a file that is
     /// already there. The video is written under a temporary name next to it and moved into place
     /// only when it is complete, so a failed or cancelled export leaves nothing new behind and
@@ -95,7 +102,7 @@ public sealed class StudioExporter
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
-        var job = new StudioExportJob(project, events, paths, outputPath, options ?? new StudioExportOptions(), progress, cancellationToken) { Fault = Fault };
+        var job = new StudioExportJob(project, events, paths, outputPath, options ?? new StudioExportOptions(), progress, cancellationToken) { Fault = Fault, PersonFinderFactory = PersonFinderFactory };
         return StudioWorker.Run("Tiny Clips Studio export", job.Run, cancellationToken);
     }
 
@@ -118,7 +125,7 @@ public sealed class StudioExporter
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentException.ThrowIfNullOrWhiteSpace(posterPath);
 
-        var job = new StudioPosterJob(project, events, paths, posterPath, maxLongSide, outputTimeSeconds, cancellationToken);
+        var job = new StudioPosterJob(project, events, paths, posterPath, maxLongSide, outputTimeSeconds, cancellationToken) { PersonFinderFactory = PersonFinderFactory };
         return StudioWorker.Run("Tiny Clips Studio poster", job.Run, cancellationToken);
     }
 }
@@ -257,6 +264,8 @@ internal sealed class StudioExportJob
 
     public StudioEncoderFault? Fault { get; init; }
 
+    public Func<IStudioPersonFinder?>? PersonFinderFactory { get; init; }
+
     private readonly record struct Attempt(bool AllowHardware, bool GpuFrames);
 
     public StudioExportResult Run()
@@ -392,7 +401,7 @@ internal sealed class StudioExportJob
                 readerManager.ResetDevice(graphics.Device).CheckError();
             }
 
-            renderer = new StudioSceneRenderer(graphics.Device);
+            renderer = new StudioSceneRenderer(graphics.Device, PersonFinderFactory);
             screen = StudioVideoSource.Open(screenPath, "screen recording", graphics, readerManager);
             camera = cameraPath is null ? null : StudioVideoSource.Open(cameraPath, "camera recording", graphics, readerManager);
             audio = _project.Audio.Muted ? null : StudioAudioSource.TryOpen(screenPath, "screen recording");
@@ -705,6 +714,8 @@ internal sealed class StudioPosterJob
         _cancellationToken = cancellationToken;
     }
 
+    public Func<IStudioPersonFinder?>? PersonFinderFactory { get; init; }
+
     public bool Run()
     {
         _cancellationToken.ThrowIfCancellationRequested();
@@ -781,7 +792,7 @@ internal sealed class StudioPosterJob
                 cameraFrame = camera.GetFrame(StudioRenderingMath.SecondsToMfTicks(visible.SourceTime), _cancellationToken);
             }
 
-            renderer = new StudioSceneRenderer(graphics.Device);
+            renderer = new StudioSceneRenderer(graphics.Device, PersonFinderFactory);
             target = graphics.CreateRenderTexture(width, height);
             lock (graphics.Gate)
             {

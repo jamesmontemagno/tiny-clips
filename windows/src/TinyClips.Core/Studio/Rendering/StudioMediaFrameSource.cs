@@ -408,7 +408,7 @@ internal sealed class StudioVideoSource : IDisposable
 
             if (description.Width == Width && description.Height == Height && _offsetX == 0 && _offsetY == 0)
             {
-                return new StudioGpuVideoFrame(texture, held.Subresource, Width, Height);
+                return new StudioGpuVideoFrame(texture, held.Subresource, Width, Height) { Stamp = StampOf(held) };
             }
 
             // Padded: copy the picture out, so that sampling at its edge never reaches the padding.
@@ -424,7 +424,7 @@ internal sealed class StudioVideoSource : IDisposable
                 _ownTextureHolds = held;
             }
 
-            return new StudioGpuVideoFrame(own, 0, Width, Height);
+            return new StudioGpuVideoFrame(own, 0, Width, Height) { Stamp = StampOf(held) };
         }
 
         FrameStorage = "system memory";
@@ -435,8 +435,11 @@ internal sealed class StudioVideoSource : IDisposable
             _ownTextureHolds = held;
         }
 
-        return new StudioGpuVideoFrame(uploaded, 0, Width, Height);
+        return new StudioGpuVideoFrame(uploaded, 0, Width, Height) { Stamp = StampOf(held) };
     }
+
+    /// <summary>A frame's name for the renderer: its time in the file, moved off 0, which would say nothing.</summary>
+    private static long StampOf(Held held) => held.Time + 1;
 
     private ID3D11Texture2D OwnTexture(Format format)
     {

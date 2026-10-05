@@ -24,7 +24,15 @@ namespace TinyClips.Core.Studio.Rendering;
 /// a 1080-line video) is allowed; its picture is copied out on the GPU first, so that sampling at
 /// the picture's edge never reaches the padding.
 /// </summary>
-public readonly record struct StudioGpuVideoFrame(ID3D11Texture2D Texture, uint Subresource, int Width, int Height);
+public readonly record struct StudioGpuVideoFrame(ID3D11Texture2D Texture, uint Subresource, int Width, int Height)
+{
+    /// <summary>
+    /// Names the picture, for work on it that is worth keeping from one draw to the next: two
+    /// frames with the same texture, slice and stamp hold the same picture. 0 says nothing, and
+    /// such a frame is looked at afresh every time it is drawn.
+    /// </summary>
+    public long Stamp { get; init; }
+}
 
 /// <summary>What to draw for one Studio frame, and where.</summary>
 /// <param name="ProjectDirectory">The project folder, where a background image is looked for.</param>
@@ -62,7 +70,9 @@ public enum StudioRenderQuality
 /// <summary>
 /// Draws one Tiny Clips Studio frame with Direct2D on the caller's Direct3D 11 device, following
 /// sections 6.5 and 6.7 of the project format: background, screen shadow, screen, click rings,
-/// camera shadow, camera, camera border, branding.
+/// camera shadow, camera, camera border, branding. A camera whose background is to be blurred or
+/// removed is drawn that way when the renderer has something that finds the people in it
+/// (<see cref="IStudioPersonFinder"/>), and with its background kept when it has not.
 /// </summary>
 /// <remarks>
 /// Not thread-safe, and it draws through the device's immediate context: create it, call it and
@@ -72,7 +82,7 @@ public enum StudioRenderQuality
 /// releasing or resizing them, and dispose the renderer before the device.
 /// </remarks>
 [SupportedOSPlatform("windows")]
-public sealed class StudioSceneRenderer : IDisposable
+public sealed partial class StudioSceneRenderer : IDisposable
 {
     private const int MaxCanvasSide = 16384;
     private const int MaxCachedSources = 64;
@@ -128,10 +138,17 @@ public sealed class StudioSceneRenderer : IDisposable
     private bool _disposed;
 
     /// <param name="d3dDevice">A device created with BGRA support. It must outlive the renderer.</param>
+    /// <param name="personFinderFactory">
+    /// Makes what finds the people in a camera frame. It is called once at most, at the first
+    /// frame whose camera background is to be blurred or removed, and the renderer disposes
+    /// what it returns. Null for the app's own (<see cref="StudioPersonFinders.CreateDefault"/>).
+    /// A factory that returns null leaves every background kept.
+    /// </param>
     /// <exception cref="StudioDeviceLostException">The device has been lost and must be rebuilt.</exception>
-    public StudioSceneRenderer(ID3D11Device d3dDevice)
+    public StudioSceneRenderer(ID3D11Device d3dDevice, Func<IStudioPersonFinder?>? personFinderFactory = null)
     {
         ArgumentNullException.ThrowIfNull(d3dDevice);
+        _personFinderFactory = personFinderFactory;
         try
         {
             _d3dDevice = d3dDevice.QueryInterface<ID3D11Device>();
@@ -194,7 +211,7 @@ public sealed class StudioSceneRenderer : IDisposable
             {
                 screen = resolvedScreen;
                 screenRect = PixelAlign(resolvedScreen.Rect);
-                screenBrush = PrepareSource(screenPicture, ScreenSlot);
+                screenBrush = PrepareSource(screenPicture, ScreenSlot).Brush!;
                 screenOpacity = (float)Math.Min(1, resolvedScreen.Opacity);
             }
 
@@ -202,12 +219,23 @@ public sealed class StudioSceneRenderer : IDisposable
             StudioFrameRect cameraRect = default;
             ID2D1BitmapBrush1? cameraBrush = null;
             float cameraOpacity = 0;
+
+            // What is done to the camera's background in this frame. It stays None, whatever the
+            // project asks for, when the people in the frame could not be found.
+            var cameraCutout = StudioCameraCutout.None;
             if (frame.Camera is { Visible: true, Opacity: > 0 } resolvedCamera && request.Camera is { } cameraPicture && IsDrawable(resolvedCamera.Rect, resolvedCamera.Source))
             {
                 camera = resolvedCamera;
                 cameraRect = PixelAlign(resolvedCamera.Rect);
-                cameraBrush = PrepareSource(cameraPicture, CameraSlot);
+                var cameraSource = PrepareSource(cameraPicture, CameraSlot);
+                cameraBrush = cameraSource.Brush!;
                 cameraOpacity = (float)Math.Min(1, resolvedCamera.Opacity);
+                if (project.Camera.Cutout is StudioCameraCutout.Blur or StudioCameraCutout.Remove
+                    && PreparePeople(cameraSource.Bitmap!, cameraPicture, project.Camera.Cutout) is { } peopleBrush)
+                {
+                    cameraBrush = peopleBrush;
+                    cameraCutout = project.Camera.Cutout;
+                }
             }
 
             // The shadow of a screen that is whole is kept with the background. One that is
@@ -216,7 +244,10 @@ public sealed class StudioSceneRenderer : IDisposable
             var screenFades = screenBrush is not null && screenOpacity < 1;
             EnsureUnderlay(project.Canvas.Background, request.ProjectDirectory, width, height, screenBrush is null || screenFades ? null : new Card(screenRect, screen.CornerRadius, screen.Shadow));
             var screenShadow = screenFades ? EnsureShadow(_screenShadow, screenRect.Width, screenRect.Height, screen.CornerRadius, screenShape, screen.Shadow) : null;
-            var cameraShadow = cameraBrush is null ? null : EnsureShadow(_cameraShadow, cameraRect.Width, cameraRect.Height, camera.CornerRadius, camera.Shape, camera.Shadow);
+
+            // People without their background stand in no frame, so nothing casts a shadow and nothing has a border.
+            var cameraFramed = cameraCutout != StudioCameraCutout.Remove;
+            var cameraShadow = cameraBrush is null || !cameraFramed ? null : EnsureShadow(_cameraShadow, cameraRect.Width, cameraRect.Height, camera.CornerRadius, camera.Shape, camera.Shadow);
 
             _context.Target = target;
             var began = false;
@@ -261,7 +292,10 @@ public sealed class StudioSceneRenderer : IDisposable
                         }
 
                         DrawLayer(cameraBrush, picture.Width, picture.Height, cameraRect, camera.Source, camera.CornerRadius, camera.Shape, camera.Mirror, request.Quality);
-                        DrawCameraBorder(project.Camera.BorderColor, camera, cameraRect);
+                        if (cameraFramed)
+                        {
+                            DrawCameraBorder(project.Camera.BorderColor, camera, cameraRect);
+                        }
                     }
                     finally
                     {
@@ -307,6 +341,8 @@ public sealed class StudioSceneRenderer : IDisposable
             _pictureCopies[slot]?.Dispose();
             _pictureCopies[slot] = null;
         }
+
+        ForgetPeopleFrame();
     }
 
     /// <summary>Lets go of a target texture. Call it before the texture is released, or a swap chain that owns it is resized.</summary>
@@ -342,6 +378,7 @@ public sealed class StudioSceneRenderer : IDisposable
         _squircles.Clear();
         _screenShadow.Dispose();
         _cameraShadow.Dispose();
+        DisposePeople();
         _badge?.Dispose();
         _underlay?.Dispose();
         _backgroundImage?.Dispose();
@@ -392,8 +429,11 @@ public sealed class StudioSceneRenderer : IDisposable
         return bitmap;
     }
 
-    /// <summary>The brush that paints <paramref name="frame"/>, in the picture's own pixel coordinates.</summary>
-    private ID2D1BitmapBrush1 PrepareSource(in StudioGpuVideoFrame frame, int slot)
+    /// <summary>
+    /// The picture in <paramref name="frame"/> as a bitmap of exactly its size, with the brush
+    /// that paints it in the picture's own pixel coordinates.
+    /// </summary>
+    private Source PrepareSource(in StudioGpuVideoFrame frame, int slot)
     {
         ArgumentNullException.ThrowIfNull(frame.Texture);
         var key = (frame.Texture.NativePointer, frame.Subresource);
@@ -431,7 +471,7 @@ public sealed class StudioSceneRenderer : IDisposable
                 Wrap(source, frame.Texture, frame.Subresource);
             }
 
-            return source.Brush!;
+            return source;
         }
 
         // Padded: copy the picture out, or sampling at its right and bottom edges would blend the padding in.
@@ -470,7 +510,7 @@ public sealed class StudioSceneRenderer : IDisposable
         }
 
         _d3dContext.CopySubresourceRegion(copy.OwnTexture!, 0, 0, 0, 0, frame.Texture, frame.Subresource, new Box(0, 0, 0, frame.Width, frame.Height, 1));
-        return copy.Brush!;
+        return copy;
     }
 
     private void Wrap(Source source, ID3D11Texture2D texture, uint subresource)
