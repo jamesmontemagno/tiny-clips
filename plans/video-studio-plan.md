@@ -361,11 +361,26 @@ This section records what was built and how it differs from the plan above. It i
 
 Nothing on macOS has been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. Capture, the compositor, the preview, export, and the whole Studio window are unverified at runtime. Until someone has run them, Studio stays off on macOS.
 
+Since it cannot be run here, the macOS code was read through twice more by reviewers that only read (5 October): once the composition, the compositor, the player and the export, and once the capture path, the project store and the window's lifetime. They found eight defects that follow from the code and the documented behavior of the frameworks, all fixed and compiled:
+
+- The video ended where the screen last changed. The recorder writes a screen frame only when the screen changes, so a recording that ends with talk over a still screen has a screen track shorter than its sound, and the composition was cut to that track: the sound and the camera after it were dropped, in the preview and the export, while the timeline ran on. The composition now holds the last frame for what is missing.
+- Zooms, moves between scenes and click rings could stand still over a still screen, because the compositor told AVFoundation that its picture does not change while the source frames stay the same.
+- A pause made while a new canvas size was being applied was undone.
+- A recording whose project could not be saved, and which could not be moved to the save folder either, was deleted with its folder. Windows had the same fault in the same place, also fixed.
+- The outline of the region stayed on screen when the project folder could not be created.
+- "After recording" stopped following the trimmer setting once it had been stored, though the old toggle, onboarding and older builds still write that setting.
+- A press on Tiny Clips' own Stop or Pause panel was stored as a click of the recording.
+- An edit made in the last half second before quitting was lost.
+
+A fix made by reading is as unrun as the code it fixes. The reviewers also listed what only a Mac can settle; that list is in the pull request under "How to test".
+
+**Described above and not built, on either platform.** Nothing lets you set "Keep sources": the rule is in both project stores and their cleanup, without a control. And nothing opens a video in single-layer mode: both stores can make a project around a video that has no sources, but no command calls that, so "Open in Studio" is offered only for a video whose project still has its sources.
+
 On Windows each piece has been run by a check tool on one PC (AMD graphics, Windows 11): the renderer, exporter and camera recorder by `StudioRenderCheck`, the preview engine with its panel by `StudioPreviewCheck`, and the editor window by `StudioWindowCheck`. Each reads its results back itself, from pixels, from decoded files, or from the UI Automation tree. The editor's behavior is in Core and unit tested.
 
 `StudioWindowCheck` opens the real window on real projects in a process of its own, with the real preview and exporter, and works it through UI Automation: opening, playing, every inspector control with undo and redo, trimming, exporting, closing, and two windows at once. It found three defects in the window, which are fixed. A window in the background took the keyboard focus when its project had opened or its export ended. Five sliders could not be set to an end of their range by a screen reader. Three elements had no name. With the scene and cut controls it found a fourth: every editor that was closed stayed in memory (see "Closed editors and memory" under "Decisions made while building"). The last check of every run is now that none does.
 
-The PC was in use, so the tool sends no input and its windows never come to the front, and the Tiny Clips app itself was never started. That leaves out everything a person does with their hands: no key was pressed, nothing was dragged, and no drop-down was opened. Also not yet seen on Windows: a real recording arriving in the editor, the preview's sound, the high-contrast themes, Narrator reading the window, display scales other than 150 percent, and the app around the window, which is how a recording or a draft gets to it. Until someone has gone through those, Studio stays off on Windows.
+The PC was in use, so the tool sends no input and its windows never come to the front, and the Tiny Clips app itself was never started. That leaves out everything a person does with their hands: no key was pressed, nothing was dragged, and no drop-down was opened. Also not yet seen on Windows: a real recording arriving in the editor, the preview's sound, the high-contrast themes, Narrator reading the window, display scales other than 150 percent, and the app around the window, which is how a recording or a draft gets to it. One thing about real recordings in particular: every clip the tools make has its frames evenly spaced up to the end of its sound, and a real screen recording has neither, since a frame is written only when the screen changes. The frame source is written to hold the first and the last frame of a track, but no check has a screen track that ends before its sound, which is exactly what went wrong in the macOS composition. Until someone has gone through those, Studio stays off on Windows.
 
 | Milestone 2 piece | macOS | Windows |
 |---|---|---|
