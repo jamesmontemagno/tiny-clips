@@ -86,6 +86,13 @@ public sealed unsafe partial class StudioModelPersonFinder : IStudioPersonFinder
 
     private readonly LearningModel _model;
     private readonly LearningModelSession _session;
+
+    /// <summary>
+    /// One binding for every frame, emptied before each. With a binding made anew for each
+    /// frame the process grew by about 30 KB a frame, and collecting garbage did not bring
+    /// that back.
+    /// </summary>
+    private readonly LearningModelBinding _binding;
     private readonly string _inputName;
     private readonly string _outputName;
     private readonly bool _channelsFirst;
@@ -97,6 +104,7 @@ public sealed unsafe partial class StudioModelPersonFinder : IStudioPersonFinder
     {
         _model = model;
         _session = session;
+        _binding = new LearningModelBinding(session);
         _inputName = inputName;
         _outputName = outputName;
         _channelsFirst = channelsFirst;
@@ -164,9 +172,9 @@ public sealed unsafe partial class StudioModelPersonFinder : IStudioPersonFinder
         // The tensors are closed as soon as they have been used: each holds its own copy of the
         // picture outside the garbage collector's sight, and thirty a second would pile up.
         using var input = TensorFloat.CreateFromArray(_inputShape, _input);
-        var binding = new LearningModelBinding(_session);
-        binding.Bind(_inputName, input);
-        var result = _session.Evaluate(binding, string.Empty);
+        _binding.Clear();
+        _binding.Bind(_inputName, input);
+        var result = _session.Evaluate(_binding, string.Empty);
         if (!result.Succeeded || !result.Outputs.TryGetValue(_outputName, out var value) || value is not TensorFloat output)
         {
             return false;
@@ -207,6 +215,16 @@ public sealed unsafe partial class StudioModelPersonFinder : IStudioPersonFinder
         }
 
         _disposed = true;
+        try
+        {
+            // Lets go of the last frame's tensors.
+            _binding.Clear();
+        }
+        catch (Exception)
+        {
+            // The session is closed next either way.
+        }
+
         _session.Dispose();
         _model.Dispose();
     }

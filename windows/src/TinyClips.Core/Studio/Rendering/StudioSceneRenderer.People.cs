@@ -119,16 +119,26 @@ public sealed partial class StudioSceneRenderer
         if (_peopleInput is null || _peopleInput.PixelSize.Width != maskWidth || _peopleInput.PixelSize.Height != maskHeight)
         {
             ForgetPeopleInput();
-            var format = new D2DPixelFormat(Format.B8G8R8A8_UNorm, D2DAlphaMode.Premultiplied);
-            _peopleInput = CreateLayerBitmap(maskWidth, maskHeight);
-            _peopleRead = _context.CreateBitmap(new SizeI(maskWidth, maskHeight), nint.Zero, 0, new BitmapProperties1(format, 96, 96, BitmapOptions.CpuRead | BitmapOptions.CannotDraw));
-            _peopleMaskBitmap = _context.CreateBitmap(new SizeI(maskWidth, maskHeight), nint.Zero, 0, new BitmapProperties1(format, 96, 96, BitmapOptions.None));
+            try
+            {
+                var format = new D2DPixelFormat(Format.B8G8R8A8_UNorm, D2DAlphaMode.Premultiplied);
+                _peoplePixels = new byte[maskWidth * maskHeight * 4];
+                _peopleMask = new byte[maskWidth * maskHeight];
+                _peopleMaskPixels = new byte[maskWidth * maskHeight * 4];
+                _peopleRead = _context.CreateBitmap(new SizeI(maskWidth, maskHeight), nint.Zero, 0, new BitmapProperties1(format, 96, 96, BitmapOptions.CpuRead | BitmapOptions.CannotDraw));
+                _peopleMaskBitmap = _context.CreateBitmap(new SizeI(maskWidth, maskHeight), nint.Zero, 0, new BitmapProperties1(format, 96, 96, BitmapOptions.None));
 
-            // The mask is far smaller than the frame. A cubic filter keeps its edge smooth when it is laid over the frame.
-            _peopleMaskBrush = _context.CreateBitmapBrush(_peopleMaskBitmap, new BitmapBrushProperties1(ExtendMode.Clamp, ExtendMode.Clamp, D2DInterpolationMode.Cubic), null);
-            _peoplePixels = new byte[maskWidth * maskHeight * 4];
-            _peopleMask = new byte[maskWidth * maskHeight];
-            _peopleMaskPixels = new byte[maskWidth * maskHeight * 4];
+                // The mask is far smaller than the frame. A cubic filter keeps its edge smooth when it is laid over the frame.
+                _peopleMaskBrush = _context.CreateBitmapBrush(_peopleMaskBitmap, new BitmapBrushProperties1(ExtendMode.Clamp, ExtendMode.Clamp, D2DInterpolationMode.Cubic), null);
+
+                // Last, because this is the one the next frame asks for: all of them are there, or none is.
+                _peopleInput = CreateLayerBitmap(maskWidth, maskHeight);
+            }
+            catch
+            {
+                ForgetPeopleInput();
+                throw;
+            }
         }
 
         // The whole frame at the finder's size, filtered on the way down.
@@ -200,8 +210,9 @@ public sealed partial class StudioSceneRenderer
     /// </summary>
     private void ComposePeople(ID2D1Bitmap1 picture, int width, int height, StudioCameraCutout cutout, int maskWidth, int maskHeight)
     {
-        if (_peoplePicture is null || _peoplePicture.PixelSize.Width != width || _peoplePicture.PixelSize.Height != height)
+        if (_peoplePicture is null || _peopleBrush is null || _peoplePicture.PixelSize.Width != width || _peoplePicture.PixelSize.Height != height)
         {
+            // The brush is asked about too: a picture whose brush could not be made is made again.
             _peopleBrush?.Dispose();
             _peopleBrush = null;
             _peoplePicture?.Dispose();
