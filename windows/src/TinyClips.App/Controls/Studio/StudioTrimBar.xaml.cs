@@ -9,8 +9,8 @@ namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
 /// The whole recording as a bar, in source time. The two handles are where the video starts and
-/// ends, the tinted parts between them are what gets exported, with a gap for every cut, and the
-/// line is the playhead. Pressing or dragging on the bar moves the playhead.
+/// ends, the tinted parts between them are what gets exported, with a gap for every cut and for
+/// nothing else, and the line is the playhead. Pressing or dragging on the bar moves the playhead.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -32,6 +32,7 @@ public sealed partial class StudioTrimBar : UserControl
     private const double DisabledOpacity = 0.4;
 
     private readonly List<Border> _keptParts = [];
+    private readonly List<(double Start, double End)> _keptRuns = [];
     private IReadOnlyList<StudioTimeSegment> _keptSegments = [];
     private double _duration = 0.0001;
     private double _trimStart;
@@ -65,13 +66,23 @@ public sealed partial class StudioTrimBar : UserControl
     /// <summary>Raised with the source time, in seconds, the playhead was moved to.</summary>
     public event EventHandler<double>? ScrubRequested;
 
+    /// <summary>
+    /// How many tinted parts the bar draws. For the check tool: stretches that touch are one
+    /// part, and the parts are not among what a screen reader is given.
+    /// </summary>
+    internal int KeptPartCount => _keptParts.Count;
+
     private double UsableWidth => Math.Max(1, Root.ActualWidth - HandleWidth * 2);
 
     /// <summary>Shows the trim and the playhead of a recording. Times are in seconds of source time.</summary>
     /// <param name="duration">The length of the recording.</param>
     /// <param name="trimStart">Where the video starts.</param>
     /// <param name="trimEnd">Where the video ends.</param>
-    /// <param name="keptSegments">The stretches between the two that the video keeps, in time order: all of it, or what the cuts leave.</param>
+    /// <param name="keptSegments">
+    /// The stretches between the two that the video keeps, in time order: all of it, or what the
+    /// cuts leave. Two that touch leave nothing out between them, as where the video goes on at
+    /// another speed, and are drawn as one.
+    /// </param>
     /// <param name="playhead">Where the playhead is.</param>
     /// <param name="frameDuration">The length of one frame, which is one step of the playhead.</param>
     /// <param name="trimStep">One keyboard or screen reader step of a handle.</param>
@@ -145,16 +156,34 @@ public sealed partial class StudioTrimBar : UserControl
         PlacePlayhead();
     }
 
-    /// <summary>One tinted part for every stretch the video keeps. What is cut out between two of them stays the bar's own color.</summary>
+    /// <summary>
+    /// One tinted part for every stretch the video keeps without a break. What is cut out between
+    /// two of them stays the bar's own color.
+    /// </summary>
     private void PlaceKeptParts(double height, double usable)
     {
-        while (_keptParts.Count > _keptSegments.Count)
+        // Stretches that touch are one part. Each part has round corners, so two parts drawn
+        // side by side would show a notch where nothing is left out: only a cut leaves a gap.
+        _keptRuns.Clear();
+        foreach (var segment in _keptSegments)
+        {
+            if (_keptRuns.Count > 0 && segment.Start <= _keptRuns[^1].End)
+            {
+                _keptRuns[^1] = (_keptRuns[^1].Start, Math.Max(_keptRuns[^1].End, segment.End));
+            }
+            else
+            {
+                _keptRuns.Add((segment.Start, segment.End));
+            }
+        }
+
+        while (_keptParts.Count > _keptRuns.Count)
         {
             KeptRanges.Children.RemoveAt(_keptParts.Count - 1);
             _keptParts.RemoveAt(_keptParts.Count - 1);
         }
 
-        while (_keptParts.Count < _keptSegments.Count)
+        while (_keptParts.Count < _keptRuns.Count)
         {
             var part = new Border { Style = (Style)Resources["StudioKeptRangeStyle"] };
             _keptParts.Add(part);
@@ -163,8 +192,8 @@ public sealed partial class StudioTrimBar : UserControl
 
         for (var index = 0; index < _keptParts.Count; index++)
         {
-            var left = Fraction(_keptSegments[index].Start) * usable;
-            var right = Fraction(_keptSegments[index].End) * usable;
+            var left = Fraction(_keptRuns[index].Start) * usable;
+            var right = Fraction(_keptRuns[index].End) * usable;
             _keptParts[index].Height = height;
             _keptParts[index].Width = Math.Max(0, right - left);
             Canvas.SetLeft(_keptParts[index], left + HandleWidth);

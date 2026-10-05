@@ -5,8 +5,8 @@ using TinyClips.Core.Studio.Editing;
 namespace TinyClips.App.ViewModels.Studio;
 
 // The values behind the cut lane, the gaps in the trim bar and the Cut section of the inspector.
-// A cut is selected in place of a zoom, never with one. What an edit does is decided in the
-// session, and what is said about it in StudioEditorText.
+// A cut is selected in place of a zoom or a speed change, never with one. What an edit does is
+// decided in the session, and what is said about it in StudioEditorText.
 public sealed partial class StudioViewModel
 {
     private const string CutActivityId = "StudioCut";
@@ -110,7 +110,7 @@ public sealed partial class StudioViewModel
 
     // Commands
 
-    /// <summary>Lets go of whatever is selected, a zoom or a cut. The playhead stays.</summary>
+    /// <summary>Lets go of whatever is selected: a zoom, a cut or a speed change. The playhead stays.</summary>
     public void SelectNothing() => _session.SelectNothing();
 
     /// <summary>Selects a cut, or none. The playhead stays.</summary>

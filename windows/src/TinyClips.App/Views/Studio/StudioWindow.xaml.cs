@@ -408,6 +408,7 @@ public sealed partial class StudioWindow : Window
             IsTypeToSearchFocused = focused is ComboBox or ComboBoxItem,
             HasSelectedZoom = ViewModel.HasSelectedZoom,
             HasSelectedCut = ViewModel.HasSelectedCut,
+            HasSelectedSpeed = ViewModel.HasSelectedSpeed,
 
             // With the focus on the scene lane, Delete is about the scene the playhead is in.
             IsSceneFocused = focused is StudioSceneLane,
@@ -430,6 +431,7 @@ public sealed partial class StudioWindow : Window
         VirtualKey.Escape => StudioShortcutKey.Escape,
         VirtualKey.I => StudioShortcutKey.I,
         VirtualKey.O => StudioShortcutKey.O,
+        VirtualKey.R => StudioShortcutKey.R,
         VirtualKey.S => StudioShortcutKey.S,
         VirtualKey.X => StudioShortcutKey.X,
         VirtualKey.Z => StudioShortcutKey.Z,

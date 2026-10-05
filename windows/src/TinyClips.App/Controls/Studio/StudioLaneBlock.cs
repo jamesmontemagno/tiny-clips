@@ -8,11 +8,12 @@ using Microsoft.UI.Xaml.Controls;
 namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
-/// One block on a lane of the Studio timeline: a scene, a zoom or a cut. The lane places it,
-/// tells it what it stands for, and handles the pointer; to screen readers the block is an item
-/// of the lane's list. What a block looks like is in <see cref="StudioSceneBlock"/>,
-/// <see cref="StudioZoomBlock"/> and <see cref="StudioCutBlock"/>, each of which has a visual
-/// state called Selected and one called Unselected.
+/// One block on a lane of the Studio timeline: a scene, a zoom, a cut or a speed change. The
+/// lane places it, tells it what it stands for, and handles the pointer; to screen readers the
+/// block is an item of the lane's list. What a block looks like is in
+/// <see cref="StudioSceneBlock"/>, <see cref="StudioZoomBlock"/>, <see cref="StudioCutBlock"/>
+/// and <see cref="StudioSpeedBlock"/>, each of which has a visual state called Selected and one
+/// called Unselected.
 /// </summary>
 public abstract partial class StudioLaneBlock : UserControl
 {
@@ -157,7 +158,7 @@ public sealed partial class StudioLaneBlockAutomationPeer(StudioLaneBlock owner)
 
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.ListItem;
 
-    // The block's own class: StudioSceneBlock, StudioZoomBlock or StudioCutBlock.
+    // The block's own class: StudioSceneBlock, StudioZoomBlock, StudioCutBlock or StudioSpeedBlock.
     protected override string GetClassNameCore() => Owner.GetType().Name;
 
     protected override string GetNameCore() => Block.Description;

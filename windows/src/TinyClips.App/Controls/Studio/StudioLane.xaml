@@ -7,11 +7,11 @@
     UseSystemFocusVisuals="True">
 
     <!--
-        One lane of the Studio timeline. The scene lane, the zoom lane and the cut lane are this
-        control, each with blocks of its own kind. Positions are set in code: the blocks are
-        placed by time, not by layout. The pointer is handled here for the whole lane, so a press
-        is told to be on a block, on one of its ends, or on the lane from where along the lane it
-        is.
+        One lane of the Studio timeline. The scene lane, the zoom lane, the cut lane and the speed
+        lane are this control, each with blocks of its own kind. Positions are set in code: the
+        blocks are placed by time, not by layout. The pointer is handled here for the whole lane,
+        so a press is told to be on a block, on one of its ends, or on the lane from where along
+        the lane it is.
     -->
     <Grid
         x:Name="Root"
@@ -43,7 +43,7 @@
             TextWrapping="NoWrap"
             Visibility="Collapsed" />
 
-        <!--  One block for each scene, zoom or cut, in time order.  -->
+        <!--  One block for each scene, zoom, cut or speed change, in time order.  -->
         <Canvas x:Name="Blocks" />
 
         <Canvas IsHitTestVisible="False">

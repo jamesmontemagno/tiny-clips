@@ -5,9 +5,9 @@ namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
 /// A lane whose blocks are stretches of the recording that are selected, moved, and made longer
-/// and shorter: the zoom lane and the cut lane. Pressing a block selects it, dragging it moves
-/// it, and dragging one of its ends changes when it starts or stops. Pressing or dragging on the
-/// empty lane moves the playhead and selects nothing.
+/// and shorter: the zoom lane, the cut lane and the speed lane. Pressing a block selects it,
+/// dragging it moves it, and dragging one of its ends changes when it starts or stops. Pressing
+/// or dragging on the empty lane moves the playhead and selects nothing.
 /// </summary>
 public abstract partial class StudioRangeLane : StudioLane
 {
@@ -38,7 +38,7 @@ public abstract partial class StudioRangeLane : StudioLane
             return new StudioLanePress(block.Index, GetPart(x - Canvas.GetLeft(block), block.Width), start, end, x);
         }
 
-        // Not only this lane's selection: a zoom or a cut is selected, never both.
+        // Not only this lane's selection: a zoom, a cut or a speed change is selected, never two of them.
         ViewModel.SelectNothing();
         return StudioLanePress.OnTheLane(x);
     }

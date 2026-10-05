@@ -17,7 +17,7 @@ namespace TinyClips.App.ViewModels.Studio;
 /// Every value is read from the session when it is asked for, so there is no second copy to keep
 /// in step. A change to the project refreshes every binding; the playhead and export progress,
 /// which change many times a second, refresh only what depends on them, and so do selecting
-/// another zoom or cut and the playhead coming into another scene.
+/// another zoom, cut or speed change and the playhead coming into another scene.
 /// </remarks>
 public sealed partial class StudioViewModel : ObservableObject
 {
@@ -57,11 +57,13 @@ public sealed partial class StudioViewModel : ObservableObject
         IStudioExportService exporter,
         ICaptureSettings settings,
         IClipStorageService storage,
-        DispatcherQueue dispatcher)
+        DispatcherQueue dispatcher,
+        bool canFindPeople)
     {
         _settings = settings;
         _storage = storage;
         _dispatcher = dispatcher;
+        CanFindPeople = canFindPeople;
         _session = new StudioEditorSession(
             projectId,
             store,
@@ -259,7 +261,7 @@ public sealed partial class StudioViewModel : ObservableObject
     public void MoveBubbleTopLeft(double x, double y) =>
         _session.MoveBubbleTopLeft(x, y, CanvasWidth, CanvasHeight);
 
-    /// <summary>Runs what a key press means. A layout chosen this way is read out, and so is what came of a scene, a zoom or a cut.</summary>
+    /// <summary>Runs what a key press means. A layout chosen this way is read out, and so is what came of a scene, a zoom, a cut or a speed change.</summary>
     public void Run(StudioShortcutAction action)
     {
         switch (action)
@@ -308,6 +310,12 @@ public sealed partial class StudioViewModel : ObservableObject
                 break;
             case StudioShortcutAction.RemoveSelectedCut:
                 RemoveSelectedCut();
+                break;
+            case StudioShortcutAction.AddSpeed:
+                AddSpeedAtPlayhead();
+                break;
+            case StudioShortcutAction.RemoveSelectedSpeed:
+                RemoveSelectedSpeed();
                 break;
             case StudioShortcutAction.Undo:
                 Undo();
@@ -374,6 +382,7 @@ public sealed partial class StudioViewModel : ObservableObject
             ClearSaveErrorIfSaved();
             RememberZoomStateAtPlayhead();
             RememberCutStateAtPlayhead();
+            RememberSpeedStateAtPlayhead();
             RememberSceneStateAtPlayhead();
             OnPropertyChanged(string.Empty);
         }
@@ -395,6 +404,7 @@ public sealed partial class StudioViewModel : ObservableObject
                 Raise(PlaybackPropertyNames);
                 RaiseZoomStateAtPlayhead();
                 RaiseCutStateAtPlayhead();
+                RaiseSpeedStateAtPlayhead();
                 RaiseSceneStateAtPlayhead();
             }
 

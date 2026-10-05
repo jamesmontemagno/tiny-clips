@@ -511,14 +511,16 @@ public sealed partial class StudioViewModel
         }
     }
 
-    // A zoom or a cut is selected, never both, so selecting one can let go of the other: what
-    // follows either selection is refreshed.
+    // A zoom, a cut or a speed change is selected, never two of them, so selecting one can let go
+    // of another: what follows each of the three selections is refreshed.
     private void RaiseSelectionChanged()
     {
         Raise(ZoomSelectionPropertyNames);
         Raise(CutSelectionPropertyNames);
+        Raise(SpeedSelectionPropertyNames);
         RaiseZoomStateAtPlayhead();
         RaiseCutStateAtPlayhead();
+        RaiseSpeedStateAtPlayhead();
     }
 
     /// <summary>

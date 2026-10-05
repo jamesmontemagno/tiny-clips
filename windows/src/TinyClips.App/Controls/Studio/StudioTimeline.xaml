@@ -18,6 +18,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Button
@@ -87,24 +88,34 @@
                 IsEnabled="{x:Bind ViewModel.CanAddCutAtPlayhead, Mode=OneWay}"
                 ToolTipService.ToolTip="Start a cut at the playhead (X)" />
             <Button
+                x:Name="AddSpeedButton"
                 Grid.Column="7"
+                AutomationProperties.AutomationId="StudioAddSpeedButton"
+                AutomationProperties.Name="Add speed change"
+                Click="{x:Bind ViewModel.AddSpeedAtPlayhead}"
+                Content="Speed"
+                IsEnabled="{x:Bind ViewModel.CanAddSpeedAtPlayhead, Mode=OneWay}"
+                ToolTipService.ToolTip="Play two seconds of the video twice as fast from the playhead (R)" />
+            <Button
+                Grid.Column="8"
                 AutomationProperties.AutomationId="StudioStartHereButton"
                 Click="{x:Bind ViewModel.SetTrimStartAtPlayhead}"
                 Content="Start here"
                 ToolTipService.ToolTip="Start the video at the playhead (I)" />
             <Button
-                Grid.Column="8"
+                Grid.Column="9"
                 AutomationProperties.AutomationId="StudioEndHereButton"
                 Click="{x:Bind ViewModel.SetTrimEndAtPlayhead}"
                 Content="End here"
                 ToolTipService.ToolTip="End the video at the playhead (O)" />
         </Grid>
 
-        <!--  The scenes, the zooms, the cuts and the trim, one above the other on the same time scale.  -->
+        <!--  The scenes, the zooms, the cuts, the speed changes and the trim, one above the other on the same time scale.  -->
         <StackPanel Spacing="4">
             <Border x:Name="SceneLaneHost" Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}" />
             <Border x:Name="ZoomLaneHost" />
             <Border x:Name="CutLaneHost" />
+            <Border x:Name="SpeedLaneHost" />
             <local:StudioTrimBar
                 x:Name="TrimBar"
                 AutomationProperties.AutomationId="StudioTrimBar"

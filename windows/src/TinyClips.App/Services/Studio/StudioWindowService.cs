@@ -7,6 +7,7 @@ using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Rendering;
 
 namespace TinyClips.App.Services.Studio;
 
@@ -68,6 +69,14 @@ public sealed class StudioWindowService
     public Action<Window> ActivateWindow { get; set; } = static window => window.Activate();
 
     /// <summary>
+    /// Whether people can be found in a camera picture, which is what blurring or removing the
+    /// camera's background takes. It is asked once for each editor, when its window is opened,
+    /// and the editor offers the Background choice of its Camera section only when the answer
+    /// is yes. The app's answer is whether the model that finds people is next to it.
+    /// </summary>
+    public Func<bool> CanFindPeople { get; set; } = static () => StudioPersonFinders.IsAvailable;
+
+    /// <summary>
     /// Opens the editor for a project, or brings the window that already has it open to the front.
     /// There is one window per project.
     /// </summary>
@@ -92,7 +101,8 @@ public sealed class StudioWindowService
                 _exporter,
                 _settings,
                 _storage,
-                DispatcherQueue.GetForCurrentThread());
+                DispatcherQueue.GetForCurrentThread(),
+                CanFindPeople());
             viewModel.Exported += OnExported;
             viewModel.ErrorReported += OnErrorReported;
             window = new StudioWindow(viewModel, _previewViews, _settings, OnWindowClosed);

@@ -7,8 +7,9 @@ namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
 /// The bottom of the Studio window: play and pause, the two frame steps, the time, the buttons
-/// that split the scene, add a zoom and start a cut, and the two that trim at the playhead; and
-/// under them the scene lane, the zoom lane, the cut lane and the trim bar.
+/// that split the scene, add a zoom, start a cut and change the speed, and the two that trim at
+/// the playhead; and under them the scene lane, the zoom lane, the cut lane, the speed lane and
+/// the trim bar.
 /// </summary>
 public sealed partial class StudioTimeline : UserControl
 {
@@ -19,6 +20,7 @@ public sealed partial class StudioTimeline : UserControl
         SceneLaneHost.Child = new StudioSceneLane(viewModel);
         ZoomLaneHost.Child = new StudioZoomLane(viewModel);
         CutLaneHost.Child = new StudioCutLane(viewModel);
+        SpeedLaneHost.Child = new StudioSpeedLane(viewModel);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -67,15 +69,15 @@ public sealed partial class StudioTimeline : UserControl
 
     // A paused playhead goes on to where the new scene has been entered, and no scene can be
     // split again that close to its end. Split is then switched off by what it did. The focus
-    // goes to the next button that adds something, and where neither works back to Play rather
-    // than on to the two buttons that trim.
+    // goes to the next button that adds something, and where none of them works back to Play
+    // rather than on to the two buttons that trim.
     private void OnSplitSceneClick(object sender, RoutedEventArgs e)
     {
         var focus = StudioFocus.StateOf(sender);
         ViewModel.SplitSceneAtPlayhead();
         if (!ViewModel.CanSplitSceneAtPlayhead)
         {
-            StudioFocus.Move(focus, AddZoomButton, AddCutButton, PlayPauseButton);
+            StudioFocus.Move(focus, AddZoomButton, AddCutButton, AddSpeedButton, PlayPauseButton);
         }
     }
 

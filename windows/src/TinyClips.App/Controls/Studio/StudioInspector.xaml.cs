@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -6,15 +7,16 @@ using Microsoft.UI.Xaml.Media;
 using TinyClips.App.Models.Studio;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 using Windows.Foundation;
 
 namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
-/// The right-hand side of the Studio window: scene, layout, background, screen, camera, zoom, cut
-/// and extras, and the button that saves the look as the default. The scene, layout and camera
-/// sections follow the scene the playhead is in, and the zoom and cut sections the selected zoom
-/// or cut.
+/// The right-hand side of the Studio window: scene, layout, background, screen, camera, zoom,
+/// cut, speed and extras, and the button that saves the look as the default. The scene, layout
+/// and camera sections follow the scene the playhead is in, and the zoom, cut and speed sections
+/// the selected zoom, cut or speed change.
 /// </summary>
 public sealed partial class StudioInspector : UserControl
 {
@@ -34,6 +36,29 @@ public sealed partial class StudioInspector : UserControl
         foreach (var anchor in Enum.GetValues<StudioAnchor>())
         {
             PositionChoice.Items.Add(StudioEditorModel.GetAnchorName(anchor));
+        }
+
+        foreach (var cutout in Enum.GetValues<StudioCameraCutout>())
+        {
+            var choice = CreateChoice(StudioEditorModel.GetCutoutName(cutout), $"StudioCameraCutout_{cutout}");
+            if (cutout == StudioCameraCutout.Remove)
+            {
+                // What the note under the choice says once this is chosen, said before it is.
+                AutomationProperties.SetHelpText(choice, CutoutRemovedNote.Text);
+            }
+
+            CutoutChoice.Items.Add(choice);
+        }
+
+        // A rate shows as "2×" and is called "Twice the speed" by a screen reader.
+        var rates = StudioEditorModel.SpeedRates;
+        for (var index = 0; index < rates.Count; index++)
+        {
+            var choice = CreateChoice(
+                StudioEditorText.GetSpeedRateText(rates[index]),
+                string.Create(CultureInfo.InvariantCulture, $"StudioSpeedRate_{index}"));
+            AutomationProperties.SetName(choice, StudioEditorText.GetSpeedRateName(rates[index]));
+            SpeedRateChoice.Items.Add(choice);
         }
 
         AddSwatches(SolidSwatches, StudioSwatch.Solid);
@@ -188,6 +213,36 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
+    private void OnPreviousSpeedClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.ShowPreviousSpeed();
+        if (!ViewModel.CanSelectPreviousSpeed)
+        {
+            StudioFocus.Move(focus, NextSpeedButton, SpeedSectionAddButton);
+        }
+    }
+
+    private void OnNextSpeedClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.ShowNextSpeed();
+        if (!ViewModel.CanSelectNextSpeed)
+        {
+            StudioFocus.Move(focus, PreviousSpeedButton, SpeedSectionAddButton);
+        }
+    }
+
+    private void OnDeleteSpeedClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.RemoveSelectedSpeed();
+        if (!ViewModel.HasSelectedSpeed)
+        {
+            StudioFocus.Move(focus, NextSpeedButton, PreviousSpeedButton, SpeedSectionAddButton);
+        }
+    }
+
     private void OnResetScreenCropClick(object sender, RoutedEventArgs e)
     {
         var focus = StudioFocus.StateOf(sender);
@@ -216,6 +271,17 @@ public sealed partial class StudioInspector : UserControl
         (int)StudioLayout.Camera => LayoutCameraChoice,
         _ => LayoutBubbleChoice,
     };
+
+    /// <summary>
+    /// One choice of a group that stands in columns. A choice is as wide as what it says, and
+    /// not the width a radio button has otherwise, so that three of them fit next to each other.
+    /// </summary>
+    private static RadioButton CreateChoice(string text, string automationId)
+    {
+        var choice = new RadioButton { Content = text, MinWidth = 0 };
+        AutomationProperties.SetAutomationId(choice, automationId);
+        return choice;
+    }
 
     private void AddSwatches(GridView grid, IReadOnlyList<StudioSwatch> swatches)
     {

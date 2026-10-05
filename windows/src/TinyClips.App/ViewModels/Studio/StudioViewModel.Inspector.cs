@@ -209,6 +209,39 @@ public sealed partial class StudioViewModel
         }
     }
 
+    /// <summary>
+    /// Whether people can be found in a camera picture at all, as the app said when this editor
+    /// opened. Without that a background can be neither blurred nor removed, every background
+    /// is drawn as it was recorded, and the choice is not offered.
+    /// </summary>
+    public bool CanFindPeople { get; }
+
+    /// <summary>
+    /// What is behind the people in the camera picture: kept, blurred or removed. The number is
+    /// the choice's place in <see cref="StudioCameraCutout"/>.
+    /// </summary>
+    public int CameraCutoutIndex
+    {
+        get => (int)Camera.Cutout;
+        set
+        {
+            // A two-way binding also hands back the choice the editor reported itself. Only
+            // another one is an edit.
+            if (value is >= 0 and <= (int)StudioCameraCutout.Remove && value != CameraCutoutIndex)
+            {
+                _session.SetCameraCutout((StudioCameraCutout)value);
+            }
+
+            ResyncIfDifferent(value, CameraCutoutIndex);
+        }
+    }
+
+    /// <summary>
+    /// True while the background is removed, which takes the camera's border and its shadow with
+    /// it: the section then says so, next to the two sliders that have nothing to show.
+    /// </summary>
+    public bool IsCameraCutoutRemovedNoteVisible => CanFindPeople && Camera.Cutout == StudioCameraCutout.Remove;
+
     public double CameraBorderWidth
     {
         get => Camera.BorderWidth;

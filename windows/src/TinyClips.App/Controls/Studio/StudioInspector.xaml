@@ -443,6 +443,27 @@
                         AutomationProperties.AutomationId="StudioCameraMirrorCheckBox"
                         Content="Mirror"
                         IsChecked="{x:Bind ViewModel.IsCameraMirrored, Mode=TwoWay}" />
+                    <!--
+                        What is behind the people in the camera picture. Only where people can be
+                        found in a picture at all: without that every background is kept as it is.
+                        The three choices are added in code, named by the editor model.
+                    -->
+                    <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.CanFindPeople}">
+                        <RadioButtons
+                            x:Name="CutoutChoice"
+                            AutomationProperties.AutomationId="StudioCameraCutoutChoice"
+                            AutomationProperties.Name="Background"
+                            Header="Background"
+                            MaxColumns="3"
+                            SelectedIndex="{x:Bind ViewModel.CameraCutoutIndex, Mode=TwoWay}"
+                            ToolTipService.ToolTip="Keeps, blurs, or removes what is behind you in the camera picture. With the background removed, the camera has no border and no shadow." />
+                        <TextBlock
+                            x:Name="CutoutRemovedNote"
+                            AutomationProperties.AutomationId="StudioCameraCutoutRemovedNote"
+                            Style="{StaticResource StudioNoteStyle}"
+                            Text="With the background removed, the camera has no border and no shadow."
+                            Visibility="{x:Bind ViewModel.IsCameraCutoutRemovedNoteVisible, Mode=OneWay}" />
+                    </StackPanel>
                     <local:StudioSliderRow
                         Title="Border"
                         GestureCompleted="{x:Bind ViewModel.EndGesture}"
@@ -766,7 +787,8 @@
             <!--
                 Cut: stepping through the cuts, starting one, and the two ends of the selected
                 one. It is how a cut is selected and changed without a pointer. A cut is selected
-                in place of a zoom, so this section and Zoom never both show one.
+                in place of a zoom or a speed change, so of this section, Zoom and Speed only one
+                ever shows a selected one.
             -->
             <StackPanel x:Name="CutSection" Spacing="8">
                 <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Cut" />
@@ -916,6 +938,181 @@
                     Style="{StaticResource StudioNoteStyle}"
                     Text="{x:Bind ViewModel.CutHint}"
                     Visibility="{x:Bind ViewModel.IsCutHintVisible, Mode=OneWay}" />
+            </StackPanel>
+
+            <!--
+                Speed: stepping through the speed changes, starting one, and the rate and the two
+                ends of the selected one. It is how a speed change is selected and changed without
+                a pointer. A speed change is selected in place of a zoom or a cut, so of this
+                section, Zoom and Cut only one ever shows a selected one.
+            -->
+            <StackPanel x:Name="SpeedSection" Spacing="8">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Speed" />
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="PreviousSpeedButton"
+                        Grid.Column="0"
+                        AutomationProperties.AutomationId="StudioPreviousSpeedButton"
+                        AutomationProperties.Name="Previous speed change"
+                        Click="OnPreviousSpeedClick"
+                        IsEnabled="{x:Bind ViewModel.CanSelectPreviousSpeed, Mode=OneWay}"
+                        ToolTipService.ToolTip="Previous speed change">
+                        <FontIcon FontSize="14" Glyph="&#xE76B;" />
+                    </Button>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioSpeedPositionText"
+                            Text="{x:Bind ViewModel.SpeedSelectionTitle, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioSpeedRangeText"
+                            Style="{StaticResource StudioCaptionStyle}"
+                            Text="{x:Bind ViewModel.SpeedSelectionDetail, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.HasSpeedSelectionDetail, Mode=OneWay}" />
+                    </StackPanel>
+                    <Button
+                        x:Name="NextSpeedButton"
+                        Grid.Column="2"
+                        AutomationProperties.AutomationId="StudioNextSpeedButton"
+                        AutomationProperties.Name="Next speed change"
+                        Click="OnNextSpeedClick"
+                        IsEnabled="{x:Bind ViewModel.CanSelectNextSpeed, Mode=OneWay}"
+                        ToolTipService.ToolTip="Next speed change">
+                        <FontIcon FontSize="14" Glyph="&#xE76C;" />
+                    </Button>
+                </Grid>
+
+                <Button
+                    x:Name="SpeedSectionAddButton"
+                    AutomationProperties.AutomationId="StudioSpeedSectionAddButton"
+                    Click="{x:Bind ViewModel.AddSpeedAtPlayhead}"
+                    Content="Change speed at playhead"
+                    IsEnabled="{x:Bind ViewModel.CanAddSpeedAtPlayhead, Mode=OneWay}"
+                    ToolTipService.ToolTip="Play two seconds of the video twice as fast from the playhead (R)" />
+
+                <!--  The selected speed change.  -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasSelectedSpeed, Mode=OneWay}">
+                    <!--
+                        How fast the stretch plays: one of the six rates the editor offers, added
+                        in code, each showing its rate and named by the editor's text for it. None
+                        is chosen for a rate that only a project file can hold. The heading above
+                        says what the choice is of, so it has a name and no header of its own.
+                    -->
+                    <RadioButtons
+                        x:Name="SpeedRateChoice"
+                        AutomationProperties.AutomationId="StudioSpeedRateChoice"
+                        AutomationProperties.Name="Speed"
+                        MaxColumns="3"
+                        SelectedIndex="{x:Bind ViewModel.SpeedRateIndex, Mode=TwoWay}"
+                        ToolTipService.ToolTip="How fast this stretch plays" />
+
+                    <!--  Where the speed change starts: the first picture that plays at the other speed. The time is said with its name, so screen readers skip the label.  -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Start" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="StudioSpeedStartText"
+                                AutomationProperties.Name="{x:Bind ViewModel.SpeedStartAccessibleName, Mode=OneWay}"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.SpeedStartText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="StudioSpeedStartEarlierButton"
+                                AutomationProperties.Name="Start 0.1 seconds earlier"
+                                Click="{x:Bind ViewModel.StepSpeedStartEarlier}"
+                                Content="&#x2212;0.1 s"
+                                ToolTipService.ToolTip="Start 0.1 seconds earlier" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioSpeedStartLaterButton"
+                                AutomationProperties.Name="Start 0.1 seconds later"
+                                Click="{x:Bind ViewModel.StepSpeedStartLater}"
+                                Content="+0.1 s"
+                                ToolTipService.ToolTip="Start 0.1 seconds later" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioSpeedStartAtPlayheadButton"
+                                AutomationProperties.Name="Start at playhead"
+                                Click="{x:Bind ViewModel.SetSpeedStartAtPlayhead}"
+                                Content="At playhead"
+                                ToolTipService.ToolTip="Start this speed change at the playhead" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!--  Where the speed change ends: the first picture at the recording's own speed again.  -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="End" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="StudioSpeedEndText"
+                                AutomationProperties.Name="{x:Bind ViewModel.SpeedEndAccessibleName, Mode=OneWay}"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.SpeedEndText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="StudioSpeedEndEarlierButton"
+                                AutomationProperties.Name="End 0.1 seconds earlier"
+                                Click="{x:Bind ViewModel.StepSpeedEndEarlier}"
+                                Content="&#x2212;0.1 s"
+                                ToolTipService.ToolTip="End 0.1 seconds earlier" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioSpeedEndLaterButton"
+                                AutomationProperties.Name="End 0.1 seconds later"
+                                Click="{x:Bind ViewModel.StepSpeedEndLater}"
+                                Content="+0.1 s"
+                                ToolTipService.ToolTip="End 0.1 seconds later" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioSpeedEndAtPlayheadButton"
+                                AutomationProperties.Name="End at playhead"
+                                Click="{x:Bind ViewModel.SetSpeedEndAtPlayhead}"
+                                Content="At playhead"
+                                ToolTipService.ToolTip="End this speed change at the playhead" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBlock
+                        AutomationProperties.AutomationId="StudioSpeedLengthText"
+                        Style="{StaticResource StudioCaptionStyle}"
+                        Text="{x:Bind ViewModel.SpeedLengthText, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="StudioSpeedSilentNote"
+                        Style="{StaticResource StudioNoteStyle}"
+                        Text="{x:Bind ViewModel.SpeedSilentNote}" />
+                    <Button
+                        AutomationProperties.AutomationId="StudioDeleteSpeedButton"
+                        AutomationProperties.HelpText="The stretch then plays at the recording's own speed again."
+                        Click="OnDeleteSpeedClick"
+                        Content="Delete speed change"
+                        ToolTipService.ToolTip="Delete this speed change, so its stretch plays at the recording's own speed again (Delete)" />
+                </StackPanel>
+
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioSpeedHint"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="{x:Bind ViewModel.SpeedHint}"
+                    Visibility="{x:Bind ViewModel.IsSpeedHintVisible, Mode=OneWay}" />
             </StackPanel>
 
             <!--  Extras  -->

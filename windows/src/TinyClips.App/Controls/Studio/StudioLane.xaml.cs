@@ -20,7 +20,7 @@ internal enum StudioLanePart
 }
 
 /// <summary>A press on a lane, which becomes a drag once the pointer has moved.</summary>
-/// <param name="index">The scene, zoom or cut that was taken hold of, or null for a press that only moves the playhead.</param>
+/// <param name="index">The scene, zoom, cut or speed change that was taken hold of, or null for a press that only moves the playhead.</param>
 /// <param name="part">The part of the block that was pressed.</param>
 /// <param name="start">When what was pressed started as the press began.</param>
 /// <param name="end">When it ended as the press began.</param>
@@ -46,15 +46,17 @@ internal sealed class StudioLanePress(int? index, StudioLanePart part, double st
 /// <summary>
 /// One lane of the Studio timeline: blocks along the recording, in source time, lined up with the
 /// trim bar under the lanes, and a line where the playhead is. <see cref="StudioSceneLane"/>,
-/// <see cref="StudioZoomLane"/> and <see cref="StudioCutLane"/> say what the blocks stand for and
-/// what a press, a drag and the keys do to them. What the three have in common is here.
+/// <see cref="StudioZoomLane"/>, <see cref="StudioCutLane"/> and <see cref="StudioSpeedLane"/>
+/// say what the blocks stand for and what a press, a drag and the keys do to them. What the four
+/// have in common is here.
 /// </summary>
 /// <remarks>
 /// <para>
 /// A lane is one stop for the Tab key. With the focus on it, Left and Right go to the block before
 /// and after the marked one, and Home and End to the first and the last. Delete is left to the
 /// window. To screen readers the lane is a list and each block an item of it, and the marked
-/// block is the selected item: the selected zoom or cut, or the scene the playhead is in.
+/// block is the selected item: the selected zoom, cut or speed change, or the scene the playhead
+/// is in.
 /// </para>
 /// <para>
 /// What a pointer does is in <see cref="PressAt"/>, <see cref="DragTo"/> and
@@ -132,7 +134,7 @@ public abstract partial class StudioLane : UserControl
 
     protected abstract int ItemCount { get; }
 
-    /// <summary>The marked item's place in the list: the selected zoom or cut, or the scene the playhead is in.</summary>
+    /// <summary>The marked item's place in the list: the selected zoom, cut or speed change, or the scene the playhead is in.</summary>
     protected abstract int? SelectedIndex { get; }
 
     /// <summary>The view model's property that says another item is the marked one.</summary>
@@ -512,7 +514,7 @@ public sealed partial class StudioLaneAutomationPeer(StudioLane owner)
 
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.List;
 
-    // The lane's own class: StudioSceneLane, StudioZoomLane or StudioCutLane.
+    // The lane's own class: StudioSceneLane, StudioZoomLane, StudioCutLane or StudioSpeedLane.
     protected override string GetClassNameCore() => Owner.GetType().Name;
 
     protected override object GetPatternCore(PatternInterface patternInterface) =>
