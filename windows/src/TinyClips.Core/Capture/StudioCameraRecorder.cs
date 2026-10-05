@@ -72,11 +72,18 @@ internal sealed class StudioCameraRecorder : IDisposable
     {
         var frame = args.Frame;
         if (frame.IsGpuFrame ||
-            frame.Timestamp == TimeSpan.Zero ||
             frame.Width < 2 ||
             frame.Height < 2 ||
-            frame.BgraPixels.Length < (long)frame.Width * frame.Height * 4 ||
-            !_timeline.TryNormalizeActive(frame.Timestamp, out var timelineTime))
+            frame.BgraPixels.Length < (long)frame.Width * frame.Height * 4)
+        {
+            return;
+        }
+
+        // A camera that gives its frames no time arrives here with zero. Such a frame gets the
+        // time it arrived, which is a little late and still a time; left out, a camera like that
+        // would be live in its bubble throughout and missing from the project.
+        var stamp = frame.Timestamp == TimeSpan.Zero ? RecordingTimeline.SystemRelativeNow() : frame.Timestamp;
+        if (!_timeline.TryNormalizeActive(stamp, out var timelineTime))
         {
             return;
         }
