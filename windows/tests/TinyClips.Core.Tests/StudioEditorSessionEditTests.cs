@@ -458,6 +458,7 @@ public sealed class StudioEditorSessionEditTests : StudioEditorSessionTestBase
 
         Assert.Equal(0.2, session.Project!.Canvas.Padding, Precision);
         Assert.False(session.Model!.IsGroupingEdits);
+        Assert.False(session.IsInGesture);
 
         session.CancelExport();
         await FinishAsync(export);
@@ -465,6 +466,34 @@ public sealed class StudioEditorSessionEditTests : StudioEditorSessionTestBase
 
         session.SetCanvasPadding(0.3);
         Assert.Equal(0.2, session.Project.Canvas.Padding, Precision);
+    }
+
+    [Fact]
+    public async Task IsInGesture_IsTrueFromTheStartOfADragToItsEnd()
+    {
+        var session = await OpenAsync(CreateProject());
+        Assert.False(session.IsInGesture);
+
+        // From the press on, before anything has moved.
+        session.BeginGesture();
+        Assert.True(session.IsInGesture);
+
+        session.SetCanvasPadding(0.2);
+        Assert.True(session.IsInGesture);
+
+        // An Undo in the middle of a drag leaves the drag on, so the keys go on waiting.
+        session.Undo();
+        Assert.True(session.IsInGesture);
+        session.Redo();
+        Assert.True(session.IsInGesture);
+
+        session.EndGesture();
+        Assert.False(session.IsInGesture);
+
+        // An edit that stands alone is no drag, and neither is letting go twice.
+        session.SetCanvasPadding(0.3);
+        session.EndGesture();
+        Assert.False(session.IsInGesture);
     }
 
     [Fact]

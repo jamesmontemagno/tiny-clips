@@ -165,7 +165,8 @@ With the switch on:
   `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export. While a lane has the
   keyboard focus, `Left`/`Right` go to the previous and the next scene, zoom, cut, or speed
   change on it, and `Home`/`End` to the first and the last; on the scene lane, `Delete` removes
-  the scene the playhead is in.
+  the scene the playhead is in. While something is being dragged, the keys that change the
+  project do nothing; `Space` and the arrow keys still work.
   The Camera section has a **Background** choice (keep, blur, or remove what is behind you) only
   where the app can find people in a picture. That takes a model file which is not shipped yet
   (see "Person cutout" in the plan), so today the choice is never shown.

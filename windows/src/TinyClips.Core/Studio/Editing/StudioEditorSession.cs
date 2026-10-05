@@ -320,6 +320,13 @@ public sealed partial class StudioEditorSession
 
     // Edits
 
+    /// <summary>
+    /// True from <see cref="BeginGesture"/> to <see cref="EndGesture"/>: a pointer is dragging
+    /// something, and all it changes is one undo step. The keys that change the project wait
+    /// until it is over (<see cref="StudioShortcutInput.IsDragging"/>).
+    /// </summary>
+    public bool IsInGesture => Model is { IsGroupingEdits: true };
+
     /// <summary>Starts a gesture such as a drag. Everything until <see cref="EndGesture"/> is one undo step.</summary>
     public void BeginGesture()
     {

@@ -98,6 +98,17 @@ public readonly record struct StudioShortcutInput(
     /// the playhead is in, and not the selected zoom, cut or speed change.
     /// </summary>
     public bool IsSceneFocused { get; init; }
+
+    /// <summary>
+    /// True while a pointer is dragging something in the editor: a slider, the camera, a trim
+    /// handle, or a block on a lane (<see cref="StudioEditorSession.IsInGesture"/>). A key that
+    /// changes the project, and Ctrl+E, then does nothing until the pointer lets go. A layout key
+    /// in the middle of a drag of the camera would take the camera away from under the pointer,
+    /// and Delete would take away the zoom, cut or speed change the pointer is holding, after
+    /// which the rest of the drag moves the one next to it. Space and the arrow keys only move
+    /// the playhead, and still do.
+    /// </summary>
+    public bool IsDragging { get; init; }
 }
 
 /// <summary>
@@ -106,7 +117,7 @@ public readonly record struct StudioShortcutInput(
 /// scene at the playhead, Z adds a zoom there, X a cut and R a speed change, Delete removes the
 /// selected zoom, cut or speed change, or the current scene while a scene on the lane has the
 /// focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Esc stops a running
-/// export.
+/// export. While something is being dragged, only Space and the arrow keys act.
 /// </summary>
 /// <remarks>
 /// The window only asks about a key that the focused control did not use, so a focused slider
@@ -134,13 +145,18 @@ public static class StudioShortcuts
             return StudioShortcutAction.None;
         }
 
-        if (input.IsControlDown)
-        {
-            return ResolveControlKey(input);
-        }
+        var action = input.IsControlDown
+            ? ResolveControlKey(input)
+            : input.IsTypeToSearchFocused ? StudioShortcutAction.None : ResolvePlainKey(input);
 
-        return input.IsTypeToSearchFocused ? StudioShortcutAction.None : ResolvePlainKey(input);
+        // A drag keeps what it holds until the pointer lets go.
+        return input.IsDragging && !MovesOnlyThePlayhead(action) ? StudioShortcutAction.None : action;
     }
+
+    private static bool MovesOnlyThePlayhead(StudioShortcutAction action) => action
+        is StudioShortcutAction.TogglePlayback
+        or StudioShortcutAction.PreviousFrame
+        or StudioShortcutAction.NextFrame;
 
     private static StudioShortcutAction ResolveControlKey(StudioShortcutInput input) => input.Key switch
     {

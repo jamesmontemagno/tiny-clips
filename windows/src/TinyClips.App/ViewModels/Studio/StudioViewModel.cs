@@ -231,6 +231,9 @@ public sealed partial class StudioViewModel : ObservableObject
 
     // Commands
 
+    /// <summary>True while a pointer is dragging something. The keys that change the project wait until it lets go.</summary>
+    public bool IsInGesture => _session.IsInGesture;
+
     public void BeginGesture() => _session.BeginGesture();
 
     public void EndGesture() => _session.EndGesture();

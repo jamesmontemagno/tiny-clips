@@ -412,6 +412,10 @@ public sealed partial class StudioWindow : Window
 
             // With the focus on the scene lane, Delete is about the scene the playhead is in.
             IsSceneFocused = focused is StudioSceneLane,
+
+            // A drag keeps what it holds: Delete or a layout key in the middle of one would take
+            // it away from under the pointer.
+            IsDragging = ViewModel.IsInGesture,
         };
 
         var action = StudioShortcuts.Resolve(input);

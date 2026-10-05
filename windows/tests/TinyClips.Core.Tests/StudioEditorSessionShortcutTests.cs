@@ -191,6 +191,112 @@ public sealed class StudioEditorSessionShortcutTests
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsExporting = true, IsAltDown = true }));
     }
 
+    [Theory]
+    [InlineData(StudioShortcutKey.Space, StudioShortcutAction.TogglePlayback)]
+    [InlineData(StudioShortcutKey.Left, StudioShortcutAction.PreviousFrame)]
+    [InlineData(StudioShortcutKey.Right, StudioShortcutAction.NextFrame)]
+    public void WhileSomethingIsDragged_TheKeysThatMoveThePlayheadStillAct(StudioShortcutKey key, StudioShortcutAction expected)
+    {
+        Assert.Equal(expected, StudioShortcuts.Resolve(Press(key) with { IsDragging = true }));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.I, false, false)]
+    [InlineData(StudioShortcutKey.O, false, false)]
+    [InlineData(StudioShortcutKey.R, false, false)]
+    [InlineData(StudioShortcutKey.S, false, false)]
+    [InlineData(StudioShortcutKey.X, false, false)]
+    [InlineData(StudioShortcutKey.Z, false, false)]
+    [InlineData(StudioShortcutKey.Digit1, false, false)]
+    [InlineData(StudioShortcutKey.Digit2, false, false)]
+    [InlineData(StudioShortcutKey.Digit3, false, false)]
+    [InlineData(StudioShortcutKey.Digit4, false, false)]
+    [InlineData(StudioShortcutKey.Z, true, false)]
+    [InlineData(StudioShortcutKey.Z, true, true)]
+    [InlineData(StudioShortcutKey.Y, true, false)]
+    [InlineData(StudioShortcutKey.E, true, false)]
+    public void WhileSomethingIsDragged_AKeyThatChangesTheProjectDoesNothing(StudioShortcutKey key, bool control, bool shift)
+    {
+        var press = Press(key) with { IsControlDown = control, IsShiftDown = shift };
+
+        // The key has a meaning, and has none for as long as the drag lasts.
+        Assert.NotEqual(StudioShortcutAction.None, StudioShortcuts.Resolve(press));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press with { IsDragging = true }));
+    }
+
+    [Fact]
+    public void WhileSomethingIsDragged_DeleteTakesNothingAway()
+    {
+        var delete = Press(StudioShortcutKey.Delete);
+        StudioShortcutInput[] presses =
+        [
+            delete with { HasSelectedZoom = true },
+            delete with { HasSelectedCut = true },
+            delete with { HasSelectedSpeed = true },
+            delete with { IsSceneFocused = true },
+        ];
+
+        foreach (var press in presses)
+        {
+            // Among them the block the pointer holds: with it gone, the rest of the drag would
+            // move the one next to it.
+            Assert.NotEqual(StudioShortcutAction.None, StudioShortcuts.Resolve(press));
+            Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press with { IsDragging = true }));
+        }
+    }
+
+    [Fact]
+    public void WhileSomethingIsDragged_NoKeyDoesMoreThanMoveThePlayhead()
+    {
+        // Every key, with every modifier, held or not, and with everything selected: a drag gives
+        // none of them a new meaning, and leaves only three of them the one they have.
+        StudioShortcutAction[] allowed =
+        [
+            StudioShortcutAction.None,
+            StudioShortcutAction.TogglePlayback,
+            StudioShortcutAction.PreviousFrame,
+            StudioShortcutAction.NextFrame,
+        ];
+        bool[] either = [false, true];
+        var presses =
+            from key in Enum.GetValues<StudioShortcutKey>()
+            from control in either
+            from shift in either
+            from repeat in either
+            from scene in either
+            from list in either
+            select Press(key) with
+            {
+                IsControlDown = control,
+                IsShiftDown = shift,
+                IsRepeat = repeat,
+                IsSceneFocused = scene,
+                IsTypeToSearchFocused = list,
+                HasSelectedZoom = true,
+                HasSelectedCut = true,
+                HasSelectedSpeed = true,
+            };
+
+        foreach (var press in presses)
+        {
+            var free = StudioShortcuts.Resolve(press);
+            var held = StudioShortcuts.Resolve(press with { IsDragging = true });
+
+            Assert.Contains(held, allowed);
+            Assert.True(held == free || held == StudioShortcutAction.None, $"{press.Key}: {free} became {held}");
+        }
+    }
+
+    [Fact]
+    public void WhileSomethingIsDragged_EscapeStillStopsAnExport()
+    {
+        // An export cannot start in the middle of a drag. Should the editor ever think one is
+        // still on, the way to stop an export must not go with it.
+        var escape = Press(StudioShortcutKey.Escape) with { IsExporting = true, IsDragging = true };
+
+        Assert.Equal(StudioShortcutAction.CancelExport, StudioShortcuts.Resolve(escape));
+    }
+
     /// <summary>A first press with no modifier, in an open project that is not exporting.</summary>
     private static StudioShortcutInput Press(StudioShortcutKey key) => new(
         key,

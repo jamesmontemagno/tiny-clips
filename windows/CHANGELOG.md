@@ -57,7 +57,8 @@ own `CHANGELOG.md` at the repository root.
     playhead is in, **Ctrl+Z** and **Ctrl+Y** undo and redo, **Ctrl+E** exports, and **Esc**
     stops an export. While a lane has the keyboard focus, **Left** and **Right** go to the
     scene, zoom, cut, or speed change before and after, and **Home** and **End** to the first
-    and the last.
+    and the last. While you drag something, the keys that change the video do nothing;
+    **Space** and the arrow keys still work.
   - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
     for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
     layer. The live preview does not play a speed change at its speed yet: it shows the stretch
