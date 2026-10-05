@@ -56,7 +56,7 @@ public sealed class StudioProjectCleanupService
                 inUseProjectIds.Add(recordingProjectId);
             }
 
-            var result = await Task.Run(() => _store.Cleanup(options, inUseProjectIds)).ConfigureAwait(false);
+            var result = await Task.Run(() => _store.Cleanup(options, inUseProjectIds, IsInUse)).ConfigureAwait(false);
             CleanupCompleted?.Invoke(this, result);
             return result;
         }
@@ -67,4 +67,14 @@ public sealed class StudioProjectCleanupService
             return null;
         }
     }
+
+    /// <summary>
+    /// Whether a project is open in an editor or being recorded into at this moment. The store
+    /// asks for each project just before it deletes it, because the list it was given is from
+    /// before the cleanup started: a project that was opened since is not in that list. Called
+    /// on the cleanup's thread, with the store locked. Both answers are safe to read there.
+    /// </summary>
+    private bool IsInUse(string projectId) =>
+        _tracker.IsOpen(projectId)
+        || string.Equals(_recorder.ActiveStudioProjectId, projectId, StringComparison.Ordinal);
 }

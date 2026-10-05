@@ -2,6 +2,7 @@ using System.Diagnostics;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Rendering;
 
 namespace TinyClips.Core.Studio.Editing;
 
@@ -27,11 +28,21 @@ public sealed partial class StudioEditorSession
     public const string MissingRecordingMessage =
         "The original recording for this project is no longer on this PC, so it cannot be previewed or exported here.";
 
+    /// <summary>
+    /// Shown when the project itself is gone: removed by the storage rules, or deleted, since the
+    /// window that offered to open it last looked.
+    /// </summary>
+    public const string MissingProjectMessage =
+        "This project is no longer stored on this PC, so it cannot be opened in Studio. A video that was exported from it is not affected.";
+
     /// <summary>How long after the last edit the project is saved.</summary>
     public static readonly TimeSpan AutosaveDelay = TimeSpan.FromMilliseconds(600);
 
     private const int DeleteAttempts = 5;
     private static readonly TimeSpan DeleteRetryDelay = TimeSpan.FromMilliseconds(120);
+
+    // How many names a finished video is tried under before the export is given up.
+    private const int PlaceAttempts = 5;
 
     private readonly IStudioProjectStore _store;
     private readonly IStudioPreviewFactory _previewFactory;
@@ -238,7 +249,9 @@ public sealed partial class StudioEditorSession
         }
         catch (Exception ex)
         {
-            SetUnavailable(ex.Message);
+            // A project file that is not there says so in the words of the file system, with a
+            // path nobody has seen before. Anything else is said as it is.
+            SetUnavailable(ex is FileNotFoundException or DirectoryNotFoundException ? MissingProjectMessage : ex.Message);
             return;
         }
 
@@ -1096,7 +1109,8 @@ public sealed partial class StudioEditorSession
     /// </summary>
     /// <param name="createOutputPath">
     /// Returns the full path to write, in the folder and with the name the app gives a saved video.
-    /// Called on the session's thread.
+    /// Called on the session's thread: once when the export starts, and again when the video is
+    /// finished and a file has taken that name in the meantime, for the name the video gets then.
     /// </param>
     /// <param name="codec">The video codec chosen in settings.</param>
     /// <returns>How the export ended. The task itself never fails.</returns>
@@ -1139,14 +1153,21 @@ public sealed partial class StudioEditorSession
         var rendered = model.EditableState;
         var events = _events;
         string? outputPath = null;
+        string? stagedPath = null;
         string? failure = null;
         var isWritten = false;
         try
         {
             outputPath = createOutputPath();
+
+            // The video is written under a name of its own, and gets the one that was made for
+            // it only once it is complete, in FinishExport. Making it takes minutes. Whatever
+            // else is saved in that time is offered the same name, because no file has it yet,
+            // and would lose its file to this video if the video simply took the name at the end.
+            stagedPath = StudioRenderingMath.StagedOutputPath(outputPath);
             var progress = new ExportProgressRelay(this, generation);
             await _exporter
-                .ExportAsync(project, events, paths, outputPath, codec, progress, cancellation.Token)
+                .ExportAsync(project, events, paths, stagedPath, codec, progress, cancellation.Token)
                 .ConfigureAwait(false);
             isWritten = true;
         }
@@ -1155,7 +1176,11 @@ public sealed partial class StudioEditorSession
         }
         catch (Exception ex)
         {
-            failure = ex.Message;
+            // An exporter that cannot write says which file, and that is the one under the
+            // name nobody has seen. The message is about the video.
+            failure = stagedPath is null || outputPath is null
+                ? ex.Message
+                : ex.Message.Replace(stagedPath, outputPath, StringComparison.OrdinalIgnoreCase);
         }
 
         if (isWritten)
@@ -1167,14 +1192,16 @@ public sealed partial class StudioEditorSession
         var outcome = StudioExportOutcome.Cancelled;
         await PostAsync(() =>
         {
-            outcome = FinishExport(cancellation, isWritten ? outputPath : null, rendered, failure);
+            outcome = FinishExport(cancellation, isWritten ? stagedPath : null, outputPath, createOutputPath, rendered, failure);
         }).ConfigureAwait(false);
         return outcome;
     }
 
     private StudioExportOutcome FinishExport(
         CancellationTokenSource cancellation,
-        string? writtenPath,
+        string? stagedPath,
+        string? outputPath,
+        Func<string> createOutputPath,
         StudioEditableState rendered,
         string? failure)
     {
@@ -1185,29 +1212,36 @@ public sealed partial class StudioEditorSession
 
         cancellation.Dispose();
 
-        var isExported = false;
-        if (writtenPath is not null)
+        string? exportedPath = null;
+        if (stagedPath is not null && outputPath is not null)
         {
             try
             {
-                var saved = _store.RecordExport(ProjectId, writtenPath);
+                // The video gets its name and the project its link to it in one step on this
+                // thread, so that whatever notices the new file finds the link as well.
+                var placedPath = PlaceVideo(stagedPath, outputPath, createOutputPath);
+                var saved = _store.RecordExport(ProjectId, placedPath);
                 Model?.RefreshBookkeeping(saved);
                 Model?.MarkExported(rendered);
-                isExported = true;
+                exportedPath = placedPath;
             }
             catch (Exception ex)
             {
                 failure = ex.Message;
+
+                // Still there when it could not be given a name. A video that has its name
+                // stays, though the project could not take note of it.
+                DeleteQuietly(stagedPath);
             }
         }
 
         IsExporting = false;
-        ExportProgress = isExported ? 1 : 0;
+        ExportProgress = exportedPath is not null ? 1 : 0;
         RaiseChanged(StudioEditorChanges.All);
 
-        if (isExported)
+        if (exportedPath is not null)
         {
-            Exported?.Invoke(this, new StudioExportedEventArgs(ProjectId, writtenPath!));
+            Exported?.Invoke(this, new StudioExportedEventArgs(ProjectId, exportedPath));
             return StudioExportOutcome.Exported;
         }
 
@@ -1222,6 +1256,47 @@ public sealed partial class StudioEditorSession
         }
 
         return StudioExportOutcome.Failed;
+    }
+
+    /// <summary>
+    /// Gives a finished video its name, and returns the name it got. It never takes the place of
+    /// a file that is there: when something else was saved under the name while the video was
+    /// being made, that keeps it, and the video gets the name the app would give one saved now.
+    /// </summary>
+    private static string PlaceVideo(string stagedPath, string wantedPath, Func<string> createOutputPath)
+    {
+        var path = wantedPath;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                // Without the right to replace: this fails where a file already has the name.
+                File.Move(stagedPath, path);
+                return path;
+            }
+            catch (IOException) when (File.Exists(path) && File.Exists(stagedPath))
+            {
+                if (attempt >= PlaceAttempts)
+                {
+                    throw new IOException(
+                        $"Another file was saved as {Path.GetFileName(path)} while the video was being made, and no free name was found for the video.");
+                }
+
+                path = createOutputPath();
+            }
+        }
+    }
+
+    private static void DeleteQuietly(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Debug.WriteLine($"Studio could not remove {path}: {ex.Message}");
+        }
     }
 
     private void ApplyExportProgress(int generation, double value)
@@ -1314,6 +1389,7 @@ public sealed partial class StudioEditorSession
         else
         {
             SaveNow();
+            MarkLastUsed();
         }
 
         var project = Model?.Project;
@@ -1353,6 +1429,31 @@ public sealed partial class StudioEditorSession
         preview.Pause();
         IsPlaying = false;
         return preview;
+    }
+
+    /// <summary>
+    /// Writes down that the project was in use until now. Cleanup removes the recordings of an
+    /// exported project some days after it was last open, and counts from this time. Left at the
+    /// time the editor opened, a project whose editor stayed open for longer than that would be
+    /// removed the moment the editor closed, by the cleanup that follows every close. A project
+    /// that was never read has nothing to write down, and a failure here is not the user's
+    /// concern: the edits are saved separately, and that is reported.
+    /// </summary>
+    private void MarkLastUsed()
+    {
+        if (Model is not { } model)
+        {
+            return;
+        }
+
+        try
+        {
+            model.RefreshBookkeeping(_store.MarkOpened(ProjectId));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio could not note when {ProjectId} was last in use: {ex.Message}");
+        }
     }
 
     private async Task DeleteProjectAsync()

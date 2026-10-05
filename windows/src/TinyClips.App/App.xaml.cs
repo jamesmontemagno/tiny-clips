@@ -1977,6 +1977,15 @@ public partial class App : Application
                 return;
             }
 
+            if (type == CaptureType.Video && _activeVideoRecordingOptions.RecordForStudio)
+            {
+                // A recording made for Studio comes back with a path only when no project
+                // could be made of it: what is kept is the screen recording, as an ordinary
+                // video, without the camera. Nothing else says so. No editor opens, and with
+                // Studio chosen for after a recording, neither does the trimmer.
+                ShowMessageNotification(StudioFallbackNotice(path));
+            }
+
             Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -1991,6 +2000,32 @@ public partial class App : Application
                 ReopenPickerAfterCaptureIfNeeded(type, wasPickerInitiated);
             }
         });
+    }
+
+    /// <summary>
+    /// What to say when a recording made for Studio was kept as an ordinary video. The recorder
+    /// moves the screen recording to the save folder. Where it cannot be moved either, it stays
+    /// where it was written, in the folder of the project that could not be made, and the
+    /// storage cleanup removes that folder a day later.
+    /// </summary>
+    private static string StudioFallbackNotice(string path)
+    {
+        var staysInItsProject = false;
+        try
+        {
+            var projects = Path.GetFullPath(Services.GetRequiredService<IStudioProjectStore>().RootDirectory);
+            staysInItsProject = Path.GetFullPath(path).StartsWith(
+                projects.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Could not tell where the recording {path} was kept: {ex}");
+        }
+
+        return staysInItsProject
+            ? "The Studio project could not be saved. The screen recording is listed under Recent captures and is kept for one day."
+            : "The Studio project could not be saved, so the recording was kept as a regular video.";
     }
 
     private void OnStudioRecordingCompleted(object? sender, string projectId)

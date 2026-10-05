@@ -1,3 +1,4 @@
+using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.Core.Tests;
@@ -78,6 +79,68 @@ public sealed class StudioEditorSessionCloseTests : StudioEditorSessionTestBase
 
         Assert.Empty(Exporter.Posters);
         Assert.Equal(0, LogCount("preview.dispose"));
+    }
+
+    [Fact]
+    public async Task Close_WritesDownThatTheProjectWasInUseUntilNow()
+    {
+        var id = CreateProject();
+        Projects.RecordExport(id, ExportPath);
+        var session = await OpenAsync(id);
+        Assert.Equal(Time.GetUtcNow(), Projects.Load(id).LastOpenedAt);
+
+        // The editor stays open for longer than the recordings of an exported project are kept.
+        Time.Advance(TimeSpan.FromDays(31));
+        var modifiedAt = Projects.Load(id).ModifiedAt;
+        await FinishAsync(session.CloseAsync());
+
+        var closed = Projects.Load(id);
+        Assert.Equal(Time.GetUtcNow(), closed.LastOpenedAt);
+        Assert.Equal(Time.GetUtcNow(), session.Project!.LastOpenedAt);
+        Assert.Equal(modifiedAt, closed.ModifiedAt);
+        Assert.Single(closed.Exports);
+        Assert.Empty(Errors);
+
+        // So the cleanup that follows every close leaves it alone. Counted from when the editor
+        // opened, 31 days ago, it would be gone now.
+        var cleanup = Projects.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0));
+        Assert.Empty(cleanup.ProjectIdsDeleted);
+        Assert.True(Projects.Exists(id));
+    }
+
+    [Fact]
+    public async Task Close_WritesTheEditsFirst_AndThenWhenTheProjectWasLastInUse()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+
+        // Whole seconds: a project file keeps its times to the second.
+        Time.Advance(TimeSpan.FromSeconds(90));
+        session.SetCanvasPadding(0.2);
+        Log.Clear();
+
+        await FinishAsync(session.CloseAsync());
+
+        var closed = Projects.Load(id);
+        Assert.Equal(0.2, closed.Canvas.Padding, Precision);
+        Assert.Equal(Time.GetUtcNow(), closed.LastOpenedAt);
+        AssertLoggedInOrder("store.save", "store.markOpened", "preview.disposed", "exporter.poster");
+        Assert.Equal(1, LogCount("store.markOpened"));
+    }
+
+    [Fact]
+    public async Task Close_OfAProjectWhoseFolderIsGone_DoesNotBringItBack()
+    {
+        var id = CreateProject();
+        var directory = Projects.GetPaths(id).ProjectDirectory;
+        var session = await OpenAsync(id);
+        Directory.Delete(directory, recursive: true);
+
+        await FinishAsync(session.CloseAsync());
+
+        // Nothing was waiting to be saved, so there is nothing to report either.
+        Assert.False(Directory.Exists(directory));
+        Assert.Empty(Errors);
     }
 
     [Fact]

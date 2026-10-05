@@ -138,10 +138,13 @@ public sealed class StudioWindowService
 
     private void OnErrorReported(object? sender, StudioEditorErrorEventArgs e)
     {
-        // A window that is still open shows the message itself.
+        // A window that is still open shows the message itself. One that is closing does not:
+        // it saves its edits as its last act, while it is still in the list here, and a save
+        // that fails then would otherwise be told to nobody.
         if (sender is StudioViewModel viewModel
             && _windows.TryGetValue(viewModel.ProjectId, out var window)
-            && ReferenceEquals(window.ViewModel, viewModel))
+            && ReferenceEquals(window.ViewModel, viewModel)
+            && !window.IsClosing)
         {
             return;
         }

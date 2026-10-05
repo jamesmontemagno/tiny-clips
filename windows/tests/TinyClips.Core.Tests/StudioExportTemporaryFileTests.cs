@@ -43,6 +43,34 @@ public sealed class StudioExportTemporaryFileTests : IDisposable
         }
     }
 
+    [Fact]
+    public void StagedOutputPath_IsNextToTheOutput_UnderANameTheCleanUpRemoves()
+    {
+        foreach (var output in new[] { @"C:\Videos\TinyClips 2026-10-03 at 17.56.14.mp4", @"C:\Videos\a.b.c.mp4", @"C:\Videos\no extension" })
+        {
+            var staged = StudioRenderingMath.StagedOutputPath(output);
+
+            Assert.Equal(Path.GetDirectoryName(output), Path.GetDirectoryName(staged));
+            Assert.True(StudioRenderingMath.IsTemporaryName(Path.GetFileName(staged)), staged);
+            Assert.NotEqual(staged, StudioRenderingMath.StagedOutputPath(output));
+
+            // The exporter writes it under a temporary name of its own first, made from this one.
+            var written = StudioRenderingMath.TemporaryOutputPath(staged);
+            Assert.Equal(Path.GetDirectoryName(output), Path.GetDirectoryName(written));
+            Assert.True(StudioRenderingMath.IsTemporaryName(Path.GetFileName(written)), written);
+        }
+    }
+
+    [Fact]
+    public void StagedOutputPath_IsNoLongerForAVideoWithALongName()
+    {
+        var name = Path.GetFileName(StudioRenderingMath.StagedOutputPath(@"C:\Videos\a.mp4"));
+        var nameForALongOne = Path.GetFileName(StudioRenderingMath.StagedOutputPath(@"C:\Videos\" + new string('x', 120) + ".mp4"));
+
+        Assert.Equal(56, name.Length);
+        Assert.Equal(name.Length, nameForALongOne.Length);
+    }
+
     [Theory]
     [InlineData("clip.mp4")]
     [InlineData("clip.tcexport")]

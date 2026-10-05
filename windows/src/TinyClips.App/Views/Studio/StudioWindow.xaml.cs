@@ -131,6 +131,12 @@ public sealed partial class StudioWindow : Window
     public bool IsDeletingProject => _deleteOnClose;
 
     /// <summary>
+    /// True from the moment the window is closing for good. What goes wrong from then on, the
+    /// last save among it, has no message bar to be shown in.
+    /// </summary>
+    public bool IsClosing => _isClosed;
+
+    /// <summary>
     /// Closes the window without asking anything, for when the app is exiting. The edits are saved
     /// and a running export is stopped by the time this returns; the task finishes when the
     /// project's files have been let go of.

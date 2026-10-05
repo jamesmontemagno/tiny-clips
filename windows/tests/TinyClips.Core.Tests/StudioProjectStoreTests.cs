@@ -306,6 +306,75 @@ public sealed class StudioProjectStoreTests : IDisposable
     }
 
     [Fact]
+    public void Cleanup_LeavesAProjectThatCameIntoUseAfterTheListOfThoseInUseWasMade()
+    {
+        var store = CreateStore();
+        var opened = CreateOldExportedProject(store, "opened");
+        var unused = CreateOldExportedProject(store, "unused");
+
+        // The list is from before the cleanup started, and names nothing. One of the two has
+        // been opened in an editor since.
+        var result = store.Cleanup(
+            new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0),
+            inUseProjectIds: [],
+            isInUse: id => id == opened.Id);
+
+        Assert.Equal([unused.Id], result.ProjectIdsDeleted);
+        Assert.True(store.Exists(opened.Id));
+        Assert.True(File.Exists(store.GetPaths(opened.Id).ScreenPath));
+        Assert.False(Directory.Exists(store.GetPaths(unused.Id).ProjectDirectory));
+    }
+
+    [Fact]
+    public void Cleanup_AsksAboutAProjectWhenItsTurnToBeDeletedHasCome_AndAboutNoOther()
+    {
+        var store = CreateStore();
+        var first = CreateOldExportedProject(store, "first");
+        var second = CreateOldExportedProject(store, "second");
+        var draft = CreateCompletedProject(store);
+        var asked = new List<string>();
+        var otherWasStillThere = new List<bool>();
+
+        var result = store.Cleanup(
+            new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0),
+            isInUse: id =>
+            {
+                var other = id == first.Id ? second.Id : first.Id;
+                asked.Add(id);
+                otherWasStillThere.Add(Directory.Exists(store.GetPaths(other).ProjectDirectory));
+                return false;
+            });
+
+        // Asked one at a time, each when the one before it is already gone: an answer given for
+        // all of them beforehand would be as old as the list is.
+        Assert.Equal(2, result.DeletedProjectCount);
+        Assert.Equal(2, asked.Count);
+        Assert.Contains(first.Id, asked);
+        Assert.Contains(second.Id, asked);
+        Assert.DoesNotContain(draft.Id, asked);
+        Assert.Equal(new[] { true, false }, otherWasStillThere);
+        Assert.True(store.Exists(draft.Id));
+    }
+
+    [Fact]
+    public void Cleanup_AsksAboutARecordingThatWasNeverFinishedAsWell()
+    {
+        var store = CreateStore();
+        var recording = store.BeginRecording();
+        Directory.SetCreationTimeUtc(recording.ProjectDirectory, (_time.GetUtcNow() - TimeSpan.FromHours(25)).UtcDateTime);
+
+        var whileRecording = store.Cleanup(isInUse: id => id == recording.ProjectId);
+
+        Assert.Empty(whileRecording.ProjectIdsDeleted);
+        Assert.True(Directory.Exists(recording.ProjectDirectory));
+
+        var afterwards = store.Cleanup(isInUse: _ => false);
+
+        Assert.Equal([recording.ProjectId], afterwards.ProjectIdsDeleted);
+        Assert.False(Directory.Exists(recording.ProjectDirectory));
+    }
+
+    [Fact]
     public void CompleteRecording_AppliesSavedLookWithoutCrops()
     {
         var store = CreateStore();
@@ -336,6 +405,15 @@ public sealed class StudioProjectStoreTests : IDisposable
     {
         var paths = store.BeginRecording();
         return store.CompleteRecording(paths.ProjectId, CreateRequest());
+    }
+
+    /// <summary>A project with a screen recording whose video was exported and that was last opened 90 days ago: what the age rule deletes.</summary>
+    private StudioProject CreateOldExportedProject(StudioProjectStore store, string name)
+    {
+        var project = CreateCompletedProject(store);
+        File.WriteAllBytes(store.GetPaths(project.Id).ScreenPath, [1, 2, 3]);
+        store.RecordExport(project.Id, Path.Combine(_directory, name + "-export.mp4"));
+        return store.Save(store.Load(project.Id) with { LastOpenedAt = _time.GetUtcNow() - TimeSpan.FromDays(90) });
     }
 
     private void WriteProject(string folderId, StudioProject project)

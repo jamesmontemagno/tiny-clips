@@ -241,11 +241,14 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
         public void SaveEvents(string projectId, StudioEvents events) => _inner.SaveEvents(projectId, events);
 
-        public StudioCleanupResult Cleanup(StudioCleanupOptions? options = null, IReadOnlyCollection<string>? inUseProjectIds = null)
+        public StudioCleanupResult Cleanup(
+            StudioCleanupOptions? options = null,
+            IReadOnlyCollection<string>? inUseProjectIds = null,
+            Func<string, bool>? isInUse = null)
         {
             try
             {
-                var result = _inner.Cleanup(options, inUseProjectIds);
+                var result = _inner.Cleanup(options, inUseProjectIds, isInUse);
                 lock (_gate)
                 {
                     _cleanedUp.AddRange(result.ProjectIdsDeleted);

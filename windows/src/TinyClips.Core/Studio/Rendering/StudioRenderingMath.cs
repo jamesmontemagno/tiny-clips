@@ -253,6 +253,21 @@ public static class StudioRenderingMath
     public const string TemporaryExtension = ".tcexport";
 
     /// <summary>
+    /// The name a finished video waits under until it is given its own: in the folder of
+    /// <paramref name="outputPath"/>, so that giving it its name is a rename, and a name
+    /// <see cref="DeleteStaleTemporaryFiles"/> removes should the app be gone before that. It
+    /// does not have the output's name in it. The exporter writes under a temporary name of its
+    /// own made from this one, and a path may only be so long.
+    /// </summary>
+    public static string StagedOutputPath(string outputPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+        var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+        var name = string.Create(CultureInfo.InvariantCulture, $".studio-export.{Guid.NewGuid():N}{TemporaryExtension}");
+        return Path.Combine(string.IsNullOrEmpty(directory) ? "." : directory, name);
+    }
+
+    /// <summary>
     /// Deletes what an export that was killed left behind in <paramref name="folder"/>: files
     /// named exactly as <see cref="TemporaryOutputPath"/> names them that were last written to,
     /// and created, at least <paramref name="olderThan"/> ago. Nothing else is touched, folders

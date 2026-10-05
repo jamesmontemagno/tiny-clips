@@ -90,12 +90,50 @@ public sealed class StudioEditorSessionTests : StudioEditorSessionTestBase
     }
 
     [Fact]
-    public async Task Load_WhenTheProjectCannotBeRead_IsUnavailableWithTheErrorMessage()
+    public async Task Load_WhenTheProjectIsGone_SaysSoInPlainWords()
     {
+        // Removed by the storage rules, say, since the Clips Library last looked.
         var session = await OpenAsync("3f0013cf-ba10-4453-af91-792b7882dae6");
 
         Assert.Equal(StudioEditorLoadState.Unavailable, session.State);
+        Assert.Equal(StudioEditorSession.MissingProjectMessage, session.UnavailableMessage);
+        Assert.DoesNotContain("project.json", session.UnavailableMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(session.Model);
+        Assert.Empty(Previews.Requests);
+        Assert.Equal("Untitled recording", session.ClipName);
+        Assert.False(Directory.Exists(Projects.GetPaths("3f0013cf-ba10-4453-af91-792b7882dae6").ProjectDirectory));
+
+        // Closing writes nothing for a project that was never read.
+        Log.Clear();
+        await FinishAsync(session.CloseAsync());
+        Assert.Empty(Log);
+        Assert.Empty(Errors);
+    }
+
+    [Fact]
+    public async Task Load_WhenTheProjectFileIsGoneButItsFolderIsNot_SaysTheSame()
+    {
+        var id = CreateProject();
+        File.Delete(Projects.GetPaths(id).ProjectJsonPath);
+
+        var session = await OpenAsync(id);
+
+        Assert.Equal(StudioEditorLoadState.Unavailable, session.State);
+        Assert.Equal(StudioEditorSession.MissingProjectMessage, session.UnavailableMessage);
+        Assert.Null(session.Model);
+    }
+
+    [Fact]
+    public async Task Load_WhenTheProjectCannotBeRead_IsUnavailableWithTheErrorMessage()
+    {
+        var id = CreateProject();
+        File.WriteAllText(Projects.GetPaths(id).ProjectJsonPath, "{ this is not a project");
+
+        var session = await OpenAsync(id);
+
+        Assert.Equal(StudioEditorLoadState.Unavailable, session.State);
         Assert.False(string.IsNullOrWhiteSpace(session.UnavailableMessage));
+        Assert.NotEqual(StudioEditorSession.MissingProjectMessage, session.UnavailableMessage);
         Assert.Null(session.Model);
         Assert.Empty(Previews.Requests);
         Assert.Equal("Untitled recording", session.ClipName);

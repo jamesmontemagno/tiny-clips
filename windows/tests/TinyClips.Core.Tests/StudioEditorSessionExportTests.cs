@@ -21,7 +21,10 @@ public sealed class StudioEditorSessionExportTests : StudioEditorSessionTestBase
         Assert.Equal(new[] { StudioEditorChanges.All }, Changes);
         var request = Assert.Single(Exporter.Exports);
         Assert.Equal(id, request.Project.Id);
-        Assert.Equal(ExportPath, request.OutputPath);
+
+        // Written next to where the video goes, under a name of its own until it is complete.
+        Assert.Equal(Path.GetDirectoryName(ExportPath), Path.GetDirectoryName(request.OutputPath));
+        Assert.EndsWith(".tcexport", request.OutputPath, StringComparison.Ordinal);
         Assert.Equal(VideoCodec.Hevc, request.Codec);
         Assert.Equal(Projects.GetPaths(id).ScreenPath, request.Paths.ScreenPath);
         Assert.False(export.IsCompleted);
@@ -31,17 +34,157 @@ public sealed class StudioEditorSessionExportTests : StudioEditorSessionTestBase
         // Rendered, but the session has not been back on its own thread to record it.
         Assert.True(session.IsExporting);
         Assert.Empty(ExportedPaths);
+        Assert.False(File.Exists(ExportPath));
         Assert.Equal(StudioExportOutcome.Exported, await FinishAsync(export));
 
         Assert.False(session.IsExporting);
         Assert.Equal(1, session.ExportProgress, Precision);
         Assert.Equal(new[] { ExportPath }, ExportedPaths);
         Assert.Equal(ExportPath, Assert.Single(Projects.Load(id).Exports).Path);
+        Assert.Equal(FakeExporter.VideoBytes, File.ReadAllBytes(ExportPath));
+        Assert.False(File.Exists(request.OutputPath));
         Assert.False(session.HasNeverExported);
         Assert.False(session.Model!.HasUnexportedChanges);
         Assert.Single(Exporter.Posters);
         Assert.Empty(Errors);
         AssertLoggedInOrder("exporter.export", "exporter.poster", "store.recordExport");
+    }
+
+    [Fact]
+    public async Task Export_GivesTheVideoItsNameAndTheProjectItsLinkInOneStep()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var export = session.ExportAsync(() => ExportPath, default);
+
+        // While the video is being made, no file has its name.
+        Assert.False(File.Exists(ExportPath));
+
+        Exporter.Complete();
+
+        // Made, with its poster, and waiting under the other name for the session's thread.
+        var waiting = Assert.Single(Exporter.Exports).OutputPath;
+        Assert.Equal(FakeExporter.VideoBytes, File.ReadAllBytes(waiting));
+        Assert.False(File.Exists(ExportPath));
+        Assert.Empty(Projects.Load(id).Exports);
+        Assert.Single(Exporter.Posters);
+        Assert.Equal(1, PostedCount);
+
+        // One action on that thread does both. The Clips Library looks a project's links up
+        // when it sees a new video, and must not see the video before its link is there.
+        Pump();
+
+        Assert.True(File.Exists(ExportPath));
+        Assert.Equal(ExportPath, Assert.Single(Projects.Load(id).Exports).Path);
+        Assert.Equal(new[] { ExportPath }, ExportedPaths);
+        Assert.Equal(StudioExportOutcome.Exported, await FinishAsync(export));
+        Assert.Equal(new[] { Path.GetFileName(ExportPath) }, FilesInTheVideoFolder());
+    }
+
+    [Fact]
+    public async Task Export_NeverTakesTheNameOfAFileThatWasSavedInTheMeantime()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var names = new Queue<string>([ExportPath, LaterPath]);
+        var asked = 0;
+        var export = session.ExportAsync(
+            () =>
+            {
+                asked++;
+                return names.Dequeue();
+            },
+            default);
+        Assert.Equal(1, asked);
+
+        // A recording made while the video was being rendered. No file had the name yet, so the
+        // recording was given the same one.
+        byte[] recording = [9, 8, 7, 6, 5];
+        Directory.CreateDirectory(Path.GetDirectoryName(ExportPath)!);
+        File.WriteAllBytes(ExportPath, recording);
+
+        Exporter.Complete();
+        Assert.Equal(StudioExportOutcome.Exported, await FinishAsync(export));
+
+        // The recording is as it was, and the video has the name a video saved now would get.
+        Assert.Equal(recording, File.ReadAllBytes(ExportPath));
+        Assert.Equal(FakeExporter.VideoBytes, File.ReadAllBytes(LaterPath));
+        Assert.Equal(2, asked);
+        Assert.Equal(new[] { LaterPath }, ExportedPaths);
+        Assert.Equal(LaterPath, Assert.Single(Projects.Load(id).Exports).Path);
+        Assert.Null(Projects.FindProjectIdByExportPath(ExportPath));
+        Assert.Equal(new[] { Path.GetFileName(ExportPath), Path.GetFileName(LaterPath) }, FilesInTheVideoFolder());
+        Assert.Empty(Errors);
+    }
+
+    [Fact]
+    public async Task Export_ThatFindsNoFreeName_Fails_AndLeavesTheOtherFileAsItWas()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var asked = 0;
+
+        // Whatever makes the names here does not look at what is in the folder.
+        var export = session.ExportAsync(
+            () =>
+            {
+                asked++;
+                return ExportPath;
+            },
+            default);
+        byte[] recording = [9, 8, 7, 6, 5];
+        Directory.CreateDirectory(Path.GetDirectoryName(ExportPath)!);
+        File.WriteAllBytes(ExportPath, recording);
+
+        Exporter.Complete();
+
+        Assert.Equal(StudioExportOutcome.Failed, await FinishAsync(export));
+        Assert.Equal(recording, File.ReadAllBytes(ExportPath));
+        Assert.Equal(new[] { Path.GetFileName(ExportPath) }, FilesInTheVideoFolder());
+        Assert.Equal(5, asked);
+        Assert.Equal(
+            $"Studio export failed: Another file was saved as {Path.GetFileName(ExportPath)} while the video was being made, and no free name was found for the video.",
+            Assert.Single(Errors));
+        Assert.Empty(Projects.Load(id).Exports);
+        Assert.Empty(ExportedPaths);
+        Assert.True(session.HasNeverExported);
+        Assert.False(session.IsExporting);
+        Assert.Equal(0, session.ExportProgress, Precision);
+        Assert.True(session.IsEditable);
+    }
+
+    [Fact]
+    public async Task Export_WhoseFinishedVideoIsGoneBeforeItHasItsName_Fails()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var export = session.ExportAsync(() => ExportPath, default);
+        Exporter.Complete();
+        File.Delete(Assert.Single(Exporter.Exports).OutputPath);
+
+        Assert.Equal(StudioExportOutcome.Failed, await FinishAsync(export));
+
+        Assert.StartsWith("Studio export failed: ", Assert.Single(Errors));
+        Assert.Empty(Projects.Load(id).Exports);
+        Assert.Empty(ExportedPaths);
+        Assert.Empty(FilesInTheVideoFolder());
+    }
+
+    [Fact]
+    public async Task Export_Failure_IsAboutTheVideo_NotAboutTheNameItWasWrittenUnder()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var export = session.ExportAsync(() => ExportPath, default);
+        var writtenUnder = Assert.Single(Exporter.Exports).OutputPath;
+
+        // The real exporter names the file it could not write.
+        Exporter.Fail(new IOException($"The video could not be saved to {writtenUnder}. Access to the path is denied."));
+
+        Assert.Equal(StudioExportOutcome.Failed, await FinishAsync(export));
+        Assert.Equal(
+            $"Studio export failed: The video could not be saved to {ExportPath}. Access to the path is denied.",
+            Assert.Single(Errors));
     }
 
     [Fact]
@@ -265,5 +408,17 @@ public sealed class StudioEditorSessionExportTests : StudioEditorSessionTestBase
 
         session.Undo();
         Assert.False(session.Model.HasUnexportedChanges);
+    }
+
+    /// <summary>The name the app would give a video saved a few seconds after <see cref="StudioEditorSessionTestBase.ExportPath"/> was made.</summary>
+    private string LaterPath => Path.Combine(Path.GetDirectoryName(ExportPath)!, "TinyClips 2026-10-03 at 12.00.07.mp4");
+
+    /// <summary>The names of everything in the folder videos are saved to, in order.</summary>
+    private string[] FilesInTheVideoFolder()
+    {
+        var folder = Path.GetDirectoryName(ExportPath)!;
+        return Directory.Exists(folder)
+            ? [.. Directory.GetFiles(folder).Select(path => Path.GetFileName(path)).Order(StringComparer.Ordinal)]
+            : [];
     }
 }

@@ -329,10 +329,17 @@ internal sealed record ExportRequest(
     string OutputPath,
     VideoCodec Codec);
 
-/// <summary>An exporter that finishes, fails or is cancelled when a test says so. It writes nothing.</summary>
+/// <summary>
+/// An exporter that finishes, fails or is cancelled when a test says so. One that finishes leaves
+/// a few bytes at the path it was told to write to, as the real one leaves a video there. It
+/// writes nothing else.
+/// </summary>
 internal sealed class FakeExporter(List<string> log) : IStudioExportService
 {
     private readonly TaskCompletionSource _completion = new();
+
+    /// <summary>What a finished export leaves in its file.</summary>
+    public static byte[] VideoBytes => [0x54, 0x43, 0x53, 0x01];
 
     public List<ExportRequest> Exports { get; } = [];
 
@@ -361,6 +368,12 @@ internal sealed class FakeExporter(List<string> log) : IStudioExportService
         Progress = progress;
         ExportCancellationToken = cancellationToken;
         ExportStarted?.Invoke();
+        if (_completion.Task.IsCompletedSuccessfully)
+        {
+            // A second export from an exporter that was already told to finish.
+            WriteVideo(outputPath);
+        }
+
         cancellationToken.Register(() => _completion.TrySetCanceled(cancellationToken));
         return _completion.Task;
     }
@@ -376,9 +389,23 @@ internal sealed class FakeExporter(List<string> log) : IStudioExportService
         return PosterFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
     }
 
-    public void Complete() => _completion.TrySetResult();
+    public void Complete()
+    {
+        if (!_completion.Task.IsCompleted && Exports.Count > 0)
+        {
+            WriteVideo(Exports[^1].OutputPath);
+        }
+
+        _completion.TrySetResult();
+    }
 
     public void Fail(Exception exception) => _completion.TrySetException(exception);
+
+    private static void WriteVideo(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, VideoBytes);
+    }
 }
 
 /// <summary>Passes every call to a real store and writes the ones a session makes to a log.</summary>
@@ -448,6 +475,9 @@ internal sealed class RecordingStore(StudioProjectStore inner, List<string> log)
 
     public void SaveEvents(string projectId, StudioEvents events) => inner.SaveEvents(projectId, events);
 
-    public StudioCleanupResult Cleanup(StudioCleanupOptions? options = null, IReadOnlyCollection<string>? inUseProjectIds = null) =>
-        inner.Cleanup(options, inUseProjectIds);
+    public StudioCleanupResult Cleanup(
+        StudioCleanupOptions? options = null,
+        IReadOnlyCollection<string>? inUseProjectIds = null,
+        Func<string, bool>? isInUse = null) =>
+        inner.Cleanup(options, inUseProjectIds, isInUse);
 }

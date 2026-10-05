@@ -25,7 +25,27 @@ public interface IStudioProjectStore
     StudioProject GetOrCreateFlatProject(string videoPath, StudioRecordingSourceInfo video, string appVersion);
     StudioEvents LoadEvents(string projectId);
     void SaveEvents(string projectId, StudioEvents events);
-    StudioCleanupResult Cleanup(StudioCleanupOptions? options = null, IReadOnlyCollection<string>? inUseProjectIds = null);
+
+    /// <summary>
+    /// Deletes what the cleanup rules select: old projects whose video was exported, and
+    /// recordings that were never finished.
+    /// </summary>
+    /// <param name="options">The rules. Null means the defaults.</param>
+    /// <param name="inUseProjectIds">
+    /// Projects that are open in an editor or being recorded into. They are left alone, and the
+    /// storage limit is worked out without counting on their going.
+    /// </param>
+    /// <param name="isInUse">
+    /// Asked again for each project just before it is deleted, and true leaves it. The list
+    /// above is made before the cleanup starts, and reading every project takes a moment: a
+    /// project that is opened in that moment is not in the list, and would lose its folder from
+    /// under its editor. It is called while the store is locked, on the thread the cleanup runs
+    /// on, so it has to answer at once and must not wait for another thread.
+    /// </param>
+    StudioCleanupResult Cleanup(
+        StudioCleanupOptions? options = null,
+        IReadOnlyCollection<string>? inUseProjectIds = null,
+        Func<string, bool>? isInUse = null);
 }
 
 public sealed class StudioProjectStore : IStudioProjectStore
@@ -386,7 +406,10 @@ public sealed class StudioProjectStore : IStudioProjectStore
         }
     }
 
-    public StudioCleanupResult Cleanup(StudioCleanupOptions? options = null, IReadOnlyCollection<string>? inUseProjectIds = null)
+    public StudioCleanupResult Cleanup(
+        StudioCleanupOptions? options = null,
+        IReadOnlyCollection<string>? inUseProjectIds = null,
+        Func<string, bool>? isInUse = null)
     {
         if (inUseProjectIds is not null)
         {
@@ -428,6 +451,14 @@ public sealed class StudioProjectStore : IStudioProjectStore
 
             foreach (var projectId in candidates)
             {
+                // Asked now, with the store locked: an editor reads its project through the
+                // store before it opens any of its files, so a project that is not in use at
+                // this moment is gone before an editor can have anything of it open.
+                if (isInUse?.Invoke(projectId) == true)
+                {
+                    continue;
+                }
+
                 try
                 {
                     var directory = ProjectDirectory(projectId);
