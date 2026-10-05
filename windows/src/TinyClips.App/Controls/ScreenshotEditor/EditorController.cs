@@ -35,6 +35,7 @@ internal sealed class EditorController : IDisposable
 
     private SoftwareBitmap? _bitmap;
     private CanvasBitmap? _canvasSource;
+    private bool _isDisposed;
 
     private readonly List<Annotation> _annotations = new();
     private int _counterValue = 1;
@@ -201,9 +202,13 @@ internal sealed class EditorController : IDisposable
 
     public async Task LoadAsync(string filePath)
     {
+        if (_isDisposed) return;
         var file = await StorageFile.GetFileFromPathAsync(filePath);
+        if (_isDisposed) return;
         using var stream = await file.OpenAsync(FileAccessMode.Read);
+        if (_isDisposed) return;
         var decoder = await BitmapDecoder.CreateAsync(stream);
+        if (_isDisposed) return;
         var bitmap = await decoder.GetSoftwareBitmapAsync(
             BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
         await SetBitmapFromCaptureAsync(bitmap);
@@ -212,10 +217,12 @@ internal sealed class EditorController : IDisposable
     /// <summary>
     /// Loads a freshly captured bitmap (already BGRA8 premultiplied) as the document, resetting
     /// annotations — the in-memory equivalent of <see cref="LoadAsync"/>.
+    /// Takes ownership of <paramref name="bitmap"/>, even if the controller has been disposed.
     /// </summary>
     public async Task SetBitmapFromCaptureAsync(SoftwareBitmap bitmap)
     {
         await SetBitmapAsync(bitmap);
+        if (_isDisposed || !ReferenceEquals(_bitmap, bitmap)) return;
         _annotations.Clear();
         _counterValue = 1;
         SelectedAnnotation = null;
@@ -224,17 +231,32 @@ internal sealed class EditorController : IDisposable
 
     public async Task SetBitmapAsync(SoftwareBitmap bitmap)
     {
-        _bitmap?.Dispose();
-        _bitmap = bitmap;
+        // Keep pending resources local: closing must not dispose a bitmap while XAML is still
+        // copying it, and neither a late file decode nor a capture copy may revive this controller.
+        CanvasBitmap? canvasSource = null;
+        var ownsBitmap = true;
+        try
+        {
+            if (_isDisposed) return;
+            canvasSource = CanvasBitmap.CreateFromSoftwareBitmap(CanvasDevice.GetSharedDevice(), bitmap);
+            var source = new SoftwareBitmapSource();
+            await source.SetBitmapAsync(bitmap);
+            if (_isDisposed) return;
 
-        _canvasSource?.Dispose();
-        _canvasSource = CanvasBitmap.CreateFromSoftwareBitmap(CanvasDevice.GetSharedDevice(), bitmap);
-
-        var source = new SoftwareBitmapSource();
-        await source.SetBitmapAsync(bitmap);
-        PreviewSource = source;
-
-        ImageChanged?.Invoke(this, EventArgs.Empty);
+            _bitmap?.Dispose();
+            _canvasSource?.Dispose();
+            _bitmap = bitmap;
+            _canvasSource = canvasSource;
+            ownsBitmap = false;
+            canvasSource = null;
+            PreviewSource = source;
+            ImageChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            canvasSource?.Dispose();
+            if (ownsBitmap) bitmap.Dispose();
+        }
     }
 
     /// <summary>Bindable image source for the preview <c>Image</c> element; refreshed by <see cref="SetBitmapAsync"/>.</summary>
@@ -1442,7 +1464,15 @@ internal sealed class EditorController : IDisposable
                         {
                             System.Diagnostics.Debug.WriteLine($"Redact preview bitmap set failed: {t.Exception}");
                         }
-                        _dispatcherQueue.TryEnqueue(() => AnnotationVisualInvalidated?.Invoke(this, ann));
+                        _dispatcherQueue.TryEnqueue(() =>
+                        {
+                            // This callback can already be queued when the window closes or resets.
+                            if (!_isDisposed && ReferenceEquals(ann.RedactPreview, preview)
+                                && _annotations.Contains(ann))
+                            {
+                                AnnotationVisualInvalidated?.Invoke(this, ann);
+                            }
+                        });
                     },
                     TaskScheduler.Default);
             }
@@ -1892,9 +1922,12 @@ internal sealed class EditorController : IDisposable
 
     public void Dispose()
     {
+        if (_isDisposed) return;
+        _isDisposed = true;
         _bitmap?.Dispose();
         _bitmap = null;
         _canvasSource?.Dispose();
         _canvasSource = null;
+        PreviewSource = null;
     }
 }

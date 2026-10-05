@@ -5,6 +5,7 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -51,6 +52,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     private bool _hasPendingCropSelection;
     private bool _closeConfirmed;
     private bool _isDeletingSource;
+    private bool _isClosed;
     private int _outputScalePercent = 100;
 
     public ScreenshotEditorWindow(string filePath)
@@ -129,8 +131,8 @@ public sealed partial class ScreenshotEditorWindow : Window
     private void UpdateOutputResolutionText()
     {
         // The slider raises ValueChanged while InitializeComponent builds the flyout, which is
-        // before the controller field is assigned, so both are checked before use.
-        if (_controller is null || ImageSizeText is null)
+        // before the controller field is assigned, so it and the controls are checked before use.
+        if (_controller is null || ImageSizeText is null || OutputScaleButton is null)
         {
             return;
         }
@@ -138,6 +140,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         if (_controller.Bitmap is null)
         {
             ImageSizeText.Text = string.Empty;
+            AutomationProperties.SetName(OutputScaleButton, "Output resolution");
             return;
         }
 
@@ -147,6 +150,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         var outputWidth = Math.Max(1, (int)Math.Round(renderWidth * _outputScalePercent / 100d));
         var outputHeight = Math.Max(1, (int)Math.Round(renderHeight * _outputScalePercent / 100d));
         ImageSizeText.Text = $"{outputWidth} × {outputHeight} px";
+        AutomationProperties.SetName(OutputScaleButton, $"Output resolution, {outputWidth} by {outputHeight} pixels");
     }
 
     private void OnOutputScaleChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -160,7 +164,12 @@ public sealed partial class ScreenshotEditorWindow : Window
         UpdateOutputResolutionText();
     }
 
-    private void OnClosed(object sender, WindowEventArgs args) => _controller.Dispose();
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        _isClosed = true;
+        _controller.Dispose();
+        UpdateOutputResolutionText();
+    }
 
     /// <summary>
     /// Guards the ✕ button, Alt+F4, and system close — anything that raises the AppWindow's
@@ -207,6 +216,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private async Task LoadAsync()
     {
+        if (_isClosed) return;
         try
         {
             if (_initialFrame is { } frame)
@@ -219,6 +229,7 @@ public sealed partial class ScreenshotEditorWindow : Window
                     frame.Height,
                     BitmapAlphaMode.Premultiplied));
                 await _controller.SetBitmapFromCaptureAsync(bitmap);
+                if (_isClosed) return;
                 CaptureFlowTrace.Mark("editor: image visible (from memory)");
                 MarkChangesSaved();
                 if (string.IsNullOrEmpty(_filePath))
@@ -229,11 +240,13 @@ public sealed partial class ScreenshotEditorWindow : Window
             }
 
             await _controller.LoadAsync(_filePath);
+            if (_isClosed) return;
             CaptureFlowTrace.Mark("editor: image visible (from file)");
             MarkChangesSaved();
         }
         catch (Exception ex)
         {
+            if (_isClosed) return;
             System.Diagnostics.Debug.WriteLine($"Editor load failed: {ex}");
             App.ShowImageLoadFailureNotification(System.IO.Path.GetFileName(_filePath));
             Close();
