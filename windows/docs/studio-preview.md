@@ -9,7 +9,7 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
 | --- | --- |
 | `StudioPreviewEngine` (Core, `Studio/Preview`) | The `IStudioPreview`. One frame-server `MediaPlayer` per clip on one `MediaTimelineController`; each copies its frames into a texture; a render thread draws the scene with `StudioSceneRenderer` on the engine's own `StudioGraphicsDevice`, always under that device's `Gate`. |
 | `StudioPreviewFactory` | The `IStudioPreviewFactory`. What `OpenAsync` returns is the engine, which a surface needs. |
-| `StudioPreviewSeekPolicy`, `StudioPreviewPosition`, `StudioPreviewTimeline`, `StudioPreviewCopyTargets`, `StudioPreviewProof`, `StudioPreviewOpenFailure`, `StudioPreviewFiles` | Pure and unit tested: when the clock is moved and started (the class comment lists the rules and what was measured for each), which frame is reported as the position, frame arithmetic, the size of the textures the players copy into, when the pictures of players that came from another graphics adapter are believed, which failures of an open are worth a second attempt, and which files a closing preview waits for. |
+| `StudioPreviewSeekPolicy`, `StudioPreviewFrameNamer`, `StudioPreviewStillness`, `StudioPreviewPosition`, `StudioPreviewTimeline`, `StudioPreviewCopyTargets`, `StudioPreviewProof`, `StudioPreviewOpenFailure`, `StudioPreviewFiles` | Pure and unit tested: when the clock is moved and started, and which frame a player hands over while it runs (each class comment lists its rules and what was measured for them), over which frames the scene comes out the same whichever of them the picture is, which frame is reported as the position, frame arithmetic, the size of the textures the players copy into, when the pictures of players that came from another graphics adapter are believed, which failures of an open are worth a second attempt, and which files a closing preview waits for. |
 | `IStudioPreviewSurface`, `StudioPreviewPanel` (App, `Controls/Studio`) | What the engine draws into: it asks for a texture and its pixel size, draws, and tells the surface to present. The panel is a `SwapChainPanel` with a composition swap chain on the engine's device, sized in physical pixels. |
 
 ## What it does
@@ -24,20 +24,29 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
   One position change is in flight at a time and the newest request wins. A seek whose frame
   does not come is repaired by going to another frame and back. One frame forward steps the players.
 - `Seek` then `Play` starts at the seek's frame. `Seek` while playing stops the clock, goes there
-  and plays on. At the end playback stops by itself, and `Position` is the last frame at once.
-- When `Pause` returns, the clock is stopped, what the players had handed over is drawn, and
-  `Position` is the frame the picture stays on (one case in which it is not is the open problem
-  at the end). The first position change after the clock ran holds the picture until the
-  players have been quiet for 40 ms: a player can first hand over the frame it had ready for
-  playback, with the new position on it.
+  and plays on; the picture stays as it is until the frame asked for is there. At the end
+  playback stops by itself, and `Position` is the last frame at once.
+- While the clock runs, the engine works out which frame each player hands over: a player does
+  not say (see *Which frame a texture holds*). A frame it can tell is drawn and reported in one
+  go. A frame it cannot tell is reported to nobody, and drawn only where the scene comes out
+  the same whichever frame it is.
+- When `Pause` returns, the clock is stopped, `Position` is the frame the screen's picture
+  shows, and `Position` does not change afterwards: a frame of that playback which has not
+  reached the picture by then never does, and neither does one a player hands over once the
+  clock has been stopped. A camera that stopped a frame apart is then brought onto the frame
+  that goes with the screen's. The first position change after the clock ran holds the
+  picture until the players have been quiet for 40 ms: a player can first hand over the frame
+  it had ready for playback, with the new position on it.
 - `UpdateProject` swaps the project and asks for a redraw; calls are coalesced. Sources and
   `Edits` are ignored: the caller applies the trim. The camera is hidden outside its own time
   range. The screen clip plays its sound unless `project.Audio.Muted`; the camera never does.
 - A lost graphics device is rebuilt once, at the same position. If that fails, or a player stops
   decoding, `Failed` is raised, once. Without graphics hardware the device is WARP.
-- A preview that fails while it opens is opened once more when what went wrong may pass: a
-  graphics device was lost, or a player failed after every player had handed over a frame, which
-  shows that the files can be decoded. Anything else makes `OpenAsync` throw at once.
+- A preview that fails while it opens is opened once more, 750 ms later, when what went wrong
+  may pass: a graphics device was lost, a player failed after every player had handed over a
+  frame, which shows that the files can be decoded, or a player said before that that it could
+  not decode what it had opened (`DecodingError`). A file that is not a video, or that no frame
+  comes out of, makes `OpenAsync` throw at the first attempt.
 
 ## Rules for a caller
 
@@ -46,11 +55,25 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
   controls. A handler may call the engine, including `DisposeAsync`.
 - `PositionChanged` is raised when `Position` changes (at a `Seek` that asks for another frame,
   for each frame played, at the end) and once more when a seek has landed, after its picture was
-  drawn. `IsPlaying` is what was asked for: it changes inside `Play` and `Pause`, and at the end.
+  drawn. While playing, `Position` never goes back, and it moves only to a frame the engine can
+  tell: on a PC that is held up it can stand still while the picture goes on, for a quarter of
+  a second in the checks and for half a second at the most, after which the frames are
+  reported by their position. `IsPlaying` is what was asked for: it changes inside `Play` and
+  `Pause`, and at the end.
+- Take `Position` after `Pause` has returned, not before: it is then the frame the picture
+  stays on, and it is final. Two things can still happen to the picture afterwards, and neither
+  changes `Position`. A camera that stopped a frame apart is brought onto the frame that goes
+  with the screen's. And a frame whose number the engine had inferred is fetched anew, which
+  changes the picture only if the inference was wrong. On a PC that is held up, `Pause` can
+  take the picture back to the last frame the engine could tell: *Which frame a texture holds*
+  says how often and how far.
 - `OpenAsync` throws `FileNotFoundException` when the screen file, or the camera file of a project
   with a camera, is missing, `InvalidDataException` when a file cannot be decoded, and
   `InvalidOperationException` when there is no graphics device to draw with or it was lost at
-  both attempts.
+  both attempts. What a player said is underneath: its error code is the `HResult` of the
+  `InnerException` (`0xC00D36C4` for a file that is not a video), and of
+  `StudioPreviewFailedEventArgs.Exception` when a player fails after the preview has opened.
+  A file that no frame comes out of has no inner exception: no player said anything.
 - When `DisposeAsync` completes, the players are closed and have let go of the media files in
   the project folder (the folder can be deleted), the surface has released its swap chain, and no
   event follows. While another program has one of those files open the engine cannot tell whose
@@ -75,31 +98,35 @@ dotnet build windows\tools\StudioPreviewCheck\StudioPreviewCheck.csproj -c Debug
 windows\tools\StudioPreviewCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioPreviewCheck.exe
 ```
 
-It needs ffmpeg and ffprobe on `PATH`, takes about ten minutes, makes no sound, and exits with 1
-when a check fails; its README says more. Unit tests: `StudioPreview*Tests` in `TinyClips.Core.Tests`.
+It needs ffmpeg and ffprobe on `PATH`, takes about fifteen minutes, makes no sound, and exits
+with 1 when a check fails; its README says more, also about the options that hold the process up
+while it checks and about the ones that bring an old fault back to show that a check notices.
+Unit tests: `StudioPreview*Tests` in `TinyClips.Core.Tests`.
 
 ## Measured
 
-Five full runs on an AMD Radeon 860M, 16 logical processors, 150 % scale, doing other work;
-1920x1080 screen and 1280x720 camera at 30 fps; renderer of commit `e58a56c`. The three rows on
-opening and on WARP are from the four full runs (215 checks each in the last two) and the loops
-of opens that were made after the way a preview opens was changed: see *Players and graphics
-adapters*.
+Six full runs of 299 checks each on the engine as it is, on an AMD Radeon 860M, 16 logical
+processors, 150 % scale, with other check tools and builds taking their turns on the PC;
+1920x1080 screen and 1280x720 camera at 30 fps. What is said of opens by project, of the first
+picture and of opens on WARP beyond a full run's own is from the loops of opens made when the
+way a preview opens was changed: see *Players and graphics adapters*. Pauses and scenes while
+the process is held up are under *Which frame a texture holds*, cuts and scene changes in the
+last section.
 
 | | |
 | --- | --- |
-| Paused `Seek` to the picture drawn, 300 random positions | mean 68–72 ms, p95 106–121 ms, max 205–507 ms; all pixel-exact, one picture change each |
-| Step forward one frame | mean 10 ms, p95 17 ms (as a seek: 58–63 ms; a step back: 61–63 ms). 7 of 300 single steps were made as seeks, because a stepped player had not yet drawn its frame again for the clock |
-| `Seek` + `Play` to the first frame drawn | mean 53–61 ms; `Seek` while playing: 153–164 ms. From the last frame, or after playback ran into the end: 115–183 ms, because a player at the end of its stream is first sent to another frame |
-| `Position` after `Seek`, read in a handler, on a second thread and without pause | 316 repetitions a run; no frame from before the call in 24,962 reads by the first two and 11.8 billion by the third |
-| `StudioEditorSession` on the engine | Space at the end of the kept range replays it in 200 of 200 (with `Position` as it was before that guarantee, 16 of 40 were sent back at once); its delete after closing succeeds at the first attempt in 60 of 60 |
-| Playback at 1x, 10 s | every frame drawn; clips one frame apart 0.02–0.21 % of the time, never more |
-| `Pause()` call | mean 1.3–2.2 ms, max 9–32 ms. The picture stayed after it in 850 of 850 pauses; without the 40 ms rule the next frame flashed in 5 of 920 |
-| `UpdateProject` to the scene drawn | mean 1.2–1.4 ms, max 2–8 ms; 200 calls in a row draw 2 scenes |
-| Open; `DisposeAsync` | mean 328–339 ms in three runs and 481 ms in one made while the machine was busier, max 736–1088 ms; mean 27–48 ms, max 71–229 ms. By project, over 900 opens: 334 ms with the camera late, 327 ms with the camera from the start, 278 ms without a camera. The last two took 90–100 ms less before the first position was spent on every open |
-| The first picture after opening, on the hardware | no scene with anything but the first frames in 1,380 opens made in a row, nor in the 24 of each full run. With the engine as merged, a blank screen picture was drawn for a moment in 92 of 520 opens of a project without a late camera |
-| 20 open/close cycles | GPU memory and threads flat; about 12 kernel handles stay per cycle (Windows: two bare `MediaPlayer`s on a `MediaTimelineController`, used the same way, leave 11) |
-| On WARP, on this PC, which has graphics hardware | the same checks pass; a paused seek takes 259–296 ms on average, a step 19 ms, an open 0.9–1.0 s. 1,896 opens: none failed and none showed a wrong picture. With the engine as merged: 38 failed and 8 showed a wrong picture in 260 with the camera late |
+| Paused `Seek` to the picture drawn, 300 random positions | mean 67–70 ms, p95 108–116 ms, max 208–282 ms; all pixel-exact, one picture change each |
+| Step forward one frame | mean 9–10 ms, p95 16–17 ms (as a seek: 58–62 ms; a step back: 60–70 ms). Of the 60 single steps of a run, with the clock brought along after each, none or one was made as a seek, because a stepped player had not yet drawn its frame again for the clock |
+| `Seek` + `Play` to the first frame drawn | mean 54–64 ms; `Seek` while playing: 153–161 ms. From the last frame, or after playback ran into the end: 117–196 ms, because a player at the end of its stream is first sent to another frame |
+| `Position` after `Seek`, read in a handler, on a second thread and without pause | 316 repetitions a run; no frame from before the call in 5,000 reads by the first two and 2.3 billion by the third, in every run |
+| `StudioEditorSession` on the engine | Space at the end of the kept range replays it in 40 of 40 (with `Position` as it was before that guarantee, 16 of 40 were sent back at once); after its pause `Position` is the frame the picture stays on and a step shows the next, 20 of 20; its delete after closing succeeds at the first attempt, 12 of 12; the same in every run |
+| Playback at 1x, 10 s | every frame drawn; clips one frame apart at most 0.15 % of the time, never more |
+| `Pause()` call, nothing in the way | mean 0.8–2.7 ms, max 9–17 ms. No other frame was shown after any of the 170 pauses of a run |
+| `UpdateProject` to the scene drawn | mean 1.1–1.3 ms, max 2–6 ms; 200 calls in a row draw 2 scenes |
+| Open; `DisposeAsync` | mean 352–370 ms, max 925–1188 ms; mean 29–33 ms, max 54–102 ms. None of the 144 previews of a run needed a second attempt. By project, over 900 opens: 334 ms with the camera late, 327 ms with the camera from the start, 278 ms without a camera |
+| The first picture after opening, on the hardware | no scene with anything but the first frames in 1,380 opens made in a row, nor in the 24 of each full run. With the engine as first merged, a blank screen picture was drawn for a moment in 92 of 520 opens of a project without a late camera |
+| 20 open/close cycles | GPU memory and threads flat; about 12 kernel handles stay per cycle (Windows: two bare `MediaPlayer`s on a `MediaTimelineController`, used the same way, leave 12) |
+| On WARP, on this PC, which has graphics hardware | the same checks pass; a paused seek takes 253–266 ms on average, a step 19 ms, an open 0.85–1.1 s. 1,896 opens: none failed and none showed a wrong picture. With the engine as first merged: 38 failed and 8 showed a wrong picture in 260 with the camera late |
 
 ## Players and graphics adapters
 
@@ -141,6 +168,18 @@ engine as merged. Two other things were found there:
   `DXGI_ERROR_DEVICE_REMOVED`; no display driver event was logged. Once the camera's player
   failed (`DecodingError`, `MF_E_INVALIDREQUEST`) during the first position change, after it had
   handed over its first frame. The open that followed each succeeded. The causes are not known.
+- Two editors in a row that did not open, in the editor window's own checks: `DecodingError`
+  both times, each within about 0.3 s of being asked for, 0.42 s apart; the third, 0.41 s after
+  the second, opened. Only the sentence was kept. To make it happen again, 7,900 previews were
+  opened in those circumstances (`--investigate reopens`): 0 to 20 ms after another had been
+  closed, while another was closing, and beside one that stayed open, at rest or playing, each
+  with a surface attached. One did not open: 0.26 s into the open a copy of the screen's
+  player failed with `DXGI_ERROR_DEVICE_REMOVED`, its first copy having taken 0.1 s; and at
+  the second attempt, which the engine then made at once, that player's first copy took 86 ms
+  and failed the same way, 0.3 s after the first failure. The preview opened next was fine,
+  with its first copies a quarter of a second after that; again no display driver event was
+  logged. No `DecodingError` came up. Nor is it the number of players: 40 previews open at
+  once, 67 players, all opened.
 
 What the engine does about them:
 
@@ -153,10 +192,23 @@ What the engine does about them:
   between two frames until two rounds in a row leave the same pictures in their textures, and
   only then to frame 0. A player that does not offer its first frame again has it taken.
 - A preview that fails while it opens is opened once more, with new players on a new device,
-  when what went wrong may pass: a graphics device was lost, or a player failed after every
-  player had handed over a frame. A file no frame comes out of fails at the first attempt, as
-  before. All of that is checked with failures the checks make themselves. Every run of the
-  checks ends with the number of previews that needed a second attempt, and keeps their traces.
+  when what went wrong may pass: a graphics device was lost, a player failed after every
+  player had handed over a frame, or a player said before that that it could not decode what
+  it had opened (`DecodingError` or `Unknown`). The second attempt is made 750 ms after the
+  first failed: what takes a device away has been seen to outlast 0.3 s, and the two editors
+  that did not open were 0.42 s apart. A file that is not a video (`SourceNotSupported`), or
+  that no frame comes out of, fails at the first attempt as before: after 0.2 to 0.5 s for
+  a file that is not a video, and after 10 s, which is how long the engine waits for a first
+  frame, for one whose index is whole and whose pictures are noise. A player that says at
+  both attempts that it cannot decode costs 1.1 to 1.8 s before the user is told, the wait
+  included. All of that is checked with failures the checks make themselves, and that is
+  also its limit: no file and no circumstance made a player report `DecodingError` before
+  its first frame, so whether the wait would have opened those two editors is not known.
+  A file that is cut off and keeps its index opens; a `Seek` into the part that is missing
+  comes to rest after 0.4 s with `Position` on the frame asked for and the picture still on
+  the frame it showed before, and `Failed` is not raised. Every run of the checks ends with
+  the number of previews that needed a second attempt, and keeps their traces.
+- A failed open keeps what the player said: see `OpenAsync` under *Rules for a caller*.
 
 The run that failed, the `device` and `software` groups together, started after two to five
 minutes without a run: 64 of 64 passed, the last 32 with the engine as it is now, and none of
@@ -180,18 +232,251 @@ Not verified, because this PC cannot produce it:
 Also not measured: audible playback and audio sync (every check runs muted), a real display
 scale change, the app's own recordings, the packaged app.
 
-## Open problem: `Position` one frame ahead of the picture after `Pause`
+## Which frame a texture holds
 
-Which frame a texture holds is known only from the player's position at the moment the player
-announces the frame. A frame that is announced late while the clock runs is taken for the next
-one. While playing, the frame after it puts that right. When `Pause` comes at that moment,
-`Position` stays one frame ahead of the picture until the next seek: the clock is then set to the
-middle of the frame `Position` names, which is inside the frame the player already believes it
-shows, so the player hands nothing over.
+A player says nothing about the frame it hands over. All there is to go by is the position it
+reports at that moment, and the engine as it was first merged took every frame for the one its
+position named. That is right while nothing holds the process up. When something does, the
+hand-over runs late and finds the position moved on. Of 39,000 frames handed over by two bare
+players (`--investigate names`), 4 % were one to five frames older than their position said
+with the garbage collector stopping every thread for 60 ms three times a second, 1 to 2 % with
+the render thread keeping the device for 40 to 150 ms, 5 to 8 % with the whole process stopped
+for 30 to 130 ms, and none with nothing in the way. None was newer in that measurement; the
+two ways in which a frame can be newer than its position came to light later, and are below.
+Two faults came of it:
 
-Seen once, in the pause check of a quick run: the render thread had stalled for 139 ms on a busy
-machine, both players were behind, and `Pause` came 7 ms after the stall ended. `Position` was
-frame 45 and the picture frame 44, on both clips. That is one pause in about 500 of that check
-over the runs so far. It is the engine as merged; the way a preview opens has nothing to do
-with it. Not changed here: the cure is to send the players to another frame and back after every
-pause, two position changes with the picture held, and that is a decision about every pause.
+- **After `Pause`, `Position` ahead of the picture, and staying so.** When the last frame taken
+  was such a frame, the frame that really had its number came after the pause and was left out,
+  and the players, sent to the frame `Position` named, were on it already and handed nothing
+  over. With the frames taken that way again (`--believe-positions`) and the garbage
+  collector at work, 14 of 200 pauses returned so and 12 stayed so.
+- **A scene with the picture of one frame and the layout of the next**, wherever the layout
+  moves. Taken that way again, 72 of 2,840 scenes of a zoom that moves in fitted the layout
+  of the frame after their own.
+
+A third fault has another cause, and showed only with every processor of the PC kept busy:
+
+- **A frame handed over after the clock had been stopped, taken for a frame of playback.** The
+  clock the players share stops at once, and its position is what a player reports. A player
+  whose threads are kept waiting goes on by itself for a moment, and hands over the frame that
+  comes due in that moment with the position the clock stopped on, which names the frame
+  before it. The engine has always left out what a player hands over after the stop, but it
+  noted when that was only once the clock had been told and its own thread had got on. A frame
+  that set out in between passed for playback, and for the frame before it; `Pause` then
+  returned with `Position` one frame behind the picture: once in 400 pauses with every
+  processor busy. With that order again (`--stop-noted-late`), the processors busy and the
+  stopping thread held up for a moment, 12 and 9 of 300 pauses returned so, and none of 300 with
+  the order as it is.
+
+### What the engine does
+
+- **It tells the frames apart** (`StudioPreviewFrameNamer`, one for each clip): from when a
+  hand-over began, what the position named then, after the copy and when the player had its
+  thread back, how long the copy took, and what the garbage collector did meanwhile. The rules
+  and what each was measured against are in the class comment. Those that follow from the
+  order of the frames give a number the engine relies on. Those that rest on what a player
+  does while nothing but this process holds it up give a number that is *inferred*: good
+  enough to draw by, not to rest on. A frame the rules say nothing about has no number. How
+  often a number of either kind was wrong is under *What it costs, and where it ends*.
+- **A frame with a number** is taken into its clip's picture, and the seek policy and
+  `Position` are told, in the same round of the render thread: the picture and what is said
+  of it do not part.
+- **A frame without a number is told to nobody.** It is shown, from a texture of its own, only
+  where the scene comes out the same whichever frame it is: always for the camera, whose frame
+  decides nothing about the scene, and for the screen while nothing in the scene changes from
+  frame to frame (`StudioPreviewStillness`: no zoom or scene change on the move, no ring of a
+  click showing). Otherwise it is kept back, and drawn a moment late if the frame after it
+  gives it its number. When no frame has had a number for half a second, as on a PC that
+  cannot keep up, the frames are shown under the number of their position and marked unsure.
+- **`Pause` rests on a frame with a number.** It stops the clock, lets the hand-overs in
+  progress and one round of the render thread finish, puts every clip back on its last frame
+  with a number, and returns. `Position` is that frame, at once and for good; a frame that
+  comes later is left out.
+- **A frame whose number is inferred or unsure is fetched anew when the clock stops on it**:
+  the players are sent to another frame and back with the picture held, as for a frame that
+  was lost. It is the same frame as a rule and nothing is seen. Should the number have been
+  wrong, the picture becomes the frame `Position` names, and not the other way round.
+- **A `Seek` while playing** leaves the pictures as they are until the frame asked for is
+  there. A clip that shows a frame without a number then has its frame fetched anew wherever
+  the clock is put. So does the end of the recording, where the clock stops by itself.
+- **What a player hands over once the clock has been stopped is left out**, until the engine
+  asks the players for something (`StudioPreviewHandOverKinds`). The engine notes the moment
+  before it tells the clock, in `Pause` and where it stops the clock itself to go somewhere,
+  so nothing that sets out afterwards can pass for playback. A frame that sets out between
+  that moment and the clock's stopping is left out with the rest, and the picture rests on the
+  frame before it.
+
+### Measured
+
+`StudioPreviewCheck --only stalls` pauses a playing preview again and again while the process
+is held up (the tool's README says how each kind of hold-up is made), reads `Position` and each
+clip's picture the moment `Pause` has returned and again at rest, and reads the number of every
+frame the players handed over from the copy itself. On the PC of *Measured* above, with other
+check tools and builds taking their turns on it, and with the engine as it is:
+
+| Held up by | Pauses | Wrong when `Pause` returned / at rest | `Pause()` call | Until picture and `Position` are final | Until the engine is at rest | Picture taken back | Frame fetched anew, and at rest then |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 2,400 | 0 / 0 | mean 1.3 ms, max 19 | mean 33 ms, p95 190, max 295 | mean 123 ms, max 298 | never | never |
+| the garbage collector, every 150 to 450 ms | 550 | 0 / 0 | mean 3.0 ms, max 109 | mean 108 ms, p95 340, max 471 | mean 136 ms, max 302 | before 7 pauses, by at most 5 frames | after 183 (33 %): mean 253 ms, max 476 |
+| slow draws | 550 | 0 / 0 | mean 11.1 ms, max 158 | mean 91 ms, p95 320, max 493 | mean 147 ms, max 396 | before 10 pauses, by at most 4 frames | after 69 (13 %): mean 284 ms, max 508 |
+| the whole process stopped from outside | 1,000 | 0 / 0 | mean 4.3 ms, max 148 | mean 145 ms, p95 404, max 522 | mean 152 ms, max 378 | before 52 pauses, by at most 5 frames | after 390 (39 %): mean 299 ms, max 537 |
+| the stopping thread held up | 600 | 0 / 0 | mean 25.4 ms, max 51 | mean 58 ms, p95 209, max 366 | mean 148 ms, max 378 | never | never |
+| every processor busy | 400 | 0 / 0 | mean 11.7 ms, max 131 | mean 68 ms, p95 293, max 461 | mean 169 ms, max 438 | before 8 pauses, by at most 9 frames | after 15 (4 %): mean 341 ms, max 476 |
+| every processor busy, and the stopping thread held up | 300 | 0 / 0 | mean 59.9 ms, max 144 | mean 119 ms, p95 352, max 563 | mean 227 ms, max 444 | before 1 pause, by at most 3 frames | after 11 (4 %): mean 470 ms, max 567 |
+| every processor busy, and the garbage collector | 400 | 0 / 0 | mean 14.9 ms, max 235 | mean 108 ms, p95 363, max 576 | mean 180 ms, max 576 | before 14 pauses, by at most 10 frames | after 63 (16 %): mean 338 ms, max 580 |
+| collector, slow draws and stops, all at once | 300 | 2 / 0 | mean 20.4 ms, max 226 | mean 244 ms, p95 523, max 646 | mean 195 ms, max 486 | before 19 pauses, by at most 9 frames | after 173 (58 %): mean 351 ms, max 660 |
+
+*Wrong* is a pause after which `Position` is not the frame read from the screen's picture, or
+after which, at rest, the camera is not on the frame that goes with it. *Until final* runs from
+the call to the last scene drawn after it, which as a rule shows what the scene before it
+showed. *At rest* is when the engine has nothing left to do: the camera brought onto its
+frame, the 40 ms of the first position change over, and a frame that was to be fetched anew
+fetched. A `Seek` to the next frame after every one of these pauses showed that frame on both
+clips. In the two rows with the stopping thread held up, the call includes the delay the
+check itself puts into it, 6 to 30 ms.
+
+| Held up by | Frames of playback | Without a number | Wrong number | By position: wrong | Handed over after the stop, and left out |
+| --- | --- | --- | --- | --- | --- |
+| nothing | 47,262 | 2 (0.0 %) | 0 | 1 (0.0 %) | in 59 pauses, up to 2 ms after the call; 2 a later frame than the position named |
+| the garbage collector, every 150 to 450 ms | 10,702 | 55 (0.5 %) | 0 | 468 (4.4 %) | in 20 pauses, up to 2 ms after the call |
+| slow draws | 10,513 | 185 (1.8 %) | 0 | 153 (1.5 %) | in 8 pauses, up to 2 ms after the call |
+| the whole process stopped from outside | 21,609 | 1,276 (5.9 %) | 1, across a stop of the process | 909 (4.2 %) | in 44 pauses, up to 127 ms after the call; 1 a later frame than the position named |
+| the stopping thread held up | 11,815 | 0 (0.0 %) | 0 | 0 (0.0 %) | in 17 pauses, up to 1 ms after the call; 1 a later frame than the position named |
+| every processor busy | 8,513 | 97 (1.1 %) | 0 | 53 (0.6 %) | in 21 pauses, up to 40 ms after the call; 1 a later frame than the position named |
+| every processor busy, and the stopping thread held up | 6,445 | 53 (0.8 %) | 0 | 31 (0.5 %) | in 28 pauses, up to 15 ms after the call; 6 a later frame than the position named |
+| every processor busy, and the garbage collector | 8,228 | 266 (3.2 %) | 0 | 245 (3.0 %) | in 44 pauses, up to 39 ms after the call; 12 a later frame than the position named |
+| collector, slow draws and stops, all at once | 6,004 | 591 (9.8 %) | 4, from rule 3 | 611 (10.2 %) | in 15 pauses, up to 96 ms after the call |
+
+*By position: wrong* is what the engine as it was first merged would have got wrong. The wrong
+numbers are the subject of *What it costs, and where it ends*.
+
+- **2,400 pauses with nothing in the way and 3,800 with the process held up in one of
+  seven ways: `Position` and the picture agreed after every one**, when `Pause` returned and
+  at rest. With the collector, slow draws and stops of the whole process all at once, which
+  no PC does, 2 of 300 returned with them a frame apart, and none stayed so.
+- **Scenes while the layout moves** (`--only zoom`): a zoom moves in over three seconds, and
+  every scene the engine draws is read back, the frame from the picture's strip and the edges
+  of the strip's cells to a tenth of a pixel, and held against the layout of that frame; one
+  frame on, the edges are up to five pixels away. None was wrong of 24,663 scenes, 18,922 of
+  them in the move, over 204 plays made directly and through `StudioEditorSession`, with
+  nothing in the way, the collector, slow draws, stops of the process and busy processors.
+  `StudioWindowCheck --only zoom --held-up`, which first showed the fault, passed 12 of 12
+  times on this engine.
+- **A frame handed over after the stop.** With nothing in the way a player handed a frame over
+  once the clock had been stopped in 59 of 2,400 pauses, within 2 ms of the call. With every
+  processor busy it did so in 93 of 1,100 pauses, up to 40 ms after the call, and 19 of those
+  frames were later ones than the stopped position named. All of them were left out.
+- **The 40 ms rule** is for a player that hands over, with the first position after the clock
+  stopped, the frame it had ready for playback. With the rule, no scene drawn after any of the
+  pauses above showed another frame. Without it (`--no-quiet-rule`), the engine as first
+  merged showed such a frame after 5 of 920 pauses; the engine as it is, after none of
+  1,700: no player handed over two frames for that position. Why not is not known, and the
+  rule stays.
+
+### What it costs, and where it ends
+
+What it costs, all of it only while the process is held up:
+
+- **`Pause` can take the picture back.** If the scene was showing a frame without a number
+  when `Pause` came, it returns on the last frame with one: before 1 to 5 % of the pauses in
+  the first table, by 10 frames at the most. With nothing in the way, never.
+- **`Pause` takes longer.** It waits for the hand-overs under way and for one round of the
+  render thread: mean 1.3 ms with nothing in the way, 3 to 15 ms held up, 235 ms at the
+  most.
+- **A frame is fetched anew after the pause** where its number was inferred: after a third of
+  the pauses with the collector at work. The picture is held meanwhile, and the engine is at
+  rest after a quarter to a third of a second in place of an eighth. A `Seek` made meanwhile
+  takes its place.
+- **While the layout moves, a frame without a number is not drawn**, or drawn a moment late,
+  when the frame after it gives it its number. Of the 90 frames of the zoom's move, at least
+  87 were drawn in every play with the collector at work (collections of 60 to 90 ms), 81
+  with slow draws, 80 with every processor busy and 70 with the process stopped from
+  outside. Longer collections cost more, and most of that is the players': after one of 150
+  to 180 ms the move was three or four frames short, and the stretch before it, where every
+  frame handed over is drawn, two.
+- **`Position` stands still while the frames have no number**, and the picture goes on where
+  the scene is still. `PositionChanged` then comes late, by a quarter of a second at the most
+  in the checks and by half a second at the most by construction, and a caller that acts on a
+  position, as the editor does at a cut, acts that much later.
+
+Where it ends:
+
+- **Everything at once.** With the collector, slow draws and stops of the whole process
+  together, 2 of 300 pauses returned with `Position` and the picture a frame apart, and
+  4 of 5,413 numbers were wrong, all from rule 3. At rest they agreed: the number being
+  inferred, the frame was fetched anew.
+- **Rule 3 is right nearly every time.** It takes a hand-over that the garbage collector kept
+  waiting for the frame that was next in line. Once in 130,000 frames handed over with only
+  the collector at work it was the frame after that one. The cause is not known; a collection
+  begun within 40 millionths of a second of the copy before did not bring it about
+  (`--investigate tails`, 300 tries). A scene drawn with such a frame has the layout of the
+  frame before its own, for one frame. A pause that lands on it returns a frame apart, and the
+  fetch puts it right.
+- **A stop of the whole process in the instant a player announces a frame**, within about a
+  fifth of a millisecond of it. When the process runs again the player puts the frame two
+  after the announced one in its place, and the hand-over that was under way gives it the
+  number of its position, by a rule the engine relies on. Seen once in 60,000 frames with
+  the process stopped at random twice a second, and 5 times in 540 plays with a stop aimed at
+  the first frames of playback (`--investigate starts`). The picture and its number are then
+  two frames apart until the frames have numbers again: 40 and 70 ms in the two plays looked
+  at. Nothing the engine can observe tells such a hand-over from one that waited for the
+  graphics device, which keeps its frame, also when the process is stopped during the wait
+  (120 of 120, `--investigate waits`). Telling it would take a witness that the process
+  ran; none is built. The hand-overs themselves could be one: in each of the five the copy
+  began 118 to 132 ms after the hand-over had set out, as long as the process had stood, three
+  times with nothing in its way and twice behind the other clip's hand-over, which had stood
+  as long. A garbage collection, a slow draw and busy processors do not stop a player, and
+  did not bring it about. A pause in that time would return two frames apart; the players are
+  then on a later frame than `Position` names, so the engine's move to that frame should put
+  the picture right, which is reasoned and was not seen.
+- **A PC that cannot keep up at all.** When no frame has had a number for half a second, the
+  frames are shown under the number of their position and called unsure, so that the picture
+  does not stand still, and a frame the clock stops on is fetched anew. That is built and unit
+  tested; no run of the checks got there.
+- **Another PC.** What the rules rest on was measured on one: that a player looks for a frame
+  every hundredth of a second, and the thresholds that follow from it.
+
+The checks read the number of every frame, and judge them all but two kinds, which they count
+and print apart: a wrong number from rule 3, of which a check may show one, or one in 20,000;
+and one given to a hand-over in which a stop of the process began, which the tool knows of
+and the engine does not. `--judge-limits` judges those too. Judged so, about one full run in
+30 would fail on one of the two.
+
+## Cuts, scene changes and zooms, through the editor's session
+
+The groups `cuts` and `scenes` and half of `zoom` drive a `StudioEditorSession` on the engine
+without a window, with a thread of the tool as the session's thread.
+
+**A cut while playing.** The session learns of a cut when a position inside it arrives, and
+then seeks past it. So the first frame of the cut is drawn, stands while the seek lands, and
+playback goes on with the first frame after the cut:
+
+| Playing over a cut | Crossings | Frames of the cut drawn | The picture stands still for | Last frame before the cut to the first after it |
+| --- | --- | --- | --- | --- |
+| nothing in the way | 132 | 1 every time | mean 125 ms, p95 up to 145, max 152 | mean 157 ms, max 186 |
+| the garbage collector | 30 | mean 1.1, at most 2 | mean 128 ms, p95 174, max 196 | mean 160 ms, max 236 |
+| slow draws | 30 | mean 1.3, at most 3 | mean 136 ms, p95 263, max 293 | mean 172 ms, max 324 |
+| every processor busy, and the stopping thread held up | 30 | mean 2.7, at most 6 | mean 214 ms, p95 263, max 288 | mean 277 ms, max 476 |
+
+The session asks for the jump 5 ms after the first frame of the cut was drawn, on average,
+and 47 ms after it when every processor is busy, which is why more of the cut is drawn then.
+No frame of the cut is drawn once the jump has landed, the playhead never rests inside a cut,
+and where the video ends in a cut the session stops with its playhead at `PlaybackEnd` and no
+frame past it drawn (64 plays). Paused, `StepFrames` goes a frame at a time into the cut, out
+of it at its end and back, `Scrub` into it shows the frame there, and `TogglePlayback` inside
+it plays from the frame the video goes on with.
+
+Two things would make the jump better, and neither is built. The session could ask for it one
+frame early, when the frame before the cut arrives: no frame of the cut would be drawn, and
+the standing still would remain. To remove that, the frames after the cut would have to be
+ready before playback gets there, on a second set of players.
+
+**A scene change.** Bubble, side by side from 4 s and bubble again from 8 s, each entered by a
+move of 0.35 s. Paused before, inside and after each move, by `Scrub` and by `StepFrames`, both
+clips are within 0.3 px of where the format puts them for the frame shown (360 frames).
+Playing through the moves, every scene has the layout of its own frame: 900 scenes with
+nothing in the way and every frame of the moves drawn, 942 with the collector at work and at
+least 8 of the 10 frames of a move drawn.
+
+**A zoom while playing**, through the session, is counted with the scenes under *Which frame a
+texture holds*.
