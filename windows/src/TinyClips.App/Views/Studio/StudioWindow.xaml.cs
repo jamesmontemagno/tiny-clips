@@ -15,6 +15,7 @@ using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using Windows.UI.Core;
+using ActivatedHandler = Windows.Foundation.TypedEventHandler<object, Microsoft.UI.Xaml.WindowActivatedEventArgs>;
 using VirtualKey = Windows.System.VirtualKey;
 
 namespace TinyClips.App.Views.Studio;
@@ -543,6 +544,29 @@ public sealed partial class StudioWindow : Window
 
     private void OnClosed(object sender, WindowEventArgs args) => TearDown();
 
+    /// <summary>
+    /// Takes the window's compiled bindings off its Activated event, so that the window can
+    /// leave memory once it is closed.
+    /// </summary>
+    /// <remarks>
+    /// The code the XAML compiler writes for a window that uses x:Bind adds a handler to the
+    /// window's Activated event and has nothing that takes it off again. The window holds the
+    /// handler and the handler holds the window, and the garbage collector cannot undo that:
+    /// every editor that was closed stayed in memory, with everything it showed and the project
+    /// behind it, and made each later run of the garbage collector longer. The handler is a
+    /// method of a class the compiler writes in its second pass, which this file cannot name,
+    /// because it is compiled in the first pass as well. So the method is found by its name.
+    /// If the compiler ever calls it something else, nothing is taken off and nothing fails.
+    /// </remarks>
+    private void LetGoOfBindings()
+    {
+        if (Bindings is { } bindings
+            && Delegate.CreateDelegate(typeof(ActivatedHandler), bindings, "Activated", ignoreCase: false, throwOnBindFailure: false) is ActivatedHandler listening)
+        {
+            Activated -= listening;
+        }
+    }
+
     /// <summary>Ends the editor, once. The window is closed, or about to be.</summary>
     private Task TearDown()
     {
@@ -563,6 +587,7 @@ public sealed partial class StudioWindow : Window
         ViewModel.Announced -= OnAnnounced;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
 
+        LetGoOfBindings();
         DetachPreviewView();
         var teardown = ViewModel.CloseAsync(_deleteOnClose);
         _teardown = teardown;

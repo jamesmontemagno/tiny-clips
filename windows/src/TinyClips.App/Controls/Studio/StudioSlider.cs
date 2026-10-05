@@ -169,26 +169,37 @@ public sealed partial class StudioSliderAutomationPeer(StudioSlider owner) : Sli
 /// peer derived from the slider's peer is asked for it on the interface the slider's peer
 /// already implements, and that is where the call goes.
 /// </para>
+/// <para>
+/// It knows its slider only weakly. Once a screen reader has asked for it, UI Automation holds
+/// on to this object in a way the garbage collector cannot follow, for as long as the slider
+/// is there. A slider it held on to would therefore stay in memory after its window had
+/// closed, and with the slider the inspector and the editor behind it.
+/// </para>
 /// </remarks>
 public sealed partial class StudioSliderRangeValue(StudioSlider slider) : IRangeValueProvider
 {
     // How far a value that was added up from steps may be past the end of the range.
     private const double RangeTolerance = 1e-9;
 
-    public bool IsReadOnly => !slider.IsEnabled;
+    private readonly WeakReference<StudioSlider> _slider = new(slider);
 
-    public double Minimum => slider.Minimum;
+    public bool IsReadOnly => !Slider.IsEnabled;
 
-    public double Maximum => slider.Maximum;
+    public double Minimum => Slider.Minimum;
 
-    public double Value => slider.Value;
+    public double Maximum => Slider.Maximum;
 
-    public double SmallChange => slider.SmallChange;
+    public double Value => Slider.Value;
 
-    public double LargeChange => slider.LargeChange;
+    public double SmallChange => Slider.SmallChange;
+
+    public double LargeChange => Slider.LargeChange;
+
+    private StudioSlider Slider => _slider.TryGetTarget(out var slider) ? slider : throw new ElementNotAvailableException();
 
     public void SetValue(double value)
     {
+        var slider = Slider;
         if (!slider.IsEnabled)
         {
             throw new ElementNotEnabledException();
