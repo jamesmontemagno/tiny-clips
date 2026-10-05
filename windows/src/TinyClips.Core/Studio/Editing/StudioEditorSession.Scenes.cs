@@ -78,6 +78,16 @@ public sealed partial class StudioEditorSession
         EditScene(model => model.SetSceneTransitionDuration(index, seconds));
 
     /// <summary>
+    /// Sets how long the move into the scene the playhead is in takes, for a slider that is
+    /// dragged. Not the first scene.
+    /// </summary>
+    public StudioSceneEditResult SetCurrentSceneTransitionDuration(double seconds)
+    {
+        HoldSceneForDrag();
+        return EditScene(model => model.SetSceneTransitionDuration(model.CurrentSceneIndex, seconds));
+    }
+
+    /// <summary>
     /// Moves the playhead to where the scene after the current one has been entered. False when
     /// the playhead is in the last scene.
     /// </summary>

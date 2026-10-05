@@ -164,7 +164,7 @@ public sealed partial class StudioViewModel
     public double CameraOffsetX
     {
         get => Scene.Bubble.OffsetX;
-        set => _session.SetCameraBubbleOffsets(value, Scene.Bubble.OffsetY);
+        set => _session.SetCameraBubbleOffsetX(value);
     }
 
     public string CameraOffsetXText => StudioEditorText.GetSignedPercentText(CameraOffsetX);
@@ -172,7 +172,7 @@ public sealed partial class StudioViewModel
     public double CameraOffsetY
     {
         get => Scene.Bubble.OffsetY;
-        set => _session.SetCameraBubbleOffsets(Scene.Bubble.OffsetX, value);
+        set => _session.SetCameraBubbleOffsetY(value);
     }
 
     public string CameraOffsetYText => StudioEditorText.GetSignedPercentText(CameraOffsetY);
@@ -194,7 +194,7 @@ public sealed partial class StudioViewModel
     public double CameraShare
     {
         get => Scene.Split.CameraFraction;
-        set => _session.SetSideBySide(Scene.Split.CameraSide, value);
+        set => _session.SetCameraShare(value);
     }
 
     public string CameraShareText => StudioEditorText.GetPercentText(CameraShare);

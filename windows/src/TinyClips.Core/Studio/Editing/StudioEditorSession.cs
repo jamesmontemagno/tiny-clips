@@ -349,7 +349,7 @@ public sealed partial class StudioEditorSession
 
     public void Redo() => Edit(static model => model.Redo());
 
-    public void SetLayout(StudioLayout layout) => Edit(model => model.SetLayout(layout));
+    public void SetLayout(StudioLayout layout) => EditCurrentScene(model => model.SetLayout(layout));
 
     public void SetCanvasAspect(StudioCanvasAspect aspect) => Edit(model => model.SetCanvasAspect(aspect));
 
@@ -399,16 +399,24 @@ public sealed partial class StudioEditorSession
 
     public void SetCameraCornerRadius(double value) => Edit(model => model.SetCameraCornerRadius(value));
 
-    public void SetCameraBubbleSize(double value) => Edit(model => model.SetCameraBubbleSize(value));
+    public void SetCameraBubbleSize(double value) => EditCurrentScene(model => model.SetCameraBubbleSize(value));
 
     /// <summary>Snaps the bubble to a corner, clearing its offsets.</summary>
-    public void SetCameraAnchor(StudioAnchor anchor) => Edit(model => model.SetCameraAnchor(anchor));
+    public void SetCameraAnchor(StudioAnchor anchor) => EditCurrentScene(model => model.SetCameraAnchor(anchor));
 
-    public void SetCameraBubbleOffsets(double x, double y) => Edit(model => model.SetCameraBubbleOffsets(x, y));
+    public void SetCameraBubbleOffsets(double x, double y) => EditCurrentScene(model => model.SetCameraBubbleOffsets(x, y));
+
+    /// <summary>Moves the bubble sideways from its corner. The other offset stays as the scene has it.</summary>
+    public void SetCameraBubbleOffsetX(double x) =>
+        EditCurrentScene(model => model.SetCameraBubbleOffsets(x, model.CurrentScene.Bubble.OffsetY));
+
+    /// <summary>Moves the bubble up or down from its corner. The other offset stays as the scene has it.</summary>
+    public void SetCameraBubbleOffsetY(double y) =>
+        EditCurrentScene(model => model.SetCameraBubbleOffsets(model.CurrentScene.Bubble.OffsetX, y));
 
     /// <summary>Moves the bubble so its top-left corner is at a point in canvas pixels.</summary>
     public void MoveBubbleTopLeft(double x, double y, double canvasWidth, double canvasHeight) =>
-        Edit(model => model.MoveBubbleTopLeft(x, y, canvasWidth, canvasHeight));
+        EditCurrentScene(model => model.MoveBubbleTopLeft(x, y, canvasWidth, canvasHeight));
 
     public void SetCameraMirror(bool isMirrored) => Edit(model => model.SetCameraMirror(isMirrored));
 
@@ -428,7 +436,13 @@ public sealed partial class StudioEditorSession
         Edit(model => model.SetCameraCropInset(edge, value));
 
     public void SetSideBySide(StudioCameraSide cameraSide, double fraction) =>
-        Edit(model => model.SetSideBySide(cameraSide, fraction));
+        EditCurrentScene(model => model.SetSideBySide(cameraSide, fraction));
+
+    /// <summary>
+    /// Sets how much of the canvas the camera takes side by side. Its side stays as the scene has it.
+    /// </summary>
+    public void SetCameraShare(double fraction) =>
+        EditCurrentScene(model => model.SetSideBySide(model.CurrentScene.Split.CameraSide, fraction));
 
     public void SetMuted(bool isMuted) => Edit(model => model.SetMuted(isMuted));
 
@@ -629,6 +643,28 @@ public sealed partial class StudioEditorSession
             change(model);
             return null;
         });
+
+    // An edit to the scene the playhead is in: its layout, its bubble, its split, or how long the
+    // move into it takes.
+    private void EditCurrentScene(Action<StudioEditorModel> change)
+    {
+        HoldSceneForDrag();
+        Edit(change);
+    }
+
+    // A drag is many changes to the scene the playhead is in. While the recording plays, the
+    // playhead may come into the next scene before the drag is over, and the rest of the drag
+    // would then change that scene as well. So the first such change of a drag stops playback
+    // where the picture is, and the whole drag stays in one scene. A change that stands alone, a
+    // key or a choice from a list, is over at once and leaves playback alone. So does a drag in a
+    // recording with one scene, which has no other scene to come into.
+    private void HoldSceneForDrag()
+    {
+        if (IsEditable && IsPlaying && Model is { IsGroupingEdits: true, Project.Scenes.Length: > 1 })
+        {
+            Pause();
+        }
+    }
 
     // An edit that may say where the selection goes: to a zoom, a cut or a speed change, or away
     // from the one it was on. One that does not leaves it to follow whichever it was on.

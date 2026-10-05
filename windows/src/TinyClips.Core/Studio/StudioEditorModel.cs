@@ -399,32 +399,49 @@ public sealed partial class StudioEditorModel
         Project = snapshot.ApplyTo(Project);
     }
 
+    /// <summary>
+    /// Takes back the last step. In the middle of a gesture, what the gesture has done so far is
+    /// the step that is taken back, and the gesture goes on: whatever it does next is one step
+    /// again, and not a step for every move of the pointer.
+    /// </summary>
     public void Undo()
     {
+        var wasGrouping = IsGroupingEdits;
         CommitEditingGroup();
-        if (_undoStack.Count == 0)
+        if (_undoStack.Count > 0)
         {
-            return;
+            var previous = _undoStack[^1];
+            _undoStack.RemoveAt(_undoStack.Count - 1);
+            _redoStack.Add(EditableState);
+            Project = previous.ApplyTo(Project);
         }
 
-        var previous = _undoStack[^1];
-        _undoStack.RemoveAt(_undoStack.Count - 1);
-        _redoStack.Add(EditableState);
-        Project = previous.ApplyTo(Project);
+        if (wasGrouping)
+        {
+            BeginEditingGroup();
+        }
     }
 
+    /// <summary>
+    /// Does the step that was last taken back again. A gesture goes on afterwards, as it does
+    /// after <see cref="Undo"/>.
+    /// </summary>
     public void Redo()
     {
+        var wasGrouping = IsGroupingEdits;
         CommitEditingGroup();
-        if (_redoStack.Count == 0)
+        if (_redoStack.Count > 0)
         {
-            return;
+            var next = _redoStack[^1];
+            _redoStack.RemoveAt(_redoStack.Count - 1);
+            _undoStack.Add(EditableState);
+            Project = next.ApplyTo(Project);
         }
 
-        var next = _redoStack[^1];
-        _redoStack.RemoveAt(_redoStack.Count - 1);
-        _undoStack.Add(EditableState);
-        Project = next.ApplyTo(Project);
+        if (wasGrouping)
+        {
+            BeginEditingGroup();
+        }
     }
 
     // Layout and canvas

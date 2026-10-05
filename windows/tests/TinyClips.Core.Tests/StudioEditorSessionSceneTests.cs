@@ -255,6 +255,176 @@ public sealed class StudioEditorSessionSceneTests : StudioEditorSessionTestBase
         Assert.False(session.CanUndo);
     }
 
+    // A drag while the recording plays
+
+    [Fact]
+    public async Task ADragInTheCurrentScene_WhilePlaying_StopsPlaybackAtItsFirstChange()
+    {
+        var session = await OpenAsync(CreateProjectWithScenes(ThreeScenes()));
+        PlayTo(session, from: 3.5, to: 3.8);
+
+        // The pointer goes down. Until it changes something, playback goes on.
+        session.BeginGesture();
+        Assert.True(session.IsPlaying);
+
+        // The first change stops playback where the picture is, which is a little further on than
+        // the playhead had got, and is made there.
+        Preview.Position = 3.9;
+        Preview.Calls.Clear();
+        Changes.Clear();
+        session.SetCameraBubbleSize(0.3);
+
+        Assert.False(session.IsPlaying);
+        Assert.Equal(new[] { "Pause", "UpdateProject" }, Preview.Calls);
+        Assert.Equal(3.9, session.Playhead, Precision);
+        Assert.Equal(new[] { StudioEditorChanges.Playback, Edited }, Changes);
+        Assert.Equal(0.3, session.Project!.Scenes[0].Bubble.Size, Precision);
+        session.EndGesture();
+    }
+
+    [Fact]
+    public async Task ADragInTheCurrentScene_WhilePlaying_ChangesThatSceneAndNoOther()
+    {
+        var session = await OpenAsync(CreateProjectWithScenes(ThreeScenes()));
+        PlayTo(session, from: 3.5, to: 3.8);
+
+        session.BeginGesture();
+        session.SetCameraBubbleSize(0.3);
+
+        // Where the playhead would have been by now, had the recording played on, is the second
+        // scene. What the preview still says of it is not listened to.
+        Preview.RaisePosition(4.2);
+        Pump();
+        session.SetCameraBubbleSize(0.35);
+        session.MoveBubbleTopLeft(100, 100, 1920, 1080);
+        session.SetCameraBubbleSize(0.4);
+        session.EndGesture();
+
+        var scenes = session.Project!.Scenes;
+        Assert.Equal(0, session.CurrentSceneIndex);
+        Assert.Equal(new[] { 0.4, 0.24, 0.24 }, scenes.Select(scene => scene.Bubble.Size));
+        Assert.Equal(
+            new[] { StudioAnchor.TopLeft, StudioAnchor.BottomRight, StudioAnchor.BottomRight },
+            scenes.Select(scene => scene.Bubble.Anchor));
+
+        // The whole drag is one undo step.
+        session.Undo();
+        Assert.Equal(new[] { 0.24, 0.24, 0.24 }, session.Project.Scenes.Select(scene => scene.Bubble.Size));
+        Assert.Equal(StudioAnchor.BottomRight, session.Project.Scenes[0].Bubble.Anchor);
+        Assert.False(session.CanUndo);
+    }
+
+    [Fact]
+    public async Task ADragThatBeginsAsTheNextSceneComes_ChangesTheSceneThePictureStopsIn()
+    {
+        var scenes = ThreeScenes();
+        scenes[0] = scenes[0] with { Bubble = new StudioBubble { OffsetX = 0.1, OffsetY = 0.2 }, Split = new StudioSplit { CameraSide = StudioCameraSide.Leading } };
+        scenes[1] = scenes[1] with { Bubble = new StudioBubble { OffsetX = -0.1, OffsetY = -0.3 } };
+        var session = await OpenAsync(CreateProjectWithScenes(scenes));
+        PlayTo(session, from: 3.5, to: 3.95);
+        Assert.Equal(0, session.CurrentSceneIndex);
+
+        // The playhead is still in the first scene, and the picture already in the second, when
+        // the first change of the drag arrives. Each of these sets one number, and the other one
+        // of the pair stays as the scene that is changed has it.
+        session.BeginGesture();
+        Preview.Position = 4.1;
+        session.SetCameraBubbleOffsetX(0.05);
+        session.SetCameraBubbleOffsetY(-0.25);
+        session.SetCameraShare(0.4);
+        session.EndGesture();
+
+        Assert.False(session.IsPlaying);
+        Assert.Equal(4.1, session.Playhead, Precision);
+        Assert.Equal(1, session.CurrentSceneIndex);
+        var after = session.Project!.Scenes;
+        Assert.Equal((0.1, 0.2), (after[0].Bubble.OffsetX, after[0].Bubble.OffsetY));
+        Assert.Equal((StudioCameraSide.Leading, 0.3), (after[0].Split.CameraSide, after[0].Split.CameraFraction));
+        Assert.Equal((0.05, -0.25), (after[1].Bubble.OffsetX, after[1].Bubble.OffsetY));
+        Assert.Equal((StudioCameraSide.Trailing, 0.4), (after[1].Split.CameraSide, after[1].Split.CameraFraction));
+
+        // One at a time, each leaves the other as it was.
+        session.SetCameraBubbleOffsetX(0.5);
+        Assert.Equal((0.5, -0.25), (session.Project.Scenes[1].Bubble.OffsetX, session.Project.Scenes[1].Bubble.OffsetY));
+        session.SetCameraBubbleOffsetY(0.5);
+        Assert.Equal((0.5, 0.5), (session.Project.Scenes[1].Bubble.OffsetX, session.Project.Scenes[1].Bubble.OffsetY));
+    }
+
+    [Fact]
+    public async Task ADragOfHowLongTheMoveTakes_WhilePlaying_StaysInItsScene()
+    {
+        var scenes = ThreeScenes();
+        scenes[1] = scenes[1] with { Transition = new StudioTransition { Kind = StudioTransitionKind.Morph } };
+        scenes[2] = scenes[2] with { Transition = new StudioTransition { Kind = StudioTransitionKind.Morph } };
+        var session = await OpenAsync(CreateProjectWithScenes(scenes));
+        PlayTo(session, from: 6.5, to: 6.8);
+        Assert.Equal(1, session.CurrentSceneIndex);
+
+        session.BeginGesture();
+        Assert.Equal(new StudioSceneEditResult(true, 1), session.SetCurrentSceneTransitionDuration(0.8));
+        Assert.False(session.IsPlaying);
+        Preview.RaisePosition(7.2);
+        Pump();
+        Assert.Equal(new StudioSceneEditResult(true, 1), session.SetCurrentSceneTransitionDuration(1.0));
+        session.EndGesture();
+
+        Assert.Equal(1.0, session.Project!.Scenes[1].Transition.Duration, Precision);
+        Assert.Equal(0.35, session.Project.Scenes[2].Transition.Duration, Precision);
+
+        // The first scene is entered at once: there is nothing to set.
+        session.Scrub(1);
+        Assert.Equal(new StudioSceneEditResult(false, 0), session.SetCurrentSceneTransitionDuration(0.5));
+    }
+
+    [Fact]
+    public async Task ADrag_InARecordingWithOneScene_LeavesPlaybackAlone()
+    {
+        var session = await OpenAsync(CreateProject(camera: true));
+        PlayTo(session, from: 1, to: 2);
+        Preview.Calls.Clear();
+
+        session.BeginGesture();
+        session.SetCameraBubbleSize(0.3);
+        session.MoveBubbleTopLeft(100, 100, 1920, 1080);
+        session.SetCameraBubbleOffsetX(0.1);
+        session.EndGesture();
+
+        Assert.True(session.IsPlaying);
+        Assert.DoesNotContain("Pause", Preview.Calls);
+        Assert.Equal(0.3, session.Project!.Scenes[0].Bubble.Size, Precision);
+    }
+
+    [Fact]
+    public async Task WhatIsNotADragInTheScene_LeavesPlaybackAlone()
+    {
+        var session = await OpenAsync(CreateProjectWithScenes(ThreeScenes()));
+        PlayTo(session, from: 3.5, to: 3.8);
+        Preview.Calls.Clear();
+
+        // A change that stands alone, as a key or a choice from a list makes it.
+        session.SetLayout(StudioLayout.SideBySide);
+        session.SetCameraAnchor(StudioAnchor.TopLeft);
+        session.SetCameraBubbleSize(0.3);
+        session.SetCameraShare(0.4);
+        Assert.True(session.IsPlaying);
+
+        // A drag of something the whole recording has.
+        session.BeginGesture();
+        session.SetCanvasPadding(0.1);
+        session.SetScreenShadow(0.9);
+        session.EndGesture();
+        Assert.True(session.IsPlaying);
+        Assert.DoesNotContain("Pause", Preview.Calls);
+
+        // A drag in the scene while nothing plays stops nothing either.
+        session.Pause();
+        Preview.Calls.Clear();
+        session.BeginGesture();
+        session.SetCameraBubbleSize(0.35);
+        session.EndGesture();
+        Assert.DoesNotContain("Pause", Preview.Calls);
+    }
+
     // From scene to scene
 
     [Fact]
@@ -335,6 +505,17 @@ public sealed class StudioEditorSessionSceneTests : StudioEditorSessionTestBase
     }
 
     // Helpers
+
+    /// <summary>Plays from one time until the preview has said it is at another.</summary>
+    private void PlayTo(StudioEditorSession session, double from, double to)
+    {
+        session.Scrub(from);
+        session.TogglePlayback();
+        Preview.RaisePosition(to);
+        Pump();
+        Assert.True(session.IsPlaying);
+        Assert.Equal(to, session.Playhead, Precision);
+    }
 
     private string CreateProjectWithScenes(params StudioScene[] scenes)
     {

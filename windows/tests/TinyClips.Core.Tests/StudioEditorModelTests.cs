@@ -78,6 +78,100 @@ public sealed class StudioEditorModelTests
     }
 
     [Fact]
+    public void Undo_InTheMiddleOfAGesture_TakesBackWhatItDidSoFar_AndTheRestIsOneStepAgain()
+    {
+        var model = new StudioEditorModel(MakeProject());
+        model.SetScreenShadow(0.9);
+
+        model.BeginEditingGroup();
+        model.SetCanvasPadding(0.12);
+        model.SetCanvasPadding(0.20);
+        model.Undo();
+
+        // The drag so far is taken back, and nothing before it. The drag is still on.
+        Assert.Equal(0.06, model.Project.Canvas.Padding, Precision);
+        Assert.Equal(0.9, model.Project.Screen.Shadow, Precision);
+        Assert.True(model.IsGroupingEdits);
+        Assert.True(model.CanRedo);
+
+        // However many moves follow, they are one step, as they would have been.
+        model.SetCanvasPadding(0.25);
+        model.SetCanvasPadding(0.30);
+        model.SetCanvasPadding(0.35);
+        model.CommitEditingGroup();
+        Assert.False(model.IsGroupingEdits);
+        Assert.False(model.CanRedo);
+
+        model.Undo();
+        Assert.Equal(0.06, model.Project.Canvas.Padding, Precision);
+        Assert.Equal(0.9, model.Project.Screen.Shadow, Precision);
+        model.Undo();
+        Assert.NotEqual(0.9, model.Project.Screen.Shadow, Precision);
+        Assert.False(model.CanUndo);
+    }
+
+    [Fact]
+    public void Undo_InAGestureThatHasChangedNothing_TakesBackTheStepBefore_AndTheGestureGoesOn()
+    {
+        var model = new StudioEditorModel(MakeProject());
+        model.SetCanvasPadding(0.1);
+
+        model.BeginEditingGroup();
+        model.Undo();
+        Assert.Equal(0.06, model.Project.Canvas.Padding, Precision);
+        Assert.True(model.IsGroupingEdits);
+
+        // Let go without a move: no step is added, and the step that was taken back can be done again.
+        model.CommitEditingGroup();
+        Assert.False(model.CanUndo);
+        Assert.True(model.CanRedo);
+        model.Redo();
+        Assert.Equal(0.1, model.Project.Canvas.Padding, Precision);
+    }
+
+    [Fact]
+    public void Redo_InTheMiddleOfAGesture_LeavesTheRestOfItOneStep()
+    {
+        var model = new StudioEditorModel(MakeProject());
+        model.SetCanvasPadding(0.1);
+        model.Undo();
+
+        model.BeginEditingGroup();
+        model.Redo();
+        Assert.Equal(0.1, model.Project.Canvas.Padding, Precision);
+        Assert.True(model.IsGroupingEdits);
+
+        model.SetCanvasPadding(0.2);
+        model.SetCanvasPadding(0.3);
+        model.CommitEditingGroup();
+
+        model.Undo();
+        Assert.Equal(0.1, model.Project.Canvas.Padding, Precision);
+        model.Undo();
+        Assert.Equal(0.06, model.Project.Canvas.Padding, Precision);
+        Assert.False(model.CanUndo);
+    }
+
+    [Fact]
+    public void UndoAndRedo_OutsideAGesture_StartNone()
+    {
+        var model = new StudioEditorModel(MakeProject());
+        model.SetCanvasPadding(0.1);
+
+        model.Undo();
+        Assert.False(model.IsGroupingEdits);
+        model.Redo();
+        Assert.False(model.IsGroupingEdits);
+
+        // With nothing to take back or do again either.
+        model.Redo();
+        model.Undo();
+        model.Undo();
+        Assert.False(model.IsGroupingEdits);
+        Assert.Equal(0.06, model.Project.Canvas.Padding, Precision);
+    }
+
+    [Fact]
     public void NewEdit_ClearsRedo_AndUndoDepthIsCapped()
     {
         var model = new StudioEditorModel(MakeProject());
