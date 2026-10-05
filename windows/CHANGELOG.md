@@ -34,6 +34,12 @@ own `CHANGELOG.md` at the repository root.
     for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
     layer.
 
+### Fixed
+- **Only one copy of Tiny Clips runs at a time.** Starting Tiny Clips while it was already running
+  used to start a second copy with its own tray icon; the two competed for the global hotkeys.
+  A second launch now opens the tray menu of the copy that is already running, and
+  **Open with > Tiny Clips** opens the image in that same copy.
+
 ## [v1.8.2-windows] - 2026-10-03
 
 ### Changed

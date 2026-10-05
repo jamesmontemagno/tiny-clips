@@ -84,6 +84,7 @@ windows/
     StudioRenderCheck/          Headless check of the Studio renderer, exporter and camera recorder
     StudioPreviewCheck/         Check of the Studio live preview engine and its panel
     StudioWindowCheck/          Check of the Studio editor window, opened in a process of its own
+    Collect-Diagnostics.ps1     Zips logs, system details and UI-stall timings from any machine
   packaging/
     msix/  winget/              Packaging artifacts (later phases)
   spikes/                       Throwaway de-risking prototypes (not in the solution/CI)

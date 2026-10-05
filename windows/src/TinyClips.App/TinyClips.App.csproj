@@ -24,6 +24,8 @@
       hint does not apply here.
     -->
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+    <!-- Program.cs is the entry point: it enforces a single instance before XAML starts. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup>
