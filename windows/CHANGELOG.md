@@ -6,6 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Clips Library batches sidebar updates.** Loading or refreshing many distinct tags and
+  collections no longer synchronously rebuilds the entire navigation tree for each insertion.
+  One queued update uses the final entries and is skipped if the window closes first. (#409)
 - **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
   capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
   Scrolling captures and the saved-file fallback when the screenshot editor fails to open also
