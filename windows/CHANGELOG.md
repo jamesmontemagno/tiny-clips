@@ -6,6 +6,14 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Recording diagnostics distinguish requests from observed execution.** Schema-2 reports preserve
+  legacy JSON fields while adding actual capture/encoder backends, D3D hardware/WARP selection,
+  explicit unverified hardware encoding, preparation/active/pause/finalization timings, sample
+  submission accounting, separate CPU skipped-tick and GPU overrun event/slot counters, and normal
+  static-frame repeats. The benchmark establishes DPI awareness before monitor queries; both
+  capture paths report clipping and even-size crops consistently. Local process diagnostics use
+  target-process API and loaded-runtime evidence, leaving missing/conflicting evidence explicit.
+  Added deterministic accounting, geometry, serialization and architecture tests. (#404)
 - **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
   capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
   Scrolling captures and the saved-file fallback when the screenshot editor fails to open also

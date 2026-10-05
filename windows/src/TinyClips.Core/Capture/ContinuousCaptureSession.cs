@@ -48,6 +48,8 @@ internal sealed class ContinuousCaptureSession : IDisposable
     private int _fullHeight;
     private volatile bool _running;
     private volatile bool _emittingPaused;
+    private PixelRect _cropBounds;
+    private long _sourceVersion;
 
     /// <summary>Raised at the target frame rate: tightly-packed BGRA8 + relative PTS.</summary>
     public event Action<CapturedFrame, TimeSpan>? FrameReady;
@@ -97,6 +99,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
         _d3dDevice = d3dDevice;
         _device = device;
         _context = _d3dDevice.ImmediateContext;
+        if (_perf is not null) { _perf.D3DDriver = WgcInterop.GetDeviceDriver(d3dDevice); }
 
         var item = _target.CreateItem()
             ?? throw new InvalidOperationException("Failed to create a GraphicsCaptureItem for the target.");
@@ -105,11 +108,11 @@ internal sealed class ContinuousCaptureSession : IDisposable
         _fullWidth = size.Width;
         _fullHeight = size.Height;
 
-        var outW = _region?.Width ?? size.Width;
-        var outH = _region?.Height ?? size.Height;
-        // H.264 requires even dimensions; GIF tolerates any but even keeps both happy.
-        OutputWidth = Math.Max(2, outW - (outW % 2));
-        OutputHeight = Math.Max(2, outH - (outH % 2));
+        var geometry = CaptureOutputGeometry.Calculate(size.Width, size.Height, _target.IsWindow ? null : _region);
+        _cropBounds = geometry.Encoded;
+        OutputWidth = _cropBounds.Width;
+        OutputHeight = _cropBounds.Height;
+        if (_perf is not null) { _perf.Geometry = geometry; }
 
         _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
             _device,
@@ -218,6 +221,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
                 _latestPixels = captured.BgraPixels;
                 _latestWidth = captured.Width;
                 _latestHeight = captured.Height;
+                Interlocked.Increment(ref _sourceVersion);
             }
 
             // The pump clones _latestPixels before emitting, so handing the same buffer to
@@ -226,6 +230,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
         }
         catch
         {
+            _perf?.ReadbackFailed();
             // A single dropped/failed frame must not tear down the recording.
         }
         finally
@@ -245,24 +250,32 @@ internal sealed class ContinuousCaptureSession : IDisposable
         int width;
         int height;
         TimeSpan pts;
+        long sourceVersion;
 
         if (!Monitor.TryEnter(_sync))
         {
+            _perf?.CpuSkippedTick();
             return;
         }
 
         var produce = Stopwatch.GetTimestamp();
         try
         {
-            if (!_running || _latestPixels is null)
+            if (!_running || _emittingPaused)
+            {
+                return;
+            }
+            if (_latestPixels is null)
             {
                 // No screen frame captured yet; nothing to emit.
+                _perf?.NoSourceFrameTick();
                 return;
             }
 
             width = _latestWidth;
             height = _latestHeight;
             copy = (byte[])_latestPixels.Clone();
+            sourceVersion = Interlocked.Read(ref _sourceVersion);
 
             // Screen frames use the same QPC origin as webcam and audio.
             pts = _timeline?.Elapsed ?? TimeSpan.Zero;
@@ -291,7 +304,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
         }
 
         Interlocked.Increment(ref _emittedFrameCount);
-        _perf?.FrameEmitted();
+        _perf?.FrameEmitted(sourceVersion, pts);
 
         // Raise outside the lock so heavy per-frame compositing doesn't stall WGC delivery.
         FrameReady?.Invoke(new CapturedFrame(copy, width, height), pts);
@@ -299,14 +312,8 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
     private unsafe CapturedFrame ReadStaging(int frameWidth, int frameHeight)
     {
-        int x = 0, y = 0;
+        int x = _cropBounds.X, y = _cropBounds.Y;
         int width = OutputWidth, height = OutputHeight;
-
-        if (_region is { } r)
-        {
-            x = Math.Clamp(r.X, 0, frameWidth);
-            y = Math.Clamp(r.Y, 0, frameHeight);
-        }
 
         width = Math.Clamp(width, 1, frameWidth - x);
         height = Math.Clamp(height, 1, frameHeight - y);

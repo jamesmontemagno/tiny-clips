@@ -43,6 +43,15 @@ to a sub-rectangle. The pipeline:
 
 Because the crop is computed in pixels against a pixel frame, no rounding drift accumulates.
 
+Video/GIF sessions first intersect the requested rectangle with the initial WGC item in physical
+pixels, then crop the resulting width/height down to even encoder dimensions. Negative origins
+reduce the intersection rather than moving the rectangle; empty or sub-2-pixel intersections
+fail explicitly instead of inventing a 2x2 image. Both recording paths use `CaptureOutputGeometry`.
+The video performance report records `Requested`, `Clipped`, and `Encoded` rectangles and
+adjustment flags. A window target ignores a monitor-relative region and uses its own WGC size.
+The headless recording benchmark establishes Per-Monitor-V2 awareness before querying monitors;
+its requested dimensions are pixels, never scaled a second time.
+
 ## Window capture
 
 `CreateForWindow` captures a window's client area at physical resolution. We do **not** apply a

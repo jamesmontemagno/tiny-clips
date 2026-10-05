@@ -188,7 +188,7 @@ internal sealed class MfSinkWriterEncoder : IDisposable
 
             writer.BeginWriting();
 
-            var description = $"{(codec == VideoCodec.Hevc ? "HEVC Main" : "H.264 High")} via IMFSinkWriter (hardware, low-latency, no B-frames)";
+            var description = $"{(codec == VideoCodec.Hevc ? "HEVC Main" : "H.264 High")} via IMFSinkWriter (hardware/low-latency/no B-frames requested; transform unverified)";
             var encoder = new MfSinkWriterEncoder(writer, deviceManager, videoIn, videoStream, audioStream, width, height, description)
             {
                 _began = true,
@@ -239,7 +239,7 @@ internal sealed class MfSinkWriterEncoder : IDisposable
     }
 
     /// <summary>Writes a GPU frame obtained from <see cref="CreateFrameAllocator"/>.</summary>
-    public void WriteVideo(GpuFrame frame, TimeSpan duration)
+    public bool WriteVideo(GpuFrame frame, TimeSpan duration)
     {
         if (frame.BackendSample is not IMFSample sample)
         {
@@ -248,11 +248,11 @@ internal sealed class MfSinkWriterEncoder : IDisposable
 
         sample.SampleTime = frame.Pts.Ticks;
         sample.SampleDuration = duration.Ticks;
-        Write(_videoStream, sample, ref _videoSamples, _videoGate);
+        return Write(_videoStream, sample, ref _videoSamples, _videoGate);
     }
 
     /// <summary>Writes a CPU frame (tightly packed bottom-up BGRA, as Media Foundation expects for RGB32).</summary>
-    public unsafe void WriteVideo(byte[] bottomUpBgra, TimeSpan pts, TimeSpan duration)
+    public unsafe bool WriteVideo(byte[] bottomUpBgra, TimeSpan pts, TimeSpan duration)
     {
         using var buffer = MediaFactory.MFCreateMemoryBuffer(bottomUpBgra.Length);
         buffer.Lock(out var data, out _, out _);
@@ -273,7 +273,7 @@ internal sealed class MfSinkWriterEncoder : IDisposable
         sample.AddBuffer(buffer);
         sample.SampleTime = pts.Ticks;
         sample.SampleDuration = duration.Ticks;
-        Write(_videoStream, sample, ref _videoSamples, _videoGate);
+        return Write(_videoStream, sample, ref _videoSamples, _videoGate);
     }
 
     public unsafe void WriteAudio(byte[] pcm, TimeSpan pts, TimeSpan duration)
@@ -307,17 +307,18 @@ internal sealed class MfSinkWriterEncoder : IDisposable
 
     // IMFSinkWriter accepts concurrent WriteSample calls on different streams (that is how its
     // throttling model is meant to be driven); a per-stream lock only serializes same-stream writers.
-    private void Write(int stream, IMFSample sample, ref long counter, object gate)
+    private bool Write(int stream, IMFSample sample, ref long counter, object gate)
     {
         lock (gate)
         {
             if (!_began || Volatile.Read(ref _finishedFlag) != 0 || _disposed)
             {
-                return;
+                return false;
             }
 
             _writer.WriteSample(stream, sample);
             Interlocked.Increment(ref counter);
+            return true;
         }
     }
 

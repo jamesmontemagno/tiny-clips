@@ -73,6 +73,36 @@ public sealed record RecordingPerformanceReport(
     long PeakWorkingSetBytes,
     IReadOnlyList<RecordingStageStats> Stages)
 {
+    public int SchemaVersion { get; init; } = 2;
+    public string RequestedPipeline { get; init; } = "unknown";
+    public string RequestedEncoderBackend { get; init; } = "unknown";
+    public string EncoderBackend { get; init; } = "unknown";
+    public string D3DDriver { get; init; } = "unknown";
+    public bool HardwareEncodingRequested { get; init; }
+    public string HardwareEncoding { get; init; } = "unknown";
+    public CaptureOutputGeometry? Geometry { get; init; }
+    public RecordingPhaseTimes? Phases { get; init; }
+    public bool? FinalizationSucceeded { get; init; }
+    public long CpuSkippedTickEvents { get; init; }
+    public long GpuPacingOverrunEvents { get; init; }
+    public long GpuPacingMissedSlots { get; init; }
+    public long QueueDrops { get; init; }
+    public long PoolExhaustionEvents { get; init; }
+    public long ProductionFailures { get; init; }
+    public long CaptureReadbackFailures { get; init; }
+    public long NoSourceFrameTicks { get; init; }
+    public long SubmissionAttempts { get; init; }
+    public long SubmissionFailures { get; init; }
+    public long FramesNotSubmitted { get; init; }
+    public long RepeatedSourceFrames { get; init; }
+    public TimeSpan MaxEmittedFrameGap { get; init; }
+    // Compatibility: "encoded" has always meant submitted, not independently decoded output.
+    public long FramesSubmitted => FramesEncoded;
+    public long FramesPendingSubmission => Math.Max(0, FramesEmitted - FramesSubmitted - QueueDrops - SubmissionFailures - FramesNotSubmitted);
+    public long? VerifiedOutputFrames => null;
+    public double ActiveFps => Phases?.ActiveRecording.TotalSeconds > 0
+        ? FramesSubmitted / Phases.ActiveRecording.TotalSeconds : 0;
+
     public double EffectiveFps => WallClock.TotalSeconds > 0 ? FramesEncoded / WallClock.TotalSeconds : 0;
 
     public double DropPercent => FramesEmitted > 0 ? 100.0 * FramesDropped / FramesEmitted : 0;
@@ -93,6 +123,19 @@ public sealed record RecordingPerformanceReport(
     {
         var sb = new StringBuilder();
         sb.AppendLine(ToSummaryLine());
+        sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
+            $"  schema={SchemaVersion} requested={RequestedPipeline}/{RequestedEncoderBackend} actual={Pipeline}/{EncoderBackend} d3d={D3DDriver} hardwareRequested={HardwareEncodingRequested} hardwareVerified={HardwareEncoding} submitted={FramesSubmitted} attempts={SubmissionAttempts} submissionFailures={SubmissionFailures} notSubmitted={FramesNotSubmitted} pendingSubmission={FramesPendingSubmission} outputFrames=unverified activeFps={ActiveFps:F1}"));
+        sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
+            $"  cpuSkippedTickEvents={CpuSkippedTickEvents} gpuOverrunEvents={GpuPacingOverrunEvents} gpuMissedSlots={GpuPacingMissedSlots} queueDrops={QueueDrops} poolExhaustionEvents={PoolExhaustionEvents} productionFailures={ProductionFailures} readbackFailures={CaptureReadbackFailures} noSourceTicks={NoSourceFrameTicks} repeatedSourceFrames={RepeatedSourceFrames} maxEmitGapMs={MaxEmittedFrameGap.TotalMilliseconds:F1}"));
+        if (Phases is { } p)
+        {
+            sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
+                $"  preparationMs={p.Preparation.TotalMilliseconds:F1} preparedWaitMs={p.PreparedWait.TotalMilliseconds:F1} activeMs={p.ActiveRecording.TotalMilliseconds:F1} pauseMs={p.Paused.TotalMilliseconds:F1} firstFrameMs={p.FirstFrameLatency?.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "none"} finalizationMs={p.Finalization.TotalMilliseconds:F1} finalized={FinalizationSucceeded?.ToString() ?? "unknown"}"));
+        }
+        if (Geometry is { } g)
+        {
+            sb.AppendLine($"  physicalPixels requested={g.Requested} clipped={g.Clipped} encoded={g.Encoded} wasClipped={g.WasClipped} wasEvenSized={g.WasEvenSized}");
+        }
         sb.AppendLine("  stage             count      avg ms     p99 ms     max ms   total ms");
         foreach (var s in Stages)
         {
@@ -126,9 +169,18 @@ public sealed class RecordingPerformanceMonitor
     private long _framesEmitted;
     private long _framesEncoded;
     private long _framesDropped;
+    private readonly RecordingPhaseAccounting _phases;
+    private long _cpuSkippedTicks, _gpuOverrunEvents, _gpuMissedSlots;
+    private long _queueDrops, _poolExhaustions, _productionFailures, _readbackFailures, _noSourceTicks;
+    private long _submissionAttempts, _submissionFailures, _notSubmitted, _repeatedFrames;
+    private readonly object _emissionGate = new();
+    private long _sourceVersion = -1;
+    private TimeSpan? _lastEmittedPts;
+    private TimeSpan _maxEmittedGap;
 
-    public RecordingPerformanceMonitor(string pipeline, int width, int height, int targetFps)
+    public RecordingPerformanceMonitor(string pipeline, int width, int height, int targetFps, TimeProvider? clock = null)
     {
+        _phases = new(clock ?? TimeProvider.System);
         Pipeline = pipeline;
         Width = width;
         Height = height;
@@ -141,7 +193,20 @@ public sealed class RecordingPerformanceMonitor
         }
     }
 
-    public string Pipeline { get; }
+    public string Pipeline { get; set; }
+    public string RequestedPipeline { get; set; } = "unknown";
+    public string RequestedEncoderBackend { get; set; } = "unknown";
+    public string EncoderBackend { get; set; } = "unknown";
+    public string D3DDriver { get; set; } = "unknown";
+    public bool HardwareEncodingRequested { get; set; }
+    public CaptureOutputGeometry? Geometry { get; set; }
+    public bool? FinalizationSucceeded { get; set; }
+    internal long CadenceEpoch => _phases.CadenceEpoch;
+    public void BeginPreparation() => _phases.BeginPreparation();
+    public void Prepared() => _phases.Prepared();
+    public void Pause() { _phases.Pause(); ResetEmissionGap(); }
+    public void Resume() { ResetEmissionGap(); _phases.Resume(); }
+    public void BeginFinalization() => _phases.BeginFinalization();
 
     public int Width { get; set; }
 
@@ -165,6 +230,7 @@ public sealed class RecordingPerformanceMonitor
         _peakWorkingSet = _process.WorkingSet64;
         _lastWorkingSetSampleTicks = Stopwatch.GetTimestamp();
         _wall.Restart();
+        _phases.Start();
     }
 
     private long _peakWorkingSet;
@@ -222,7 +288,49 @@ public sealed class RecordingPerformanceMonitor
         }
     }
 
-    public void FrameEmitted() => Interlocked.Increment(ref _framesEmitted);
+    public void FrameEmitted()
+    {
+        Interlocked.Increment(ref _framesEmitted);
+        _phases.FrameEmitted();
+    }
+
+    internal void FrameEmitted(long sourceVersion, TimeSpan pts)
+    {
+        FrameEmitted();
+        lock (_emissionGate)
+        {
+            if (_sourceVersion == sourceVersion) { Interlocked.Increment(ref _repeatedFrames); }
+            _sourceVersion = sourceVersion;
+            if (CadenceEpoch != 0)
+            {
+                if (_lastEmittedPts is { } previous && pts - previous > _maxEmittedGap)
+                {
+                    _maxEmittedGap = pts - previous;
+                }
+                _lastEmittedPts = pts;
+            }
+        }
+    }
+
+    private void ResetEmissionGap() { lock (_emissionGate) { _lastEmittedPts = null; } }
+    public void CpuSkippedTick() { if (CadenceEpoch != 0) { Interlocked.Increment(ref _cpuSkippedTicks); } }
+    public void GpuPacingOverrun(long missedSlots) => GpuPacingOverrun(missedSlots, CadenceEpoch);
+
+    internal void GpuPacingOverrun(long missedSlots, long cadenceEpoch)
+    {
+        if (missedSlots <= 0) { throw new ArgumentOutOfRangeException(nameof(missedSlots)); }
+        if (cadenceEpoch == 0 || CadenceEpoch != cadenceEpoch) { return; }
+        Interlocked.Increment(ref _gpuOverrunEvents);
+        Interlocked.Add(ref _gpuMissedSlots, missedSlots);
+    }
+    public void QueueDropped() { Interlocked.Increment(ref _queueDrops); FrameDropped(); }
+    public void PoolExhausted() { Interlocked.Increment(ref _poolExhaustions); FrameDropped(); }
+    public void ProductionFailed() { Interlocked.Increment(ref _productionFailures); FrameDropped(); }
+    public void ReadbackFailed() => Interlocked.Increment(ref _readbackFailures);
+    public void NoSourceFrameTick() { if (CadenceEpoch != 0) { Interlocked.Increment(ref _noSourceTicks); } }
+    public void SubmissionAttempt() => Interlocked.Increment(ref _submissionAttempts);
+    public void SubmissionFailed() => Interlocked.Increment(ref _submissionFailures);
+    public void FrameNotSubmitted() => Interlocked.Increment(ref _notSubmitted);
 
     public void FrameEncoded()
     {
@@ -239,6 +347,7 @@ public sealed class RecordingPerformanceMonitor
 
     public RecordingPerformanceReport Complete()
     {
+        var phases = _phases.Complete();
         _wall.Stop();
         SampleWorkingSet(force: true);
         _process.Refresh();
@@ -274,7 +383,24 @@ public sealed class RecordingPerformanceMonitor
             GC.CollectionCount(2) - _gen2AtStart,
             GC.GetTotalPauseDuration() - _gcPauseAtStart,
             Volatile.Read(ref _peakWorkingSet),
-            stages);
+            stages)
+        {
+            RequestedPipeline = RequestedPipeline, RequestedEncoderBackend = RequestedEncoderBackend,
+            EncoderBackend = EncoderBackend, D3DDriver = D3DDriver,
+            HardwareEncodingRequested = HardwareEncodingRequested,
+            Geometry = Geometry, Phases = phases, FinalizationSucceeded = FinalizationSucceeded,
+            CpuSkippedTickEvents = Interlocked.Read(ref _cpuSkippedTicks),
+            GpuPacingOverrunEvents = Interlocked.Read(ref _gpuOverrunEvents),
+            GpuPacingMissedSlots = Interlocked.Read(ref _gpuMissedSlots),
+            QueueDrops = Interlocked.Read(ref _queueDrops), PoolExhaustionEvents = Interlocked.Read(ref _poolExhaustions),
+            ProductionFailures = Interlocked.Read(ref _productionFailures),
+            CaptureReadbackFailures = Interlocked.Read(ref _readbackFailures),
+            NoSourceFrameTicks = Interlocked.Read(ref _noSourceTicks),
+            SubmissionAttempts = Interlocked.Read(ref _submissionAttempts),
+            SubmissionFailures = Interlocked.Read(ref _submissionFailures),
+            FramesNotSubmitted = Interlocked.Read(ref _notSubmitted),
+            RepeatedSourceFrames = Interlocked.Read(ref _repeatedFrames), MaxEmittedFrameGap = _maxEmittedGap,
+        };
     }
 
     private sealed class StageBucket
