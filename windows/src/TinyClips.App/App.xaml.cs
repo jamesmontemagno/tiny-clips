@@ -1209,7 +1209,7 @@ public partial class App : Application
     /// <summary>
     /// Shared post-capture path for screenshots and scrolling captures: save (and copy to the
     /// clipboard) in the background, then open the editor from memory or from the saved file, or
-    /// reveal + toast when the editor is disabled (or <paramref name="allowEditor"/> is false).
+    /// optionally reveal + toast when the editor is disabled (or <paramref name="allowEditor"/> is false).
     /// </summary>
     private async Task PresentScreenshotFrameAsync(
         CapturedFrame frame,
@@ -1248,7 +1248,10 @@ public partial class App : Application
         }
 
         var path = await saveTask;
-        RevealInExplorer(path);
+        if (settings.ShowInExplorer)
+        {
+            RevealInExplorer(path);
+        }
         ShowSaveToast(path);
         ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
     }
@@ -3219,7 +3222,10 @@ public partial class App : Application
             }
             if (fallbackPath is not null)
             {
-                RevealInExplorer(fallbackPath);
+                if (Services.GetRequiredService<ICaptureSettings>().ShowInExplorer)
+                {
+                    RevealInExplorer(fallbackPath);
+                }
                 ShowSaveToast(fallbackPath);
             }
             if (reopenPickerAfterClose)
