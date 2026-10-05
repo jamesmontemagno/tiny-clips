@@ -34,7 +34,7 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   separate layers and opens a compositing editor when the recording ends: background and padding,
   a rounded screen card, camera shape and four layouts, a draggable camera bubble, scenes that
   change the layout partway through, zooms (added by hand or suggested from your clicks), crops
-  for the screen and the camera, cuts, trim, and MP4 export.
+  for the screen and the camera, cuts, speed changes, trim, and MP4 export.
   The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
@@ -155,15 +155,20 @@ With the switch on:
   recording setup panel has **Record for Studio**. A Studio recording is saved as a project (a
   clean screen track, a camera track, and click and cursor data) and opens in the editor.
 - **The editor** has a live preview, an inspector (scene, layout, background, padding, screen and
-  camera styling with crops, the zooms, and the cuts), a scene lane, a zoom lane, and a cut lane
-  above a trim bar, undo and redo, and Export. A recording without a camera has no scenes.
+  camera styling with crops, the zooms, the cuts, and the speed changes), a scene lane, a zoom
+  lane, a cut lane, and a speed lane above a trim bar, undo and redo, and Export. A recording
+  without a camera has no scenes.
   Keys: `Space` play or pause, `Left`/`Right` step a frame, `I`/`O` start and end the video at the
   playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
-  at the playhead, `Delete` remove the selected zoom or cut, `1`–`4` layout of the scene the
-  playhead is in, `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export. While a
-  lane has the keyboard focus, `Left`/`Right` go to the previous and the next scene, zoom, or cut
-  on it, and `Home`/`End` to the first and the last; on the scene lane, `Delete` removes the
-  scene the playhead is in.
+  at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
+  selected zoom, cut, or speed change, `1`–`4` layout of the scene the playhead is in,
+  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export. While a lane has the
+  keyboard focus, `Left`/`Right` go to the previous and the next scene, zoom, cut, or speed
+  change on it, and `Home`/`End` to the first and the last; on the scene lane, `Delete` removes
+  the scene the playhead is in.
+  The Camera section has a **Background** choice (keep, blur, or remove what is behind you) only
+  where the app can find people in a picture. That takes a model file which is not shipped yet
+  (see "Person cutout" in the plan), so today the choice is never shown.
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer.
   **Settings › General** shows the space projects take, the cleanup rules, and the drafts

@@ -38,19 +38,31 @@ own `CHANGELOG.md` at the repository root.
     section of the inspector steps through the cuts and sets where each one starts and ends.
     **Delete** or **Delete cut** puts the stretch back into the video. The time above the
     timeline counts the video as it will be exported, without what is cut out.
+  - **Speed.** Press **R** or choose **Speed** to have the video play the two seconds from the
+    playhead twice as fast. Speed changes sit on a lane between the cuts and the trim bar: drag
+    one to move it, or drag one of its ends to change where it starts or stops. The **Speed**
+    section of the inspector steps through them and sets how fast each stretch plays (0.25×,
+    0.5×, 1.5×, 2×, 4×, or 8×) and where it starts and ends, and says how long the stretch then
+    takes. A stretch at another speed plays without sound. **Delete** or **Delete speed change**
+    makes the stretch play at the recording's own speed again. The time above the timeline
+    counts the video as it will be exported, so a faster stretch makes it shorter and a slower
+    one longer.
   - To try it, set the environment variable `TINYCLIPS_STUDIO_PREVIEW` to `1` and restart Tiny
     Clips (see the README). Then choose **Open in Studio (Preview)** under **After recording** in
     Settings › Video, or switch on **Record for Studio** in the recording setup panel.
   - Keys in the editor: **Space** plays or pauses, **Left** and **Right** step a frame, **I** and
-    **O** start and end the video at the playhead, **S** splits the scene, **Z** adds a zoom and
-    **X** starts a cut at the playhead, **Delete** removes the selected zoom or cut, **1** to
-    **4** choose the layout of the scene the playhead is in, **Ctrl+Z** and **Ctrl+Y** undo and
-    redo, **Ctrl+E** exports, and **Esc** stops an export. While a lane has the keyboard focus,
-    **Left** and **Right** go to the scene, zoom, or cut before and after, and **Home** and
-    **End** to the first and the last.
+    **O** start and end the video at the playhead, **S** splits the scene, **Z** adds a zoom,
+    **X** starts a cut, and **R** changes the speed at the playhead, **Delete** removes the
+    selected zoom, cut, or speed change, **1** to **4** choose the layout of the scene the
+    playhead is in, **Ctrl+Z** and **Ctrl+Y** undo and redo, **Ctrl+E** exports, and **Esc**
+    stops an export. While a lane has the keyboard focus, **Left** and **Right** go to the
+    scene, zoom, cut, or speed change before and after, and **Home** and **End** to the first
+    and the last.
   - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
     for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
-    layer.
+    layer. The live preview does not play a speed change at its speed yet: it shows the stretch
+    at the recording's own speed, while the time above the timeline and the exported video have
+    the speed.
 
 ### Fixed
 - **Only one copy of Tiny Clips runs at a time.** Starting Tiny Clips while it was already running
