@@ -41,7 +41,11 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
   `Edits` are ignored: the caller applies the trim. The camera is hidden outside its own time
   range. The screen clip plays its sound unless `project.Audio.Muted`; the camera never does.
 - A lost graphics device is rebuilt once, at the same position. If that fails, or a player stops
-  decoding, `Failed` is raised, once. Without graphics hardware the device is WARP.
+  decoding, `Failed` is raised, once. Without graphics hardware the device is WARP. After a
+  rebuild the scene is drawn again when every clip that is part of it has its picture back. A
+  camera outside its own time range is not waited for: its player is parked and hands nothing
+  over, and the scene has no use for it there. (Read from the code and mended on 5 October;
+  the check for it has not been run yet.)
 - A preview that fails while it opens is opened once more, 750 ms later, when what went wrong
   may pass: a graphics device was lost, a player failed after every player had handed over a
   frame, which shows that the files can be decoded, or a player said before that that it could
@@ -53,6 +57,13 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
 - Every member of the engine may be called from any thread. Events are raised one at a time on a
   thread of the engine's own, never under a lock: switch to the UI thread before touching
   controls. A handler may call the engine, including `DisposeAsync`.
+- `Pause` and `Play` may follow each other at once. `Pause` waits for the render thread only so
+  long (a tenth of a second for a pass and half a second for the round it is in); when it has
+  given up and `Play` comes before the render thread has looked, the render thread finds a
+  clock that `Pause` stopped and playing wanted, and starts over from the frame shown. (Until
+  5 October it found nothing changed, and the preview stood still with `IsPlaying` true until
+  the next pause or seek. Read from the code and mended; the check for it has not been run
+  yet.)
 - `PositionChanged` is raised when `Position` changes (at a `Seek` that asks for another frame,
   for each frame played, at the end) and once more when a seek has landed, after its picture was
   drawn. While playing, `Position` never goes back, and it moves only to a frame the engine can
@@ -107,7 +118,11 @@ Unit tests: `StudioPreview*Tests` in `TinyClips.Core.Tests`.
 
 Six full runs of 299 checks each on the engine as it is, on an AMD Radeon 860M, 16 logical
 processors, 150 % scale, with other check tools and builds taking their turns on the PC;
-1920x1080 screen and 1280x720 camera at 30 fps. What is said of opens by project, of the first
+1920x1080 screen and 1280x720 camera at 30 fps. **Every clip has one frame exactly at the start
+of every thirtieth of a second, which a recording made by the app has not:** see *A recording's
+own frame times* below before relying on any number here for a real recording. The runs were
+made before this engine was merged with the editor window's scene and cut controls; on the
+merged code it has been compiled and unit tested. What is said of opens by project, of the first
 picture and of opens on WARP beyond a full run's own is from the loops of opens made when the
 way a preview opens was changed: see *Players and graphics adapters*. Pauses and scenes while
 the process is held up are under *Which frame a texture holds*, cuts and scene changes in the
@@ -441,6 +456,63 @@ and print apart: a wrong number from rule 3, of which a check may show one, or o
 and one given to a hand-over in which a stop of the process began, which the tool knows of
 and the engine does not. `--judge-limits` judges those too. Judged so, about one full run in
 30 would fail on one of the two.
+
+### A recording's own frame times: not played yet
+
+Everything above was measured on clips made by ffmpeg, with one frame exactly at the start of
+every slot. A recording made by the app is not like that, and no check has played one:
+
+- The recorder stamps a screen frame with the wall clock, read a moment after its pacer's tick
+  (`GpuCaptureSession.ProduceFrame`). The pacer keeps an even grid of its own, which starts
+  when it starts. So the frames sit some milliseconds into their slot: by an amount that is
+  the same through a recording, differs from one recording to the next, and changes where the
+  recording was paused; and by a millisecond or two more that differs from frame to frame.
+- A tick the recorder misses leaves its slot empty.
+- The camera's frames carry the camera's own times, counted from its first frame.
+
+The exporter is checked with such a file (`StudioRenderCheck`, "a recording that dropped
+frames"). The preview engine takes the frame a player shows for the one whose slot the clock
+is in, and the rules above lean on the grid in two places: a frame is on time when it is
+handed over within 13 ms of the start of its slot, and the frame after a frame has the next
+number.
+
+What that does to such a file has been worked out, not run: the namer itself, fed by a model
+of a player that keeps up (it looks every 10 ms, hands over one frame at a time and never
+before its time, and reports the clock's position), with nothing holding the process up. 600
+slots a play, ten plays with the looks a millisecond later each time, each frame up to 2 ms
+late at random. At 30 frames a second:
+
+| The frames sit this far into their slot | No slot empty | One slot empty |
+| --- | --- | --- |
+| 0 to 8 ms | every frame has its number at once | one to three frames get their number a hand-over late or not at all, then as before |
+| 10 to 20 ms | every frame has its number at once | no frame has a number for 15 or 16 frames, half a second, in which `Position` stands still; the rest of the play is shown by position and called unsure (3 of 10 plays at 10 ms, 9 or 10 of 10 from 12 ms on) |
+| 22 to 26 ms | 3 to 33 % of the frames get their number from the hand-over after them | the same half second, and unsure after it (10 of 10 plays, 7 of 10 at 26 ms) |
+| 28 to 32 ms | 2 to 33 % get their number a hand-over late | up to 8 frames in a row without a number, then as before |
+
+At 60 frames a second: every frame at once up to 4 ms into the slot; from 5 to 15 ms, 2 to
+33 % a hand-over late; and with one slot empty, 30 frames in a row without a number where the
+frames sit 6 to 10 ms in.
+
+Why: the frame after an empty slot is handed over with a position that names the frame two on,
+which is no number; after that the least it can be goes up by one a frame and so does the name,
+so "the next number" never fits again, and the rule that gives the numbers back asks for a
+frame within 13 ms of the start of its slot. And a frame that sits within a look of the end of
+its slot is handed over now in its own slot and now in the next.
+
+A number that comes a hand-over late is a frame not drawn on time while the layout moves.
+Shown by position and unsure is how the engine took every frame before these rules, which is
+right while nothing holds the process up.
+
+Two things the model does not reach, read from the code. A step forward asks the player for
+its next frame and takes it for the frame one on; across an empty slot that is the frame two
+on, and whether the engine then takes it for one on or falls back to a seek depends on the
+position the player reports. And a frame that sits past the middle of its slot plays under
+its slot's number, while a pause, a seek and the export show the frame before it there,
+because they look at the middle of the slot: that is older than these rules.
+
+The model is in `StudioPreviewFrameNamerRecordingTests`. Its tests of what should hold and
+does not are skipped, each with its reason. They are to be made to pass, or shown wrong with a
+real player, before the preview is relied on for recordings.
 
 ## Cuts, scene changes and zooms, through the editor's session
 
