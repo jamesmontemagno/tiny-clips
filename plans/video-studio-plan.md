@@ -452,6 +452,25 @@ Found by the check tools, and open:
 - **The camera a frame beside the screen.** While playing, the camera's picture is now and then one frame ahead of the screen's or behind it: in 16 of 86 play-throughs into a scene, in one to three of about eighty pictures each. The two tracks are played by two players on one clock, which the engine spike measured on matching frames 98.6 to 99.95 percent of the time and never more than one apart. The tool notes it and fails at two frames.
 - **What is left of a closed editor.** The window, its preview and its decoders go when an editor is closed. Its project and editing state can stay in memory for a while, held by the framework and not by the app: until the app shows its next window, when the editor was closed right after it played; or until it happens again, when the editor was closed within a second of a button getting the keyboard focus a second time, while the framework waits to show that button's tooltip. It is one editor's state at most and does not add up. A window with nothing but a button and a tooltip does the same, so the app is left as it is. The second case needs a key press to happen in the app, which no tool here sends.
 
+### The recording path: read, never run
+
+Nothing may capture the screen of the PC this was written on, and no Mac has run the code. So on both platforms the code that records for Studio has recorded nothing in its present form, and the changes this branch makes to the recorders that ship have not recorded anything either. On 5 October two reviewers that only read went through every shipping file the branch changes, one on each platform, with two questions: what is different for someone who never switches Studio on, and what is wrong in the Studio recording path.
+
+**With Studio off** neither found a way in which a video, a GIF or a screenshot comes out differently. On both platforms every added condition takes the branch that was there before, and at startup with Studio off no folder is made, no project is read, and no timer or cleanup is started. Each difference they did find is listed under "Changes outside Studio". Two cost something. On the Mac the Clips Manager made a Studio key for every video it drew, which is a look at the disk each time; it now makes none while there are no links. On Windows a recorded click takes 32 bytes where it took 16, so a recording with click rings, which copies the list of clicks for every frame, copies twice as much; that matters only after some thousands of clicks in one recording.
+
+**Mended after that reading, and not run:**
+
+- **The camera's track ended before the screen's**, on both platforms. At stop the camera was stopped and its file finished first, and the screen went on recording meanwhile. Outside its own time the camera is not drawn (section 6.5 of the format), so at the end of every Studio recording with a camera, the camera would have gone for the last tenths of a second. In a Studio recording the camera now goes on until the screen track is finished. An ordinary recording keeps its order, in which the last frames have no camera either; that is older than this work and not changed.
+- **On Windows a camera that gives its frames no time** was live in its bubble throughout and missing from the project, without a word. Its frames are now stamped with the time they arrive, and a recording whose camera left no track says so in a notification.
+
+**Open on Windows, each read from the code and none measured:**
+
+- **Camera frames can wait in memory without limit.** The camera's encoder is handed frames as fast as the camera makes them, and the writer is told not to hold the caller back. An encoder slower than the camera leaves frames of about 8 MB each waiting, and a recording that runs out of memory is lost whole. A hardware encoder will keep up; the software one on a slow or busy PC may not. A limit has to be set above what a healthy encoder holds at any moment, which nobody has measured, and the recorder's check feeds its frames faster than a camera does, so a limit put in blind would as likely break the check as mend the fault. To be measured first: the recorder check with the software encoder, at a camera's pace, watching memory.
+- **The first camera picture stands still** while the camera's encoder starts. The encoder is created when the first frame arrives, which is after the clock has started; that frame is written at zero and the next one after however long the start took: some tenths of a second, more where a hardware encoder is tried first and refused. The mend is to create it where the screen's encoder is created, before the clock starts.
+- **A camera whose clock is not the PC's** still leaves no track. Only a missing time is handled.
+- **A recording that can be saved neither as a project nor as an ordinary video** stays in its project folder for a day, as on the Mac. The Mac says so in its message. Windows lists it under Recent captures like any other and says nothing of the day.
+- **When the editor window cannot be opened** after a recording, the app stops, as it does when the trimmer cannot be opened. The project is kept and is listed under the drafts.
+
 ### Hidden switch
 
 Studio is off by default on both platforms until it has been verified there.
@@ -533,14 +552,41 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 
 ### Changes outside Studio
 
-- The macOS `Build` workflow also builds the `TinyClipsMAS` scheme, and both workflows run when `shared/studio/**` changes.
-- `TinyClipsActivationPolicy.resolve` takes `hasOpenEditors`, which covers screenshot editors and Studio windows.
-- On Windows, `ShowTextRecognitionNotification` was renamed `ShowMessageNotification` because Studio reuses it.
-- On Windows, `MfSinkWriterEncoder` has two new switches, `topDownMemoryFrames` and `keepFrameTimes`, both off by default. Only the Studio camera recorder turns them on; the regular recorder's calls are unchanged.
+Every shipping file the branch changes, as the two reviewers of "The recording path" listed them. With Studio off each takes the path it took before, except where this says otherwise.
+
+macOS:
+
+- `CaptureManager`: a Studio branch where a recording starts, stops and restarts. Launch reads the switch and starts the cleanup only when it is on.
+- `CaptureSettings`: five new keys (`studioPreviewEnabled`, `videoAfterRecording`, `studioDefaultLook`, `studioSourceRetentionDays`, `studioStorageCapGigabytes`). `showTrimmer` keeps its key and its meaning and is still what the recorder reads, so nothing is migrated and an older version reads what it always read. Reset All Settings clears the five as well, the switch among them.
+- `MouseClickOverlayProcessor`: a click also keeps which button it was, which the overlays ignore, and can take its time from a clock that only a Studio recording passes in.
+- `VideoRecorder`: remembers which sound inputs it added, for the volumes.
+- `BrandingOverlayProcessor`: one function is no longer private.
+- `StartRecordingPanel`, `VideoSettingsSection`, `SettingsView`: Record for Studio, the After recording choice and the Studio settings, each of them built only with the switch on.
+- `ClipsManagerWindow`: Open in Studio…, and a video that is moved to the archive keeps its link. While there are no links, nothing is looked up.
+- `TinyClipsApp`, `ScreenshotEditorScene`, `TinyClipsActivationPolicy`: a Studio window counts as an editor for the Dock icon, and quitting saves open projects.
+- The Xcode project: 27 new sources in both app targets and 6 test files in the test target. No new entitlement, framework or Info.plist key.
+- The `Build` workflow also builds the `TinyClipsMAS` scheme, and both workflows run when `shared/studio/**` changes.
+
+Windows:
+
+- `VideoRecordingService`: the Studio mode. An ordinary recording reads one or two flags more for each frame, and lists the monitors once at its start also when click rings are off.
+- `MfSinkWriterEncoder`: three new parameters. `enableHardwareTransforms` is on by default, which is what the encoder always did; `topDownMemoryFrames` and `keepFrameTimes` are off by default. Only the Studio camera recorder sets any of them; the regular recorder's calls are unchanged.
+- `RecordingTimeline`: keeps each pause, for the camera track and the events. The numbers it gives are the same.
+- `MouseClickMonitor`, `MouseClickSample`: a click also keeps its button and its time on the system clock, 32 bytes where it was 16.
+- `WebcamCaptureService`, `IWebcamCaptureService`, `WebcamFrameSizing`: an event for each camera frame and a switch to keep the camera's own shape. With no listener and the switch off the camera is opened as before.
+- `CaptureSettings`: `VideoAfterRecording` beside `ShowTrimmer`, which stays what the stop path reads; five Studio keys; Reset writes those too.
+- `App.xaml.cs`: the way to the editor after a recording, six more services, the cleanup 15 seconds after launch (never with Studio off), and `ShowTextRecognitionNotification` renamed `ShowMessageNotification` because Studio reuses it.
+- Settings (General and Video), the recording setup bar and the Clips Library menu: Studio controls that are built and stay collapsed with the switch off.
+- The project store is constructed with the recorder at startup. It reads where the app's data folder is and creates nothing.
+- The project file picks up the model for the person cutout if it is there, which it is not; and three more `InternalsVisibleTo`, for the check tools.
 
 ### Found in the regular Windows recorder and left alone
 
-`StudioRenderCheck` reproduces the regular recorder's CPU path without capturing anything: it creates the encoder the way the recorder does and hands it frames through the recorder's own buffer code. That path is used when the GPU recording pipeline is switched off or cannot start. On the development PC (AMD encoder) the file it wrote was upside down in every frame, for H.264 and HEVC. A real recording made that way has not been looked at. A Studio screen track recorded on that path would have the same fault, and the check tool reports it as known. The Studio camera track had the same cause and is fixed with `topDownMemoryFrames`. The regular recorder was not changed, because it is shipping code outside this work. The same fix there is a small change that is waiting for a decision.
+**The CPU path writes upside down.** `StudioRenderCheck` reproduces the regular recorder's CPU path without capturing anything: it creates the encoder the way the recorder does and hands it frames through the recorder's own buffer code. That path is used when the GPU recording pipeline is switched off or cannot start. On the development PC (AMD encoder) the file it wrote was upside down in every frame, for H.264 and HEVC. A real recording made that way has not been looked at. A Studio screen track recorded on that path would have the same fault, and the check tool reports it as known. The Studio camera track had the same cause and is fixed with `topDownMemoryFrames`. The regular recorder was not changed, because it is shipping code outside this work. The same fix there is a small change that is waiting for a decision.
+
+**Click rings in a video are drawn late.** Read from the code on 5 October by a reviewer and again by me, and not run. The clock a click is stamped with starts when the recorder is prepared, which is when the countdown begins. The clock of the frames starts when the countdown is over, and leaves pauses out. A ring is drawn where the two numbers meet, so every ring comes after its click by the time between the two starts and by all the time the recording had been paused. With the countdown as it is by default, three seconds, that is close to three seconds. It takes click rings in videos to be switched on, which they are not by default. GIF recordings start both clocks together. Studio recordings are not affected: their clicks are put on the recording's own timeline when the project is made, from a time on the system clock that every click carries since this branch, and that is what a mend of the regular recorder would use. Not changed here.
+
+**Quitting while a recording is being finished.** Quitting waits for the recorder to stop. When a stop is already under way that wait returns at once, and the app goes while the file is still being finished. Older than this branch; a Studio recording takes longer to stop, so the moment in which it can happen is longer.
 
 ### Found in the Clips Library window and left alone
 
@@ -583,7 +629,9 @@ The name, price, cleanup defaults, and first-run look are settled in "Decisions 
 - **Windows person cutout: ship the model file?** One file of 448 KB (MediaPipe Selfie Segmentation, Apache License 2.0) and a notice of it. Everything else is built. See "Person cutout (Milestone 4)".
 - **Windows volumes:** the recorder would have to keep the computer's sound and the microphone in two tracks. See "Volumes".
 - **Choosing a layout while recording:** which keys. See "Scenes from the recording".
-- **The regular Windows recorder's CPU path** writes upside down on the development PC; the fix is small and waits for a yes. See "Found in the regular Windows recorder and left alone".
+- **The regular Windows recorder's CPU path** writes upside down on the development PC; the fix is small and waits for a yes. See "Found in the regular Windows recorder and left alone", which also has two faults found by reading it: click rings drawn late, and quitting while a recording is being finished.
+- **The storage limit and drafts.** The limit counts everything, and a draft is never removed. So once the drafts alone are over the limit, every exported project loses its sources at the next cleanup, which runs each time an editor is closed: export, close, and the project just exported can no longer be edited. That is the rule as it was confirmed ("a 10 GB cap on total project storage", "a draft is never deleted automatically") read to its end. The other reading is that the limit counts only what cleanup may remove, exported projects, so that drafts never cost an exported project its sources; total use can then pass the limit by the size of the drafts. Both stores and both sets of tests have the first today.
+- **The Mac App Store build and the hidden switch.** With this branch the App Store build carries a feature that is off until a `defaults` key is set. App Review's guideline 2.3.1 asks that such features be described in the notes for review. Before a release that includes this code goes to the App Store: describe it there, or leave the switch out of that build until Studio is on for everyone.
 
 ## Validation
 
