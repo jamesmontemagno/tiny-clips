@@ -470,6 +470,14 @@ every slot. A recording made by the app is not like that, and no check has playe
 - A tick the recorder misses leaves its slot empty.
 - The camera's frames carry the camera's own times, counted from its first frame.
 
+The encoder keeps those times as they are given: the index of a camera track it wrote for
+`StudioRenderCheck` has the frames 0, 2 and 4 ms into their slots and a gap of a third of a
+second, as they were handed over. How often a recording misses a tick is not known. The
+recorder counts them (`pumpOverruns` and `exhaustedDrops` in its performance report), and its
+report of one real recording of five seconds has none. Whether the offset of the first
+screen frame survives in the file, which decides how far into their slots the frames sit, is
+not known either.
+
 The exporter is checked with such a file (`StudioRenderCheck`, "a recording that dropped
 frames"). The preview engine takes the frame a player shows for the one whose slot the clock
 is in, and the rules above lean on the grid in two places: a frame is on time when it is
