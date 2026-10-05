@@ -32,8 +32,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture.
 - **Tiny Clips Studio (early preview, off by default)** — records the screen and the camera as
   separate layers and opens a compositing editor when the recording ends: background and padding,
-  a rounded screen card, camera shape and four layouts, a draggable camera bubble, zooms (added by
-  hand or suggested from your clicks), crops for the screen and the camera, trim, and MP4 export.
+  a rounded screen card, camera shape and four layouts, a draggable camera bubble, scenes that
+  change the layout partway through, zooms (added by hand or suggested from your clicks), crops
+  for the screen and the camera, cuts, trim, and MP4 export.
   The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
@@ -153,13 +154,16 @@ With the switch on:
 - **Settings › Video** offers **Open in Studio (Preview)** under **After recording**, and the
   recording setup panel has **Record for Studio**. A Studio recording is saved as a project (a
   clean screen track, a camera track, and click and cursor data) and opens in the editor.
-- **The editor** has a live preview, an inspector (layout, background, padding, screen and camera
-  styling with crops, and the zooms), a zoom lane above a trim bar, undo and redo, and Export.
+- **The editor** has a live preview, an inspector (scene, layout, background, padding, screen and
+  camera styling with crops, the zooms, and the cuts), a scene lane, a zoom lane, and a cut lane
+  above a trim bar, undo and redo, and Export. A recording without a camera has no scenes.
   Keys: `Space` play or pause, `Left`/`Right` step a frame, `I`/`O` start and end the video at the
-  playhead, `Z` add a zoom at the playhead, `Delete` remove the selected zoom, `1`–`4` layout,
-  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export. While the zoom lane has
-  the keyboard focus, `Left`/`Right` select the previous and the next zoom, and `Home`/`End` the
-  first and the last.
+  playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
+  at the playhead, `Delete` remove the selected zoom or cut, `1`–`4` layout of the scene the
+  playhead is in, `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export. While a
+  lane has the keyboard focus, `Left`/`Right` go to the previous and the next scene, zoom, or cut
+  on it, and `Home`/`End` to the first and the last; on the scene lane, `Delete` removes the
+  scene the playhead is in.
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer.
   **Settings › General** shows the space projects take, the cleanup rules, and the drafts
@@ -175,7 +179,7 @@ app, plays no sound and sends no input, and so has the editor window. None runs 
 preview and window tools are not in the solution.
 
 ```powershell
-# Renderer, exporter and camera recorder. No window; about six minutes.
+# Renderer, exporter and camera recorder. No window; about four minutes.
 dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c Release -p:Platform=x64
 
 # Live preview. Needs ffmpeg and ffprobe on PATH and a desktop session; about ten minutes.
@@ -184,8 +188,9 @@ dotnet build windows/tools/StudioPreviewCheck/StudioPreviewCheck.csproj -c Debug
 windows\tools\StudioPreviewCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioPreviewCheck.exe
 
 # Editor window: the real window on real projects, with the real preview and exporter. Needs
-# ffmpeg and ffprobe on PATH and a desktop session; about a minute and a half. Its windows stay behind
-# every other window and cannot take the keyboard focus. What it checks is in the tool's README.
+# ffmpeg and ffprobe on PATH and a desktop session; about three and a half minutes. Its windows
+# stay behind every other window and cannot take the keyboard focus. What it checks is in the
+# tool's README.
 dotnet build windows/tools/StudioWindowCheck/StudioWindowCheck.csproj -c Debug -p:Platform=x64
 windows\tools\StudioWindowCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioWindowCheck.exe
 ```

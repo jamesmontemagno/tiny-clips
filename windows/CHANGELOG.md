@@ -23,13 +23,31 @@ own `CHANGELOG.md` at the repository root.
   - **Crops.** The **Crop left**, **Crop top**, **Crop right**, and **Crop bottom** sliders in the
     Screen and Camera sections cut the edges off the screen recording or the camera, and
     **Reset crop** brings them back.
+  - **Scenes.** In a recording with a camera, press **S** or choose **Split** to start a new scene
+    at the playhead. Each scene has its own layout and its own camera position, so a video can
+    go from the camera bubble to side by side and back. Scenes sit on a lane at the top of the
+    timeline: press one to go to it, or drag the line between two to change when the later one
+    begins. The **Scene** section of the inspector steps through the scenes, and sets when a
+    scene starts and whether the video cuts to it or the screen and the camera move into place,
+    and how long that takes. The Layout and Camera sections show and change the scene the
+    playhead is in. **Delete scene**, or **Delete** while the scene lane has the keyboard focus,
+    removes that scene, and the scene before it then lasts until the next one.
+  - **Cuts.** Press **X** or choose **Cut** to take a second out of the video at the playhead.
+    Cuts sit on a lane above the trim bar, and the trim bar shows a gap where each one is: drag
+    a cut to move it, or drag one of its ends to change where it starts or stops. The **Cut**
+    section of the inspector steps through the cuts and sets where each one starts and ends.
+    **Delete** or **Delete cut** puts the stretch back into the video. The time above the
+    timeline counts the video as it will be exported, without what is cut out.
   - To try it, set the environment variable `TINYCLIPS_STUDIO_PREVIEW` to `1` and restart Tiny
     Clips (see the README). Then choose **Open in Studio (Preview)** under **After recording** in
     Settings › Video, or switch on **Record for Studio** in the recording setup panel.
   - Keys in the editor: **Space** plays or pauses, **Left** and **Right** step a frame, **I** and
-    **O** start and end the video at the playhead, **Z** adds a zoom at the playhead, **Delete**
-    removes the selected zoom, **1** to **4** choose the layout, **Ctrl+Z** and **Ctrl+Y** undo
-    and redo, **Ctrl+E** exports, and **Esc** stops an export.
+    **O** start and end the video at the playhead, **S** splits the scene, **Z** adds a zoom and
+    **X** starts a cut at the playhead, **Delete** removes the selected zoom or cut, **1** to
+    **4** choose the layout of the scene the playhead is in, **Ctrl+Z** and **Ctrl+Y** undo and
+    redo, **Ctrl+E** exports, and **Esc** stops an export. While a lane has the keyboard focus,
+    **Left** and **Right** go to the scene, zoom, or cut before and after, and **Home** and
+    **End** to the first and the last.
   - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
     for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
     layer.
