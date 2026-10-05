@@ -67,6 +67,21 @@ internal readonly record struct StudioPreviewClipTiming(double FrameRate, long F
         StudioPreviewTimeMath.ClampFrame(StudioPreviewTimeMath.FrameAt(StudioPreviewTimeMath.ToSeconds(positionTicks), FrameRate), FrameCount);
 
     /// <summary>
+    /// The same, not clamped to the clip, and how far into that frame the position is. It is what
+    /// the frames of playback are told apart by, where one frame more or less matters.
+    /// </summary>
+    public long NameAtPlayerTicks(long positionTicks, out double intoMilliseconds)
+    {
+        var frames = (StudioPreviewTimeMath.ToSeconds(positionTicks) * FrameRate) + StudioPreviewTimeMath.BoundaryTolerance;
+        var frame = (long)Math.Floor(frames);
+        intoMilliseconds = (frames - frame) * 1000.0 / FrameRate;
+        return frame;
+    }
+
+    /// <summary>A frame number brought into the clip: its first frame at least, its last at most.</summary>
+    public long ClampFrame(long frame) => StudioPreviewTimeMath.ClampFrame(frame, FrameCount);
+
+    /// <summary>
     /// Whether the clip is part of the picture at a timeline time: the time lies inside the clip's
     /// own range. The same rule, with the same arithmetic, as the layout's for the camera
     /// (docs\studio-project-format.md, section 6.5), so the two never disagree about a frame.

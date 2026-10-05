@@ -101,6 +101,15 @@ internal sealed record StudioPreviewSeekSettings
     /// </summary>
     public bool CompositeDuringSeeks { get; init; }
 
+    /// <summary>
+    /// Hold the picture during the first position change after the clock ran, and report that
+    /// change as reached only when the players have said nothing more for
+    /// <see cref="GraceMilliseconds"/>. The first frame a player hands over for that change can be
+    /// the frame it had ready for playback, with the new position on it. Off is for the check
+    /// that measures how often that frame would be drawn.
+    /// </summary>
+    public bool HoldFirstChangeAfterPlaying { get; init; } = true;
+
     internal long Ticks(double milliseconds) => (long)Math.Round(milliseconds * TicksPerSecond / 1000.0);
 }
 
@@ -147,6 +156,11 @@ internal sealed record StudioPreviewSeekSettings
 /// known by its position.</item>
 /// <item>When the clock stops, the players are brought onto the frame the screen shows, because
 /// they can come to rest a frame apart.</item>
+/// <item>Which frame a player hands over while the clock runs is for the owner to say, and it
+/// is not always certain (<see cref="OnFrame"/>, <see cref="OnPictureUncertain"/>). A track
+/// whose last frame was not certain owes its frame at the next position change whatever that
+/// asks for, also the very frame the track is taken to show: so the clock never comes to rest
+/// on a picture that was only taken for the frame it is reported as.</item>
 /// <item>A player that was playing can have its next frame ready when the clock stops, without
 /// having handed it over. It then hands that frame over as its first answer to the next position
 /// change, with the new position on it, and the frame of that position after it. Measured: a
@@ -213,6 +227,7 @@ internal sealed class StudioPreviewSeekPolicy
     private readonly bool[] _completesEarly;
     private readonly bool[] _caughtUpWith;
     private readonly bool[] _redrawOwed;
+    private readonly bool[] _unsure;
     private readonly List<StudioPreviewLanding> _landings = [];
 
     // The position change in flight.
@@ -222,6 +237,7 @@ internal sealed class StudioPreviewSeekPolicy
     private long _lastAnswerAt;
     private bool _operationSettles;
     private bool _landsWhenQuiet;
+    private bool _firstAfterPlaying;
     private bool _answering;
     private long _resolvedAt;
     private bool _resolvedDelivered;
@@ -283,6 +299,7 @@ internal sealed class StudioPreviewSeekPolicy
         _completesEarly = new bool[_trackCount];
         _caughtUpWith = new bool[_trackCount];
         _redrawOwed = new bool[_trackCount];
+        _unsure = new bool[_trackCount];
     }
 
     /// <summary>The clock is running.</summary>
@@ -360,6 +377,12 @@ internal sealed class StudioPreviewSeekPolicy
     /// </summary>
     public long SecondAnswers { get; private set; }
 
+    /// <summary>
+    /// Times the clock stopped on a frame of which the owner was not certain, so that the frame
+    /// had to be fetched anew although it was the one the track was taken to show.
+    /// </summary>
+    public long RestsFetchedAnew { get; private set; }
+
     /// <summary>The frame a track's player delivered last, or -1 before its first.</summary>
     public long ShownFrame(int track) => _shown[track];
 
@@ -370,6 +393,7 @@ internal sealed class StudioPreviewSeekPolicy
     public void Forget(int track)
     {
         _shown[track] = -1;
+        _unsure[track] = false;
         _settledConfirmed = false;
     }
 
@@ -455,10 +479,19 @@ internal sealed class StudioPreviewSeekPolicy
         }
     }
 
-    /// <summary>A player delivered a frame.</summary>
-    /// <param name="playerFrame">The frame of the clip that contains the position the player reported.</param>
+    /// <summary>A player delivered a frame, and it is on the picture.</summary>
+    /// <param name="playerFrame">
+    /// The frame of the clip it is: the one that contains the position the player reported, or,
+    /// for a frame of playback, the one the owner found it to be.
+    /// </param>
     /// <param name="startedAt">Clock reading when the delivery started.</param>
-    public void OnFrame(int track, long playerFrame, long startedAt)
+    /// <param name="unsure">
+    /// The owner could not be certain which frame it is, or took it from what a player does as a
+    /// rule, and <paramref name="playerFrame"/> may be ahead of the picture. The next position
+    /// the players are given then has to bring this track's frame anew, even when it is the
+    /// frame the track is taken to show.
+    /// </param>
+    public void OnFrame(int track, long playerFrame, long startedAt, bool unsure = false)
     {
         if (_stopped)
         {
@@ -466,6 +499,7 @@ internal sealed class StudioPreviewSeekPolicy
         }
 
         _redrawOwed[track] = false;
+        _unsure[track] = unsure;
         var answersOperation = _operation != Operation.None && startedAt >= _operationStartedAt;
         if (answersOperation && _operation == Operation.Step && _needs[track] && playerFrame - _stepFrom[track] is 0 or 1)
         {
@@ -486,7 +520,7 @@ internal sealed class StudioPreviewSeekPolicy
         var target = _operation != Operation.None ? _operationFrame : _settled;
         if (target < 0 || playerFrame == _timeline.PlayerFrame(track, target))
         {
-            if (answersOperation && _landsWhenQuiet && _arrived[track])
+            if (answersOperation && _firstAfterPlaying && _arrived[track])
             {
                 SecondAnswers++;
             }
@@ -531,6 +565,21 @@ internal sealed class StudioPreviewSeekPolicy
         }
     }
 
+    /// <summary>
+    /// A track's picture is no longer the frame it delivered last: the owner has put a frame on
+    /// it of which it cannot tell which one it is, as it may while the clock runs. The next
+    /// position the players are given has to bring the track's frame anew, even when it is the
+    /// frame the track is taken to show. The next frame the track delivers takes this back.
+    /// May be called from within a call to the transport.
+    /// </summary>
+    public void OnPictureUncertain(int track)
+    {
+        if (!_stopped)
+        {
+            _unsure[track] = true;
+        }
+    }
+
     /// <summary>A player raised <c>SeekCompleted</c>.</summary>
     public void OnSeekCompleted(int track, long at)
     {
@@ -561,6 +610,7 @@ internal sealed class StudioPreviewSeekPolicy
         _operation = Operation.None;
         _answering = false;
         _landsWhenQuiet = false;
+        _firstAfterPlaying = false;
         _requested = -1;
         _target = -1;
         _settling = false;
@@ -705,6 +755,7 @@ internal sealed class StudioPreviewSeekPolicy
         }
 
         _target = target;
+        RestsFetchedAnew += snap && AnyIsUnsureOf(target) ? 1 : 0;
         _chainKind = snap ? StudioPreviewLandingKind.Snap : StudioPreviewLandingKind.Seek;
         _chainRequestedAt = requestedAt;
         _repairs = 0;
@@ -818,7 +869,20 @@ internal sealed class StudioPreviewSeekPolicy
         for (var track = 0; track < _trackCount; track++)
         {
             var wanted = Wanted(track, timelineFrame);
-            if (wanted >= 0 && wanted != _shown[track])
+            if (wanted >= 0 && (wanted != _shown[track] || _unsure[track]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool AnyIsUnsureOf(long timelineFrame)
+    {
+        for (var track = 0; track < _trackCount; track++)
+        {
+            if (_unsure[track] && Wanted(track, timelineFrame) == _shown[track])
             {
                 return true;
             }
@@ -899,9 +963,10 @@ internal sealed class StudioPreviewSeekPolicy
         // milliseconds, and it must not be taken for the answer to the way back. The first change
         // after the clock ran is left the same way, and only then is its position reported: the
         // first frame a player hands over for it can be the one it had ready for playback.
-        _landsWhenQuiet = _clockRan && operation == Operation.Seek;
+        _firstAfterPlaying = _clockRan && operation == Operation.Seek;
+        _landsWhenQuiet = _firstAfterPlaying && _settings.HoldFirstChangeAfterPlaying;
         _operationSettles = _landsWhenQuiet || operation is Operation.Detour or Operation.Spend;
-        if (_operationSettles)
+        if (_operationSettles || _firstAfterPlaying)
         {
             _clockRan = false;
         }
@@ -916,7 +981,7 @@ internal sealed class StudioPreviewSeekPolicy
             // Nothing is owed by a player that is expected to lose this position.
             var wanted = Wanted(track, frame);
             var spent = operation == Operation.Spend && _timeline.Track(track).StartOffset != 0;
-            _needs[track] = wanted >= 0 && wanted != _shown[track] && !spent;
+            _needs[track] = wanted >= 0 && (wanted != _shown[track] || _unsure[track]) && !spent;
 
             // A player answers a position change with a frame when the change moves it, and it
             // does unless both the old and the new position lie before its stream or both after it.
@@ -1021,6 +1086,7 @@ internal sealed class StudioPreviewSeekPolicy
         _operation = Operation.None;
         _answering = false;
         _landsWhenQuiet = false;
+        _firstAfterPlaying = false;
         FinishAssignment(finished, _resolvedDelivered, _resolvedLostEarly, landsNow, now);
         return true;
     }
@@ -1384,7 +1450,7 @@ internal sealed class StudioPreviewSeekPolicy
         for (var track = 0; track < _trackCount; track++)
         {
             var wanted = Wanted(track, target);
-            var hasToDeliver = wanted >= 0 && (_shown[track] != wanted || _ended[track]);
+            var hasToDeliver = wanted >= 0 && (_shown[track] != wanted || _ended[track] || _unsure[track]);
             if (hasToDeliver && _timeline.PlayerFrame(track, candidate) == wanted)
             {
                 return false;

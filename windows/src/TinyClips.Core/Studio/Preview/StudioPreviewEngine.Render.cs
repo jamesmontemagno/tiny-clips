@@ -38,6 +38,8 @@ public sealed partial class StudioPreviewEngine
     private long _framesDrawn;
     private long _copyTargetChanges;
     private int _deviceRebuilds;
+    private double _drawnWidth = DefaultSurfaceWidth;
+    private double _drawnHeight = DefaultSurfaceHeight;
 
     /// <summary>
     /// Makes <paramref name="surface"/> the surface the preview is drawn into, in place of any
@@ -121,7 +123,7 @@ public sealed partial class StudioPreviewEngine
 
         foreach (var clip in _clips)
         {
-            if (clip.CopyCount != clip.DrawnCopyCount)
+            if (clip.PictureCount != clip.DrawnPictureCount)
             {
                 return true;
             }
@@ -131,12 +133,11 @@ public sealed partial class StudioPreviewEngine
     }
 
     /// <summary>
-    /// Draws the scene when a texture holds a newer frame than was last drawn, or a redraw was
+    /// Draws the scene when a clip's picture has changed since it was last drawn, or a redraw was
     /// asked for. It never waits for the other clip, and never presents without something new.
-    /// Returns false when the draw has to wait: a texture holds a frame whose signal has not
-    /// reached this thread yet, so the frame cannot be named. The signal is on its way.
+    /// The pictures only change on this thread, each together with the number it is drawn under.
     /// </summary>
-    private bool Render()
+    private void Render()
     {
         if (Volatile.Read(ref _simulatedDeviceLosses) > 0)
         {
@@ -144,10 +145,10 @@ public sealed partial class StudioPreviewEngine
             throw new StudioDeviceLostException("Simulated loss of the rendering device.");
         }
 
-        // During a repair's detour the textures show frames nobody asked for.
+        // During a repair's detour the pictures show frames nobody asked for.
         if (!HasSomethingToDraw() || _policy.HoldPicture)
         {
-            return true;
+            return;
         }
 
         lock (_surfaceLock)
@@ -155,24 +156,13 @@ public sealed partial class StudioPreviewEngine
             var surface = _surface;
             if (surface is null)
             {
-                return true;
+                return;
             }
 
             var graphics = _graphics;
             var drawn = false;
             lock (graphics.Gate)
             {
-                // The scene's time, and with it whether the camera shows, comes from the frame the
-                // screen's texture holds. Frames reach the textures before their signals reach
-                // this thread, so make sure nothing is in a texture that has not been counted here.
-                foreach (var clip in _clips)
-                {
-                    if (clip.DeliveredCount != clip.AcknowledgedCount)
-                    {
-                        return false;
-                    }
-                }
-
                 // Cleared first, so that a request made while this frame is drawn gets its own.
                 _redraw = false;
                 _surfaceInvalidated = false;
@@ -187,14 +177,27 @@ public sealed partial class StudioPreviewEngine
                 }
 
                 var target = surface.AcquireTarget(out var width, out var height);
-                if (target is not null && width > 0 && height > 0)
+                if (target is not null && width > 0 && height > 0 && APictureIsMissing())
+                {
+                    // Asked for again by the frame that brings the picture back.
+                    target.Dispose();
+                    _redraw = true;
+                }
+                else if (target is not null && width > 0 && height > 0)
                 {
                     target = Remember(target);
+                    _drawnWidth = width;
+                    _drawnHeight = height;
                     UpdateCopyTargets(graphics, _renderProject, width, height);
                     foreach (var clip in _clips)
                     {
-                        PromoteCopyTarget(clip);
-                        clip.DrawnCopyCount = clip.CopyCount;
+                        clip.DrawnPictureCount = clip.PictureCount;
+                    }
+
+                    if (_renderDelay is { } delay && delay() is { Ticks: > 0 } wait)
+                    {
+                        // A draw that takes long: the players wait for the device with their frames.
+                        Thread.Sleep(wait);
                     }
 
                     DrawScene(_renderProject, target, width, height);
@@ -210,7 +213,7 @@ public sealed partial class StudioPreviewEngine
                     target?.Dispose();
                     foreach (var clip in _clips)
                     {
-                        clip.DrawnCopyCount = clip.CopyCount;
+                        clip.DrawnPictureCount = clip.PictureCount;
                     }
                 }
             }
@@ -223,8 +226,6 @@ public sealed partial class StudioPreviewEngine
                 _drawnSinceRebuild = true;
             }
         }
-
-        return true;
     }
 
     /// <summary>
@@ -278,13 +279,26 @@ public sealed partial class StudioPreviewEngine
             if (clip.CopyTexture is null || chosen != clip.CopySize)
             {
                 _copyTargetChanges += clip.CopyTexture is null ? 0 : 1;
-                CreateCopyTarget(graphics, clip, chosen);
+
+                // While the clock runs the player's next frame is there within a thirtieth of a
+                // second, and the frame it has now may not be the one the picture shows.
+                CreateCopyTarget(graphics, clip, chosen, refill: !_policy.IsPlaying);
             }
         }
     }
 
-    // Device lock held.
-    private static void CreateCopyTarget(StudioGraphicsDevice graphics, StudioPreviewClip clip, StudioPreviewCopyTargetSize size)
+    /// <summary>
+    /// Gives a clip a copy target of another size. A frame in the old one that has its number
+    /// and has not reached the picture yet is put aside first, at the size it has, and is taken
+    /// from there. Device lock held; render thread, or the thread that opens the engine before
+    /// the render thread runs.
+    /// </summary>
+    /// <param name="refill">
+    /// Take the player's current frame again at the new size, into the picture, so that a paused
+    /// picture does not stay at the old size until the next seek. Only done when that frame is the
+    /// one the picture shows.
+    /// </param>
+    private void CreateCopyTarget(StudioGraphicsDevice graphics, StudioPreviewClip clip, StudioPreviewCopyTargetSize size, bool refill)
     {
         var texture = graphics.CreateRenderTexture(size.Width, size.Height);
         IDirect3DSurface surface;
@@ -298,32 +312,193 @@ public sealed partial class StudioPreviewEngine
             throw;
         }
 
-        // A target that never became the draw source has nothing else referring to it.
-        if (clip.CopyTexture is not null && !ReferenceEquals(clip.CopyTexture, clip.DrawTexture))
+        // Nothing but this engine refers to a copy target: the scene is drawn from the picture.
+        var pictureIsCurrent = clip.CopyHoldsFrame && clip.CopyIsPicture;
+        if (clip.CopyWaits)
         {
-            (clip.CopySurface as IDisposable)?.Dispose();
-            clip.CopyTexture.Dispose();
+            KeepAside(graphics, clip);
+        }
+        else if (!clip.KeptWaits)
+        {
+            clip.KeptTexture?.Dispose();
+            clip.KeptTexture = null;
         }
 
+        (clip.CopySurface as IDisposable)?.Dispose();
+        clip.CopyTexture?.Dispose();
         clip.CopyTexture = texture;
         clip.CopySurface = surface;
         clip.CopySize = size;
         clip.CopyHoldsFrame = false;
-        if (!clip.HasDeliveredFrame)
+        clip.CopyWaits = false;
+        clip.CopyIsPicture = false;
+        clip.CopySerial++;
+        if (!refill || !clip.HasDeliveredFrame || !pictureIsCurrent || clip.DeliveriesInFlight > 0)
         {
             return;
         }
 
-        // The player still has its current frame. Take it again at the new size, so that a paused
-        // picture does not stay on the old texture until the next seek.
         try
         {
             clip.Player.CopyFrameToVideoSurface(surface);
             clip.FrameCopied(delivered: false);
+            clip.CopyWaits = true;
+            TakeIntoPicture(clip, clip.CopySerial);
         }
         catch (Exception ex) when (!IsDeviceLost(ex))
         {
-            // The old texture stays the draw source until the player's next frame arrives here.
+            // The picture stays as it is until the player's next frame arrives.
+        }
+    }
+
+    /// <summary>
+    /// Takes a frame that waits to be taken into its clip's picture: from the copy target, or
+    /// from where it was put aside when the player's next frame came before this thread did.
+    /// False when it is in neither any more: a later frame was written over it. Render thread
+    /// only; takes the device lock.
+    /// </summary>
+    /// <param name="serial">Which copy it is: <see cref="StudioPreviewClip.CopySerial"/> as it was when the frame was copied.</param>
+    private bool TakeIntoPicture(StudioPreviewClip clip, long serial)
+    {
+        var graphics = _graphics;
+        lock (graphics.Gate)
+        {
+            var kept = !(clip.CopyWaits && clip.CopySerial == serial);
+            var source = kept ? clip.KeptTexture : clip.CopyTexture;
+            if (source is null || (kept && !(clip.KeptWaits && clip.KeptSerial == serial)))
+            {
+                return false;
+            }
+
+            var size = kept ? clip.KeptSize : clip.CopySize;
+            if (clip.DrawTexture is null || clip.DrawSize != size)
+            {
+                if (clip.DrawTexture is not null)
+                {
+                    ForgetRendererSources();
+                    clip.DrawTexture.Dispose();
+                    clip.DrawTexture = null;
+                }
+
+                clip.DrawTexture = graphics.CreateRenderTexture(size.Width, size.Height);
+                clip.DrawSize = size;
+            }
+
+            graphics.Context.CopyResource(clip.DrawTexture, source);
+            if (kept)
+            {
+                clip.KeptWaits = false;
+            }
+            else
+            {
+                clip.CopyWaits = false;
+                clip.CopyIsPicture = true;
+            }
+
+            // A frame with a number is later than any that was shown without one.
+            clip.ShowsLive = false;
+            clip.PictureCount++;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Shows a frame that has no number in place of its clip's picture: the same as
+    /// <see cref="TakeIntoPicture"/>, into the clip's other picture. The picture with a number
+    /// stays as it is, for when the clock stops. Render thread only; takes the device lock.
+    /// </summary>
+    private bool TakeLivePicture(StudioPreviewClip clip, long serial)
+    {
+        var graphics = _graphics;
+        lock (graphics.Gate)
+        {
+            var kept = !(clip.CopyWaits && clip.CopySerial == serial);
+            var source = kept ? clip.KeptTexture : clip.CopyTexture;
+            if (source is null || (kept && !(clip.KeptWaits && clip.KeptSerial == serial)))
+            {
+                return false;
+            }
+
+            var size = kept ? clip.KeptSize : clip.CopySize;
+            if (clip.LiveTexture is null || clip.LiveSize != size)
+            {
+                if (clip.LiveTexture is not null)
+                {
+                    ForgetRendererSources();
+                    clip.LiveTexture.Dispose();
+                    clip.LiveTexture = null;
+                }
+
+                clip.LiveTexture = graphics.CreateRenderTexture(size.Width, size.Height);
+                clip.LiveSize = size;
+            }
+
+            graphics.Context.CopyResource(clip.LiveTexture, source);
+            if (kept)
+            {
+                clip.KeptWaits = false;
+            }
+            else
+            {
+                clip.CopyWaits = false;
+            }
+
+            clip.LiveSerial = serial;
+            clip.ShowsLive = true;
+            clip.PictureCount++;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// The frame that is shown without a number has got its number: it becomes the clip's picture
+    /// as it is. Render thread only; takes the device lock.
+    /// </summary>
+    private void NumberTheLivePicture(StudioPreviewClip clip)
+    {
+        var graphics = _graphics;
+        lock (graphics.Gate)
+        {
+            (clip.DrawTexture, clip.LiveTexture) = (clip.LiveTexture, clip.DrawTexture);
+            (clip.DrawSize, clip.LiveSize) = (clip.LiveSize, clip.DrawSize);
+            clip.ShowsLive = false;
+
+            // The copy that was put aside for this is not needed.
+            if (clip.KeptSerial == clip.LiveSerial)
+            {
+                clip.KeptWaits = false;
+            }
+
+            if (clip.CopySerial == clip.LiveSerial)
+            {
+                clip.CopyWaits = false;
+                clip.CopyIsPicture = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the scene is laid out the same way for every frame from the one the screen's
+    /// picture shows to <paramref name="latest"/>: then a screen frame that is one of those,
+    /// nobody knows which, can be drawn. Render thread only.
+    /// </summary>
+    private bool SceneIsTheSameUpTo(long latest) =>
+        StudioPreviewStillness.SameLayout(_renderProject, _events, _timeline.FrameRate, _policy.ShownFrame(0), latest, _drawnWidth, _drawnHeight);
+
+    /// <summary>A frame that waits to be taken into the picture is not going to be. Render thread only; takes the device lock.</summary>
+    private void StopWaiting(StudioPreviewClip clip, long serial)
+    {
+        var graphics = _graphics;
+        lock (graphics.Gate)
+        {
+            if (clip.CopySerial == serial)
+            {
+                clip.CopyWaits = false;
+            }
+            else if (clip.KeptSerial == serial)
+            {
+                clip.KeptWaits = false;
+            }
         }
     }
 
@@ -409,6 +584,8 @@ public sealed partial class StudioPreviewEngine
 
                 var empty = NoteFirstFrame(graphics, clip);
                 clip.FrameCopied(delivered: false);
+                clip.CopyWaits = true;
+                TakeIntoPicture(clip, clip.CopySerial);
                 Interlocked.Increment(ref _firstFramesPulled);
                 if (_trace is not null)
                 {
@@ -467,41 +644,25 @@ public sealed partial class StudioPreviewEngine
     }
 
     // Device lock held.
-    private void PromoteCopyTarget(StudioPreviewClip clip)
+    private static void DisposeClipTextures(StudioPreviewClip clip)
     {
-        if (!clip.CopyHoldsFrame || ReferenceEquals(clip.CopyTexture, clip.DrawTexture))
-        {
-            return;
-        }
-
-        if (clip.DrawTexture is not null)
-        {
-            ForgetRendererSources();
-            (clip.DrawSurface as IDisposable)?.Dispose();
-            clip.DrawTexture.Dispose();
-        }
-
-        clip.DrawTexture = clip.CopyTexture;
-        clip.DrawSurface = clip.CopySurface;
-        clip.DrawSize = clip.CopySize;
-    }
-
-    // Device lock held.
-    private void DisposeClipTextures(StudioPreviewClip clip)
-    {
-        if (clip.CopyTexture is not null && !ReferenceEquals(clip.CopyTexture, clip.DrawTexture))
-        {
-            (clip.CopySurface as IDisposable)?.Dispose();
-            clip.CopyTexture.Dispose();
-        }
-
-        (clip.DrawSurface as IDisposable)?.Dispose();
+        (clip.CopySurface as IDisposable)?.Dispose();
+        clip.CopyTexture?.Dispose();
+        clip.KeptTexture?.Dispose();
         clip.DrawTexture?.Dispose();
+        clip.LiveTexture?.Dispose();
         clip.CopyTexture = null;
         clip.CopySurface = null;
+        clip.KeptTexture = null;
         clip.DrawTexture = null;
-        clip.DrawSurface = null;
+        clip.LiveTexture = null;
+        clip.ShowsLive = false;
         clip.CopyHoldsFrame = false;
+        clip.CopyWaits = false;
+        clip.CopyIsPicture = false;
+        clip.KeptWaits = false;
+        clip.CopySerial++;
+        clip.Namer.Forget();
     }
 
     // ----------------------------------------------------------------------------------------
@@ -529,8 +690,11 @@ public sealed partial class StudioPreviewEngine
         _renderer.Render(in request);
     }
 
+    /// <summary>What a clip is drawn from, for the renderer: its picture, or the later frame that is shown without a number.</summary>
     private static StudioGpuVideoFrame? Source(StudioPreviewClip clip) =>
-        clip.DrawTexture is { } texture ? new StudioGpuVideoFrame(texture, 0, clip.DrawSize.Width, clip.DrawSize.Height) : null;
+        clip.ShowsLive && clip.LiveTexture is { } live ? new StudioGpuVideoFrame(live, 0, clip.LiveSize.Width, clip.LiveSize.Height)
+        : clip.DrawTexture is { } texture ? new StudioGpuVideoFrame(texture, 0, clip.DrawSize.Width, clip.DrawSize.Height)
+        : null;
 
     // The renderer keeps a wrapper per source texture, by address. Drop them before a texture goes.
     private void ForgetRendererSources() => _renderer.ForgetSources();
@@ -607,6 +771,7 @@ public sealed partial class StudioPreviewEngine
         }
 
         var sizes = new StudioPreviewCopyTargetSize[_clips.Length];
+        var current = new bool[_clips.Length];
         for (var index = 0; index < _clips.Length; index++)
         {
             sizes[index] = _clips[index].CopySize;
@@ -641,6 +806,9 @@ public sealed partial class StudioPreviewEngine
                 _surfaceConfigured = false;
                 foreach (var clip in _clips)
                 {
+                    // Whether the frame the player has is the one that was on the picture: then
+                    // it can be taken from the player again, under the same number.
+                    current[clip.Index] = clip.CopyHoldsFrame && clip.CopyIsPicture;
                     try
                     {
                         DisposeClipTextures(clip);
@@ -695,8 +863,11 @@ public sealed partial class StudioPreviewEngine
         {
             for (var index = 0; index < _clips.Length; index++)
             {
-                CreateCopyTarget(created, _clips[index], sizes[index]);
-                missing |= !_clips[index].CopyHoldsFrame;
+                var clip = _clips[index];
+                clip.CopyIsPicture = current[index];
+                clip.CopyHoldsFrame = current[index];
+                CreateCopyTarget(created, clip, sizes[index], refill: !_policy.IsPlaying);
+                missing |= clip.DrawTexture is null;
             }
         }
 
@@ -706,7 +877,7 @@ public sealed partial class StudioPreviewEngine
             // A player would not hand its frame over again. A seek to where it is makes it.
             foreach (var clip in _clips)
             {
-                if (!clip.CopyHoldsFrame)
+                if (clip.DrawTexture is null)
                 {
                     _policy.Forget(clip.Index);
                 }
@@ -714,6 +885,24 @@ public sealed partial class StudioPreviewEngine
 
             _policy.RequestSeek(_position.Frame);
         }
+    }
+
+    /// <summary>
+    /// A clip that had a picture has none: the device was rebuilt, and the frame could not be
+    /// taken from the player again. The scene is not drawn without it; the player's next frame
+    /// brings it back.
+    /// </summary>
+    private bool APictureIsMissing()
+    {
+        foreach (var clip in _clips)
+        {
+            if (clip.HasDeliveredFrame && clip.DrawTexture is null)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Releases the surface's buffers, the textures, the renderer and the device. The render thread has ended.</summary>
@@ -784,6 +973,13 @@ public sealed partial class StudioPreviewEngine
 
     /// <summary>Called with the device lock held after every scene drawn, before it is presented.</summary>
     internal Action<StudioGraphicsDevice, ID3D11Texture2D, int, int>? AfterRender { get; set; }
+
+    /// <summary>
+    /// Called by a player's own thread, with the device lock held, after every frame it has
+    /// copied: which copy it is and what the engine took it for. For the checks that read from
+    /// the pixels which frame a copy holds. It has to be quick: the player waits.
+    /// </summary>
+    internal Action<StudioPreviewHandOver>? AfterCopy { get; set; }
 
     /// <summary>The device the engine draws with. Take its <c>Gate</c> around any use of its context.</summary>
     internal StudioGraphicsDevice GraphicsDevice => Volatile.Read(ref _graphics);
@@ -862,10 +1058,16 @@ public sealed partial class StudioPreviewEngine
     }
 
     /// <summary>
-    /// The pixels of the texture that holds a clip's latest frame, as tightly packed BGRA, or null
-    /// before its first frame.
+    /// The pixels of a clip's picture, the texture the scene is drawn from, as tightly packed
+    /// BGRA, or null before its first frame.
     /// </summary>
-    internal byte[]? ReadClipTexture(int clipIndex, out int width, out int height)
+    internal byte[]? ReadClipTexture(int clipIndex, out int width, out int height) => ReadClipTexture(clipIndex, copyTarget: false, out width, out height);
+
+    /// <summary>
+    /// The same of a clip's copy target when <paramref name="copyTarget"/> is set: the frame the
+    /// player handed over last, which is not on the picture while it has no number.
+    /// </summary>
+    internal byte[]? ReadClipTexture(int clipIndex, bool copyTarget, out int width, out int height)
     {
         width = 0;
         height = 0;
@@ -883,16 +1085,20 @@ public sealed partial class StudioPreviewEngine
                 return null;
             }
 
-            var holdsLatest = clip.CopyHoldsFrame ? clip.CopyTexture : clip.DrawTexture;
-            if (holdsLatest is null)
+            // Whether the scene is drawn from the picture without a number changes on the render
+            // thread, without this lock. Read while the clock runs, this may be the picture of a
+            // moment ago; read after Pause() has returned, it is the picture.
+            var live = !copyTarget && clip.ShowsLive && clip.LiveTexture is not null;
+            var texture = copyTarget ? (clip.CopyHoldsFrame ? clip.CopyTexture : null) : live ? clip.LiveTexture : clip.DrawTexture;
+            if (texture is null)
             {
                 return null;
             }
 
-            var size = clip.CopyHoldsFrame ? clip.CopySize : clip.DrawSize;
+            var size = copyTarget ? clip.CopySize : live ? clip.LiveSize : clip.DrawSize;
             width = size.Width;
             height = size.Height;
-            return graphics.ReadTexture(holdsLatest);
+            return graphics.ReadTexture(texture);
         }
     }
 
@@ -984,10 +1190,17 @@ public sealed partial class StudioPreviewEngine
             AnswersGivenUp = _policy.AnswersGivenUp,
             DetoursUnanswered = _policy.DetoursUnanswered,
             SecondAnswers = _policy.SecondAnswers,
+            RestsFetchedAnew = _policy.RestsFetchedAnew,
             StepsAvoided = _policy.StepsAvoided,
             FramesDrawn = _framesDrawn,
             FramesAfterPause = _framesAfterPause,
             LateFramesDiscarded = Interlocked.Read(ref _lateFramesDiscarded),
+            FramesWithoutNumber = [.. _framesWithoutNumber],
+            FramesShownWithoutNumber = [.. _framesShownWithoutNumber],
+            FramesNumberedLate = [.. _framesNumberedLate],
+            FramesShownUnsure = [.. _framesShownUnsure],
+            FramesInferred = [.. _framesInferred],
+            FramesPassedOver = [.. _framesPassedOver.Select((_, index) => Interlocked.Read(ref _framesPassedOver[index]))],
             FramesFromBeforeStart = _position.FramesFromBeforeStart,
             PositionPending = _position.IsPending,
             DeviceRebuilds = _deviceRebuilds,

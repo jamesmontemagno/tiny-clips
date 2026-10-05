@@ -46,6 +46,44 @@ public sealed class StudioPreviewTimelineTests
         }
     }
 
+    [Theory]
+    [InlineData(30)]
+    [InlineData(Ntsc)]
+    [InlineData(60)]
+    public void NameAtPlayerTicks_IsTheFrameOfAPosition_AndHowFarIntoIt(double fps)
+    {
+        var clip = new StudioPreviewClipTiming(fps, 360, 0);
+        foreach (var frame in new long[] { 0, 1, 29, 150, 359 })
+        {
+            // A position as a player reports it: in ticks of a ten-millionth of a second.
+            var start = StudioPreviewTimeMath.ToTicks(StudioPreviewTimeMath.FrameStart(frame, fps));
+            var late = start + 123_000;
+
+            // A position on a frame's first instant counts as inside it, by a thousandth of a frame.
+            Assert.Equal(frame, clip.NameAtPlayerTicks(start, out var atTheStart));
+            Assert.InRange(atTheStart, 0, 0.05);
+            Assert.Equal(frame, clip.NameAtPlayerTicks(late, out var into));
+            Assert.InRange(into, 12.3, 12.35);
+            Assert.Equal(frame, clip.NameAtPlayerTicks(StudioPreviewTimeMath.ToTicks(StudioPreviewTimeMath.FrameMiddle(frame, fps)), out var half));
+            Assert.InRange(half, 500 / fps, (500 / fps) + 0.05);
+            Assert.Equal(frame, clip.FrameAtPlayerTicks(late));
+        }
+    }
+
+    [Fact]
+    public void NameAtPlayerTicks_IsNotClampedToTheClip_AndClampFrameIs()
+    {
+        var clip = new StudioPreviewClipTiming(30, 360, 0);
+        var afterTheEnd = StudioPreviewTimeMath.ToTicks(StudioPreviewTimeMath.FrameMiddle(363, 30));
+
+        // Where one frame more or less matters, the last frame is not to stand for those after it.
+        Assert.Equal(363, clip.NameAtPlayerTicks(afterTheEnd, out _));
+        Assert.Equal(359, clip.FrameAtPlayerTicks(afterTheEnd));
+        Assert.Equal(359, clip.ClampFrame(363));
+        Assert.Equal(0, clip.ClampFrame(-4));
+        Assert.Equal(150, clip.ClampFrame(150));
+    }
+
     [Fact]
     public void FrameForSeek_ClampsAtBothEnds()
     {

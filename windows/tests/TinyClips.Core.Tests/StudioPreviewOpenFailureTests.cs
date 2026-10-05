@@ -80,6 +80,27 @@ public sealed class StudioPreviewOpenFailureTests
 
         Assert.Null(StudioPreviewOpenFailure.WorthAnotherAttempt(notAVideo, everyPlayerDeliveredAFrame: false));
         Assert.Null(StudioPreviewOpenFailure.WorthAnotherAttempt(noFrame, everyPlayerDeliveredAFrame: false));
+        Assert.Null(StudioPreviewOpenFailure.WorthAnotherAttempt(noFrame, everyPlayerDeliveredAFrame: false, aPlayerStoppedDecoding: false));
+    }
+
+    [Fact]
+    public void APlayerThatStoppedDecodingBeforeEveryPlayerHadAFrame_IsWorthAnotherAttempt()
+    {
+        // It opened the file and then said it could not decode it: that has been seen to pass.
+        var failure = new InvalidDataException("The screen recording could not be decoded (DecodingError).", new COMException(string.Empty, InvalidRequest));
+
+        var why = StudioPreviewOpenFailure.WorthAnotherAttempt(failure, everyPlayerDeliveredAFrame: false, aPlayerStoppedDecoding: true);
+
+        Assert.NotNull(why);
+        Assert.Contains("stopped decoding", why, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WhatAPlayerReported_DoesNotMakeAMissingFileOrATimeoutWorthAnotherAttempt()
+    {
+        Assert.Null(StudioPreviewOpenFailure.WorthAnotherAttempt(new FileNotFoundException("The screen recording is missing: screen.mp4", "screen.mp4"), everyPlayerDeliveredAFrame: false, aPlayerStoppedDecoding: true));
+        Assert.Null(StudioPreviewOpenFailure.WorthAnotherAttempt(new TimeoutException("The recording did not open in time."), everyPlayerDeliveredAFrame: false, aPlayerStoppedDecoding: true));
+        Assert.Null(StudioPreviewOpenFailure.WorthAnotherAttempt(new OperationCanceledException(), everyPlayerDeliveredAFrame: false, aPlayerStoppedDecoding: true));
     }
 
     [Theory]

@@ -47,6 +47,21 @@ internal sealed record StudioPreviewOptions
     public int PlayersFailedWhileOpening { get; init; }
 
     /// <summary>
+    /// Makes this many attempts to open see a player stop decoding before any player has handed
+    /// over a frame, starting with the first attempt. 1 is a player that does so while the
+    /// preview opens; 2 is one that does so again while it opens once more.
+    /// </summary>
+    public int PlayersStopDecodingWhileOpening { get; init; }
+
+    /// <summary>
+    /// How long opening waits before its second attempt (<see cref="StudioPreviewOpenFailure"/>).
+    /// What makes an open fail and then passes has been seen to last between a third of a second
+    /// and something over half a second: a second attempt made at once failed as the first had,
+    /// and the preview opened after it was fine.
+    /// </summary>
+    public TimeSpan SecondAttemptWait { get; init; } = TimeSpan.FromMilliseconds(750);
+
+    /// <summary>
     /// Makes the engine deaf to a player that offers its first frame again once the frames may be
     /// taken, so that the engine has to take every first frame itself. Only where the first frames
     /// are held back, on the software adapter. For the check of that way in: where it was
@@ -55,6 +70,37 @@ internal sealed record StudioPreviewOptions
     public bool PlayersKeepFirstFrames { get; init; }
 
     public StudioPreviewSeekSettings Seek { get; init; } = new();
+
+    /// <summary>
+    /// How the frames of playback are told apart. Its <c>BelievePositions</c> brings back what the
+    /// engine did before: every frame taken for the one its player's position names. For the
+    /// checks that show what that does when the process is held up.
+    /// </summary>
+    public StudioPreviewNamingSettings Naming { get; init; } = new();
+
+    /// <summary>
+    /// Called by the render thread before it draws a scene, with the device lock held; the thread
+    /// then sleeps for the time returned, still holding the lock. It stands for a draw that takes
+    /// long, which keeps the players waiting with their frames. For the checks of that.
+    /// </summary>
+    public Func<TimeSpan>? RenderDelay { get; init; }
+
+    /// <summary>
+    /// Called by the thread that stops the clock, right after it has told the clock to stop; the
+    /// thread then sleeps for the time returned before it goes on. It stands for a thread that is
+    /// kept from going on just then, as on a PC whose processors are all busy, while a player
+    /// still hands over the frame it had coming. For the checks of that.
+    /// </summary>
+    public Func<TimeSpan>? StopDelay { get; init; }
+
+    /// <summary>
+    /// Notes when the clock stopped only once the clock has been told and the thread has got on,
+    /// as the engine did before. A frame a player hands over in between is then taken for a frame
+    /// of playback, with the position the clock stopped on, which is the position of the frame
+    /// before it. For the check that shows what that does; it takes <see cref="StopDelay"/>, or
+    /// a PC that is busy, for the time in between to be long enough to matter.
+    /// </summary>
+    public bool StopNotedLate { get; init; }
 
     /// <summary>
     /// Receives a line for everything the players report to the render thread and everything the
@@ -156,14 +202,58 @@ internal sealed record StudioPreviewDiagnostics
     /// </summary>
     public long SecondAnswers { get; init; }
 
+    /// <summary>
+    /// Times the clock stopped on a frame whose number was not certain or rested on an inference
+    /// (<see cref="FramesShownUnsure"/>, <see cref="FramesInferred"/>), and the frame was fetched
+    /// anew. None while nothing holds the process up.
+    /// </summary>
+    public long RestsFetchedAnew { get; init; }
+
     /// <summary>Scenes drawn into a surface.</summary>
     public long FramesDrawn { get; init; }
 
-    /// <summary>Frames that set out after <c>Pause</c> had stopped the clock and were drawn all the same. Should stay 0.</summary>
+    /// <summary>Frames that set out after the clock had been stopped and were drawn all the same. Stays 0: such a frame is left out.</summary>
     public long FramesAfterPause { get; init; }
 
-    /// <summary>Frames a player handed over after <c>Pause</c> had stopped the clock, which were left out of the picture.</summary>
+    /// <summary>
+    /// Frames of playback that were left out of the picture because of <c>Pause</c>: a player
+    /// handed them over after the clock had stopped, or they had not reached the picture when
+    /// <c>Pause</c> returned.
+    /// </summary>
     public long LateFramesDiscarded { get; init; }
+
+    /// <summary>
+    /// Frames of playback of which it could not be told which frame they were when they were
+    /// handed over, per clip. None while nothing holds the process up.
+    /// </summary>
+    public long[] FramesWithoutNumber { get; init; } = [];
+
+    /// <summary>
+    /// Of those, the ones that were shown all the same, without a number, because the scene came
+    /// out the same whichever frame they were. The others were not shown, unless the frame after
+    /// them gave them their number (<see cref="FramesNumberedLate"/>).
+    /// </summary>
+    public long[] FramesShownWithoutNumber { get; init; } = [];
+
+    /// <summary>Of the frames that got their number, the ones that got it from the frame after them and were shown a moment late, per clip.</summary>
+    public long[] FramesNumberedLate { get; init; } = [];
+
+    /// <summary>
+    /// Frames shown under the number their position gave although that was not certain, because
+    /// the frames had been without a number for too long, per clip. Should stay 0 on a PC that
+    /// keeps up with the recording.
+    /// </summary>
+    public long[] FramesShownUnsure { get; init; } = [];
+
+    /// <summary>
+    /// Frames whose number rested on an inference about the player, per clip: drawn and reported
+    /// as any other, and fetched anew when the clock stopped on one. None while nothing holds
+    /// the process up.
+    /// </summary>
+    public long[] FramesInferred { get; init; } = [];
+
+    /// <summary>Frames that had their number and were written over by a later frame before the render thread took them, per clip.</summary>
+    public long[] FramesPassedOver { get; init; } = [];
 
     /// <summary>
     /// Frames of the screen clip that arrived while playing but had set out before the clock was

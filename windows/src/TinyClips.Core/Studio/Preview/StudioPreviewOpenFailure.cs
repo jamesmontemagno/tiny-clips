@@ -7,8 +7,9 @@ namespace TinyClips.Core.Studio.Preview;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Opening can be tried again at no cost to anybody: nothing has been shown, and nobody has been
-/// told anything. Two kinds of failure are tried again, once.
+/// Opening can be tried again at no cost to anybody but time: nothing has been shown, and nobody
+/// has been told anything. Three kinds of failure are tried again, once, after a wait
+/// (<see cref="StudioPreviewOptions.SecondAttemptWait"/>).
 /// </para>
 /// <para>
 /// A graphics device that was lost. One that is lost once the preview is open is rebuilt, once,
@@ -24,8 +25,21 @@ namespace TinyClips.Core.Studio.Preview;
 /// first position change, once in several thousand previews opened one straight after the other.
 /// </para>
 /// <para>
-/// Everything else fails at once: a file that is missing, a file no player gets a frame out of,
-/// an open that timed out or was cancelled.
+/// A player that stopped decoding before every player had handed over a frame: it reported that
+/// it could not decode what it had opened, which is not what it says of a file that is no video.
+/// Seen from the editor's window: two editors opened 0.4 s apart both failed that way within
+/// 0.3 s (<c>DecodingError</c>), and the third, 0.4 s later, opened. A file that really cannot
+/// be decoded from its first frame on costs the wait and a second look before the user is told.
+/// </para>
+/// <para>
+/// The wait is there because what passes does not pass at once. Measured in 4,000 previews
+/// opened straight after another was closed: one lost its device in a player's copy, and so
+/// did the second attempt, made at once, 0.3 s later. The preview opened after that, whose
+/// players made their first copies half a second after the first failure, was fine.
+/// </para>
+/// <para>
+/// Everything else fails at once: a file that is missing, a file that is no video, a file no
+/// player gets a frame out of in the time allowed, an open that timed out or was cancelled.
 /// </para>
 /// </remarks>
 internal static class StudioPreviewOpenFailure
@@ -35,7 +49,12 @@ internal static class StudioPreviewOpenFailure
     /// or null when it is not.
     /// </summary>
     /// <param name="everyPlayerDeliveredAFrame">Whether each player had handed over at least one frame before the open failed.</param>
-    public static string? WorthAnotherAttempt(Exception failure, bool everyPlayerDeliveredAFrame)
+    /// <param name="aPlayerStoppedDecoding">
+    /// Whether a player reported that it could not decode what it had opened
+    /// (<c>MediaPlayerError.DecodingError</c>, or an error it could not name), as against a
+    /// source it does not support.
+    /// </param>
+    public static string? WorthAnotherAttempt(Exception failure, bool everyPlayerDeliveredAFrame, bool aPlayerStoppedDecoding = false)
     {
         ArgumentNullException.ThrowIfNull(failure);
         if (failure is OperationCanceledException)
@@ -48,8 +67,13 @@ internal static class StudioPreviewOpenFailure
             return "a graphics device was lost";
         }
 
-        return failure is InvalidDataException && everyPlayerDeliveredAFrame
-            ? "a player failed after every player had handed over a frame"
+        if (failure is not InvalidDataException)
+        {
+            return null;
+        }
+
+        return everyPlayerDeliveredAFrame ? "a player failed after every player had handed over a frame"
+            : aPlayerStoppedDecoding ? "a player stopped decoding before every player had handed over a frame"
             : null;
     }
 

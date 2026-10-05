@@ -37,6 +37,7 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private const int ThreadJoinTimeoutMilliseconds = 5_000;
     private const int PauseDeliveryWaitMilliseconds = 50;
     private const int PausePassWaitMilliseconds = 100;
+    private const int PauseRoundWaitMilliseconds = 500;
     private const int FilesClosedTimeoutMilliseconds = 5_000;
 
     // Proving players that came from another graphics adapter (ProvePlayers): how many rounds and
@@ -71,6 +72,10 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private readonly bool _forceMuted;
     private readonly bool _zeroVolume;
     private readonly bool _softwareDevice;
+    private readonly StudioPreviewNamingSettings _naming;
+    private readonly Func<TimeSpan>? _renderDelay;
+    private readonly Func<TimeSpan>? _stopDelay;
+    private readonly bool _stopNotedLate;
     private readonly TypedEventHandler<MediaTimelineController, object> _endedHandler;
     private readonly TypedEventHandler<MediaTimelineController, MediaTimelineControllerFailedEventArgs> _controllerFailedHandler;
 
@@ -96,7 +101,7 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private readonly StudioPreviewPosition _position = new();
     private readonly Action<string>? _trace;
     private readonly long _createdAt = Stopwatch.GetTimestamp();
-    private long _pausedAt = long.MaxValue;
+    private long _pausedAt = StudioPreviewHandOverKinds.Never;
     private volatile bool _discardLateFrames;
     private long _lateFramesDiscarded;
     private Task? _closeTask;
@@ -111,6 +116,8 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private long _firstFramesReleasedAt;
     private readonly int _openAttempt;
     private readonly bool _failsAfterFirstFrames;
+    private readonly bool _stopsDecodingBeforeFirstFrames;
+    private volatile bool _aPlayerStoppedDecoding;
     private int _firstFramesLookedAt;
     private int _firstFramesEmpty;
     private int _firstFramesPulled;
@@ -143,6 +150,7 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         _openAttempt = openAttempt;
         _simulatedDeviceLosses = openAttempt <= options.DevicesLostWhileOpening ? 1 : 0;
         _failsAfterFirstFrames = openAttempt <= options.PlayersFailedWhileOpening;
+        _stopsDecodingBeforeFirstFrames = openAttempt <= options.PlayersStopDecodingWhileOpening;
         _events = events;
         _projectDirectory = projectDirectory;
         _latestProject = project;
@@ -150,6 +158,10 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         _forceMuted = options.ForceMuted;
         _zeroVolume = options.ForceMuted || options.ZeroVolume;
         _softwareDevice = options.SoftwareDevice;
+        _naming = options.Naming;
+        _renderDelay = options.RenderDelay;
+        _stopDelay = options.StopDelay;
+        _stopNotedLate = options.StopNotedLate;
         _trustsFirstFrames = options.TrustFirstFrames;
         _looksAtFirstFrames = graphics.IsSoftware && !options.TrustFirstFrames;
         _playersKeepFirstFrames = _looksAtFirstFrames && options.PlayersKeepFirstFrames;
@@ -173,6 +185,13 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         _timeline = new StudioPreviewTimeline(screenSource.Duration, frameRate, tracks);
         _policy = new StudioPreviewSeekPolicy(this, _timeline, options.Seek);
         _consecutiveCopyFailures = new int[tracks.Count];
+        _tookFrame = new bool[tracks.Count];
+        _framesWithoutNumber = new long[tracks.Count];
+        _framesShownWithoutNumber = new long[tracks.Count];
+        _framesNumberedLate = new long[tracks.Count];
+        _framesShownUnsure = new long[tracks.Count];
+        _framesInferred = new long[tracks.Count];
+        _framesPassedOver = new long[tracks.Count];
         _engineThread = NewThread(EngineLoop, "TinyClips.StudioPreview.Render");
         _eventThread = NewThread(EventLoop, "TinyClips.StudioPreview.Events");
         _endedHandler = (_, _) => Post(new Signal(SignalKind.Ended, 0, Stopwatch.GetTimestamp()));
@@ -339,13 +358,20 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
 
                 // What went wrong may pass: see StudioPreviewOpenFailure. Then everything is opened
                 // once more, on a new device and with new players.
-                var why = StudioPreviewOpenFailure.WorthAnotherAttempt(ex, engine is { EveryPlayerDeliveredAFrame: true });
+                var deliveredAll = engine is { EveryPlayerDeliveredAFrame: true };
+                var why = StudioPreviewOpenFailure.WorthAnotherAttempt(ex, deliveredAll, engine is { APlayerStoppedDecoding: true });
                 if (attempt >= OpenAttemptLimit || why is null || cancellationToken.IsCancellationRequested)
                 {
                     throw;
                 }
 
-                options.Trace?.Invoke($"          {why} while the preview opened (0x{(ex.InnerException ?? ex).HResult:X8}): opening once more");
+                options.Trace?.Invoke($"          {why} while the preview opened (0x{(ex.InnerException ?? ex).HResult:X8}): opening once more in {options.SecondAttemptWait.TotalMilliseconds:0} ms");
+                if (options.SecondAttemptWait > TimeSpan.Zero)
+                {
+                    // What made this attempt fail is given the time to pass. It has been seen to
+                    // outlast a second attempt that was made at once.
+                    cancellationToken.WaitHandle.WaitOne(options.SecondAttemptWait);
+                }
             }
         }
     }
@@ -366,6 +392,12 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             return true;
         }
     }
+
+    /// <summary>
+    /// Whether a player reported that it could not decode what it had opened, as against a source
+    /// it does not support: the one kind of failure before the first frames that may pass.
+    /// </summary>
+    private bool APlayerStoppedDecoding => _aPlayerStoppedDecoding;
 
     /// <summary>The attempt that opened this preview: 1, or 2 when the first failed in a way that may pass.</summary>
     internal int OpenAttempt => _openAttempt;
@@ -411,11 +443,20 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     }
 
     /// <summary>
-    /// Stops playback. When it returns the clock is stopped, what the players had handed over is
-    /// drawn, and <see cref="Position"/> is the start of the frame the screen shows: neither moves
-    /// on afterwards. A camera that stopped a frame apart is then brought onto the frame that
-    /// belongs with the screen's. The call can take a few milliseconds.
+    /// Stops playback. When it returns the clock is stopped, <see cref="Position"/> is the start
+    /// of the frame the screen's picture shows, and neither moves on afterwards: a frame of this
+    /// playback that has not reached the picture by then never does. A camera that stopped a
+    /// frame apart is then brought onto the frame that belongs with the screen's. The call takes
+    /// a few milliseconds as a rule, and as long as the render thread's round when that is held up.
     /// </summary>
+    /// <remarks>
+    /// The frame is the last one that had a number (<see cref="StudioPreviewFrameNamer"/>). On a
+    /// PC that is held up, the scene may have shown a later frame than that a moment before:
+    /// one of which it could not be told which frame it was. It is taken off the scene here.
+    /// When the number rested on an inference about the player, the frame is fetched anew
+    /// once the call has returned. The picture changes then only if the inference was wrong,
+    /// and it changes to the frame <see cref="Position"/> names.
+    /// </remarks>
     public void Pause()
     {
         if (_closing)
@@ -445,6 +486,24 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             // one is on the picture and in the position.
             WaitForDeliveries(PauseDeliveryWaitMilliseconds);
             WaitForPass(PausePassWaitMilliseconds);
+
+            // That is so when nothing holds the process up. When something does, a frame can
+            // still be on its way: from here on it is left out, so that what the caller reads
+            // now stays true. The render thread is between two rounds while the lock is held.
+            // Not for ever: a render thread that hangs must not take the caller with it.
+            var entered = Monitor.TryEnter(_roundLock, PauseRoundWaitMilliseconds);
+            _playbackShut = true;
+            if (entered)
+            {
+                // With the render thread kept out of its round, its pictures can be put right
+                // from here. One pass later the scene shows them.
+                var redraw = ShowNumberedPictures();
+                Monitor.Exit(_roundLock);
+                if (redraw)
+                {
+                    WaitForPass(PausePassWaitMilliseconds);
+                }
+            }
         }
 
         RaiseLater(new PreviewEvent(PreviewEventKind.IsPlayingChanged));
@@ -532,7 +591,7 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             player.TimelineController = _controller;
 
             source = MediaSource.CreateFromUri(new Uri(path));
-            var clip = new StudioPreviewClip(index, name, path, width, height, timing, player, source);
+            var clip = new StudioPreviewClip(index, name, path, width, height, timing, player, source, _naming);
             clip.FrameHandler = (sender, _) => OnVideoFrameAvailable(clip, sender);
             clip.OpenedHandler = (_, _) => Post(new Signal(SignalKind.Opened, index, Stopwatch.GetTimestamp()));
             clip.EndedHandler = (_, _) =>
@@ -540,13 +599,22 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
                 clip.EndReached();
                 Post(new Signal(SignalKind.PlayerEnded, index, Stopwatch.GetTimestamp()));
             };
-            clip.FailedHandler = (_, args) => Post(new Signal(
-                SignalKind.MediaFailed,
-                index,
-                Stopwatch.GetTimestamp(),
-                0,
-                $"The {name} recording could not be decoded ({args.Error}{(string.IsNullOrWhiteSpace(args.ErrorMessage) ? string.Empty : ": " + args.ErrorMessage.Trim())}).",
-                args.ExtendedErrorCode));
+            clip.FailedHandler = (_, args) =>
+            {
+                // What a player says of a file that is no video is SourceNotSupported.
+                if (args.Error is MediaPlayerError.DecodingError or MediaPlayerError.Unknown)
+                {
+                    _aPlayerStoppedDecoding = true;
+                }
+
+                Post(new Signal(
+                    SignalKind.MediaFailed,
+                    index,
+                    Stopwatch.GetTimestamp(),
+                    0,
+                    $"The {name} recording could not be decoded ({args.Error}{(string.IsNullOrWhiteSpace(args.ErrorMessage) ? string.Empty : ": " + args.ErrorMessage.Trim())}).",
+                    args.ExtendedErrorCode));
+            };
             clip.SeekCompletedHandler = (_, _) =>
             {
                 var at = Stopwatch.GetTimestamp();
@@ -589,6 +657,14 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         if (_trace is not null)
         {
             Note("sources set");
+        }
+
+        if (_stopsDecodingBeforeFirstFrames)
+        {
+            // For the check of what opening does about a player that stops decoding at once.
+            var failing = _clips[0];
+            _aPlayerStoppedDecoding = true;
+            Post(new Signal(SignalKind.MediaFailed, failing.Index, Stopwatch.GetTimestamp(), 0, $"The {failing.Name} recording could not be decoded (DecodingError, simulated).", new InvalidOperationException("Simulated failure of a player.")));
         }
 
         if (!_openedGate.Wait(OpenTimeoutMilliseconds, cancellationToken))
@@ -804,14 +880,44 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             Note("clock stopped");
         }
 
+        if (_stopNotedLate)
+        {
+            // As it was before, for the check that shows what the order below is for.
+            _controller.Pause();
+            _controllerRunning = false;
+            HoldAfterStop();
+            Interlocked.Exchange(ref _pausedAt, Stopwatch.GetTimestamp());
+            _discardLateFrames = true;
+            return;
+        }
+
+        // A player can still hand over a frame after the clock has stopped: the one that comes
+        // due in the moment the player goes on by itself, with the position the clock stopped
+        // on, which is the position of the frame before it. That is no frame of this playback
+        // (StudioPreviewHandOverKinds), and it is left out until the render thread asks the
+        // players for something again.
+        //
+        // From when on that is so is said before the clock is told, and that frames are left out
+        // is said before from when. The clock stops at once, and this thread can be kept from
+        // saying anything afterwards for longer than a frame lasts: seen with every processor
+        // busy, when a frame that set out 8 ms after the clock had stopped was taken for a frame
+        // of playback, and by its position for the frame before it. A frame that sets out
+        // between here and the clock's stopping is left out as well, which costs nothing: the
+        // picture rests on the frame before it, and the players are brought there.
+        _discardLateFrames = true;
+        Interlocked.Exchange(ref _pausedAt, Stopwatch.GetTimestamp());
         _controller.Pause();
         _controllerRunning = false;
-        Interlocked.Exchange(ref _pausedAt, Stopwatch.GetTimestamp());
+        HoldAfterStop();
+    }
 
-        // A player can still hand over one more frame after the clock has stopped. The picture
-        // must not move once Pause() has returned, so such a frame is left out until the render
-        // thread asks the players for something again.
-        _discardLateFrames = true;
+    // What the checks make of a thread that is kept from going on once the clock has stopped.
+    private void HoldAfterStop()
+    {
+        if (_stopDelay is { } delay && delay() is { Ticks: > 0 } wait)
+        {
+            Thread.Sleep(wait);
+        }
     }
 
     /// <summary>Waits, briefly, until no frame is being copied any more.</summary>

@@ -7,15 +7,27 @@ using Windows.Media.Playback;
 namespace TinyClips.Core.Studio.Preview;
 
 /// <summary>
-/// One clip of the preview: a frame-server <see cref="MediaPlayer"/> and the texture its frames are
-/// copied into.
+/// One clip of the preview: a frame-server <see cref="MediaPlayer"/> and the textures its frames
+/// go through.
 /// </summary>
 /// <remarks>
-/// A clip has two texture slots. The copy target is where the player's next frame goes; the draw
-/// source is the texture the scene is drawn from. They are the same texture except just after the
-/// copy target was replaced by one of another size: the old one stays the draw source until a
-/// frame has reached the new one, so the picture never shows an empty texture. Both slots, and
-/// <see cref="CopyHoldsFrame"/>, are only touched with the device lock held.
+/// <para>
+/// A clip has four textures. The copy target is where the player puts its next frame, whatever
+/// that frame is. The picture is what the scene is drawn from: the render thread takes a frame
+/// from the copy target into it once the frame has a number, and never before, so the picture
+/// and the number it is drawn under always belong together. The third holds a frame that waits
+/// to be taken when the player is about to write over it: that is how a frame that only got its
+/// number from the frame after it is still shown, and how two frames that come a hundredth of
+/// a second apart are both drawn. The fourth is a picture without a number: a frame of which it
+/// cannot be told which one it is, shown in place of the picture for as long as the clock runs
+/// and the scene is laid out the same way whichever frame it is. Nothing is said about it to
+/// anyone, and when the clock stops the picture with a number is the picture again.
+/// </para>
+/// <para>
+/// The copy target and the kept frame, and what is said about them here, are only touched with
+/// the device lock held. The two pictures are touched by the render thread alone, with the lock
+/// held, or by a thread that keeps the render thread out of its round.
+/// </para>
 /// </remarks>
 internal sealed class StudioPreviewClip
 {
@@ -33,7 +45,7 @@ internal sealed class StudioPreviewClip
     private volatile bool _hasDeliveredFrame;
     private volatile bool _firstFrameWasEmpty;
 
-    public StudioPreviewClip(int index, string name, string path, int sourceWidth, int sourceHeight, StudioPreviewClipTiming timing, MediaPlayer player, MediaSource source)
+    public StudioPreviewClip(int index, string name, string path, int sourceWidth, int sourceHeight, StudioPreviewClipTiming timing, MediaPlayer player, MediaSource source, StudioPreviewNamingSettings? naming = null)
     {
         Index = index;
         Name = name;
@@ -44,6 +56,7 @@ internal sealed class StudioPreviewClip
         Player = player;
         Session = player.PlaybackSession;
         Source = source;
+        Namer = new StudioPreviewFrameNamer(timing.FrameRate, naming);
     }
 
     /// <summary>0 for the screen, 1 for the camera. Also the track number of the seek policy.</summary>
@@ -66,6 +79,9 @@ internal sealed class StudioPreviewClip
 
     public MediaSource Source { get; }
 
+    /// <summary>Tells which frame the player hands over while the clock runs. Device lock.</summary>
+    public StudioPreviewFrameNamer Namer { get; }
+
     public ID3D11Texture2D? CopyTexture { get; set; }
 
     public IDirect3DSurface? CopySurface { get; set; }
@@ -75,14 +91,46 @@ internal sealed class StudioPreviewClip
     /// <summary>A frame has been copied into the current copy target.</summary>
     public bool CopyHoldsFrame { get; set; }
 
-    public ID3D11Texture2D? DrawTexture { get; set; }
+    /// <summary>Counts what was put into a copy target, so that a frame in it can be told from the one that came after.</summary>
+    public long CopySerial { get; set; }
 
-    public IDirect3DSurface? DrawSurface { get; set; }
+    /// <summary>The frame in the copy target has its number and waits for the render thread to take it into the picture.</summary>
+    public bool CopyWaits { get; set; }
+
+    /// <summary>The frame in the copy target is the one the picture shows: the player's own current frame is on the picture.</summary>
+    public bool CopyIsPicture { get; set; }
+
+    /// <summary>Holds a frame that still waits to be taken when the player writes the next one over it. Made when first needed.</summary>
+    public ID3D11Texture2D? KeptTexture { get; set; }
+
+    public StudioPreviewCopyTargetSize KeptSize { get; set; }
+
+    /// <summary>The <see cref="CopySerial"/> the kept frame had.</summary>
+    public long KeptSerial { get; set; }
+
+    public bool KeptWaits { get; set; }
+
+    /// <summary>The picture: what the scene is drawn from.</summary>
+    public ID3D11Texture2D? DrawTexture { get; set; }
 
     public StudioPreviewCopyTargetSize DrawSize { get; set; }
 
-    /// <summary>The value of <see cref="CopyCount"/> when the scene was last drawn. Render thread only.</summary>
-    public long DrawnCopyCount { get; set; } = -1;
+    /// <summary>A later frame than the picture's, of which it is not known which frame it is.</summary>
+    public ID3D11Texture2D? LiveTexture { get; set; }
+
+    public StudioPreviewCopyTargetSize LiveSize { get; set; }
+
+    /// <summary>The <see cref="CopySerial"/> the frame in <see cref="LiveTexture"/> had.</summary>
+    public long LiveSerial { get; set; }
+
+    /// <summary>The scene is drawn from <see cref="LiveTexture"/> in place of the picture.</summary>
+    public bool ShowsLive { get; set; }
+
+    /// <summary>How often what the scene is drawn from has changed. Render thread only.</summary>
+    public long PictureCount { get; set; }
+
+    /// <summary>The value of <see cref="PictureCount"/> when the scene was last drawn. Render thread only.</summary>
+    public long DrawnPictureCount { get; set; } = -1;
 
     /// <summary>The source has opened. Render thread only.</summary>
     public bool Opened { get; set; }
@@ -103,15 +151,8 @@ internal sealed class StudioPreviewClip
     /// </summary>
     public long CopyCount => Interlocked.Read(ref _copyCount);
 
-    /// <summary>Of those, the ones a <c>VideoFrameAvailable</c> callback made. Each is followed by a signal to the render thread.</summary>
+    /// <summary>Of those, the ones a <c>VideoFrameAvailable</c> callback made.</summary>
     public long DeliveredCount => Interlocked.Read(ref _deliveredCount);
-
-    /// <summary>
-    /// Delivered frames the render thread has been told about. While it is behind
-    /// <see cref="DeliveredCount"/>, the texture holds a frame the render thread cannot name yet.
-    /// Render thread only.
-    /// </summary>
-    public long AcknowledgedCount { get; set; }
 
     /// <summary><c>VideoFrameAvailable</c> callbacks that have started.</summary>
     public long CallbacksStarted => Interlocked.Read(ref _callbacksStarted);
@@ -186,6 +227,9 @@ internal sealed class StudioPreviewClip
     public void FrameCopied(bool delivered)
     {
         CopyHoldsFrame = true;
+        CopySerial++;
+        CopyWaits = false;
+        CopyIsPicture = false;
         _hasDeliveredFrame = true;
         Interlocked.Increment(ref _copyCount);
         if (delivered)

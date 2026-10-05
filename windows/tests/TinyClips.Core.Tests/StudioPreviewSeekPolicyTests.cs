@@ -1572,6 +1572,166 @@ public sealed class StudioPreviewSeekPolicyTests
     }
 
     [Fact]
+    public void WithoutHoldingTheFirstChangeAfterPlaying_ItIsReportedAsSoonAsItsFramesAreThere()
+    {
+        var h = new Harness(settings: new StudioPreviewSeekSettings { TicksPerSecond = 1000, HoldFirstChangeAfterPlaying = false });
+        h.Play(from: 100);
+
+        h.Advance(500);
+        h.Frame(Screen, 115);
+        h.Frame(Camera, 109);
+        h.Policy.SetPlaying(false);
+        h.Policy.RequestSeek(300);
+        h.Advance(40);
+        h.Pump();
+        Assert.Equal(["pause", "seek 300"], h.Calls);
+
+        h.Advance(70);
+        h.Frame(Screen, 300);
+        h.Frame(Camera, 294);
+        h.Pump();
+
+        // Not held until the players have gone quiet: this is what the rule is measured against.
+        Assert.Equal(StudioPreviewLandingKind.Seek, Assert.Single(h.Landings).Kind);
+        Assert.False(h.Policy.HoldPicture);
+
+        // A second frame for the same change is still counted: the first of the two is the one
+        // that was drawn, and may have been a frame nobody asked for.
+        h.Advance(8);
+        h.Frame(Screen, 300);
+        Assert.Equal(1, h.Policy.SecondAnswers);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Pause_AfterAFrameThatWasShownUnsure_HasThatClipsFrameBroughtAnew(bool unsure)
+    {
+        var h = new Harness();
+        h.Play(from: 100);
+
+        // The clips come to rest on frames that go together. Of the screen's it is not certain
+        // that it is the frame it was shown as.
+        h.Advance(1650);
+        h.Policy.OnFrame(Screen, 150, h.Now, unsure);
+        h.Frame(Camera, 144);
+        h.Policy.SetPlaying(false);
+        h.Advance(40);
+        h.Pump();
+        Assert.Equal(["pause", "seek 150"], h.Calls);
+
+        // The players are where the clock was put, as far as they know, and hand nothing over.
+        h.Advance(30);
+        h.Completed(Screen);
+        h.Completed(Camera);
+        h.Pump();
+        h.Quiet();
+
+        if (!unsure)
+        {
+            var landing = Assert.Single(h.Landings);
+            Assert.Equal(150, landing.Frame);
+            Assert.Equal(StudioPreviewLandingKind.Snap, landing.Kind);
+            Assert.Equal(["pause", "seek 150"], h.Calls);
+            return;
+        }
+
+        // Not taken for reached. The screen's frame is fetched by way of another frame.
+        Assert.Empty(h.Landings);
+        Assert.True(h.Policy.HoldPicture);
+        Assert.Equal(3, h.Calls.Count);
+        var detour = h.LastSeek;
+        Assert.NotEqual(150, detour);
+
+        h.Advance(50);
+        h.DeliverDetour(detour);
+        Assert.Equal("seek 150", h.Calls[^1]);
+        h.Advance(50);
+        h.Deliver(150);
+        h.Pump();
+        h.Quiet();
+
+        var back = Assert.Single(h.Landings);
+        Assert.Equal(150, back.Frame);
+        Assert.True(back.Confirmed);
+        Assert.False(h.Policy.HoldPicture);
+
+        // The frame that came for it is certain, and the next pause finds nothing to fetch.
+        Assert.Equal(150, h.Policy.ShownFrame(Screen));
+    }
+
+    [Fact]
+    public void ASeekWhilePlaying_ToTheFrameAClipWasTakenToShow_BringsItAnew_WhenItsPictureIsUncertain()
+    {
+        var h = new Harness();
+        h.Play(from: 100);
+        h.Advance(1650);
+        h.Frame(Screen, 150);
+        h.Frame(Camera, 144);
+
+        // The owner has put a later frame on the screen's picture without knowing which one it
+        // is. Then the very frame the screen delivered last is asked for.
+        h.Policy.OnPictureUncertain(Screen);
+        h.Policy.RequestSeek(150);
+        h.Pump();
+        h.Advance(40);
+        h.Pump();
+        Assert.Equal(["pause", "seek 150"], h.Calls);
+
+        // The players are where the clock was put, as far as they know, and hand nothing over.
+        h.Advance(30);
+        h.Completed(Screen);
+        h.Completed(Camera);
+        h.Pump();
+        h.Quiet();
+
+        // Not taken for reached: the screen's frame is fetched by way of another frame.
+        Assert.Empty(h.Landings);
+        Assert.True(h.Policy.HoldPicture);
+        Assert.Equal(3, h.Calls.Count);
+        var detour = h.LastSeek;
+        Assert.NotEqual(150, detour);
+
+        h.Advance(50);
+        h.DeliverDetour(detour);
+        Assert.Equal("seek 150", h.Calls[^1]);
+        h.Advance(50);
+        h.Deliver(150);
+        h.Pump();
+        h.Quiet();
+
+        var landing = Assert.Single(h.Landings);
+        Assert.Equal(150, landing.Frame);
+        Assert.True(landing.Confirmed);
+    }
+
+    [Fact]
+    public void AFrameDeliveredAfterThePictureWasUncertain_TakesThatBack()
+    {
+        var h = new Harness();
+        h.Play(from: 100);
+        h.Advance(1650);
+        h.Frame(Screen, 149);
+        h.Frame(Camera, 144);
+        h.Policy.OnPictureUncertain(Screen);
+
+        // The frame after it comes with its number, and is the picture now.
+        h.Frame(Screen, 150);
+        h.Policy.SetPlaying(false);
+        h.Advance(40);
+        h.Pump();
+        h.Advance(30);
+        h.Completed(Screen);
+        h.Completed(Camera);
+        h.Pump();
+        h.Quiet();
+
+        var landing = Assert.Single(h.Landings);
+        Assert.Equal(150, landing.Frame);
+        Assert.Equal(["pause", "seek 150"], h.Calls);
+    }
+
+    [Fact]
     public void Pause_WhenAlreadyPaused_DoesNothing()
     {
         var h = new Harness();
@@ -2611,10 +2771,10 @@ public sealed class StudioPreviewSeekPolicyTests
     {
         private readonly StudioPreviewTimeline _timeline;
 
-        public Harness(StudioPreviewTimeline? timeline = null, bool cameraDelivered = true)
+        public Harness(StudioPreviewTimeline? timeline = null, bool cameraDelivered = true, StudioPreviewSeekSettings? settings = null)
         {
             _timeline = timeline ?? new StudioPreviewTimeline(30, 30, [new(30, 900, 0), new(30, 900, 0.2)]);
-            Policy = new StudioPreviewSeekPolicy(Players, _timeline, new StudioPreviewSeekSettings { TicksPerSecond = 1000 }, () => Now);
+            Policy = new StudioPreviewSeekPolicy(Players, _timeline, settings ?? new StudioPreviewSeekSettings { TicksPerSecond = 1000 }, () => Now);
 
             // A player hands over its first frame when it opens, unless its clip has not started yet.
             for (var track = 0; track < _timeline.TrackCount; track++)
