@@ -11,7 +11,7 @@ namespace TinyClips.Tools.StudioRenderCheck;
 /// </summary>
 internal static class Program
 {
-    private static readonly string[] Groups = ["sources", "recorder", "renderer", "zoom", "scenes", "exports", "encoders", "color", "robustness", "poster", "service", "warp", "speed"];
+    private static readonly string[] Groups = ["sources", "recorder", "renderer", "people", "zoom", "scenes", "exports", "encoders", "color", "robustness", "poster", "service", "warp", "speed"];
 
     private static async Task<int> Main(string[] args)
     {
@@ -37,12 +37,20 @@ internal static class Program
                     root = Path.GetFullPath(args[++index]);
                     keep = true;
                     break;
+                case "--person-model" when index + 1 < args.Length:
+                    PeopleChecks.ModelPath = Path.GetFullPath(args[++index]);
+                    break;
+                case "--person-photo" when index + 1 < args.Length:
+                    PeopleChecks.PhotoPath = Path.GetFullPath(args[++index]);
+                    break;
                 default:
-                    Console.WriteLine("StudioRenderCheck [--only group,group] [--match text] [--keep] [--out folder]");
+                    Console.WriteLine("StudioRenderCheck [--only group,group] [--match text] [--keep] [--out folder] [--person-model file] [--person-photo file]");
                     Console.WriteLine("  groups: " + string.Join(", ", Groups));
                     Console.WriteLine("  --match run only the checks whose name contains the text");
                     Console.WriteLine("  --keep  keep the clips and exports (they are always kept when a check fails)");
                     Console.WriteLine("  --out   put them in this folder, and keep them");
+                    Console.WriteLine("  --person-model  a segmentation model (ONNX) to find people with, for the one check that tries a real one");
+                    Console.WriteLine("  --person-photo  a photograph with a person in it, for that check to draw");
                     return args[index] is "--help" or "-h" or "/?" ? 0 : 2;
             }
         }
@@ -75,6 +83,7 @@ internal static class Program
             await SourceChecks.Run(harness).ConfigureAwait(false);
             await RecorderChecks.Run(harness).ConfigureAwait(false);
             await RendererChecks.Run(harness).ConfigureAwait(false);
+            await PeopleChecks.Run(harness).ConfigureAwait(false);
             await ZoomChecks.Run(harness).ConfigureAwait(false);
             await SceneChecks.Run(harness).ConfigureAwait(false);
             await ExportChecks.Run(harness).ConfigureAwait(false);
