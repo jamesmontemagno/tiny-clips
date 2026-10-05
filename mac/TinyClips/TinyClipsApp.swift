@@ -40,6 +40,10 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Quitting closes no window, so an editor's last edit would otherwise be lost.
+        MainActor.assumeIsolated {
+            StudioWindowRegistry.shared.saveAllBeforeQuitting()
+        }
         SingleInstanceCoordinator.shared.release()
     }
 }

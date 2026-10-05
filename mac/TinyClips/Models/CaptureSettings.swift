@@ -384,10 +384,14 @@ class CaptureSettings: ObservableObject {
     @AppStorage("videoAfterRecording") private var storedVideoAfterRecording: String = ""
     var videoAfterRecording: VideoAfterRecording {
         get {
-            if let value = VideoAfterRecording(rawValue: storedVideoAfterRecording) {
-                return value
+            // `showTrimmer` has writers that do not know this property: the toggle shown while
+            // Studio is switched off, onboarding, and older builds. The recorder reads it too.
+            // So the trimmer is read from there, where the last choice made anywhere is, and
+            // only the choice of Studio, which nothing else knows of, from what was stored here.
+            if showTrimmer {
+                return .trimmer
             }
-            return showTrimmer ? .trimmer : .save
+            return storedVideoAfterRecording == VideoAfterRecording.studio.rawValue ? .studio : .save
         }
         set {
             storedVideoAfterRecording = newValue.rawValue

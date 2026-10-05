@@ -909,6 +909,8 @@ class CaptureManager: ObservableObject {
                     }
                 } catch {
                     SaveService.shared.showError("Studio project could not be created: \(error.localizedDescription)")
+                    // Nothing is being recorded, so the outline of the region must not stay up.
+                    self.dismissRegionIndicator()
                     return
                 }
 
@@ -1634,16 +1636,24 @@ class CaptureManager: ObservableObject {
                     let rescueURL = videoShouldSaveImmediately
                         ? SaveService.shared.generateURL(for: .video)
                         : TinyClipsTemporaryFiles.makeURL(fileExtension: CaptureType.video.fileExtension)
+                    var wasRescued = false
                     do {
                         try FileManager.default.moveItem(at: studioScreenURL, to: rescueURL)
                         savedVideoURL = rescueURL
+                        wasRescued = true
                         SaveService.shared.showError("The Studio project could not be saved, so the recording was kept as a regular video. \(error.localizedDescription)")
                     } catch {
                         savedVideoURL = nil
-                        SaveService.shared.showError("Studio project save failed: \(error.localizedDescription)")
+                        SaveService.shared.showError("Studio project save failed: \(error.localizedDescription) The screen recording is still at \(studioScreenURL.path), where it is kept for a day.")
                     }
                     savedWebcamURL = nil
-                    studioCoordinatorAtStop.deleteUnfinishedProject()
+                    if wasRescued {
+                        studioCoordinatorAtStop.deleteUnfinishedProject()
+                    } else {
+                        // The recording could not be moved out either, so the project's folder
+                        // holds the only copy of it. Deleting the folder would lose the recording.
+                        studioCoordinatorAtStop.leaveUnfinishedProject()
+                    }
                 }
             } else {
                 studioCoordinatorAtStop.deleteUnfinishedProject()

@@ -22,6 +22,13 @@ final class StudioWindowRegistry {
         !windows.isEmpty
     }
 
+    /// Writes the unsaved edits of every open editor. For the moment the app quits.
+    func saveAllBeforeQuitting() {
+        for window in windows.values {
+            window.saveBeforeQuitting()
+        }
+    }
+
     /// Opens the project a video was exported from. Returns false when Studio is off, or the video
     /// did not come from a project that is still stored.
     @discardableResult
@@ -202,6 +209,8 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     }
 
     // MARK: Menu actions
+
+    func saveBeforeQuitting() { viewModel.saveBeforeQuitting() }
 
     @objc func studioExport(_ sender: Any?) { viewModel.export() }
     @objc func studioUndo(_ sender: Any?) { viewModel.undo() }

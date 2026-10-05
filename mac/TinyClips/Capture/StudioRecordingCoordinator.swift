@@ -21,6 +21,7 @@ final class StudioRecordingCoordinator {
     private var cursorTimer: Timer?
     private var cursorSamples: [StudioCaptureCursorSampleInput] = []
     private var completedProjectID: String?
+    private var keepsUnfinishedFolder = false
 
     /// - Parameter frameRate: The frame rate the screen recording is made at.
     init(
@@ -171,12 +172,22 @@ final class StudioRecordingCoordinator {
         return paths.id
     }
 
-    /// Deletes the project folder unless the recording was completed. Safe to call more than once.
+    /// Deletes the project folder unless the recording was completed, or was left where it is
+    /// with `leaveUnfinishedProject()`. Safe to call more than once.
     func deleteUnfinishedProject() {
         stopCursorSampling()
         StudioMaintenance.recordingDidEnd(projectID: paths.id)
-        guard completedProjectID == nil else { return }
+        guard completedProjectID == nil, !keepsUnfinishedFolder else { return }
         try? store.delete(id: paths.id)
+    }
+
+    /// Ends the recording and leaves the project folder where it is. For a recording that could
+    /// be saved neither as a project nor as a regular video: the folder then holds the only copy
+    /// of the screen recording. Storage cleanup removes such a folder after a day.
+    func leaveUnfinishedProject() {
+        keepsUnfinishedFolder = true
+        stopCursorSampling()
+        StudioMaintenance.recordingDidEnd(projectID: paths.id)
     }
 
     /// The webcam corner settings are compared case-insensitively everywhere else in the app.

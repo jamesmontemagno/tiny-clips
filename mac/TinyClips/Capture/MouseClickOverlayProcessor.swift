@@ -58,6 +58,14 @@ final class MouseClickMonitor {
     }
 
     private func record(_ event: NSEvent) {
+        // In a Studio recording a press on one of Tiny Clips' own panels (Stop, Pause, the camera
+        // bubble) is not a click of the recording. Those windows are not in the picture, so the
+        // press would get a ring, and a suggested zoom, on a spot where nothing was pressed. A
+        // press on one of the app's own windows comes with its window; any other comes without.
+        if timelineTimeProvider != nil, event.window != nil, !CaptureSettings.shared.includeTinyClipsInCapture {
+            return
+        }
+
         let offset: TimeInterval
         if let timelineTimeProvider {
             guard let timelineTime = timelineTimeProvider() else { return }

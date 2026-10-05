@@ -1494,6 +1494,13 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
+    /// Writes an edit that is still waiting for its save, when the app is about to quit. Quitting
+    /// closes no window, so without this the last change made before a quit would be lost.
+    func saveBeforeQuitting() {
+        guard !isTornDown else { return }
+        saveNow()
+    }
+
     /// Writes the edits into the project on disk. Only the edited parts are replaced, so export
     /// links or names changed elsewhere (the Clips Library, for example) are not overwritten.
     @discardableResult
