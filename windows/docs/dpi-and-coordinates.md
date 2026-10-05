@@ -57,6 +57,42 @@ own DPI may differ from the monitor it's on; the captured frame reflects the win
 - Re-query scale on `XamlRoot.Changed` if an overlay can move between monitors mid-gesture.
 - Keep saved images at native pixel size; only the optional *scale* setting downsamples on save.
 
+## Screenshot-editor output
+
+The editor uses `ScreenshotExportSize` for both its accessible output-resolution label and
+Save/Copy. It truncates the logical export frame to integer pixels, then applies midpoint-to-even
+scale rounding with a one-pixel minimum. Padding, aspect-ratio frames, and image alignment are
+part of that frame; monitor rasterization scale is not. Crop pre-baking always uses native image
+dimensions and excludes export backgrounds, padding, corners, and shadows.
+
+The UI thread captures immutable annotation/style data and a lease on the immutable source
+image. Workers record list-order Win2D composition at 96 DPI and replay it directly into one
+final-size render target. At 100% there is no subsequent resample; other scales do not create an
+intermediate full-size bitmap. Each export has one explicit target pixel readback instead of the
+previous flatten-readback/upload/resample-readback sequence. Effects can still use internal GPU
+surfaces. The source upload is lazy, worker-owned, and reused until the image or shared device
+changes.
+
+Rendering/readback, redaction processing, PNG/JPEG encoding, JPEG alpha conversion, and WebP
+encoding run off the UI thread. Clipboard output remains a PNG bitmap data package with the
+existing flush contract; publication and XAML preview creation happen on the UI thread only.
+Redaction requests are deduplicated/canceled and validated again after the XAML pixel copy.
+Document replacement and closure cancel pending work, while source leases prevent premature
+disposal. Cancellation is cooperative: in-flight native work drains before its lease is released.
+Edits and undo invalidate pending preview/clipboard results. Saving a snapshot can
+finish while editing continues, but it clears dirty state only if its revision is still current.
+Output clicks/shortcuts during another output operation are coalesced, not queued; save staging
+preserves the prior destination on cancellation or encoding failure.
+
+Deterministic Core tests cover frame/scale dimensions, deep annotation snapshots, styling/order
+retention, revision/dirty behavior, late-worker ownership, and staged-save cancellation/failure.
+They do not establish native visual fidelity or UI latency. Before release, use disposable
+synthetic images on **native x64 and native ARM64** to check PNG/JPEG/WebP output, transparent
+pixels, rotated/text/emoji/redaction ordering, backgrounds/frames/corners/shadows, crop, rapid
+style/geometry changes, undo, repeated output, Reset, and closure. Inspect clipboard PNG output
+only with consent. Compare UI-thread traces before/after separately from deterministic tests;
+do not infer responsiveness or a speedup from the reduced explicit operation count.
+
 ## Known limitations
 
 - Capturing a region that **spans two monitors with different scale factors** is not supported;

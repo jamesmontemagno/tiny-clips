@@ -6,6 +6,13 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Screenshot-editor exports no longer resample twice.** Save and Copy composite directly at
+  the requested output size, including 100%, with one explicit final bitmap readback. Rendering,
+  redaction-preview processing, and encoding run on workers using immutable document snapshots.
+  Superseded previews and clipboard results are discarded; Reset and closure cancel pending work
+  without disposing its source pixels early. Saving an older snapshot keeps newer edits dirty,
+  repeated output requests are coalesced, and canceled/failed saves preserve the previous file.
+  Background, frame, padding, shadow, corner, alignment, and scale changes now count as edits. (#406)
 - **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
   capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
   Scrolling captures and the saved-file fallback when the screenshot editor fails to open also
