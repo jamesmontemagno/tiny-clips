@@ -216,7 +216,7 @@ final class StudioViewModel: ObservableObject {
     }
 
     func setLayout(_ layout: StudioLayout) {
-        edit { $0.setLayout(layout) }
+        editCurrentScene { $0.setLayout(layout) }
     }
 
     func setCanvasAspect(_ aspect: StudioCanvasAspect) {
@@ -265,19 +265,31 @@ final class StudioViewModel: ObservableObject {
     }
 
     func setCameraBubbleSize(_ value: Double) {
-        edit { $0.setCameraBubbleSize(value) }
+        editCurrentScene { $0.setCameraBubbleSize(value) }
     }
 
     func setCameraAnchor(_ anchor: StudioAnchor) {
-        edit { $0.setCameraAnchor(anchor) }
+        editCurrentScene { $0.setCameraAnchor(anchor) }
     }
 
-    func setCameraBubbleOffset(x: Double, y: Double) {
-        edit { $0.setCameraBubbleOffsets(x: x, y: y) }
+    /// Moves the bubble sideways from its corner. The other offset stays as the scene has it.
+    func setCameraBubbleOffsetX(_ x: Double) {
+        editCurrentScene { model in
+            let y = model.currentScene.bubble.offsetY
+            model.setCameraBubbleOffsets(x: x, y: y)
+        }
+    }
+
+    /// Moves the bubble up or down from its corner. The other offset stays as the scene has it.
+    func setCameraBubbleOffsetY(_ y: Double) {
+        editCurrentScene { model in
+            let x = model.currentScene.bubble.offsetX
+            model.setCameraBubbleOffsets(x: x, y: y)
+        }
     }
 
     func moveBubble(topLeft: CGPoint, canvasSize: CGSize) {
-        edit { $0.moveBubble(topLeft: topLeft, canvasSize: canvasSize) }
+        editCurrentScene { $0.moveBubble(topLeft: topLeft, canvasSize: canvasSize) }
     }
 
     func setCameraMirror(_ value: Bool) {
@@ -296,8 +308,20 @@ final class StudioViewModel: ObservableObject {
         edit { $0.setCameraShadow(value) }
     }
 
-    func setSideBySide(side: StudioCameraSide, fraction: Double) {
-        edit { $0.setSideBySide(cameraSide: side, fraction: fraction) }
+    /// Puts the camera on the other side. Its share stays as the scene has it.
+    func setCameraSide(_ side: StudioCameraSide) {
+        editCurrentScene { model in
+            let fraction = model.currentScene.split.cameraFraction
+            model.setSideBySide(cameraSide: side, fraction: fraction)
+        }
+    }
+
+    /// Sets how much of the canvas the camera takes side by side. Its side stays as the scene has it.
+    func setCameraShare(_ fraction: Double) {
+        editCurrentScene { model in
+            let side = model.currentScene.split.cameraSide
+            model.setSideBySide(cameraSide: side, fraction: fraction)
+        }
     }
 
     func setMuted(_ value: Bool) {
@@ -952,16 +976,16 @@ final class StudioViewModel: ObservableObject {
 
     /// Sets whether the current scene is cut to or entered by moving. Not for the first scene.
     func setCurrentSceneTransitionKind(_ kind: StudioTransitionKind) {
-        let index = currentSceneIndex
-        edit { model in
+        editCurrentScene { model in
+            let index = model.currentSceneIndex
             model.setSceneTransitionKind(at: index, to: kind)
         }
     }
 
     /// Sets how long the move into the current scene takes. Not for the first scene.
     func setCurrentSceneTransitionDuration(_ seconds: Double) {
-        let index = currentSceneIndex
-        edit { model in
+        editCurrentScene { model in
+            let index = model.currentSceneIndex
             model.setSceneTransitionDuration(at: index, to: seconds)
         }
     }
@@ -1280,6 +1304,23 @@ final class StudioViewModel: ObservableObject {
             change(&model)
             return .follow
         }
+    }
+
+    /// An edit to the scene the playhead is in: its layout, its bubble, its split, or how it is
+    /// entered.
+    private func editCurrentScene(_ change: (inout StudioEditorModel) -> Void) {
+        holdSceneForDrag()
+        edit(change)
+    }
+
+    /// Stops playback before a drag changes the scene the playhead is in. A drag is many changes,
+    /// and while the recording plays the playhead may come into the next scene before the drag is
+    /// over: the rest of the drag would then change that scene as well. A change that stands
+    /// alone, such as a key or a choice from a menu, is over at once and leaves playback alone.
+    /// So does a drag in a recording with one scene, which has no other scene to come into.
+    private func holdSceneForDrag() {
+        guard isInGesture, isPlaying, scenes.count > 1 else { return }
+        pause()
     }
 
     /// An edit to one zoom. The selection goes with the zoom when it is the selected one. An edit

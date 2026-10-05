@@ -348,6 +348,12 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         return super.performKeyEquivalent(with: event)
     }
 
+    /// True while a mouse button is held down, which is how every drag in the editor is made. A
+    /// key that changes the project waits until it is let go: a layout key in the middle of a drag
+    /// of the camera would take the handle away from under the pointer, and Delete would take
+    /// away the zoom, cut, or speed change the pointer is holding.
+    private var isMouseButtonHeld: Bool { NSEvent.pressedMouseButtons != 0 }
+
     private func handleCommandKey(_ event: NSEvent) -> Bool {
         // Text being edited keeps its own Undo and Redo.
         guard event.type == .keyDown, attachedSheet == nil, !(firstResponder is NSText) else {
@@ -356,16 +362,18 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = event.charactersIgnoringModifiers?.lowercased()
 
+        // During a drag these keys are taken and do nothing, so that the menu does not act on
+        // them either.
         if key == "z", modifiers == [.command] {
-            viewModel.undo()
+            if !isMouseButtonHeld { viewModel.undo() }
             return true
         }
         if key == "z", modifiers == [.command, .shift] {
-            viewModel.redo()
+            if !isMouseButtonHeld { viewModel.redo() }
             return true
         }
         if key == "e", modifiers == [.command] {
-            viewModel.export()
+            if !isMouseButtonHeld { viewModel.export() }
             return true
         }
         return false
@@ -378,18 +386,21 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         let keyCode = Int(event.keyCode)
 
         // Holding an arrow key keeps stepping through frames. The other keys act once per press.
+        // Those that change the project are taken and do nothing while a drag is being made;
+        // Space and the arrows only move the playhead, and still do.
         let isFirstPress = !event.isARepeat
+        let changesProject = isFirstPress && !isMouseButtonHeld
         if keyCode == kVK_Delete || keyCode == kVK_ForwardDelete {
             if viewModel.selectedCutIndex != nil {
-                if isFirstPress { viewModel.removeSelectedCut() }
+                if changesProject { viewModel.removeSelectedCut() }
                 return true
             }
             if viewModel.selectedZoomIndex != nil {
-                if isFirstPress { viewModel.removeSelectedZoom() }
+                if changesProject { viewModel.removeSelectedZoom() }
                 return true
             }
             if viewModel.selectedSpeedIndex != nil {
-                if isFirstPress { viewModel.removeSelectedSpeed() }
+                if changesProject { viewModel.removeSelectedSpeed() }
                 return true
             }
         }
@@ -406,16 +417,16 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return true
         // The number row is matched by position, because some layouts need Shift to type a digit.
         case kVK_ANSI_1:
-            if isFirstPress { viewModel.setLayout(.screen) }
+            if changesProject { viewModel.setLayout(.screen) }
             return true
         case kVK_ANSI_2:
-            if isFirstPress { viewModel.setLayout(.bubble) }
+            if changesProject { viewModel.setLayout(.bubble) }
             return true
         case kVK_ANSI_3:
-            if isFirstPress { viewModel.setLayout(.sideBySide) }
+            if changesProject { viewModel.setLayout(.sideBySide) }
             return true
         case kVK_ANSI_4:
-            if isFirstPress { viewModel.setLayout(.camera) }
+            if changesProject { viewModel.setLayout(.camera) }
             return true
         default:
             break
@@ -424,22 +435,22 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         // Letters are matched by what they type, so they follow the keyboard layout.
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "i":
-            if isFirstPress { viewModel.setTrimStartAtPlayhead() }
+            if changesProject { viewModel.setTrimStartAtPlayhead() }
             return true
         case "o":
-            if isFirstPress { viewModel.setTrimEndAtPlayhead() }
+            if changesProject { viewModel.setTrimEndAtPlayhead() }
             return true
         case "s":
-            if isFirstPress { viewModel.splitSceneAtPlayhead() }
+            if changesProject { viewModel.splitSceneAtPlayhead() }
             return true
         case "r":
-            if isFirstPress { viewModel.addSpeedAtPlayhead() }
+            if changesProject { viewModel.addSpeedAtPlayhead() }
             return true
         case "x":
-            if isFirstPress { viewModel.addCutAtPlayhead() }
+            if changesProject { viewModel.addCutAtPlayhead() }
             return true
         case "z":
-            if isFirstPress { viewModel.addZoomAtPlayhead() }
+            if changesProject { viewModel.addZoomAtPlayhead() }
             return true
         default:
             return false

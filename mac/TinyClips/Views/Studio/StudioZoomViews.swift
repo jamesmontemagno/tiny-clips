@@ -482,7 +482,7 @@ struct StudioZoomInspectorSection: View {
     }
 
     private func percentText(_ fraction: Double) -> String {
-        "\(Int((fraction * 100).rounded()))%"
+        StudioEditorModel.percentText(fraction)
     }
 
     private func secondsValueText(_ value: Double) -> String {

@@ -476,18 +476,33 @@ struct StudioEditorModel: Equatable, Sendable {
         project = snapshot.applied(to: project)
     }
 
+    /// Takes back the last step. In the middle of a gesture, what the gesture has done so far is
+    /// the step that is taken back, and the gesture goes on: whatever it does next is one step
+    /// again, and not a step for every move of the pointer.
     mutating func undo() {
+        let wasGrouping = isGroupingEdits
         commitEditingGroup()
-        guard let previous = undoStack.popLast() else { return }
-        redoStack.append(editableState)
-        project = previous.applied(to: project)
+        if let previous = undoStack.popLast() {
+            redoStack.append(editableState)
+            project = previous.applied(to: project)
+        }
+        if wasGrouping {
+            beginEditingGroup()
+        }
     }
 
+    /// Does the step that was last taken back again. A gesture goes on afterwards, as it does
+    /// after `undo()`.
     mutating func redo() {
+        let wasGrouping = isGroupingEdits
         commitEditingGroup()
-        guard let next = redoStack.popLast() else { return }
-        undoStack.append(editableState)
-        project = next.applied(to: project)
+        if let next = redoStack.popLast() {
+            undoStack.append(editableState)
+            project = next.applied(to: project)
+        }
+        if wasGrouping {
+            beginEditingGroup()
+        }
     }
 
     // MARK: - Layout and Canvas
@@ -1617,10 +1632,40 @@ struct StudioEditorModel: Equatable, Sendable {
         )
     }
 
+    // MARK: - Sliders
+
+    /// The multiple of `step` nearest to a value, for a slider that stops at every step. Seven
+    /// steps of 0.05 come to 0.35000000000000003, so the multiple is rounded to six decimals,
+    /// which makes it 0.35: the number a project holds for that notch, and the one a slider that
+    /// is moved away and back has to return to. A step of zero or less leaves the value alone.
+    static func snapped(_ value: Double, toStep step: Double) -> Double {
+        guard step > 0, value.isFinite else { return value }
+        let multiple = (value / step).rounded() * step
+        return (multiple * 1_000_000).rounded() / 1_000_000
+    }
+
     // MARK: - Accessibility Text
 
     static func secondsText(_ seconds: Double) -> String {
         String(format: "%.1f seconds", seconds.isFinite ? seconds : 0)
+    }
+
+    /// A fraction as a whole percentage, such as "24%". A project file can hold any number, so
+    /// one that is not a number reads as 0%, and one too large to count as a million percent.
+    static func percentText(_ fraction: Double) -> String {
+        "\(wholePercent(fraction))%"
+    }
+
+    /// Like `percentText(_:)`, with a plus sign on values above zero: "+3%".
+    static func signedPercentText(_ fraction: Double) -> String {
+        let percent = wholePercent(fraction)
+        return percent > 0 ? "+\(percent)%" : "\(percent)%"
+    }
+
+    private static func wholePercent(_ fraction: Double) -> Int {
+        guard fraction.isFinite else { return 0 }
+        // Kept in range first: a number too large to be an Int would stop the app.
+        return Int((StudioCanvasMath.clamped(fraction, -10_000, 10_000) * 100).rounded())
     }
 
     /// A zoom for VoiceOver, such as "Zoom 2×, 12.0 to 16.5 seconds". The times are source time, as

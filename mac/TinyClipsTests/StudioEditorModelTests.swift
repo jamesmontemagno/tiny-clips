@@ -54,6 +54,94 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertFalse(model.canUndo)
     }
 
+    func testUndoInTheMiddleOfAGestureTakesBackWhatItDidSoFarAndTheRestIsOneStepAgain() {
+        var model = StudioEditorModel(project: makeProject())
+        let shadowBefore = model.project.screen.shadow
+        model.setScreenShadow(0.9)
+        XCTAssertNotEqual(shadowBefore, 0.9, accuracy: 1e-9)
+
+        model.beginEditingGroup()
+        model.setCanvasPadding(0.12)
+        model.setCanvasPadding(0.20)
+        model.undo()
+
+        // The drag so far is taken back, and nothing before it. The drag is still on.
+        XCTAssertEqual(model.project.canvas.padding, 0.06, accuracy: 1e-9)
+        XCTAssertEqual(model.project.screen.shadow, 0.9, accuracy: 1e-9)
+        XCTAssertTrue(model.isGroupingEdits)
+        XCTAssertTrue(model.canRedo)
+
+        // However many moves follow, they are one step, as they would have been.
+        model.setCanvasPadding(0.25)
+        model.setCanvasPadding(0.30)
+        model.setCanvasPadding(0.35)
+        model.commitEditingGroup()
+        XCTAssertFalse(model.isGroupingEdits)
+        XCTAssertFalse(model.canRedo)
+
+        model.undo()
+        XCTAssertEqual(model.project.canvas.padding, 0.06, accuracy: 1e-9)
+        XCTAssertEqual(model.project.screen.shadow, 0.9, accuracy: 1e-9)
+        model.undo()
+        XCTAssertEqual(model.project.screen.shadow, shadowBefore, accuracy: 1e-9)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testUndoInAGestureThatHasChangedNothingTakesBackTheStepBeforeAndTheGestureGoesOn() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setCanvasPadding(0.1)
+
+        model.beginEditingGroup()
+        model.undo()
+        XCTAssertEqual(model.project.canvas.padding, 0.06, accuracy: 1e-9)
+        XCTAssertTrue(model.isGroupingEdits)
+
+        // Let go without a move: no step is added, and the step that was taken back can be done again.
+        model.commitEditingGroup()
+        XCTAssertFalse(model.canUndo)
+        XCTAssertTrue(model.canRedo)
+        model.redo()
+        XCTAssertEqual(model.project.canvas.padding, 0.1, accuracy: 1e-9)
+    }
+
+    func testRedoInTheMiddleOfAGestureLeavesTheRestOfItOneStep() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setCanvasPadding(0.1)
+        model.undo()
+
+        model.beginEditingGroup()
+        model.redo()
+        XCTAssertEqual(model.project.canvas.padding, 0.1, accuracy: 1e-9)
+        XCTAssertTrue(model.isGroupingEdits)
+
+        model.setCanvasPadding(0.2)
+        model.setCanvasPadding(0.3)
+        model.commitEditingGroup()
+
+        model.undo()
+        XCTAssertEqual(model.project.canvas.padding, 0.1, accuracy: 1e-9)
+        model.undo()
+        XCTAssertEqual(model.project.canvas.padding, 0.06, accuracy: 1e-9)
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testUndoAndRedoOutsideAGestureStartNone() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setCanvasPadding(0.1)
+
+        model.undo()
+        XCTAssertFalse(model.isGroupingEdits)
+        model.redo()
+        XCTAssertFalse(model.isGroupingEdits)
+
+        // With nothing to take back or do again either.
+        model.redo()
+        model.undo()
+        model.undo()
+        XCTAssertFalse(model.isGroupingEdits)
+        XCTAssertEqual(model.project.canvas.padding, 0.06, accuracy: 1e-9)
+    }
+
     func testNewEditClearsRedoAndUndoDepthIsCapped() {
         var model = StudioEditorModel(project: makeProject())
         model.setScreenShadow(0.1)
@@ -529,6 +617,43 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.shapeName(.roundedRectangle), "Rounded rectangle")
         XCTAssertEqual(StudioEditorModel.aspectName(.portrait9x16), "9:16")
         XCTAssertEqual(StudioEditorModel.secondsText(2.44), "2.4 seconds")
+    }
+
+    func testPercentTextIsAWholeNumberWhateverAProjectHolds() {
+        XCTAssertEqual(StudioEditorModel.percentText(0.24), "24%")
+        XCTAssertEqual(StudioEditorModel.percentText(0.246), "25%")
+        XCTAssertEqual(StudioEditorModel.percentText(0), "0%")
+        XCTAssertEqual(StudioEditorModel.percentText(-0.3), "-30%")
+        XCTAssertEqual(StudioEditorModel.signedPercentText(0.2), "+20%")
+        XCTAssertEqual(StudioEditorModel.signedPercentText(-0.3), "-30%")
+        XCTAssertEqual(StudioEditorModel.signedPercentText(0), "0%")
+        XCTAssertEqual(StudioEditorModel.signedPercentText(-0.001), "0%")
+
+        // A project file can hold any number. None of them may stop the app.
+        XCTAssertEqual(StudioEditorModel.percentText(.nan), "0%")
+        XCTAssertEqual(StudioEditorModel.percentText(.infinity), "0%")
+        XCTAssertEqual(StudioEditorModel.percentText(-.infinity), "0%")
+        XCTAssertEqual(StudioEditorModel.percentText(1e300), "1000000%")
+        XCTAssertEqual(StudioEditorModel.percentText(-1e300), "-1000000%")
+        XCTAssertEqual(StudioEditorModel.percentText(.greatestFiniteMagnitude), "1000000%")
+        XCTAssertEqual(StudioEditorModel.signedPercentText(1e300), "+1000000%")
+        XCTAssertEqual(StudioEditorModel.signedPercentText(.nan), "0%")
+    }
+
+    func testSnappedIsTheNumberItsNotchReadsAs() {
+        // Compared without a tolerance, which is the point: seven steps of 0.05 are
+        // 0.35000000000000003 and three of 0.1 are 0.30000000000000004 until they are tidied.
+        XCTAssertEqual(StudioEditorModel.snapped(0.3500001, toStep: 0.05), 0.35)
+        XCTAssertEqual(StudioEditorModel.snapped(0.29, toStep: 0.1), 0.3)
+        XCTAssertEqual(StudioEditorModel.snapped(0.062, toStep: 0.01), 0.06)
+        XCTAssertEqual(StudioEditorModel.snapped(-0.1449, toStep: 0.005), -0.145)
+        XCTAssertEqual(StudioEditorModel.snapped(1, toStep: 0.05), 1)
+        XCTAssertEqual(StudioEditorModel.snapped(4.95, toStep: 0.05), 4.95)
+
+        // Without a step, and for what is not a number, the value is left alone.
+        XCTAssertEqual(StudioEditorModel.snapped(0.337, toStep: 0), 0.337)
+        XCTAssertEqual(StudioEditorModel.snapped(0.337, toStep: -1), 0.337)
+        XCTAssertTrue(StudioEditorModel.snapped(.nan, toStep: 0.05).isNaN)
     }
 
     // MARK: - Zooms: Adding and Removing

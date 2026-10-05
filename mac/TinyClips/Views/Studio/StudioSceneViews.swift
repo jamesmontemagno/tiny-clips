@@ -262,9 +262,13 @@ struct StudioSceneInspectorSection: View {
         .help("Start a new scene at the playhead (S)")
     }
 
+    /// Why the scene cannot be split here. It is left out while the recording plays: the reason
+    /// comes and goes with the playhead, and the rows below it would move up and down with it.
+    /// The button still shows whether a split is possible, and a split that is refused is still
+    /// announced with its reason.
     @ViewBuilder
     private var splitExplanation: some View {
-        if let explanation = viewModel.splitSceneExplanation {
+        if !viewModel.isPlaying, let explanation = viewModel.splitSceneExplanation {
             explanationText(explanation)
         }
     }

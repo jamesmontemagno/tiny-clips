@@ -458,7 +458,7 @@ private struct StudioInspectorView: View {
             range: -1...1,
             step: 0.005,
             valueText: signedPercentText(scene.bubble.offsetX),
-            onChange: { viewModel.setCameraBubbleOffset(x: $0, y: scene.bubble.offsetY) },
+            onChange: { viewModel.setCameraBubbleOffsetX($0) },
             onEditingChanged: { gestureChanged($0) }
         )
         StudioSliderRow(
@@ -467,7 +467,7 @@ private struct StudioInspectorView: View {
             range: -1...1,
             step: 0.005,
             valueText: signedPercentText(scene.bubble.offsetY),
-            onChange: { viewModel.setCameraBubbleOffset(x: scene.bubble.offsetX, y: $0) },
+            onChange: { viewModel.setCameraBubbleOffsetY($0) },
             onEditingChanged: { gestureChanged($0) }
         )
     }
@@ -484,7 +484,7 @@ private struct StudioInspectorView: View {
             range: 0.15...0.6,
             step: 0.01,
             valueText: percentText(scene.split.cameraFraction),
-            onChange: { viewModel.setSideBySide(side: scene.split.cameraSide, fraction: $0) },
+            onChange: { viewModel.setCameraShare($0) },
             onEditingChanged: { gestureChanged($0) }
         )
     }
@@ -617,12 +617,11 @@ private struct StudioInspectorView: View {
     private var microphoneVolume: Double { viewModel.editor?.microphoneVolume ?? 1 }
 
     private func percentText(_ fraction: Double) -> String {
-        "\(Int((fraction * 100).rounded()))%"
+        StudioEditorModel.percentText(fraction)
     }
 
     private func signedPercentText(_ fraction: Double) -> String {
-        let percent = Int((fraction * 100).rounded())
-        return percent > 0 ? "+\(percent)%" : "\(percent)%"
+        StudioEditorModel.signedPercentText(fraction)
     }
 
     @ViewBuilder
@@ -706,7 +705,7 @@ private struct StudioInspectorView: View {
     private var sideBinding: Binding<StudioCameraSide> {
         Binding(
             get: { scene.split.cameraSide },
-            set: { viewModel.setSideBySide(side: $0, fraction: scene.split.cameraFraction) }
+            set: { viewModel.setCameraSide($0) }
         )
     }
 
@@ -793,7 +792,7 @@ struct StudioSliderRow: View {
         Binding(
             get: { min(max(value, range.lowerBound), range.upperBound) },
             set: { newValue in
-                let snapped = step > 0 ? (newValue / step).rounded() * step : newValue
+                let snapped = StudioEditorModel.snapped(newValue, toStep: step)
                 onChange(min(max(snapped, range.lowerBound), range.upperBound))
             }
         )
@@ -1066,7 +1065,7 @@ private struct StudioExportOverlay: View {
                 ProgressView(value: fraction)
                     .frame(width: 240)
                     .accessibilityLabel("Export progress")
-                Text("\(Int((fraction * 100).rounded()))%")
+                Text(StudioEditorModel.percentText(fraction))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
