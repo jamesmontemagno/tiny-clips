@@ -251,24 +251,22 @@ internal sealed class MfSinkWriterEncoder : IDisposable
         Write(_videoStream, sample, ref _videoSamples, _videoGate);
     }
 
-    /// <summary>Writes a CPU frame (tightly packed bottom-up BGRA, as Media Foundation expects for RGB32).</summary>
-    public unsafe void WriteVideo(byte[] bottomUpBgra, TimeSpan pts, TimeSpan duration)
+    /// <summary>Synchronously copies borrowed top-down pixels into an encoder-owned bottom-up RGB32 buffer.</summary>
+    public void WriteVideo(CapturedFrame frame, TimeSpan pts, TimeSpan duration)
     {
-        using var buffer = MediaFactory.MFCreateMemoryBuffer(bottomUpBgra.Length);
+        var length = CpuVideoBuffer.GetLength(frame);
+        using var buffer = MediaFactory.MFCreateMemoryBuffer(length);
         buffer.Lock(out var data, out _, out _);
         try
         {
-            fixed (byte* src = bottomUpBgra)
-            {
-                Buffer.MemoryCopy(src, (void*)data, bottomUpBgra.Length, bottomUpBgra.Length);
-            }
+            CpuVideoBuffer.CopyBottomUp(frame, data, length);
         }
         finally
         {
             buffer.Unlock();
         }
 
-        buffer.CurrentLength = bottomUpBgra.Length;
+        buffer.CurrentLength = length;
         using var sample = MediaFactory.MFCreateSample();
         sample.AddBuffer(buffer);
         sample.SampleTime = pts.Ticks;

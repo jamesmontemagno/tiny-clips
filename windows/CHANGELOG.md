@@ -6,6 +6,11 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **CPU video recording creates fewer full-frame pixel arrays.** The explicit CPU path and GPU
+  startup fallback reuse private capture/overlay buffers. The low-latency encoder copies directly
+  into its own bottom-up buffer, while the standard encoder retains one independent array instead
+  of three. GIF and scrolling snapshots remain safe to retain, and stopping waits for borrowed
+  frame processing before disposing the encoder. (#407)
 - **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
   capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
   Scrolling captures and the saved-file fallback when the screenshot editor fails to open also

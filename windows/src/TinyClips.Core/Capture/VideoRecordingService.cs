@@ -239,8 +239,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         else
         {
             _perf = new RecordingPerformanceMonitor("cpu", 0, 0, fps);
-            _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true, _perf);
-            _capture.FrameReady += OnFrameReady;
+            _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true, _perf, processBorrowedFrame: OnFrameReady);
             _capture.Start();
             width = _capture.OutputWidth;
             height = _capture.OutputHeight;
@@ -536,13 +535,12 @@ public sealed class VideoRecordingService : IVideoRecordingService
         // callback) but PTS stays wall-clock, so the video simply has a lower effective frame rate
         // here and never slides against audio.
         var prepare = RecordingPerformanceMonitor.Begin();
-        var buffer = CreateBottomUpVideoBuffer(frame);
         if (_sinkWriter is { } sink)
         {
             // Push model: the sink writer throttles internally if the encoder falls behind.
             try
             {
-                sink.WriteVideo(buffer, pts, _frameDuration);
+                sink.WriteVideo(frame, pts, _frameDuration);
                 _perf?.FrameEncoded();
             }
             catch (Exception ex)
@@ -554,8 +552,14 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
+        var channel = _channel;
+        if (channel is not null)
+        {
+            var buffer = CpuVideoBuffer.Create(frame);
+            channel.Writer.TryWrite(new TimestampedFrame(buffer, pts));
+        }
+
         _perf?.End(RecordingStage.SamplePrepare, prepare);
-        _channel?.Writer.TryWrite(new TimestampedFrame(buffer, pts));
     }
 
     private int _encoderWriteFailuresLogged;
@@ -835,25 +839,6 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _clickStyle);
     }
 
-    private static byte[] CreateBottomUpVideoBuffer(CapturedFrame frame)
-    {
-        var rowStride = frame.Width * 4;
-        var pixels = new byte[frame.BgraPixels.Length];
-
-        // Media Foundation BGRA samples are bottom-up; WGC frames arrive top-down.
-        for (var y = 0; y < frame.Height; y++)
-        {
-            System.Buffer.BlockCopy(
-                frame.BgraPixels,
-                (frame.Height - 1 - y) * rowStride,
-                pixels,
-                y * rowStride,
-                rowStride);
-        }
-
-        return pixels;
-    }
-
     private MediaEncodingProfile CreateEncodingProfile(
         int width,
         int height,
@@ -1000,8 +985,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         StopAudioMux();
         DisposeSinkWriter();
         DisposeAudio();
-        _channel?.Writer.TryComplete();
-        _channel = null;
+        DisposeCpuChannel();
         _perf = null;
         _transcodeTask = null;
         _fileStream?.Dispose();
@@ -1075,6 +1059,21 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         _gpuOverlay?.Dispose();
         _gpuOverlay = null;
+    }
+
+    private void DisposeCpuChannel()
+    {
+        var channel = _channel;
+        _channel = null;
+        channel?.Writer.TryComplete();
+        if (channel is not null)
+        {
+            // Unconsumed owned buffers have no lease to return; dropping the references releases
+            // them independently of the capture cache or any samples already owned by the encoder.
+            while (channel.Reader.TryRead(out _))
+            {
+            }
+        }
     }
 
     private async Task StartWebcamOverlayAsync(CancellationToken cancellationToken)
@@ -1258,7 +1257,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 if (channel.Reader.TryRead(out var frame))
                 {
                     _perf?.End(RecordingStage.EncoderWait, wait);
-                    var sample = MediaStreamSample.CreateFromBuffer(frame.Pixels.AsBuffer(), frame.Pts);
+                    var sample = MediaStreamSample.CreateFromBuffer(frame.Pixels, frame.Pts);
                     sample.Duration = _frameDuration;
                     args.Request.Sample = sample;
                     _perf?.FrameEncoded();
@@ -1269,8 +1268,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
             // Channel completed and drained -> signal end of stream.
             args.Request.Sample = null;
         }
-        catch
+        catch (Exception ex)
         {
+            WebcamDiagnostics.Log($"CPU video sample request failed: {ex.GetType().Name}: {ex.Message}");
             args.Request.Sample = null;
         }
         finally
@@ -1799,44 +1799,41 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _gpuCapture?.Stop();
             _gpuChannel?.Writer.TryComplete();
 
-            if (_transcodeTask is not null)
+            var cpuPipeline = _capture is not null;
+            try
             {
-                try
+                if (_transcodeTask is not null)
                 {
-                    await _transcodeTask.ConfigureAwait(false);
+                    try
+                    {
+                        await _transcodeTask.ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_capture is not null)
+                        {
+                            WebcamDiagnostics.Log($"CPU transcode failed: {ex.GetType().Name}: {ex.Message}");
+                        }
+                    }
                 }
-                catch
+
+                if (_sinkWriter is { } sink)
                 {
-                    // Surface nothing here; the file may still be partially valid.
+                    // Capture pumps are stopped (no more video writes). Let the audio mux drain what
+                    // was captured before Stop, then finalize the MP4 (blocking until the encoder flushes).
+                    StopAudioMux();
+                    await Task.Run(sink.Finish).ConfigureAwait(false);
                 }
+
+                LogSyncReport();
+            }
+            catch when (cpuPipeline)
+            {
+                DisposeRecordingPipeline();
+                throw;
             }
 
-            if (_sinkWriter is { } sink)
-            {
-                // Capture pumps are stopped (no more video writes). Let the audio mux drain what
-                // was captured before Stop, then finalize the MP4 (blocking until the encoder flushes).
-                StopAudioMux();
-                await Task.Run(sink.Finish).ConfigureAwait(false);
-            }
-
-            LogSyncReport();
-
-            _capture?.Dispose();
-            _capture = null;
-            DisposeGpuPipeline();
-            DisposeSinkWriter();
-            DisposeAudio();
-            _fileStream?.Dispose();
-            _fileStream = null;
-            _channel = null;
-            _perf = null;
-            _transcodeTask = null;
-            _recordingTimeline = null;
-            _webcamPlacements = null;
-            _lastTimelineWebcamFrame = null;
-            DetachMediaStreamSource();
-
-            IsRecording = false;
+            DisposeRecordingPipeline();
             var path = _outputPath;
             var shouldDiscard = ConsumeDiscardRequested(discard);
             if (shouldDiscard && !string.IsNullOrEmpty(path))
@@ -1863,6 +1860,26 @@ public sealed class VideoRecordingService : IVideoRecordingService
             Interlocked.Exchange(ref _stopping, 0);
             _gate.Release();
         }
+    }
+
+    private void DisposeRecordingPipeline()
+    {
+        StopAudioMux();
+        _capture?.Dispose();
+        _capture = null;
+        DisposeCpuChannel();
+        DisposeGpuPipeline();
+        DisposeSinkWriter();
+        DisposeAudio();
+        _fileStream?.Dispose();
+        _fileStream = null;
+        _perf = null;
+        _transcodeTask = null;
+        _recordingTimeline = null;
+        _webcamPlacements = null;
+        _lastTimelineWebcamFrame = null;
+        DetachMediaStreamSource();
+        IsRecording = false;
     }
 
     /// <summary>
@@ -1970,5 +1987,5 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
     }
 
-    private readonly record struct TimestampedFrame(byte[] Pixels, TimeSpan Pts);
+    private readonly record struct TimestampedFrame(IBuffer Pixels, TimeSpan Pts);
 }
