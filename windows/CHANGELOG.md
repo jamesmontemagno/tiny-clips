@@ -66,6 +66,10 @@ own `CHANGELOG.md` at the repository root.
     the speed.
 
 ### Fixed
+- **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
+  capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
+  Scrolling captures and the saved-file fallback when the screenshot editor fails to open also
+  honor this setting; saving and clipboard copying are unchanged. (#397)
 - **Screenshot editor output resolution is accessible to screen readers.** The output-resolution
   button now includes the current export dimensions in its accessible name, without opening the
   scale flyout, and stays in sync when the image, crop, padding, frame, or output scale changes.
