@@ -492,12 +492,26 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             // now stays true. The render thread is between two rounds while the lock is held.
             // Not for ever: a render thread that hangs must not take the caller with it.
             var entered = Monitor.TryEnter(_roundLock, PauseRoundWaitMilliseconds);
-            _playbackShut = true;
+
+            // Not when Play() has come from another thread while this one waited: the render
+            // thread may have started the clock again by now, and every frame of that playback
+            // would be left out until the next pause. Resume() opens the picture under the
+            // same lock.
+            bool shut;
+            lock (_transportLock)
+            {
+                shut = !_wantPlaying;
+                if (shut)
+                {
+                    _playbackShut = true;
+                }
+            }
+
             if (entered)
             {
                 // With the render thread kept out of its round, its pictures can be put right
                 // from here. One pass later the scene shows them.
-                var redraw = ShowNumberedPictures();
+                var redraw = shut && ShowNumberedPictures();
                 Monitor.Exit(_roundLock);
                 if (redraw)
                 {

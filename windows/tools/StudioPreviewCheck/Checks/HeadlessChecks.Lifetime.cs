@@ -574,6 +574,65 @@ internal sealed partial class HeadlessChecks
             Muted with { DevicesLostWhileOpening = 2 },
             "graphics device was lost",
             "device");
+
+        DeviceLossWhereTheCameraIsNotShown();
+    }
+
+    /// <summary>
+    /// A device lost where the camera is no part of the picture. Its player is parked outside its
+    /// stream and hands nothing over, so the camera's picture does not come back by itself; the
+    /// scene has no use for it there and must be drawn without waiting for it.
+    /// </summary>
+    private void DeviceLossWhereTheCameraIsNotShown()
+    {
+        // The camera is shown from frame 60 to frame 239 of 360.
+        var session = OpenSession(TestMedia.ShortCamera, cameraOffset: 2.0);
+
+        // Paused before the camera's first frame.
+        session.SeekTo(30);
+        var before = session.Engine.GetDiagnostics();
+        session.Engine.SimulateDeviceLoss();
+        var idle = session.WaitForIdle(10);
+        var after = session.Engine.GetDiagnostics();
+        var problem = PictureProblem(session, 30, 1280, 720);
+        _report.Check(
+            "paused before the camera's first frame: the same frame is shown again after the rebuild",
+            idle && after.DeviceRebuilds == before.DeviceRebuilds + 1 && after.FramesDrawn > before.FramesDrawn && problem is null && session.PositionFrame == 30 && session.Events.FailedEvents == 0,
+            $"{problem ?? "right"}; rebuilds {after.DeviceRebuilds - before.DeviceRebuilds}, scenes drawn since {after.FramesDrawn - before.FramesDrawn}");
+
+        // Playing after the camera's last frame.
+        session.SeekTo(260);
+        session.Recorder.Drain();
+        session.Engine.Play();
+        Thread.Sleep(500);
+        var lostAt = Stopwatch.GetTimestamp();
+        var rebuilds = session.Engine.GetDiagnostics().DeviceRebuilds;
+        session.Engine.SimulateDeviceLoss();
+        Thread.Sleep(900);
+        var stillPlaying = session.Engine.IsPlaying;
+        session.Engine.Pause();
+        session.WaitForIdle();
+        var composites = session.Recorder.Drain().Where(c => c.Screen != FrameCode.Unreadable).ToList();
+        var afterLoss = composites.Where(c => c.At > lostAt).ToList();
+        var gap = afterLoss.Count == 0 ? double.NaN : Stopwatch.GetElapsedTime(lostAt, afterLoss[0].At).TotalMilliseconds;
+        var final = PictureProblem(session, session.PositionFrame, 1280, 720);
+        _report.Check(
+            "playing after the camera's last frame: playback carries on across the rebuild, in order",
+            stillPlaying && session.Engine.GetDiagnostics().DeviceRebuilds == rebuilds + 1 && afterLoss.Count > 10 && IsOrdered(composites) && afterLoss.All(c => c.Camera == FrameCode.Unreadable) && final is null && session.Events.FailedEvents == 0,
+            $"{afterLoss.Count} scenes after the loss, the first {F(gap, "0")} ms after it; after the pause: {final ?? "right"}");
+
+        // The camera's picture went with the device, and its player is parked on its last frame
+        // still. Asked for on that very frame, it has to hand it over again.
+        var arrived = session.SeekTo(239);
+        var shown = session.ReadShown();
+        var wanted = session.ExpectedCamera(239);
+        var last = PictureProblem(session, 239, 1280, 720);
+        _report.Check(
+            "after that, the last frame that shows the camera shows it: the frame its player was parked on all along",
+            arrived && wanted != FrameCode.Unreadable && shown.Screen == 239 && shown.Camera == wanted && last is null,
+            $"{shown}, wanted camera {wanted}; {last ?? "the picture is right"}");
+        _report.Check("no failure was reported for either rebuild", session.Events.FailedEvents == 0, string.Join("; ", session.Events.Failures()));
+        Close(session);
     }
 
     /// <summary>The GPU memory this process uses, as the default adapter reports it.</summary>

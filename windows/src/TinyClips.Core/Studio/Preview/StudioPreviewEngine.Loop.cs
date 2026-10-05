@@ -654,6 +654,7 @@ public sealed partial class StudioPreviewEngine
         StudioProject project;
         int projectSerial;
         bool wantPlaying;
+        bool clockRuns;
         lock (_commandLock)
         {
             project = _latestProject;
@@ -663,6 +664,7 @@ public sealed partial class StudioPreviewEngine
         lock (_transportLock)
         {
             wantPlaying = _wantPlaying;
+            clockRuns = _controllerRunning;
         }
 
         if (projectSerial != _appliedProjectSerial)
@@ -684,6 +686,17 @@ public sealed partial class StudioPreviewEngine
             {
                 _policy.RequestSeek(requested);
             }
+        }
+
+        if (!clockRuns && _policy.IsPlaying)
+        {
+            // Pause() has stopped the clock, and the policy has not heard of it. It hears now,
+            // whatever is wanted by now: Pause() and then Play() between two looks of this
+            // thread leave what is wanted as it was, and the policy would go on taking the
+            // clock for running, with nothing moving until the next pause or seek. Only Pause()
+            // stops the clock from another thread; this thread tells the policy itself.
+            _policy.SetPlaying(false);
+            _policyWantsPlaying = false;
         }
 
         if (wantPlaying != _policyWantsPlaying)

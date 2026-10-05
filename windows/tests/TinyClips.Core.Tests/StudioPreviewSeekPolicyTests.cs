@@ -1289,6 +1289,42 @@ public sealed class StudioPreviewSeekPolicyTests
     }
 
     [Fact]
+    public void StoppedAndWantedAgainBeforeTheNextLook_BringsThePlayersToTheFrameShown_ThenStartsTheClock()
+    {
+        var h = new Harness();
+        h.Play(from: 100);
+        h.Advance(500);
+        h.Frame(Screen, 115);
+        h.Frame(Camera, 109);
+
+        // The owner's Pause() stopped the clock and its Play() came before the policy was told of
+        // either. It is told of the stop first and of what is wanted after: told nothing, it
+        // would go on taking the clock for running.
+        h.Policy.SetPlaying(false);
+        h.Policy.SetPlaying(true);
+        Assert.Equal(["pause"], h.Calls);
+        Assert.False(h.Policy.IsPlaying);
+        Assert.False(h.Policy.IsIdle);
+
+        // As after any stop, the players are first brought onto the frame the screen shows.
+        h.Advance(40);
+        h.Pump();
+        Assert.Equal(["pause", "seek 115"], h.Calls);
+        Assert.False(h.Policy.IsPlaying);
+
+        h.Advance(30);
+        h.Deliver(115);
+        h.Pump();
+        h.Quiet();
+        Assert.Equal(115, Assert.Single(h.Landings).Frame);
+
+        // Then the clock runs again.
+        h.Pump();
+        Assert.Equal(["pause", "seek 115", "resume"], h.Calls);
+        Assert.True(h.Policy.IsPlaying);
+    }
+
+    [Fact]
     public void FirstChangeAfterTheClockRan_IsReportedOnlyWhenThePlayersHaveGoneQuiet()
     {
         var h = new Harness();

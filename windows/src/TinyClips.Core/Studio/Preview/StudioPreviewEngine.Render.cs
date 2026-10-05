@@ -872,31 +872,41 @@ public sealed partial class StudioPreviewEngine
         }
 
         _redraw = true;
-        if (missing && !_policy.IsPlaying)
+        if (missing)
         {
-            // A player would not hand its frame over again. A seek to where it is makes it.
+            // A player that hands nothing over by itself would not hand its frame over again. A
+            // seek to where it is makes it: at once while the clock stands. While it runs, the
+            // screen's next frame is there within a frame's time. A camera's is not when it is
+            // parked outside its range, and the policy would take it for being on its frame
+            // still when the clock is next put there.
             foreach (var clip in _clips)
             {
-                if (clip.DrawTexture is null)
+                if (clip.DrawTexture is null && (clip.Index != 0 || !_policy.IsPlaying))
                 {
                     _policy.Forget(clip.Index);
                 }
             }
 
-            _policy.RequestSeek(_position.Frame);
+            if (!_policy.IsPlaying)
+            {
+                _policy.RequestSeek(_position.Frame);
+            }
         }
     }
 
     /// <summary>
     /// A clip that had a picture has none: the device was rebuilt, and the frame could not be
     /// taken from the player again. The scene is not drawn without it; the player's next frame
-    /// brings it back.
+    /// brings it back. Not so for a camera outside its own time range: it is no part of the
+    /// scene there, and its player is parked and hands nothing over until the clock comes into
+    /// its range, so waiting for it would leave the preview without a picture until then.
     /// </summary>
     private bool APictureIsMissing()
     {
+        var frame = Math.Max(0, _policy.ShownFrame(0));
         foreach (var clip in _clips)
         {
-            if (clip.HasDeliveredFrame && clip.DrawTexture is null)
+            if (clip.HasDeliveredFrame && clip.DrawTexture is null && _timeline.IsShown(clip.Index, frame))
             {
                 return true;
             }

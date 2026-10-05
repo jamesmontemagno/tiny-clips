@@ -192,6 +192,11 @@ with them and said in the check of the scenes.
 - The `pause` group also looks for a frame that a player had ready when the clock stopped: it
   comes out as the first answer to the next seek, with that seek's position on it. Half of the
   pauses are timed to fall where that can happen, 16 to 32 ms after a scene was drawn.
+- The `pause` group ends with `Pause()` and `Play()` called one after the other while the render
+  thread is kept in one draw for 1.1 s, which is longer than `Pause()` waits for it. The render
+  thread then finds playing wanted, as when it last looked, and a clock that `Pause()` has
+  stopped; playback has to go on. **Written on 5 October for a fault found by reading the
+  engine, while no check tool could be run: this check has never run.**
 - The `stalls` group (`HeadlessChecks.HeldUp.cs`) pauses a playing preview again and again
   while the process is held up, and reads at the moment `Pause()` has returned what a caller
   reads: `Position`, and the frame each clip's picture holds. It reads them again when the
@@ -246,6 +251,12 @@ with them and said in the check of the scenes.
   the other groups do.
 - The `device` group also loses the device while a preview opens: once, which is answered by
   opening once more, and twice, which fails the open.
+- The `device` group ends with a camera that is shown for the middle of the recording only, and
+  loses the device where the camera is no part of the picture: paused before its first frame,
+  and playing after its last. The camera's player is parked there and hands nothing over, so
+  the scene has to be drawn without waiting for its picture; and the camera has to show its
+  last frame when it is next asked for on it. **Written on 5 October for a fault found by
+  reading the engine, while no check tool could be run: these checks have never run.**
 - The `dispose` group also closes a preview while this tool holds one of its recordings open, as
   another program that plays the video does. A recording in the project folder is waited for
   (5 s, after which the engine says that it gave up): that is the control. A screen recording
