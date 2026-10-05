@@ -459,10 +459,13 @@ internal static class PeopleChecks
             // down across its top edge, on a column where it is.
             var (edgeX, rowY) = map.Apply(block.Left, 600);
             var (columnX, edgeY) = map.Apply(800, block.Top);
-            var texel = spec.Width / (double)Side * map.ScaleX;
-            foreach (var (name, want, along) in new[] { ("left", edgeX, true), ("top", edgeY, false) })
+
+            // A texel of the mask is wider than it is high in this frame: 5 by 2.8 camera pixels.
+            foreach (var (name, want, along, texel) in new[] { ("left", edgeX, true, spec.Width / (double)Side * map.ScaleX), ("top", edgeY, false, spec.Height / (double)Side * map.ScaleY) })
             {
                 double? half = null;
+                double? tenth = null;
+                double? ninth = null;
                 double low = 0;
                 double high = 0;
                 double? previous = null;
@@ -484,10 +487,20 @@ internal static class PeopleChecks
                     if (previous is { } before)
                     {
                         backwards = Math.Max(backwards, before - share);
+                        // The pixel centres are half a pixel in.
                         if (half is null && before < 0.5 && share >= 0.5)
                         {
-                            // The pixel centres are half a pixel in.
                             half = position - 0.5 + ((0.5 - before) / (share - before));
+                        }
+
+                        if (tenth is null && before < 0.1 && share >= 0.1)
+                        {
+                            tenth = position - 0.5 + ((0.1 - before) / (share - before));
+                        }
+
+                        if (ninth is null && before < 0.9 && share >= 0.9)
+                        {
+                            ninth = position - 0.5 + ((0.9 - before) / (share - before));
                         }
                     }
 
@@ -499,6 +512,20 @@ internal static class PeopleChecks
                 {
                     context.Expect(Math.Abs(found - want) <= 1, $"the {name} edge of the people is at {found:0.00}, and the finder put it at {want:0.00}");
                     context.Note($"the {name} edge: half-way at {found:0.00}, want {want:0.00}; a texel of the mask is {texel:0.0} px here");
+                }
+
+                // The mask is a 256 by 256 picture laid over a frame several times its size. Its
+                // edge has to come out as a ramp about a texel wide, not as the step of a texel
+                // copied whole, which would show as stairs along every slanted edge.
+                if (tenth is { } from && ninth is { } to)
+                {
+                    var width = (to - from) / texel;
+                    context.Expect(width is >= 0.5 and <= 1.6, $"the {name} edge goes from a tenth to nine tenths of the camera over {width:0.00} texels of the mask, want about one");
+                    context.Note($"the {name} edge: from a tenth to nine tenths over {to - from:0.0} px, {width:0.00} texels");
+                }
+                else
+                {
+                    context.Fail($"the {name} edge: the camera's share never passes a tenth and nine tenths");
                 }
 
                 // No halo: the share never leaves 0 to 1, and never turns back, by more than rounding allows.
@@ -870,7 +897,13 @@ internal static class PeopleChecks
 
         // Each of these reads the 1080p frame back as well, as every picture of this tool is.
         context.Measure($"a 1080p frame with a 1280×720 camera, drawn and read back: kept {times[StudioCameraCutout.None]:0.0} ms, blurred {times[StudioCameraCutout.Blur]:0.0} ms, removed {times[StudioCameraCutout.Remove]:0.0} ms (the stand-in finder takes no time of its own)");
-        context.Expect(times[StudioCameraCutout.Blur] < times[StudioCameraCutout.None] + 60, $"a blurred background adds {times[StudioCameraCutout.Blur] - times[StudioCameraCutout.None]:0.0} ms a frame");
+
+        // Measured against the frame with its background kept, so that a busy PC, which slows
+        // all three, does not fail this: on WARP the blur is four times the kept frame.
+        foreach (var cutout in new[] { StudioCameraCutout.Blur, StudioCameraCutout.Remove })
+        {
+            context.Expect(times[cutout] <= (times[StudioCameraCutout.None] * 8) + 15, $"{cutout}: {times[cutout]:0.0} ms a frame against {times[StudioCameraCutout.None]:0.0} ms kept");
+        }
     }
 
     // Exports
@@ -927,6 +960,29 @@ internal static class PeopleChecks
         context.Expect(calls == different, $"{different} different camera frames in {shown.Length} drawn frames were looked at {calls} times");
         context.Expect(disposed, "the export left a finder undisposed");
         context.Note($"{shown.Length} frames show the camera, {different} different camera frames, looked at {calls} times by {made} finder");
+
+        // The same on the software adapter. There the frames are decoded in system memory and
+        // every one of them is drawn from the same texture, so only its stamp tells the
+        // renderer that the picture is another.
+        lock (finders)
+        {
+            finders.Clear();
+        }
+
+        var (software, softwareReading, _) = await Exporting.ExportAndVerify(context, "people-warp", project, clips.Screen, clips.Camera, 1920, 1080, 30, 1, expectAudio: true, options: new StudioExportOptions(DevicePreference: StudioRenderDevicePreference.WarpOnly), exporter: exporter).ConfigureAwait(false);
+        context.Expect(software.SoftwareRendering, "the export for the software adapter was not drawn by it");
+        if (softwareReading is not null)
+        {
+            var softwareShown = softwareReading.Camera.Where(number => number >= 0).ToArray();
+            int softwareCalls;
+            lock (finders)
+            {
+                softwareCalls = finders.Sum(finder => finder.Calls);
+            }
+
+            context.Expect(softwareShown.Length == 204 && softwareShown.Distinct().Count() == 174, $"on WARP {softwareShown.Length} frames show the camera, {softwareShown.Distinct().Count()} different camera frames; want 204 and 174");
+            context.Expect(softwareCalls == 174, $"on WARP 174 different camera frames were looked at {softwareCalls} times");
+        }
     }
 
     private static async Task ExportedBlock(CheckContext context, Harness harness)
@@ -1042,6 +1098,105 @@ internal static class PeopleChecks
 
     // A real model
 
+    private const int SoakFrames = 1800;
+
+    /// <summary>
+    /// What a process run with <c>--soak-model</c> does, and all it does: load the model, look at
+    /// <see cref="SoakFrames"/> frames, and say how much it held before and after them.
+    /// </summary>
+    internal static int Soak(string modelPath)
+    {
+        using var finder = StudioModelPersonFinder.TryCreate(modelPath);
+        if (finder is null)
+        {
+            Console.WriteLine("SOAK the model could not be loaded");
+            return 3;
+        }
+
+        // Any picture will do: every frame costs the model the same.
+        var input = new byte[finder.Width * finder.Height * 4];
+        for (var index = 0; index < input.Length; index++)
+        {
+            input[index] = (byte)(((uint)index * 2654435761u) >> 24);
+        }
+
+        var mask = new byte[finder.Width * finder.Height];
+        using var process = Process.GetCurrentProcess();
+        long before = 0;
+        for (var index = -200; index < SoakFrames; index++)
+        {
+            if (index == 0)
+            {
+                before = Held(process);
+            }
+
+            if (!finder.TryFind(input, mask))
+            {
+                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"SOAK the model could not look at frame {index}"));
+                return 3;
+            }
+        }
+
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"SOAK {before} {Held(process)}"));
+        return 0;
+
+        static long Held(Process process)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            process.Refresh();
+            return process.PrivateMemorySize64;
+        }
+    }
+
+    /// <summary>Runs this tool again with <c>--soak-model</c> and reads its one line. Null when it gave none.</summary>
+    private static (long Before, long After)? RunSoak(string modelPath)
+    {
+        if (Environment.ProcessPath is not { } tool)
+        {
+            return null;
+        }
+
+        var start = new ProcessStartInfo(tool)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        start.ArgumentList.Add("--soak-model");
+        start.ArgumentList.Add(modelPath);
+        using var child = Process.Start(start);
+        if (child is null)
+        {
+            return null;
+        }
+
+        // Windows' machine learning writes a few lines about the processor to the error stream.
+        child.ErrorDataReceived += (_, _) => { };
+        child.BeginErrorReadLine();
+        var reading = child.StandardOutput.ReadToEndAsync();
+        if (!child.WaitForExit(TimeSpan.FromMinutes(3)))
+        {
+            child.Kill(entireProcessTree: true);
+            return null;
+        }
+
+        foreach (var line in reading.GetAwaiter().GetResult().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = line.Split(' ');
+            if (parts is ["SOAK", var first, var second]
+                && long.TryParse(first, NumberStyles.None, CultureInfo.InvariantCulture, out var before)
+                && long.TryParse(second, NumberStyles.None, CultureInfo.InvariantCulture, out var after))
+            {
+                return (before, after);
+            }
+        }
+
+        return null;
+    }
+
     private static unsafe void RealModel(CheckContext context, RenderBench bench)
     {
         if (ModelPath is null)
@@ -1091,6 +1246,25 @@ internal static class PeopleChecks
 
         Array.Sort(times);
         context.Measure($"the model alone, 60 frames one after another: median {times[30]:0.0} ms, slowest {times[^1]:0.0} ms");
+
+        // A minute of video at 30 frames a second. Each frame hands the model a copy of the picture
+        // and gets a mask back, both kept outside the garbage collector's sight: what the process
+        // holds must not grow with the number of frames. With a binding made anew for each frame
+        // it grew by some 56 MB over these frames; with one binding kept it does not grow.
+        //
+        // This is measured in a process of its own that does nothing else. Here, with the graphics
+        // devices, the clips and the pictures of every check before this one, what the process
+        // holds moves by more than that on its own: it was once 188 MB less after the frames.
+        if (RunSoak(ModelPath) is { } soak)
+        {
+            var grown = (soak.After - soak.Before) / (1024.0 * 1024.0);
+            context.Expect(grown < 16, $"after {SoakFrames} more frames a process that only runs the model holds {grown:0.0} MB more");
+            context.Measure($"{SoakFrames} frames through the model, in a process of its own: it holds {grown:0.0} MB more afterwards (of {soak.Before / (1024.0 * 1024.0):0} MB)");
+        }
+        else
+        {
+            context.Fail("the process that runs the model for a minute of frames gave no answer");
+        }
 
         if (PhotoPath is null)
         {

@@ -16,6 +16,12 @@ internal static class Program
     private static async Task<int> Main(string[] args)
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+        if (args is ["--soak-model", var soakModel])
+        {
+            // Started by the real-model check, which wants a process that does nothing else.
+            return PeopleChecks.Soak(soakModel);
+        }
+
         List<string>? only = null;
         var keep = false;
         string? root = null;
