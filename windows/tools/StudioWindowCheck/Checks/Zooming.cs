@@ -102,25 +102,29 @@ internal sealed partial class WindowChecks
 
     private int? SelectedZoomOf(Editor editor) => OnUi(() => editor.Window.ViewModel.SelectedZoomIndex);
 
-    /// <summary>The lane's items, as a screen reader finds them under the list.</summary>
-    private static List<UiaElement> LaneItems(Editor editor) =>
-        Find(editor, "StudioZoomLane", 0.5)?.Children().Where(child => child.ControlType == ControlTypeNames.ListItem).ToList() ?? [];
+    private const string ZoomLane = "StudioZoomLane";
+    private const string SceneLane = "StudioSceneLane";
+    private const string CutLane = "StudioCutLane";
 
-    /// <summary>The lane as one line: the name of every item in order, with a star before the selected one.</summary>
-    private static string LaneText(Editor editor)
+    /// <summary>A lane's items, as a screen reader finds them under the list. The zoom lane's, when no lane is named.</summary>
+    private static List<UiaElement> LaneItems(Editor editor, string lane = ZoomLane) =>
+        Find(editor, lane, 0.5)?.Children().Where(child => child.ControlType == ControlTypeNames.ListItem).ToList() ?? [];
+
+    /// <summary>A lane as one line: the name of every item in order, with a star before the selected one.</summary>
+    private static string LaneText(Editor editor, string lane = ZoomLane)
     {
-        var items = LaneItems(editor);
+        var items = LaneItems(editor, lane);
         return items.Count == 0 ? "empty" : string.Join(" | ", items.Select(item => (item.IsSelected == true ? "*" : string.Empty) + item.Name));
     }
 
-    private static string WaitForLane(Editor editor, string wanted, double seconds = 2) =>
-        Until(() => LaneText(editor), text => text == wanted, seconds);
+    private static string WaitForLane(Editor editor, string wanted, double seconds = 2, string lane = ZoomLane) =>
+        Until(() => LaneText(editor, lane), text => text == wanted, seconds);
 
-    /// <summary>The window's lane, for what is done to it in process. UI thread.</summary>
-    private static StudioZoomLane? LaneOf(Editor editor) => Descendant<StudioZoomLane>(editor.Window.Content, "StudioZoomLane");
+    /// <summary>One of the window's lanes, for what is done to it in process. UI thread.</summary>
+    private static StudioLane? LaneOf(Editor editor, string lane = ZoomLane) => Descendant<StudioLane>(editor.Window.Content, lane);
 
-    /// <summary>What the lane does with a key while it has the focus. The key is not pressed.</summary>
-    private bool LaneKey(Editor editor, VirtualKey key) => OnUi(() => LaneOf(editor)?.HandleKey(key) ?? false);
+    /// <summary>What a lane does with a key while it has the focus. The key is not pressed.</summary>
+    private bool LaneKey(Editor editor, VirtualKey key, string lane = ZoomLane) => OnUi(() => LaneOf(editor, lane)?.HandleKey(key) ?? false);
 
     /// <summary>A sentence the window sent to screen readers after a mark, waited for.</summary>
     private static (bool Said, string Heard) Said(UiaEvents heard, int mark, string sentence)

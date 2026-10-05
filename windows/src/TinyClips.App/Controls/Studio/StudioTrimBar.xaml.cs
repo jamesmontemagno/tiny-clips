@@ -3,13 +3,14 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
 /// The whole recording as a bar, in source time. The two handles are where the video starts and
-/// ends, the tinted part between them is what gets exported, and the line is the playhead.
-/// Pressing or dragging on the bar moves the playhead.
+/// ends, the tinted parts between them are what gets exported, with a gap for every cut, and the
+/// line is the playhead. Pressing or dragging on the bar moves the playhead.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,11 +26,13 @@ namespace TinyClips.App.Controls.Studio;
 public sealed partial class StudioTrimBar : UserControl
 {
     // The handles sit outside the kept range, so the range itself spans the bar minus both. The
-    // zoom lane above the bar leaves the same room at its ends.
+    // lanes above the bar leave the same room at their ends.
     private const double HandleWidth = StudioTimelineMetrics.EdgeInset;
     private const double TrimLargeStepCount = 10;
     private const double DisabledOpacity = 0.4;
 
+    private readonly List<Border> _keptParts = [];
+    private IReadOnlyList<StudioTimeSegment> _keptSegments = [];
     private double _duration = 0.0001;
     private double _trimStart;
     private double _trimEnd;
@@ -68,6 +71,7 @@ public sealed partial class StudioTrimBar : UserControl
     /// <param name="duration">The length of the recording.</param>
     /// <param name="trimStart">Where the video starts.</param>
     /// <param name="trimEnd">Where the video ends.</param>
+    /// <param name="keptSegments">The stretches between the two that the video keeps, in time order: all of it, or what the cuts leave.</param>
     /// <param name="playhead">Where the playhead is.</param>
     /// <param name="frameDuration">The length of one frame, which is one step of the playhead.</param>
     /// <param name="trimStep">One keyboard or screen reader step of a handle.</param>
@@ -78,6 +82,7 @@ public sealed partial class StudioTrimBar : UserControl
         double duration,
         double trimStart,
         double trimEnd,
+        IReadOnlyList<StudioTimeSegment> keptSegments,
         double playhead,
         double frameDuration,
         double trimStep,
@@ -89,6 +94,7 @@ public sealed partial class StudioTrimBar : UserControl
         _duration = Math.Max(length, 0.0001);
         _trimStart = trimStart;
         _trimEnd = trimEnd;
+        _keptSegments = keptSegments;
         _playhead = playhead;
 
         var trimLargeStep = Math.Min(trimStep * TrimLargeStepCount, _duration);
@@ -130,15 +136,39 @@ public sealed partial class StudioTrimBar : UserControl
         StartThumb.Height = height;
         Canvas.SetLeft(StartThumb, startX);
 
-        KeptRange.Height = height;
-        KeptRange.Width = Math.Max(0, endX - startX);
-        Canvas.SetLeft(KeptRange, startX + HandleWidth);
+        PlaceKeptParts(height, usable);
 
         EndThumb.Height = height;
         Canvas.SetLeft(EndThumb, endX + HandleWidth);
 
         PlayheadThumb.Height = height;
         PlacePlayhead();
+    }
+
+    /// <summary>One tinted part for every stretch the video keeps. What is cut out between two of them stays the bar's own color.</summary>
+    private void PlaceKeptParts(double height, double usable)
+    {
+        while (_keptParts.Count > _keptSegments.Count)
+        {
+            KeptRanges.Children.RemoveAt(_keptParts.Count - 1);
+            _keptParts.RemoveAt(_keptParts.Count - 1);
+        }
+
+        while (_keptParts.Count < _keptSegments.Count)
+        {
+            var part = new Border { Style = (Style)Resources["StudioKeptRangeStyle"] };
+            _keptParts.Add(part);
+            KeptRanges.Children.Add(part);
+        }
+
+        for (var index = 0; index < _keptParts.Count; index++)
+        {
+            var left = Fraction(_keptSegments[index].Start) * usable;
+            var right = Fraction(_keptSegments[index].End) * usable;
+            _keptParts[index].Height = height;
+            _keptParts[index].Width = Math.Max(0, right - left);
+            Canvas.SetLeft(_keptParts[index], left + HandleWidth);
+        }
     }
 
     private void PlacePlayhead() =>

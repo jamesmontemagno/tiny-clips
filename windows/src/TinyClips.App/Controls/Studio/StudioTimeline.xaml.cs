@@ -6,8 +6,9 @@ using TinyClips.App.ViewModels.Studio;
 namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
-/// The bottom of the Studio window: play and pause, the two frame steps, the time, the button that
-/// adds a zoom and the two that trim at the playhead, and under them the zoom lane and the trim bar.
+/// The bottom of the Studio window: play and pause, the two frame steps, the time, the buttons
+/// that split the scene, add a zoom and start a cut, and the two that trim at the playhead; and
+/// under them the scene lane, the zoom lane, the cut lane and the trim bar.
 /// </summary>
 public sealed partial class StudioTimeline : UserControl
 {
@@ -15,7 +16,9 @@ public sealed partial class StudioTimeline : UserControl
     {
         ViewModel = viewModel;
         InitializeComponent();
+        SceneLaneHost.Child = new StudioSceneLane(viewModel);
         ZoomLaneHost.Child = new StudioZoomLane(viewModel);
+        CutLaneHost.Child = new StudioCutLane(viewModel);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -47,17 +50,34 @@ public sealed partial class StudioTimeline : UserControl
         }
     }
 
+    // The bar is given what the editor holds after every change, so a handle that was asked for
+    // a place it did not get, as it can be once there are cuts, shows where it really is.
     private void UpdateTrimBar() =>
         TrimBar.Update(
             ViewModel.SourceDuration,
             ViewModel.TrimStart,
             ViewModel.TrimEnd,
+            ViewModel.KeptSegments,
             ViewModel.Playhead,
             ViewModel.FrameDuration,
             ViewModel.TrimStep,
             ViewModel.TrimStartText,
             ViewModel.TrimEndText,
             ViewModel.PlayheadText);
+
+    // A paused playhead goes on to where the new scene has been entered, and no scene can be
+    // split again that close to its end. Split is then switched off by what it did. The focus
+    // goes to the next button that adds something, and where neither works back to Play rather
+    // than on to the two buttons that trim.
+    private void OnSplitSceneClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.SplitSceneAtPlayhead();
+        if (!ViewModel.CanSplitSceneAtPlayhead)
+        {
+            StudioFocus.Move(focus, AddZoomButton, AddCutButton, PlayPauseButton);
+        }
+    }
 
     private void OnTrimGestureStarted(object? sender, EventArgs e) => ViewModel.BeginGesture();
 

@@ -1,18 +1,17 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <UserControl
-    x:Class="TinyClips.App.Controls.Studio.StudioZoomLane"
+    x:Class="TinyClips.App.Controls.Studio.StudioLane"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Height="26"
-    AutomationProperties.AutomationId="StudioZoomLane"
-    AutomationProperties.Name="Zooms"
     IsTabStop="True"
     UseSystemFocusVisuals="True">
 
     <!--
-        Positions are set in code: the blocks are placed by time, not by layout. The pointer is
-        handled here for the whole lane, so a press is told to be on a block, on one of its ends,
-        or on the empty lane from where along the lane it is.
+        One lane of the Studio timeline. The scene lane, the zoom lane and the cut lane are this
+        control, each with blocks of its own kind. Positions are set in code: the blocks are
+        placed by time, not by layout. The pointer is handled here for the whole lane, so a press
+        is told to be on a block, on one of its ends, or on the lane from where along the lane it
+        is.
     -->
     <Grid
         x:Name="Root"
@@ -23,7 +22,7 @@
         PointerPressed="OnPointerPressed"
         PointerReleased="OnPointerEnded"
         SizeChanged="OnRootSizeChanged">
-        <!--  The whole recording, on the time scale of the trim bar under it.  -->
+        <!--  The whole recording, on the time scale of the trim bar under the lanes.  -->
         <Border
             AutomationProperties.AccessibilityView="Raw"
             Background="{ThemeResource ControlAltFillColorTertiaryBrush}"
@@ -32,19 +31,19 @@
             CornerRadius="{ThemeResource ControlCornerRadius}"
             IsHitTestVisible="False" />
 
+        <!--  What a lane without blocks says. Its text and automation id come from the lane.  -->
         <TextBlock
             x:Name="EmptyText"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
-            AutomationProperties.AutomationId="StudioZoomLaneEmptyText"
             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
             IsHitTestVisible="False"
             Style="{StaticResource CaptionTextBlockStyle}"
-            Text="No zooms. Press Z to add one at the playhead."
             TextTrimming="CharacterEllipsis"
-            TextWrapping="NoWrap" />
+            TextWrapping="NoWrap"
+            Visibility="Collapsed" />
 
-        <!--  One StudioZoomBlock for each zoom, in time order.  -->
+        <!--  One block for each scene, zoom or cut, in time order.  -->
         <Canvas x:Name="Blocks" />
 
         <Canvas IsHitTestVisible="False">

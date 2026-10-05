@@ -221,7 +221,11 @@ internal sealed partial class WindowChecks
     /// </summary>
     /// <param name="layer">The layer's rectangle in pixels of the picture.</param>
     /// <param name="inset">How far inside the rectangle an edge has to be to count: the layer's corner radius, or its border.</param>
-    private static PartReading ReadPart(Shot shot, ClipSpec clip, IEnumerable<Landmark> landmarks, StudioFrameRect layer, ScreenPart want, bool mirror, double inset)
+    /// <param name="shown">
+    /// For a layer that does not fill its rectangle, or that another layer lies over: whether a
+    /// point of the picture shows this layer. Only what is read where it does counts.
+    /// </param>
+    private static PartReading ReadPart(Shot shot, ClipSpec clip, IEnumerable<Landmark> landmarks, StudioFrameRect layer, ScreenPart want, bool mirror, double inset, Func<double, double, bool>? shown = null)
     {
         var map = ClipMap.ForLayer(clip, layer, want.Rect, mirror);
         var scale = Math.Min(Math.Abs(map.ScaleX), map.ScaleY);
@@ -231,7 +235,9 @@ internal sealed partial class WindowChecks
         // is a mixture, and scaling the frame spreads that by a pixel more.
         var blur = 1 + (2 * scale);
         var (left, top, right, bottom) = (layer.X + inset, layer.Y + inset, layer.X + layer.Width - inset, layer.Y + layer.Height - inset);
-        bool Inside(double x, double y, double reachX, double reachY) => x - reachX >= left && x + reachX <= right && y - reachY >= top && y + reachY <= bottom;
+        bool Inside(double x, double y, double reachX, double reachY) =>
+            x - reachX >= left && x + reachX <= right && y - reachY >= top && y + reachY <= bottom
+            && (shown is null || (shown(x - reachX, y - reachY) && shown(x + reachX, y - reachY) && shown(x - reachX, y + reachY) && shown(x + reachX, y + reachY)));
 
         var (stripLeft, stripTop) = map.Apply(clip.CodeX, clip.CodeY);
         var (stripRight, stripBottom) = map.Apply(clip.CodeX + clip.CodeWidth, clip.CodeY + clip.CodeHeight);
@@ -450,9 +456,10 @@ internal sealed partial class WindowChecks
     /// Otherwise what is wrong.
     /// </summary>
     /// <param name="frame">The frame the picture should show, or null when that is not asked.</param>
-    private static string? Judge(PartReading reading, int? frame)
+    /// <param name="more">How much further than the tolerance an edge may be: for a picture that has been through an encoder once more.</param>
+    private static string? Judge(PartReading reading, int? frame, double more = 0)
     {
-        var tolerance = reading.Allowed;
+        var tolerance = reading.Allowed + more;
         if (frame is { } wanted && reading.StripIsInside && reading.Strip != wanted)
         {
             return $"the frame strip reads {(reading.Strip == FrameCode.Unreadable ? "nothing" : reading.Strip.ToString(CultureInfo.InvariantCulture))} where {reading.Wanted} puts it, and should read {wanted}";

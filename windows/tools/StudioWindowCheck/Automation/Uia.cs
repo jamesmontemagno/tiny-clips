@@ -206,6 +206,9 @@ internal sealed class UiaElement
         _ => true,
     });
 
+    /// <summary>Whether a list says that one of its items is always selected, or null when the element has no selection pattern.</summary>
+    public bool? IsSelectionRequired => Get<UIA.IUIAutomationSelectionPattern, bool?>(UIA.UIA_PatternIds.UIA_SelectionPatternId, static pattern => pattern.CurrentIsSelectionRequired != 0);
+
     /// <summary>The names of the selected items of a list or a combo box.</summary>
     public string[] SelectedNames => Get<UIA.IUIAutomationSelectionPattern, string[]>(UIA.UIA_PatternIds.UIA_SelectionPatternId, static pattern =>
     {

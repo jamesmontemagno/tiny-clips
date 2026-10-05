@@ -11,9 +11,10 @@ using Windows.Foundation;
 namespace TinyClips.App.Controls.Studio;
 
 /// <summary>
-/// The right-hand side of the Studio window: layout, background, screen, camera, zoom and extras,
-/// and the button that saves the look as the default. The camera section follows the layout, and
-/// the zoom section the selected zoom.
+/// The right-hand side of the Studio window: scene, layout, background, screen, camera, zoom, cut
+/// and extras, and the button that saves the look as the default. The scene, layout and camera
+/// sections follow the scene the playhead is in, and the zoom and cut sections the selected zoom
+/// or cut.
 /// </summary>
 public sealed partial class StudioInspector : UserControl
 {
@@ -73,49 +74,123 @@ public sealed partial class StudioInspector : UserControl
     // whatever comes next in the window. Each of these moves it to where a person would go on
     // from instead. A button that was pressed without having the focus leaves the focus alone.
 
+    private void OnPreviousSceneClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.StepToPreviousScene();
+        if (!ViewModel.CanShowPreviousScene)
+        {
+            StudioFocus.Move(focus, NextSceneButton, SceneSectionSplitButton);
+        }
+    }
+
+    private void OnNextSceneClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.StepToNextScene();
+        if (!ViewModel.CanShowNextScene)
+        {
+            StudioFocus.Move(focus, PreviousSceneButton, SceneSectionSplitButton);
+        }
+    }
+
+    // A paused playhead goes on to where the new scene has been entered, and no scene can be
+    // split again that close to its end. The new scene is never the first, so Previous works.
+    private void OnSplitSceneClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.SplitSceneAtPlayhead();
+        if (!ViewModel.CanSplitSceneAtPlayhead)
+        {
+            StudioFocus.Move(focus, PreviousSceneButton, NextSceneButton, SelectedLayoutChoice);
+        }
+    }
+
+    // Delete scene stays while there is another scene to delete. With one scene left it is gone,
+    // and what there is to do next is to split that scene, or to choose its layout.
+    private void OnDeleteSceneClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.RemoveCurrentScene();
+        if (!ViewModel.IsDeleteSceneVisible)
+        {
+            StudioFocus.Move(focus, SceneSectionSplitButton, SelectedLayoutChoice);
+        }
+    }
+
     private void OnPreviousZoomClick(object sender, RoutedEventArgs e)
     {
-        var focus = FocusStateOf(sender);
+        var focus = StudioFocus.StateOf(sender);
         ViewModel.ShowPreviousZoom();
         if (!ViewModel.CanSelectPreviousZoom)
         {
-            MoveFocus(focus, NextZoomButton, ZoomSectionAddButton);
+            StudioFocus.Move(focus, NextZoomButton, ZoomSectionAddButton);
         }
     }
 
     private void OnNextZoomClick(object sender, RoutedEventArgs e)
     {
-        var focus = FocusStateOf(sender);
+        var focus = StudioFocus.StateOf(sender);
         ViewModel.ShowNextZoom();
         if (!ViewModel.CanSelectNextZoom)
         {
-            MoveFocus(focus, PreviousZoomButton, ZoomSectionAddButton);
+            StudioFocus.Move(focus, PreviousZoomButton, ZoomSectionAddButton);
         }
     }
 
     private void OnRemoveSuggestionsClick(object sender, RoutedEventArgs e)
     {
-        var focus = FocusStateOf(sender);
+        var focus = StudioFocus.StateOf(sender);
         ViewModel.RemoveZoomSuggestions();
         if (!ViewModel.HasSuggestedZooms)
         {
-            MoveFocus(focus, SuggestZoomsButton, ZoomSectionAddButton);
+            StudioFocus.Move(focus, SuggestZoomsButton, ZoomSectionAddButton);
         }
     }
 
     private void OnDeleteZoomClick(object sender, RoutedEventArgs e)
     {
-        var focus = FocusStateOf(sender);
+        var focus = StudioFocus.StateOf(sender);
         ViewModel.RemoveSelectedZoom();
         if (!ViewModel.HasSelectedZoom)
         {
-            MoveFocus(focus, NextZoomButton, PreviousZoomButton, ZoomSectionAddButton);
+            StudioFocus.Move(focus, NextZoomButton, PreviousZoomButton, ZoomSectionAddButton);
+        }
+    }
+
+    private void OnPreviousCutClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.ShowPreviousCut();
+        if (!ViewModel.CanSelectPreviousCut)
+        {
+            StudioFocus.Move(focus, NextCutButton, CutSectionAddButton);
+        }
+    }
+
+    private void OnNextCutClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.ShowNextCut();
+        if (!ViewModel.CanSelectNextCut)
+        {
+            StudioFocus.Move(focus, PreviousCutButton, CutSectionAddButton);
+        }
+    }
+
+    private void OnDeleteCutClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.RemoveSelectedCut();
+        if (!ViewModel.HasSelectedCut)
+        {
+            StudioFocus.Move(focus, NextCutButton, PreviousCutButton, CutSectionAddButton);
         }
     }
 
     private void OnResetScreenCropClick(object sender, RoutedEventArgs e)
     {
-        var focus = FocusStateOf(sender);
+        var focus = StudioFocus.StateOf(sender);
         ViewModel.ResetScreenCrop();
         if (!ViewModel.CanResetScreenCrop && focus != FocusState.Unfocused)
         {
@@ -125,7 +200,7 @@ public sealed partial class StudioInspector : UserControl
 
     private void OnResetCameraCropClick(object sender, RoutedEventArgs e)
     {
-        var focus = FocusStateOf(sender);
+        var focus = StudioFocus.StateOf(sender);
         ViewModel.ResetCameraCrop();
         if (!ViewModel.CanResetCameraCrop && focus != FocusState.Unfocused)
         {
@@ -133,25 +208,14 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
-    private static FocusState FocusStateOf(object sender) =>
-        sender is Control control ? control.FocusState : FocusState.Unfocused;
-
-    /// <summary>Gives the focus to the first of the controls that can take it, the way the pressed button had it.</summary>
-    private static void MoveFocus(FocusState state, params Control[] candidates)
+    /// <summary>The one of the four layout choices that is chosen, which is where the Tab key stops among them.</summary>
+    private RadioButton SelectedLayoutChoice => ViewModel.LayoutIndex switch
     {
-        if (state == FocusState.Unfocused)
-        {
-            return;
-        }
-
-        foreach (var candidate in candidates)
-        {
-            if (candidate.IsEnabled && candidate.Focus(state))
-            {
-                return;
-            }
-        }
-    }
+        (int)StudioLayout.Screen => LayoutScreenChoice,
+        (int)StudioLayout.SideBySide => LayoutSideBySideChoice,
+        (int)StudioLayout.Camera => LayoutCameraChoice,
+        _ => LayoutBubbleChoice,
+    };
 
     private void AddSwatches(GridView grid, IReadOnlyList<StudioSwatch> swatches)
     {

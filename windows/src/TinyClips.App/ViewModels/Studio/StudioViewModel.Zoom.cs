@@ -16,7 +16,7 @@ public sealed partial class StudioViewModel
     // be the same value.
     private const double ValueTolerance = 1e-9;
 
-    // What changes when another zoom is selected and the project stays as it is.
+    // What changes when another zoom is selected, or none because a cut is, and the project stays as it is.
     private static readonly string[] ZoomSelectionPropertyNames =
     [
         nameof(SelectedZoomIndex),
@@ -511,10 +511,14 @@ public sealed partial class StudioViewModel
         }
     }
 
-    private void RaiseZoomSelectionChanged()
+    // A zoom or a cut is selected, never both, so selecting one can let go of the other: what
+    // follows either selection is refreshed.
+    private void RaiseSelectionChanged()
     {
         Raise(ZoomSelectionPropertyNames);
+        Raise(CutSelectionPropertyNames);
         RaiseZoomStateAtPlayhead();
+        RaiseCutStateAtPlayhead();
     }
 
     /// <summary>

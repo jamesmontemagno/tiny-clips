@@ -16,8 +16,8 @@ namespace TinyClips.App.ViewModels.Studio;
 /// <remarks>
 /// Every value is read from the session when it is asked for, so there is no second copy to keep
 /// in step. A change to the project refreshes every binding; the playhead and export progress,
-/// which change many times a second, refresh only what depends on them, and so does selecting
-/// another zoom.
+/// which change many times a second, refresh only what depends on them, and so do selecting
+/// another zoom or cut and the playhead coming into another scene.
 /// </remarks>
 public sealed partial class StudioViewModel : ObservableObject
 {
@@ -259,7 +259,7 @@ public sealed partial class StudioViewModel : ObservableObject
     public void MoveBubbleTopLeft(double x, double y) =>
         _session.MoveBubbleTopLeft(x, y, CanvasWidth, CanvasHeight);
 
-    /// <summary>Runs what a key press means. A layout chosen this way is read out, and so is what came of a zoom.</summary>
+    /// <summary>Runs what a key press means. A layout chosen this way is read out, and so is what came of a scene, a zoom or a cut.</summary>
     public void Run(StudioShortcutAction action)
     {
         switch (action)
@@ -296,6 +296,18 @@ public sealed partial class StudioViewModel : ObservableObject
                 break;
             case StudioShortcutAction.RemoveSelectedZoom:
                 RemoveSelectedZoom();
+                break;
+            case StudioShortcutAction.SplitScene:
+                SplitSceneAtPlayhead();
+                break;
+            case StudioShortcutAction.RemoveCurrentScene:
+                RemoveCurrentScene();
+                break;
+            case StudioShortcutAction.AddCut:
+                AddCutAtPlayhead();
+                break;
+            case StudioShortcutAction.RemoveSelectedCut:
+                RemoveSelectedCut();
                 break;
             case StudioShortcutAction.Undo:
                 Undo();
@@ -361,19 +373,29 @@ public sealed partial class StudioViewModel : ObservableObject
             ClearDefaultLookStatusIfEdited();
             ClearSaveErrorIfSaved();
             RememberZoomStateAtPlayhead();
+            RememberCutStateAtPlayhead();
+            RememberSceneStateAtPlayhead();
             OnPropertyChanged(string.Empty);
         }
         else
         {
             if (e.Includes(StudioEditorChanges.Selection))
             {
-                RaiseZoomSelectionChanged();
+                RaiseSelectionChanged();
+            }
+
+            // The playhead has come into another scene: by a seek, or by playing.
+            if (e.Includes(StudioEditorChanges.Scene))
+            {
+                RaiseSceneChanged();
             }
 
             if (e.Includes(StudioEditorChanges.Playback))
             {
                 Raise(PlaybackPropertyNames);
                 RaiseZoomStateAtPlayhead();
+                RaiseCutStateAtPlayhead();
+                RaiseSceneStateAtPlayhead();
             }
 
             if (e.Includes(StudioEditorChanges.Export))

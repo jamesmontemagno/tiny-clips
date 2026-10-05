@@ -75,7 +75,7 @@ internal sealed partial class WindowChecks
         sight.Shot.Save(windowPath);
         saved.Add(windowPath);
 
-        // The window's own surfaces: the header left of Undo, the inspector's edge, and the timeline between the time and Add zoom.
+        // The window's own surfaces: the header left of Undo, the inspector's edge, and the timeline between the time and Split.
         var surfaces = Surfaces(editor, sight.Shot);
         var text = TextContrast(editor, sight.Shot, "StudioClipName");
         var isLight = theme == AppTheme.Light;
@@ -85,6 +85,7 @@ internal sealed partial class WindowChecks
             $"requested theme {requested}; surfaces {string.Join(" ", surfaces)}; the recording's name is {F(Math.Abs(text), "0")} levels {(text < 0 ? "darker" : "lighter")} than what is behind it; {sight.Shown}; saved as {Path.GetFileName(windowPath)} ({sight.Shot.Width}x{sight.Shot.Height})");
 
         ZoomPictures(editor, name, isLight, Frame, saved);
+        TimelinePictures(name, isLight, saved);
 
         // The question on closing, once it has finished opening.
         Timeline.Mark($"9: the question on closing, {name}");
@@ -322,16 +323,16 @@ internal sealed partial class WindowChecks
             colors.Add(shot.Color(undo.Bounds.X - shot.ScreenX - (40 * editor.Scale), undo.Bounds.Y - shot.ScreenY + (undo.Bounds.Height / 2.0), 2));
         }
 
-        if (Find(editor, "StudioPaddingSlider", 0.5) is { } slider && Find(editor, "StudioPreview", 0.5) is { } preview)
+        if ((Find(editor, "StudioPreviousSceneButton", 0.5) ?? Find(editor, "StudioNoCameraNote", 0.5)) is { } first && Find(editor, "StudioPreview", 0.5) is { } preview)
         {
-            // In the inspector, in the margin left of its controls, level with the top of the preview.
-            colors.Add(shot.Color(slider.Bounds.X - shot.ScreenX - (8 * editor.Scale), preview.Bounds.Y - shot.ScreenY + 4, 2));
+            // In the inspector, in the margin left of its first control, level with the top of the preview.
+            colors.Add(shot.Color(first.Bounds.X - shot.ScreenX - (8 * editor.Scale), preview.Bounds.Y - shot.ScreenY + 4, 2));
         }
 
-        if (Find(editor, "StudioAddZoomButton", 0.5) is { } addZoom)
+        if ((Find(editor, "StudioSplitSceneButton", 0.2) ?? Find(editor, "StudioAddZoomButton", 0.5)) is { } button)
         {
-            // In the timeline, left of Add zoom, which is the first of the buttons on its right.
-            colors.Add(shot.Color(addZoom.Bounds.X - shot.ScreenX - (60 * editor.Scale), addZoom.Bounds.Y - shot.ScreenY + (addZoom.Bounds.Height / 2.0), 2));
+            // In the timeline, left of the first of the buttons on its right: Split, or Add zoom for a recording without a camera.
+            colors.Add(shot.Color(button.Bounds.X - shot.ScreenX - (60 * editor.Scale), button.Bounds.Y - shot.ScreenY + (button.Bounds.Height / 2.0), 2));
         }
 
         return colors;

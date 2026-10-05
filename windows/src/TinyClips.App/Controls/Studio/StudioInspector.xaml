@@ -51,6 +51,160 @@
         VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="16" Spacing="20">
 
+            <!--
+                Scene: only for a recording with a camera, because without one every layout is
+                the screen alone. A scene is not selected: the section shows the scene the
+                playhead is in, and so do Layout and Camera under it, which change that scene.
+            -->
+            <StackPanel
+                x:Name="SceneSection"
+                Spacing="8"
+                Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Scene" />
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="PreviousSceneButton"
+                        Grid.Column="0"
+                        AutomationProperties.AutomationId="StudioPreviousSceneButton"
+                        AutomationProperties.Name="Previous scene"
+                        Click="OnPreviousSceneClick"
+                        IsEnabled="{x:Bind ViewModel.CanShowPreviousScene, Mode=OneWay}"
+                        ToolTipService.ToolTip="Previous scene">
+                        <FontIcon FontSize="14" Glyph="&#xE76B;" />
+                    </Button>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioScenePositionText"
+                            Text="{x:Bind ViewModel.ScenePositionText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioSceneRangeText"
+                            Style="{StaticResource StudioCaptionStyle}"
+                            Text="{x:Bind ViewModel.SceneRangeText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button
+                        x:Name="NextSceneButton"
+                        Grid.Column="2"
+                        AutomationProperties.AutomationId="StudioNextSceneButton"
+                        AutomationProperties.Name="Next scene"
+                        Click="OnNextSceneClick"
+                        IsEnabled="{x:Bind ViewModel.CanShowNextScene, Mode=OneWay}"
+                        ToolTipService.ToolTip="Next scene">
+                        <FontIcon FontSize="14" Glyph="&#xE76C;" />
+                    </Button>
+                </Grid>
+
+                <Button
+                    x:Name="SceneSectionSplitButton"
+                    AutomationProperties.AutomationId="StudioSceneSectionSplitButton"
+                    AutomationProperties.HelpText="{x:Bind ViewModel.SplitSceneHelpText, Mode=OneWay}"
+                    Click="OnSplitSceneClick"
+                    Content="Split at playhead"
+                    IsEnabled="{x:Bind ViewModel.CanSplitSceneAtPlayhead, Mode=OneWay}"
+                    ToolTipService.ToolTip="Start a new scene at the playhead (S)" />
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioSplitSceneNote"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="{x:Bind ViewModel.SplitSceneExplanation, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.IsSplitSceneExplanationVisible, Mode=OneWay}" />
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioOneSceneNote"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="{x:Bind ViewModel.OneSceneExplanation}"
+                    Visibility="{x:Bind ViewModel.IsOneSceneExplanationVisible, Mode=OneWay}" />
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioFirstSceneNote"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="{x:Bind ViewModel.FirstSceneExplanation}"
+                    Visibility="{x:Bind ViewModel.IsFirstSceneExplanationVisible, Mode=OneWay}" />
+
+                <!--  When the scene starts and how it is entered: for every scene but the first.  -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreSceneEntryControlsVisible, Mode=OneWay}">
+                    <!--  The time is said with its name, so screen readers skip the label.  -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Start" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="StudioSceneStartText"
+                                AutomationProperties.Name="{x:Bind ViewModel.SceneStartAccessibleName, Mode=OneWay}"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.SceneStartText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="StudioSceneStartEarlierButton"
+                                AutomationProperties.Name="Scene start 0.1 seconds earlier"
+                                Click="{x:Bind ViewModel.StepSceneStartEarlier}"
+                                Content="&#x2212;0.1 s"
+                                ToolTipService.ToolTip="Start this scene 0.1 seconds earlier" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioSceneStartLaterButton"
+                                AutomationProperties.Name="Scene start 0.1 seconds later"
+                                Click="{x:Bind ViewModel.StepSceneStartLater}"
+                                Content="+0.1 s"
+                                ToolTipService.ToolTip="Start this scene 0.1 seconds later" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioSceneStartAtPlayheadButton"
+                                AutomationProperties.Name="Start scene at playhead"
+                                Click="{x:Bind ViewModel.SetSceneStartAtPlayhead}"
+                                Content="At playhead"
+                                ToolTipService.ToolTip="Start this scene at the playhead" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <RadioButtons
+                        AutomationProperties.AutomationId="StudioSceneEntryChoice"
+                        AutomationProperties.Name="Entered by"
+                        Header="Entered by"
+                        MaxColumns="2"
+                        SelectedIndex="{x:Bind ViewModel.SceneEntryIndex, Mode=TwoWay}"
+                        ToolTipService.ToolTip="Cut to this scene, or have the screen and camera move into place">
+                        <RadioButton AutomationProperties.AutomationId="StudioSceneEntryCut" Content="A cut" />
+                        <RadioButton AutomationProperties.AutomationId="StudioSceneEntryMove" Content="Moving" />
+                    </RadioButtons>
+                    <local:StudioSliderRow
+                        Title="Move takes"
+                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                        Maximum="2"
+                        Minimum="0.1"
+                        SliderAutomationId="StudioSceneMoveSlider"
+                        Step="0.05"
+                        ValueText="{x:Bind ViewModel.SceneMoveDurationText, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsSceneMoveDurationVisible, Mode=OneWay}"
+                        Value="{x:Bind ViewModel.SceneMoveDuration, Mode=TwoWay}" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="StudioSceneMoveLimitedNote"
+                        Style="{StaticResource StudioNoteStyle}"
+                        Text="{x:Bind ViewModel.SceneMoveLimitedText, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.HasSceneMoveLimitedText, Mode=OneWay}" />
+                </StackPanel>
+
+                <Button
+                    x:Name="DeleteSceneButton"
+                    AutomationProperties.AutomationId="StudioDeleteSceneButton"
+                    AutomationProperties.HelpText="The scene before it then lasts until the next one."
+                    Click="OnDeleteSceneClick"
+                    Content="Delete scene"
+                    IsEnabled="{x:Bind ViewModel.CanRemoveCurrentScene, Mode=OneWay}"
+                    ToolTipService.ToolTip="Delete this scene. The scene before it then lasts until the next one."
+                    Visibility="{x:Bind ViewModel.IsDeleteSceneVisible, Mode=OneWay}" />
+            </StackPanel>
+
             <!--  Layout  -->
             <StackPanel Spacing="8">
                 <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Layout" />
@@ -61,10 +215,22 @@
                     SelectedIndex="{x:Bind ViewModel.LayoutIndex, Mode=TwoWay}"
                     ToolTipService.ToolTip="Screen only, screen with a camera bubble, side by side, or camera only (1 to 4)"
                     Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}">
-                    <RadioButton AutomationProperties.AutomationId="StudioLayoutScreen" Content="Screen" />
-                    <RadioButton AutomationProperties.AutomationId="StudioLayoutBubble" Content="Bubble" />
-                    <RadioButton AutomationProperties.AutomationId="StudioLayoutSideBySide" Content="Side by side" />
-                    <RadioButton AutomationProperties.AutomationId="StudioLayoutCamera" Content="Camera" />
+                    <RadioButton
+                        x:Name="LayoutScreenChoice"
+                        AutomationProperties.AutomationId="StudioLayoutScreen"
+                        Content="Screen" />
+                    <RadioButton
+                        x:Name="LayoutBubbleChoice"
+                        AutomationProperties.AutomationId="StudioLayoutBubble"
+                        Content="Bubble" />
+                    <RadioButton
+                        x:Name="LayoutSideBySideChoice"
+                        AutomationProperties.AutomationId="StudioLayoutSideBySide"
+                        Content="Side by side" />
+                    <RadioButton
+                        x:Name="LayoutCameraChoice"
+                        AutomationProperties.AutomationId="StudioLayoutCamera"
+                        Content="Camera" />
                 </RadioButtons>
                 <TextBlock
                     AutomationProperties.AutomationId="StudioNoCameraNote"
@@ -595,6 +761,161 @@
                     Style="{StaticResource StudioNoteStyle}"
                     Text="Select a zoom on the timeline, or step to one with the arrows above."
                     Visibility="{x:Bind ViewModel.IsZoomHintVisible, Mode=OneWay}" />
+            </StackPanel>
+
+            <!--
+                Cut: stepping through the cuts, starting one, and the two ends of the selected
+                one. It is how a cut is selected and changed without a pointer. A cut is selected
+                in place of a zoom, so this section and Zoom never both show one.
+            -->
+            <StackPanel x:Name="CutSection" Spacing="8">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Cut" />
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="PreviousCutButton"
+                        Grid.Column="0"
+                        AutomationProperties.AutomationId="StudioPreviousCutButton"
+                        AutomationProperties.Name="Previous cut"
+                        Click="OnPreviousCutClick"
+                        IsEnabled="{x:Bind ViewModel.CanSelectPreviousCut, Mode=OneWay}"
+                        ToolTipService.ToolTip="Previous cut">
+                        <FontIcon FontSize="14" Glyph="&#xE76B;" />
+                    </Button>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioCutPositionText"
+                            Text="{x:Bind ViewModel.CutSelectionTitle, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioCutRangeText"
+                            Style="{StaticResource StudioCaptionStyle}"
+                            Text="{x:Bind ViewModel.CutSelectionDetail, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.HasCutSelectionDetail, Mode=OneWay}" />
+                    </StackPanel>
+                    <Button
+                        x:Name="NextCutButton"
+                        Grid.Column="2"
+                        AutomationProperties.AutomationId="StudioNextCutButton"
+                        AutomationProperties.Name="Next cut"
+                        Click="OnNextCutClick"
+                        IsEnabled="{x:Bind ViewModel.CanSelectNextCut, Mode=OneWay}"
+                        ToolTipService.ToolTip="Next cut">
+                        <FontIcon FontSize="14" Glyph="&#xE76C;" />
+                    </Button>
+                </Grid>
+
+                <Button
+                    x:Name="CutSectionAddButton"
+                    AutomationProperties.AutomationId="StudioCutSectionAddButton"
+                    Click="{x:Bind ViewModel.AddCutAtPlayhead}"
+                    Content="Cut at playhead"
+                    IsEnabled="{x:Bind ViewModel.CanAddCutAtPlayhead, Mode=OneWay}"
+                    ToolTipService.ToolTip="Start a cut at the playhead (X)" />
+
+                <!--  The selected cut.  -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasSelectedCut, Mode=OneWay}">
+                    <!--  Where the cut starts: the first picture the video leaves out. The time is said with its name, so screen readers skip the label.  -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Start" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="StudioCutStartText"
+                                AutomationProperties.Name="{x:Bind ViewModel.CutStartAccessibleName, Mode=OneWay}"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.CutStartText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="StudioCutStartEarlierButton"
+                                AutomationProperties.Name="Start 0.1 seconds earlier"
+                                Click="{x:Bind ViewModel.StepCutStartEarlier}"
+                                Content="&#x2212;0.1 s"
+                                ToolTipService.ToolTip="Start 0.1 seconds earlier" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioCutStartLaterButton"
+                                AutomationProperties.Name="Start 0.1 seconds later"
+                                Click="{x:Bind ViewModel.StepCutStartLater}"
+                                Content="+0.1 s"
+                                ToolTipService.ToolTip="Start 0.1 seconds later" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioCutStartAtPlayheadButton"
+                                AutomationProperties.Name="Start at playhead"
+                                Click="{x:Bind ViewModel.SetCutStartAtPlayhead}"
+                                Content="At playhead"
+                                ToolTipService.ToolTip="Start this cut at the playhead" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!--  Where the cut ends: the picture the video picks up again with.  -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="End" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="StudioCutEndText"
+                                AutomationProperties.Name="{x:Bind ViewModel.CutEndAccessibleName, Mode=OneWay}"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.CutEndText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="StudioCutEndEarlierButton"
+                                AutomationProperties.Name="End 0.1 seconds earlier"
+                                Click="{x:Bind ViewModel.StepCutEndEarlier}"
+                                Content="&#x2212;0.1 s"
+                                ToolTipService.ToolTip="End 0.1 seconds earlier" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioCutEndLaterButton"
+                                AutomationProperties.Name="End 0.1 seconds later"
+                                Click="{x:Bind ViewModel.StepCutEndLater}"
+                                Content="+0.1 s"
+                                ToolTipService.ToolTip="End 0.1 seconds later" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioCutEndAtPlayheadButton"
+                                AutomationProperties.Name="End at playhead"
+                                Click="{x:Bind ViewModel.SetCutEndAtPlayhead}"
+                                Content="At playhead"
+                                ToolTipService.ToolTip="End this cut at the playhead" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBlock
+                        AutomationProperties.AutomationId="StudioCutLengthText"
+                        Style="{StaticResource StudioCaptionStyle}"
+                        Text="{x:Bind ViewModel.CutLengthText, Mode=OneWay}" />
+                    <Button
+                        AutomationProperties.AutomationId="StudioDeleteCutButton"
+                        AutomationProperties.HelpText="Puts the stretch back into the video."
+                        Click="OnDeleteCutClick"
+                        Content="Delete cut"
+                        ToolTipService.ToolTip="Delete this cut, which puts the stretch back into the video (Delete)" />
+                </StackPanel>
+
+                <TextBlock
+                    AutomationProperties.AutomationId="StudioCutHint"
+                    Style="{StaticResource StudioNoteStyle}"
+                    Text="{x:Bind ViewModel.CutHint}"
+                    Visibility="{x:Bind ViewModel.IsCutHintVisible, Mode=OneWay}" />
             </StackPanel>
 
             <!--  Extras  -->

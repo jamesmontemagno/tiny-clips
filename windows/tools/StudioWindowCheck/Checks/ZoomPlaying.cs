@@ -34,9 +34,9 @@ internal sealed partial class WindowChecks
     }
 
     /// <param name="heldUp">
-    /// Makes work for the garbage collector while the preview plays: a new buffer of eight
-    /// megabytes for every screenshot. Each time it collects, it stops every thread of the
-    /// process, the preview's among them, for some tens of milliseconds.
+    /// Has the garbage collector run about twice a second while the preview plays, with enough
+    /// kept in memory for it to look through that each run stops every thread of the process,
+    /// the preview's among them, for about fifty milliseconds.
     /// </param>
     private void PlayThroughAZoomMovingIn(bool heldUp)
     {
@@ -165,6 +165,13 @@ internal sealed partial class WindowChecks
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
+
+        // A collection takes as long as what it has to look through. In this process that used
+        // to be long by itself, because every window a run had closed stayed in memory; since
+        // that is mended a collection takes a few milliseconds, and holds nothing up. So to
+        // hold the process up, the tool keeps something for the collector to look through.
+        var pauseOfOne = 0.0;
+        var ballast = heldUp ? Ballast.Make(50, out pauseOfOne) : null;
         var before = engine.GetDiagnostics();
         var pausedBefore = GC.GetTotalPauseDuration();
         var collectionsBefore = (GC.CollectionCount(0), GC.CollectionCount(2));
@@ -174,16 +181,17 @@ internal sealed partial class WindowChecks
         try
         {
             Invoke(editor, "StudioPlayPauseButton");
-            while (watch.Elapsed.TotalSeconds < 12 && FrameOf(Playhead(editor)) < Last)
+            for (var pass = 0; watch.Elapsed.TotalSeconds < 12 && FrameOf(Playhead(editor)) < Last; pass++)
             {
-                // Into the same buffer every time: a new one for each would have the garbage
-                // collector stop every thread, the preview's among them, several times while it
-                // plays. Which is what is wanted when the process is to be held up.
-                if (heldUp)
+                // Held up: on every third pass, about twice a second, every thread of the
+                // process stands still for as long as the collector takes.
+                if (heldUp && pass % 3 == 2)
                 {
-                    shotBuffer = null;
+                    GC.Collect();
                 }
 
+                // Into the same buffer every time: a new one for each would have the garbage
+                // collector run by itself, at moments of its own choosing.
                 if (editor.Camera.Take(ref shotBuffer) is { } shot)
                 {
                     var reading = Read(shot, rest.Card, CardInset(rest.Canvas, project), Stopwatch.GetTimestamp(), ref lastShot);
@@ -211,6 +219,9 @@ internal sealed partial class WindowChecks
         var after = engine.GetDiagnostics();
         var paused = GC.GetTotalPauseDuration() - pausedBefore;
         var collections = (All: GC.CollectionCount(0) - collectionsBefore.Item1, Full: GC.CollectionCount(2) - collectionsBefore.Item2);
+        var kept = ballast?.Sum(part => (long)part.Length) ?? 0;
+        GC.KeepAlive(ballast);
+        ballast = null;
         if (halfWay is not null && !heldUp)
         {
             var path = Path.Combine(_output, "zoom-moving-in.png");
@@ -243,7 +254,8 @@ internal sealed partial class WindowChecks
         string Wrong(SceneReading scene) => string.Create(
             CultureInfo.InvariantCulture,
             $"frame {scene.Frame}: an edge {scene.Worst:0.00} px from its place; {(scene.Fits is { } fits ? $"the edges fit the part of frame {fits.Frame}, within {fits.Worst:0.00} px" : $"the edges fit the part of none of the eight frames before and after it ({scene.Problem})")}; drawn {(waits.TryGetValue(scene, out var wait) ? wait : double.NaN):0} ms after the scene before it");
-        var pauses = string.Create(CultureInfo.InvariantCulture, $"while it played, this tool's garbage collector ran {collections.All} times, {collections.Full} of them in full, and held every thread for {paused.TotalMilliseconds:0} ms in all");
+        var pauses = string.Create(CultureInfo.InvariantCulture, $"while it played, this tool's garbage collector ran {collections.All} times, {collections.Full} of them in full, and held every thread for {paused.TotalMilliseconds:0} ms in all")
+            + (heldUp ? string.Create(CultureInfo.InvariantCulture, $"; it had {kept / 1e6:0.0} million objects to look through, kept for that, with which one run of it took {pauseOfOne:0} ms before the playing started") : string.Empty);
         var summary = measured.Count == 0
             ? "no scene of the move was read"
             : string.Create(CultureInfo.InvariantCulture, $"{moving.Count} scenes of the frames {MovingFirst} to {MovingLast}, each with {measured.Min(scene => scene.Edges)} to {measured.Max(scene => scene.Edges)} edges read; the edge furthest from its place was {worst!.Worst:0.00} px from it, in frame {worst.Frame}, and the furthest edge of a scene on average {measured.Average(scene => scene.Worst):0.00} px; {unreadable} scenes did not read, {backwards} went back to an earlier frame; where no zoom is, over {plain.Count} scenes, the furthest was {plainWorst:0.00} px; {scenes.Count} scenes were drawn in all; {pauses}");
@@ -312,6 +324,42 @@ internal sealed partial class WindowChecks
             parked is not null && Judge(parked.Reading, FrameOf(head)) is null && FrameOf(head) > MovingLast,
             parked is null ? "no screenshot" : $"playhead {Seconds(head)} s (frame {FrameOf(head)}): {Judge(parked.Reading, FrameOf(head)) ?? parked.Reading.ToString()}");
         CloseQuietly(editor);
+    }
+}
+
+/// <summary>What the garbage collector is given to look through when the process is to be held up.</summary>
+internal static class Ballast
+{
+    /// <summary>
+    /// Makes small objects that refer to each other, half a million at a time, until one full
+    /// run of the garbage collector stops every thread for as long as wanted, or twelve million
+    /// are made. They cost a collection time for as long as what is returned is kept.
+    /// </summary>
+    /// <param name="pause">How long one full run of the collector held every thread with them, in milliseconds.</param>
+    public static List<object[]> Make(double wantedMilliseconds, out double pause)
+    {
+        var ballast = new List<object[]>();
+        pause = 0;
+        while (ballast.Count < 24)
+        {
+            var part = new object[500_000];
+            for (var index = 0; index < part.Length; index++)
+            {
+                part[index] = new object[] { part };
+            }
+
+            ballast.Add(part);
+            GC.Collect();
+            var pausedBefore = GC.GetTotalPauseDuration();
+            GC.Collect();
+            pause = (GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds;
+            if (pause >= wantedMilliseconds)
+            {
+                break;
+            }
+        }
+
+        return ballast;
     }
 }
 

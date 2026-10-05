@@ -11,14 +11,16 @@ Every result is read back by the tool itself, in one of these ways:
 - a screenshot of its own window, taken with Windows.Graphics.Capture. Each frame of the test
   clips carries its frame number as a strip of black and white cells (see
   `..\StudioPreviewCheck\README.md`), so a screenshot says which frame of each clip is shown and
-  where. For zooms and crops the edges of the test picture are found as well, which says which
-  part of a clip is shown and how large: see "Which part of a clip a picture shows";
+  where. For zooms, crops and scenes the edges of the test picture are found as well, which says
+  which part of a clip is shown, how large and where: see "Which part of a clip a picture shows"
+  and "Where a scene puts a layer";
 - the window's UI Automation tree, read with the client a screen reader uses, and the events the
   window sends that client: the sentences it asks to have read out, and which item of a list
   became the selected one;
 - the frames of an exported file, decoded with ffmpeg;
-- every scene the preview engine draws while it plays through a zoom, copied out of the texture
-  it was drawn into through the engine's hook for check tools (`AfterRender`).
+- every picture the preview engine draws while it plays through a zoom, into a scene and over a
+  cut, copied out of the texture it was drawn into through the engine's hook for check tools
+  (`AfterRender`).
 
 ## Needs
 
@@ -36,7 +38,7 @@ dotnet build windows\tools\StudioWindowCheck\StudioWindowCheck.csproj -c Debug -
 windows\tools\StudioWindowCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioWindowCheck.exe
 ```
 
-A full run takes about two minutes. It exits with 0 when every check passed and with 1 when one
+A full run takes about three minutes. It exits with 0 when every check passed and with 1 when one
 did not, after printing one `FAILED:` line for each; 2 is a usage error.
 
 | Option | |
@@ -46,8 +48,9 @@ did not, after printing one `FAILED:` line for each; 2 is a usage error.
 | `--out <folder>` | where reports, trees and pictures go (default `out` next to the project) |
 | `--media <folder>` | where the test clips are, or are generated (default `..\StudioPreviewCheck\out\media` when it has them, otherwise `media` in the out folder) |
 | `--held-up` | in the `zoom` group, play through a zoom that moves in a second time while the tool holds its own process up: see "A frame that comes late" |
+| `--memory` | run none of the groups: open and close windows with one thing done to each, and say which are still in memory afterwards: see "A closed window that stays in memory" |
 
-Groups: `open transport inspector trim export close windows accessibility themes zoom crop`.
+Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut`.
 
 ## What it leaves behind
 
@@ -67,11 +70,23 @@ Groups: `open transport inspector trim export close windows accessibility themes
   there are three: from its heading, from the focus pad, and from its end.
 - `out\zoom-preview.png`: the window right after Z added a zoom, with the preview zoomed.
   `out\zoom-moving-in.png`: a screenshot taken while the preview played through a zoom moving in.
+- `out\window-timeline-light.png`, `-light-smallest.png`, and the same for `dark`: the whole
+  window on a recording with a camera that has three scenes, two zooms and two cuts, the second
+  cut selected, at the size the window opens with (1180 × 760) and at the smallest size it can
+  be given (980 × 640).
+- `out\scene-side-by-side.png`: the window with the playhead in a second scene that is side by
+  side. `out\scene-moving-in.png`: paused half way through the move into it.
+  `out\scene-looks-light.png`, `-dark.png`: the scene lane with the playhead in the second of
+  three scenes.
+- `out\cut-looks-light.png`, `-light-selected.png`, and the same for `dark`: the window with one
+  cut of four seconds and one zoom, the cut not selected and selected.
 - `out\tree-*.txt`: the UI Automation tree of the window in each state the `accessibility` group
   reads: opening, the editor in three layouts, exporting, the question on closing, a recording
-  without a camera, and a project that cannot be opened; and, from the `zoom` group, with a zoom
-  selected and with suggested zooms.
-- `out\tab-order.txt`: the tab stops of the window with a zoom selected, in the order the focus
+  without a camera, and a project that cannot be opened; from the `zoom` group, with a zoom
+  selected and with suggested zooms; from the `scene` group, with three scenes; and from the
+  `cut` group, with a cut selected.
+- `out\tab-order.txt`, `out\tab-order-scenes.txt`, `out\tab-order-cuts.txt`: the tab stops of the
+  window with a zoom selected, with three scenes, and with a cut selected, in the order the focus
   moves through them.
 - `out\open-failure-<time>-<n>.txt`, only when a window could not open its project: what the
   preview failed with, each exception with its error code, and what the preview engines wrote
@@ -101,9 +116,9 @@ Someone may be working on the machine while the tool runs, so:
 - **It says whether one of its windows was ever in front.** `Host\ForegroundWatch.cs` has Windows
   report every change of the foreground window, and reads the foreground window about every
   1.5 ms besides. If a window of the tool is ever in front it is hidden at once and the run stops.
-  The report gives the longest gap between two reads, which is a garbage collection stopping every
-  thread of the process for a few tenths of a second; the changes Windows reports are queued, so
-  none is lost in a gap.
+  The report gives the longest gap between two reads and how much of it was a garbage collection,
+  which stops every thread of the process: about a tenth of a second in a full run. The changes
+  Windows reports are queued, so none is lost in a gap.
 - Windows are shown without activation, behind every other window, and not in the taskbar or
   Alt+Tab. Screenshots are of the tool's own windows only. Ending the capture of a window is a
   call into the system, and it was once seen not to return: a run stood still in it for six
@@ -154,22 +169,32 @@ Someone may be working on the machine while the tool runs, so:
 - **Keys are not pressed.** Where a check says "what the Space key runs", it calls what the
   window's key handler calls once it has mapped the key: `StudioWindow.RunShortcut`, which asks
   `StudioShortcuts.Resolve` what the key means in the window as it is, and runs that. That the
-  window maps the Z and Delete keys is checked on `StudioWindow.MapKey`. For the arrow keys, Home
-  and End on the zoom lane, the lane's own `HandleKey` is called, which is what its key handler
-  calls. That a key reaches a handler, and what a focused control does with it first, is not
-  checked.
+  window maps the S, X, Z and Delete keys is checked on `StudioWindow.MapKey`. For the arrow
+  keys, Home and End on a lane, the lane's own `HandleKey` is called, which is what its key
+  handler calls. Delete on the scene lane is checked with the focus put on the lane inside the
+  window, which is what the window's key handler asks about. That a key reaches a handler, and
+  what a focused control does with it first, is not checked.
 - **Nothing is dragged or pressed with a pointer.** The camera in the preview, the handles of the
   trim bar and a slider's thumb are never moved. A slider drag as one undo step is checked by
   calling what the slider's row calls when a pointer takes hold of it and lets go
   (`BeginGesture`, `EndGesture`), with the values set through UI Automation in between. A press
-  and a drag on the zoom lane and on the focus pad are checked by calling what their pointer
-  handlers call with a place (`PressAt`, `DragTo`, `EndPress`). Which element a real pointer
+  and a drag on each of the three lanes and on the focus pad are checked by calling what their
+  pointer handlers call with a place (`PressAt`, `DragTo`, `EndPress`). A drag of a trim handle
+  that goes on to where the trim is refused is checked by what the bar asks the editor for: a
+  gesture with one request for each move. What a press on the trim bar does to the selection is
+  checked by what the bar asks for as well: its playhead and a handle are set through UI
+  Automation, which makes the bar raise the request that a press on it and on a handle raises,
+  and the gesture that a press on a handle begins and its release ends is begun and ended on
+  the view model. The bar's own pointer handlers are never run. Which element a real pointer
   lands on, and that the element keeps the pointer while it is down, is not checked.
 - **The focus is moved inside the window only.** The window never has the keyboard. Where the
   focus goes is read from XAML's own focus manager: the order of the tab stops by asking it to
   move the focus to the next stop over and over, and where the focus lands after a button
   switches itself off or goes away by putting it on the button first. Each of these asks
-  Windows for the keyboard, and each request is refused and counted like every other.
+  Windows for the keyboard, and each request is refused and counted like every other. A group
+  of radio buttons is one stop and is listed by the group: which of its buttons the Tab key
+  lands on is the group's doing for a focus that comes from the keyboard, and a focus moved
+  this way stays on its first button.
 - **No screen reader runs.** What one would be told is heard by a listener for UI Automation
   events inside the tool. It hears every event twice, a few milliseconds apart on two threads,
   including those of the framework's own controls, so the checks hold what the window's zoom
@@ -211,7 +236,10 @@ Someone may be working on the machine while the tool runs, so:
   operates has an automation id, and every slider reports its value, range, step and text. A
   pane that cannot take the focus may be without a name; the two panes in which the framework
   hosts XAML in a window are left out.
-- `themes`: the pictures, and that each is what its name says.
+- `themes`: the pictures, and that each is what its name says. For the window with scenes,
+  zooms and cuts, at both sizes: the nine items of the transport row are on one row in their
+  order, the three lanes and the trim bar are one above the other and equally wide, all of it
+  whole inside the window, and the canvas is at least 400 × 225.
 - `zoom`: the lane above the trim bar, Add zoom, what Z and Delete run, the lane's keys, its
   blocks as list items, Previous and Next, the Zoom section with every control of the selected
   zoom, the focus pad, the Start and End buttons, presses and drags on the lane, a zoom that
@@ -221,6 +249,31 @@ Someone may be working on the machine while the tool runs, so:
 - `crop`: the four crop sliders of the screen and of the camera, where an edge stops, a drag as
   one undo step, Reset crop and its undo, a zoom inside a crop, and where the keyboard focus goes
   after Reset crop. After each step the preview has to show the part of the clip the crop leaves.
+- `scene`: a recording without a camera, which has no scene controls; one scene; Split by S and
+  by both buttons, where it is refused and why; a layout for each scene; everything that follows
+  the playhead into another scene; the picture on both sides of a line and frame by frame
+  inside a move; a scene that is cut to; Move takes; the three Start buttons; Previous and Next;
+  the lane's keys, its blocks as list items, presses and drags on it; what the scene the
+  playhead is in looks like, in both themes; Delete with the focus on the lane and Delete scene;
+  a scene that is come into while the preview plays, with what that costs the UI thread; the
+  handle on the camera, which is the current scene's; names, tab order, and undo and redo.
+- `cut`: the empty lane; Cut by X and by both buttons, where a cut is already and where none
+  fits; the lane's keys and its blocks as list items; Previous and Next; the six buttons of
+  Start and End; that a zoom or a cut is selected and never both; Delete and Delete cut; undo
+  and redo; names and tab order; presses and drags on the lane; what a press on each row of the
+  timeline does to the selection (the next point); what a cut looks like, in both themes; the
+  gaps in the trim bar, read from its pixels; a trim that the cuts do not allow; the time and
+  the picture with the playhead inside a cut; playing over a cut; Play pressed inside a cut; and
+  an export of a project with cuts and scenes, decoded frame by frame.
+- A press and the selection, in `cut`: one project with two scenes, two cuts and two zooms.
+  With a cut selected, the zoom lane is pressed where it is empty, right above that cut, and
+  nothing is selected afterwards; and the other way round, with a zoom selected and the cut lane
+  pressed right below it. `StudioEditorSession.SelectNothing` is what both lanes call for it:
+  selecting no zoom would leave a selected cut. Then, with the cut selected and again with the
+  zoom, a press on a scene, the playhead moved along the trim bar, and a handle of the bar
+  taken and let go where it is: each leaves the selection as it is.
+- At the end of every run, whatever groups it had: no window that was closed is still in memory.
+  See "A closed window that stays in memory".
 
 ## Which part of a clip a picture shows
 
@@ -259,24 +312,374 @@ layout code.
   screenshots taken while it moved; the check half way through an ease passed, as its comment
   says it would.
 
+## Where a scene puts a layer
+
+A scene of a project is a layout: where the screen recording and the camera are on the canvas,
+and which part of its recording each shows there. `Checks\LayoutPicture.cs` reads a picture
+against the layout of one frame, with the reading described above, once for each layer: the
+edges of the layer's test clip have to be where the layer's rectangle and its part put them, and
+its frame strip has to read its frame there. For the screen recording that is the frame the
+picture should show, and for the camera the frame that goes with it, which the tool works out
+from the camera's later start.
+
+- Where the layers should be is asked of `StudioLayoutResolver`, with the project as the checks
+  expect it and the instant the frame stands for, which is its middle. It is not worked out by
+  hand as the part a zoom shows is: the resolver is what the format's fixtures and
+  `StudioRenderCheck` hold the renderer against. The preview draws from it as well, so a fault
+  in it would be in a picture and in what the picture is read against alike. For the move into a
+  scene, one check therefore works the rectangles out a second time, from section 6.9 of the
+  project format: the two scenes at rest, and a share k = u × u × (3 − 2u) of the way from the
+  one to the other, where u is how much of the move has passed. Two faults put into a copy of
+  `StudioLayout.cs` were caught by it: see "Faults that were tried".
+- A layer is read only where it shows: inside its rounded outline and its border, and for the
+  screen recording not where the camera lies over it. A layer that only one of two scenes has
+  fades while the other scene is entered by moving, and is not read while it does: what shows
+  through it is in its colours.
+- The tolerance is the one above, 0.75 pixels. Paused, the furthest edge of the pictures that
+  were read for a scene was 0.60 px from its place, and no further inside a move. From one frame
+  of a move to the next the screen's rectangle moves by 56 to 109 px, so a picture that showed a
+  frame where a neighbouring frame has its layers would be that far off.
+- Two frames of the screen clip read further off than 0.75 px at one edge, paused as well as
+  playing: at frame 90 the top of the lime patch by 0.85 px, and at frame 142 the bottom of the
+  blue patch by 0.97 px. The clips are ffmpeg's moving test picture with the landmarks drawn over
+  it, and in those frames what moves in it lies against the edge on enough lines to move it. A
+  check of a play-through therefore looks again at every frame of which the drawn picture was
+  right but for one or two edges, with the preview paused on that frame, and passes it when the
+  paused picture has the same edges as far off, to a quarter of a pixel. A layer that was drawn
+  in the wrong place has all its edges off, and differs from the paused picture.
+- Frames of an exported video may be half a pixel further off, 1.25 px: they have been through
+  an encoder once more than the preview's picture. The furthest edge in the 75 frames of the
+  export that is decoded was 1.13 px from its place.
+
 ## A frame that comes late
 
 While the preview plays, the `zoom` group copies every scene the engine draws and reads which
 frame it shows and which part of the screen. Each has to show the part the format gives for the
-frame it shows.
+frame it shows. A scene is here the engine's word for one picture it draws (`DrawScene`), and
+the reports of the `zoom` group use it so. The `scene` and `cut` groups, where a scene is a part
+of the project, say picture.
 
-With `--held-up` the same is done a second time while the tool gives its garbage collector work:
-a new buffer of eight megabytes for every screenshot, as the tool did before it took screenshots
-into one buffer. Each collection stops every thread of the process, the preview's among them,
-for some tens of milliseconds, as other things do to an app on a busy PC. The scene that is
-drawn after such a stop has shown the picture of one frame with the part of the screen of the
-next one: see the report of the run. Without the option the tool keeps out of the preview's way:
-it makes its buffers and has the garbage collector run before the playing starts, and takes its
-screenshots into one buffer. That play-through is the one the group's other numbers are about.
+With `--held-up` the same is done a second time while the tool holds its own process up: about
+twice a second it has the garbage collector run, which stops every thread of the process, the
+preview's among them, as other things do to an app on a busy PC. A run of the collector takes
+as long as what it has to look through, so the tool first makes small objects for it, half a
+million at a time, until one run takes fifty milliseconds: 4.5 million when this was written.
+The scene that is drawn after such a stop has shown the picture of one frame with the part of
+the screen of a later one: see the report of the run. Without the option the tool keeps out of
+the preview's way: it makes its buffers and has the garbage collector run before the playing
+starts, and takes its screenshots into one buffer. That play-through is the one the group's
+other numbers are about.
 
-With the engine as it is now the `--held-up` check fails: 11 of about 538 scenes were wrong in
-the runs made while it was written, and 2 of 90 in one run made after it was merged. It is kept
-as the way to see that fault, and is not part of a run without the option.
+The option used to need nothing of that. Until the windows a run had closed left memory (see
+"A closed window that stays in memory"), every run of the collector in this process took some
+tens of milliseconds by itself, and later in a run some hundreds, and the option only made the
+collector run more often. With the windows gone a run of it takes a few milliseconds, and held
+up the old way the check passed: so the stops are now made on purpose.
+
+With the engine as it is now the `--held-up` check fails: 5 of 89 scenes of the move were wrong
+in the run made when the stops were made on purpose, each drawn 68 to 132 ms after the scene
+before it, with the part of the screen of the frame after it or of one up to three frames on.
+Held up the old way, 11 of about 538 scenes were wrong in the runs made while the option was
+written, and 2 of 90 in one run after it was merged. It is kept as the way to see that fault,
+and is not part of a run without the option.
+
+## Playing into a scene and over a cut
+
+The `scene` group plays from 2.5 s over the line at 4.0 s into a second scene, which is side by
+side and entered by moving for 0.35 s. The `cut` group plays from 3.0 s over a cut from 4.0 to
+5.0 s. Every picture the engine draws on the way is copied and read against the layout of the
+frame it shows (`Checks\ScenePlaying.cs`, `Checks\CutPlaying.cs`).
+
+- Which frame a picture shows is read from the screen's frame strip, looked for where each of
+  the frames around the last one has the screen. A picture that is wrong is then held against
+  the layouts of the eight frames before and after its own, so the report says when a frame was
+  drawn with the layout of another instant, and of which.
+- The preview has a player for each recording. A picture in which the camera shows the frame
+  before or after the one that goes with the screen's frame is counted in a note and not
+  failed; with the camera two frames off it fails.
+- While the time is measured the tool asks the window nothing through UI Automation: such a
+  question is answered on the UI thread and takes it some tens of milliseconds. It follows the
+  playhead through the view model's own notification instead.
+- **What a change of scene costs.** When the playhead comes into another scene, everything that
+  shows the current scene is refreshed: the lane's selected item, the Scene section, Layout, the
+  camera's controls and the handle in the preview. The check records what the view model
+  reports, and has another thread ask the UI thread a question every millisecond. The current
+  scene has to be reported once, nothing may ask for everything to be refreshed, the three lanes
+  may not place their blocks again, and the UI thread may not take a tenth of a second to
+  answer. On a quiet machine it took 15 to 19 ms, against 1.5 to 2.5 ms for the slowest frame
+  before the change. About 10 ms of that is the first showing of the controls that only the new
+  scene has, since a control is built when it is first shown: with those built ahead of time
+  the same change took 6 to 9 ms in twenty-one runs. The window does not build them ahead of
+  time. It did for a while, because one run had measured 105 ms. In that run the preview's
+  frames had stood still for as long, which a busy UI thread does not make them do, and a run
+  of the garbage collector does: it stops every thread. The time the collector holds the UI
+  thread between a question and its answer is now taken off, and reported next to the result.
+  What is left is still the time on the clock, and on a machine that is busy with something else
+  every answer comes late: 72 ms was seen, with 18 ms for the slowest frame before the change.
+  So a time above a tenth of a second is let pass when the frames before the change were slow
+  enough to account for it, at fifteen times their slowest.
+- **The pace.** Of the 30 frames around the line, how many were never drawn and how many came
+  more than a frame's time late, against the 29 frames before them. Those begin after the
+  frame that was on screen when Play was pressed: the preview does not draw that one a second
+  time and goes on with the next, which a note says in every run. Two more are allowed, and
+  the check names the frames that were left out. A machine that is busy with something else
+  leaves frames out anywhere: in 7 of 86 play-throughs one to three frames were left out or
+  late together, four times before the line and three times around it, where the most was two
+  left out and one late, which the check still lets pass. So that this can be told from the
+  tool's own doing, the check says how often the tool's garbage collector ran while the
+  preview played and for how long it held every thread; in the runs since it says so, the
+  collector did not run once. With a preview that stands still for 170 ms on the first frame
+  of the second scene, four frames were left out and the check failed: see "Faults that were
+  tried".
+- **Over a cut.** The session sends the preview on to the end of the cut when it hears that the
+  playhead has come to it, which is after the first frame of the cut has been drawn. In 81 of 82
+  runs one frame of the cut was drawn and in one run two, and the first frame after the cut came
+  134 to 228 ms after the last one before it, where two frames that follow each other are 33 to
+  41 ms apart. The check allows nine frames of the cut and half a second. The playhead may never
+  be reported inside the cut, and the time that is shown may not go back, nor on by more than
+  0.2 s.
+
+Two things were seen of the preview engine while it played into a scene, neither of them the
+window's doing:
+
+- In 16 of 86 runs, one to three of the some eighty pictures that are read showed the camera's
+  frame next to the one that goes with the screen's frame: 20 pictures of about 6,900 in all,
+  15 with the frame after it and 5 with the frame before, anywhere in the playing and not at
+  the line between the scenes. That is the note above.
+- Once in 86 runs a picture showed screen frame 118 laid out as frame 120 is: the frame of one
+  instant with the layout of another, two frames on. That is what the `zoom` group shows with
+  `--held-up` (see "A frame that comes late"), here without the tool holding anything up. It
+  fails the check.
+
+## Faults that were tried
+
+For scenes and cuts, thirty-seven faults were put into a copy of the tree, one at a time, each
+built and run against the group it belongs to:
+
+- Thirty-two in the window's own code: the scene lane or the inspector not following the
+  playhead into a scene, Delete on the scene lane not being about the scene, a key not mapped,
+  Moving and A cut the wrong way round, Move takes setting the scene before, the line between
+  two scenes only to be taken from one side, a block that looks like the others when it is the
+  current or the selected one, a cut without hatching, the lanes in the wrong order, the trim
+  bar without gaps, a drag of a cut's end moving the whole cut, a button that stays enabled
+  where it has nothing to do, the focus left to itself when a button switches itself off, and
+  what a screen reader is told left out or worded differently. Each failed at least one check.
+  Six of them are about a press and the selection. A press on the empty part of the zoom lane
+  that lets go of a selected zoom only failed the check of that and no other: before that check
+  was written it would have failed nothing, since no other check presses the zoom lane while a
+  cut is selected. The same on the cut lane failed two checks, and a press on a scene that lets
+  go of the selection two. The playhead of the trim bar letting go of the selection failed 26
+  checks of the three groups, because nearly every check moves the playhead that way. A handle
+  of the trim bar letting go of it, tried for each handle, failed the one check.
+- Two that keep a closed window in memory, as the two that were found did (see "A closed window
+  that stays in memory"). Each failed the check for that, and no other. Looked for by
+  `--memory` instead of by a group, the first was named by all eighteen Studio windows and the
+  second by the two in which the range of a slider is read.
+- Two in the layout itself, in a copy of `StudioLayout.cs`: the layers moving into a scene at an
+  even pace, and the move starting a frame late. The preview draws from the same code that the
+  pictures are read against, so each failed one check only: the one that works the rectangles
+  of a move out by hand.
+- One in the preview engine, in a copy of `StudioPreviewEngine.Render.cs`: the preview standing
+  still for 170 ms when it draws the first frame of the second scene. It failed the count of
+  the frames that are left out around a change of scene, with four of them, and the check of
+  the pictures as well: the picture drawn after the stop did not read, which is the fault of
+  "A frame that comes late".
+
+The first time through, two faults failed nothing, and each showed something else than a check
+that was merely missing. Without the transport row's own choice of where the focus goes when
+Split switches itself off, the focus still went to the same button, because the framework
+sends it on to the next stop by itself: the check now uses a place where neither a zoom nor a
+cut fits, in which the two differ. And without the building of a scene's controls ahead of
+time, the first change of scene took 17 ms and not the 105 that the building had been written
+for: it was taken out (see "Playing into a scene and over a cut").
+
+## A closed window that stays in memory
+
+The last check of a run, in the section "What followed from closing windows", is that no window
+the run closed is still in memory, nor its inspector, nor its view model. The tool keeps a weak
+reference to each when it opens a window, has the garbage collector run when all are closed,
+and looks which of them are still there. A window that stays keeps its whole tree of controls
+and the editor behind it, and every later run of the garbage collector takes longer for it,
+which is time in which every thread of the process stands still. In the app those are the
+threads that record.
+
+Until this check there were two ways in which a closed Studio window stayed, and with them the
+collector's pauses grew to two seconds over a full run of the tool:
+
+- **Every window.** The code the XAML compiler writes for a window that uses `x:Bind` adds a
+  handler to the window's `Activated` event and never takes it off. The handler holds the
+  window and the window holds the handler, which the garbage collector cannot undo. The window
+  now takes the handler off when it closes (`StudioWindow.LetGoOfBindings`). The handler is a
+  method of a class the compiler writes, which the window's own code cannot name, so it is found
+  by its name, `Activated`. If a later compiler calls it something else, this check fails.
+- **A window in which a screen reader had read a slider of the inspector.** The slider hands out
+  its range value as an object of its own, and UI Automation holds on to that object in a way
+  the garbage collector cannot follow. The object held its slider, the slider its row, and the
+  row's handlers the inspector and the view model. It knows its slider only weakly now
+  (`StudioSliderRangeValue`).
+
+Two more things are not a window that stays, and both are the framework's doing. What is left
+is not the window, and with one exception not its inspector: it is the timeline and, through
+the timeline, the view model. Neither grew: what was left of one Studio window was gone when
+the same was left of the next.
+
+**Until the next window is shown.** A window that is closed right after it played can be in
+memory for as long as the process shows no other window. In 18 of 28 runs of `--only transport`,
+whose one window is closed right after it played, the view model was there five seconds after
+the window had been closed, and in one that was watched for longer, 36 seconds after. It was
+gone each time as soon as the tool had opened and closed a window of nothing but a button and a
+slider. A run of every group ends with windows that have not played and shows none of this.
+
+A dump of the tool taken while the view model was there says what held it. Native code still
+held the automation peers of two of the trim bar's three handles, and a peer is given to
+nothing but UI Automation. A peer holds its handle; the handle leads to the trim bar through
+the event the bar listens to, the trim bar to the timeline in the same way, and the timeline
+to the view model. Nothing else held any of them. Why the two peers are kept until the next
+window was not found. The handles tell UI Automation of every move of the playhead while the
+preview plays, when something listens, and a window that was not closed right after it played
+left nothing behind.
+
+The same was seen of windows that were closed 0.3 s after the keyboard focus had been moved to
+a button with a tooltip. Of 14 such windows, 8 had their view model in memory a second later,
+and the one whose button was in the inspector had its inspector there as well. The eight were
+buttons of the transport row and of the inspector; of the two controls of the header that were
+tried, nothing was left. All eight were gone once the next window had been opened and closed,
+which five times was a window of nothing but a button and a slider. What held them was not
+looked at.
+
+So when something is left at the end of a run, the tool opens and closes such a window and
+looks again. What goes with it is said in a note, and what is still there fails the check: the
+two faults above, put back into a copy, still do. The app is in the same place when its last
+Studio window is closed right after it played while something listens to UI Automation: the
+timeline and the editor of that window stay until the app next shows a window of any kind.
+Nothing was changed in the app for it. To let go of them at once, the timeline and the lanes
+would have to give up the view model when the window closes, since nothing tells a control of
+a closing window that it has been unloaded.
+
+**Until it happens again: a window that is closed while a tooltip waits.** The framework shows
+the tooltip of a control that has the keyboard focus about 0.8 s after the focus came: in one
+run the tooltip was not there after 822 ms and was there after 838 ms, and in the seven runs in
+which the tool waited for it, it showed 818 to 850 ms after the focus. When a button that has
+the focus already, not from the keyboard, is given the keyboard focus, and its window is closed
+before the tooltip has come, the framework goes on holding the button, and with the button
+what its Click handler belongs to. None of the editor's code is needed for that. A window of
+nothing but a button with a tooltip and a slider does it: what the button's Click handler
+belonged to was in memory a second after the window had been closed, 20 times of 20.
+
+A Studio window opens with the focus on Play, put there by the window. The Click handler of
+Play is the one `x:Bind` made; it belongs to the timeline's compiled bindings, and they know the
+view model. So of a Studio window that is closed 0.3 to 0.8 s after the keyboard focus was put
+on Play, the view model is left, and neither the window nor the inspector: in 65 of 66 such
+windows. The one of which nothing was left came two seconds after a window in which the tooltip
+had been shown. A dump says how it is held: `gcroot` finds nothing, no object of the app is
+held by native code outright, and the Click handler of Play is pegged, which is how the
+framework keeps what belongs to a control that it holds itself.
+
+What was tried, one thing to a window, is in `exp-focus-*.txt` with the logs of this work:
+
+- It stayed for as long as it was watched, which was 40 s at the end of six runs. It stayed
+  through ten seconds without any window, through windows of nothing but a button and a slider
+  that were open for 0.4 s and for 3 s, through a Studio window that was open for 3 s with
+  nothing done to it, and through later windows in which the keyboard focus was moved to other
+  controls.
+- It went when the same was done in a later Studio window, whose view model was then the one
+  that was left: one at a time, more than thirty times one after the other. It went when a
+  later window kept the keyboard focus on Play until the tooltip had come (22 of 23; the one
+  time it did not is with `--memory` below). And nothing was left of a window whose tooltip was
+  taken off Play before it closed (`ToolTipService.SetToolTip(button, null)`, 3 of 3), nor then
+  of the window before it.
+- Nothing was left when the window stayed open until the tooltip had come (closed 0.84, 1, 2, 3
+  and 8 s after the focus, with the tooltip showing each time, 6 of 6), when Play had no
+  tooltip, and when the focus was put on Play only the way the window does it.
+- It is not about Play: the same was left after Next frame had been given the focus first
+  without the keyboard and then with it. It is not about the tool's use of UI Automation: the
+  same was left of the first two windows of a run in which UI Automation had not been used.
+- None of these, done before the window closed, let go of it: moving the focus on to another
+  control, by the keyboard or not, putting the focus on Play once more the way the window does,
+  switching the timeline off, taking the timeline out of the window, taking everything out of
+  the window.
+- What was left of the window of nothing but a button did not go with the Studio window after
+  it to which the same was done (18 of 18), nor with the one after that, which kept the focus
+  until its tooltip had come (15 of 15). It was gone at the end of the run, two windows later
+  (12 of 12), and it did go with the next window of its own kind to which the same was done (1
+  of 1). What the framework goes by there was not found.
+
+The tool sends no keys. It puts the keyboard focus on a control by asking the framework for
+it. The editor asks for the same in one kind of place: where a button that was pressed with
+the keyboard focus on it has switched itself off, the focus is handed on the way the button
+had it (`StudioFocus`), and the framework may have moved it to that control by then. Whether
+that, or the Tab key, leaves a window in this state was not tried: it takes a key, and the
+window would have to be closed within 0.8 s of it. Where the tool moved the keyboard focus,
+what was left went with the next window, as above. Nothing was changed in the app for it. What
+lets go of it at once is known from the above: taking the tooltip off the control that has the
+focus when the window closes.
+
+When the check does fail, the tool first says its process id and watches for half a minute
+longer. A dump taken in that time holds what a later one cannot: `dotnet-dump collect -p <id>`,
+then, in `dotnet-dump analyze`, `dumpheap -type StudioViewModel` and `gcroot` on what it
+lists. `gcroot` finds no root for a thing that only native code holds. `gchandles` then lists,
+as `RefCounted`, a `ManagedObjectWrapperHolder` for every object that has been handed to
+native code. `dumpobj` on a holder gives the object (`_wrappedObject`) and an address
+(`_wrapper`), and the second 64-bit number at that address (`dq`) is the object's reference
+count: the low half counts what native code holds, the high half what the framework's own
+tree keeps track of. An object whose low half is above zero is held from outside, and
+`pathto` from it, or from the control it is the peer of, to the view model gives the way.
+Where no object of the app has that, the framework itself can be holding a control: it pegs
+what belongs to a control that it holds, and the third 64-bit number at the same address has
+the highest bit of its low half set for an object that is pegged (`80000002` or `a0000002`
+where the others have `00000002` or `20000002`). That is how the handler of Play was found
+in the second of the two things above.
+
+`--memory` is for when the check fails again. It runs no group. It opens and closes three
+windows made of nothing but a button and a slider, three more with a title bar of their own, one
+Studio window for each of fifteen things done to it (nothing, a screenshot, playing, one element
+looked for, every element read, a button pressed, a slider set, a check box toggled, a layout
+chosen, the focus moved, the tab stops gone through, and so on), and one whose recording is
+missing, which has no preview. The check at the end then names the Studio windows that stayed by
+what was done to them, and a note says whether the plain windows stayed, which would be the
+framework's or the tool's doing and not the editor's. That is how the two above were told apart:
+every Studio window stayed and no plain one, and once the first was mended, only the two windows
+in which a slider's range had been read.
+
+It also shows the tooltip's wait, apart from the fifteen, in three notes and with no check of
+its own. A window of nothing but a button with a tooltip and a slider is closed 0.3 s after the
+keyboard focus was put on its button, where the focus was already. The same is done to a Studio
+window, with Play. Then a Studio window keeps the keyboard focus on Play until the tool sees
+the tooltip. The notes say what was left of the first two a second after each, whether it was
+gone after the next, how long the tooltip took to show, and whether anything of the first is
+there at the end. What is left of a Studio window at the end fails the check as ever; when it
+is the window of these notes, it is the framework's.
+
+In each of the three the tool puts the focus on the button itself, the way a program does and
+a tenth of a second later the way the keyboard does, and does not count on the window having
+put the focus on Play by then. It did count on that at first, and waited a second and a half
+instead of looking for the tooltip. Once in thirteen runs, right after a build, the third
+window then let go of nothing, and the view model of the second was there at the end. The
+likely reason, which was not shown, is that the window had not yet put the focus on Play when
+the tool put the keyboard focus there, so that the focus was moved, which lets go of nothing.
+
+One of the fifteen windows used to be closed 0.3 s after the focus had been put on Play, and
+`--memory` named it as a window that stays, in both runs of the evening it was looked into, and
+not in the one run of that afternoon. That window now keeps the focus until its tooltip shows.
+The tooltip is a window of its own, and like the tool's other windows it is behind the windows
+of whoever is at the machine: it belongs to the Studio window, is not a topmost window, and
+takes no focus. Read from outside the tool while one showed, it was in place 268 of 414 from
+the front, where the window in front was in place 20.
+
+## A frame past the end of the video
+
+In the `transport` group the preview plays into the end of the kept range, which the check has
+set to 5.6 s, where frame 168 begins, and is then started again there. The screenshots taken on
+the way may show no frame after 168, and after the second Play none but 168 and the first
+frames of the range. In 3 of 64 runs of the group a screenshot showed frame 169: twice while
+the preview played into the end, and once in the three screenshots after Play had been pressed
+at the end, before the picture went to the start of the range. All three were in the evening of
+4 October 2026, when other tools and builds were running on the machine; in the eighteen full
+runs before that and the twelve after it, it was not seen. The editor stops the preview when
+the preview reports a place at the end, and starts it again after sending it to the start; by
+then the preview can have drawn the frame after the end. The window does nothing there but
+pass Play on, so this is the preview's and the editor's, and the two checks are left as they
+are.
 
 ## An open that fails
 

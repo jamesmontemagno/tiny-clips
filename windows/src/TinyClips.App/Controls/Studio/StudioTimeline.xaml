@@ -16,6 +16,8 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Button
@@ -55,30 +57,54 @@
                 Text="{x:Bind ViewModel.TimeText, Mode=OneWay}"
                 Typography.NumeralAlignment="Tabular" />
 
+            <!--  Scenes are for a recording with a camera: without one every layout is the screen alone.  -->
             <Button
+                x:Name="SplitSceneButton"
                 Grid.Column="4"
+                AutomationProperties.AutomationId="StudioSplitSceneButton"
+                AutomationProperties.HelpText="{x:Bind ViewModel.SplitSceneHelpText, Mode=OneWay}"
+                AutomationProperties.Name="Split scene"
+                Click="OnSplitSceneClick"
+                Content="Split"
+                IsEnabled="{x:Bind ViewModel.CanSplitSceneAtPlayhead, Mode=OneWay}"
+                ToolTipService.ToolTip="Start a new scene at the playhead (S)"
+                Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}" />
+            <Button
+                x:Name="AddZoomButton"
+                Grid.Column="5"
                 AutomationProperties.AutomationId="StudioAddZoomButton"
                 Click="{x:Bind ViewModel.AddZoomAtPlayhead}"
                 Content="Add zoom"
                 IsEnabled="{x:Bind ViewModel.CanAddZoomAtPlayhead, Mode=OneWay}"
                 ToolTipService.ToolTip="Add a zoom at the playhead (Z)" />
             <Button
-                Grid.Column="5"
+                x:Name="AddCutButton"
+                Grid.Column="6"
+                AutomationProperties.AutomationId="StudioAddCutButton"
+                AutomationProperties.Name="Cut at playhead"
+                Click="{x:Bind ViewModel.AddCutAtPlayhead}"
+                Content="Cut"
+                IsEnabled="{x:Bind ViewModel.CanAddCutAtPlayhead, Mode=OneWay}"
+                ToolTipService.ToolTip="Start a cut at the playhead (X)" />
+            <Button
+                Grid.Column="7"
                 AutomationProperties.AutomationId="StudioStartHereButton"
                 Click="{x:Bind ViewModel.SetTrimStartAtPlayhead}"
                 Content="Start here"
                 ToolTipService.ToolTip="Start the video at the playhead (I)" />
             <Button
-                Grid.Column="6"
+                Grid.Column="8"
                 AutomationProperties.AutomationId="StudioEndHereButton"
                 Click="{x:Bind ViewModel.SetTrimEndAtPlayhead}"
                 Content="End here"
                 ToolTipService.ToolTip="End the video at the playhead (O)" />
         </Grid>
 
-        <!--  The zooms and the trim, one above the other on the same time scale.  -->
+        <!--  The scenes, the zooms, the cuts and the trim, one above the other on the same time scale.  -->
         <StackPanel Spacing="4">
+            <Border x:Name="SceneLaneHost" Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}" />
             <Border x:Name="ZoomLaneHost" />
+            <Border x:Name="CutLaneHost" />
             <local:StudioTrimBar
                 x:Name="TrimBar"
                 AutomationProperties.AutomationId="StudioTrimBar"

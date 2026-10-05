@@ -23,7 +23,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 /// </summary>
 internal sealed partial class WindowChecks
 {
-    public static readonly string[] Groups = ["open", "transport", "inspector", "trim", "export", "close", "windows", "accessibility", "themes", "zoom", "crop"];
+    public static readonly string[] Groups = ["open", "transport", "inspector", "trim", "export", "close", "windows", "accessibility", "themes", "zoom", "crop", "scene", "cut"];
 
     private const int Fps = TestMedia.Fps;
 
@@ -74,6 +74,14 @@ internal sealed partial class WindowChecks
         {
             _uia = new Uia();
             _report.Line($"foreground window at the start: \"{Native.TitleOf(Native.Foreground())}\"");
+            if (_options.Flag("memory"))
+            {
+                // Asked for with --memory: this and nothing else.
+                _report.Section("What a closed window leaves in memory");
+                MemoryProbe();
+                return;
+            }
+
             Group("open", "1. Opening a project", Opening);
             Group("transport", "2. Transport", Transport);
             Group("inspector", "3. The inspector, with undo and redo", Inspector);
@@ -85,6 +93,8 @@ internal sealed partial class WindowChecks
             Group("themes", "9. Light and dark", Themes);
             Group("zoom", "10. Zooms", Zooming);
             Group("crop", "11. Crops", Cropping);
+            Group("scene", "12. Scenes", Scenes);
+            Group("cut", "13. Cuts", Cuts);
 
             // Last of all: after this the window service opens nothing.
             Group("windows", "7, at the end. The app exits while editors are open", ExitingWithWindowsOpen);
@@ -158,11 +168,99 @@ internal sealed partial class WindowChecks
             {
                 _report.Note($"{WindowCamera.NotClosedInTime} time(s) Windows did not finish ending the tool's capture of one of its windows within 5 s; the checks went on without it");
             }
+
+            WindowsLeftInMemory();
         }
         catch (Exception ex)
         {
             _report.Check("the windows could be closed at the end", false, ex.ToString());
         }
+    }
+
+    /// <summary>
+    /// Checks that the windows that were closed have left memory by the end of the run. A closed
+    /// window that something still refers to keeps its whole tree of controls and its editor
+    /// alive, and every run of the garbage collector then takes longer, which is time in which
+    /// every thread of the process stands still: in the app, the threads that record.
+    /// </summary>
+    /// <remarks>
+    /// When it fails, <c>--memory</c> tells whether a window made of nothing but a button stays
+    /// as well, which would be the framework's or the tool's doing and not the editor's.
+    /// </remarks>
+    private void WindowsLeftInMemory()
+    {
+        if (_editors.Count == 0)
+        {
+            return;
+        }
+
+        // A window goes in steps: what refers to it from outside the garbage collector's reach
+        // is let go of by finalizers and on the UI thread, and only then is the window garbage.
+        // The windows closed last may still be writing their poster image.
+        string[] left = [];
+        var (insides, viewModels, rounds) = (0, 0, 0);
+        void Look(double seconds)
+        {
+            var watch = Stopwatch.StartNew();
+            do
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                OnUi(() => { });
+                Thread.Sleep(100);
+                rounds++;
+                left = [.. _editors.Where(editor => editor.IsStillInMemory || editor.IsContentInMemory || editor.IsViewModelInMemory).Select(editor => editor.Label)];
+                insides = _editors.Count(editor => editor.IsContentInMemory);
+                viewModels = _editors.Count(editor => editor.IsViewModelInMemory);
+            }
+            while (left.Length + insides + viewModels > 0 && watch.Elapsed.TotalSeconds < seconds);
+        }
+
+        Look(5);
+
+        // The window that was closed last can be waiting for the next one. A window that is
+        // closed right after it played leaves the peers of its trim bar's handles with UI
+        // Automation, and they are let go of when the process draws its next window: until then
+        // the handles are there, and through the events that are listened to along the way the
+        // trim bar, the timeline and the view model. In a run of every group the last windows
+        // have not played, so this is for a run of a group that ends with a window that has.
+        // The app is in the same place when its last Studio window is closed like that, so
+        // the tool does what would let go of it there, says so, and looks again.
+        if (left.Length > 0)
+        {
+            var waiting = left;
+            PlainWindowClosed("one more, for what waits for the next window to go", ownTitleBar: false);
+            Look(5);
+            if (left.Length == 0)
+            {
+                _report.Note($"what was closed last was still in memory 5 s after it, and gone once another window, of nothing but a button and a slider, had been opened and closed: {string.Join(", ", waiting.Take(10))}. See \"A closed window that stays in memory\" in the README");
+            }
+        }
+
+        // What is there after that is held by something. Whether it goes at all is watched for
+        // a while longer, and the tool says its process first: what holds a thing is in a dump
+        // of the process taken while the thing is still there, and nowhere else.
+        var held = left;
+        var later = string.Empty;
+        if (held.Length > 0)
+        {
+            const int More = 30;
+            _report.Note($"still in memory after the last window was closed, and after another window was opened and closed: {string.Join(", ", held.Take(10))}. Watching for {More} s more whether it goes. A dump taken in that time says what holds it: dotnet-dump collect -p {Environment.ProcessId}, then dumpheap -type StudioViewModel and gcroot in dotnet-dump analyze");
+            Look(More);
+            later = left.Length == 0 ? $"; all of it was gone within {More} s more" : $"; {left.Length} of the windows had something still there {More} s later";
+        }
+
+        var pausedBefore = GC.GetTotalPauseDuration();
+        GC.Collect();
+        var pause = (GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds;
+        var closed = _editors.Count(editor => editor.IsReleased);
+        var windows = _editors.Count(editor => editor.IsStillInMemory);
+        _report.Check(
+            "no window that was closed is still in memory at the end of the run, nor what it showed, nor its view model",
+            held.Length == 0,
+            $"{closed} windows were closed; after the garbage collector had run {rounds} time(s), {windows} of them were still in memory, {insides} of their inspectors and {viewModels} of their view models"
+                + $"{(held.Length == 0 ? string.Empty : ": " + string.Join(", ", held.Take(40)) + (held.Length > 40 ? ", ..." : string.Empty))}{later}; "
+                + $"one more run of the collector then held every thread for {F(pause, "0")} ms, with {F(GC.GetTotalMemory(false) / 1048576.0, "0")} MB in use");
     }
 
     // ---------------------------------------------------------------------------------------
@@ -227,6 +325,11 @@ internal sealed partial class WindowChecks
     /// <summary>One Studio window on one project folder, with what the checks know about it.</summary>
     private sealed class Editor(string label, TestFolder folder, StudioWindow window, nint handle, UiaElement root, WindowCamera camera)
     {
+        private UiaElement? _root = root;
+        private WeakReference<StudioWindow>? _letGo;
+        private WeakReference<object>? _content;
+        private WeakReference<object>? _viewModel;
+
         public string Label { get; } = label;
 
         public TestFolder Folder { get; } = folder;
@@ -236,7 +339,24 @@ internal sealed partial class WindowChecks
 
         public nint Handle { get; } = handle;
 
-        public UiaElement Root { get; } = root;
+        /// <summary>The window as UI Automation gives it, until the checks are done with it.</summary>
+        public UiaElement Root => _root ?? throw new InvalidOperationException($"The checks have let go of the window \"{Label}\".");
+
+        /// <summary>Whether the window, after the checks have let go of it, is still in memory.</summary>
+        public bool IsStillInMemory => _letGo is { } window && window.TryGetTarget(out _);
+
+        /// <summary>Whether the window's inspector is still in memory after the checks have let go of the window, and with it the window's tree of controls.</summary>
+        public bool IsContentInMemory => IsReleased && _content is { } content && content.TryGetTarget(out _);
+
+        /// <summary>Whether the window's view model is still in memory after the checks have let go of the window.</summary>
+        public bool IsViewModelInMemory => IsReleased && _viewModel is { } viewModel && viewModel.TryGetTarget(out _);
+
+        /// <summary>Notes a control of the window's and its view model, without holding on to them.</summary>
+        public void Watch(object? content, object? viewModel)
+        {
+            _content = content is null ? null : new WeakReference<object>(content);
+            _viewModel = viewModel is null ? null : new WeakReference<object>(viewModel);
+        }
 
         public WindowCamera Camera { get; } = camera;
 
@@ -256,6 +376,7 @@ internal sealed partial class WindowChecks
         /// <summary>
         /// Lets go of the window. A closed window that is still referred to keeps everything it
         /// was built of alive, and the pauses of the garbage collector grow with all of that.
+        /// The window's element in the UI Automation tree refers to it as well.
         /// </summary>
         public void Release()
         {
@@ -263,7 +384,9 @@ internal sealed partial class WindowChecks
             {
                 IsReleased = true;
                 Camera.Dispose();
+                _letGo = new WeakReference<StudioWindow>(Window);
                 Window = null!;
+                _root = null;
             }
         }
     }
@@ -291,6 +414,7 @@ internal sealed partial class WindowChecks
             ?? throw new InvalidOperationException($"The window service opened no Studio window for {label}.");
         var handle = OnUi(() => WindowNative.GetWindowHandle(window));
         var editor = new Editor(label, folder, window, handle, _uia.FromWindow(handle), new WindowCamera(handle));
+        OnUi(() => editor.Watch(InspectorOf(window), window.ViewModel));
         _editors.Add(editor);
         return editor;
     }

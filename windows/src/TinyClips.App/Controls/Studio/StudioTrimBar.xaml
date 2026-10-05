@@ -7,6 +7,15 @@
     Height="36"
     IsTabStop="False">
 
+    <UserControl.Resources>
+        <!--  A stretch of the recording that is exported.  -->
+        <Style x:Key="StudioKeptRangeStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+            <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+            <Setter Property="Opacity" Value="0.3" />
+        </Style>
+    </UserControl.Resources>
+
     <!--  Positions are set in code: the parts are placed by time, not by layout.  -->
     <Grid x:Name="Root" SizeChanged="OnRootSizeChanged">
         <!--  The whole recording. Pressing or dragging here moves the playhead.  -->
@@ -24,14 +33,15 @@
             PointerReleased="OnTrackPointerEnded" />
 
         <Canvas x:Name="Parts">
-            <!--  The part that is exported.  -->
-            <Border
-                x:Name="KeptRange"
+            <!--
+                What is exported: the range between the two handles, in one piece, or with a gap
+                for every cut in it. The cut lane above the bar is where a cut is pressed and
+                read; the gaps are only drawn.
+            -->
+            <Canvas
+                x:Name="KeptRanges"
                 AutomationProperties.AccessibilityView="Raw"
-                Background="{ThemeResource AccentFillColorDefaultBrush}"
-                CornerRadius="{ThemeResource ControlCornerRadius}"
-                IsHitTestVisible="False"
-                Opacity="0.3" />
+                IsHitTestVisible="False" />
 
             <local:StudioTrimThumb
                 x:Name="StartThumb"

@@ -1,8 +1,6 @@
 using System.Globalization;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using TinyClips.App.Controls.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
@@ -353,46 +351,13 @@ internal sealed partial class WindowChecks
     }
 
     /// <summary>
-    /// The order the keyboard focus moves in, read by asking the window to move it to the next
-    /// stop, over and over, and noting where it lands. No key is pressed, and the window does not
-    /// have the keyboard: the request for it is refused like every other.
+    /// The order the keyboard focus moves in with a zoom selected: see <see cref="TabStops"/>
+    /// for how it is read. "Looks at" is a group of radio buttons, which is one stop.
     /// </summary>
     private void TabOrder(Editor editor)
     {
         Timeline.Mark("10: the order of the tab stops");
-        var order = OnUi(() =>
-        {
-            var stops = new List<string>();
-            var seen = new List<DependencyObject>();
-            if (editor.Window.Content is not FrameworkElement { XamlRoot: { } root } content)
-            {
-                return stops;
-            }
-
-            var before = FocusManager.GetFocusedElement(root) as UIElement;
-            var options = new FindNextElementOptions { SearchRoot = content };
-            (FocusManager.FindFirstFocusableElement(content) as UIElement)?.Focus(FocusState.Keyboard);
-            for (var step = 0; step < 150; step++)
-            {
-                // Round once: the first stop comes again after the last.
-                if (FocusManager.GetFocusedElement(root) is not DependencyObject focused || seen.Exists(element => ReferenceEquals(element, focused)))
-                {
-                    break;
-                }
-
-                seen.Add(focused);
-                var id = AutomationProperties.GetAutomationId(focused);
-                stops.Add(id.Length > 0 ? id : (focused as FrameworkElement)?.Name is { Length: > 0 } own ? own : focused.GetType().Name);
-                if (!FocusManager.TryMoveFocus(FocusNavigationDirection.Next, options))
-                {
-                    break;
-                }
-            }
-
-            before?.Focus(FocusState.Programmatic);
-            return stops;
-        });
-
+        var order = TabStops(editor);
         var path = Path.Combine(_output, "tab-order.txt");
         File.WriteAllLines(path, order);
 
@@ -400,7 +365,7 @@ internal sealed partial class WindowChecks
         string[] wanted =
         [
             "StudioScreenShadowSlider", "StudioScreenCropLeftSlider", "StudioScreenCropTopSlider", "StudioScreenCropRightSlider", "StudioScreenCropBottomSlider",
-            "StudioNextZoomButton", "StudioZoomSectionAddButton", "StudioZoomScaleSlider", "StudioZoomFocusPoint", "StudioZoomFocusXSlider", "StudioZoomFocusYSlider",
+            "StudioNextZoomButton", "StudioZoomSectionAddButton", "StudioZoomScaleSlider", "StudioZoomFocusChoice", "StudioZoomFocusXSlider", "StudioZoomFocusYSlider",
             "StudioZoomStartEarlierButton", "StudioZoomStartLaterButton", "StudioZoomStartAtPlayheadButton", "StudioZoomEndEarlierButton", "StudioZoomEndLaterButton", "StudioZoomEndAtPlayheadButton",
             "StudioZoomEaseInSlider", "StudioZoomEaseOutSlider", "StudioDeleteZoomButton", "StudioClickRingsCheckBox",
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioStartHereButton", "StudioEndHereButton", "StudioZoomLane", "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",

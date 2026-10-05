@@ -21,7 +21,7 @@ internal static class Program
         try
         {
             options = CheckOptions.Parse(args);
-            if (options.Unknown("only", "skip", "out", "media", "held-up", "help") is { Length: > 0 } unknown)
+            if (options.Unknown("only", "skip", "out", "media", "held-up", "memory", "help") is { Length: > 0 } unknown)
             {
                 throw new ArgumentException($"Unknown option --{unknown[0]}.");
             }
@@ -126,7 +126,7 @@ internal static class Program
     {
         Console.WriteLine(
             $"""
-            StudioWindowCheck [--only a,b] [--skip a,b] [--out <folder>] [--media <folder>] [--held-up]
+            StudioWindowCheck [--only a,b] [--skip a,b] [--out <folder>] [--media <folder>] [--held-up] [--memory]
 
               --only a,b        run only these groups of checks
               --skip a,b        leave these groups out
@@ -136,6 +136,8 @@ internal static class Program
               --held-up         in the zoom group, play through a zoom that moves in a second time
                                 while the tool makes the garbage collector stop every thread of the
                                 process a few times, as happens to an app on a busy PC
+              --memory          run none of the groups: open and close windows in several ways, and
+                                say which are still in memory afterwards
 
             Groups: {string.Join(' ', WindowChecks.Groups)}
 
