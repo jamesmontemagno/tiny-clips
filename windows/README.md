@@ -76,6 +76,7 @@ windows/
     ui/                         winapp ui automation scripts (run against a live app by PID)
   tools/
     RecordingBenchmark/         Headless CPU-vs-GPU recording benchmark (manual; see docs)
+    Collect-Diagnostics.ps1     Zips logs, system details and UI-stall timings from any machine
   packaging/
     msix/  winget/              Packaging artifacts (later phases)
   spikes/                       Throwaway de-risking prototypes (not in the solution/CI)
