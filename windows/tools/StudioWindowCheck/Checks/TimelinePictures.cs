@@ -6,10 +6,10 @@ using Windows.Graphics;
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 9, continued. The whole window with everything its timeline can hold: a recording with a
-// camera that has three scenes, two zooms and two cuts, pictured at the size the window opens
-// with and at the smallest size it can be given. The pictures are saved for a person to look
-// at; the checks make sure that nothing of the transport row or the timeline is cut off or lies
-// over something else, and that the preview is still large enough to work with.
+// camera that has three scenes, two zooms, two cuts and two speed changes, pictured at the size
+// the window opens with and at the smallest size it can be given. The pictures are saved for a
+// person to look at; the checks make sure that nothing of the transport row or the timeline is
+// cut off or lies over something else, and that the preview is still large enough to work with.
 internal sealed partial class WindowChecks
 {
     // The window's sizes, in effective pixels: what it opens with, and the smallest it can be given.
@@ -20,7 +20,9 @@ internal sealed partial class WindowChecks
 
     /// <summary>
     /// Three scenes, each with a layout of its own, the second entered by moving and the third by
-    /// a cut; two zooms; and two cuts, one of them over the line between two scenes.
+    /// a cut; two zooms; two cuts, one of them over the line between two scenes; and two speed
+    /// changes, a faster one in the first scene and a slower one in the last, each long enough
+    /// for its mark and its rate to be drawn at the window's smallest size too.
     /// </summary>
     private static StudioProject WithScenesZoomsAndCuts(StudioProject project) => project with
     {
@@ -31,7 +33,11 @@ internal sealed partial class WindowChecks
             new StudioScene { Start = 8.5, Layout = StudioLayout.Camera, Bubble = new StudioBubble { Size = 0.4 } },
         ],
         Zooms = [PointZoom(1, 3, 0.3, 0.3), PointZoom(5, 7.5, 0.5, 0.5, scale: 1.5)],
-        Edits = project.Edits with { Cuts = [new StudioTimeRange { Start = 3.2, End = 3.8 }, new StudioTimeRange { Start = 8, End = 9.5 }] },
+        Edits = project.Edits with
+        {
+            Cuts = [new StudioTimeRange { Start = 3.2, End = 3.8 }, new StudioTimeRange { Start = 8, End = 9.5 }],
+            Speed = [Speed(1.5, 2.5, 4), Speed(10, 11.5, 0.5)],
+        },
     };
 
     /// <summary>Asks for a size of the window in effective pixels, and returns the size it then has.</summary>
@@ -74,7 +80,7 @@ internal sealed partial class WindowChecks
         sight = LookAtLayout(editor, frame) ?? sight;
         if (sight is null)
         {
-            _report.Check($"the window with scenes, zooms and cuts in the {name} theme at {size} can be pictured", false, "no screenshot");
+            _report.Check($"the window with scenes, zooms, cuts and speed changes in the {name} theme at {size} can be pictured", false, "no screenshot");
             return;
         }
 
@@ -84,8 +90,8 @@ internal sealed partial class WindowChecks
 
         // Everything of the transport row and the timeline, as UI Automation places it on the screen.
         var window = (X: (double)sight.Shot.ScreenX, Y: (double)sight.Shot.ScreenY, Right: (double)sight.Shot.ScreenX + sight.Shot.Width, Bottom: (double)sight.Shot.ScreenY + sight.Shot.Height);
-        string[] row = ["StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioTimeText", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioStartHereButton", "StudioEndHereButton"];
-        string[] lanes = [SceneLane, ZoomLane, CutLane, "StudioTrimBar"];
+        string[] row = ["StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioTimeText", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton"];
+        string[] lanes = [SceneLane, ZoomLane, CutLane, SpeedLane, "StudioTrimBar"];
         var wrong = new List<string>();
         (string Id, int X, int Y, int Width, int Height)[] Placed(string[] ids) => [.. ids.Select(id => (Id: id, Bounds: Find(editor, id, 0.5)?.Bounds ?? default)).Select(found => (found.Id, found.Bounds.X, found.Bounds.Y, found.Bounds.Width, found.Bounds.Height))];
         void Inside((string Id, int X, int Y, int Width, int Height) element)
@@ -151,12 +157,13 @@ internal sealed partial class WindowChecks
         var sceneLane = LaneText(editor, SceneLane);
         var zoomLane = LaneText(editor, ZoomLane);
         var cutLane = LaneText(editor, CutLane);
+        var speedLane = LaneText(editor, SpeedLane);
         _report.Check(
-            $"the window with three scenes, two zooms and two cuts in the {name} theme at {size}, {wantedWidth} × {wantedHeight}: the nine items of the transport row are on one row in their order, the three lanes and the trim bar are one above the other and equally wide, all of it and the header's controls whole inside the window, and the preview shows the playhead's frame as its scene has it, on a canvas at least 400 wide and 225 high",
+            $"the window with three scenes, two zooms, two cuts and two speed changes in the {name} theme at {size}, {wantedWidth} × {wantedHeight}: the ten items of the transport row are on one row in their order, the four lanes and the trim bar are one above the other and equally wide, all of it and the header's controls whole inside the window, and the preview shows the playhead's frame as its scene has it, on a canvas at least 400 wide and 225 high",
             Math.Abs(width - wantedWidth) <= 1 && Math.Abs(height - wantedHeight) <= 1 && wrong.Count == 0 && layout is null && cutSelected && canvas.Width >= 400 && canvas.Height >= 225
-                && LaneItems(editor, SceneLane).Count == 3 && LaneItems(editor, ZoomLane).Count == 2 && LaneItems(editor, CutLane).Count == 2,
+                && LaneItems(editor, SceneLane).Count == 3 && LaneItems(editor, ZoomLane).Count == 2 && LaneItems(editor, CutLane).Count == 2 && LaneItems(editor, SpeedLane).Count == 2,
             $"the window is {F(width, "0")} × {F(height, "0")} effective pixels; the canvas {F(canvas.Width, "0")} × {F(canvas.Height, "0")}; "
                 + (wrong.Count == 0 ? $"the row runs from x {inRow[0].X} to x {inRow[^1].X + inRow[^1].Width} and the lanes from y {stacked[0].Y} to y {stacked[^1].Y + stacked[^1].Height}, in a window from ({window.X:0},{window.Y:0}) to ({window.Right:0},{window.Bottom:0})" : string.Join("; ", wrong))
-                + $"; {layout ?? "the preview shows " + sight.Reading}; scenes: {sceneLane}; zooms: {zoomLane}; cuts: {cutLane}; saved as {fileName} ({sight.Shot.Width}x{sight.Shot.Height})");
+                + $"; {layout ?? "the preview shows " + sight.Reading}; scenes: {sceneLane}; zooms: {zoomLane}; cuts: {cutLane}; speed changes: {speedLane}; saved as {fileName} ({sight.Shot.Width}x{sight.Shot.Height})");
     }
 }

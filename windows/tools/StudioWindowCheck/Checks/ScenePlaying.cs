@@ -344,7 +344,7 @@ internal sealed partial class WindowChecks
                 notes.Add((viewModel.SplitSceneExplanation, viewModel.IsSplitSceneExplanationVisible));
             }
         };
-        int[] Placements() => OnUi(() => new[] { SceneLane, ZoomLane, CutLane }.Select(lane => LaneOf(editor, lane)?.BlockPlacements ?? -1).ToArray());
+        int[] Placements() => OnUi(() => new[] { SceneLane, ZoomLane, CutLane, SpeedLane }.Select(lane => LaneOf(editor, lane)?.BlockPlacements ?? -1).ToArray());
 
         // The tool keeps out of the preview's way while it plays: see ZoomPlaying.cs.
         byte[]? shotBuffer = null;
@@ -425,9 +425,9 @@ internal sealed partial class WindowChecks
             // 7 to 11 on a quiet machine and 4 to 11 on a busy one.
             var isKept = busyAtChange >= 100 && busyAtChange >= 15 * busyBefore;
             _report.Check(
-                "coming into the second scene while playing refreshes what shows the current scene once, and lays out none of the three lanes again: the scene changes once, nothing asks for everything to be refreshed, the blocks of the lanes are placed as often as before, and the UI thread is not kept for a tenth of a second, or for no more than fifteen times as long as the slowest frame before the change kept it",
+                "coming into the second scene while playing refreshes what shows the current scene once, and lays out none of the four lanes again: the scene changes once, nothing asks for everything to be refreshed, the blocks of the lanes are placed as often as before, and the UI thread is not kept for a tenth of a second, or for no more than fifteen times as long as the slowest frame before the change kept it",
                 sceneChanges.Length == 1 && refreshes == 0 && placedAfter.SequenceEqual(placedBefore) && placedBefore.All(count => count > 0) && withChange is > 10 and < 80 && !isKept && !double.IsNaN(busyAtChange),
-                string.Create(CultureInfo.InvariantCulture, $"the current scene was reported {sceneChanges.Length} time(s) and everything {refreshes} time(s) during {perFrame} reports of the playhead; with the change of scene {withChange} values were reported; the lanes' blocks were placed {string.Join("/", placedBefore)} times before and {string.Join("/", placedAfter)} after (scenes/zooms/cuts); ")
+                string.Create(CultureInfo.InvariantCulture, $"the current scene was reported {sceneChanges.Length} time(s) and everything {refreshes} time(s) during {perFrame} reports of the playhead; with the change of scene {withChange} values were reported; the lanes' blocks were placed {string.Join("/", placedBefore)} times before and {string.Join("/", placedAfter)} after (scenes/zooms/cuts/speed changes); ")
                     + string.Create(CultureInfo.InvariantCulture, $"asked every millisecond, the UI thread took at most {busyAtChange:0.0} ms to answer around the change of scene, and at most {busyBefore:0.0} ms in the 0.6 s of playing before it")
                     + (collectingAtChange + collectingBefore > 0 ? string.Create(CultureInfo.InvariantCulture, $"; not counted in that, the tool's garbage collector held every thread for up to {collectingAtChange:0.0} ms around the change and {collectingBefore:0.0} ms before it") : string.Empty));
         }

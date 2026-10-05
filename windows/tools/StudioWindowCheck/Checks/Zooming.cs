@@ -105,6 +105,7 @@ internal sealed partial class WindowChecks
     private const string ZoomLane = "StudioZoomLane";
     private const string SceneLane = "StudioSceneLane";
     private const string CutLane = "StudioCutLane";
+    private const string SpeedLane = "StudioSpeedLane";
 
     /// <summary>A lane's items, as a screen reader finds them under the list. The zoom lane's, when no lane is named.</summary>
     private static List<UiaElement> LaneItems(Editor editor, string lane = ZoomLane) =>

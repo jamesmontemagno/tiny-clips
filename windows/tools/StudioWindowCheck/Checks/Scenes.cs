@@ -142,7 +142,7 @@ internal sealed partial class WindowChecks
         SetSlider(editor, "StudioPlayhead", 4.0);
         string[] scenes = [SceneLane, "StudioScene_0", "StudioSplitSceneButton", "StudioPreviousSceneButton", "StudioNextSceneButton", "StudioScenePositionText", "StudioSceneSectionSplitButton", "StudioSplitSceneNote", "StudioOneSceneNote", "StudioFirstSceneNote", "StudioDeleteSceneButton"];
         var there = scenes.Where(id => editor.Root.Find(id) is not null).ToArray();
-        string[] others = ["StudioAddZoomButton", "StudioAddCutButton", ZoomLane, CutLane, "StudioTrimBar", "StudioNoCameraNote", "StudioPreviousZoomButton", "StudioPreviousCutButton"];
+        string[] others = ["StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", ZoomLane, CutLane, SpeedLane, "StudioTrimBar", "StudioNoCameraNote", "StudioPreviousZoomButton", "StudioPreviousCutButton", "StudioPreviousSpeedButton"];
         var missing = others.Where(id => editor.Root.Find(id) is null).ToArray();
 
         // S says why nothing happens, and nothing does.
@@ -154,7 +154,7 @@ internal sealed partial class WindowChecks
         _report.Check(
             "a recording without a camera has no scene lane, no Scene section and no Split button, and everything else of the timeline and the inspector; what S runs changes nothing and tells a screen reader that there is no camera to arrange differently",
             there.Length == 0 && missing.Length == 0 && key == StudioShortcutAction.SplitScene && said.Said && held.Length == 1 && canUndo == false,
-            $"{(there.Length == 0 ? "none of the scene controls is there" : "there: " + string.Join(", ", there))}; {(missing.Length == 0 ? "the zoom and cut controls are" : "missing: " + string.Join(", ", missing))}; S ran {key}; sent: {said.Heard}; the editor holds {held.Length} scene(s); Undo enabled {canUndo}");
+            $"{(there.Length == 0 ? "none of the scene controls is there" : "there: " + string.Join(", ", there))}; {(missing.Length == 0 ? "the zoom, cut and speed controls are" : "missing: " + string.Join(", ", missing))}; S ran {key}; sent: {said.Heard}; the editor holds {held.Length} scene(s); Undo enabled {canUndo}");
         CloseQuietly(editor);
     }
 

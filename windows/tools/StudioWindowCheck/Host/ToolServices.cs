@@ -12,7 +12,8 @@ namespace TinyClips.Tools.StudioWindowCheck.Host;
 /// <summary>
 /// What the app registers for Studio, built by hand on one folder in the temp directory: the real
 /// project store, preview factory, preview view factory, exporter, tracker, cleanup service and
-/// window service, with the settings in memory and exports going into that folder. UI thread.
+/// window service, with the settings in memory and exports going into that folder. Whether
+/// people can be found in a camera picture is the tool's to say. UI thread.
 /// </summary>
 internal sealed class ToolServices
 {
@@ -43,21 +44,28 @@ internal sealed class ToolServices
         Tracker = new StudioProjectTracker();
         var cleanup = new StudioProjectCleanupService(Store, Settings, Tracker, new NoRecorder());
 
-        // Two differences from the app's preview factory: forced mute, for no sound on this
-        // machine, and the engines' trace kept, with every open that fails, for when one does.
+        // Three differences from the app's preview factory: forced mute, for no sound on this
+        // machine; the engines' trace kept, with every open that fails, for when one does; and,
+        // for a project a check names, the requests for a playback rate written down on their
+        // way to the engine, which the view factory then reaches through to.
         Windows = new StudioWindowService(
             Store,
             new RecordingPreviewFactory(
                 new StudioPreviewFactory(new StudioPreviewOptions { ForceMuted = true, Trace = PreviewOpens.Trace }),
-                PreviewOpens),
+                PreviewOpens,
+                PlaybackRates),
             new StudioExportService(),
-            new StudioPreviewViewFactory(),
+            new WatchedPreviewViewFactory(new StudioPreviewViewFactory()),
             Settings,
             Storage,
             Tracker,
             cleanup)
         {
             ActivateWindow = Show,
+
+            // The app asks whether the model that finds people is next to it. No such file is
+            // next to the tool, and none is put there: the tool says what the answer is.
+            CanFindPeople = () => PeopleCanBeFound,
         };
         Windows.Exported += (_, e) => Exports.Enqueue(e);
         Windows.ErrorReported += (_, e) =>
@@ -87,6 +95,17 @@ internal sealed class ToolServices
 
     /// <summary>What the previews of the windows said, and what each open that failed failed with.</summary>
     public PreviewOpenLog PreviewOpens { get; } = new();
+
+    /// <summary>What the editors of the projects a check has watched asked their previews to play at.</summary>
+    public PlaybackRateLog PlaybackRates { get; } = new();
+
+    /// <summary>
+    /// What the window service is told when it asks, for each editor it opens, whether people
+    /// can be found in a camera picture. False, as in the app today, unless a check says
+    /// otherwise for the windows it opens. Nothing finds people in the tool either way: a
+    /// camera's background is drawn as it was recorded.
+    /// </summary>
+    public bool PeopleCanBeFound { get; set; }
 
     /// <summary>Every export the window service reported as finished.</summary>
     public ConcurrentQueue<StudioExportedEventArgs> Exports { get; } = new();

@@ -305,8 +305,8 @@ internal sealed partial class WindowChecks
         var fourAgain = Until(() => ScenesOf(editor).Length, count => count == 4, 1.5);
         var rowOff = Until(() => Find(editor, "StudioSplitSceneButton", 0.5)?.IsEnabled, enabled => enabled == false, 1.5);
 
-        // To the first of Add zoom, Cut and Play that can take it.
-        var firstEnabled = new[] { "StudioAddZoomButton", "StudioAddCutButton", "StudioPlayPauseButton" }.First(id => Find(editor, id, 0.5)?.IsEnabled == true);
+        // To the first of Add zoom, Cut, Speed and Play that can take it.
+        var firstEnabled = new[] { "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioPlayPauseButton" }.First(id => Find(editor, id, 0.5)?.IsEnabled == true);
         var afterRow = Until(() => FocusedId(editor), id => id == firstEnabled, 1.5);
         Invoke(editor, "StudioUndoButton");
         Until(() => ScenesOf(editor).Length, count => count == 3, 1.5);
@@ -318,36 +318,67 @@ internal sealed partial class WindowChecks
             $"the section's button: {four} scenes, playhead {Seconds(headAfter)} s, enabled {sectionOff}, the focus went from \"{onSection}\" to \"{afterSection}\", the note: \"{note}\"; "
                 + $"the row's button: {fourAgain} scenes, enabled {rowOff}, the focus went from \"{onRow}\" to \"{afterRow}\" (the first that works: {firstEnabled}); after the two Undo the editor holds {restored}");
 
-        // Where no zoom and no cut fits either. Left to itself the focus goes on from a button
-        // that is switched off to the next stop that works, which above is the same button the
-        // row picks, so that check cannot tell the row's choice from none. Here it can: a cut of
-        // the last eighth of a second leaves 0.025 s between itself and 11.85 s, where the
-        // playhead goes on to, and the 0.15 s to the end are too short for a zoom. The next stop
-        // that works is then Start here, a button that trims, and the row goes back to Play instead.
+        // Where no zoom and no cut fits, and a speed change does. A cut of the last eighth of a
+        // second leaves 0.025 s between itself and 11.85 s, where the playhead goes on to, and
+        // the 0.15 s to the end are too short for a zoom and long enough for a speed change. Of
+        // the row's buttons that add something Speed is then the one that works, and the row
+        // hands the focus to it, past Add zoom and Cut, and not back to Play.
         SetSlider(editor, "StudioPlayhead", 11.875);
         var cutPressed = Invoke(editor, "StudioAddCutButton");
         var cuts = Until(() => CutsOf(editor), now => now.Length == 1, 1.5);
         SetSlider(editor, "StudioPlayhead", 11.5);
         Until(() => Find(editor, "StudioSplitSceneButton", 0.5)?.IsEnabled, enabled => enabled == true, 2);
+        var onRowForSpeed = FocusOn(editor, "StudioSplitSceneButton");
+        var pressedForSpeed = Invoke(editor, "StudioSplitSceneButton");
+        var fourForSpeed = Until(() => ScenesOf(editor).Length, count => count == 4, 1.5);
+        string[] beforeSpeed = ["StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton"];
+        var onBeforeSpeed = Until(() => beforeSpeed.Where(id => Find(editor, id, 0.5)?.IsEnabled != false).ToArray(), on => on.Length == 0, 1.5);
+        var speedWorks = Find(editor, "StudioAddSpeedButton", 0.5)?.IsEnabled;
+        var afterToSpeed = Until(() => FocusedId(editor), id => id == "StudioAddSpeedButton", 1.5);
+        var headForSpeed = Playhead(editor);
+        Invoke(editor, "StudioUndoButton");
+        Until(() => ScenesOf(editor).Length, count => count == 3, 1.5);
+        _report.Check(
+            "where no zoom and no cut fits and a speed change does, so that Split, Add zoom and Cut are switched off by the press and Speed is not, the transport row hands the keyboard focus to Speed, the first of its buttons after Split that works, and not to Play",
+            cutPressed && cuts.Length == 1 && Same(cuts[0].Start, 11.875) && Same(cuts[0].End, RecordingLength) && onRowForSpeed == "StudioSplitSceneButton" && pressedForSpeed && fourForSpeed == 4 && Same(headForSpeed, 11.85)
+                && onBeforeSpeed.Length == 0 && speedWorks == true && afterToSpeed == "StudioAddSpeedButton",
+            $"with a cut of {string.Join(", ", cuts.Select(cut => $"{Seconds(cut.Start)} to {Seconds(cut.End)} s"))}: {fourForSpeed} scenes, playhead {Seconds(headForSpeed)} s, still enabled of Split, Add zoom and Cut: {(onBeforeSpeed.Length == 0 ? "none" : string.Join(", ", onBeforeSpeed))}; "
+                + $"Speed enabled {speedWorks}; the focus went from \"{onRowForSpeed}\" to \"{afterToSpeed}\"");
+
+        // Where no speed change fits either. Left to itself the focus goes on from a button that
+        // is switched off to the next stop that works, which in the two checks above is the same
+        // button the row picks, so they cannot tell the row's choice from none. Here it can be
+        // told: a speed change of the same last eighth of a second leaves as little room as the
+        // cut does. The next stop that works is then Start here, a button that trims, and the
+        // row goes back to Play instead.
+        SetSlider(editor, "StudioPlayhead", 11.875);
+        var speedPressed = Invoke(editor, "StudioAddSpeedButton");
+        var speeds = Until(() => SpeedsOf(editor), now => now.Length == 1, 1.5);
+        SetSlider(editor, "StudioPlayhead", 11.5);
+        Until(() => Find(editor, "StudioSplitSceneButton", 0.5)?.IsEnabled, enabled => enabled == true, 2);
         var onRowAgain = FocusOn(editor, "StudioSplitSceneButton");
         var pressedAgain = Invoke(editor, "StudioSplitSceneButton");
         var fourOnceMore = Until(() => ScenesOf(editor).Length, count => count == 4, 1.5);
-        string[] three = ["StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton"];
-        var stillOn = Until(() => three.Where(id => Find(editor, id, 0.5)?.IsEnabled != false).ToArray(), on => on.Length == 0, 1.5);
+        string[] adding = ["StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton"];
+        var stillOn = Until(() => adding.Where(id => Find(editor, id, 0.5)?.IsEnabled != false).ToArray(), on => on.Length == 0, 1.5);
         var startHere = Find(editor, "StudioStartHereButton", 0.5)?.IsEnabled;
         var afterAll = Until(() => FocusedId(editor), id => id == "StudioPlayPauseButton", 1.5);
         var headThen = Playhead(editor);
         Invoke(editor, "StudioUndoButton");
         Until(() => ScenesOf(editor).Length, count => count == 3, 1.5);
         Invoke(editor, "StudioUndoButton");
+        var speedsLeft = Until(() => SpeedsOf(editor).Length, count => count == 0, 1.5);
+        Invoke(editor, "StudioUndoButton");
         var cutsLeft = Until(() => CutsOf(editor).Length, count => count == 0, 1.5);
         var restoredAgain = Describe(ScenesOf(editor));
         _report.Check(
-            "where no zoom and no cut fits either, so that Split, Add zoom and Cut are all three switched off by the press, the transport row hands the keyboard focus back to Play, and not on to Start here, the next stop that works",
-            cutPressed && cuts.Length == 1 && Same(cuts[0].Start, 11.875) && Same(cuts[0].End, RecordingLength) && onRowAgain == "StudioSplitSceneButton" && pressedAgain && fourOnceMore == 4 && Same(headThen, 11.85)
-                && stillOn.Length == 0 && startHere == true && afterAll == "StudioPlayPauseButton" && cutsLeft == 0 && restoredAgain == before,
-            $"with a cut of {string.Join(", ", cuts.Select(cut => $"{Seconds(cut.Start)} to {Seconds(cut.End)} s"))}: {fourOnceMore} scenes, playhead {Seconds(headThen)} s, still enabled: {(stillOn.Length == 0 ? "none of the three" : string.Join(", ", stillOn))}, Start here enabled {startHere}; "
-                + $"the focus went from \"{onRowAgain}\" to \"{afterAll}\"; after the two Undo the editor holds {cutsLeft} cuts and {restoredAgain}");
+            "where no zoom, no cut and no speed change fits either, so that Split, Add zoom, Cut and Speed are all four switched off by the press, the transport row hands the keyboard focus back to Play, and not on to Start here, the next stop that works",
+            cuts.Length == 1 && speedPressed && speeds.Length == 1 && Same(speeds[0].Start, 11.875) && Same(speeds[0].End, RecordingLength)
+                && onRowAgain == "StudioSplitSceneButton" && pressedAgain && fourOnceMore == 4 && Same(headThen, 11.85)
+                && stillOn.Length == 0 && startHere == true && afterAll == "StudioPlayPauseButton" && speedsLeft == 0 && cutsLeft == 0 && restoredAgain == before,
+            $"with a cut of {string.Join(", ", cuts.Select(cut => $"{Seconds(cut.Start)} to {Seconds(cut.End)} s"))} and a speed change of {string.Join(", ", speeds.Select(speed => $"{Seconds(speed.Start)} to {Seconds(speed.End)} s"))}: "
+                + $"{fourOnceMore} scenes, playhead {Seconds(headThen)} s, still enabled: {(stillOn.Length == 0 ? "none of the four" : string.Join(", ", stillOn))}, Start here enabled {startHere}; "
+                + $"the focus went from \"{onRowAgain}\" to \"{afterAll}\"; after the three Undo the editor holds {cutsLeft} cuts, {speedsLeft} speed changes and {restoredAgain}");
     }
 
     /// <summary>
@@ -445,16 +476,16 @@ internal sealed partial class WindowChecks
         var path = Path.Combine(_output, "tab-order-scenes.txt");
         File.WriteAllLines(path, order);
 
-        // The Scene section from top to bottom, then Layout; later the two buttons that add a
-        // zoom and a cut in their sections; and the timeline: its row from left to right, then
-        // the three lanes from top to bottom, each one stop, and the trim bar.
+        // The Scene section from top to bottom, then Layout; later the three buttons that add a
+        // zoom, a cut and a speed change in their sections; and the timeline: its row from left
+        // to right, then the four lanes from top to bottom, each one stop, and the trim bar.
         string[] wanted =
         [
             "StudioPreviousSceneButton", "StudioNextSceneButton", "StudioSceneSectionSplitButton",
             "StudioSceneStartEarlierButton", "StudioSceneStartLaterButton", "StudioSceneStartAtPlayheadButton", "StudioSceneEntryChoice", "StudioSceneMoveSlider", "StudioDeleteSceneButton",
-            "StudioLayoutChoice", "StudioShowBackgroundCheckBox", "StudioZoomSectionAddButton", "StudioCutSectionAddButton", "StudioClickRingsCheckBox",
-            "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioStartHereButton", "StudioEndHereButton",
-            SceneLane, ZoomLane, CutLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+            "StudioLayoutChoice", "StudioShowBackgroundCheckBox", "StudioZoomSectionAddButton", "StudioCutSectionAddButton", "StudioSpeedSectionAddButton", "StudioClickRingsCheckBox",
+            "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
+            SceneLane, ZoomLane, CutLane, SpeedLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         var places = wanted.Select(id => order.IndexOf(id)).ToArray();
         var missing = wanted.Where((_, index) => places[index] < 0).ToArray();
@@ -462,10 +493,10 @@ internal sealed partial class WindowChecks
 
         // The timeline's stops come one right after the other, with nothing between them.
         var row = order.IndexOf("StudioPlayPauseButton");
-        var together = row >= 0 && order.Skip(row).Take(14).SequenceEqual(wanted[^14..]);
-        var blocks = order.Where(id => id.StartsWith("StudioScene_", StringComparison.Ordinal) || id.StartsWith("StudioCut_", StringComparison.Ordinal) || id.StartsWith("StudioZoom_", StringComparison.Ordinal)).ToArray();
+        var together = row >= 0 && order.Skip(row).Take(16).SequenceEqual(wanted[^16..]);
+        var blocks = order.Where(id => id.StartsWith("StudioScene_", StringComparison.Ordinal) || id.StartsWith("StudioCut_", StringComparison.Ordinal) || id.StartsWith("StudioZoom_", StringComparison.Ordinal) || id.StartsWith("StudioSpeed_", StringComparison.Ordinal)).ToArray();
         _report.Check(
-            "the keyboard focus, moved from stop to stop, goes through the Scene section from top to bottom and on to Layout, and through the timeline as the transport row from Play to End here, then the scene lane, the zoom lane, the cut lane and the trim bar, with nothing between them; each lane is one stop, and no single scene, zoom or cut is one",
+            "the keyboard focus, moved from stop to stop, goes through the Scene section from top to bottom and on to Layout, and through the timeline as the transport row from Play to End here, then the scene lane, the zoom lane, the cut lane, the speed lane and the trim bar, with nothing between them; each lane is one stop, and no single scene, zoom, cut or speed change is one",
             missing.Length == 0 && !outOfOrder && together && blocks.Length == 0,
             missing.Length == 0 && !outOfOrder && together && blocks.Length == 0
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"

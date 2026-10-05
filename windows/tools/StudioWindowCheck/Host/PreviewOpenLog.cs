@@ -130,9 +130,10 @@ internal sealed class PreviewOpenLog
 
 /// <summary>
 /// The app's preview factory, with every open that fails written down before the window is told.
-/// What it returns is what the app's factory returned.
+/// What it returns is what the app's factory returned, except for a project a check has asked to
+/// have watched: its preview comes back inside a <see cref="WatchedPreview"/>.
 /// </summary>
-internal sealed class RecordingPreviewFactory(IStudioPreviewFactory inner, PreviewOpenLog log) : IStudioPreviewFactory
+internal sealed class RecordingPreviewFactory(IStudioPreviewFactory inner, PreviewOpenLog log, PlaybackRateLog rates) : IStudioPreviewFactory
 {
     public async Task<IStudioPreview> OpenAsync(
         StudioProject project,
@@ -142,7 +143,8 @@ internal sealed class RecordingPreviewFactory(IStudioPreviewFactory inner, Previ
     {
         try
         {
-            return await inner.OpenAsync(project, events, paths, cancellationToken).ConfigureAwait(false);
+            var preview = await inner.OpenAsync(project, events, paths, cancellationToken).ConfigureAwait(false);
+            return rates.IsWatched(paths.ProjectId) ? new WatchedPreview(preview, rates, paths.ProjectId) : preview;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

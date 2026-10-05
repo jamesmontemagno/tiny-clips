@@ -17,10 +17,17 @@ Every result is read back by the tool itself, in one of these ways:
 - the window's UI Automation tree, read with the client a screen reader uses, and the events the
   window sends that client: the sentences it asks to have read out, and which item of a list
   became the selected one;
-- the frames of an exported file, decoded with ffmpeg;
-- every picture the preview engine draws while it plays through a zoom, into a scene and over a
-  cut, copied out of the texture it was drawn into through the engine's hook for check tools
-  (`AfterRender`).
+- the frames of an exported file, and the samples of its sound, decoded with ffmpeg;
+- every picture the preview engine draws while it plays through a zoom, into a scene, over a
+  cut and through a speed change, copied out of the texture it was drawn into through the
+  engine's hook for check tools (`AfterRender`);
+- what an editor asks its preview to play at, and when, written down on its way to the preview
+  engine: see "Speed changes".
+
+**Not run yet.** The `speed` group, the checks of the camera's Background choice in `inspector`,
+and what changed with them in `scene`, `cut` and `themes` were written while no check tool
+could be run on the machine. They compile, and that is all that is known of them: see "Speed
+changes" for what that leaves open.
 
 ## Needs
 
@@ -38,8 +45,9 @@ dotnet build windows\tools\StudioWindowCheck\StudioWindowCheck.csproj -c Debug -
 windows\tools\StudioWindowCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioWindowCheck.exe
 ```
 
-A full run takes about three minutes. It exits with 0 when every check passed and with 1 when one
-did not, after printing one `FAILED:` line for each; 2 is a usage error.
+A full run took about three minutes before the `speed` group was added, and has not been timed
+since. It exits with 0 when every check passed and with 1 when one did not, after printing one
+`FAILED:` line for each; 2 is a usage error.
 
 | Option | |
 | --- | --- |
@@ -50,7 +58,7 @@ did not, after printing one `FAILED:` line for each; 2 is a usage error.
 | `--held-up` | in the `zoom` group, play through a zoom that moves in a second time while the tool holds its own process up: see "A frame that comes late" |
 | `--memory` | run none of the groups: open and close windows with one thing done to each, and say which are still in memory afterwards: see "A closed window that stays in memory" |
 
-Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut`.
+Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut speed`.
 
 ## What it leaves behind
 
@@ -71,23 +79,28 @@ Groups: `open transport inspector trim export close windows accessibility themes
 - `out\zoom-preview.png`: the window right after Z added a zoom, with the preview zoomed.
   `out\zoom-moving-in.png`: a screenshot taken while the preview played through a zoom moving in.
 - `out\window-timeline-light.png`, `-light-smallest.png`, and the same for `dark`: the whole
-  window on a recording with a camera that has three scenes, two zooms and two cuts, the second
-  cut selected, at the size the window opens with (1180 × 760) and at the smallest size it can
-  be given (980 × 640).
+  window on a recording with a camera that has three scenes, two zooms, two cuts and two speed
+  changes, a faster and a slower one, the second cut selected, at the size the window opens
+  with (1180 × 760) and at the smallest size it can be given (980 × 640).
 - `out\scene-side-by-side.png`: the window with the playhead in a second scene that is side by
   side. `out\scene-moving-in.png`: paused half way through the move into it.
   `out\scene-looks-light.png`, `-dark.png`: the scene lane with the playhead in the second of
   three scenes.
 - `out\cut-looks-light.png`, `-light-selected.png`, and the same for `dark`: the window with one
   cut of four seconds and one zoom, the cut not selected and selected.
+- `out\speed-looks-light.png`, `-light-selected.png`, and the same for `dark`: the window with
+  four speed changes, two long ones with their rate written on them and two short ones with
+  their mark alone, a faster and a slower one of each, over a zoom and a cut of the same
+  length; and the same with the first speed change selected.
 - `out\tree-*.txt`: the UI Automation tree of the window in each state the `accessibility` group
   reads: opening, the editor in three layouts, exporting, the question on closing, a recording
   without a camera, and a project that cannot be opened; from the `zoom` group, with a zoom
-  selected and with suggested zooms; from the `scene` group, with three scenes; and from the
-  `cut` group, with a cut selected.
-- `out\tab-order.txt`, `out\tab-order-scenes.txt`, `out\tab-order-cuts.txt`: the tab stops of the
-  window with a zoom selected, with three scenes, and with a cut selected, in the order the focus
-  moves through them.
+  selected and with suggested zooms; from the `scene` group, with three scenes; from the `cut`
+  group, with a cut selected; and from the `speed` group, with a speed change selected.
+- `out\tab-order.txt`, `out\tab-order-scenes.txt`, `out\tab-order-cuts.txt`,
+  `out\tab-order-speed.txt`: the tab stops of the window with a zoom selected, with three
+  scenes, with a cut selected, and with a speed change selected, in the order the focus moves
+  through them.
 - `out\open-failure-<time>-<n>.txt`, only when a window could not open its project: what the
   preview failed with, each exception with its error code, and what the preview engines wrote
   to their trace in the eight seconds before. The window itself shows one sentence, and the
@@ -146,6 +159,18 @@ Someone may be working on the machine while the tool runs, so:
 - `Host\ToolServices.cs` builds `StudioWindowService` the way the app does, with those five, and
   replaces `ActivateWindow`: a window is shown once, without activation; a second request for the
   same window, which in the app brings it to the front, is counted.
+- **Whether people can be found in a camera picture** is the tool's to say
+  (`ToolServices.PeopleCanBeFound`). The app answers that for each editor it opens by whether
+  the model that finds people is next to it (`StudioPersonFinders.IsAvailable`). No such file is
+  next to the tool, and none is put there. The answer is no, as in the app today, except for the
+  windows the check of the camera's Background choice opens. Nothing finds people in the tool
+  either way, so no picture is read for that choice.
+- **A preview that is watched.** For a project a check names before it opens it
+  (`ToolServices.PlaybackRates.Watch`), the editor is given the preview engine inside
+  `Host\WatchedPreview.cs`, which writes down every request for a playback rate, with where the
+  engine said it was and whether it was playing, and passes everything on. The preview panel is
+  handed the engine itself. Every other window of the tool has the engine without anything in
+  front of it, as the app has.
 - A window is told that it is active with the message Windows sends for it (`WM_ACTIVATE`),
   because Windows never activates it. A WinUI window starts its compiled bindings at its first
   activation, and the editor puts the focus on a control only while it is the active window. The
@@ -169,7 +194,7 @@ Someone may be working on the machine while the tool runs, so:
 - **Keys are not pressed.** Where a check says "what the Space key runs", it calls what the
   window's key handler calls once it has mapped the key: `StudioWindow.RunShortcut`, which asks
   `StudioShortcuts.Resolve` what the key means in the window as it is, and runs that. That the
-  window maps the S, X, Z and Delete keys is checked on `StudioWindow.MapKey`. For the arrow
+  window maps the R, S, X, Z and Delete keys is checked on `StudioWindow.MapKey`. For the arrow
   keys, Home and End on a lane, the lane's own `HandleKey` is called, which is what its key
   handler calls. Delete on the scene lane is checked with the focus put on the lane inside the
   window, which is what the window's key handler asks about. That a key reaches a handler, and
@@ -178,7 +203,7 @@ Someone may be working on the machine while the tool runs, so:
   trim bar and a slider's thumb are never moved. A slider drag as one undo step is checked by
   calling what the slider's row calls when a pointer takes hold of it and lets go
   (`BeginGesture`, `EndGesture`), with the values set through UI Automation in between. A press
-  and a drag on each of the three lanes and on the focus pad are checked by calling what their
+  and a drag on each of the four lanes and on the focus pad are checked by calling what their
   pointer handlers call with a place (`PressAt`, `DragTo`, `EndPress`). A drag of a trim handle
   that goes on to where the trim is refused is checked by what the bar asks the editor for: a
   gesture with one request for each move. What a press on the trim bar does to the selection is
@@ -219,6 +244,13 @@ Someone may be working on the machine while the tool runs, so:
   is between one and two times the size needed, so the same frame in the same place can be scaled
   from another size than last time, which shows along its edges. A picture counts as given back
   when at most a fifth of the pixels the edit changed, and a twentieth of the others, differ.
+  Then the camera's Background choice (`Checks\CameraBackground.cs`): that it is not there
+  where people cannot be found, nor in a recording without a camera; that Keep, Blur and Remove
+  are radio buttons by those names between Mirror and Border, one tab stop together; that Blur
+  and Remove set the project and each is one undo step; the note while the background is
+  removed; and that the choice goes and comes with the camera's other styling, is saved with
+  the project, and is part of a saved look. No picture is read for it: what a blurred or a
+  removed background looks like is the renderer's, and `StudioRenderCheck` checks it.
 - `trim`: the two handles and the playhead as sliders, a step as a screen reader takes it, the
   limits, Start here and End here, and where the handles are drawn.
 - `export`: the overlay, Cancel, what Esc runs, the window's close button while an export runs
@@ -237,9 +269,9 @@ Someone may be working on the machine while the tool runs, so:
   pane that cannot take the focus may be without a name; the two panes in which the framework
   hosts XAML in a window are left out.
 - `themes`: the pictures, and that each is what its name says. For the window with scenes,
-  zooms and cuts, at both sizes: the nine items of the transport row are on one row in their
-  order, the three lanes and the trim bar are one above the other and equally wide, all of it
-  whole inside the window, and the canvas is at least 400 × 225.
+  zooms, cuts and speed changes, at both sizes: the ten items of the transport row are on one
+  row in their order, the four lanes and the trim bar are one above the other and equally wide,
+  all of it whole inside the window, and the canvas is at least 400 × 225.
 - `zoom`: the lane above the trim bar, Add zoom, what Z and Delete run, the lane's keys, its
   blocks as list items, Previous and Next, the Zoom section with every control of the selected
   zoom, the focus pad, the Start and End buttons, presses and drags on the lane, a zoom that
@@ -265,6 +297,7 @@ Someone may be working on the machine while the tool runs, so:
   gaps in the trim bar, read from its pixels; a trim that the cuts do not allow; the time and
   the picture with the playhead inside a cut; playing over a cut; Play pressed inside a cut; and
   an export of a project with cuts and scenes, decoded frame by frame.
+- `speed`: see "Speed changes".
 - A press and the selection, in `cut`: one project with two scenes, two cuts and two zooms.
   With a cut selected, the zoom lane is pressed where it is empty, right above that cut, and
   nothing is selected afterwards; and the other way round, with a zoom selected and the cut lane
@@ -404,7 +437,7 @@ frame it shows (`Checks\ScenePlaying.cs`, `Checks\CutPlaying.cs`).
   shows the current scene is refreshed: the lane's selected item, the Scene section, Layout, the
   camera's controls and the handle in the preview. The check records what the view model
   reports, and has another thread ask the UI thread a question every millisecond. The current
-  scene has to be reported once, nothing may ask for everything to be refreshed, the three lanes
+  scene has to be reported once, nothing may ask for everything to be refreshed, the four lanes
   may not place their blocks again, and the UI thread may not take a tenth of a second to
   answer. On a quiet machine it took 15 to 19 ms, against 1.5 to 2.5 ms for the slowest frame
   before the change. About 10 ms of that is the first showing of the controls that only the new
@@ -451,7 +484,117 @@ window's doing:
   `--held-up` (see "A frame that comes late"), here without the tool holding anything up. It
   fails the check.
 
+## Speed changes
+
+**None of this has been run.** The group was written, and the checks around it changed, while
+the machine was not to be used for anything but compiling. So of every sentence in this section
+that says what a check does, read: what it is written to do. What is known is that the tool
+compiles without a warning. What is not known:
+
+- whether each check passes on the window as it is. Every number a check expects was worked out
+  by hand, from the editor's rules and the test clips, and is written out in a comment at the
+  check; none has been seen on a screen or in a report. A check that fails on its first run is
+  as likely to be wrong itself as to have found something;
+- whether the limits of the checks that read pixels fit what the window draws: how round an end
+  has to be, how flat a fill, how many pixels make a mark, how far a tinted pixel of the trim
+  bar is from the bar's own colour. They were set from the brushes and the sizes in the XAML,
+  not from a picture;
+- how long the group takes, and so how long a full run takes;
+- whether a check can fail. Twenty-four faults are ready in a script (see "Faults that were
+  tried") and none has been tried.
+
+What the group is written to check, in `Checks\Speed.cs`, `SpeedLane.cs` and `SpeedPlaying.cs`:
+
+- **Adding.** The empty lane; R, Speed in the transport row and Change speed at playhead in the
+  section; where a speed change already is, and where the shortest does not fit; what is read
+  out; the block's name; the section for the selected one; and the time, which counts the video
+  and so gets shorter for a faster stretch.
+- **The lane.** That it is on the trim bar's time scale; its keys; its blocks as list items;
+  presses and drags, by what the lane's pointer handlers call: a press on a block and on the
+  empty lane, a drag of the body, of the first and of the last 6 pixels, against a neighbour
+  and against the ends of the recording, a block too narrow for ends of its own, and each drag
+  as one undo step.
+- **The section.** Previous and Next with what they read out and where the focus goes at the
+  ends; the choice of the six rates, each shown as its rate and named in words, with the
+  block's mark and the video's length following a choice, each choice one undo step, and a
+  rate chosen again changing nothing; the six buttons of Start and End; Delete and Delete speed
+  change with where the focus goes; undo and redo across an add, a move, a rate, an end and a
+  delete; the names a screen reader is given and the order of the tab stops.
+- **One selection.** A zoom, a cut or a speed change is selected, never two: by Z and X, by
+  selecting an item of each lane, and by a press on the empty part of each of the three lanes
+  with something of another kind selected. A press on the scene lane and what the trim bar
+  asks for leave a selected speed change selected.
+- **Rates of a project file.** A rate that is none of the six is named on its block and none of
+  the six is chosen for it; one past the fastest or under the slowest shows as that limit; a
+  stretch at the recording's own speed is no speed change.
+- **What a block looks like**, in both themes, from the pixels of a screenshot: its ends are
+  round where a zoom's block has corners (how much further in the block begins a pixel and a
+  half under its top than through its middle: 4.7 for half circles of a block 20 high, 0.9 for
+  corners with a radius of 4); it is one flat colour, with none of its own, where a cut's is
+  hatched; its outline is one line where a cut's is dashed; a faster and a slower block carry
+  marks that are not the same picture; and the selected one's outline is twice as thick. What
+  that cannot tell is in a comment at the check: the colours themselves, and whether the marks
+  look like what they stand for. Contrast themes are not seen.
+- **The trim bar.** A speed change leaves nothing out, so the tinted range goes on through it,
+  and only a cut leaves a gap. The parts are read along the middle of the bar and along a row a
+  pixel and a half under its top, which runs through the round corners of every part: two
+  parts side by side leave a notch there. On that row a pixel counts as tinted when it is more
+  than half as far from the bar's own colour as the most tinted pixel of the row, because the
+  pixels of a corner are only partly tinted. The editor hands the bar the stretches the video
+  keeps, which a speed change does not divide (`StudioTimeMap.Segments`), so the bar is also
+  handed the same video in the pieces the time map plays it in, one for each stretch at one
+  rate, four of which touch the one before: it has to draw two parts then as well. That second
+  call is made by the tool and not by the window.
+- **A trim and a rate that are refused.** With the whole recording at eight times the speed, a
+  trim that would leave less than a tenth of a second of video is refused although more of the
+  recording is left, and the handle has to report and be drawn where the video really ends. A
+  rate that would do the same is refused, is not read out, and the choice goes back to the rate
+  the stretch has.
+- **Paused.** The time through a faster stretch, a cut and a slower stretch, against the
+  video's time worked out by hand.
+- **Playing.** See the next point.
+- **An export**, of a recording with a camera, a trim, a cut and two speed changes. Every time
+  in that project is a whole number of 120ths of a second, a quarter of a frame, so that the
+  place in the recording an output frame shows is never on the line between two frames. The
+  frame of the recording each of the 209 output frames has to show is worked out by hand in a
+  comment: one by one, then every other frame at twice the speed, then one by one, after the
+  cut every frame twice at half speed, then one by one. The file is read with ffprobe and
+  decoded with ffmpeg, and each frame is read against the layout of the frame it has to be.
+  Its sound is decoded as well. The test recording has a tone of a twentieth of a second at the
+  start of every second: the tones of the seconds that play at the recording's own speed have
+  to be where the video plays them, and the two stretches at another speed have to be silent.
+  The sound is not listened to: its samples are read.
+
+**What the editor asks the preview for.** The session tells the preview how fast to play before
+it starts playing, when the playhead has come into or out of a speed change, and after the jump
+over a cut. The preview engine in this tree takes the request and plays on at the recording's
+own speed, and says nothing of it in its trace, so the request is written down by
+`WatchedPreview`, which stands in front of the engine for the one project of this check. The
+checks are about the requests: which rate, with the engine at which place and playing or not.
+Playing into a stretch at twice the speed and out of it has to ask for 2 and then for 1, each
+once and with the engine no more than six frames past the edge. Playing over a cut into a
+stretch at half speed that starts where the cut ends has to ask for 0.5 as the engine is sent
+on, and Play pressed inside a stretch has to ask before the engine plays.
+
+How fast the picture and the playhead then go is measured (seconds of the recording for each
+second on the clock, inside the stretch clear of its edges, and after it) and written into the
+report as a note that no check depends on. `PreviewPlaysTheRate` at the top of
+`Checks\SpeedPlaying.cs` returns false. Once the engine plays a rate, have it return true: the
+same measurements are then two checks, that the picture and the playhead go at the stretch's
+rate inside it and at the recording's own after it, each within a fifth. Nothing else has to
+change. The checks of the pictures drawn on the way, of the playhead and of the time shown hold
+for an engine that plays the rate as for one that does not.
+
 ## Faults that were tried
+
+**For speed changes, the Background choice and the trim bar, none was tried.** Twenty-four are
+written down in `faults-speed.ps1`, which is with the report of that work and not in the
+repository, each with the group to run and the check that is expected to catch it; the script
+says for each whether its place in the code is still there, and refuses to do more while the
+machine is not to be used for check tools. One of them, the transport row handing the focus
+past Speed when Split switches itself off, would have failed nothing as the checks stood, so
+the `scene` group got a check for it: a place where neither a zoom nor a cut fits and a speed
+change does. Whether that check, or any of the others, catches its fault has not been seen.
 
 For scenes and cuts, thirty-seven faults were put into a copy of the tree, one at a time, each
 built and run against the group it belongs to:
@@ -489,9 +632,10 @@ The first time through, two faults failed nothing, and each showed something els
 that was merely missing. Without the transport row's own choice of where the focus goes when
 Split switches itself off, the focus still went to the same button, because the framework
 sends it on to the next stop by itself: the check now uses a place where neither a zoom nor a
-cut fits, in which the two differ. And without the building of a scene's controls ahead of
-time, the first change of scene took 17 ms and not the 105 that the building had been written
-for: it was taken out (see "Playing into a scene and over a cut").
+cut fits (and, since the row has Speed, no speed change either), in which the two differ. And
+without the building of a scene's controls ahead of time, the first change of scene took 17 ms
+and not the 105 that the building had been written for: it was taken out (see "Playing into a
+scene and over a cut").
 
 ## A closed window that stays in memory
 

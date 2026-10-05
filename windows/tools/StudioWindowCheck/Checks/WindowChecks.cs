@@ -23,7 +23,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 /// </summary>
 internal sealed partial class WindowChecks
 {
-    public static readonly string[] Groups = ["open", "transport", "inspector", "trim", "export", "close", "windows", "accessibility", "themes", "zoom", "crop", "scene", "cut"];
+    public static readonly string[] Groups = ["open", "transport", "inspector", "trim", "export", "close", "windows", "accessibility", "themes", "zoom", "crop", "scene", "cut", "speed"];
 
     private const int Fps = TestMedia.Fps;
 
@@ -84,7 +84,11 @@ internal sealed partial class WindowChecks
 
             Group("open", "1. Opening a project", Opening);
             Group("transport", "2. Transport", Transport);
-            Group("inspector", "3. The inspector, with undo and redo", Inspector);
+            Group("inspector", "3. The inspector, with undo and redo", () =>
+            {
+                Inspector();
+                CameraBackground();
+            });
             Group("trim", "4. Trimming", Trimming);
             Group("export", "5. Exporting with the real exporter", Exporting);
             Group("close", "6. Closing", Closing);
@@ -95,6 +99,7 @@ internal sealed partial class WindowChecks
             Group("crop", "11. Crops", Cropping);
             Group("scene", "12. Scenes", Scenes);
             Group("cut", "13. Cuts", Cuts);
+            Group("speed", "14. Speed changes", Speeds);
 
             // Last of all: after this the window service opens nothing.
             Group("windows", "7, at the end. The app exits while editors are open", ExitingWithWindowsOpen);
@@ -491,7 +496,13 @@ internal sealed partial class WindowChecks
     /// <summary>The window is gone or about to be: no more screenshots of it.</summary>
     private static void Release(Editor editor) => editor.Release();
 
-    private StudioPreviewEngine? EngineOf(Editor editor) => OnUi(() => editor.Window.ViewModel.Preview as StudioPreviewEngine);
+    /// <summary>The window's preview engine: what its editor has, or what stands behind a preview the tool watches.</summary>
+    private StudioPreviewEngine? EngineOf(Editor editor) => OnUi(() => editor.Window.ViewModel.Preview switch
+    {
+        StudioPreviewEngine engine => engine,
+        WatchedPreview watched => watched.Inner as StudioPreviewEngine,
+        _ => null,
+    });
 
     // ---------------------------------------------------------------------------------------
     // Waiting

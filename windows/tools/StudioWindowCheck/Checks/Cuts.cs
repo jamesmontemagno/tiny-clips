@@ -520,8 +520,8 @@ internal sealed partial class WindowChecks
             $"{delete}, described as \"{delete?.HelpText}\"; the tooltip: \"{tip}\"");
 
         // The stops, in order: the Cut section from top to bottom, after the Zoom section and
-        // before the extras; and the timeline of a recording without a camera, which has no
-        // Split and no scene lane.
+        // before the Speed section and the extras; and the timeline of a recording without a
+        // camera, which has no Split and no scene lane.
         var order = TabStops(editor);
         var path = Path.Combine(_output, "tab-order-cuts.txt");
         File.WriteAllLines(path, order);
@@ -532,8 +532,8 @@ internal sealed partial class WindowChecks
         ];
         string[] timeline =
         [
-            "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioStartHereButton", "StudioEndHereButton",
-            ZoomLane, CutLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+            "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
+            ZoomLane, CutLane, SpeedLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         var at = order.IndexOf(section[0]);
         var sectionTogether = at >= 0 && order.Skip(at).Take(section.Length).SequenceEqual(section);
@@ -543,7 +543,7 @@ internal sealed partial class WindowChecks
         var timelineTogether = row >= 0 && order.Skip(row).Take(timeline.Length).SequenceEqual(timeline);
         var blocks = order.Where(id => id.StartsWith("StudioCut_", StringComparison.Ordinal)).ToArray();
         _report.Check(
-            "the keyboard focus, moved from stop to stop, goes through the Cut section from Previous cut to Delete cut with nothing between them, after the Zoom section and before the extras; the timeline of a recording without a camera is the transport row, the zoom lane, the cut lane and the trim bar; the cut lane is one stop, and no single cut is one",
+            "the keyboard focus, moved from stop to stop, goes through the Cut section from Previous cut to Delete cut with nothing between them, after the Zoom section and before the extras; the timeline of a recording without a camera is the transport row, the zoom lane, the cut lane, the speed lane and the trim bar; the cut lane is one stop, and no single cut is one",
             sectionTogether && afterZoom && beforeExtras && timelineTogether && blocks.Length == 0,
             sectionTogether && afterZoom && beforeExtras && timelineTogether && blocks.Length == 0
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"
