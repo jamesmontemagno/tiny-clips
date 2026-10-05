@@ -12,7 +12,11 @@ import Vision
 final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
     let timeRange: CMTimeRange
     let enablePostProcessing = false
-    let containsTweening = false
+    /// The picture changes with time even while the source frames stay the same: a zoom eases,
+    /// a scene moves into place, and a click ring grows and fades over a still screen. The
+    /// recorder writes a screen frame only when the screen changes, so without this
+    /// AVFoundation may keep showing one composed frame for as long as the screen stood still.
+    let containsTweening = true
     let requiredSourceTrackIDs: [NSValue]?
     let passthroughTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid
     let screenTrackID: CMPersistentTrackID

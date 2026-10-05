@@ -96,23 +96,67 @@ enum StudioCompositionBuilder {
         }
         compositionScreenTrack.preferredTransform = try await screenTrack.load(.preferredTransform)
 
-        // Each kept piece of the source timeline is placed with exact CMTime arithmetic and clamped
-        // to the media that really exists, so no track ever runs past another one. A track that
-        // ended a frame early would otherwise leave the last frames without a picture.
+        // Each kept piece of the source timeline is placed with exact CMTime arithmetic, one
+        // after the other at the recording's own speed. The pieces that play at another speed
+        // are stretched or squeezed afterwards, all tracks at once (see below), so the tracks
+        // cannot come apart by a rounding step.
         //
-        // Every piece is first placed at the recording's own speed, one after the other. The
-        // pieces that play at another speed are stretched or squeezed afterwards, all tracks at
-        // once (see below), so the tracks cannot come apart by a rounding step.
+        // The screen's picture has to cover every piece from its first instant to its last, and
+        // the screen track can be shorter than the recording. The recorder writes a frame only
+        // when the screen changes, so the track ends with the last change while the sound and
+        // the camera go on, and it can start a moment after the sound does. A frame shows until
+        // the next one starts, so what comes before the first frame shows the first frame and
+        // what comes after the last one shows the last: one instant of the track, held for as
+        // long as is missing. Without that the video would end where the screen last changed,
+        // and take the sound and the camera after it along.
         let screenTrackRange = try await screenTrack.load(.timeRange)
+        let instant = CMTime(value: 1, timescale: 600)
+        let canHoldFrame = screenTrackRange.duration >= instant
+        let firstInstant = screenTrackRange.start
+        let lastInstant = CMTimeSubtract(screenTrackRange.end, instant)
         var placements: [(source: CMTimeRange, at: CMTime, rate: Double)] = []
         var cursor = CMTime.zero
         for piece in timeMap.pieces {
             let wanted = CMTimeRange(start: cmTime(piece.start), end: cmTime(piece.end))
-            let source = wanted.intersection(screenTrackRange)
-            guard source.duration > .zero else { continue }
-            try compositionScreenTrack.insertTimeRange(source, of: screenTrack, at: cursor)
-            placements.append((source: source, at: cursor, rate: piece.rate))
-            cursor = CMTimeAdd(cursor, source.duration)
+            guard wanted.duration > .zero else { continue }
+            let onTrack = wanted.intersection(screenTrackRange)
+            guard canHoldFrame else {
+                // A screen track without a frame's worth of picture has nothing to hold.
+                guard onTrack.duration > .zero else { continue }
+                try compositionScreenTrack.insertTimeRange(onTrack, of: screenTrack, at: cursor)
+                placements.append((source: onTrack, at: cursor, rate: piece.rate))
+                cursor = CMTimeAdd(cursor, onTrack.duration)
+                continue
+            }
+
+            // What is missing by less than the instant that would be stretched over it is a
+            // rounding step between two clocks, not a stretch of video: it is left out.
+            var at = cursor
+            var covered = wanted
+            if onTrack.duration > .zero {
+                let before = CMTimeSubtract(onTrack.start, wanted.start)
+                if before >= instant {
+                    try holdFrame(at: firstInstant, of: screenTrack, in: compositionScreenTrack, from: at, for: before)
+                    at = CMTimeAdd(at, before)
+                } else {
+                    covered = CMTimeRange(start: onTrack.start, end: covered.end)
+                }
+                try compositionScreenTrack.insertTimeRange(onTrack, of: screenTrack, at: at)
+                at = CMTimeAdd(at, onTrack.duration)
+                let after = CMTimeSubtract(wanted.end, onTrack.end)
+                if after >= instant {
+                    try holdFrame(at: lastInstant, of: screenTrack, in: compositionScreenTrack, from: at, for: after)
+                } else {
+                    covered = CMTimeRange(start: covered.start, end: onTrack.end)
+                }
+            } else {
+                // The whole piece lies before the first frame or after the last one.
+                guard wanted.duration >= instant else { continue }
+                let held = wanted.start >= screenTrackRange.end ? lastInstant : firstInstant
+                try holdFrame(at: held, of: screenTrack, in: compositionScreenTrack, from: at, for: wanted.duration)
+            }
+            placements.append((source: covered, at: cursor, rate: piece.rate))
+            cursor = CMTimeAdd(cursor, covered.duration)
         }
         guard cursor > .zero else {
             throw Error.emptyTimeline
@@ -132,10 +176,8 @@ enum StudioCompositionBuilder {
                 ) else {
                     continue
                 }
-                soundTracks.append(
-                    StudioCompositionSoundTrack(trackID: compositionAudioTrack.trackID, indexInFile: indexInFile)
-                )
                 let audioTrackRange = try await audioTrack.load(.timeRange)
+                var hasSound = false
                 for placement in placements where placement.rate == 1 {
                     let source = placement.source.intersection(audioTrackRange)
                     guard source.duration > .zero else { continue }
@@ -144,6 +186,16 @@ enum StudioCompositionBuilder {
                         of: audioTrack,
                         at: CMTimeAdd(placement.at, CMTimeSubtract(source.start, placement.source.start))
                     )
+                    hasSound = true
+                }
+                // A track with nothing in it, as when every kept piece plays at another speed,
+                // is taken out again: an export of a composition with an empty track can fail.
+                if hasSound {
+                    soundTracks.append(
+                        StudioCompositionSoundTrack(trackID: compositionAudioTrack.trackID, indexInFile: indexInFile)
+                    )
+                } else {
+                    composition.removeTrack(compositionAudioTrack)
                 }
             }
         }
@@ -173,6 +225,7 @@ enum StudioCompositionBuilder {
                 start: CMTimeAdd(cameraTrackRange.start, startOffset),
                 duration: cameraTrackRange.duration
             )
+            var hasCamera = false
             for placement in placements {
                 let overlap = placement.source.intersection(onTimeline)
                 guard overlap.duration > .zero else { continue }
@@ -181,6 +234,13 @@ enum StudioCompositionBuilder {
                     of: cameraTrack,
                     at: CMTimeAdd(placement.at, CMTimeSubtract(overlap.start, placement.source.start))
                 )
+                hasCamera = true
+            }
+            // No kept piece has any of the camera in it: the video is then made without a camera
+            // track, for the same reason as a sound track with nothing in it.
+            if !hasCamera {
+                composition.removeTrack(compositionCameraTrack)
+                cameraTrackID = nil
             }
         }
 
@@ -233,6 +293,20 @@ enum StudioCompositionBuilder {
 
     static func cmTime(_ seconds: Double) -> CMTime {
         CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+    }
+
+    /// Shows the frame that is on screen at `instant` of `source` for `duration`, starting at
+    /// `start` of the composition track: one six-hundredth of a second of the track, stretched.
+    private static func holdFrame(
+        at instant: CMTime,
+        of source: AVAssetTrack,
+        in track: AVMutableCompositionTrack,
+        from start: CMTime,
+        for duration: CMTime
+    ) throws {
+        let sliver = CMTime(value: 1, timescale: 600)
+        try track.insertTimeRange(CMTimeRange(start: instant, duration: sliver), of: source, at: start)
+        track.scaleTimeRange(CMTimeRange(start: start, duration: sliver), toDuration: duration)
     }
 
     private static func frameDuration(project: StudioProject, track: AVAssetTrack) async throws -> CMTime {

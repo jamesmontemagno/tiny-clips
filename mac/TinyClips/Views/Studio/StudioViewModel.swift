@@ -1465,16 +1465,17 @@ final class StudioViewModel: ObservableObject {
         if let newSize {
             previewSize = newSize
         }
-        let wasPlaying = isPlaying
 
         do {
             let previousItem = playback.player.currentItem
             let item = try await playback.apply(project: model.previewProject, renderSize: newSize)
             guard !isTornDown else { return }
             if item !== previousItem {
-                // A new player item starts at zero, so put the playhead back.
+                // A new player item starts at zero, so put the playhead back. Whether to go on
+                // playing is asked now and not before the wait above: a pause, a scrub or a
+                // frame step that came in while the item was being built has to hold.
                 seek(to: playhead)
-                if wasPlaying {
+                if isPlaying {
                     play(playback.player, from: playhead)
                 }
             }
