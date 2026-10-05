@@ -657,6 +657,31 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent(inUseID).path))
     }
 
+    func testCleanupLeavesAProjectAnEditorOpenedAfterTheListOfThoseInUseWasMade() throws {
+        // Two folders that the cleanup would delete. Which rule selects a project makes no
+        // difference here: every project that is to go is looked at once more before it does.
+        let openedID = validID
+        let untouchedID = otherID
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate }, folderDateProvider: { _ in
+            self.fixedDate.addingTimeInterval(-(25 * 60 * 60))
+        })
+        let openedURL = directoryURL.appendingPathComponent(openedID)
+        let untouchedURL = directoryURL.appendingPathComponent(untouchedID)
+        try FileManager.default.createDirectory(at: openedURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: untouchedURL, withIntermediateDirectories: true)
+
+        // The list names nothing: it was made before the editor opened the first of the two.
+        store.beginUse(id: openedID)
+        XCTAssertEqual(try store.cleanup(inUseProjectIDs: []), [untouchedID])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: openedURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: untouchedURL.path))
+
+        // Once the editor has closed, the project is the cleanup's to remove again.
+        store.endUse(id: openedID)
+        XCTAssertEqual(try store.cleanup(inUseProjectIDs: []), [openedID])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: openedURL.path))
+    }
+
     func testCleanupSizeOrderingTiesAndDisabledRules() {
         let now = Date(timeIntervalSince1970: 1_000)
         let newest = summary(id: "newest", lastOpenedAt: now, isDraft: false, sizeOnDisk: 60)

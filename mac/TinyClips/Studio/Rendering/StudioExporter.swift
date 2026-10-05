@@ -12,6 +12,7 @@ enum StudioExporter {
         case exportSessionCreationFailed
         case posterDestinationCreationFailed
         case posterWriteFailed
+        case outputNameTaken(String)
 
         var errorDescription: String? {
             switch self {
@@ -23,6 +24,8 @@ enum StudioExporter {
                 return "Could not create the Studio poster image destination."
             case .posterWriteFailed:
                 return "Could not write the Studio poster image."
+            case .outputNameTaken(let name):
+                return "Another file was saved as \(name) in the meantime. Export again to give the video another name."
             }
         }
     }
@@ -46,7 +49,12 @@ enum StudioExporter {
         guard build.duration > .zero else {
             throw Error.nothingToExport
         }
-        try? FileManager.default.removeItem(at: outputURL)
+
+        // The name was free when it was made for this video, a moment ago. A file that has it
+        // now is something else that was saved since, and not this export's to remove.
+        guard !FileManager.default.fileExists(atPath: outputURL.path) else {
+            throw Error.outputNameTaken(outputURL.lastPathComponent)
+        }
 
         guard let exportSession = AVAssetExportSession(
             asset: build.composition,
@@ -83,12 +91,24 @@ enum StudioExporter {
         } catch {
             progressTask.cancel()
             exportSession.cancelExport()
-            try? FileManager.default.removeItem(at: outputURL)
+
+            // What this export wrote so far is removed. Not when it never began because a
+            // file had taken the name in the last moment: that file is not this export's.
+            if !isBecauseTheFileExists(error) {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
             if Task.isCancelled {
                 throw CancellationError()
             }
             throw error
         }
+    }
+
+    /// Whether an export failed because a file already had its name.
+    private static func isBecauseTheFileExists(_ error: any Swift.Error) -> Bool {
+        let error = error as NSError
+        return (error.domain == AVFoundationErrorDomain && error.code == AVError.Code.fileAlreadyExists.rawValue)
+            || (error.domain == NSCocoaErrorDomain && error.code == CocoaError.Code.fileWriteFileExists.rawValue)
     }
 
     static func writePoster(

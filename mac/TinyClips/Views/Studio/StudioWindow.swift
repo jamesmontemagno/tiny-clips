@@ -55,6 +55,9 @@ final class StudioWindowRegistry {
         if let existing = windows[projectID] {
             window = existing
         } else {
+            // Said before the window reads its project, so that a storage cleanup that is
+            // under way cannot take the project's folder from under it.
+            StudioProjectStore.shared.beginUse(id: projectID)
             window = StudioWindow(projectID: projectID) { [weak self] id in
                 self?.windowDidClose(projectID: id)
             }
@@ -77,6 +80,7 @@ final class StudioWindowRegistry {
 
     private func windowDidClose(projectID: String) {
         guard let closed = windows.removeValue(forKey: projectID) else { return }
+        StudioProjectStore.shared.endUse(id: projectID)
         let closeHandler = closeHandlers.removeValue(forKey: projectID)
         // Finished on the next run loop turn, so the window is not deallocated while it is closing.
         DispatchQueue.main.async {

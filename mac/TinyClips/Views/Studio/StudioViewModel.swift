@@ -1264,6 +1264,7 @@ final class StudioViewModel: ObservableObject {
         }
 
         saveNow()
+        markLastUsed()
         if isReady, let project = editor?.project, let paths {
             let projectEvents = events
             let posterSize = Self.renderSize(for: project, longSide: Self.posterLongSide)
@@ -1540,6 +1541,18 @@ final class StudioViewModel: ObservableObject {
     func saveBeforeQuitting() {
         guard !isTornDown else { return }
         saveNow()
+        markLastUsed()
+    }
+
+    /// Writes down that the project was in use until now, when its window closes or the app
+    /// quits. Cleanup removes the recordings of an exported project some days after it was last
+    /// open, and counts from this time. Counted from when the editor opened, a project whose
+    /// editor stayed open for longer than that would be removed the moment the editor closed,
+    /// by the cleanup that follows every close. A project that was never read has nothing to
+    /// write down, and a failure here is not reported: the edits are saved separately.
+    private func markLastUsed() {
+        guard editor != nil, let saved = try? store.markOpened(id: projectID) else { return }
+        editor?.refreshBookkeeping(from: saved)
     }
 
     /// Writes the edits into the project on disk. Only the edited parts are replaced, so export

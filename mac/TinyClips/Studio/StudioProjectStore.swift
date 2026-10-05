@@ -186,6 +186,9 @@ final class StudioProjectStore {
     private let folderDateProvider: ((URL) -> Date?)?
     private let lock = NSLock()
 
+    /// Projects open in an editor at this moment. Read and changed only with `lock` held.
+    private var idsInUse: Set<String> = []
+
     init(
         rootURL: URL? = nil,
         now: @escaping () -> Date = Date.init,
@@ -473,6 +476,9 @@ final class StudioProjectStore {
 
             var deletedIDs: [String] = []
             for id in candidateIDs where !deletedIDs.contains(id) {
+                // Looked at now, with the store locked. The list above was made before the
+                // cleanup started, and an editor may have opened the project since.
+                guard !idsInUse.contains(id) else { continue }
                 do {
                     try deleteUnlocked(id: id)
                     deletedIDs.append(id)
@@ -481,6 +487,29 @@ final class StudioProjectStore {
                 }
             }
             return deletedIDs
+        }
+    }
+
+    // MARK: - In Use
+
+    /// Says that an editor has the project open from now on, until `endUse(id:)`. `cleanup`
+    /// leaves such a project alone whatever the list it was given says. That list is made on
+    /// another thread before the cleanup starts, and reading every project takes a moment: a
+    /// project that is opened in that moment is not in the list, and would lose its folder from
+    /// under its editor.
+    ///
+    /// An editor calls this before it reads its project, and reading waits for the same lock
+    /// the cleanup holds. So a project that is not in use when the cleanup looks is gone before
+    /// an editor can have a file of it open, and the editor says that it cannot be opened.
+    func beginUse(id: String) {
+        withLock {
+            _ = idsInUse.insert(id)
+        }
+    }
+
+    func endUse(id: String) {
+        withLock {
+            _ = idsInUse.remove(id)
         }
     }
 
