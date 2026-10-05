@@ -1467,7 +1467,13 @@ class CaptureManager: ObservableObject {
         var partialOutputSaveError: String?
         var noPartialFramesWereCaptured = false
 
-        if let recorder = webcamRecorderAtStop {
+        // A Studio recording's camera goes on until its screen track is finished. Outside the
+        // camera track's own time the camera is not drawn, so a camera that stopped first, as it
+        // does in an ordinary recording, would be missing from the last moments of every Studio
+        // recording, for as long as its file took to finish.
+        let stopsCameraAfterScreen = studioCoordinatorAtStop != nil && videoRecorderAtStop != nil
+
+        if !stopsCameraAfterScreen, let recorder = webcamRecorderAtStop {
             do {
                 savedWebcamURL = try await recorder.stop()
             } catch {
@@ -1611,6 +1617,20 @@ class CaptureManager: ObservableObject {
                 videoRecorder = nil
             } else {
                 debugRecordingLifecycle("Skipped clearing stale video recorder reference")
+            }
+        }
+
+        if stopsCameraAfterScreen, let recorder = webcamRecorderAtStop {
+            do {
+                savedWebcamURL = try await recorder.stop()
+            } catch {
+                SaveService.shared.showError("Webcam save failed: \(error.localizedDescription). The Studio project will have the screen only.")
+            }
+
+            if webcamRecorder === recorder {
+                webcamRecorder = nil
+            } else {
+                debugRecordingLifecycle("Skipped clearing stale webcam recorder reference")
             }
         }
 
