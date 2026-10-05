@@ -433,7 +433,10 @@ private class ClipsViewModel: ObservableObject {
 
     private func loadStudioLinks() async {
         guard CaptureSettings.shared.studioPreviewEnabled else {
-            studioProjectIDs = [:]
+            // Published, so it is left alone when there is nothing to take away.
+            if !studioProjectIDs.isEmpty {
+                studioProjectIDs = [:]
+            }
             return
         }
         // Reads every project file, so it stays off the main thread.
@@ -444,7 +447,9 @@ private class ClipsViewModel: ObservableObject {
 
     /// The Studio project a video was exported from, when it is still stored.
     func studioProjectID(for item: ClipItem) -> String? {
-        guard item.type == .video else { return nil }
+        // Asked for every video that is drawn. Without links there is nothing to find, and making
+        // the key asks the file system about the path.
+        guard item.type == .video, !studioProjectIDs.isEmpty else { return nil }
         return studioProjectIDs[StudioProjectStore.exportKey(forPath: item.url.path)]
     }
 
@@ -571,9 +576,9 @@ private class ClipsViewModel: ObservableObject {
 
         let cutoff = Calendar.current.date(byAdding: .day, value: -settings.clipsManagerArchiveAfterDays, to: Date()) ?? .distantPast
         // Videos exported from Studio keep their project link when they are moved to the archive.
-        let studioLinks = settings.studioPreviewEnabled
-            ? ((try? StudioProjectStore.shared.exportedPathIndex()) ?? [:])
-            : [:]
+        // The links are read from every project file, so only once a clip is in fact moved.
+        let followsStudioLinks = settings.studioPreviewEnabled
+        var studioLinks: [String: String]?
 
         for directory in directories {
             let archiveDirectory = directory.appendingPathComponent("Archive", isDirectory: true)
@@ -588,8 +593,12 @@ private class ClipsViewModel: ObservableObject {
                 let targetURL = uniqueArchivedURL(in: archiveDirectory, originalName: url.lastPathComponent)
                 do {
                     try FileManager.default.moveItem(at: url, to: targetURL)
-                    if studioLinks[StudioProjectStore.exportKey(forPath: url.path)] != nil {
-                        _ = try? StudioProjectStore.shared.updateExportPath(from: url.path, to: targetURL.path)
+                    if followsStudioLinks {
+                        let links = studioLinks ?? ((try? StudioProjectStore.shared.exportedPathIndex()) ?? [:])
+                        studioLinks = links
+                        if links[StudioProjectStore.exportKey(forPath: url.path)] != nil {
+                            _ = try? StudioProjectStore.shared.updateExportPath(from: url.path, to: targetURL.path)
+                        }
                     }
                 } catch {
                     SaveService.shared.showError("Could not archive \(url.lastPathComponent): \(error.localizedDescription)")

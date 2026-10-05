@@ -330,7 +330,6 @@ final class StudioProjectStore {
         }
     }
 
-    @discardableResult
     /// Every exported video the store knows about, keyed by `exportKey(forPath:)`, with the id of
     /// the project it came from. Use this instead of `findProjectID` when checking many videos.
     func exportedPathIndex() throws -> [String: String] {
@@ -351,6 +350,7 @@ final class StudioProjectStore {
         URL(fileURLWithPath: path).standardizedFileURL.path.lowercased()
     }
 
+    @discardableResult
     func updateExportPath(from oldPath: String, to newPath: String) throws -> Bool {
         try withLock {
             let oldNeedle = normalizedPath(oldPath)
