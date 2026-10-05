@@ -135,6 +135,8 @@ public partial class App : Application
         RunStartupStep(nameof(RegisterGlobalHotKeys), () => RegisterGlobalHotKeys());
         RunStartupStep(nameof(ShowOnboardingIfNeeded), ShowOnboardingIfNeeded);
         RunStartupStep(nameof(HandleFileActivation), HandleFileActivation);
+        // From here on, later launches are forwarded to this process instead of starting another.
+        RunStartupStep(nameof(SingleInstance), () => SingleInstance.SetActivationHandler(OnRedirectedActivation));
         // Create the shared D3D capture device off the UI thread so the first capture is instant.
         _ = Task.Run(() => RunStartupStep("ScreenCaptureWarmUp", () =>
             Services.GetRequiredService<IScreenCaptureService>().WarmUp()));
@@ -213,30 +215,90 @@ public partial class App : Application
     {
         try
         {
-            var activation = Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs();
-            if (activation?.Kind != Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File)
-            {
-                return;
-            }
-
-            if (activation.Data is not Windows.ApplicationModel.Activation.IFileActivatedEventArgs fileArgs)
-            {
-                return;
-            }
-
-            foreach (var item in fileArgs.Files)
-            {
-                if (item is StorageFile file && IsSupportedImage(file.Path))
-                {
-                    var path = file.Path;
-                    _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(path));
-                    break;
-                }
-            }
+            TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs());
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"File activation handling failed: {ex}");
+        }
+    }
+
+    /// <summary>Opens the first supported image of a file activation in the screenshot editor.</summary>
+    private bool TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppActivationArguments? activation)
+    {
+        if (activation?.Kind != Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File ||
+            activation.Data is not Windows.ApplicationModel.Activation.IFileActivatedEventArgs fileArgs)
+        {
+            return false;
+        }
+
+        foreach (var item in fileArgs.Files)
+        {
+            if (item is StorageFile file && IsSupportedImage(file.Path))
+            {
+                var path = file.Path;
+                return _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(path)) == true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Receives the activation of a later launch that <see cref="SingleInstance"/> forwarded here.
+    /// Runs on a background thread, so the work is queued to the UI thread.
+    /// </summary>
+    private void OnRedirectedActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments activation)
+    {
+        var queued = _dispatcher?.TryEnqueue(() =>
+        {
+            try
+            {
+                HandleRedirectedActivation(activation);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Redirected activation failed: {ex}");
+                CrashDiagnostics.Log("Redirected activation", ex, handled: true);
+            }
+        });
+
+        if (queued != true)
+        {
+            Debug.WriteLine("Redirected activation dropped: the UI thread is not available.");
+        }
+    }
+
+    private void HandleRedirectedActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments activation)
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+
+        switch (activation.Kind)
+        {
+            case Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File:
+                TryOpenActivatedFile(activation);
+                break;
+
+            case Microsoft.Windows.AppLifecycle.ExtendedActivationKind.Launch:
+                // Tiny Clips has no main window, so launching it again while it is running used to
+                // look like nothing happened. Show where it lives instead.
+                if (_onboardingWindow is not null)
+                {
+                    ActivateWindowToForeground(_onboardingWindow);
+                }
+                else
+                {
+                    ShowTrayPopup();
+                }
+
+                break;
+
+            default:
+                // Startup-task and other activations need nothing when the app is already running.
+                break;
         }
     }
 
@@ -3239,6 +3301,8 @@ public partial class App : Application
         StopTrayIconRetry();
         _taskbarIcon?.Dispose();
         _taskbarIcon = null;
+        // The tray icon and hotkeys are gone; let a new launch start fresh from here on.
+        SingleInstance.Release();
         _automationNotificationAnnouncer?.Close();
         _automationNotificationAnnouncer = null;
         _settingsWindow?.Close();
