@@ -8,6 +8,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TinyClips.Core\TinyClips.Core.csproj" />
+    <!-- Exercise the UI-free diagnostic/coalescing helpers without loading WinUI in Core tests. -->
+    <Compile Include="..\..\src\TinyClips.App\Infrastructure\CoalescedAction.cs" Link="AppInfrastructure\CoalescedAction.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Infrastructure\WindowOpenTrace.cs" Link="AppInfrastructure\WindowOpenTrace.cs" />
   </ItemGroup>
 
   <ItemGroup>

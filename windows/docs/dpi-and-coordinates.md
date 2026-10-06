@@ -86,8 +86,13 @@ preserves the prior destination on cancellation or encoding failure.
 
 Deterministic Core tests cover frame/scale dimensions, deep annotation snapshots, styling/order
 retention, revision/dirty behavior, late-worker ownership, and staged-save cancellation/failure.
-They do not establish native visual fidelity or UI latency. Before release, use disposable
-synthetic images on **native x64 and native ARM64** to check PNG/JPEG/WebP output, transparent
+They do not establish native visual fidelity or UI latency. The pipeline implementation and
+deterministic tests are only part of issue #406; the issue must remain open until the required
+native runtime checks and before/after responsiveness comparison are completed and recorded.
+Neither architecture's native UI/fidelity checks have been performed for this implementation.
+
+To complete #406, use disposable synthetic images on **native x64 and native ARM64** to check
+PNG/JPEG/WebP output, transparent
 pixels, rotated/text/emoji/redaction ordering, backgrounds/frames/corners/shadows, crop, rapid
 style/geometry changes, undo, repeated output, Reset, and closure. Inspect clipboard PNG output
 only with consent. Compare UI-thread traces before/after separately from deterministic tests;

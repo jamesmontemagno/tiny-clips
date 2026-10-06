@@ -41,6 +41,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     private string _activeSavePath;
     private readonly CapturedFrame? _initialFrame;
     private readonly Task<string>? _pendingSave;
+    private readonly WindowOpenTrace? _openTrace;
 
     // Discard-changes-on-close tracking (parity with macOS's hasUnsavedChanges exit
     // confirmation). EditorController.IsDirty is the source of truth for annotation/crop-apply
@@ -58,7 +59,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     private long _loadRequest;
 
     public ScreenshotEditorWindow(string filePath)
-        : this(filePath, initialFrame: null, pendingSave: null)
+        : this(filePath, initialFrame: null, pendingSave: null, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
     {
     }
 
@@ -68,58 +69,75 @@ public sealed partial class ScreenshotEditorWindow : Window
     /// Open folder) as soon as that task yields the final path.
     /// </summary>
     public ScreenshotEditorWindow(CapturedFrame frame, Task<string> pendingSave)
-        : this(string.Empty, frame, pendingSave)
+        : this(string.Empty, frame, pendingSave, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
     {
     }
 
-    private ScreenshotEditorWindow(string filePath, CapturedFrame? initialFrame, Task<string>? pendingSave)
+    private ScreenshotEditorWindow(string filePath, CapturedFrame? initialFrame, Task<string>? pendingSave, WindowOpenTrace? openTrace)
     {
+        _openTrace = openTrace;
+        _openTrace?.Mark(WindowOpenMilestone.ConstructorEntered);
+        using var construction = _openTrace?.Measure(WindowOpenPhase.ConstructorBody);
         _filePath = filePath;
         _activeSavePath = filePath;
         _initialFrame = initialFrame;
         _pendingSave = pendingSave;
 
-        InitializeComponent();
-
-        _controller = new EditorController(DispatcherQueue);
-        Toolbar.Attach(_controller);
-        Inspector.Attach(_controller);
-        Canvas.Attach(_controller);
-
-        _controller.ImageChanged += OnControllerImageChanged;
-        // Padding, corner radius, shadow and frame presets change the exported frame size without
-        // touching the source bitmap, so the advertised output resolution has to follow them too.
-        _controller.BackgroundChanged += OnControllerImageChanged;
-        Canvas.CropSelectionAvailabilityChanged += (_, available) =>
+        using (_openTrace?.Measure(WindowOpenPhase.Xaml))
         {
-            ApplyCropButton.IsEnabled = available;
-            _hasPendingCropSelection = available;
-        };
+            InitializeComponent();
+        }
 
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
-        AppWindowPlacement.CenterInCurrentWorkAreaAtHalfSize(AppWindow);
-
-        // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
-        // scale tracking, and cleanup of all three on Closed. The Closed subscription here is
-        // additive; both this controller's cleanup and the existing OnClosed handler below run.
-        _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
-
-        var settings = App.Services.GetRequiredService<ICaptureSettings>();
-        RootGrid.RequestedTheme = settings.Theme switch
+        WindowOpenDiagnostics.Observe(this, RootGrid, _openTrace);
+        using (_openTrace?.Measure(WindowOpenPhase.ControllerAndBindings))
         {
-            AppTheme.Light => ElementTheme.Light,
-            AppTheme.Dark => ElementTheme.Dark,
-            _ => ElementTheme.Default,
-        };
+            _controller = new EditorController(DispatcherQueue);
+            Toolbar.Attach(_controller);
+            Inspector.Attach(_controller);
+            Canvas.Attach(_controller);
 
-        RootGrid.KeyDown += OnRootKeyDown;
-        RootGrid.KeyUp += OnRootKeyUp;
-        Activated += OnActivated;
-        Closed += OnClosed;
-        AppWindow.Closing += OnAppWindowClosing;
+            _controller.ImageChanged += OnControllerImageChanged;
+            // Padding, corner radius, shadow and frame presets change the exported frame size without
+            // touching the source bitmap, so the advertised output resolution has to follow them too.
+            _controller.BackgroundChanged += OnControllerImageChanged;
+            Canvas.CropSelectionAvailabilityChanged += (_, available) =>
+            {
+                ApplyCropButton.IsEnabled = available;
+                _hasPendingCropSelection = available;
+            };
+        }
+
+        using (_openTrace?.Measure(WindowOpenPhase.ChromeAndPlacement))
+        {
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(AppTitleBar);
+            AppWindowPlacement.CenterInCurrentWorkAreaAtHalfSize(AppWindow);
+
+            // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
+            // scale tracking, and cleanup of all three on Closed. The Closed subscription here is
+            // additive; both this controller's cleanup and the existing OnClosed handler below run.
+            _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
+        }
+
+        using (_openTrace?.Measure(WindowOpenPhase.ThemeAndSubscriptions))
+        {
+            var settings = App.Services.GetRequiredService<ICaptureSettings>();
+            RootGrid.RequestedTheme = settings.Theme switch
+            {
+                AppTheme.Light => ElementTheme.Light,
+                AppTheme.Dark => ElementTheme.Dark,
+                _ => ElementTheme.Default,
+            };
+
+            RootGrid.KeyDown += OnRootKeyDown;
+            RootGrid.KeyUp += OnRootKeyUp;
+            Activated += OnActivated;
+            Closed += OnClosed;
+            AppWindow.Closing += OnAppWindowClosing;
+        }
 
         _ = LoadAsync();
+        _openTrace?.Mark(WindowOpenMilestone.ConstructorCompleted);
     }
 
     private void OnControllerImageChanged(object? sender, EventArgs e) => UpdateOutputResolutionText();
@@ -220,6 +238,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     {
         if (_isClosed) return;
         var request = ++_loadRequest;
+        using var loading = _openTrace?.Measure(WindowOpenPhase.ContentLoad);
         try
         {
             if (_initialFrame is { } frame)
@@ -228,6 +247,7 @@ public sealed partial class ScreenshotEditorWindow : Window
                 await _controller.LoadCapturedFrameAsync(frame);
                 if (_isClosed || request != _loadRequest) return;
                 CaptureFlowTrace.Mark("editor: image visible (from memory)");
+                _openTrace?.Mark(WindowOpenMilestone.ContentReady);
                 if (string.IsNullOrEmpty(_filePath))
                 {
                     _ = BindToPendingSaveAsync();
@@ -238,10 +258,12 @@ public sealed partial class ScreenshotEditorWindow : Window
             await _controller.LoadAsync(_filePath);
             if (_isClosed || request != _loadRequest) return;
             CaptureFlowTrace.Mark("editor: image visible (from file)");
+            _openTrace?.Mark(WindowOpenMilestone.ContentReady);
         }
         catch (Exception ex)
         {
             if (_isClosed || request != _loadRequest) return;
+            _openTrace?.Mark(WindowOpenMilestone.ContentFailed);
             System.Diagnostics.Debug.WriteLine($"Editor load failed: {ex}");
             App.ShowImageLoadFailureNotification(System.IO.Path.GetFileName(_filePath));
             Close();
