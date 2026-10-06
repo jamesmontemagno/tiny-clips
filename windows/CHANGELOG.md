@@ -5,6 +5,16 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Esc closes the screenshot editor, video trimmer, and GIF trimmer.** A new General setting,
+  **Confirm before closing editors with Esc** (on by default), asks first: "Discard changes?"
+  when edits or trim changes are unsaved, and a plain close confirmation otherwise. Turn it off
+  and Esc closes right away, discarding anything unsaved. In the editor, Esc clears a crop
+  selection before it closes anything, and Esc in a text box never closes the window. In the
+  trimmers, a confirmed Esc behaves like **Cancel** and keeps the original; trim range and
+  "Remove audio" count as unsaved for video, frame range and speed for GIFs. Esc is ignored
+  while a save, export, or delete is running. (#396)
+
 ### Fixed
 - **Recording diagnostics distinguish requests from observed execution.** Schema-2 reports preserve
   legacy JSON fields while adding actual capture/encoder backends, D3D hardware/WARP selection,

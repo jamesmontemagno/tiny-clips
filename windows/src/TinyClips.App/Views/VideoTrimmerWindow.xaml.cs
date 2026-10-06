@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Graphics.Imaging;
@@ -37,6 +39,12 @@ public sealed partial class VideoTrimmerWindow : Window
     private bool _ready;
     private bool _suppressToggle;
     private bool _isDeletingSource;
+    private bool _isEscapePromptOpen;
+    private bool _isClosed;
+    private int _exportsInFlight;
+
+    // Handles snap back to the exact ends, so anything beyond rounding noise is a real trim.
+    private const double TrimToleranceSeconds = 0.001;
 
     // Step a 1/30s "frame" since the recorded fps isn't exposed by the WinRT clip API.
     private static readonly TimeSpan FrameStep = TimeSpan.FromSeconds(1.0 / 30.0);
@@ -69,8 +77,77 @@ public sealed partial class VideoTrimmerWindow : Window
             _ => ElementTheme.Default,
         };
 
+        RootGrid.KeyDown += OnRootKeyDown;
         Closed += OnWindowClosed;
         _ = LoadAsync();
+    }
+
+    // -- Esc to close ---------------------------------------------------------
+
+    /// <summary>
+    /// Whether a trimmed export would differ from the recording as it was opened. Speed is left
+    /// out because it only changes the preview, never the exported file.
+    /// </summary>
+    private bool HasUnexportedChanges =>
+        RemoveAudioCheck.IsChecked == true ||
+        (_ready && _duration > TimeSpan.Zero &&
+         (_startSeconds > TrimToleranceSeconds ||
+          _endSeconds < _duration.TotalSeconds - TrimToleranceSeconds));
+
+    private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        // An open speed list or a text input uses Esc itself.
+        if (!EditorEscapeConfirmation.IsUnmodifiedEscape(e) ||
+            SpeedCombo.IsDropDownOpen ||
+            e.OriginalSource is TextBox)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _ = CloseFromEscapeAsync();
+    }
+
+    private bool CanCloseFromEscape =>
+        !_isClosed && !_isDeletingSource && !_isEscapePromptOpen && _exportsInFlight == 0;
+
+    private async Task CloseFromEscapeAsync()
+    {
+        if (!CanCloseFromEscape)
+        {
+            return;
+        }
+
+        var confirmOnEscape = App.Services.GetRequiredService<ICaptureSettings>().ConfirmEditorEscape;
+        if (EditorEscape.ResolvePrompt(confirmOnEscape, HasUnexportedChanges) is { } prompt)
+        {
+            StopPlayback();
+            _isEscapePromptOpen = true;
+            bool confirmed;
+            try
+            {
+                confirmed = await EditorEscapeConfirmation.ConfirmAsync(RootGrid, prompt, EditorEscapeSurface.VideoTrimmer);
+            }
+            finally
+            {
+                _isEscapePromptOpen = false;
+            }
+
+            if (!confirmed || !CanCloseFromEscape)
+            {
+                return;
+            }
+        }
+
+        CloseKeepingOriginal();
+    }
+
+    /// <summary>Closes the trimmer the way Cancel does: nothing is exported and the original is kept.</summary>
+    private void CloseKeepingOriginal()
+    {
+        StopPlayback();
+        Completed?.Invoke(this, null);
+        Close();
     }
 
     private async Task LoadAsync()
@@ -340,6 +417,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
         BusyBar.Visibility = Visibility.Visible;
         ExportFrameButton.IsEnabled = false;
+        _exportsInFlight++;
         string? outputPath = null;
 
         try
@@ -377,6 +455,7 @@ public sealed partial class VideoTrimmerWindow : Window
         }
         finally
         {
+            _exportsInFlight--;
             BusyBar.Visibility = Visibility.Collapsed;
             ExportFrameButton.IsEnabled = true;
         }
@@ -423,6 +502,7 @@ public sealed partial class VideoTrimmerWindow : Window
         SaveTrimmedButton.IsEnabled = false;
         RemoveAudioCheck.IsEnabled = false;
         PlayToggle.IsEnabled = false;
+        _exportsInFlight++;
         string? outputPath = null;
 
         try
@@ -476,6 +556,7 @@ public sealed partial class VideoTrimmerWindow : Window
         }
         finally
         {
+            _exportsInFlight--;
             BusyBar.Visibility = Visibility.Collapsed;
             SaveOriginalButton.IsEnabled = true;
             SaveTrimmedButton.IsEnabled = true;
@@ -493,9 +574,7 @@ public sealed partial class VideoTrimmerWindow : Window
             return;
         }
 
-        StopPlayback();
-        Completed?.Invoke(this, null);
-        Close();
+        CloseKeepingOriginal();
     }
 
     /// <summary>
@@ -549,6 +628,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
+        _isClosed = true;
         ReleasePlayer();
     }
 
