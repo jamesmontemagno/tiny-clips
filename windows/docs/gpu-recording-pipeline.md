@@ -107,7 +107,8 @@ Key decisions and the bugs they avoid:
   target (cached by texture pointer), and draws:
   - click pulses with `DrawEllipse` (geometry from the shared `MouseClickOverlayCompositor.TryComputeRing`);
   - the branding badge as a premultiplied `ID2D1Bitmap1` uploaded **once** from
-    `BrandingOverlayCompositor.TryGetBadge` (same GDI+ rasterization as the CPU path);
+    `BrandingOverlayCompositor.TryGetPreparedBadge` (same GDI+ rasterization as the CPU path,
+    prepared before capture callbacks and frame emission; see below);
   - the webcam PiP via an `ID2D1BitmapBrush` with a crop→overlay transform, filled as ellipse /
     rounded-rect / rect using the shared `WebcamOverlayLayout` placement math. The camera frame is
     uploaded with `CopyFromMemory` only when a **new** `WebcamFrame` instance arrives, using
@@ -120,6 +121,51 @@ Key decisions and the bugs they avoid:
   failure *mid-recording* (typically `D2DERR_RECREATE_TARGET`) disables overlays for the rest of that
   recording rather than losing the screen content. The report's `pipeline=` column always tells you
   which path actually ran.
+
+### Branding preparation and ownership
+
+`VideoRecordingService.PrepareCoreAsync` establishes the fixed encoder dimensions first.
+`GpuCaptureSession.Initialize` creates the device/session without starting WGC callbacks.
+The recorder then awaits `BrandingOverlayCompositor.PrepareAsync` (GDI+ font initialization
+and rasterization on a worker), followed by a worker-thread
+`GpuOverlayCompositor.PrepareBranding` (premultiplication and upload on that compositor's device).
+Only after both complete does it start GPU capture; the shared timeline and frame pump still
+begin later in `BeginPreparedAsync`, after encoder and webcam readiness. CPU recording prepares
+the same badge before its pump starts. Disabled branding performs neither preparation nor upload.
+
+The recorder holds its lifecycle gate and awaits each worker to completion, including when
+cancellation arrives during a non-interruptible native call. No preparation runs under the active
+capture lock, and no WGC callback or pump can touch this session's immediate/D2D context during
+upload. Other users of the process-wide D3D device retain the existing required
+`ID3D11Multithread` protection. No preparation worker uses the D2D context concurrently with
+capture or another preparation worker.
+
+Recording draws are cache-only (`DrawPrepared` / `DrawBranding`): they do not initialize fonts,
+rasterize, or upload, including after a preparation failure. Failure is best-effort and logged;
+an upload failure disables only the GPU badge, leaving other overlays and the CPU badge usable.
+GPU capture-start failure still falls back to CPU and re-prepares if its output height differs.
+The badge scales with output height, not width; window-resize letterboxing retains the fixed
+encoder dimensions. Each new recording has fresh CPU/GPU compositor instances, so a different
+size or recreated D3D device never reuses a device-bound bitmap from an earlier recording.
+Cancelled uploads dispose their unpublished bitmap; discard/stop disposes the GPU compositor.
+Screenshot and GIF callers keep their lazy CPU rendering behavior.
+
+Separate local `Branding preparation:` diagnostics record CPU preparation `elapsedMs` (including
+worker scheduling), GPU `uploadMs` (premultiplication plus bitmap creation), and ready/unavailable/
+cancelled/disabled outcomes. The capture-flow trace marks preparation completion.
+These are preparation costs, **not** `OverlayBranding` samples or active-recording cadence:
+the latter measures only per-frame drawing. Existing performance-report counter schemas are
+unchanged.
+
+Deterministic tests cover prepared/lazy pixel parity and scaling, cache-only frame access,
+height changes, repeat compositor lifetimes, best-effort failure caching, and cancellation before
+and during CPU preparation. They do not validate native D2D upload/device removal, real frame
+cadence, or A/V synchronization. Native x64 and native ARM64 checks must separately exercise
+fresh-process/repeated synthetic-window recordings with branding on/off, both pipelines/backends,
+discard during preparation, size changes, pause/resume, and device recreation. Measure preparation
+and first-frame latency separately; control other overlays (`+overlays` in the benchmark also
+enables clicks). Use synthetic disposable content, avoid concurrent real-time benchmarks, keep
+local measurements private, and include actual audio sources/listening before claiming A/V sync.
 
 ## 4. Instrumentation
 
