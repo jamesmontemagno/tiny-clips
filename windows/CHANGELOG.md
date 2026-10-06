@@ -13,6 +13,15 @@ own `CHANGELOG.md` at the repository root.
   reopening. Rapid navigation preserves edits in already-loaded sections and pending transcript
   saves; late device, launch-at-login, and file-picker results are ignored after closing.
   Unreadable transcripts show an inline error instead of being cached as empty text. (#405)
+- **Screenshot-editor exports no longer resample twice.** Save and Copy composite directly at
+  the requested output size, including 100%, with one explicit final bitmap readback. Rendering,
+  redaction-preview processing, and encoding run on workers using immutable document snapshots.
+  Superseded previews and clipboard results are discarded; Reset and closure cancel pending work
+  without disposing its source pixels early. Saving an older snapshot keeps newer edits dirty,
+  repeated output requests are coalesced, and canceled/failed saves preserve the previous file.
+  Background, frame, padding, shadow, corner, alignment, and scale changes now count as edits. (#406)
+  These implementation changes do not complete #406: native x64/ARM64 runtime, fidelity, and
+  responsiveness validation is still pending, and no measured speedup is claimed.
 - **Clips Library batches sidebar updates.** Loading or refreshing many distinct tags and
   collections no longer synchronously rebuilds the entire navigation tree for each insertion.
   One queued update uses the final entries and is skipped if the window closes first. (#409)
