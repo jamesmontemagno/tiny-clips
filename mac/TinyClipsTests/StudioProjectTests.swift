@@ -621,6 +621,8 @@ final class StudioProjectTests: XCTestCase {
             StudioCleanupPolicy.plan(summaries: [flat], currentDate: now, inUseProjectIDs: ["flat"]),
             []
         )
+        // 140 with the one in use counted, and 80 without it, which would be under the limit.
+        // The one opened last stays, so one goes and no more.
         XCTAssertEqual(
             StudioCleanupPolicy.plan(
                 summaries: [old, sizeOld, sizeNew],
@@ -628,7 +630,66 @@ final class StudioProjectTests: XCTestCase {
                 options: StudioCleanupOptions(retentionDays: 0, sizeCapBytes: 90),
                 inUseProjectIDs: ["old"]
             ),
-            ["size-a", "size-b"]
+            ["size-a"]
+        )
+    }
+
+    func testTheStorageLimitNeverRemovesTheProjectOpenedLast() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let options = StudioCleanupOptions(retentionDays: 0, sizeCapBytes: 50)
+
+        // By itself over the limit: it stays. It would otherwise go the moment its editor closed.
+        let only = summary(id: "only", lastOpenedAt: now.addingTimeInterval(-10), isDraft: false, sizeOnDisk: 80)
+        XCTAssertEqual(StudioCleanupPolicy.plan(summaries: [only], currentDate: now, options: options), [])
+
+        // With others, they go first, and it stays although what is left is still over the limit.
+        let last = summary(id: "last", lastOpenedAt: now.addingTimeInterval(-10), isDraft: false, sizeOnDisk: 80)
+        let older = summary(id: "older", lastOpenedAt: now.addingTimeInterval(-30), isDraft: false, sizeOnDisk: 10)
+        let oldest = summary(id: "oldest", lastOpenedAt: now.addingTimeInterval(-50), isDraft: false, sizeOnDisk: 10)
+        XCTAssertEqual(
+            StudioCleanupPolicy.plan(summaries: [last, older, oldest], currentDate: now, options: options),
+            ["oldest", "older"]
+        )
+
+        // The one opened last and one that is open: neither is the one that goes.
+        let open = summary(id: "open", lastOpenedAt: now.addingTimeInterval(-30), isDraft: false, sizeOnDisk: 80)
+        let closed = summary(id: "closed", lastOpenedAt: now.addingTimeInterval(-10), isDraft: false, sizeOnDisk: 30)
+        XCTAssertEqual(
+            StudioCleanupPolicy.plan(summaries: [open, closed], currentDate: now, options: options, inUseProjectIDs: ["open"]),
+            []
+        )
+
+        // The age rule is another matter: it takes the one opened last once that is old enough.
+        let day: TimeInterval = 24 * 60 * 60
+        let later = Date(timeIntervalSince1970: 100 * day)
+        let old = summary(id: "old", lastOpenedAt: later.addingTimeInterval(-31 * day), isDraft: false, sizeOnDisk: 80)
+        XCTAssertEqual(
+            StudioCleanupPolicy.plan(
+                summaries: [old],
+                currentDate: later,
+                options: StudioCleanupOptions(retentionDays: 30, sizeCapBytes: 50)
+            ),
+            ["old"]
+        )
+    }
+
+    func testAProjectThatDoesNotSayWhenItWasLastOpenedIsKeptAndNotCounted() {
+        let day: TimeInterval = 24 * 60 * 60
+        let now = Date(timeIntervalSince1970: 100 * day)
+        // A project file without the time reads as the start of 1970: older than any rule
+        // allows, and the first in line for the limit.
+        let undated = summary(id: "undated", lastOpenedAt: Date(timeIntervalSince1970: 0), isDraft: false, sizeOnDisk: 500)
+        let old = summary(id: "old", lastOpenedAt: now.addingTimeInterval(-3 * day), isDraft: false, sizeOnDisk: 40)
+        let newer = summary(id: "newer", lastOpenedAt: now.addingTimeInterval(-1 * day), isDraft: false, sizeOnDisk: 60)
+
+        XCTAssertFalse(undated.isRemovableByCleanup)
+        XCTAssertEqual(
+            StudioCleanupPolicy.plan(
+                summaries: [undated, old, newer],
+                currentDate: now,
+                options: StudioCleanupOptions(retentionDays: 30, sizeCapBytes: 100)
+            ),
+            []
         )
     }
 
@@ -799,6 +860,108 @@ final class StudioProjectTests: XCTestCase {
         // Back where it was saved, from the Trash or with the disk it is on.
         XCTAssertTrue(FileManager.default.createFile(atPath: secondURL.path, contents: Data([2])))
         XCTAssertEqual(try store.cleanup(options: rules), [validID])
+    }
+
+    func testAnExportSaysHowLargeItsVideoIsAndAFileOfAnotherSizeIsNotThatVideo() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
+        let videoURL = directoryURL.appendingPathComponent("Reused.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: videoURL.path, contents: Data([7, 8, 9])))
+        _ = try store.recordExport(id: validID, path: videoURL.path)
+        var project = try store.load(id: validID)
+        XCTAssertEqual(project.exports.map(\.bytes), [3])
+        project.lastOpenedAt = fixedDate.addingTimeInterval(-90 * 24 * 60 * 60)
+        _ = try store.save(project)
+        let rules = StudioCleanupOptions(retentionDays: 30, sizeCapBytes: 0)
+        var summary = try XCTUnwrap(store.listSummaries().first)
+        XCTAssertFalse(summary.exportMissing)
+        XCTAssertTrue(summary.isRemovableByCleanup)
+
+        // The video was deleted, and another recording was saved under its name.
+        try Data([1, 2, 3, 4, 5]).write(to: videoURL)
+        summary = try XCTUnwrap(store.listSummaries().first)
+        XCTAssertTrue(summary.exportMissing)
+        XCTAssertFalse(summary.isRemovableByCleanup)
+        XCTAssertEqual(try store.cleanup(options: rules), [])
+        XCTAssertTrue(store.exists(id: validID))
+
+        // The link from a video to its project goes by the path alone.
+        XCTAssertEqual(try store.findProjectID(exportedPath: videoURL.path), validID)
+
+        // The project's own video again.
+        try Data([7, 8, 9]).write(to: videoURL)
+        summary = try XCTUnwrap(store.listSummaries().first)
+        XCTAssertFalse(summary.exportMissing)
+        XCTAssertEqual(try store.cleanup(options: rules), [validID])
+    }
+
+    func testAnExportWithoutASizeGoesByThePathAloneAndMovingAVideoKeepsItsSize() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
+        let videoURL = directoryURL.appendingPathComponent("No Size.mp4")
+        let projectURL = directoryURL.appendingPathComponent(validID).appendingPathComponent("project.json")
+
+        // No file is there yet, so no size is written: what a project from before sizes were
+        // written has. It is left out of the file.
+        _ = try store.recordExport(id: validID, path: videoURL.path)
+        XCTAssertEqual(try store.load(id: validID).exports.map(\.bytes), [nil])
+        XCTAssertFalse(try String(contentsOf: projectURL, encoding: .utf8).contains("\"bytes\""))
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).exportMissing)
+
+        XCTAssertTrue(FileManager.default.createFile(atPath: videoURL.path, contents: Data([1])))
+        XCTAssertFalse(try XCTUnwrap(store.listSummaries().first).exportMissing)
+        try Data([1, 2, 3, 4]).write(to: videoURL)
+        XCTAssertFalse(try XCTUnwrap(store.listSummaries().first).exportMissing)
+
+        // Exported again, the entry says how large the video is, and goes on saying it when the
+        // video is moved.
+        _ = try store.recordExport(id: validID, path: videoURL.path)
+        XCTAssertEqual(try store.load(id: validID).exports.map(\.bytes), [4])
+        XCTAssertTrue(try String(contentsOf: projectURL, encoding: .utf8).contains("\"bytes\""))
+        let movedURL = directoryURL.appendingPathComponent("Moved.mp4")
+        try FileManager.default.moveItem(at: videoURL, to: movedURL)
+        XCTAssertTrue(try store.updateExportPath(from: videoURL.path, to: movedURL.path))
+        XCTAssertEqual(try store.load(id: validID).exports.map(\.bytes), [4])
+        XCTAssertFalse(try XCTUnwrap(store.listSummaries().first).exportMissing)
+    }
+
+    func testAProjectFileWithoutItsLastOpenedTimeIsNotRemovableUntilItIsOpened() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
+        let videoURL = directoryURL.appendingPathComponent("Undated.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: videoURL.path, contents: Data([1])))
+        _ = try store.recordExport(id: validID, path: videoURL.path)
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).isRemovableByCleanup)
+
+        // The time is taken out of the file, as a damaged or a hand-made one might be without it.
+        let projectURL = directoryURL.appendingPathComponent(validID).appendingPathComponent("project.json")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: projectURL)) as? [String: Any])
+        XCTAssertNotNil(object.removeValue(forKey: "lastOpenedAt"))
+        try JSONSerialization.data(withJSONObject: object).write(to: projectURL)
+
+        let summary = try XCTUnwrap(store.listSummaries().first)
+        XCTAssertEqual(summary.lastOpenedAt, Date(timeIntervalSince1970: 0))
+        XCTAssertFalse(summary.exportMissing)
+        XCTAssertFalse(summary.isRemovableByCleanup)
+
+        // Opening it writes the time, and it is a project like any other from then on.
+        _ = try store.markOpened(id: validID)
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).isRemovableByCleanup)
+    }
+
+    func testTheStorageLimitLeavesTheProjectOpenedLastHoweverLargeItIs() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let paths = try store.beginRecording()
+        _ = try store.completeRecording(id: paths.id, request: creationRequest(camera: nil))
+        try Data(count: 400_000).write(to: paths.screenURL)
+        let videoURL = directoryURL.appendingPathComponent("Large.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: videoURL.path, contents: Data([7, 8, 9])))
+        _ = try store.recordExport(id: paths.id, path: videoURL.path)
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).isRemovableByCleanup)
+
+        // What the cleanup that follows its editor closing would have taken.
+        XCTAssertEqual(try store.cleanup(options: StudioCleanupOptions(retentionDays: 0, sizeCapBytes: 250_000)), [])
+        XCTAssertTrue(store.exists(id: paths.id))
     }
 
     func testTheStorageLimitLeavesExportedProjectsAloneWhenOnlyDraftsAreOverIt() throws {
@@ -1194,7 +1357,7 @@ final class StudioProjectTests: XCTestCase {
             edits: StudioEdits(trimStart: 1, trimEnd: 9, cuts: [StudioTimeRange(start: 2, end: 3)], speed: [StudioSpeedRange(start: 4, end: 5, rate: 2)]),
             audio: StudioAudio(muted: true, systemVolume: 0.5, microphoneVolume: 0.6),
             overlays: StudioOverlays(clicks: StudioClickOverlay(enabled: false, color: "#123456", size: 20, strokeWidth: 2, opacity: 0.5, duration: 0.2), branding: true),
-            exports: [StudioExport(path: "/tmp/export.mp4", exportedAt: fixedDate)]
+            exports: [StudioExport(path: "/tmp/export.mp4", exportedAt: fixedDate, bytes: 1_234)]
         )
     }
 

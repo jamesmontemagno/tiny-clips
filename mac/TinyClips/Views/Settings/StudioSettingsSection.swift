@@ -35,14 +35,15 @@ struct StudioSettingsSection: View {
         var spokenName: String { "\(name), \(detail)" }
     }
 
-    /// Why a project whose video was exported is listed with the drafts again. On the App Store
-    /// build the app sees only the folders it was given, so a video in a folder that is no
-    /// longer the chosen one looks the same as one that is gone.
+    /// Why a project whose video was exported is listed with the drafts again. A file of another
+    /// size under the video's name counts as gone too. On the App Store build the app sees only
+    /// the folders it was given, so a video in a folder that is no longer the chosen one looks
+    /// the same as one that is gone.
     private static var exportMissingNote: String {
         #if APPSTORE
-        return "Its exported video is not where it was saved, or is in a folder Tiny Clips can no longer open."
+        return "Its exported video is not where it was saved, has been changed since, or is in a folder Tiny Clips can no longer open."
         #else
-        return "Its exported video is no longer where it was saved."
+        return "Its exported video is no longer where it was saved, or has been changed since."
         #endif
     }
 
@@ -91,7 +92,7 @@ struct StudioSettingsSection: View {
                     Text("50 GB").tag(50)
                     Text("No limit").tag(0)
                 }
-                .help("When exported projects use more than this, the ones opened longest ago are removed first. Drafts and projects you keep are not counted.")
+                .help("When exported projects use more than this, the ones opened longest ago are removed first, and the one you opened last is always kept. Drafts and projects you keep are not counted.")
 
                 LabeledContent("Storage used:") {
                     Text(storageText)

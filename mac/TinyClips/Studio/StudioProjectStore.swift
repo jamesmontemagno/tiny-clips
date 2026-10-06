@@ -176,9 +176,12 @@ struct StudioProjectSummary: Equatable, Sendable {
     var exportMissing: Bool = false
 
     /// Whether cleanup may remove the project: a video exported from it is still where it was
-    /// saved, the project is not pinned, and it is not built around a video kept elsewhere.
+    /// saved, the project is not pinned, it is not built around a video kept elsewhere, and it
+    /// says when it was last opened. A project file without that time reads as the start of
+    /// 1970, which would make the project the oldest there is and the first to go.
     var isRemovableByCleanup: Bool {
         !isDraft && !exportMissing && !keepSources && !isFlat
+            && lastOpenedAt != Date(timeIntervalSince1970: 0)
     }
 }
 
@@ -406,7 +409,11 @@ final class StudioProjectStore {
             }
 
             targetProject.exports.removeAll { normalizedPath($0.path) == normalized }
-            targetProject.exports.append(StudioExport(path: path, exportedAt: now()))
+            targetProject.exports.append(StudioExport(
+                path: path,
+                exportedAt: now(),
+                bytes: fileSize(of: URL(fileURLWithPath: path).standardizedFileURL)
+            ))
             return try saveUnlocked(targetProject, updatingModifiedAt: true)
         }
     }
@@ -457,7 +464,12 @@ final class StudioProjectStore {
                 for export in project.exports {
                     let normalized = normalizedPath(export.path)
                     if normalized == oldNeedle {
-                        matchedExport = StudioExport(path: newPath, exportedAt: export.exportedAt, extra: export.extra)
+                        matchedExport = StudioExport(
+                            path: newPath,
+                            exportedAt: export.exportedAt,
+                            bytes: export.bytes,
+                            extra: export.extra
+                        )
                     } else if normalized != newNeedle {
                         exports.append(export)
                     }
@@ -828,10 +840,7 @@ final class StudioProjectStore {
         // Looked at where each video was saved. One on a drive that is not connected, or in a
         // folder the app may no longer read, counts as not there, which keeps the project: the
         // safe side of not knowing.
-        let exportMissing = !project.exports.isEmpty && !project.exports.contains { export in
-            !export.path.isEmpty
-                && fileManager.fileExists(atPath: URL(fileURLWithPath: export.path).standardizedFileURL.path)
-        }
+        let exportMissing = !project.exports.isEmpty && !project.exports.contains { isStillWhereItWasSaved($0) }
         return StudioProjectSummary(
             id: project.id,
             name: project.name,
@@ -844,6 +853,25 @@ final class StudioProjectStore {
             sourceExists: sourceExists,
             exportMissing: exportMissing
         )
+    }
+
+    /// Whether the video of an export is still where it was saved: a file is at its path and,
+    /// where the export says how large the video was, the file is that large. A file of another
+    /// size is another video that has taken the name, or the same one changed since. Either way
+    /// it is not what the project exported, and counting it would let cleanup remove a project
+    /// that holds the only copy of its recording.
+    private func isStillWhereItWasSaved(_ export: StudioExport) -> Bool {
+        guard !export.path.isEmpty else { return false }
+        let url = URL(fileURLWithPath: export.path).standardizedFileURL
+        guard fileManager.fileExists(atPath: url.path) else { return false }
+        guard let bytes = export.bytes, bytes > 0 else { return true }
+        return fileSize(of: url) == bytes
+    }
+
+    /// The size of a file in bytes, or nil where there is no file or its size cannot be read.
+    private func fileSize(of url: URL) -> Int64? {
+        guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else { return nil }
+        return Int64(size)
     }
 
     private func sizeOnDisk(at url: URL) -> Int64 {

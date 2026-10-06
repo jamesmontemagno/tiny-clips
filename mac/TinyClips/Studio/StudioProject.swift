@@ -969,11 +969,21 @@ struct StudioClickOverlay: Codable, Equatable, Sendable {
 struct StudioExport: Codable, Equatable, Sendable {
     var path: String
     var exportedAt: Date
+
+    /// How large the video was when it was exported, in bytes, or nil when that is not known.
+    /// It tells the video apart from another file that has taken its name since.
+    var bytes: Int64?
     var extra: [String: StudioJSONValue]
 
-    init(path: String, exportedAt: Date = Date(timeIntervalSince1970: 0), extra: [String: StudioJSONValue] = [:]) {
+    init(
+        path: String,
+        exportedAt: Date = Date(timeIntervalSince1970: 0),
+        bytes: Int64? = nil,
+        extra: [String: StudioJSONValue] = [:]
+    ) {
         self.path = path
         self.exportedAt = exportedAt
+        self.bytes = bytes
         self.extra = extra
     }
 
@@ -981,7 +991,8 @@ struct StudioExport: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         path = try container.decodeString("path", default: "")
         exportedAt = try container.decodeDate("exportedAt")
-        extra = try StudioJSON.decodeExtra(from: container, excluding: ["path", "exportedAt"])
+        bytes = try container.decodeIfPresent(Int64.self, forKey: StudioJSONKey("bytes"))
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["path", "exportedAt", "bytes"])
     }
 
     func encode(to encoder: Encoder) throws {
@@ -989,6 +1000,8 @@ struct StudioExport: Codable, Equatable, Sendable {
         try StudioJSON.encodeExtra(extra, to: &container)
         try container.encode(path, forKey: StudioJSONKey("path"))
         try container.encodeDate(exportedAt, forKey: "exportedAt")
+        // Left out where it is not known.
+        try container.encodeIfPresent(bytes, forKey: StudioJSONKey("bytes"))
     }
 }
 
