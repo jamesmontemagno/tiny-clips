@@ -568,6 +568,17 @@ After it, 1,711 Core tests pass and 3 are skipped as before, `main`'s 25 tests o
 
 **And `main` moved once more: #417, which makes Esc close the screenshot editor and the trimmers.** Two conflicts, in the Windows changelog and README, both sides kept. Merged as `f738c80` and checked in a clean checkout: 1,727 Core tests pass and 3 are skipped, the 50 tests of the Settings view model pass, and both flavours of the app and the four tools build without warnings. It leaves Studio the one editor that Esc does not close; see "Open questions".
 
+**The merged recorder, read again.** Nothing could record, so a sixth reviewer that only reads went through the recorder as merged, against both of its parents, with three questions.
+
+- **What is different for an ordinary recording?** 26 places, in the recorder and in four files beside it. 15 change nothing, and 11 are harmless: fields that are written, and one more listing of the monitors at the start. Nothing is caught that `main` does not catch, nothing gets out that `main` catches, and no field is reset at another moment.
+- **Did the merge lose, double or misplace anything of the Studio mode?** No. What the merge commit says of itself holds in all seven points. The reviewer found three faults in the stop of a Studio recording all the same, one of them in the catch the merge added. They are mended and not run:
+  - A stop that failed before the screen track was finished left the camera on. The camera of a Studio recording goes on until then, where an ordinary recording stops it first. A stop that fails now stops the camera before the error goes on its way.
+  - When a recording on the CPU path could not be finished while it was being discarded, its folder stayed for a day. It is deleted now.
+  - A stop that failed part of the way and was tried again made a project without its clicks.
+- **Anything else a first recording would hit?** Two faults, both in the regular recorder and both on `main`: the one about click rings that was known, and one that deletes a video. See "Found in the regular Windows recorder".
+
+The mends add three places an ordinary recording passes through: the path that is forgotten at the start, which is the point of it; a call that returns at once where there is no Studio camera; and a catch whose condition is never true without one. The Core tests after them: 1,732 pass and 3 are skipped.
+
 ### Decisions made while building
 
 - **A failed project save keeps the recording.** If the project cannot be saved when a Studio recording stops, the screen track is kept as an ordinary video.
@@ -665,7 +676,7 @@ macOS:
 
 Windows:
 
-- `VideoRecordingService`: the Studio mode, merged by hand on 5 October with what `main` changed in the same file. An ordinary recording reads one or two flags more for each frame, and lists the monitors once at its start also when click rings are off.
+- `VideoRecordingService`: the Studio mode, merged by hand on 5 October with what `main` changed in the same file. An ordinary recording reads one or two flags more for each frame, and lists the monitors once at its start also when click rings are off. One change is on purpose and not Studio's: a start forgets the video of the recording before it as its first step, so that a start that fails can no longer delete that video (see "Found in the regular Windows recorder").
 - `MfSinkWriterEncoder`: three new parameters. `enableHardwareTransforms` is on by default, which is what the encoder always did; `topDownMemoryFrames` and `keepFrameTimes` are off by default. Only the Studio camera recorder sets any of them; the regular recorder's calls are unchanged.
 - `RecordingTimeline`: keeps each pause, for the camera track and the events. The numbers it gives are the same.
 - `MouseClickMonitor`, `MouseClickSample`: a click also keeps its button and its time on the system clock, 32 bytes where it was 16.
@@ -678,11 +689,21 @@ Windows:
 - `.gitattributes`: `*.onnx` is marked binary, so that no checkout changes the model's bytes.
 - `windows/CHANGELOG.md`: the Unreleased section describes Studio as an early preview that is off by default, and says how to switch it on. What's New links to that file.
 
-### Found in the regular Windows recorder and left alone
+### Found in the regular Windows recorder
+
+One of these is mended on this branch, because Studio leans on the same line. The others are left alone.
+
+**A start that failed deleted the recording before it. Mended here.** The recorder keeps the path of the video it last saved, for a discard that arrives after the stop. The cleanup after a failed start deletes whatever that path names, and until a start has named a file of its own, that is the previous recording: saved, finished, and already shown to its owner. The deletion says nothing, and fails only when something has the file open in a way that forbids it.
+
+- In the released 1.8.2, and back to 1.7.4 at least, it takes a capture that cannot start. A window that was closed after it was picked would be one way; that has not been tried.
+- On `main` since #411 it also takes no more than cancelling the countdown while the recorder is still getting ready. The app prepares the recorder while the countdown runs, on the same token, and the preparation now checks for cancellation three times before it names its file. How long getting ready takes has not been measured; with the camera on it includes starting the camera. This has not been released.
+- With Studio there was more to lose. When a project cannot be saved, its screen recording is kept as an ordinary video or, failing that, left in its folder for a day, and both were open to the same deletion.
+
+A start now forgets the path before it does anything else. Five unit tests, the first the recorder has, make a start fail on its first read of a setting, which is before anything is asked of Windows. Four of them fail without the fix: on this branch, and on `main` and the code of 1.8.2, where a copy of them without Studio's parameter was run. What a run has not shown: the tests put the recorder into the state a finished recording leaves by writing its private field, since no recording could be made, and nobody has cancelled a countdown. Both are read from the code. The mend is on this branch only: `main` and the released app still have the fault. See "Open questions".
 
 **The CPU path writes upside down.** `StudioRenderCheck` reproduces the regular recorder's CPU path without capturing anything: it creates the encoder the way the recorder does and hands it frames the way the recorder does. Since #412 that is the encoder's own `WriteVideo`, and the measurement was made again through it on 5 October, with the same result. That path is used when the GPU recording pipeline is switched off or cannot start. On the development PC (AMD encoder) the file it wrote was upside down in every frame, for H.264 and HEVC. A real recording made that way has not been looked at. A Studio screen track recorded on that path would have the same fault, and the check tool reports it as known. The Studio camera track had the same cause and is fixed with `topDownMemoryFrames`. The regular recorder was not changed, because it is shipping code outside this work. Decided on 5 October: the same fix there gets a small pull request of its own against main, once one real recording on that path has confirmed the fault. That recording has to be made with the owner at the PC, since nothing here may capture the screen.
 
-**Click rings in a video are drawn late.** Read from the code on 5 October by a reviewer and again by me, and not run. The clock a click is stamped with starts when the recorder is prepared, which is when the countdown begins. The clock of the frames starts when the countdown is over, and leaves pauses out. A ring is drawn where the two numbers meet, so every ring comes after its click by the time between the two starts and by all the time the recording had been paused. With the countdown as it is by default, three seconds, that is close to three seconds. It takes click rings in videos to be switched on, which they are not by default. GIF recordings start both clocks together. Studio recordings are not affected: their clicks are put on the recording's own timeline when the project is made, from a time on the system clock that every click carries since this branch, and that is what a mend of the regular recorder would use. Not changed here.
+**Click rings in a video are drawn late.** Read from the code on 5 October by a reviewer and again by me, and not run. The clock a click is stamped with starts when the recorder is prepared, which is when the countdown begins. The clock of the frames starts when the countdown is over, and leaves pauses out. A ring is drawn where the two numbers meet, so every ring comes after its click by the time between the two starts and by all the time the recording had been paused. With the countdown as it is by default, three seconds, that is close to three seconds. A click made during the countdown is drawn as a ring at the start of the video, for the same reason. It takes click rings in videos to be switched on, which they are not by default. GIF recordings start both clocks together. Studio recordings are not affected: their clicks are put on the recording's own timeline when the project is made, from a time on the system clock that every click carries since this branch, and that is what a mend of the regular recorder would use. Not changed here.
 
 **Quitting while a recording is being finished.** Quitting waits for the recorder to stop. When a stop is already under way that wait returns at once, and the app goes while the file is still being finished. Older than this branch; a Studio recording takes longer to stop, so the moment in which it can happen is longer.
 
@@ -723,15 +744,17 @@ Known limits to state up front:
 
 ## Open questions
 
-One, since the evening of 5 October:
+Two, since the evening of 5 October:
 
 - **Esc in the Studio window.** Since #417, Esc closes the screenshot editor and the trimmers, asking first unless "Confirm before closing editors with Esc" is switched off in Settings › General. In the Studio window Esc stops a running export and does nothing else, so Studio is the one editor Esc does not close. The proposal is to have it close the Studio window the way its close button does, behind the same setting. Not built: it is new behaviour for a key, in a window no key has been pressed in yet.
+
+- **The fix for the recording that a failed start deleted** is on this branch only, and `main` and the released app have the fault (see "Found in the regular Windows recorder"). It is one line and five tests. The proposal is a small pull request of its own against `main`, as was decided for the CPU path, so that it does not wait for Studio.
 
 Everything else is settled: the name, price, cleanup defaults, and first-run look in "Decisions confirmed" above, and the questions that came up while building in "Decided on 5 October" under it.
 
 What is left is work that waits for the PC or for a Mac, not for an answer:
 
-- **The regular Windows recorder's CPU path** gets its own pull request once a real recording on that path has confirmed the fault. See "Found in the regular Windows recorder and left alone", which also has two faults found by reading it: click rings drawn late, and quitting while a recording is being finished.
+- **The regular Windows recorder's CPU path** gets its own pull request once a real recording on that path has confirmed the fault. See "Found in the regular Windows recorder", which also has two faults found by reading it and left alone: click rings drawn late, and quitting while a recording is being finished.
 - **Windows volumes** are a follow-up: two sound tracks in a Studio recording, made with the owner at the PC. See "Volumes".
 - **Every control written on 5 October has been compiled and never run, and the Tiny Clips app has never been started with this code.** See "The decisions of 5 October, built", "The app around the editor: read, never run" and "The evening of 5 October".
 
