@@ -21,8 +21,28 @@ Studio keeps the pieces apart. A recording made for Studio is saved as a **proje
 | When to capture editable sources | Only when Studio is the after-recording choice, or "Record for Studio" is on in the pre-record panel. Other recordings keep today's path untouched |
 | Name | Tiny Clips Studio |
 | Price | Free on every build. No Pro gating on the Mac App Store |
-| Cleanup defaults | Sources kept 30 days after last opened, with a 10 GB cap on total project storage |
+| Cleanup defaults | Sources kept 30 days after last opened, with a 10 GB cap. Since 5 October the cap counts only what cleanup may remove, which is exported projects; see "Decided on 5 October" |
 | First-run look | A gradient background with padding |
+
+### Decided on 5 October
+
+Ten questions that had come up while building were put to the owner one at a time, each with what it costs and what breaks if it is left alone, and one more followed from an answer. In the order they were asked:
+
+| Question | Decision |
+|---|---|
+| Choosing a layout while recording | Not built. Taken out of the plan. The format keeps its place for it |
+| "Keep sources" and single-layer mode, both described and neither built | Build the control that keeps a project. Opening any video as a single layer goes to the backlog |
+| Volumes on Windows | Mute only in this pull request. Two sound tracks are a follow-up of their own, made with the owner at the PC to record |
+| The model for the Windows person cutout | Ship the 448 KB model with the API that is part of Windows, as built, and add a third-party notices file |
+| The Mac App Store build and the hidden switch | The switch becomes a setting people can see, on both Mac builds: "Tiny Clips Studio (Preview)". The recommendation had been to compile the App Store build without Studio |
+| The same on Windows? | The same switch in Windows Settings, now. The recommendation had been to leave Windows hidden until someone had used it |
+| The storage limit once the drafts alone are over it | The limit counts only exported projects, which are what cleanup may remove |
+| A way out for a draft the editor cannot show | "Save the screen recording" on each draft in Settings and next to the editor's error message, on both platforms |
+| A project whose exported video is gone | Listed with the drafts again and marked, so that it can be opened, exported again or deleted |
+| The regular Windows recorder's CPU path, which writes upside down | A small pull request of its own against main, once one real recording on that path confirms it |
+| Three unit tests skipped on purpose | Kept skipped, with their reasons, until the preview handles a recording's own frame times |
+
+What each of them took is in "Implementation status", under "The decisions of 5 October, built".
 
 ## Where the code is today
 
@@ -82,16 +102,16 @@ Format rules:
 }
 ```
 
-`events.json` holds `clicks` (time, x, y, button), `cursor` samples (time, x, y), `cameraCorners` (the live corner changes both apps already track), and later `markers` for live layout switches.
+`events.json` holds `clicks` (time, x, y, button), `cursor` samples (time, x, y), `cameraCorners` (the live corner changes both apps already track), and `markers`, the format's place for a layout chosen while recording. Nothing writes markers: that was taken out of the plan on 5 October.
 
 ### Cleanup of old sources
 
 Defaults, all adjustable in Settings:
 
-- Sources of an exported project are deleted 30 days after it was last opened, or sooner when total project storage passes 10 GB (oldest first).
-- A project that has never been exported (a draft) is never deleted automatically.
-- "Keep sources" pins a project. Settings shows project storage and a Clean up now button.
-- After cleanup the exported MP4 remains. Opening it in Studio still works in single-layer mode: background, padding, zoom, and cuts apply to the flattened video, but the camera can no longer be rearranged. The same mode opens any existing MP4.
+- Sources of an exported project are deleted 30 days after it was last in use, or sooner when the exported projects together pass 10 GB (the one opened longest ago first). Only what cleanup may remove is counted in the 10 GB. Drafts and kept projects are not: counted, they would use the room up, and every exported project would lose its sources the moment it was exported.
+- A project that has never been exported (a draft) is never deleted automatically. Neither is a project whose exported video is no longer where it was saved: it is then the only copy of the recording, and is listed with the drafts again, marked.
+- "Keep this project" in the editor pins a project. Settings shows project storage and a Clean up now button.
+- After cleanup the exported MP4 remains, and is then an ordinary video. Opening it in Studio again as a single layer, with the background, padding, zooms and cuts applied to the flattened video, was part of this design and is not built. It is in the backlog, where the same mode would open any existing MP4.
 
 ### One layout engine, two implementations
 
@@ -239,7 +259,7 @@ A recording can have the computer's sound and the microphone in one file. Where 
 
 **macOS.** The recorder already writes the computer's sound and the microphone as two tracks. It now tells the project which is which, and only when the file really has one track for each sound it set out to record. Preview and export play each track at its volume through an audio mix.
 
-**Windows.** The recorder mixes both into one track while recording, so a Windows recording has nothing to set apart and the window shows no volumes. Separate volumes there need three things: the recorder writing two sound tracks in a Studio recording, the exporter mixing two tracks, and the preview playing two. The first of these changes the sound path of the recorder that ships today, and none of it can be tried on the machine this is written on without recording its user's sound and microphone. It is left until that can be done with the user.
+**Windows.** The recorder mixes both into one track while recording, so a Windows recording has nothing to set apart and the window shows no volumes. Separate volumes there need three things: the recorder writing two sound tracks in a Studio recording, the exporter mixing two tracks, and the preview playing two. The first of these changes the sound path of the recorder that ships today, and none of it can be tried on the machine this is written on without recording its user's sound and microphone. It is left until that can be done with the user. Decided on 5 October: Windows has Mute only in this pull request, and two sound tracks are a follow-up of their own, made with the owner at the PC to record.
 
 ### Scenes from the recording (Milestone 3)
 
@@ -253,7 +273,7 @@ The rule is in section 9.1 of the project format, is the same on both platforms,
 - A move that is taken back at once leaves nothing.
 - A move in the last 0.3 seconds of the recording is left out, because its scene would be shorter than any the editor makes.
 
-**Choosing a layout while recording** uses the same rule. The format has a place for it (`markers` in the events, each a time and a layout), and a marker becomes a scene with that layout. Nothing writes markers yet: that needs a control in each app's recording panel, and it only pays off with keys for it, since a click on the panel is itself in the recording. Which keys is a question for the user.
+**Choosing a layout while recording** is not built, and since 5 October not planned. It would have needed keys of its own, since a click on the recording panel is itself in the recording. The format keeps its place for it (`markers` in the events, each a time and a layout), the rule that turns a marker into a scene with that layout is in both apps with its fixtures, and nothing writes one. A layout is chosen afterwards, in the editor, by splitting a scene.
 
 ### Person cutout (Milestone 4)
 
@@ -268,9 +288,9 @@ Which pixels are a person is for each platform to find, so the edge is not the s
 
 **Windows** has nothing built in that finds people in a recording on an ordinary PC. Windows Studio Effects changes the picture of a live camera, and needs a neural processor and a driver from the PC's maker; the Windows AI imaging APIs need a Copilot+ PC. So it takes a segmentation model and something to run it.
 
-*What is built.* The renderer draws a blurred or removed background from a picture of where the people are, in the preview, the export and the poster alike. What finds them is behind one small interface (`IStudioPersonFinder`). The finder that comes with it runs a model on the processor with `Windows.AI.MachineLearning`, the machine learning API that has been part of Windows since version 1809. That adds no package and no library to the app in either flavor. The one thing to add is the model's file, which the app looks for at `Assets\Studio\selfie_segmentation.onnx` next to itself. **The file is not in the repository.** Without it Windows keeps every background, which is what the format asks of a renderer that cannot find people, and nothing in the window offers the choice yet.
+*What is built.* The renderer draws a blurred or removed background from a picture of where the people are, in the preview, the export and the poster alike. What finds them is behind one small interface (`IStudioPersonFinder`). The finder that comes with it runs a model on the processor with `Windows.AI.MachineLearning`, the machine learning API that has been part of Windows since version 1809. That adds no package and no library to the app in either flavor. The one thing added is the model's file, which the app looks for at `Assets\Studio\selfie_segmentation.onnx` next to itself. Since 5 October the file is in the repository and ships with the app. In a build without it Windows keeps every background, which is what the format asks of a renderer that cannot find people, and the window does not offer the choice.
 
-*The model* this was built and tried with is MediaPipe Selfie Segmentation, Google's 256 by 256 "general" model under the Apache License 2.0, as an ONNX file of 448 KB. Microsoft's PowerToys ZoomIt uses the same model through the same API for the background blur of its own webcam overlay, and the file in its repository is the one used here. It was kept in a temporary folder, outside the repository.
+*The model* this was built and tried with is MediaPipe Selfie Segmentation, Google's 256 by 256 "general" model under the Apache License 2.0, as an ONNX file of 448 KB. Microsoft's PowerToys ZoomIt uses the same model through the same API for the background blur of its own webcam overlay, and the file in its repository is the one used here: 447,658 bytes, SHA-256 `DE212DABBC6266F0047711D1DFAE80900F7B596B9ED5F7665F3D1CF68C5443EE`, the same there on 4 and on 5 October 2026.
 
 *Measured on the development PC* (8 cores, AMD graphics): finding the people takes 4 to 5 ms a frame on the processor, and the graphics card is no faster for a model this small. A 1080p frame whose camera background is blurred or removed takes about 10 ms to draw and read back, where one with it kept takes 2. The first frame takes about half a second more, once, to load the model. Over a minute of video, 1,800 frames, a process that only runs the model holds no more at the end than at the start; it did grow, by about 30 KB a frame, until the finder kept one binding for all its frames instead of making one for each. On one of MediaPipe's own test photographs the person is cut out cleanly, with a few specks left along an arm; the pictures have been looked at. Nothing has been tried on webcam footage, on ARM64, or on a PC without a graphics card that Windows can use.
 
@@ -286,7 +306,7 @@ Which pixels are a person is for each platform to find, so the edge is not the s
 
 The sizes are those of the libraries in the current packages on nuget.org, read from the packages' own lists of contents. The recommendation is the first row, which is what is built: it costs the app nothing but the model, and Microsoft ships the same pairing. Moving to one of the others later means writing one class of about 250 lines again. NativeAOT and trimming do not narrow the choice: the releases no longer use NativeAOT.
 
-*What a yes takes:* putting the model's file in `windows/src/TinyClips.App/Assets/Studio/` (the project picks it up from there), and saying in the app and the repository that it is there and under which licence, which the Apache License asks for and which Tiny Clips has no place for yet. The Background choice in the Windows window is written and shows only where the file is; it has been compiled and never run.
+*Decided on 5 October: ship it.* The model's file is in `windows/src/TinyClips.App/Assets/Studio/`, and the build's packaging recipe lists it for the package. The Apache License asks whoever passes the file on to pass the licence on with it and to keep its notices. So `Assets/THIRD-PARTY-NOTICES.txt` ships next to it, saying what the file is, where it is from, that Tiny Clips changed nothing in it, the copyright line that MediaPipe's own source files for selfie segmentation carry, and the licence in full; and Settings › About has a **Third-party notices** card that names the model and shows that text. MediaPipe publishes no NOTICE file. The `NOTICE.md` of the PowerToys repository, where the ONNX conversion was taken from, had no entry for the model on 4 October; the rest of that repository was not searched. Who made the conversion is not known: the file names tf2onnx 1.8.4 as what produced it, and the notice says that. The Background choice in the Windows window, the card and its dialog have been compiled and never run, and the choice has never been tried on webcam footage.
 
 ## Platform architecture
 
@@ -309,14 +329,14 @@ The sizes are those of the libraries in the current packages on nuget.org, read 
 
 ## Milestones
 
-Each milestone lands on both platforms before the next one starts. Studio is labeled Preview and hidden by default on a platform until that platform finishes M1.
+Each milestone lands on both platforms before the next one starts. Studio is labeled Preview and is off until it is switched on in Settings. Until 5 October the switch was hidden; see "The Studio switch".
 
 | Milestone | What you can do at the end |
 |---|---|
 | **M0 Foundations** | Nothing user-facing. The design doc and format spec are in the repo, fixtures exist, and an engine spike on each platform has confirmed the preview and export approach |
 | **M1 Compose and export** | Record for Studio. Pick a background and padding, round the screen card, choose a camera shape and one of four layouts, drag the bubble, trim in and out, and export. Reopen the project later from the Clips Library |
 | **M2 Crops and zooms** | Crop the screen or camera to a region. Add zoom segments by hand, then accept or adjust suggested zooms built from your clicks and cursor |
-| **M3 Scenes and cuts** | Split the video into scenes with their own layouts and animated transitions. Cut out sections, change speed, and set volumes. Switch layouts live while recording and have them arrive as scenes |
+| **M3 Scenes and cuts** | Split the video into scenes with their own layouts and animated transitions. Cut out sections, change speed, and set volumes. A move of the camera while recording arrives as a scene. Switching layouts while recording was part of this milestone and was taken out on 5 October |
 | **M4 Person cutout** | Remove or blur the camera background |
 
 ## Todos
@@ -340,9 +360,9 @@ Each milestone lands on both platforms before the next one starts. Studio is lab
 | `m2-win-auto-zoom`, `m2-mac-auto-zoom` | Each | Auto-zoom suggestions and follow-cursor |
 | `m3-shared-scenes-spec` | Shared | Spec and fixtures for scenes, transitions, cuts, and speed |
 | `m3-win-scenes-cuts`, `m3-mac-scenes-cuts` | Each | Scene lane, transitions, cuts, speed, volumes |
-| `m3-win-live-markers`, `m3-mac-live-markers` | Each | Live layout switching while recording |
+| `m3-win-live-markers`, `m3-mac-live-markers` | Each | Dropped on 5 October: live layout switching while recording is not built |
 | `m4-mac-person-cutout` | macOS | Vision person segmentation in the compositor |
-| `m4-win-person-cutout` | Windows | Evaluate the options, get a decision on the added dependency, then implement. (The options are evaluated and the one that adds no package is built; the model file it needs waits for the decision) |
+| `m4-win-person-cutout` | Windows | Evaluate the options, get a decision on the added dependency, then implement. (The options are evaluated and the one that adds no package is built. Since 5 October the model file it needs ships with the app) |
 
 ## Implementation status
 
@@ -359,7 +379,7 @@ This section records what was built and how it differs from the plan above. It i
 | Studio window | Done | Done. Run by `tools/StudioWindowCheck` with the real preview and exporter, without a person at the controls |
 | Settings, Record for Studio, reopening projects | Done | Done |
 
-Nothing on macOS has been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. Capture, the compositor, the preview, export, and the whole Studio window are unverified at runtime. Until someone has run them, Studio stays off on macOS.
+Nothing on macOS has been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. Capture, the compositor, the preview, export, and the whole Studio window are unverified at runtime. Since 5 October anyone can switch Studio on in Settings, so whoever does is the first to run them.
 
 Since it cannot be run here, the macOS code was read through twice more by reviewers that only read (5 October): once the composition, the compositor, the player and the export, and once the capture path, the project store and the window's lifetime. They found eight defects that follow from the code and the documented behavior of the frameworks, all fixed and compiled:
 
@@ -374,13 +394,13 @@ Since it cannot be run here, the macOS code was read through twice more by revie
 
 A fix made by reading is as unrun as the code it fixes. The reviewers also listed what only a Mac can settle; that list is in the pull request under "How to test".
 
-**Described above and not built, on either platform.** Nothing lets you set "Keep sources": the rule is in both project stores and their cleanup, without a control. And nothing opens a video in single-layer mode: both stores can make a project around a video that has no sources, but no command calls that, so "Open in Studio" is offered only for a video whose project still has its sources.
+**Described above and not built, on either platform.** Nothing opens a video in single-layer mode: both stores can make a project around a video that has no sources, but no command calls that, so "Open in Studio" is offered only for a video whose project still has its sources. Since 5 October that is in the backlog. The other thing this paragraph named, a control for keeping a project, is built: "Keep this project" in the inspector of both editors.
 
 On Windows each piece has been run by a check tool on one PC (AMD graphics, Windows 11): the renderer, exporter and camera recorder by `StudioRenderCheck`, the preview engine with its panel by `StudioPreviewCheck`, and the editor window by `StudioWindowCheck`. Each reads its results back itself, from pixels, from decoded files, or from the UI Automation tree. The editor's behavior is in Core and unit tested.
 
 `StudioWindowCheck` opens the real window on real projects in a process of its own, with the real preview and exporter, and works it through UI Automation: opening, playing, every inspector control with undo and redo, trimming, exporting, closing, and two windows at once. It found three defects in the window, which are fixed. A window in the background took the keyboard focus when its project had opened or its export ended. Five sliders could not be set to an end of their range by a screen reader. Three elements had no name. With the scene and cut controls it found a fourth: every editor that was closed stayed in memory (see "Closed editors and memory" under "Decisions made while building"). The last check of every run is now that none does.
 
-The PC was in use, so the tool sends no input and its windows never come to the front, and the Tiny Clips app itself was never started. That leaves out everything a person does with their hands: no key was pressed, nothing was dragged, and no drop-down was opened. Also not yet seen on Windows: a real recording arriving in the editor, the preview's sound, the high-contrast themes, Narrator reading the window, display scales other than 150 percent, and the app around the window, which is how a recording or a draft gets to it. Until someone has gone through those, Studio stays off on Windows.
+The PC was in use, so the tool sends no input and its windows never come to the front, and the Tiny Clips app itself was never started. That leaves out everything a person does with their hands: no key was pressed, nothing was dragged, and no drop-down was opened. Also not yet seen on Windows: a real recording arriving in the editor, the preview's sound, the high-contrast themes, Narrator reading the window, display scales other than 150 percent, and the app around the window, which is how a recording or a draft gets to it. Since 5 October anyone can switch Studio on in Settings without any of that having been gone through.
 
 One thing about real recordings in particular, because it decides how far the checks reach. The Windows recorder writes a screen frame at every tick of its pacer and stamps it with the wall clock a moment later. So the frames of a recording do not sit on an even grid: they are some milliseconds into their thirtieth of a second, by an amount that differs from one recording to the next and a little from frame to frame, and a tick the recorder misses leaves a gap. The camera's frames carry the camera's own times. What is known of real files is little. The encoder keeps each frame's time as it was given: the index of a camera track it wrote has its frames 0, 2 and 4 ms into their slots and a gap of a third of a second, exactly as they were handed to it. And the recorder's own report of the one real recording there is a trace of on this PC, five seconds at 30 frames a second, counts no missed tick and no dropped frame. Whether the offset of a recording's first frame survives in the file, which decides where its frames sit in their slots, and how often a longer recording or a busier PC misses a tick, is not known.
 
@@ -419,16 +439,16 @@ The Windows window has the zoom lane, the Zoom section and the crop sliders. `St
 | Editing operations for speed changes, with undo: adding, moving, and deleting one, its rate, and one selection shared with the zooms and the cuts | Done in the editor model, which is unit tested, and the view model | Done in the editor model and session, with the R key and Delete on a speed change in the key rules. Unit tested |
 | Speed in the preview | The player is set to the rate of the stretch it is in, and is silent there. Compiled only | Not started. The preview plays every stretch at the recording's own speed |
 | Speed lane, Speed section in the inspector, the Speed button | Done. Compiled, never run | Done. **Compiled, never run**: written on 5 October while no check tool could be run on the PC. 72 checks are written for it in `StudioWindowCheck` and have never run either |
-| Volumes for the computer's sound and the microphone | Done: the recorder lists its sound tracks, the Audio section has a slider for each, and preview and export play them through an audio mix. The rules are unit tested. Compiled, never run | Not started. A Windows recording has one mixed sound track; see "Volumes" above |
+| Volumes for the computer's sound and the microphone | Done: the recorder lists its sound tracks, the Audio section has a slider for each, and preview and export play them through an audio mix. The rules are unit tested. Compiled, never run | Not started, and not in this pull request (decided on 5 October). A Windows recording has one mixed sound track; see "Volumes" above |
 | Moves of the camera while recording become scenes (section 9.1 of the format) | Done. 16 fixtures. The recorder hands the moves to the new project. Compiled, never run | Done. The same fixtures. The recorder hands the moves to the new project; that hand-over is two lines that no test reaches, and no recording has been made with it |
-| Choosing a layout while recording | The format and the rule are in, with fixtures. No control in the recording panel writes a marker yet | The same |
+| Choosing a layout while recording | Not built, and taken out of the plan on 5 October. The format and the rule are in, with fixtures, and nothing writes a marker | The same |
 
 | Milestone 4 piece | macOS | Windows |
 |---|---|---|
 | The drawing rule for a blurred or removed camera background (section 6.7 of the format) | Done | The same text |
 | Drawing it | In the compositor, with Core Image. Compiled, never run | Done in the renderer, for the preview, the export and the poster. `StudioRenderCheck` measures it from pixels with a stand-in for what finds the people |
-| Finding the people in a camera frame | Vision person segmentation in the compositor. Compiled, never run | Done, with the machine learning API that is part of Windows. It needs a model file that is not in the repository: a decision for the user. Tried with that file on one photograph |
-| Background: Keep, Blur, Remove in the Camera section | Done. The rule is unit tested. Compiled, never run | The rule is in the editor model and session, unit tested. The choice is in the Camera section and shows only where the model's file is. **Compiled, never run**, and so are the 5 checks written for it |
+| Finding the people in a camera frame | Vision person segmentation in the compositor. Compiled, never run | Done, with the machine learning API that is part of Windows and a model file that ships with the app since 5 October. Tried on one photograph, never on webcam footage |
+| Background: Keep, Blur, Remove in the Camera section | Done. The rule is unit tested. Compiled, never run | The rule is in the editor model and session, unit tested. The choice is in the Camera section and shows where the model's file is, which is every build since 5 October. **Compiled, never run**, and so are the 5 checks written for it |
 
 A project file with more than one scene is drawn with its transitions on both platforms. On the Mac the editor can now split a recording into scenes and change each one, in views that have been compiled and never run. The Windows window has the scene lane, Split and the Scene section, and its Layout and Camera sections show and change the scene the playhead is in. `StudioWindowCheck` works them the way it works the zooms (74 of its checks): it splits, moves, changes and deletes scenes through the lane, the keys and the inspector, reads what a screen reader is given and told, and reads each scene's picture against the layout. The six frames of one move are worked out a second time by hand from the format, since the preview and the layout share their code. Paused, the edge furthest from its place was 0.6 pixels from it. Playing into a scene, every picture the preview draws is read; in three full runs no frame around the change was left out or late.
 
@@ -469,24 +489,63 @@ Nothing may capture the screen of the PC this was written on, and no Mac has run
 - **The first camera picture stands still** while the camera's encoder starts. The encoder is created when the first frame arrives, which is after the clock has started; that frame is written at zero and the next one after however long the start took: some tenths of a second, more where a hardware encoder is tried first and refused. The mend is to create it where the screen's encoder is created, before the clock starts.
 - **A camera whose clock is not the PC's** still leaves no track. Only a missing time is handled; the recording now says that the camera is missing.
 - **The camera is recorded in the mode it is running in.** Tiny Clips opens a camera shared and read-only, as the regular recorder always has, which lets it use a camera another app has open and gives it no right to change the camera's mode. The track is therefore as large as the camera's mode at that moment and never above 1080p, and a camera that starts in a small mode gives a small track. In a corner bubble that shows little; Studio can show the camera over half the canvas or all of it. The size is written to `webcam-diagnostics.log` ("Camera format … delivering …"). No real camera has been looked at.
-- **A draft the editor cannot show has no way out.** A draft has two buttons, Open and Delete, here and on the Mac. The case to try is a recording made with HEVC on a PC that has an HEVC encoder and no HEVC decoder: the regular trimmer could not show such a video either, but that video is in the save folder, and a draft is in the app's data. The same holds for any recording the preview or the exporter fails on, and the preview has never played a real one. See "Open questions".
+- **A draft the editor cannot show had no way out.** A draft had two buttons, Open and Delete, here and on the Mac. The case to try is a recording made with HEVC on a PC that has an HEVC encoder and no HEVC decoder: the regular trimmer could not show such a video either, but that video is in the save folder, and a draft is in the app's data. The same holds for any recording the preview or the exporter fails on, and the preview has never played a real one. Since 5 October every draft, and an editor that cannot show its project, can save the screen recording as an ordinary video; see "The decisions of 5 October, built".
 - **A recording that can be saved neither as a project nor as an ordinary video** stays in its project folder for a day, as on the Mac. The Mac says so in its message. Windows lists it under Recent captures like any other and says nothing of the day.
 - **When the editor window cannot be opened** after a recording, the app stops, as it does when the trimmer cannot be opened. The project is kept and is listed under the drafts.
 
-### Hidden switch
+### The app around the editor: read, never run
 
-Studio is off by default on both platforms until it has been verified there.
+On 5 October a fifth reviewer that only reads went through what the Windows app does around the editor with Studio switched on: how a recording or a draft gets to a window, what cleanup does while windows open and close, what the Clips Library is told, and where an error goes. It found two faults that follow from the code and five that probably do. Each was read in the code before anything was changed. Mended, in Core wherever a unit test could hold the rule, and on the Mac where the Mac had the same fault:
 
-- macOS: `defaults write com.tinyclips.app studioPreviewEnabled -bool YES` (`com.refractored.tinyclips` for the Mac App Store build).
-- Windows: the `studioPreviewEnabled` setting, or the environment variable `TINYCLIPS_STUDIO_PREVIEW=1`. A packaged launch does not pass the caller's environment to the app, so a build from source is started with `winapp run <output folder> --manifest <output folder>\AppxManifest.xml --output-appx-directory <output folder>\AppX --with-alias`. For an installed build, `setx TINYCLIPS_STUDIO_PREVIEW 1` followed by a restart of the app should do it; that route has not been tried.
+- **Cleanup could take a project from under an editor that had just opened it.** The list of projects in use is made before a cleanup starts, and reading every project takes a moment; a project opened in that moment was not in the list. The store now asks again for each project just before it deletes it, while it is locked, and an editor reads its project through the same lock before it opens any of its files. On the Mac the store keeps the open projects itself. Unit tested on both.
+- **A save that failed while a window was closing was told to nobody**, because the window that would have shown it was going. The app now shows it as a notification. Compiled, never run.
+- **A fresh export had no "Open in Studio…" in a Clips Library that was open**, because the video appeared before the project had its link to it. The exporter now writes under a name of its own, and the video gets its name and the project its link in one step. Unit tested.
+- **An export could replace another file** that had been given the same name while the video was being made, which takes a file name template without the time in it. A finished video now never takes the place of a file: it gets the next free name, and after five names the export fails and says why. On the Mac, where the export is written in place, the export stops instead of removing the other file. Unit tested on Windows, compiled on the Mac.
+- **A Studio recording that fell back to an ordinary video said nothing**, so a recording made for Studio was simply not in Studio. The app now says which of two things happened: it was kept as a regular video, or it is listed under Recent captures and kept for a day. Compiled, never run.
+- **"Last opened" was written when an editor opened and never again**, so a project whose editor stayed open for longer than projects are kept was removed by the cleanup that follows the editor closing. It is now written again at close. Unit tested on Windows; in the view model on the Mac.
+- **A project that was removed since the Clips Library last looked** opened an editor with the file system's own error and a path. It now says that the project is no longer stored on this PC and that a video exported from it is not affected. Unit tested.
 
-With the switch off, no Studio UI is visible and recordings follow the existing path unchanged.
+Left as it was: with the switch off, projects were neither shown nor cleaned up, and Reset All Settings switches Studio off. The visible switch of the same day says under itself what is kept. Renaming or archiving a video in the Clips Library while Studio is off still loses the video's link to its project.
+
+The Windows unit tests were run once without the four Core fixes: 9 of the 79 tests that cover those rules fail, the ones that state them.
+
+### The decisions of 5 October, built
+
+All of it was written the same day, with the PC in use, so nothing with a window was started. What a unit test can hold is unit tested on both platforms. Every control is compiled and has never been run.
+
+| Decision | macOS | Windows |
+|---|---|---|
+| The limit counts what cleanup may remove | In the cleanup rules. Unit tested | The same rule. Unit tested |
+| A project whose exported video is gone is kept and listed with the drafts | In the store's summaries and the cleanup rules, unit tested. The line that marks it in Settings › Video is compiled, never run | The same, unit tested. The line in Settings › General is compiled, never run |
+| Keep this project | The store's call is unit tested. The check box in the inspector's new Project section, and the view model's call, are compiled, never run | The store's call and the editor session's are unit tested. The check box is compiled, never run |
+| Save the screen recording | The copy is unit tested: it never replaces a file and leaves nothing behind when it fails. The button in the editor's message and the one on each draft are compiled, never run | The same, unit tested, with a copy that can be cancelled and that reads beside an editor that has the file open. Both buttons are compiled, never run |
+| Projects that cannot be read, listed with the drafts | The list is unit tested. Its rows are compiled, never run | The same |
+| The Studio switch in Settings | Compiled, never run | The setting is unit tested. The switch, the line under it, and what it shows and hides are compiled, never run |
+| The model and its notice | Not needed: the Mac uses the Vision framework | The file and the notice are in the package, read from the build's packaging recipe. The About card and its dialog are compiled, never run |
+
+The Windows unit tests were also run with six of these rules taken out together: the limit counting everything, a project whose videos are gone being removable, an editor never saying that there is a recording to save, an unreadable project having no recording to find, a finished file replacing whatever has its name, and keeping a project counting as a change to it. 18 of the 146 tests in the classes concerned fail, the 18 that were listed beforehand as the ones that state those rules.
+
+What only a run can show, most likely first: whether the switch in Windows Settings moves the keyboard focus or the scroll position when the cards under it appear; whether three buttons fit a draft's row in the narrowest Settings window; whether the message of an editor that cannot show its project still takes the focus now that a button is inside it; whether the third-party notices can be read in their dialog; and on the Mac, all of it.
+
+### The Studio switch
+
+Studio is off on both platforms until it is switched on, and since 5 October the switch is a setting people can see: **Tiny Clips Studio (Preview)**, in Settings › Video on macOS, on both Mac builds, and in Settings › General on Windows. Until then it was hidden: a `defaults` key on the Mac, and on Windows a stored setting that no control set, or an environment variable.
+
+- With the switch off, nothing else of Studio is visible and recordings follow the existing path unchanged. The switch and the lines that say what Studio is are the one thing a person who never uses Studio now sees of it.
+- Switching it off deletes nothing. The projects stay where they are and are not cleaned up while it is off, because the rules that would delete them are not shown then. A line under the switch says how many projects are kept and how much room they take. Where Studio was never used there is no project folder, and reading for that line makes none.
+- The switch is the setting `studioPreviewEnabled` on both platforms, as before, so a Mac on which the `defaults` key was set has Studio switched on. Reset All Settings switches it off.
+- On Windows the environment variable `TINYCLIPS_STUDIO_PREVIEW` is gone. It forced Studio on whatever the setting said, so with it the switch in Settings could not have switched Studio off.
+- On Windows, switching Studio on or off puts the trimmer switch and the After recording choice, which stand in for each other in Settings › Video, back in step with what is stored.
+
+What the visible switch changes about what is known: everything under "Where each platform stands" that has been compiled and never run can now be reached by anyone who flips a switch that says Preview. On the Mac that is all of Studio. On Windows it is the recorder for Studio, the app around the editor, and what was written on 5 October. The owner chose this over two more careful ways, which had been the recommendation: compiling the App Store build without Studio, and leaving Windows hidden until someone had used it.
+
+The switch itself has been compiled and never run, on both platforms.
 
 ### Decisions made while building
 
 - **A failed project save keeps the recording.** If the project cannot be saved when a Studio recording stops, the screen track is kept as an ordinary video.
 - **Drafts.** A recording kept as a draft has no exported file, so it does not appear in the Clips Manager. The drafts are listed in Settings, where they can be opened or deleted: under Video on macOS and under General on Windows.
-- **Deleting an exported video leaves its export link in place.** The project then still counts as exported, so the cleanup rules remove its sources later. Removing the link would turn it back into a draft that is never cleaned up.
+- **Deleting an exported video leaves its export link in place, and the project then counts as a draft again.** Until 5 October such a project still counted as exported, and cleanup removed its sources later, which left nothing of the recording. Now a project none of whose exported videos is where it was saved is never removed by cleanup, and is listed with the drafts, marked, where it can be opened, exported again or deleted. The link stays so that a video that comes back, from the Recycle Bin or with the drive it is on, is linked again; both stores have a call that removes a link, and nothing uses it. A video on a drive that is not connected counts as gone for as long as that lasts, which keeps the project: the safe side of not knowing. What this costs: someone who exports, shares and then deletes the video keeps the project until they delete it in Settings.
 - **Cleanup can be switched off.** Zero days keeps projects until they are deleted by hand, and zero gigabytes means no storage limit.
 - **Events during pauses.** Clicks and cursor samples from before the first frame or during a pause are not recorded. Cursor samples are capped at 60 per second, drop consecutive duplicates, and are steps, not points to interpolate between.
 - **Drawing rules** are in section 6.7 of `docs/studio-project-format.md`: sRGB with gamma-space blending, no color conversion of screen pixels, the shadow model, where the border goes, and the click ring geometry.
@@ -527,7 +586,7 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **A removed background takes the border and the shadow with it.** With only the people left, a border and a shadow would be drawn around a frame that is not there. The shape still clips the picture. A blurred background changes nothing else about the layer.
 - **One quality for the person cutout on the Mac**, Vision's middle setting, in the preview and in the export, so that an export shows the edge the preview showed. The finer setting may be worth it for exports; that needs eyes on a Mac.
 - **On Windows the people are found on the processor, with what Windows has.** The research into this recommended Windows ML from the Windows App SDK, on the grounds that the app has that SDK already. That holds for the Store package only: the direct download bundles the SDK and would grow by about 41 MB. The API that is part of Windows adds nothing but the model, and is what PowerToys ZoomIt uses with the same model. It runs on the processor because the graphics card measured no faster and is busy decoding, drawing and encoding.
-- **The model's file is not committed.** The plan left what is added to the app for the person cutout to the user. With this choice that is one file of 448 KB under the Apache License 2.0, and a notice of it. Everything else is in, and inert without the file.
+- **The model's file ships since 5 October**, by the owner's decision: one file of 448 KB under the Apache License 2.0, with its notice next to it and in Settings › About. See "Person cutout".
 - **The same edge however the playhead got there, on Windows.** Each frame's people are found from that frame alone. Steadying the edge over several frames, as MediaPipe's own pipeline and ZoomIt do, would make a frame look different after a seek than after playing up to it, and an export different from the preview.
 - **The project says what its sound tracks hold only when that is certain.** The Mac recorder lists them when the finished file has exactly one sound track for each sound it set out to record. An input that never got a sample may or may not have become a track; then the project lists nothing and every track plays as recorded.
 - **Playing over a cut** is done by the editor, which sends the preview on to the end of the cut when playback reaches it. The export is exact; the preview can show a few frames of the cut first.
@@ -542,6 +601,11 @@ With the switch off, no Studio UI is visible and recordings follow the existing 
 - **macOS keys.** Single-key shortcuts (Space, arrows, I, O, 1 to 4) are handled by the Studio window after focused controls have passed on them, so they are not taken from text fields or focused buttons. Esc follows the app's shared rule for closing editors.
 - **Editor windows get a Dock icon.** While a Studio window is open on macOS, Tiny Clips shows its Dock icon and menu bar, as it does for the screenshot editor.
 - **macOS layout.** Files directly inside `mac/TinyClips/Studio/` use Foundation only so their logic can be unit tested anywhere. Rendering is in `Studio/Rendering/` and the UI in `Views/Studio/`.
+- **Keeping a project is not an edit.** "Keep this project" is written into the project at once, where the cleanup reads it. It is not on the undo stack: undoing an edit must not let go of a project, and a project must not have to be saved for the pin to hold. It does not wait for an export to end either.
+- **A screen recording saved out of a project is a copy, and an ordinary video.** The project is left as it is and knows nothing of the copy, so a draft stays a draft. The copy is made under a name of its own in the save folder and renamed when it is whole, so that no half-written video is ever seen under a video's name. It never takes the place of a file, and gets the next free name when its own was taken while it was being copied.
+- **Projects that cannot be read are listed with the drafts.** What was decided is a way out for a draft the editor cannot show. A project whose `project.json` is damaged, or was written by a newer version, was in no list at all: cleanup leaves it alone and the drafts list passed over it, so its recording was exactly where only a file manager finds it. It now has a row of its own, "Unreadable project", with Save recording where the recording is there, with Delete, and without Open. This goes one step past what was asked.
+- **Where an exported video is looked for on the Mac App Store build.** That build may read a save folder the user chose only once it has opened the folder with the permission it stored, which the app does the first time it needs the folder. Cleanup and the drafts list now ask for the folder first. A video in a folder the app may no longer read counts as gone, and its project is kept.
+- **Switching Studio off stops cleanup.** While Studio is off its storage settings are not shown, so nothing they would delete is deleted. The switch says what is kept instead.
 
 ### Engine spikes
 
@@ -565,7 +629,7 @@ macOS:
 - `MouseClickOverlayProcessor`: a click also keeps which button it was, which the overlays ignore, and can take its time from a clock that only a Studio recording passes in.
 - `VideoRecorder`: remembers which sound inputs it added, for the volumes.
 - `BrandingOverlayProcessor`: one function is no longer private.
-- `StartRecordingPanel`, `VideoSettingsSection`, `SettingsView`: Record for Studio, the After recording choice and the Studio settings, each of them built only with the switch on.
+- `StartRecordingPanel`, `VideoSettingsSection`, `SettingsView`: Record for Studio, the After recording choice and the Studio settings, each of them built only with the switch on. Since 5 October the switch itself is in Settings › Video for everyone, with a few lines about what Studio is. Showing it reads the project folder once, where there is one, for the line that says what is kept while Studio is off.
 - `ClipsManagerWindow`: Open in Studio…, and a video that is moved to the archive keeps its link. While there are no links, nothing is looked up.
 - `TinyClipsApp`, `ScreenshotEditorScene`, `TinyClipsActivationPolicy`: a Studio window counts as an editor for the Dock icon, and quitting saves open projects.
 - The Xcode project: 27 new sources in both app targets and 6 test files in the test target. No new entitlement, framework or Info.plist key.
@@ -581,14 +645,15 @@ Windows:
 - `WebcamCaptureService`, `IWebcamCaptureService`, `WebcamFrameSizing`: an event for each camera frame and a switch to keep the camera's own shape. With no listener and the switch off the camera is opened as before.
 - `CaptureSettings`: `VideoAfterRecording` beside `ShowTrimmer`, which stays what the stop path reads; five Studio keys; Reset writes those too.
 - `App.xaml.cs`: the way to the editor after a recording, six more services, the cleanup 15 seconds after launch (never with Studio off), and `ShowTextRecognitionNotification` renamed `ShowMessageNotification` because Studio reuses it.
-- Settings (General and Video), the recording setup bar and the Clips Library menu: Studio controls that are built and stay collapsed with the switch off.
+- Settings (General and Video), the recording setup bar and the Clips Library menu: Studio controls that are built and stay collapsed with the switch off. Since 5 October the switch itself is a card in Settings › General for everyone. Showing General reads the project folder once, where there is one, for the line that says what is kept while Studio is off, and makes none.
 - The project store is constructed with the recorder at startup. It reads where the app's data folder is and creates nothing.
-- The project file picks up the model for the person cutout if it is there, which it is not; and three more `InternalsVisibleTo`, for the check tools.
+- The project file ships the model for the person cutout and its notice since 5 October: 448 KB and 14 KB more in every package, Studio on or off. Settings › About has a Third-party notices card for everyone. And three more `InternalsVisibleTo`, for the check tools.
+- `.gitattributes`: `*.onnx` is marked binary, so that no checkout changes the model's bytes.
 - `windows/CHANGELOG.md`: the Unreleased section describes Studio as an early preview that is off by default, and says how to switch it on. What's New links to that file.
 
 ### Found in the regular Windows recorder and left alone
 
-**The CPU path writes upside down.** `StudioRenderCheck` reproduces the regular recorder's CPU path without capturing anything: it creates the encoder the way the recorder does and hands it frames through the recorder's own buffer code. That path is used when the GPU recording pipeline is switched off or cannot start. On the development PC (AMD encoder) the file it wrote was upside down in every frame, for H.264 and HEVC. A real recording made that way has not been looked at. A Studio screen track recorded on that path would have the same fault, and the check tool reports it as known. The Studio camera track had the same cause and is fixed with `topDownMemoryFrames`. The regular recorder was not changed, because it is shipping code outside this work. The same fix there is a small change that is waiting for a decision.
+**The CPU path writes upside down.** `StudioRenderCheck` reproduces the regular recorder's CPU path without capturing anything: it creates the encoder the way the recorder does and hands it frames through the recorder's own buffer code. That path is used when the GPU recording pipeline is switched off or cannot start. On the development PC (AMD encoder) the file it wrote was upside down in every frame, for H.264 and HEVC. A real recording made that way has not been looked at. A Studio screen track recorded on that path would have the same fault, and the check tool reports it as known. The Studio camera track had the same cause and is fixed with `topDownMemoryFrames`. The regular recorder was not changed, because it is shipping code outside this work. Decided on 5 October: the same fix there gets a small pull request of its own against main, once one real recording on that path has confirmed the fault. That recording has to be made with the owner at the PC, since nothing here may capture the screen.
 
 **Click rings in a video are drawn late.** Read from the code on 5 October by a reviewer and again by me, and not run. The clock a click is stamped with starts when the recorder is prepared, which is when the countdown begins. The clock of the frames starts when the countdown is over, and leaves pauses out. A ring is drawn where the two numbers meet, so every ring comes after its click by the time between the two starts and by all the time the recording had been paused. With the countdown as it is by default, three seconds, that is close to three seconds. It takes click rings in videos to be switched on, which they are not by default. GIF recordings start both clocks together. Studio recordings are not affected: their clicks are put on the recording's own timeline when the project is made, from a time on the system clock that every click carries since this branch, and that is what a mend of the regular recorder would use. Not changed here.
 
@@ -608,7 +673,7 @@ The Clips Library window uses compiled bindings in its window the way the Studio
 | The Swift and C# engines drift apart | Shared golden fixtures that run in both CI workflows |
 | Disk use roughly doubles for Studio recordings | Capture is opt-in, sources are cleaned up, and Settings shows the storage used |
 | Studio grows into a full video editor | Scenes instead of keyframes, and backlog items stay in the backlog |
-| Regressions in normal recording | The fast path is untouched. Studio capture is a separate mode behind the Preview flag |
+| Regressions in normal recording | The fast path is untouched. Studio capture is a separate mode behind the Preview switch |
 | Timeline editing is hard to make accessible | The keyboard model and inspector equivalents are M1 requirements, and the Windows accessibility release gate gains Studio rows |
 
 Known limits to state up front:
@@ -627,19 +692,19 @@ Known limits to state up front:
 - Blurred-screen and wallpaper backgrounds, named look presets
 - Export to GIF and social size presets
 - Using the Studio renderer for ordinary macOS recordings, replacing up to three encode passes with one
+- Opening any existing video in Studio as a single layer, with a background, padding, zooms and cuts applied to the flattened video. Both project stores can already make a project around such a video, and no command does. Part of the first design, moved here on 5 October
 
 ## Open questions
 
-The name, price, cleanup defaults, and first-run look are settled in "Decisions confirmed" above. Open, each written up where it belongs:
+None. The name, price, cleanup defaults, and first-run look are settled in "Decisions confirmed" above, and the questions that came up while building in "Decided on 5 October" under it.
 
-- **Windows person cutout: ship the model file?** One file of 448 KB (MediaPipe Selfie Segmentation, Apache License 2.0) and a notice of it. Everything else is built. See "Person cutout (Milestone 4)".
-- **Windows volumes:** the recorder would have to keep the computer's sound and the microphone in two tracks. See "Volumes".
-- **Choosing a layout while recording:** which keys. See "Scenes from the recording".
-- **The regular Windows recorder's CPU path** writes upside down on the development PC; the fix is small and waits for a yes. See "Found in the regular Windows recorder and left alone", which also has two faults found by reading it: click rings drawn late, and quitting while a recording is being finished.
-- **The storage limit and drafts.** The limit counts everything, and a draft is never removed. So once the drafts alone are over the limit, every exported project loses its sources at the next cleanup, which runs each time an editor is closed: export, close, and the project just exported can no longer be edited. That is the rule as it was confirmed ("a 10 GB cap on total project storage", "a draft is never deleted automatically") read to its end. The other reading is that the limit counts only what cleanup may remove, exported projects, so that drafts never cost an exported project its sources; total use can then pass the limit by the size of the drafts. Both stores and both sets of tests have the first today.
-- **The Mac App Store build and the hidden switch.** With this branch the App Store build carries a feature that is off until a `defaults` key is set. App Review guideline 2.3.1(a), as it read on 5 October 2026: "Don't include any hidden, dormant, or undocumented features in your app; your app's functionality should be clear to end users and App Review. All new features, functionality, and product changes must be described with specificity in the Notes for Review section of App Store Connect (generic descriptions will be rejected) and accessible for review." So before a release with this code goes to the App Store, one of three: Studio is on for everyone; the switch becomes a setting people can see, such as a Preview toggle; or that build is compiled without a way to switch Studio on. Whether naming the `defaults` key in the notes for review is enough is for the owner of the App Store account to judge. Nothing in the code is changed for this, and the changelog already says how the switch is set.
-- **A way out for a draft the editor cannot show.** Before Studio is switched on for everyone, a recording should not be able to end up where only a file manager finds it (see "The recording path"). Three ways, none built: a "Save the screen recording" button on a draft and beside the editor's error message, which copies `screen.mp4` to the save folder as an ordinary recording, on both platforms; on Windows, recording Studio's tracks with H.264 where no HEVC decoder is found; or both. The first covers every cause and is the one recommended.
+What is left is work that waits for the PC or for a Mac, not for an answer:
 
+- **The regular Windows recorder's CPU path** gets its own pull request once a real recording on that path has confirmed the fault. See "Found in the regular Windows recorder and left alone", which also has two faults found by reading it: click rings drawn late, and quitting while a recording is being finished.
+- **Windows volumes** are a follow-up: two sound tracks in a Studio recording, made with the owner at the PC. See "Volumes".
+- **Everything written on 5 October has been compiled and never run.** See "The decisions of 5 October, built" and "The app around the editor: read, never run".
+
+One thing for the owner of the App Store account, which the visible switch does not settle by itself. Guideline 2.3.1(a), as it read on 5 October 2026: "Don't include any hidden, dormant, or undocumented features in your app; your app's functionality should be clear to end users and App Review. All new features, functionality, and product changes must be described with specificity in the Notes for Review section of App Store Connect (generic descriptions will be rejected) and accessible for review." The switch makes Studio visible and reachable for review. The notes for review still have to say what it is.
 ## Validation
 
 - Windows changes: `dotnet restore windows/TinyClips.Windows.slnx`, `dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:Platform=x64`, `dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Debug`, plus the Store flavor build when project files change.

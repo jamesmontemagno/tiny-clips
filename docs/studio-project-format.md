@@ -48,7 +48,7 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 | `name` | string | `""` | Display name |
 | `createdAt`, `modifiedAt`, `lastOpenedAt` | timestamp | | |
 | `app` | object | | `{ "platform": "windows" or "macos", "version": "1.9.0" }`, the app that created the project |
-| `keepSources` | bool | false | Pins the project against automatic cleanup |
+| `keepSources` | bool | false | Pins the project against automatic cleanup. Set by "Keep this project" in the editor, written at once, and not one of the editor's undoable edits |
 | `sources` | Sources | | |
 | `canvas` | Canvas | | |
 | `screen` | ScreenStyle | | |
@@ -627,7 +627,7 @@ The classic look, matching a recording made without Studio, is background `none`
 
 With a camera, what was changed while recording becomes scenes, so that a new project shows what the recording showed. Without a camera there is the one `screen` scene.
 
-The changes are the entries of `events.cameraCorners`, each of which moves the bubble to a corner, and of `events.markers`, each of which changes the layout. They are taken in the order of their `t`. At the same `t` a corner comes before a marker, and two of the same kind keep the order of their list. An entry whose `t` is not a number is left out.
+The changes are the entries of `events.cameraCorners`, each of which moves the bubble to a corner, and of `events.markers`, each of which changes the layout. No version of Tiny Clips writes `markers`: choosing a layout while recording was taken out of the plan. A reader applies them all the same, so a file that has them is read as this section says. They are taken in the order of their `t`. At the same `t` a corner comes before a marker, and two of the same kind keep the order of their list. An entry whose `t` is not a number is left out.
 
 Starting with the one scene at 0, each change is made to a copy of the last scene. A corner other than the one the bubble is in sets `bubble.anchor` and sets both bubble offsets to 0, because the offsets are from the corner the bubble was in. A marker sets `layout`. Then the first of these that applies decides what happens:
 
@@ -649,21 +649,21 @@ Each export adds `{ path, exportedAt }` to `exports`. The project store indexes 
 
 - Exporting to a path the project already lists replaces that entry instead of adding a second one.
 - A path belongs to one project. Recording an export removes the same path from every other project, because the file there has been overwritten.
-- Renaming or moving an exported video updates its entry; deleting the video removes it.
+- Renaming or moving an exported video in Tiny Clips updates its entry. Deleting the video leaves the entry where it is, whether it was deleted in Tiny Clips or outside it: a video that comes back, from the Recycle Bin or with the drive it is on, is linked again. What a missing video means for its project is in section 12.
 
 ## 12. Cleanup
 
-- A project is **eligible** for automatic cleanup when it has at least one export, `keepSources` is false, and it is not a flat project.
+- A project is **eligible** for automatic cleanup when at least one of its exported videos is still where it was saved, `keepSources` is false, and it is not a flat project.
 - A project that is open in Studio, or still being recorded, is never deleted. The app passes those ids to every cleanup.
 - **Age rule**: an eligible project is deleted when `lastOpenedAt` is more than 30 days old. The number of days is a setting; 0 disables the rule.
-- **Size rule**: applied after the age rule. When the projects that remain total more than 10 GB (10 × 1024³ bytes), eligible ones are deleted in ascending `lastOpenedAt` order, ties broken by id, until the total is at or under the cap or none remain. The cap is a setting; 0 disables the rule.
-- A draft (no exports) is never deleted automatically.
+- **Size rule**: applied after the age rule. When the eligible projects that remain total more than 10 GB (10 × 1024³ bytes), they are deleted in ascending `lastOpenedAt` order, ties broken by id, until their total is at or under the cap or none remain. Only eligible projects are counted. A draft, a pinned project and a flat project are never removed, so counting them would only use the room up: with more drafts than the cap allows, every exported project would lose its sources the moment it was exported. An eligible project that is open counts and is not the one that goes. The cap is a setting; 0 disables the rule.
+- A draft (no exports) is never deleted automatically. Neither is a project whose exported videos are all gone: it holds the only copy of the recording, as a draft does, and is listed with the drafts. A video on a drive that is not connected, or in a folder the app may not read, counts as gone for as long as that lasts.
 - A flat project is deleted when its external video no longer exists.
 - A folder with no `project.json` is a recording that never finished. It is deleted once it is more than 24 hours old.
-- A folder whose `project.json` cannot be read (for example, it was written by a newer version) is left alone.
+- A folder whose `project.json` cannot be read (for example, it was written by a newer version) is left alone. It is listed with the drafts, where its screen recording can be saved as an ordinary video and the folder deleted.
 - Cleanup deletes the whole project folder. The exported video is untouched, and opening it in Studio later creates a flat project.
 - A folder that cannot be deleted because a file is in use is skipped and tried again next time. One failure does not stop the rest.
-- Cleanup runs at app launch and after each export.
+- Cleanup runs shortly after app launch, each time an editor window closes, and when asked for in Settings. While Studio is switched off nothing is cleaned up: its storage settings are not shown then, so nothing they would delete is deleted.
 
 ## 13. Fixtures
 
