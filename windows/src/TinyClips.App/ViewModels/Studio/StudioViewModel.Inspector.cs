@@ -291,6 +291,22 @@ public sealed partial class StudioViewModel
         }
     }
 
+    // Project
+
+    /// <summary>
+    /// Whether the project is pinned against automatic cleanup. It is written at once and is not
+    /// an edit: Undo leaves it alone.
+    /// </summary>
+    public bool KeepsProject
+    {
+        get => _session.KeepSources;
+        set
+        {
+            _session.SetKeepSources(value);
+            ResyncIfDifferent(value, KeepsProject);
+        }
+    }
+
     // Default look
 
     /// <summary>Says that the look was saved as the default, until the project is edited again.</summary>

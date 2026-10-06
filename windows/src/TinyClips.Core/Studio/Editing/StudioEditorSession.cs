@@ -41,9 +41,6 @@ public sealed partial class StudioEditorSession
     private const int DeleteAttempts = 5;
     private static readonly TimeSpan DeleteRetryDelay = TimeSpan.FromMilliseconds(120);
 
-    // How many names a finished video is tried under before the export is given up.
-    private const int PlaceAttempts = 5;
-
     private readonly IStudioProjectStore _store;
     private readonly IStudioPreviewFactory _previewFactory;
     private readonly IStudioExportService _exporter;
@@ -126,6 +123,13 @@ public sealed partial class StudioEditorSession
     /// <summary>Why the project cannot be shown. Empty unless <see cref="State"/> is Unavailable.</summary>
     public string UnavailableMessage { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// Whether a project that cannot be shown still has its screen recording, to be saved as a
+    /// video of its own (<see cref="StudioScreenRecording"/>). False unless <see cref="State"/>
+    /// is Unavailable.
+    /// </summary>
+    public bool HasScreenRecordingToSave { get; private set; }
+
     /// <summary>The editor state. Null until the project has been read.</summary>
     public StudioEditorModel? Model { get; private set; }
 
@@ -179,6 +183,9 @@ public sealed partial class StudioEditorSession
     public bool HasCamera => Model?.HasCamera ?? false;
 
     public bool HasNeverExported => Model?.HasNeverExported ?? false;
+
+    /// <summary>Whether the project is pinned against automatic cleanup.</summary>
+    public bool KeepSources => Model?.Project.KeepSources ?? false;
 
     /// <summary>True from an edit until it has been written to the project on disk.</summary>
     public bool HasUnsavedEdits => _hasUnsavedEdits;
@@ -327,8 +334,22 @@ public sealed partial class StudioEditorSession
     {
         State = StudioEditorLoadState.Unavailable;
         UnavailableMessage = string.IsNullOrWhiteSpace(message) ? "The project could not be opened." : message;
+        HasScreenRecordingToSave = FindScreenRecordingQuietly();
         IsPlaying = false;
         RaiseChanged(StudioEditorChanges.All);
+    }
+
+    private bool FindScreenRecordingQuietly()
+    {
+        try
+        {
+            return _store.FindScreenRecording(ProjectId) is not null;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio could not look for the screen recording of {ProjectId}: {ex.Message}");
+            return false;
+        }
     }
 
     // Edits
@@ -654,6 +675,37 @@ public sealed partial class StudioEditorSession
         if (Model is { } model)
         {
             _settings.StudioDefaultLook = model.CurrentLook;
+        }
+    }
+
+    /// <summary>
+    /// Pins the project against automatic cleanup, or lets go of it. It is written into the
+    /// project on disk at once. It is not an edit: Undo leaves it alone, and it does not have
+    /// to wait for an export to end.
+    /// </summary>
+    /// <returns>False, after reporting the error, when it could not be written.</returns>
+    public bool SetKeepSources(bool keepSources)
+    {
+        if (_isClosed || Model is not { } model)
+        {
+            return false;
+        }
+
+        if (model.Project.KeepSources == keepSources)
+        {
+            return true;
+        }
+
+        try
+        {
+            model.RefreshBookkeeping(_store.SetKeepSources(ProjectId, keepSources));
+            RaiseChanged(StudioEditorChanges.Project);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ReportError(StudioEditorErrorKind.Keep, $"Studio could not change whether this project is kept: {ex.Message}");
+            return false;
         }
     }
 
@@ -1219,7 +1271,7 @@ public sealed partial class StudioEditorSession
             {
                 // The video gets its name and the project its link to it in one step on this
                 // thread, so that whatever notices the new file finds the link as well.
-                var placedPath = PlaceVideo(stagedPath, outputPath, createOutputPath);
+                var placedPath = StudioFilePlacement.Place(stagedPath, outputPath, createOutputPath, "the video was being made");
                 var saved = _store.RecordExport(ProjectId, placedPath);
                 Model?.RefreshBookkeeping(saved);
                 Model?.MarkExported(rendered);
@@ -1256,35 +1308,6 @@ public sealed partial class StudioEditorSession
         }
 
         return StudioExportOutcome.Failed;
-    }
-
-    /// <summary>
-    /// Gives a finished video its name, and returns the name it got. It never takes the place of
-    /// a file that is there: when something else was saved under the name while the video was
-    /// being made, that keeps it, and the video gets the name the app would give one saved now.
-    /// </summary>
-    private static string PlaceVideo(string stagedPath, string wantedPath, Func<string> createOutputPath)
-    {
-        var path = wantedPath;
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                // Without the right to replace: this fails where a file already has the name.
-                File.Move(stagedPath, path);
-                return path;
-            }
-            catch (IOException) when (File.Exists(path) && File.Exists(stagedPath))
-            {
-                if (attempt >= PlaceAttempts)
-                {
-                    throw new IOException(
-                        $"Another file was saved as {Path.GetFileName(path)} while the video was being made, and no free name was found for the video.");
-                }
-
-                path = createOutputPath();
-            }
-        }
     }
 
     private static void DeleteQuietly(string path)

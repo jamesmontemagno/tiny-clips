@@ -1,2 +1,3 @@
 .github/workflows/*.lock.yml linguist-generated=true merge=ours
 shared/studio/** text eol=lf
+*.onnx binary

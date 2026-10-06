@@ -302,6 +302,9 @@ public sealed partial class StudioWindow : Window
 
     private void OnExportClick(object sender, RoutedEventArgs e) => _ = ViewModel.ExportAsync();
 
+    // Never fails: what came of it is shown under the button and read out.
+    private void OnSaveScreenRecordingClick(object sender, RoutedEventArgs e) => _ = ViewModel.SaveScreenRecordingAsync();
+
     // Screen readers
 
     /// <summary>

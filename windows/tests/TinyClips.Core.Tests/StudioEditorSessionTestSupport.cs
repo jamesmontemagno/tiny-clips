@@ -26,7 +26,7 @@ public abstract class StudioEditorSessionTestBase : IDisposable
         Store = new RecordingStore(Projects, Log);
         Previews = new FakePreviewFactory(Log);
         Exporter = new FakeExporter(Log);
-        Settings = new CaptureSettings(new TestSettingsService(), null, null);
+        Settings = new CaptureSettings(new TestSettingsService());
     }
 
     internal ManualTimeProvider Time { get; }
@@ -448,7 +448,18 @@ internal sealed class RecordingStore(StudioProjectStore inner, List<string> log)
         return inner.MarkOpened(projectId);
     }
 
+    public StudioProject SetKeepSources(string projectId, bool keepSources)
+    {
+        log.Add("store.setKeepSources");
+        return inner.SetKeepSources(projectId, keepSources);
+    }
+
     public IReadOnlyList<StudioProjectSummary> ListSummaries() => inner.ListSummaries();
+
+    public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects() => inner.ListUnreadableProjects();
+
+    // Not written to the log: a session only looks, and only when it cannot show its project.
+    public string? FindScreenRecording(string projectId) => inner.FindScreenRecording(projectId);
 
     public StudioStorageSummary GetStorageSummary() => inner.GetStorageSummary();
 

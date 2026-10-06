@@ -223,7 +223,13 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
         public StudioProject MarkOpened(string projectId) => _inner.MarkOpened(projectId);
 
+        public StudioProject SetKeepSources(string projectId, bool keepSources) => _inner.SetKeepSources(projectId, keepSources);
+
         public IReadOnlyList<StudioProjectSummary> ListSummaries() => _inner.ListSummaries();
+
+        public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects() => _inner.ListUnreadableProjects();
+
+        public string? FindScreenRecording(string projectId) => _inner.FindScreenRecording(projectId);
 
         public StudioStorageSummary GetStorageSummary() => _inner.GetStorageSummary();
 

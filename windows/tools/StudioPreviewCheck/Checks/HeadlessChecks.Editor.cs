@@ -723,7 +723,13 @@ internal sealed class CountingStore(IStudioProjectStore inner) : IStudioProjectS
 
     public StudioProject MarkOpened(string projectId) => inner.MarkOpened(projectId);
 
+    public StudioProject SetKeepSources(string projectId, bool keepSources) => inner.SetKeepSources(projectId, keepSources);
+
     public IReadOnlyList<StudioProjectSummary> ListSummaries() => inner.ListSummaries();
+
+    public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects() => inner.ListUnreadableProjects();
+
+    public string? FindScreenRecording(string projectId) => inner.FindScreenRecording(projectId);
 
     public StudioStorageSummary GetStorageSummary() => inner.GetStorageSummary();
 

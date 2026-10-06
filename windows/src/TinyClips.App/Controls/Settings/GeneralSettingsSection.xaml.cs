@@ -11,7 +11,8 @@ namespace TinyClips.App.Settings.Sections;
 
 /// <summary>
 /// General settings: theme, save location, file naming, launch-at-login, and capture behavior
-/// toggles. While the Studio preview is switched on it also shows Studio project storage.
+/// toggles, and the switch for Tiny Clips Studio. While Studio is switched on it also shows Studio
+/// project storage and the recordings that only their project holds.
 /// </summary>
 public sealed partial class GeneralSettingsSection : UserControl, ISettingsSectionLifecycle
 {
@@ -34,7 +35,7 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
 
-        // Never faults, and does nothing while the Studio preview is switched off.
+        // Never faults. With Studio switched off it reads only what the line under the switch says.
         _ = viewModel.EnsureStudioStorageInitializedAsync();
     }
 
@@ -71,6 +72,40 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
         {
             app.OpenStudioWindow(draft.Id);
         }
+    }
+
+    /// <summary>
+    /// Saves a row's screen recording as an ordinary video. From there it is a saved video like
+    /// any other, and the app announces it as one. A failure is said in a dialog.
+    /// </summary>
+    private async void OnSaveStudioDraftRecording(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: StudioDraftItem draft })
+        {
+            return;
+        }
+
+        var (path, error) = await ViewModel.SaveStudioScreenRecordingAsync(draft);
+        if (path is not null)
+        {
+            // Also when Settings was closed while the recording was being copied: the video is there.
+            (Application.Current as App)?.AnnounceStudioVideoSaved(path);
+            return;
+        }
+
+        if (error is null || _closed)
+        {
+            return;
+        }
+
+        var failure = new ContentDialog
+        {
+            Title = "The screen recording was not saved",
+            Content = error,
+            CloseButtonText = "OK",
+            XamlRoot = XamlRoot,
+        };
+        await failure.ShowAsync();
     }
 
     private async void OnDeleteStudioDraft(object sender, RoutedEventArgs e)
@@ -144,7 +179,9 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
         for (var index = 0; index < count; index++)
         {
             var child = VisualTreeHelper.GetChild(root, index);
-            if (child is Button button)
+
+            // A row does not show every button: one that cannot be opened has no Open.
+            if (child is Button { Visibility: Visibility.Visible, IsEnabled: true } button)
             {
                 return button;
             }

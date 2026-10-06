@@ -98,6 +98,9 @@ public enum StudioEditorErrorKind
 
     /// <summary>Deleting the project.</summary>
     Delete,
+
+    /// <summary>Pinning the project against cleanup, or letting go of it. The project keeps what it had.</summary>
+    Keep,
 }
 
 public sealed class StudioEditorErrorEventArgs(StudioEditorErrorKind kind, string message) : EventArgs

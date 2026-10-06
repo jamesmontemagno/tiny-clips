@@ -5,26 +5,16 @@ namespace TinyClips.Core.Services;
 
 public sealed class CaptureSettings : ICaptureSettings
 {
-    /// <summary>Set to <c>1</c> to turn the Studio preview on for a run without editing settings.</summary>
-    public const string StudioPreviewEnvironmentVariable = "TINYCLIPS_STUDIO_PREVIEW";
-
     private const string VideoAfterRecordingKey = "videoAfterRecording";
     private const string StudioDefaultLookKey = "studioDefaultLook";
 
     private readonly ISettingsService _settings;
     private readonly IClipAnalyticsService? _analytics;
-    private readonly bool _studioPreviewForcedOn;
 
     public CaptureSettings(ISettingsService settings, IClipAnalyticsService? analytics = null)
-        : this(settings, analytics, Environment.GetEnvironmentVariable(StudioPreviewEnvironmentVariable))
-    {
-    }
-
-    internal CaptureSettings(ISettingsService settings, IClipAnalyticsService? analytics, string? studioPreviewEnvironmentValue)
     {
         _settings = settings;
         _analytics = analytics;
-        _studioPreviewForcedOn = string.Equals(studioPreviewEnvironmentValue?.Trim(), "1", StringComparison.Ordinal);
         MigrateLegacySaveDirectory();
     }
 
@@ -327,7 +317,7 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public bool StudioPreviewEnabled
     {
-        get => _studioPreviewForcedOn || _settings.Get("studioPreviewEnabled", false);
+        get => _settings.Get("studioPreviewEnabled", false);
         set => _settings.Set("studioPreviewEnabled", value);
     }
 

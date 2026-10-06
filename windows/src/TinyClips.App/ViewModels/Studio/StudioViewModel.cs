@@ -42,6 +42,7 @@ public sealed partial class StudioViewModel : ObservableObject
     ];
 
     private readonly StudioEditorSession _session;
+    private readonly IStudioProjectStore _store;
     private readonly ICaptureSettings _settings;
     private readonly IClipStorageService _storage;
     private readonly DispatcherQueue _dispatcher;
@@ -49,6 +50,8 @@ public sealed partial class StudioViewModel : ObservableObject
     private string _errorMessage = string.Empty;
     private bool _isSaveErrorShown;
     private string _defaultLookStatus = string.Empty;
+    private string _screenRecordingStatus = string.Empty;
+    private bool _isSavingScreenRecording;
 
     public StudioViewModel(
         string projectId,
@@ -60,6 +63,7 @@ public sealed partial class StudioViewModel : ObservableObject
         DispatcherQueue dispatcher,
         bool canFindPeople)
     {
+        _store = store;
         _settings = settings;
         _storage = storage;
         _dispatcher = dispatcher;
@@ -85,6 +89,12 @@ public sealed partial class StudioViewModel : ObservableObject
     /// <summary>Raised once an export has finished, with the path of the video.</summary>
     public event EventHandler<StudioExportedEventArgs>? Exported;
 
+    /// <summary>
+    /// Raised once the screen recording of a project that cannot be shown has been saved as a
+    /// video of its own, with the path of that video.
+    /// </summary>
+    public event EventHandler<StudioExportedEventArgs>? ScreenRecordingSaved;
+
     /// <summary>Raised with a sentence for the user when saving, exporting or deleting failed.</summary>
     public event EventHandler<StudioEditorErrorEventArgs>? ErrorReported;
 
@@ -105,6 +115,72 @@ public sealed partial class StudioViewModel : ObservableObject
     /// <summary>The heading and the reason as one sentence pair, for a screen reader.</summary>
     public string UnavailableDescription =>
         IsUnavailable ? $"{UnavailableHeading}. {UnavailableMessage}" : string.Empty;
+
+    // The way out for a project that cannot be shown
+
+    /// <summary>
+    /// Whether the project that cannot be shown still has its screen recording, which can then be
+    /// saved as an ordinary video. The button for it shows only then.
+    /// </summary>
+    public bool CanSaveScreenRecording => IsUnavailable && _session.HasScreenRecordingToSave;
+
+    /// <summary>False while the recording is being copied.</summary>
+    public bool IsSaveScreenRecordingEnabled => !_isSavingScreenRecording;
+
+    /// <summary>What came of saving the screen recording: the name it got, or why it was not saved. Empty before.</summary>
+    public string ScreenRecordingStatus
+    {
+        get => _screenRecordingStatus;
+        private set
+        {
+            if (SetProperty(ref _screenRecordingStatus, value))
+            {
+                OnPropertyChanged(nameof(HasScreenRecordingStatus));
+            }
+        }
+    }
+
+    public bool HasScreenRecordingStatus => _screenRecordingStatus.Length > 0;
+
+    /// <summary>
+    /// Saves the screen recording of a project that cannot be shown as an ordinary video, in the
+    /// folder and under the name any saved video gets, and says in
+    /// <see cref="ScreenRecordingStatus"/> what came of it. The project is left as it is. Never
+    /// fails.
+    /// </summary>
+    public async Task SaveScreenRecordingAsync()
+    {
+        if (!CanSaveScreenRecording || _isSavingScreenRecording)
+        {
+            return;
+        }
+
+        _isSavingScreenRecording = true;
+        OnPropertyChanged(nameof(IsSaveScreenRecordingEnabled));
+        ScreenRecordingStatus = "Saving the screen recording\u2026";
+        string status;
+        StudioAnnouncementKind kind;
+        try
+        {
+            var path = await StudioScreenRecording.SaveAsync(
+                _store,
+                ProjectId,
+                () => _storage.GenerateFilePath(CaptureType.Video));
+            status = $"Saved as {Path.GetFileName(path)}.";
+            kind = StudioAnnouncementKind.Completed;
+            ScreenRecordingSaved?.Invoke(this, new StudioExportedEventArgs(ProjectId, path));
+        }
+        catch (Exception ex)
+        {
+            status = $"The screen recording could not be saved: {ex.Message}";
+            kind = StudioAnnouncementKind.Stopped;
+        }
+
+        _isSavingScreenRecording = false;
+        OnPropertyChanged(nameof(IsSaveScreenRecordingEnabled));
+        ScreenRecordingStatus = status;
+        Announce(status, "StudioScreenRecordingSaved", kind);
+    }
 
     /// <summary>False while loading, while exporting and after closing. The whole editor follows it.</summary>
     public bool IsEditable => _session.IsEditable;

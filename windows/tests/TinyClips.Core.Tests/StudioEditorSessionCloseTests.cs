@@ -86,6 +86,11 @@ public sealed class StudioEditorSessionCloseTests : StudioEditorSessionTestBase
     {
         var id = CreateProject();
         Projects.RecordExport(id, ExportPath);
+
+        // The video is where it was exported to. Without it the project would be the only copy
+        // of the recording, and cleanup would leave it alone for that reason.
+        Directory.CreateDirectory(Path.GetDirectoryName(ExportPath)!);
+        File.WriteAllBytes(ExportPath, [7, 8, 9]);
         var session = await OpenAsync(id);
         Assert.Equal(Time.GetUtcNow(), Projects.Load(id).LastOpenedAt);
 
@@ -102,7 +107,8 @@ public sealed class StudioEditorSessionCloseTests : StudioEditorSessionTestBase
         Assert.Empty(Errors);
 
         // So the cleanup that follows every close leaves it alone. Counted from when the editor
-        // opened, 31 days ago, it would be gone now.
+        // opened, 31 days ago, it would be gone now. It is a project cleanup may remove.
+        Assert.True(Assert.Single(Projects.ListSummaries()).IsRemovableByCleanup);
         var cleanup = Projects.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0));
         Assert.Empty(cleanup.ProjectIdsDeleted);
         Assert.True(Projects.Exists(id));

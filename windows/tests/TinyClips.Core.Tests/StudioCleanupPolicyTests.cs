@@ -113,6 +113,68 @@ public sealed class StudioCleanupPolicyTests
     }
 
     [Fact]
+    public void Plan_SizeRuleCountsOnlyWhatCleanupMayRemove()
+    {
+        // Each of the four that cleanup never removes is over the limit by itself.
+        var plan = StudioCleanupPolicy.Plan(
+            [
+                Eligible("draft", Now - TimeSpan.FromDays(9), isDraft: true, sizeBytes: 500),
+                Eligible("pinned", Now - TimeSpan.FromDays(8), keepSources: true, sizeBytes: 500),
+                Eligible("flat", Now - TimeSpan.FromDays(7), isFlat: true, sizeBytes: 500),
+                Eligible("video-gone", Now - TimeSpan.FromDays(6), exportMissing: true, sizeBytes: 500),
+                Eligible("old", Now - TimeSpan.FromDays(3), sizeBytes: 40),
+                Eligible("new", Now - TimeSpan.FromDays(1), sizeBytes: 60),
+            ],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 100));
+
+        Assert.Empty(plan.ProjectIdsToDelete);
+    }
+
+    [Fact]
+    public void Plan_SizeRuleStopsOnceWhatCleanupMayRemoveIsUnderTheLimit()
+    {
+        var plan = StudioCleanupPolicy.Plan(
+            [
+                Eligible("draft", Now - TimeSpan.FromDays(9), isDraft: true, sizeBytes: 500),
+                Eligible("old", Now - TimeSpan.FromDays(3), sizeBytes: 40),
+                Eligible("middle", Now - TimeSpan.FromDays(2), sizeBytes: 30),
+                Eligible("new", Now - TimeSpan.FromDays(1), sizeBytes: 60),
+            ],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 100));
+
+        // 130 of removable projects, and 90 without the oldest. The draft's 500 are not in it.
+        Assert.Equal(["old"], plan.ProjectIdsToDelete);
+    }
+
+    [Fact]
+    public void Plan_AnExportedProjectWhoseVideosAreAllGoneIsKeptAsADraftIs()
+    {
+        var plan = StudioCleanupPolicy.Plan(
+            [Eligible("video-gone", Now - TimeSpan.FromDays(90), exportMissing: true, sizeBytes: 500)],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 1));
+
+        Assert.Empty(plan.ProjectIdsToDelete);
+    }
+
+    [Fact]
+    public void Plan_AnInUseProjectCountsTowardTheLimitAndIsNotTheOneThatGoes()
+    {
+        var plan = StudioCleanupPolicy.Plan(
+            [
+                Eligible("open", Now - TimeSpan.FromDays(3), sizeBytes: 80),
+                Eligible("closed", Now - TimeSpan.FromDays(1), sizeBytes: 30),
+            ],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 100),
+            ["open"]);
+
+        Assert.Equal(["closed"], plan.ProjectIdsToDelete);
+    }
+
+    [Fact]
     public void Plan_SizeRuleBreaksLastOpenedTiesByOrdinalId()
     {
         var plan = StudioCleanupPolicy.Plan(
@@ -133,6 +195,7 @@ public sealed class StudioCleanupPolicyTests
         bool isFlat = false,
         bool keepSources = false,
         long sizeBytes = 1,
-        bool externalVideoExists = true) =>
-        new(id, id, Now, lastOpenedAt, isDraft, isFlat, keepSources, sizeBytes, externalVideoExists);
+        bool externalVideoExists = true,
+        bool exportMissing = false) =>
+        new(id, id, Now, lastOpenedAt, isDraft, isFlat, keepSources, sizeBytes, externalVideoExists, exportMissing);
 }

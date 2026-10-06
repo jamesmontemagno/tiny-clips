@@ -4,42 +4,81 @@ using TinyClips.Core.Studio.Editing;
 namespace TinyClips.App.ViewModels.Studio;
 
 /// <summary>
-/// One row of the drafts list in Settings: a Studio project that was never exported, with what the
-/// row shows and what its two buttons are called.
+/// One row of the drafts list in Settings: a recording that only its Studio project holds, with
+/// what the row shows and what its buttons are called. That is a project that was never
+/// exported, one whose exported video is gone, or one Studio cannot read.
 /// </summary>
 public sealed partial class StudioDraftItem : ObservableObject
 {
     /// <summary>Why Delete is unavailable while the draft is open in an editor.</summary>
     public const string OpenInStudioNote = "Close this draft in Studio before deleting it.";
 
+    /// <summary>Said of a project whose exported videos are all gone.</summary>
+    public const string ExportMissingNote = "Its exported video is no longer where it was saved.";
+
+    /// <summary>Said of a project whose file cannot be read.</summary>
+    public const string UnreadableNote = "Studio cannot read this project. It may be damaged, or made by a newer version of Tiny Clips.";
+
+    /// <summary>What a project that cannot be read is called. Its name is in the file that cannot be read.</summary>
+    public const string UnreadableName = "Unreadable project";
+
     private string _details;
     private bool _isOpen;
+    private bool _isSavingRecording;
 
     /// <param name="id">The project id.</param>
     /// <param name="name">The project name. An empty one is shown as "Untitled recording".</param>
     /// <param name="details">When the draft was recorded and how much room it takes.</param>
     /// <param name="isOpen">Whether the draft is open in a Studio window.</param>
-    public StudioDraftItem(string id, string? name, string details, bool isOpen)
+    /// <param name="note">Why the row is in the list although it is not a draft like the others, or empty.</param>
+    /// <param name="canOpen">Whether Studio can open it. Not one it cannot read.</param>
+    /// <param name="canSaveRecording">Whether its screen recording is there to be saved as a video.</param>
+    public StudioDraftItem(
+        string id,
+        string? name,
+        string details,
+        bool isOpen,
+        string note = "",
+        bool canOpen = true,
+        bool canSaveRecording = false)
     {
         Id = id;
         Name = StudioEditorText.GetClipName(name);
         _details = details;
         _isOpen = isOpen;
+        Note = note;
+        CanOpen = canOpen;
+        CanSaveRecording = canSaveRecording;
     }
 
     public string Id { get; }
 
     public string Name { get; }
 
+    /// <summary>Why the row is in the list although it is not a draft like the others. Empty for one that is.</summary>
+    public string Note { get; }
+
+    public bool HasNote => Note.Length > 0;
+
+    public bool CanOpen { get; }
+
+    /// <summary>Whether the row offers to save the screen recording.</summary>
+    public bool CanSaveRecording { get; }
+
     public string OpenButtonName => $"Open {Name} in Studio";
 
     public string DeleteButtonName => $"Delete {Name}";
+
+    public string SaveRecordingButtonName => $"Save the screen recording of {Name}";
 
     /// <summary>The automation id of the row's Open button. Ids are unique per project.</summary>
     public string OpenButtonId => $"StudioDraftOpen_{Id}";
 
     /// <summary>The automation id of the row's Delete button.</summary>
     public string DeleteButtonId => $"StudioDraftDelete_{Id}";
+
+    /// <summary>The automation id of the row's Save recording button.</summary>
+    public string SaveRecordingButtonId => $"StudioDraftSaveRecording_{Id}";
 
     /// <summary>The date and the size, such as "5/12/2025 3:04 PM, 12.3 MB".</summary>
     public string Details
@@ -67,7 +106,26 @@ public sealed partial class StudioDraftItem : ObservableObject
     /// <summary>What Delete does, or why it cannot be used right now.</summary>
     public string DeleteHelpText => IsOpen ? OpenInStudioNote : "Delete this draft and its recordings.";
 
-    /// <summary>Whether another row is the same project under the same name.</summary>
+    /// <summary>True while the screen recording is being copied. The button waits until it is done.</summary>
+    public bool IsSavingRecording
+    {
+        get => _isSavingRecording;
+        set
+        {
+            if (SetProperty(ref _isSavingRecording, value))
+            {
+                OnPropertyChanged(nameof(IsSaveRecordingEnabled));
+            }
+        }
+    }
+
+    public bool IsSaveRecordingEnabled => !IsSavingRecording;
+
+    /// <summary>Whether another row shows the same project the same way, apart from what a row brings up to date by itself.</summary>
     public bool IsSameDraft(StudioDraftItem other) =>
-        string.Equals(Id, other.Id, StringComparison.Ordinal) && string.Equals(Name, other.Name, StringComparison.Ordinal);
+        string.Equals(Id, other.Id, StringComparison.Ordinal)
+        && string.Equals(Name, other.Name, StringComparison.Ordinal)
+        && string.Equals(Note, other.Note, StringComparison.Ordinal)
+        && CanOpen == other.CanOpen
+        && CanSaveRecording == other.CanSaveRecording;
 }

@@ -16,7 +16,30 @@ public interface IStudioProjectStore
     StudioProject Save(StudioProject project);
     void Delete(string projectId);
     StudioProject MarkOpened(string projectId);
+
+    /// <summary>
+    /// Pins a project against automatic cleanup, or lets go of it again. It is written into the
+    /// project on disk at once and is not one of the editor's edits: nothing undoes it.
+    /// </summary>
+    StudioProject SetKeepSources(string projectId, bool keepSources);
+
     IReadOnlyList<StudioProjectSummary> ListSummaries();
+
+    /// <summary>
+    /// The project folders whose <c>project.json</c> is there and cannot be read: damaged, or
+    /// written by a newer version. <see cref="ListSummaries"/> leaves them out and cleanup leaves
+    /// them alone, so this list is the only place they show up.
+    /// </summary>
+    IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects();
+
+    /// <summary>
+    /// The full path of the screen recording a project keeps in its own folder, or null when it
+    /// has none there: the project is built around a video kept elsewhere, the file is gone, or
+    /// there is no such project. A project whose <c>project.json</c> cannot be read is looked
+    /// for under the name every recording gets.
+    /// </summary>
+    string? FindScreenRecording(string projectId);
+
     StudioStorageSummary GetStorageSummary();
     StudioProject RecordExport(string projectId, string exportedPath);
     string? FindProjectIdByExportPath(string exportedPath);
@@ -173,6 +196,24 @@ public sealed class StudioProjectStore : IStudioProjectStore
         }
     }
 
+    public StudioProject SetKeepSources(string projectId, bool keepSources)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            var directory = ProjectDirectory(projectId);
+            var project = LoadProjectFile(directory, projectId);
+            if (project.KeepSources == keepSources)
+            {
+                return project;
+            }
+
+            var updated = project with { KeepSources = keepSources };
+            SaveProjectFile(directory, updated);
+            return updated;
+        }
+    }
+
     public IReadOnlyList<StudioProjectSummary> ListSummaries()
     {
         lock (_sync)
@@ -184,6 +225,69 @@ public sealed class StudioProjectStore : IStudioProjectStore
                 .OrderBy(summary => summary.CreatedAt)
                 .ThenBy(summary => summary.Id, StringComparer.Ordinal)
                 .ToArray();
+        }
+    }
+
+    public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects()
+    {
+        lock (_sync)
+        {
+            var unreadable = new List<StudioUnreadableProject>();
+            foreach (var folder in EnumerateProjectFolders())
+            {
+                // Without the file it is a recording that never finished, which cleanup removes
+                // after a day.
+                if (!File.Exists(Path.Combine(folder.Directory, ProjectFileName)))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    LoadProjectFile(folder.Directory, folder.Id);
+                }
+                catch (Exception ex) when (CanSkipProjectRead(ex))
+                {
+                    unreadable.Add(new StudioUnreadableProject(
+                        folder.Id,
+                        FolderCreationTime(folder.Directory),
+                        DirectorySize(folder.Directory),
+                        File.Exists(Path.Combine(folder.Directory, ScreenFileName))));
+                }
+            }
+
+            return unreadable
+                .OrderBy(project => project.CreatedAt)
+                .ThenBy(project => project.Id, StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
+    public string? FindScreenRecording(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            var directory = ProjectDirectory(projectId);
+            string path;
+            try
+            {
+                var project = LoadProjectFile(directory, projectId);
+                if (project.Sources.Screen.External)
+                {
+                    return null;
+                }
+
+                path = Path.Combine(directory, RequirePlainFileName(project.Sources.Screen.File, "sources.screen.file"));
+            }
+            catch (Exception ex) when (CanSkipProjectRead(ex))
+            {
+                // What cannot be read does not say where its recording is. Every recording is
+                // written under the same name, so that is where it is looked for.
+                path = Path.Combine(directory, ScreenFileName);
+            }
+
+            return File.Exists(path) ? path : null;
         }
     }
 
@@ -597,6 +701,11 @@ public sealed class StudioProjectStore : IStudioProjectStore
             var project = LoadProjectFile(folder.Directory, folder.Id);
             var isFlat = project.Sources.Screen.External;
             var externalExists = !isFlat || File.Exists(project.Sources.Screen.File);
+
+            // Looked at where each video was saved. One on a drive that is not connected counts
+            // as not there, which keeps the project: the safe side of not knowing.
+            var exportMissing = project.Exports.Length > 0
+                && !project.Exports.Any(static export => !string.IsNullOrWhiteSpace(export.Path) && File.Exists(export.Path));
             return new StudioProjectSummary(
                 folder.Id,
                 project.Name,
@@ -606,7 +715,8 @@ public sealed class StudioProjectStore : IStudioProjectStore
                 isFlat,
                 project.KeepSources,
                 DirectorySize(folder.Directory),
-                externalExists);
+                externalExists,
+                exportMissing);
         }
         catch (Exception ex) when (CanSkipProjectRead(ex))
         {
@@ -670,6 +780,18 @@ public sealed class StudioProjectStore : IStudioProjectStore
     {
         var creationTime = new DirectoryInfo(directory).CreationTimeUtc;
         return creationTime <= (now - TimeSpan.FromHours(24)).UtcDateTime;
+    }
+
+    private static DateTimeOffset FolderCreationTime(string directory)
+    {
+        try
+        {
+            return new DateTimeOffset(new DirectoryInfo(directory).CreationTimeUtc, TimeSpan.Zero);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return DateTimeOffset.UnixEpoch;
+        }
     }
 
     private static long DirectorySize(string directory)
@@ -743,6 +865,12 @@ public sealed record StudioProjectPaths(
     string EventsPath,
     string PosterPath);
 
+/// <param name="IsDraft">No video was ever exported from the project.</param>
+/// <param name="ExportMissing">
+/// Videos were exported and none of them is where it was saved any more. The project is then the
+/// only copy of the recording, as a draft is, and is treated as one: listed with the drafts, and
+/// never removed by cleanup.
+/// </param>
 public sealed record StudioProjectSummary(
     string Id,
     string Name,
@@ -752,7 +880,20 @@ public sealed record StudioProjectSummary(
     bool IsFlat,
     bool KeepSources,
     long SizeBytes,
-    bool ExternalVideoExists = true);
+    bool ExternalVideoExists = true,
+    bool ExportMissing = false)
+{
+    /// <summary>
+    /// Whether cleanup may remove the project: a video exported from it is still where it was
+    /// saved, the project is not pinned, and it is not built around a video kept elsewhere.
+    /// </summary>
+    public bool IsRemovableByCleanup => !IsDraft && !ExportMissing && !KeepSources && !IsFlat;
+}
+
+/// <summary>A project folder whose <c>project.json</c> cannot be read.</summary>
+/// <param name="CreatedAt">When the folder was made, which is when the recording started.</param>
+/// <param name="HasScreenRecording">Whether a screen recording is in the folder to be saved out of it.</param>
+public sealed record StudioUnreadableProject(string Id, DateTimeOffset CreatedAt, long SizeBytes, bool HasScreenRecording);
 
 public sealed record StudioStorageSummary(int ProjectCount, long TotalBytes);
 
@@ -789,7 +930,7 @@ public static class StudioCleanupPolicy
         if (options.RetentionDays > 0)
         {
             var cutoff = now - TimeSpan.FromDays(options.RetentionDays);
-            foreach (var summary in snapshot.Where(summary => !inUse.Contains(summary.Id) && IsEligible(summary) && summary.LastOpenedAt < cutoff))
+            foreach (var summary in snapshot.Where(summary => !inUse.Contains(summary.Id) && summary.IsRemovableByCleanup && summary.LastOpenedAt < cutoff))
             {
                 if (remaining.Remove(summary.Id))
                 {
@@ -800,12 +941,15 @@ public static class StudioCleanupPolicy
 
         if (options.SizeCapBytes > 0)
         {
-            var total = remaining.Values.Sum(summary => summary.SizeBytes);
-            foreach (var summary in remaining.Values
-                .Where(summary => !inUse.Contains(summary.Id) && IsEligible(summary))
+            // The limit is on what cleanup may remove. Drafts, pinned projects and the like are
+            // not counted: they are never removed, and counted they would use the room up, so
+            // that every exported project went the moment it was exported.
+            var removable = remaining.Values.Where(static summary => summary.IsRemovableByCleanup).ToArray();
+            var total = removable.Sum(summary => summary.SizeBytes);
+            foreach (var summary in removable
+                .Where(summary => !inUse.Contains(summary.Id))
                 .OrderBy(summary => summary.LastOpenedAt)
-                .ThenBy(summary => summary.Id, StringComparer.Ordinal)
-                .ToArray())
+                .ThenBy(summary => summary.Id, StringComparer.Ordinal))
             {
                 if (total <= options.SizeCapBytes)
                 {
@@ -819,7 +963,4 @@ public static class StudioCleanupPolicy
 
         return new StudioCleanupPlan(selected.ToArray());
     }
-
-    private static bool IsEligible(StudioProjectSummary summary) =>
-        !summary.IsDraft && !summary.KeepSources && !summary.IsFlat;
 }

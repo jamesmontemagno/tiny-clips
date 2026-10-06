@@ -70,8 +70,9 @@ public interface ICaptureSettings
     VideoAfterRecording VideoAfterRecording { get; set; }
 
     /// <summary>
-    /// Hidden switch for Tiny Clips Studio while it is in preview. Default false, and no UI sets it.
-    /// Also reads as true when the <c>TINYCLIPS_STUDIO_PREVIEW</c> environment variable is <c>1</c>.
+    /// Whether Tiny Clips Studio is switched on, while it is in preview. Default false. It is the
+    /// "Tiny Clips Studio (Preview)" switch in Settings; with it off, nothing of Studio is shown
+    /// and a recording is made as it always was.
     /// </summary>
     bool StudioPreviewEnabled { get; set; }
 
@@ -85,8 +86,9 @@ public interface ICaptureSettings
     int StudioSourceRetentionDays { get; set; }
 
     /// <summary>
-    /// Total Studio project storage, in gigabytes, allowed before the oldest exported projects are
-    /// deleted. Default 10, clamped to 0 through 500. Zero means no limit.
+    /// Storage, in gigabytes, the Studio projects that cleanup may remove can use before the ones
+    /// opened longest ago are deleted. Drafts and pinned projects are not counted. Default 10,
+    /// clamped to 0 through 500. Zero means no limit.
     /// </summary>
     int StudioStorageCapGigabytes { get; set; }
 

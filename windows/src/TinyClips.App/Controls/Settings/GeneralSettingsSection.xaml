@@ -179,13 +179,36 @@
                 </controls:SettingsCard>
             </StackPanel>
 
-            <!--  Shown only while the Studio preview is switched on.  -->
-            <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}">
-                <TextBlock
-                    Margin="4,16,0,0"
-                    Style="{StaticResource BodyStrongTextBlockStyle}"
-                    Text="Studio projects" />
+            <TextBlock
+                Margin="4,16,0,0"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Tiny Clips Studio" />
 
+            <!--  The switch is always there. What follows it shows once Studio is switched on.  -->
+            <controls:SettingsCard
+                Header="Tiny Clips Studio (Preview)"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
+                <controls:SettingsCard.Description>
+                    <StackPanel>
+                        <TextBlock
+                            Text="An editor for video recordings. A recording made for Studio keeps the screen, the camera, and the clicks apart, so you can arrange them over a background, zoom, cut, and change the layout before you export. It is a preview: parts of it are unfinished."
+                            TextWrapping="Wrap" />
+                        <!--  What switching it off left on disk. Nothing is deleted by the switch.  -->
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            AutomationProperties.AutomationId="StudioKeptNoteText"
+                            Text="{x:Bind ViewModel.StudioKeptNote, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.StudioKeptNoteVisibility, Mode=OneWay}" />
+                    </StackPanel>
+                </controls:SettingsCard.Description>
+                <ToggleSwitch
+                    AutomationProperties.AutomationId="StudioPreviewToggle"
+                    AutomationProperties.Name="Tiny Clips Studio (Preview)"
+                    IsOn="{x:Bind ViewModel.IsStudioPreviewEnabled, Mode=TwoWay}" />
+            </controls:SettingsCard>
+
+            <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}">
                 <StackPanel Spacing="2">
                     <controls:SettingsCard
                         Header="Project storage"
@@ -197,7 +220,7 @@
                                     Text="{x:Bind ViewModel.StudioStorageDisplay, Mode=OneWay}"
                                     TextWrapping="Wrap" />
                                 <TextBlock
-                                    Text="The sources of exported projects are deleted by the two rules below. Drafts that were never exported are never deleted automatically, and exported videos are never touched."
+                                    Text="The sources of exported projects are deleted by the two rules below. Drafts that were never exported are never deleted automatically, and neither is a project whose exported video is gone or one you chose to keep. Exported videos are never touched."
                                     TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="StudioCleanupStatusText"
@@ -231,7 +254,7 @@
                     </controls:SettingsCard>
 
                     <controls:SettingsCard
-                        Description="Gigabytes all projects may use. Past that, the exported projects opened longest ago are deleted first. 0 means no limit."
+                        Description="Gigabytes the exported projects may use. Past that, the ones opened longest ago are deleted first. Drafts and projects you keep are not counted. 0 means no limit."
                         Header="Storage limit"
                         HeaderIcon="{ui:FontIcon Glyph=&#xE7B8;}">
                         <NumberBox
@@ -245,7 +268,11 @@
                     </controls:SettingsCard>
                 </StackPanel>
 
-                <!--  Recordings that were kept without exporting. A draft is not in the Clips Library.  -->
+                <!--
+                    Recordings that only their project holds: kept without exporting, exported to a
+                    video that is gone, or in a project that cannot be read. None of them has a
+                    video in the Clips Library.
+                -->
                 <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.StudioDraftsVisibility, Mode=OneWay}">
                     <TextBlock
                         Margin="4,12,0,0"
@@ -266,6 +293,11 @@
                                     <controls:SettingsCard.Description>
                                         <StackPanel>
                                             <TextBlock Text="{x:Bind Details, Mode=OneWay}" TextWrapping="Wrap" />
+                                            <!--  Why it is here although it is not a draft like the others.  -->
+                                            <TextBlock
+                                                Text="{x:Bind Note, Mode=OneTime}"
+                                                TextWrapping="Wrap"
+                                                Visibility="{x:Bind HasNote, Mode=OneTime}" />
                                             <!--  A disabled button shows no tooltip, so the reason is written out.  -->
                                             <TextBlock
                                                 Text="{x:Bind studio:StudioDraftItem.OpenInStudioNote, Mode=OneTime}"
@@ -280,7 +312,19 @@
                                             Click="OnOpenStudioDraft"
                                             Content="Open"
                                             Tag="{x:Bind Mode=OneTime}"
-                                            ToolTipService.ToolTip="Open this draft in Studio" />
+                                            ToolTipService.ToolTip="Open this draft in Studio"
+                                            Visibility="{x:Bind CanOpen, Mode=OneTime}" />
+                                        <!--  The way out for a recording Studio cannot show: the screen recording as an ordinary video.  -->
+                                        <Button
+                                            AutomationProperties.AutomationId="{x:Bind SaveRecordingButtonId, Mode=OneTime}"
+                                            AutomationProperties.HelpText="Saves the screen recording to your videos folder as an ordinary video. The project is kept as it is."
+                                            AutomationProperties.Name="{x:Bind SaveRecordingButtonName, Mode=OneTime}"
+                                            Click="OnSaveStudioDraftRecording"
+                                            Content="Save recording"
+                                            IsEnabled="{x:Bind IsSaveRecordingEnabled, Mode=OneWay}"
+                                            Tag="{x:Bind Mode=OneTime}"
+                                            ToolTipService.ToolTip="Save the screen recording to your videos folder as an ordinary video"
+                                            Visibility="{x:Bind CanSaveRecording, Mode=OneTime}" />
                                         <Button
                                             AutomationProperties.AutomationId="{x:Bind DeleteButtonId, Mode=OneTime}"
                                             AutomationProperties.HelpText="{x:Bind DeleteHelpText, Mode=OneWay}"

@@ -49,8 +49,9 @@
         </StackPanel>
 
         <!--
-            A project that cannot be shown: the reason, and nothing else. It takes the keyboard
-            focus, which nothing else here could, so a screen reader reads it.
+            A project that cannot be shown: the reason, and where its recording is still there, a
+            way to save that. The panel takes the keyboard focus, so a screen reader reads the
+            reason first.
         -->
         <studio:StudioMessagePanel
             x:Name="UnavailablePanel"
@@ -83,6 +84,31 @@
                     Text="{x:Bind ViewModel.UnavailableMessage, Mode=OneWay}"
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
+                <!--
+                    The way out, where the recording itself is still there: it is saved as an
+                    ordinary video, and the project stays as it is. One Tab from the message.
+                -->
+                <Button
+                    x:Name="SaveScreenRecordingButton"
+                    Margin="0,8,0,0"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioSaveScreenRecordingButton"
+                    AutomationProperties.HelpText="Saves this project's screen recording to your videos folder as an ordinary video. The project is kept as it is."
+                    AutomationProperties.Name="Save the screen recording"
+                    Click="OnSaveScreenRecordingClick"
+                    Content="Save the screen recording"
+                    IsEnabled="{x:Bind ViewModel.IsSaveScreenRecordingEnabled, Mode=OneWay}"
+                    ToolTipService.ToolTip="Save the screen recording to your videos folder as an ordinary video"
+                    Visibility="{x:Bind ViewModel.CanSaveScreenRecording, Mode=OneWay}" />
+                <!--  What came of it. Read out by the window when it changes.  -->
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioScreenRecordingStatus"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.ScreenRecordingStatus, Mode=OneWay}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasScreenRecordingStatus, Mode=OneWay}" />
             </StackPanel>
         </studio:StudioMessagePanel>
 

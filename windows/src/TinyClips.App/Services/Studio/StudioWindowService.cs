@@ -57,6 +57,12 @@ public sealed class StudioWindowService
     public event EventHandler<StudioExportedEventArgs>? Exported;
 
     /// <summary>
+    /// Raised once the screen recording of a project that could not be shown has been saved as a
+    /// video of its own, with the path of that video.
+    /// </summary>
+    public event EventHandler<StudioExportedEventArgs>? ScreenRecordingSaved;
+
+    /// <summary>
     /// Raised with a sentence for the user when something failed and the window that would have
     /// shown it is gone, for example a project that could not be deleted.
     /// </summary>
@@ -104,6 +110,7 @@ public sealed class StudioWindowService
                 DispatcherQueue.GetForCurrentThread(),
                 CanFindPeople());
             viewModel.Exported += OnExported;
+            viewModel.ScreenRecordingSaved += OnScreenRecordingSaved;
             viewModel.ErrorReported += OnErrorReported;
             window = new StudioWindow(viewModel, _previewViews, _settings, OnWindowClosed);
             _windows[projectId] = window;
@@ -135,6 +142,8 @@ public sealed class StudioWindowService
     }
 
     private void OnExported(object? sender, StudioExportedEventArgs e) => Exported?.Invoke(this, e);
+
+    private void OnScreenRecordingSaved(object? sender, StudioExportedEventArgs e) => ScreenRecordingSaved?.Invoke(this, e);
 
     private void OnErrorReported(object? sender, StudioEditorErrorEventArgs e)
     {
@@ -189,6 +198,7 @@ public sealed class StudioWindowService
         }
 
         window.ViewModel.Exported -= OnExported;
+        window.ViewModel.ScreenRecordingSaved -= OnScreenRecordingSaved;
         window.ViewModel.ErrorReported -= OnErrorReported;
         _deletingProjectIds.Remove(projectId);
 

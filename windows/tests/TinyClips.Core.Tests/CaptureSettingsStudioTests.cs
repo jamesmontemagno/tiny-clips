@@ -134,27 +134,6 @@ public sealed class CaptureSettingsStudioTests
     }
 
     [Theory]
-    [InlineData("1", true)]
-    [InlineData(" 1 ", true)]
-    [InlineData("0", false)]
-    [InlineData("true", false)]
-    [InlineData("", false)]
-    [InlineData(null, false)]
-    public void StudioPreviewEnabled_IsForcedOnByTheEnvironmentValue(string? environmentValue, bool expected)
-    {
-        var service = new TestSettingsService();
-        var settings = new CaptureSettings(service, null, environmentValue);
-
-        Assert.Equal(expected, settings.StudioPreviewEnabled);
-
-        // The environment only overrides the read; it never changes what is stored.
-        Assert.False(service.Get("studioPreviewEnabled", false));
-
-        settings.StudioPreviewEnabled = false;
-        Assert.Equal(expected, settings.StudioPreviewEnabled);
-    }
-
-    [Theory]
     [InlineData(false, VideoAfterRecording.Save, false)]
     [InlineData(false, VideoAfterRecording.Trimmer, false)]
     [InlineData(false, VideoAfterRecording.Studio, false)]
@@ -180,11 +159,10 @@ public sealed class CaptureSettingsStudioTests
         Assert.False(settings.IsStudioRecordingEnabled);
         Assert.False(settings.ShowTrimmer);
 
-        var forcedOn = new CaptureSettings(new TestSettingsService(), null, "1");
-        forcedOn.VideoAfterRecording = VideoAfterRecording.Studio;
+        settings.StudioPreviewEnabled = true;
 
-        Assert.True(forcedOn.IsStudioRecordingEnabled);
-        Assert.False(forcedOn.ShowTrimmer);
+        Assert.True(settings.IsStudioRecordingEnabled);
+        Assert.False(settings.ShowTrimmer);
     }
 
     [Theory]
@@ -468,12 +446,10 @@ public sealed class CaptureSettingsStudioTests
         Assert.Equal(string.Empty, service.Get("studioDefaultLook", "unset"));
     }
 
-    // The environment value is passed explicitly so a developer machine with the preview
-    // variable set cannot change what these tests see.
     private static CaptureSettings Create(out TestSettingsService service)
     {
         service = new TestSettingsService();
-        return new CaptureSettings(service, null, null);
+        return new CaptureSettings(service);
     }
 
     private sealed class TestSettingsService : ISettingsService

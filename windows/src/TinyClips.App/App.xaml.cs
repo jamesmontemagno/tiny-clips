@@ -2105,6 +2105,7 @@ public partial class App : Application
             _studioWindows = Services.GetRequiredService<StudioWindowService>();
             _studioWindows.ActivateWindow = ActivateWindowToForeground;
             _studioWindows.Exported += OnStudioExported;
+            _studioWindows.ScreenRecordingSaved += OnStudioExported;
             _studioWindows.ErrorReported += (_, e) => ShowMessageNotification(e.Message);
         }
 
@@ -2113,9 +2114,17 @@ public partial class App : Application
 
     /// <summary>
     /// A video exported from Studio is a saved video like any other: it is copied, revealed and
-    /// announced as the settings say, and joins the recent captures, as a trimmed video does.
+    /// announced as the settings say, and joins the recent captures, as a trimmed video does. So
+    /// is a screen recording that was saved out of a project an editor could not show.
     /// </summary>
-    private void OnStudioExported(object? sender, StudioExportedEventArgs e)
+    private void OnStudioExported(object? sender, StudioExportedEventArgs e) => AnnounceStudioVideoSaved(e.Path);
+
+    /// <summary>
+    /// Treats a video that came out of a Studio project as the saved video it is. Called for an
+    /// export, and by Settings for a screen recording saved from the drafts list. May be called
+    /// from any thread.
+    /// </summary>
+    internal void AnnounceStudioVideoSaved(string path)
     {
         _dispatcher?.TryEnqueue(async () =>
         {
@@ -2124,8 +2133,8 @@ public partial class App : Application
                 return;
             }
 
-            await FinalizeClipAsync(e.Path, CaptureType.Video);
-            Services.GetRequiredService<IRecentCaptureService>().Record(e.Path, CaptureType.Video);
+            await FinalizeClipAsync(path, CaptureType.Video);
+            Services.GetRequiredService<IRecentCaptureService>().Record(path, CaptureType.Video);
         });
     }
 

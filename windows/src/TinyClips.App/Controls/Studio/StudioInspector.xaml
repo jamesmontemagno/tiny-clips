@@ -1133,6 +1133,17 @@
                     IsChecked="{x:Bind ViewModel.IsMuted, Mode=TwoWay}" />
             </StackPanel>
 
+            <!--  Project: what is kept of it, as opposed to what is in the video. Not an edit.  -->
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Project" />
+                <CheckBox
+                    AutomationProperties.AutomationId="StudioKeepProjectCheckBox"
+                    AutomationProperties.HelpText="Storage cleanup never removes a kept project, so its video stays editable. Otherwise a project goes by the rules in Settings once its video has been exported."
+                    Content="Keep this project"
+                    IsChecked="{x:Bind ViewModel.KeepsProject, Mode=TwoWay}"
+                    ToolTipService.ToolTip="Storage cleanup never removes a kept project, so its video stays editable" />
+            </StackPanel>
+
             <Border
                 Height="1"
                 Background="{ThemeResource DividerStrokeColorDefaultBrush}" />

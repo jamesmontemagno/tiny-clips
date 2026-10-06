@@ -17,6 +17,8 @@ public sealed class StudioProjectStoreTests : IDisposable
         { "Save", (store, id) => store.Save(Project(id)) },
         { "Delete", (store, id) => store.Delete(id) },
         { "MarkOpened", (store, id) => store.MarkOpened(id) },
+        { "SetKeepSources", (store, id) => store.SetKeepSources(id, true) },
+        { "FindScreenRecording", (store, id) => store.FindScreenRecording(id) },
         { "RecordExport", (store, id) => store.RecordExport(id, Path.Combine(Path.GetTempPath(), "export.mp4")) },
         { "LoadEvents", (store, id) => store.LoadEvents(id) },
         { "SaveEvents", (store, id) => store.SaveEvents(id, new StudioEvents()) },
@@ -284,8 +286,8 @@ public sealed class StudioProjectStoreTests : IDisposable
         var store = CreateStore();
         var locked = CreateCompletedProject(store);
         var deletable = CreateCompletedProject(store);
-        store.RecordExport(locked.Id, Path.Combine(_directory, "locked-export.mp4"));
-        store.RecordExport(deletable.Id, Path.Combine(_directory, "deletable-export.mp4"));
+        store.RecordExport(locked.Id, WriteExportedVideo("locked"));
+        store.RecordExport(deletable.Id, WriteExportedVideo("deletable"));
         store.Save(store.Load(locked.Id) with { LastOpenedAt = _time.GetUtcNow() - TimeSpan.FromDays(90) });
         store.Save(store.Load(deletable.Id) with { LastOpenedAt = _time.GetUtcNow() - TimeSpan.FromDays(90) });
         var lockedPath = Path.Combine(store.GetPaths(locked.Id).ProjectDirectory, "locked.bin");
@@ -375,6 +377,231 @@ public sealed class StudioProjectStoreTests : IDisposable
     }
 
     [Fact]
+    public void Summary_SaysWhenEveryExportedVideoIsGone()
+    {
+        var store = CreateStore();
+        var draft = CreateCompletedProject(store);
+        var exported = CreateCompletedProject(store);
+        var first = WriteExportedVideo("first");
+        var second = WriteExportedVideo("second");
+        store.RecordExport(exported.Id, first);
+        store.RecordExport(exported.Id, second);
+
+        StudioProjectSummary Summary(string id) => store.ListSummaries().Single(summary => summary.Id == id);
+
+        Assert.True(Summary(draft.Id).IsDraft);
+        Assert.False(Summary(draft.Id).ExportMissing);
+        Assert.False(Summary(draft.Id).IsRemovableByCleanup);
+        Assert.False(Summary(exported.Id).IsDraft);
+        Assert.False(Summary(exported.Id).ExportMissing);
+        Assert.True(Summary(exported.Id).IsRemovableByCleanup);
+
+        // One of the two videos is enough for the recording to exist outside the project.
+        File.Delete(first);
+        Assert.False(Summary(exported.Id).ExportMissing);
+        Assert.True(Summary(exported.Id).IsRemovableByCleanup);
+
+        File.Delete(second);
+        Assert.False(Summary(exported.Id).IsDraft);
+        Assert.True(Summary(exported.Id).ExportMissing);
+        Assert.False(Summary(exported.Id).IsRemovableByCleanup);
+
+        // Nothing was written down: the project still names both, and is found by either.
+        Assert.Equal(2, store.Load(exported.Id).Exports.Length);
+        Assert.Equal(exported.Id, store.FindProjectIdByExportPath(first));
+    }
+
+    [Fact]
+    public void Cleanup_KeepsAnExportedProjectWhoseVideoIsGone_AndTakesItOnceTheVideoIsBack()
+    {
+        var store = CreateStore();
+        var project = CreateOldExportedProject(store, "only");
+        var video = ExportedVideoPath("only");
+        var rules = new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 1);
+
+        // The video was deleted, so the project is the one copy of the recording that is left.
+        File.Delete(video);
+
+        Assert.Empty(store.Cleanup(rules).ProjectIdsDeleted);
+        Assert.True(File.Exists(store.GetPaths(project.Id).ScreenPath));
+
+        // Back where it was saved, from the Recycle Bin or with the drive it is on.
+        File.WriteAllBytes(video, [7, 8, 9]);
+
+        Assert.Equal([project.Id], store.Cleanup(rules).ProjectIdsDeleted);
+    }
+
+    [Fact]
+    public void Cleanup_StorageLimitCountsWhatCleanupMayRemove_SoDraftsCostNoExportedProjectItsSources()
+    {
+        var store = CreateStore();
+        var rules = new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 250_000);
+        StudioProject CreateWithRecording(int bytes)
+        {
+            var project = CreateCompletedProject(store);
+            File.WriteAllBytes(store.GetPaths(project.Id).ScreenPath, new byte[bytes]);
+            return project;
+        }
+
+        StudioProject Export(StudioProject project, string name, int daysSinceOpened)
+        {
+            store.RecordExport(project.Id, WriteExportedVideo(name));
+            return store.Save(store.Load(project.Id) with { LastOpenedAt = _time.GetUtcNow() - TimeSpan.FromDays(daysSinceOpened) });
+        }
+
+        // The drafts alone are over the limit, and so is the pinned project.
+        var draft = CreateWithRecording(400_000);
+        var pinned = Export(CreateWithRecording(400_000), "pinned", daysSinceOpened: 9);
+        store.SetKeepSources(pinned.Id, true);
+        var oldest = Export(CreateWithRecording(100_000), "oldest", daysSinceOpened: 3);
+        var newer = Export(CreateWithRecording(100_000), "newer", daysSinceOpened: 2);
+
+        // Two exported projects of 100,000 bytes are under 250,000. Counting everything, as the
+        // limit once did, both would go: 1,000,000 bytes, and only they can be removed.
+        Assert.Empty(store.Cleanup(rules).ProjectIdsDeleted);
+
+        var newest = Export(CreateWithRecording(100_000), "newest", daysSinceOpened: 1);
+
+        // Three are over it, and the one opened longest ago goes.
+        Assert.Equal([oldest.Id], store.Cleanup(rules).ProjectIdsDeleted);
+        Assert.True(store.Exists(draft.Id));
+        Assert.True(store.Exists(pinned.Id));
+        Assert.True(store.Exists(newer.Id));
+        Assert.True(store.Exists(newest.Id));
+    }
+
+    [Fact]
+    public void SetKeepSources_PinsTheProjectAndChangesNothingElse()
+    {
+        var store = CreateStore();
+        var project = CreateOldExportedProject(store, "kept");
+        var before = store.Load(project.Id);
+        var rules = new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0);
+        _time.Advance(TimeSpan.FromMinutes(5));
+
+        var pinned = store.SetKeepSources(project.Id, true);
+
+        Assert.True(pinned.KeepSources);
+        Assert.True(store.Load(project.Id).KeepSources);
+        Assert.Equal(before.ModifiedAt, pinned.ModifiedAt);
+        Assert.Equal(before.LastOpenedAt, pinned.LastOpenedAt);
+        Assert.Equal(
+            StudioProjectJson.WriteProject(before with { KeepSources = true }),
+            StudioProjectJson.WriteProject(store.Load(project.Id)));
+        Assert.True(store.ListSummaries().Single().KeepSources);
+        Assert.Empty(store.Cleanup(rules).ProjectIdsDeleted);
+
+        // Asked for what it already is: the same project, nothing written.
+        Assert.True(store.SetKeepSources(project.Id, true).KeepSources);
+
+        Assert.False(store.SetKeepSources(project.Id, false).KeepSources);
+        Assert.Equal([project.Id], store.Cleanup(rules).ProjectIdsDeleted);
+    }
+
+    [Fact]
+    public void SetKeepSources_OfAProjectThatIsGone_Throws()
+    {
+        var store = CreateStore();
+        var project = CreateCompletedProject(store);
+        store.Delete(project.Id);
+
+        Assert.ThrowsAny<IOException>(() => store.SetKeepSources(project.Id, true));
+        Assert.False(Directory.Exists(store.GetPaths(project.Id).ProjectDirectory));
+    }
+
+    [Fact]
+    public void FindScreenRecording_IsTheRecordingInTheProjectsOwnFolder()
+    {
+        var store = CreateStore();
+        var project = CreateCompletedProject(store);
+        var paths = store.GetPaths(project.Id);
+
+        // Not written yet, as after a recording that failed before its first frame.
+        Assert.Null(store.FindScreenRecording(project.Id));
+
+        File.WriteAllBytes(paths.ScreenPath, [1, 2, 3]);
+        Assert.Equal(paths.ScreenPath, store.FindScreenRecording(project.Id));
+
+        // The project says which file it is.
+        var renamed = Path.Combine(paths.ProjectDirectory, "take-two.mp4");
+        File.Move(paths.ScreenPath, renamed);
+        var sources = project.Sources;
+        store.Save(project with { Sources = sources with { Screen = sources.Screen with { File = "take-two.mp4" } } });
+        Assert.Equal(renamed, store.FindScreenRecording(project.Id));
+
+        store.Delete(project.Id);
+        Assert.Null(store.FindScreenRecording(project.Id));
+    }
+
+    [Fact]
+    public void FindScreenRecording_OfAProjectAroundAVideoKeptElsewhere_IsNothing()
+    {
+        var store = CreateStore();
+        var videoPath = Path.Combine(_directory, "external.mp4");
+        Directory.CreateDirectory(_directory);
+        File.WriteAllBytes(videoPath, [1, 2, 3]);
+        var flat = store.GetOrCreateFlatProject(videoPath, new StudioRecordingSourceInfo(640, 360, 12, 24), "1.9.0");
+
+        // That video is the user's own file already. There is nothing of it to save out.
+        Assert.Null(store.FindScreenRecording(flat.Id));
+    }
+
+    [Theory]
+    [InlineData("{")]
+    [InlineData("""{ "schemaVersion": 99 }""")]
+    public void FindScreenRecording_OfAProjectThatCannotBeRead_LooksUnderTheNameEveryRecordingGets(string projectJson)
+    {
+        var store = CreateStore();
+        var project = CreateCompletedProject(store);
+        var paths = store.GetPaths(project.Id);
+        File.WriteAllBytes(paths.ScreenPath, [1, 2, 3]);
+        File.WriteAllText(paths.ProjectJsonPath, projectJson);
+
+        Assert.ThrowsAny<Exception>(() => store.Load(project.Id));
+        Assert.Equal(paths.ScreenPath, store.FindScreenRecording(project.Id));
+
+        File.Delete(paths.ScreenPath);
+        Assert.Null(store.FindScreenRecording(project.Id));
+    }
+
+    [Fact]
+    public void ListUnreadableProjects_IsWhatListSummariesLeavesOut()
+    {
+        var store = CreateStore();
+        var readable = CreateCompletedProject(store);
+        var damaged = CreateCompletedProject(store);
+        var newer = CreateCompletedProject(store);
+        var unfinished = store.BeginRecording();
+        File.WriteAllBytes(store.GetPaths(damaged.Id).ScreenPath, new byte[1000]);
+        File.WriteAllText(store.GetPaths(damaged.Id).ProjectJsonPath, "{");
+        File.WriteAllText(store.GetPaths(newer.Id).ProjectJsonPath, """{ "schemaVersion": 99 }""");
+        var damagedCreated = new DateTime(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc);
+        var newerCreated = new DateTime(2026, 9, 2, 8, 0, 0, DateTimeKind.Utc);
+        Directory.SetCreationTimeUtc(store.GetPaths(damaged.Id).ProjectDirectory, damagedCreated);
+        Directory.SetCreationTimeUtc(store.GetPaths(newer.Id).ProjectDirectory, newerCreated);
+
+        var unreadable = store.ListUnreadableProjects();
+
+        Assert.Equal([readable.Id], store.ListSummaries().Select(summary => summary.Id));
+        Assert.Equal([damaged.Id, newer.Id], unreadable.Select(project => project.Id));
+        Assert.DoesNotContain(unfinished.ProjectId, unreadable.Select(project => project.Id));
+        Assert.True(unreadable[0].HasScreenRecording);
+        Assert.False(unreadable[1].HasScreenRecording);
+        Assert.Equal(new DateTimeOffset(damagedCreated), unreadable[0].CreatedAt);
+        Assert.Equal(new DateTimeOffset(newerCreated), unreadable[1].CreatedAt);
+        Assert.Equal(1001, unreadable[0].SizeBytes);
+
+        // Cleanup still leaves them alone, whatever the rules.
+        Assert.Empty(store.Cleanup(new StudioCleanupOptions(RetentionDays: 1, SizeCapBytes: 1)).ProjectIdsDeleted);
+        Assert.Equal(2, store.ListUnreadableProjects().Count);
+
+        // The way out and the way to be rid of it.
+        Assert.Equal(store.GetPaths(damaged.Id).ScreenPath, store.FindScreenRecording(damaged.Id));
+        store.Delete(damaged.Id);
+        Assert.Equal([newer.Id], store.ListUnreadableProjects().Select(project => project.Id));
+    }
+
+    [Fact]
     public void CompleteRecording_AppliesSavedLookWithoutCrops()
     {
         var store = CreateStore();
@@ -407,14 +634,29 @@ public sealed class StudioProjectStoreTests : IDisposable
         return store.CompleteRecording(paths.ProjectId, CreateRequest());
     }
 
-    /// <summary>A project with a screen recording whose video was exported and that was last opened 90 days ago: what the age rule deletes.</summary>
+    /// <summary>
+    /// A project with a screen recording whose video was exported, is still where it was saved,
+    /// and that was last opened 90 days ago: what the age rule deletes.
+    /// </summary>
     private StudioProject CreateOldExportedProject(StudioProjectStore store, string name)
     {
         var project = CreateCompletedProject(store);
         File.WriteAllBytes(store.GetPaths(project.Id).ScreenPath, [1, 2, 3]);
-        store.RecordExport(project.Id, Path.Combine(_directory, name + "-export.mp4"));
+        store.RecordExport(project.Id, WriteExportedVideo(name));
         return store.Save(store.Load(project.Id) with { LastOpenedAt = _time.GetUtcNow() - TimeSpan.FromDays(90) });
     }
+
+    /// <summary>Writes a file where a video would have been exported to, and returns its path.</summary>
+    private string WriteExportedVideo(string name)
+    {
+        var path = ExportedVideoPath(name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, [7, 8, 9]);
+        return path;
+    }
+
+    // Not a project folder: the store only looks into folders named like a project id.
+    private string ExportedVideoPath(string name) => Path.Combine(_directory, "Videos", name + "-export.mp4");
 
     private void WriteProject(string folderId, StudioProject project)
     {

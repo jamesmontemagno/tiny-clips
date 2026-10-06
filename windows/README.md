@@ -135,19 +135,10 @@ CPU-vs-GPU numbers, see [`docs/gpu-recording-pipeline.md`](docs/gpu-recording-pi
 
 ## Tiny Clips Studio (preview)
 
-Studio is hidden until it has been checked on real hardware. It is switched on by the environment
-variable `TINYCLIPS_STUDIO_PREVIEW` set to `1`:
-
-- **An installed build:** run `setx TINYCLIPS_STUDIO_PREVIEW 1`, then exit Tiny Clips from the tray
-  and start it again. `reg delete HKCU\Environment /v TINYCLIPS_STUDIO_PREVIEW /f` switches it off.
-- **A build from source:** a packaged launch does not get the terminal's environment, so start it
-  through the winapp CLI, from `windows/src/TinyClips.App`:
-
-  ```powershell
-  $out = 'bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64'
-  $env:TINYCLIPS_STUDIO_PREVIEW = '1'
-  winapp run $out --manifest "$out\AppxManifest.xml" --output-appx-directory "$out\AppX" --with-alias
-  ```
+Studio is off until you switch it on: **Settings › General › Tiny Clips Studio (Preview)**. With
+the switch off nothing else of Studio is shown, and a recording is made as it always was.
+Switching it off again deletes nothing: the projects stay where they are, are not cleaned up while
+it is off, and the line under the switch says how many there are and how much room they take.
 
 With the switch on:
 
@@ -167,13 +158,20 @@ With the switch on:
   change on it, and `Home`/`End` to the first and the last; on the scene lane, `Delete` removes
   the scene the playhead is in. While something is being dragged, the keys that change the
   project do nothing; `Space` and the arrow keys still work.
-  The Camera section has a **Background** choice (keep, blur, or remove what is behind you) only
-  where the app can find people in a picture. That takes a model file which is not shipped yet
-  (see "Person cutout" in the plan), so today the choice is never shown.
+  The Camera section has a **Background** choice: keep, blur, or remove what is behind you. The
+  people are found on this PC with the MediaPipe Selfie Segmentation model, which ships with the
+  app under the Apache License 2.0 (**Settings › About › Third-party notices**).
+  **Keep this project**, at the end of the inspector, pins a project against the storage
+  cleanup; it is written at once and is not undone by `Ctrl+Z`.
+  A project the editor cannot show says why, and where its screen recording is still there,
+  **Save the screen recording** saves that as an ordinary video.
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer.
-  **Settings › General** shows the space projects take, the cleanup rules, and the drafts
-  (recordings that were kept without exporting).
+  **Settings › General** shows the space projects take, the cleanup rules, and the drafts: the
+  recordings that only their project holds. Those are the ones kept without exporting, the ones
+  whose exported video is no longer where it was saved, and any project Studio cannot read. Each
+  can be deleted, and has **Save recording** to save its screen recording as an ordinary video.
+  Cleanup never removes them, and the storage limit counts only what cleanup may remove.
 
 Projects are kept in the app's local data folder under `TinyClips\Projects`. The format, layout
 math and drawing rules are in [`/docs/studio-project-format.md`](../docs/studio-project-format.md),
