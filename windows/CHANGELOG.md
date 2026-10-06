@@ -12,6 +12,13 @@ own `CHANGELOG.md` at the repository root.
   of three. GIF and scrolling snapshots remain safe to retain, and stopping waits for borrowed
   frame processing before disposing the encoder. Resized windows keep the configured video
   dimensions with black letterboxing instead of submitting short encoder samples. (#407)
+- **Settings navigation no longer reloads unrelated preferences or external state.** First
+  realization restores only that section's scalar settings, preserving protection against
+  initial TwoWay-binding write-backs. Uploadcare credential status and teleprompter text load
+  only when their sections are first realized and stay cached until relevant mutations or
+  reopening. Rapid navigation preserves edits in already-loaded sections and pending transcript
+  saves; late device, launch-at-login, and file-picker results are ignored after closing.
+  Unreadable transcripts show an inline error instead of being cached as empty text. (#405)
 - **Screenshot-editor exports no longer resample twice.** Save and Copy composite directly at
   the requested output size, including 100%, with one explicit final bitmap readback. Rendering,
   redaction-preview processing, and encoding run on workers using immutable document snapshots.

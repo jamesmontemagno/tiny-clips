@@ -12,7 +12,7 @@ public sealed partial class UploadcareSettingsSection : UserControl
     public UploadcareSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel;
-        _realizationScope = viewModel.BeginSectionRealization();
+        _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.Uploadcare);
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
     }

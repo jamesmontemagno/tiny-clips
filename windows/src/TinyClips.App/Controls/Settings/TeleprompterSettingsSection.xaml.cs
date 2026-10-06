@@ -29,7 +29,7 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
     public TeleprompterSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel;
-        _realizationScope = viewModel.BeginSectionRealization();
+        _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.Teleprompter);
         InitializeComponent();
 
         _previewTimer = new DispatcherTimer { Interval = PreviewInterval };
@@ -56,6 +56,8 @@ public sealed partial class TeleprompterSettingsSection : UserControl, ISettings
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
     }
+
+    public static bool HasError(string? message) => !string.IsNullOrEmpty(message);
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
