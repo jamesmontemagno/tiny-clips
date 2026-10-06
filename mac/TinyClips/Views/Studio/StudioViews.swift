@@ -13,7 +13,7 @@ struct StudioRootView: View {
             case .loading:
                 ProgressView("Opening…")
             case .unavailable(let message):
-                StudioUnavailableView(message: message)
+                StudioUnavailableView(message: message, viewModel: viewModel)
             case .ready:
                 StudioEditorView(viewModel: viewModel)
             }
@@ -27,23 +27,43 @@ struct StudioRootView: View {
 
 private struct StudioUnavailableView: View {
     let message: String
+    @ObservedObject var viewModel: StudioViewModel
 
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 34))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("This project can't be opened")
-                .font(.headline)
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
+        VStack(spacing: 16) {
+            VStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 34))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text("This project can't be opened")
+                    .font(.headline)
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+            }
+            .accessibilityElement(children: .combine)
+
+            // The way out: the recording itself, as an ordinary video.
+            if viewModel.canSaveScreenRecording {
+                Button(viewModel.isSavingScreenRecording ? "Saving…" : "Save Screen Recording") {
+                    viewModel.saveScreenRecording()
+                }
+                .disabled(viewModel.isSavingScreenRecording)
+                .help("Saves this project's screen recording to your videos folder as an ordinary video. The project is kept as it is.")
+
+                if let status = viewModel.screenRecordingStatus {
+                    Text(status)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
+                }
+            }
         }
         .padding(32)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -312,6 +332,7 @@ private struct StudioInspectorView: View {
                 StudioSpeedInspectorSection(viewModel: viewModel)
                 audioSection
                 extrasSection
+                projectSection
                 Divider()
                 Button("Save as Default Look") {
                     viewModel.saveDefaultLook()
@@ -578,6 +599,16 @@ private struct StudioInspectorView: View {
         }
     }
 
+    /// What is kept of the project, as opposed to what is in the video. Not an edit: Undo
+    /// leaves it alone.
+    private var projectSection: some View {
+        StudioInspectorSection(title: "Project") {
+            Toggle("Keep this project", isOn: keepsSourcesBinding)
+                .toggleStyle(.checkbox)
+                .help("Storage cleanup never removes a kept project, so its video stays editable. Otherwise a project goes by the rules in Video settings once its video has been exported.")
+        }
+    }
+
     private func swatchGrid(title: String, presets: [ExportBackgroundPreset]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -741,6 +772,13 @@ private struct StudioInspectorView: View {
         Binding(
             get: { viewModel.project?.audio.muted ?? false },
             set: { viewModel.setMuted($0) }
+        )
+    }
+
+    private var keepsSourcesBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.keepsSources },
+            set: { viewModel.setKeepsSources($0) }
         )
     }
 }

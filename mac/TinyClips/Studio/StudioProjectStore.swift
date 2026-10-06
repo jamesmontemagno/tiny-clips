@@ -162,11 +162,36 @@ struct StudioProjectSummary: Equatable, Sendable {
     var name: String
     var createdAt: Date
     var lastOpenedAt: Date
+
+    /// No video was ever exported from the project.
     var isDraft: Bool
     var isFlat: Bool
     var keepSources: Bool
     var sizeOnDisk: Int64
     var sourceExists: Bool
+
+    /// Videos were exported and none of them is where it was saved any more. The project is
+    /// then the only copy of the recording, as a draft is, and is treated as one: listed with
+    /// the drafts, and never removed by cleanup.
+    var exportMissing: Bool = false
+
+    /// Whether cleanup may remove the project: a video exported from it is still where it was
+    /// saved, the project is not pinned, and it is not built around a video kept elsewhere.
+    var isRemovableByCleanup: Bool {
+        !isDraft && !exportMissing && !keepSources && !isFlat
+    }
+}
+
+/// A project folder whose `project.json` is there and cannot be read.
+struct StudioUnreadableProject: Equatable, Sendable {
+    var id: String
+
+    /// When the folder was made, which is when the recording started.
+    var createdAt: Date
+    var sizeOnDisk: Int64
+
+    /// Whether a screen recording is in the folder to be saved out of it.
+    var hasScreenRecording: Bool
 }
 
 struct StudioStorageSummary: Equatable, Sendable {
@@ -283,9 +308,75 @@ final class StudioProjectStore {
         }
     }
 
+    /// Pins a project against automatic cleanup, or lets go of it again. It is written into the
+    /// project on disk at once and is not one of the editor's edits: nothing undoes it.
+    @discardableResult
+    func setKeepSources(id: String, keepSources: Bool) throws -> StudioProject {
+        try withLock {
+            var project = try loadUnlocked(id: id)
+            guard project.keepSources != keepSources else { return project }
+            project.keepSources = keepSources
+            return try saveUnlocked(project, updatingModifiedAt: false)
+        }
+    }
+
     func listSummaries() throws -> [StudioProjectSummary] {
         try withLock {
             try listSummariesUnlocked()
+        }
+    }
+
+    /// The project folders whose `project.json` is there and cannot be read: damaged, or written
+    /// by a newer version. `listSummaries()` leaves them out and cleanup leaves them alone, so
+    /// this list is the only place they show up.
+    func listUnreadableProjects() throws -> [StudioUnreadableProject] {
+        try withLock {
+            guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
+            let contents = try fileManager.contentsOfDirectory(
+                at: rootURL,
+                includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+            var unreadable: [StudioUnreadableProject] = []
+            for directory in contents {
+                let values = try directory.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey])
+                let id = directory.lastPathComponent
+                guard values.isDirectory == true, Self.isValidProjectID(id) else { continue }
+                // Without the file it is a recording that never finished, which cleanup removes
+                // after a day.
+                let projectURL = directory.appendingPathComponent("project.json")
+                guard fileManager.fileExists(atPath: projectURL.path),
+                      (try? loadUnlocked(id: id)) == nil else {
+                    continue
+                }
+                unreadable.append(StudioUnreadableProject(
+                    id: id,
+                    createdAt: folderDateProvider?(directory) ?? values.creationDate ?? Date(timeIntervalSince1970: 0),
+                    sizeOnDisk: sizeOnDisk(at: directory),
+                    hasScreenRecording: fileManager.fileExists(atPath: directory.appendingPathComponent("screen.mp4").path)
+                ))
+            }
+            return unreadable.sorted { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
+        }
+    }
+
+    /// The screen recording a project keeps in its own folder, or nil when it has none there:
+    /// the project is built around a video kept elsewhere, the file is gone, or there is no
+    /// such project. A project whose `project.json` cannot be read is looked for under the name
+    /// every recording gets.
+    func screenRecordingURL(id: String) -> URL? {
+        guard Self.isValidProjectID(id) else { return nil }
+        return withLock {
+            let directory = projectDirectoryUnchecked(for: id)
+            var file = "screen.mp4"
+            if let project = try? loadUnlocked(id: id) {
+                guard !project.sources.screen.external else { return nil }
+                if StudioJSON.isPlainFileName(project.sources.screen.file) {
+                    file = project.sources.screen.file
+                }
+            }
+            let url = directory.appendingPathComponent(file)
+            return fileManager.fileExists(atPath: url.path) ? url : nil
         }
     }
 
@@ -734,6 +825,13 @@ final class StudioProjectStore {
         } else {
             sourceExists = fileManager.fileExists(atPath: directory.appendingPathComponent(project.sources.screen.file).path)
         }
+        // Looked at where each video was saved. One on a drive that is not connected, or in a
+        // folder the app may no longer read, counts as not there, which keeps the project: the
+        // safe side of not knowing.
+        let exportMissing = !project.exports.isEmpty && !project.exports.contains { export in
+            !export.path.isEmpty
+                && fileManager.fileExists(atPath: URL(fileURLWithPath: export.path).standardizedFileURL.path)
+        }
         return StudioProjectSummary(
             id: project.id,
             name: project.name,
@@ -743,7 +841,8 @@ final class StudioProjectStore {
             isFlat: isFlat,
             keepSources: project.keepSources,
             sizeOnDisk: sizeOnDisk(at: directory),
-            sourceExists: sourceExists
+            sourceExists: sourceExists,
+            exportMissing: exportMissing
         )
     }
 
@@ -774,5 +873,76 @@ final class StudioProjectStore {
     private func validBackgroundImage(_ image: String?) -> String? {
         guard let image else { return nil }
         return StudioJSON.isPlainFileName(image) ? image : nil
+    }
+}
+
+// MARK: - Screen Recording
+
+/// The way out for a recording that Studio cannot show: its screen recording, copied to where
+/// saved videos go, as an ordinary video. The project is left as it is.
+enum StudioScreenRecording {
+    enum SaveError: LocalizedError, Equatable {
+        /// The project has no screen recording in its folder.
+        case nothingToSave
+
+        /// Every name the copy was tried under had been taken by another file.
+        case noFreeName(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .nothingToSave:
+                return "This project has no screen recording to save."
+            case .noFreeName(let name):
+                return "Another file was saved as \(name) while the recording was being copied, and no free name was found for the video."
+            }
+        }
+    }
+
+    /// How many names a finished copy is tried under before it is given up.
+    static let attempts = 5
+
+    /// Copies a project's screen recording to a new video file and returns where it went. The
+    /// copy never takes the place of a file that is there. This reads and writes the whole
+    /// recording, so it is for a background task.
+    ///
+    /// - Parameter makeOutputURL: Returns the URL to write, in the folder and with the name the
+    ///   app gives a saved video. Asked once before the copy, and again when a file has taken
+    ///   that name by the time the copy is finished.
+    static func save(
+        store: StudioProjectStore,
+        id: String,
+        fileManager: FileManager = .default,
+        makeOutputURL: () -> URL
+    ) throws -> URL {
+        guard let sourceURL = store.screenRecordingURL(id: id) else {
+            throw SaveError.nothingToSave
+        }
+
+        var targetURL = makeOutputURL()
+        let folderURL = targetURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: folderURL, withIntermediateDirectories: true)
+
+        // Copied under a name of its own first, in the same folder, so that no half-written
+        // video is ever to be seen under a video's name.
+        let stagedURL = folderURL.appendingPathComponent(".studio-copy.\(UUID().uuidString.lowercased()).tmp")
+        do {
+            try fileManager.copyItem(at: sourceURL, to: stagedURL)
+            for attempt in 1...attempts {
+                do {
+                    // A move never replaces: it fails where a file already has the name.
+                    try fileManager.moveItem(at: stagedURL, to: targetURL)
+                    return targetURL
+                } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                    guard attempt < attempts else {
+                        throw SaveError.noFreeName(targetURL.lastPathComponent)
+                    }
+                    targetURL = makeOutputURL()
+                }
+            }
+            throw SaveError.noFreeName(targetURL.lastPathComponent)
+        } catch {
+            try? fileManager.removeItem(at: stagedURL)
+            throw error
+        }
     }
 }

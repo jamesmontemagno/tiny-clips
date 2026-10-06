@@ -47,6 +47,16 @@ final class StudioViewModel: ObservableObject {
     /// size waits for the drag to end so the player is not rebuilt for every step of it.
     @Published private(set) var previewSize = CGSize.zero
 
+    /// Whether a project that cannot be shown still has its screen recording, to be saved as a
+    /// video of its own. False unless the state is `unavailable`.
+    @Published private(set) var canSaveScreenRecording = false
+
+    /// True while the screen recording is being copied.
+    @Published private(set) var isSavingScreenRecording = false
+
+    /// What came of saving the screen recording: the name it got, or why it was not saved.
+    @Published private(set) var screenRecordingStatus: String?
+
     /// Set by the window. Called to close it once an export started from the close prompt is done.
     var requestClose: (() -> Void)?
 
@@ -158,7 +168,7 @@ final class StudioViewModel: ObservableObject {
             editor = model
 
             guard FileManager.default.fileExists(atPath: openedPaths.screenURL.path) else {
-                state = .unavailable(
+                becomeUnavailable(
                     "The original recording for this project is no longer on this Mac, so it cannot be previewed or exported here."
                 )
                 return
@@ -184,7 +194,52 @@ final class StudioViewModel: ObservableObject {
             state = .ready
             seek(to: model.trimStart)
         } catch {
-            state = .unavailable(error.localizedDescription)
+            becomeUnavailable(error.localizedDescription)
+        }
+    }
+
+    /// The project cannot be shown. Whether its screen recording is still there is looked up
+    /// now, so that the message can offer to save it.
+    private func becomeUnavailable(_ message: String) {
+        canSaveScreenRecording = store.screenRecordingURL(id: projectID) != nil
+        state = .unavailable(message)
+    }
+
+    /// Saves the screen recording of a project that cannot be shown as an ordinary video, and
+    /// says in `screenRecordingStatus` what came of it. The project is left as it is.
+    func saveScreenRecording() {
+        guard canSaveScreenRecording, !isSavingScreenRecording, !isTornDown else { return }
+        isSavingScreenRecording = true
+        screenRecordingStatus = nil
+        let id = projectID
+        Task { [weak self] in
+            let status: String
+            do {
+                let url = try await StudioMaintenance.saveScreenRecording(projectID: id)
+                status = "Saved as \(url.lastPathComponent)."
+            } catch {
+                status = "The screen recording could not be saved: \(error.localizedDescription)"
+            }
+            self?.screenRecordingStatus = status
+            self?.isSavingScreenRecording = false
+        }
+    }
+
+    // MARK: - Keeping
+
+    /// Whether the project is pinned against automatic cleanup.
+    var keepsSources: Bool { project?.keepSources ?? false }
+
+    /// Pins the project against automatic cleanup, or lets go of it. It is written into the
+    /// project on disk at once. It is not an edit: Undo leaves it alone, and it does not have
+    /// to wait for an export to end.
+    func setKeepsSources(_ keepSources: Bool) {
+        guard !isTornDown, editor != nil, keepsSources != keepSources else { return }
+        do {
+            let saved = try store.setKeepSources(id: projectID, keepSources: keepSources)
+            editor?.refreshBookkeeping(from: saved)
+        } catch {
+            SaveService.shared.showError("Studio could not change whether this project is kept: \(error.localizedDescription)")
         }
     }
 

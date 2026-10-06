@@ -30,6 +30,11 @@ enum StudioMaintenance {
         }
         isCleaningUp = true
 
+        // On the App Store build this is what opens a save folder the user chose. Cleanup looks
+        // whether each exported video is still where it was saved, and could not see into that
+        // folder otherwise.
+        _ = SaveService.shared.outputDirectoryURL(for: .video)
+
         let options = CaptureSettings.shared.studioCleanupOptions
         let inUse = StudioWindowRegistry.shared.openProjectIDs.union(recordingProjectIDs)
         Task.detached(priority: .utility) {
@@ -39,5 +44,29 @@ enum StudioMaintenance {
                 completion?(removed.count)
             }
         }
+    }
+
+    /// Saves a project's screen recording as an ordinary video, in the folder and under the
+    /// name any saved video gets, and treats it as one from there: clipboard, notice, recent
+    /// captures. The project is left as it is. This is the way out for a recording that Studio
+    /// cannot show.
+    ///
+    /// - Returns: Where the video went.
+    static func saveScreenRecording(projectID: String) async throws -> URL {
+        // The first name is made here, on the main actor, as every other saved video's is.
+        let firstURL = SaveService.shared.generateURL(for: .video)
+        let url = try await Task.detached(priority: .userInitiated) { () throws -> URL in
+            var isFirstName = true
+            return try StudioScreenRecording.save(store: StudioProjectStore.shared, id: projectID) {
+                if isFirstName {
+                    isFirstName = false
+                    return firstURL
+                }
+                // Only when a file took the first name while the recording was being copied.
+                return SaveService.shared.generateURL(for: .video)
+            }
+        }.value
+        SaveService.shared.handleSavedFile(url: url, type: .video)
+        return url
     }
 }

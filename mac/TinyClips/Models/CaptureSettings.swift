@@ -380,6 +380,9 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifMouseClickOpacity") var gifMouseClickOpacity: Double = 0.85
     @AppStorage("gifMouseClickDuration") var gifMouseClickDuration: Double = 0.45
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
+    /// Whether Tiny Clips Studio is switched on, while it is in preview. It is the
+    /// "Tiny Clips Studio (Preview)" switch in Video settings; with it off, nothing else of
+    /// Studio is shown and a recording is made as it always was.
     @AppStorage("studioPreviewEnabled") var studioPreviewEnabled: Bool = false
     @AppStorage("videoAfterRecording") private var storedVideoAfterRecording: String = ""
     var videoAfterRecording: VideoAfterRecording {
@@ -414,7 +417,8 @@ class CaptureSettings: ObservableObject {
     }
     /// Days an exported Studio project is kept after it was last opened. Zero keeps it until deleted.
     @AppStorage("studioSourceRetentionDays") var studioSourceRetentionDays: Int = 30
-    /// The most disk space Studio projects may use before the oldest are removed. Zero is no limit.
+    /// The most disk space the Studio projects that cleanup may remove can use before the ones
+    /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
     @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
     var studioCleanupOptions: StudioCleanupOptions {
         StudioCleanupOptions(retentionDays: studioSourceRetentionDays, sizeCapGigabytes: studioStorageCapGigabytes)

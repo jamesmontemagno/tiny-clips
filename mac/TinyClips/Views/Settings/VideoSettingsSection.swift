@@ -170,9 +170,8 @@ struct VideoSettingsSection: View {
                 .help("Copy saved videos to the clipboard as a file URL.")
         }
 
-        if settings.studioPreviewEnabled {
-            StudioSettingsSection(settings: settings)
-        }
+        // Its switch is always there. The rest of it shows once Studio is switched on.
+        StudioSettingsSection(settings: settings)
 
         Section("Countdown") {
             Toggle("Countdown before recording", isOn: $settings.videoCountdownEnabled)

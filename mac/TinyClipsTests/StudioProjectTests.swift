@@ -454,7 +454,11 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertEqual(try store.listSummaries().map(\.id), [validID])
 
         var project = loaded
-        project.exports = [StudioExport(path: "/tmp/out.mp4")]
+        // A video that is where it was exported to. Without it the project would be the only
+        // copy of the recording, and cleanup would leave it alone.
+        let exportURL = directoryURL.appendingPathComponent("out.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: exportURL.path, contents: Data([7, 8, 9])))
+        project.exports = [StudioExport(path: exportURL.path)]
         project.lastOpenedAt = fixedDate.addingTimeInterval(-60 * 24 * 60 * 60)
         _ = try store.save(project)
         XCTAssertEqual(try store.cleanup(), [validID])
@@ -705,6 +709,322 @@ final class StudioProjectTests: XCTestCase {
         )
     }
 
+    func testTheStorageLimitCountsOnlyWhatCleanupMayRemove() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        // Each of the four that cleanup never removes is over the limit by itself.
+        let draft = summary(id: "draft", lastOpenedAt: now.addingTimeInterval(-90), isDraft: true, sizeOnDisk: 500)
+        let pinned = summary(id: "pinned", lastOpenedAt: now.addingTimeInterval(-80), isDraft: false, keepSources: true, sizeOnDisk: 500)
+        let flat = summary(id: "flat", lastOpenedAt: now.addingTimeInterval(-70), isDraft: false, isFlat: true, sizeOnDisk: 500)
+        let videoGone = summary(id: "video-gone", lastOpenedAt: now.addingTimeInterval(-60), isDraft: false, sizeOnDisk: 500, exportMissing: true)
+        let oldest = summary(id: "oldest", lastOpenedAt: now.addingTimeInterval(-30), isDraft: false, sizeOnDisk: 40)
+        let middle = summary(id: "middle", lastOpenedAt: now.addingTimeInterval(-20), isDraft: false, sizeOnDisk: 30)
+        let newest = summary(id: "newest", lastOpenedAt: now.addingTimeInterval(-10), isDraft: false, sizeOnDisk: 60)
+        let options = StudioCleanupOptions(retentionDays: 0, sizeCapBytes: 100)
+
+        XCTAssertEqual(
+            StudioCleanupPolicy.plan(summaries: [draft, pinned, flat, videoGone, oldest, newest], currentDate: now, options: options),
+            []
+        )
+        // 130 of removable projects, and 90 without the oldest. The draft's 500 are not in it.
+        XCTAssertEqual(
+            StudioCleanupPolicy.plan(summaries: [draft, oldest, middle, newest], currentDate: now, options: options),
+            ["oldest"]
+        )
+    }
+
+    func testAnExportedProjectWhoseVideosAreAllGoneIsKeptAsADraftIs() {
+        let now = Date(timeIntervalSince1970: 100 * 24 * 60 * 60)
+        let videoGone = summary(
+            id: "video-gone",
+            lastOpenedAt: now.addingTimeInterval(-90 * 24 * 60 * 60),
+            isDraft: false,
+            sizeOnDisk: 500,
+            exportMissing: true
+        )
+
+        XCTAssertFalse(videoGone.isRemovableByCleanup)
+        XCTAssertEqual(
+            StudioCleanupPolicy.plan(
+                summaries: [videoGone],
+                currentDate: now,
+                options: StudioCleanupOptions(retentionDays: 30, sizeCapBytes: 1)
+            ),
+            []
+        )
+    }
+
+    func testASummarySaysWhenEveryExportedVideoIsGoneAndCleanupThenKeepsTheProject() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
+        let firstURL = directoryURL.appendingPathComponent("First.mp4")
+        let secondURL = directoryURL.appendingPathComponent("Second.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: firstURL.path, contents: Data([1])))
+        XCTAssertTrue(FileManager.default.createFile(atPath: secondURL.path, contents: Data([2])))
+
+        var summary = try XCTUnwrap(store.listSummaries().first)
+        XCTAssertTrue(summary.isDraft)
+        XCTAssertFalse(summary.exportMissing)
+        XCTAssertFalse(summary.isRemovableByCleanup)
+
+        _ = try store.recordExport(id: validID, path: firstURL.path)
+        _ = try store.recordExport(id: validID, path: secondURL.path)
+        var project = try store.load(id: validID)
+        project.lastOpenedAt = fixedDate.addingTimeInterval(-90 * 24 * 60 * 60)
+        _ = try store.save(project)
+        summary = try XCTUnwrap(store.listSummaries().first)
+        XCTAssertFalse(summary.isDraft)
+        XCTAssertFalse(summary.exportMissing)
+        XCTAssertTrue(summary.isRemovableByCleanup)
+
+        // One of the two videos is enough for the recording to exist outside the project.
+        try FileManager.default.removeItem(at: firstURL)
+        summary = try XCTUnwrap(store.listSummaries().first)
+        XCTAssertFalse(summary.exportMissing)
+
+        try FileManager.default.removeItem(at: secondURL)
+        summary = try XCTUnwrap(store.listSummaries().first)
+        XCTAssertFalse(summary.isDraft)
+        XCTAssertTrue(summary.exportMissing)
+        XCTAssertFalse(summary.isRemovableByCleanup)
+
+        // Nothing was written down: the project still names both, and is found by either.
+        XCTAssertEqual(try store.load(id: validID).exports.count, 2)
+        XCTAssertEqual(try store.findProjectID(exportedPath: firstURL.path), validID)
+
+        // It is the one copy of the recording now, so cleanup keeps it, whatever the rules.
+        let rules = StudioCleanupOptions(retentionDays: 30, sizeCapBytes: 1)
+        XCTAssertEqual(try store.cleanup(options: rules), [])
+        XCTAssertTrue(store.exists(id: validID))
+
+        // Back where it was saved, from the Trash or with the disk it is on.
+        XCTAssertTrue(FileManager.default.createFile(atPath: secondURL.path, contents: Data([2])))
+        XCTAssertEqual(try store.cleanup(options: rules), [validID])
+    }
+
+    func testTheStorageLimitLeavesExportedProjectsAloneWhenOnlyDraftsAreOverIt() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let rules = StudioCleanupOptions(retentionDays: 0, sizeCapBytes: 250_000)
+
+        func recordProject(bytes: Int) throws -> String {
+            let paths = try store.beginRecording()
+            _ = try store.completeRecording(id: paths.id, request: self.creationRequest(camera: nil))
+            try Data(count: bytes).write(to: paths.screenURL)
+            return paths.id
+        }
+
+        func exportProject(_ id: String, name: String, secondsSinceOpened: TimeInterval) throws {
+            let videoURL = self.directoryURL.appendingPathComponent("\(name).mp4")
+            XCTAssertTrue(FileManager.default.createFile(atPath: videoURL.path, contents: Data([7, 8, 9])))
+            _ = try store.recordExport(id: id, path: videoURL.path)
+            var project = try store.load(id: id)
+            project.lastOpenedAt = self.fixedDate.addingTimeInterval(-secondsSinceOpened)
+            _ = try store.save(project)
+        }
+
+        // The draft alone is over the limit, and so is the pinned project.
+        let draft = try recordProject(bytes: 400_000)
+        let pinned = try recordProject(bytes: 400_000)
+        try exportProject(pinned, name: "pinned", secondsSinceOpened: 900)
+        try store.setKeepSources(id: pinned, keepSources: true)
+        let oldest = try recordProject(bytes: 100_000)
+        try exportProject(oldest, name: "oldest", secondsSinceOpened: 300)
+        let newer = try recordProject(bytes: 100_000)
+        try exportProject(newer, name: "newer", secondsSinceOpened: 200)
+
+        // Two exported projects of 100,000 bytes are under 250,000. Counting everything, as the
+        // limit once did, both would go.
+        XCTAssertEqual(try store.cleanup(options: rules), [])
+
+        let newest = try recordProject(bytes: 100_000)
+        try exportProject(newest, name: "newest", secondsSinceOpened: 100)
+
+        // Three are over it, and the one opened longest ago goes.
+        XCTAssertEqual(try store.cleanup(options: rules), [oldest])
+        XCTAssertTrue(store.exists(id: draft))
+        XCTAssertTrue(store.exists(id: pinned))
+        XCTAssertTrue(store.exists(id: newer))
+        XCTAssertTrue(store.exists(id: newest))
+    }
+
+    func testKeepingAProjectPinsItAndChangesNothingElse() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
+        let exportURL = directoryURL.appendingPathComponent("out.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: exportURL.path, contents: Data([7, 8, 9])))
+        _ = try store.recordExport(id: validID, path: exportURL.path)
+        var project = try store.load(id: validID)
+        project.lastOpenedAt = fixedDate.addingTimeInterval(-90 * 24 * 60 * 60)
+        _ = try store.save(project)
+        let before = try store.load(id: validID)
+
+        let laterDate = fixedDate.addingTimeInterval(300)
+        let laterStore = StudioProjectStore(rootURL: directoryURL, now: { laterDate })
+        let pinned = try laterStore.setKeepSources(id: validID, keepSources: true)
+
+        var expected = before
+        expected.keepSources = true
+        XCTAssertTrue(pinned.keepSources)
+        XCTAssertEqual(pinned.modifiedAt, before.modifiedAt)
+        XCTAssertEqual(pinned.lastOpenedAt, before.lastOpenedAt)
+        XCTAssertEqual(try laterStore.load(id: validID), expected)
+        XCTAssertEqual(try laterStore.listSummaries().map(\.keepSources), [true])
+        XCTAssertEqual(try laterStore.cleanup(), [])
+
+        XCTAssertFalse(try laterStore.setKeepSources(id: validID, keepSources: false).keepSources)
+        XCTAssertEqual(try laterStore.cleanup(), [validID])
+        XCTAssertThrowsError(try laterStore.setKeepSources(id: validID, keepSources: true))
+        XCTAssertFalse(laterStore.exists(id: validID))
+    }
+
+    func testTheScreenRecordingOfAProjectIsFoundInItsOwnFolder() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let paths = try store.beginRecording()
+        var project = try store.completeRecording(id: paths.id, request: creationRequest(camera: nil))
+
+        // Not written yet, as after a recording that failed before its first frame.
+        XCTAssertNil(store.screenRecordingURL(id: paths.id))
+
+        try Data([1, 2, 3]).write(to: paths.screenURL)
+        XCTAssertEqual(store.screenRecordingURL(id: paths.id)?.path, paths.screenURL.path)
+
+        // The project says which file it is.
+        let renamedURL = paths.projectDirectory.appendingPathComponent("take-two.mp4")
+        try FileManager.default.moveItem(at: paths.screenURL, to: renamedURL)
+        project.sources.screen.file = "take-two.mp4"
+        _ = try store.save(project)
+        XCTAssertEqual(store.screenRecordingURL(id: paths.id)?.path, renamedURL.path)
+
+        // A project that cannot be read is looked for under the name every recording gets.
+        try Data("{".utf8).write(to: paths.projectJSONURL)
+        XCTAssertThrowsError(try store.load(id: paths.id))
+        XCTAssertNil(store.screenRecordingURL(id: paths.id))
+        try FileManager.default.moveItem(at: renamedURL, to: paths.screenURL)
+        XCTAssertEqual(store.screenRecordingURL(id: paths.id)?.path, paths.screenURL.path)
+
+        try store.delete(id: paths.id)
+        XCTAssertNil(store.screenRecordingURL(id: paths.id))
+        XCTAssertNil(store.screenRecordingURL(id: "../\(validID)"))
+
+        // A project around a video kept elsewhere has nothing of its own to save.
+        let flatVideo = directoryURL.appendingPathComponent("external.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: flatVideo.path, contents: Data([1])))
+        let flat = try store.getOrCreateFlatProject(request: flatRequest(videoURL: flatVideo))
+        XCTAssertNil(store.screenRecordingURL(id: flat.id))
+    }
+
+    func testProjectsThatCannotBeReadAreListedApartFromTheRest() throws {
+        let damagedID = validID
+        let newerID = otherID
+        let folderDates = [
+            damagedID: Date(timeIntervalSince1970: 100),
+            newerID: Date(timeIntervalSince1970: 200)
+        ]
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate }, folderDateProvider: { url in
+            folderDates[url.lastPathComponent]
+        })
+        let readable = try store.beginRecording()
+        _ = try store.completeRecording(id: readable.id, request: creationRequest(camera: nil))
+        let unfinished = try store.beginRecording()
+
+        let damagedURL = directoryURL.appendingPathComponent(damagedID, isDirectory: true)
+        let newerURL = directoryURL.appendingPathComponent(newerID, isDirectory: true)
+        try FileManager.default.createDirectory(at: damagedURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: newerURL, withIntermediateDirectories: true)
+        try Data("{".utf8).write(to: damagedURL.appendingPathComponent("project.json"))
+        try Data(count: 1_000).write(to: damagedURL.appendingPathComponent("screen.mp4"))
+        try Data("{ \"schemaVersion\": 99 }".utf8).write(to: newerURL.appendingPathComponent("project.json"))
+
+        let unreadable = try store.listUnreadableProjects()
+
+        XCTAssertEqual(try store.listSummaries().map(\.id), [readable.id])
+        XCTAssertEqual(unreadable.map(\.id), [damagedID, newerID])
+        XCTAssertFalse(unreadable.map(\.id).contains(unfinished.id))
+        XCTAssertEqual(unreadable.map(\.hasScreenRecording), [true, false])
+        XCTAssertEqual(unreadable.map(\.createdAt), [Date(timeIntervalSince1970: 100), Date(timeIntervalSince1970: 200)])
+        XCTAssertGreaterThanOrEqual(unreadable[0].sizeOnDisk, 1_000)
+
+        // Cleanup still leaves them alone, whatever the rules.
+        XCTAssertEqual(try store.cleanup(options: StudioCleanupOptions(retentionDays: 1, sizeCapBytes: 1)), [])
+        XCTAssertEqual(try store.listUnreadableProjects().count, 2)
+
+        // The way out, and the way to be rid of it.
+        XCTAssertEqual(store.screenRecordingURL(id: damagedID)?.lastPathComponent, "screen.mp4")
+        try store.delete(id: damagedID)
+        XCTAssertEqual(try store.listUnreadableProjects().map(\.id), [newerID])
+    }
+
+    func testSavingAScreenRecordingCopiesItAndNeverReplacesAFile() throws {
+        let store = StudioProjectStore(
+            rootURL: directoryURL.appendingPathComponent("Projects", isDirectory: true),
+            now: { self.fixedDate }
+        )
+        let videosURL = directoryURL.appendingPathComponent("Videos", isDirectory: true)
+        let paths = try store.beginRecording()
+        _ = try store.completeRecording(id: paths.id, request: creationRequest(camera: nil))
+        let recording = Data((0..<5_000).map { UInt8($0 % 251) })
+        try recording.write(to: paths.screenURL)
+        let firstURL = videosURL.appendingPathComponent("Clip.mp4")
+        let secondURL = videosURL.appendingPathComponent("Clip 2.mp4")
+
+        // The name is free: the copy gets it, and the project is as it was.
+        var asked = 0
+        let saved = try StudioScreenRecording.save(store: store, id: paths.id) {
+            asked += 1
+            return firstURL
+        }
+        XCTAssertEqual(saved, firstURL)
+        XCTAssertEqual(asked, 1)
+        XCTAssertEqual(try Data(contentsOf: firstURL), recording)
+        XCTAssertEqual(try Data(contentsOf: paths.screenURL), recording)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: videosURL.path), ["Clip.mp4"])
+        XCTAssertEqual(try store.listSummaries().map(\.isDraft), [true])
+        XCTAssertNil(try store.findProjectID(exportedPath: firstURL.path))
+
+        // The name is taken: what has it keeps it, and the copy gets the next name.
+        try Data([42]).write(to: firstURL)
+        asked = 0
+        let savedAgain = try StudioScreenRecording.save(store: store, id: paths.id) {
+            asked += 1
+            return asked == 1 ? firstURL : secondURL
+        }
+        XCTAssertEqual(savedAgain, secondURL)
+        XCTAssertEqual(asked, 2)
+        XCTAssertEqual(try Data(contentsOf: firstURL), Data([42]))
+        XCTAssertEqual(try Data(contentsOf: secondURL), recording)
+
+        // No name is free: nothing is replaced and nothing is left behind.
+        asked = 0
+        XCTAssertThrowsError(try StudioScreenRecording.save(store: store, id: paths.id, makeOutputURL: {
+            asked += 1
+            return firstURL
+        })) { error in
+            XCTAssertEqual(error as? StudioScreenRecording.SaveError, .noFreeName("Clip.mp4"))
+        }
+        XCTAssertEqual(asked, StudioScreenRecording.attempts)
+        XCTAssertEqual(try Data(contentsOf: firstURL), Data([42]))
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: videosURL.path).sorted(),
+            ["Clip 2.mp4", "Clip.mp4"]
+        )
+    }
+
+    func testSavingAScreenRecordingSaysSoWhenThereIsNone() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
+        let outputURL = directoryURL.appendingPathComponent("Videos", isDirectory: true).appendingPathComponent("Clip.mp4")
+        var asked = 0
+
+        XCTAssertThrowsError(try StudioScreenRecording.save(store: store, id: validID, makeOutputURL: {
+            asked += 1
+            return outputURL
+        })) { error in
+            XCTAssertEqual(error as? StudioScreenRecording.SaveError, .nothingToSave)
+            XCTAssertEqual(error.localizedDescription, "This project has no screen recording to save.")
+        }
+        XCTAssertEqual(asked, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.deletingLastPathComponent().path))
+    }
+
     func testSavedLookAppliesStylesAndResetsCrops() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         let look = StudioLook(
@@ -872,7 +1192,8 @@ final class StudioProjectTests: XCTestCase {
         isFlat: Bool = false,
         keepSources: Bool = false,
         sizeOnDisk: Int64 = 1,
-        sourceExists: Bool = true
+        sourceExists: Bool = true,
+        exportMissing: Bool = false
     ) -> StudioProjectSummary {
         StudioProjectSummary(
             id: id,
@@ -883,7 +1204,8 @@ final class StudioProjectTests: XCTestCase {
             isFlat: isFlat,
             keepSources: keepSources,
             sizeOnDisk: sizeOnDisk,
-            sourceExists: sourceExists
+            sourceExists: sourceExists,
+            exportMissing: exportMissing
         )
     }
 }

@@ -38,7 +38,7 @@ enum StudioCleanupPolicy {
         if options.retentionDays > 0 {
             let cutoff = currentDate.addingTimeInterval(-Double(options.retentionDays) * 24 * 60 * 60)
             for summary in summaries where !deleted.contains(summary.id) && !inUseProjectIDs.contains(summary.id) {
-                if isEligible(summary), summary.lastOpenedAt < cutoff {
+                if summary.isRemovableByCleanup, summary.lastOpenedAt < cutoff {
                     ids.append(summary.id)
                     deleted.insert(summary.id)
                 }
@@ -46,11 +46,13 @@ enum StudioCleanupPolicy {
         }
 
         if options.sizeCapBytes > 0 {
-            var totalBytes = summaries
-                .filter { !deleted.contains($0.id) }
-                .reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
-            let candidates = summaries
-                .filter { !deleted.contains($0.id) && !inUseProjectIDs.contains($0.id) && isEligible($0) }
+            // The limit is on what cleanup may remove. Drafts, pinned projects and the like are
+            // not counted: they are never removed, and counted they would use the room up, so
+            // that every exported project went the moment it was exported.
+            let removable = summaries.filter { !deleted.contains($0.id) && $0.isRemovableByCleanup }
+            var totalBytes = removable.reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
+            let candidates = removable
+                .filter { !inUseProjectIDs.contains($0.id) }
                 .sorted {
                     if $0.lastOpenedAt == $1.lastOpenedAt { return $0.id < $1.id }
                     return $0.lastOpenedAt < $1.lastOpenedAt
@@ -63,9 +65,5 @@ enum StudioCleanupPolicy {
         }
 
         return ids
-    }
-
-    private static func isEligible(_ summary: StudioProjectSummary) -> Bool {
-        !summary.isDraft && !summary.keepSources && !summary.isFlat
     }
 }
