@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -6,6 +7,8 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
 namespace TinyClips.Core.Capture;
+
+internal sealed record BrandingBadge(byte[] Bgra, int Width, int Height, int Margin);
 
 /// <summary>
 /// Draws a "Captured on Tiny Clips" branding badge into the bottom-right corner of a
@@ -21,11 +24,39 @@ public sealed class BrandingOverlayCompositor
 {
     private const string OverlayText = "Captured on Tiny Clips";
 
-    private byte[]? _badge;
-    private int _badgeWidth;
-    private int _badgeHeight;
-    private int _margin;
+    private readonly Func<int, BrandingBadge?> _rasterize;
+    private BrandingBadge? _badge;
     private int _builtForHeight = -1;
+
+    public BrandingOverlayCompositor() : this(BuildBadge)
+    {
+    }
+
+    internal BrandingOverlayCompositor(Func<int, BrandingBadge?> rasterize) => _rasterize = rasterize;
+
+    /// <summary>
+    /// Rasterizes on a worker thread before recording starts. The owner must await preparation
+    /// before drawing or preparing another size. Cancellation waits for GDI+ to return before
+    /// discarding its result, so teardown cannot race preparation.
+    /// </summary>
+    public async Task<bool> PrepareAsync(int frameHeight, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(frameHeight);
+        var started = Stopwatch.GetTimestamp();
+        var result = "cancelled";
+        try
+        {
+            var ready = await Task.Run(
+                () => EnsureBadge(frameHeight, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+            result = ready ? "ready" : "unavailable";
+            return ready;
+        }
+        finally
+        {
+            WebcamDiagnostics.Log($"Branding preparation: cpu={result} elapsedMs={Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1}.");
+        }
+    }
 
     /// <summary>
     /// Composites the branding badge onto <paramref name="bgra"/> (stride = width * 4).
@@ -38,15 +69,22 @@ public sealed class BrandingOverlayCompositor
         }
 
         EnsureBadge(height);
-        if (_badge is null || _badgeWidth <= 0 || _badgeHeight <= 0)
+        DrawPrepared(bgra, width, height);
+    }
+
+    /// <summary>Draws only an already prepared badge; never initializes fonts or rasterizes.</summary>
+    public void DrawPrepared(byte[] bgra, int width, int height)
+    {
+        var badge = _badge;
+        if (width <= 0 || height <= 0 || _builtForHeight != height || badge is null)
         {
             return;
         }
 
-        int originX = width - _badgeWidth - _margin;
-        int originY = height - _badgeHeight - _margin;
+        int originX = width - badge.Width - badge.Margin;
+        int originY = height - badge.Height - badge.Margin;
 
-        for (int y = 0; y < _badgeHeight; y++)
+        for (int y = 0; y < badge.Height; y++)
         {
             int dy = originY + y;
             if (dy < 0 || dy >= height)
@@ -54,10 +92,10 @@ public sealed class BrandingOverlayCompositor
                 continue;
             }
 
-            int badgeRow = y * _badgeWidth * 4;
+            int badgeRow = y * badge.Width * 4;
             int frameRow = dy * width * 4;
 
-            for (int x = 0; x < _badgeWidth; x++)
+            for (int x = 0; x < badge.Width; x++)
             {
                 int dx = originX + x;
                 if (dx < 0 || dx >= width)
@@ -66,16 +104,16 @@ public sealed class BrandingOverlayCompositor
                 }
 
                 int si = badgeRow + (x * 4);
-                double a = _badge[si + 3] / 255.0;
+                double a = badge.Bgra[si + 3] / 255.0;
                 if (a <= 0)
                 {
                     continue;
                 }
 
                 int di = frameRow + (dx * 4);
-                bgra[di] = Blend(bgra[di], _badge[si], a);
-                bgra[di + 1] = Blend(bgra[di + 1], _badge[si + 1], a);
-                bgra[di + 2] = Blend(bgra[di + 2], _badge[si + 2], a);
+                bgra[di] = Blend(bgra[di], badge.Bgra[si], a);
+                bgra[di + 1] = Blend(bgra[di + 1], badge.Bgra[si + 1], a);
+                bgra[di + 2] = Blend(bgra[di + 2], badge.Bgra[si + 2], a);
             }
         }
     }
@@ -88,40 +126,56 @@ public sealed class BrandingOverlayCompositor
     public bool TryGetBadge(int frameHeight, out byte[] bgra, out int width, out int height, out int margin)
     {
         EnsureBadge(frameHeight);
-        bgra = _badge ?? [];
-        width = _badgeWidth;
-        height = _badgeHeight;
-        margin = _margin;
-        return _badge is not null && _badgeWidth > 0 && _badgeHeight > 0;
+        return TryGetPreparedBadge(frameHeight, out bgra, out width, out height, out margin);
     }
 
-    private void EnsureBadge(int frameHeight)
+    /// <summary>Reads the prepared cache without doing first-use work on the frame path.</summary>
+    public bool TryGetPreparedBadge(int frameHeight, out byte[] bgra, out int width, out int height, out int margin)
     {
-        if (_badge is not null && _builtForHeight == frameHeight)
+        var badge = _builtForHeight == frameHeight ? _badge : null;
+        bgra = badge?.Bgra ?? [];
+        width = badge?.Width ?? 0;
+        height = badge?.Height ?? 0;
+        margin = badge?.Margin ?? 0;
+        return badge is not null;
+    }
+
+    private bool EnsureBadge(int frameHeight, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_builtForHeight == frameHeight)
         {
-            return;
+            return _badge is not null;
         }
 
-        _builtForHeight = frameHeight;
+        BrandingBadge? badge;
         try
         {
-            BuildBadge(frameHeight);
+            badge = _rasterize(frameHeight);
         }
-        catch
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Branding is best-effort; never let a rendering failure break a recording.
-            _badge = null;
-            _badgeWidth = 0;
-            _badgeHeight = 0;
+            throw;
         }
+        catch (Exception ex)
+        {
+            WebcamDiagnostics.Log($"Branding rasterization unavailable (0x{(uint)ex.HResult:X8} {ex.GetType().Name}); recording without branding.");
+            badge = null;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _badge = badge;
+        // Remember failures too: do not retry font initialization on every frame.
+        _builtForHeight = frameHeight;
+        return badge is not null;
     }
 
-    private void BuildBadge(int frameHeight)
+    private static BrandingBadge? BuildBadge(int frameHeight)
     {
         float fontSize = Math.Clamp(frameHeight / 50f, 12f, 28f);
         float paddingH = fontSize * 0.7f;
         float paddingV = fontSize * 0.45f;
-        _margin = (int)Math.Round(fontSize);
+        int margin = (int)Math.Round(fontSize);
 
         using var font = new Font("Segoe UI", fontSize, FontStyle.Regular, GraphicsUnit.Pixel);
 
@@ -137,8 +191,7 @@ public sealed class BrandingOverlayCompositor
         int height = (int)Math.Ceiling(textSize.Height + (paddingV * 2));
         if (width <= 0 || height <= 0)
         {
-            _badge = null;
-            return;
+            return null;
         }
 
         using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
@@ -177,9 +230,7 @@ public sealed class BrandingOverlayCompositor
                 Marshal.Copy(data.Scan0 + (y * stride), buffer, y * width * 4, width * 4);
             }
 
-            _badge = buffer;
-            _badgeWidth = width;
-            _badgeHeight = height;
+            return new BrandingBadge(buffer, width, height, margin);
         }
         finally
         {

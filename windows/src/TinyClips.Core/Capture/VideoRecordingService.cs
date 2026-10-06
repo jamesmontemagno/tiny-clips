@@ -219,11 +219,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     /// <summary>
     /// Builds the whole pipeline up to "encoder ready": capture session (capturing but not
-    /// emitting), webcam, audio devices, output file and a prepared transcoder. Safe to run during
+    /// emitting), prepared branding, webcam, audio devices, output file and a prepared transcoder. Safe to run during
     /// the countdown because nothing is written to the timeline until <see cref="BeginPreparedAsync"/>.
     /// </summary>
     private async Task PrepareCoreAsync(CaptureTarget captureTarget, PixelRect? region, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        WebcamDiagnostics.BeginRecording();
         Interlocked.Exchange(ref _discardRequested, 0);
 
         var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
@@ -241,28 +243,37 @@ public sealed class VideoRecordingService : IVideoRecordingService
         int height;
         if (_settings.UseGpuRecordingPipeline && TryStartGpuCapture(captureTarget, region, fps, out width, out height))
         {
-            CaptureFlowTrace.Mark("video: GPU capture session started");
+            CaptureFlowTrace.Mark("video: GPU capture session initialized");
         }
         else
         {
-            _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true, _perf);
-            _capture.FrameReady += OnFrameReady;
-            _capture.Start();
-            width = _capture.OutputWidth;
-            height = _capture.OutputHeight;
-            _perf.Width = width;
-            _perf.Height = height;
-            CaptureFlowTrace.Mark("video: capture session started");
+            (width, height) = StartCpuCapture(captureTarget, region, fps);
         }
 
-        StartMouseClickOverlay(captureTarget, region);
         _branding = _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
-        if (_branding is not null && _gpuOverlay is not null)
+        await PrepareBrandingAsync(height, cancellationToken).ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_gpuCapture is { } gpu)
         {
-            _gpuOverlay.EnableBranding(_branding);
+            try
+            {
+                gpu.Start();
+                _perf.Pipeline = "gpu";
+                CaptureFlowTrace.Mark("video: GPU capture session started");
+            }
+            catch (Exception ex)
+            {
+                WebcamDiagnostics.Log($"GPU capture start unavailable (0x{(uint)ex.HResult:X8} {ex.GetType().Name}); falling back to CPU pipeline.");
+                DisposeGpuPipeline();
+                (width, height) = StartCpuCapture(captureTarget, region, fps);
+                await PrepareBrandingAsync(height, cancellationToken).ConfigureAwait(false);
+            }
         }
 
+        StartMouseClickOverlay(captureTarget);
         await StartWebcamOverlayAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         CaptureFlowTrace.Mark("video: webcam overlay started");
 
         _outputPath = _storage.GenerateFilePath(CaptureType.Video);
@@ -297,6 +308,41 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         await PrepareTranscoderAsync(captureTarget, region, width, height, fps, codec, includeAudio, cancellationToken).ConfigureAwait(false);
         _perf.Prepared();
+    }
+
+    private (int Width, int Height) StartCpuCapture(CaptureTarget captureTarget, PixelRect? region, int fps)
+    {
+        var perf = _perf ?? throw new InvalidOperationException("Performance monitor has not been initialized.");
+        perf.Pipeline = "cpu";
+        _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true, perf);
+        _capture.FrameReady += OnFrameReady;
+        _capture.Start();
+        perf.Width = _capture.OutputWidth;
+        perf.Height = _capture.OutputHeight;
+        CaptureFlowTrace.Mark("video: capture session started");
+        return (_capture.OutputWidth, _capture.OutputHeight);
+    }
+
+    private async Task PrepareBrandingAsync(int height, CancellationToken cancellationToken)
+    {
+        if (_branding is { } branding)
+        {
+            await branding.PrepareAsync(height, cancellationToken).ConfigureAwait(false);
+            if (_gpuOverlay is { } overlay)
+            {
+                // WGC callbacks and the pump have not started, so this context has one owner.
+                // Await even on cancellation before cleanup can dispose the compositor.
+                await Task.Run(
+                    () => overlay.PrepareBranding(branding, height, cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            CaptureFlowTrace.Mark("video: branding preparation finished");
+        }
+        else
+        {
+            WebcamDiagnostics.Log("Branding preparation: disabled.");
+        }
     }
 
     /// <summary>
@@ -470,6 +516,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         // (frozen screen, no webcam) at the front of every clip, and that pre-roll saturated the
         // bounded frame channel so real frames near the end were dropped.
         await WaitForFirstWebcamFrameAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         _recordingTimeline = RecordingTimeline.StartNow();
         _webcamPlacements = new WebcamPlacementTimeline(_settings.WebcamCornerPosition);
         _audio?.BeginTimeline(_recordingTimeline);
@@ -519,10 +566,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
         DrawClickOverlay(frame, pts);
         _perf?.End(RecordingStage.OverlayClicks, clicks);
 
-        if (_branding is not null)
+        if (_branding is { } brandingOverlay)
         {
             var branding = RecordingPerformanceMonitor.Begin();
-            _branding.Draw(frame.BgraPixels, frame.Width, frame.Height);
+            brandingOverlay.DrawPrepared(frame.BgraPixels, frame.Width, frame.Height);
             _perf?.End(RecordingStage.OverlayBranding, branding);
         }
 
@@ -610,7 +657,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
     }
 
     /// <summary>
-    /// Starts the GPU-resident capture session and its Direct2D overlay compositor. Returns false
+    /// Initializes the GPU-resident capture session and its Direct2D overlay compositor without
+    /// starting callbacks; branding is prepared before Start. Returns false
     /// (after cleaning up) when anything in the GPU path is unavailable so the caller can fall back
     /// to the CPU pipeline — the recording must never fail just because the fast path did.
     /// </summary>
@@ -620,11 +668,12 @@ public sealed class VideoRecordingService : IVideoRecordingService
         height = 0;
         var perf = _perf ?? throw new InvalidOperationException("Performance monitor has not been initialized.");
         GpuCaptureSession? session = null;
+        GpuOverlayCompositor? overlay = null;
         try
         {
             session = new GpuCaptureSession(captureTarget, region, fps, includeCursor: true, perf);
-            session.Start();
-            var overlay = new GpuOverlayCompositor(session.D3DDevice);
+            session.Initialize();
+            overlay = new GpuOverlayCompositor(session.D3DDevice);
 
             session.Compose += OnGpuCompose;
             session.FrameReady += OnGpuFrameReady;
@@ -651,17 +700,17 @@ public sealed class VideoRecordingService : IVideoRecordingService
             height = session.OutputHeight;
             perf.Width = width;
             perf.Height = height;
-            perf.Pipeline = "gpu";
             _gpuCapture = session;
             _gpuOverlay = overlay;
             _perf = perf;
-            WebcamDiagnostics.Log($"GPU recording pipeline active: {width}x{height}@{fps}.");
+            WebcamDiagnostics.Log($"GPU recording pipeline initialized: {width}x{height}@{fps} (capture not started).");
             return true;
         }
         catch (Exception ex)
         {
             WebcamDiagnostics.Log($"GPU recording pipeline unavailable (0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}); falling back to CPU pipeline.");
             session?.Dispose();
+            overlay?.Dispose();
             return false;
         }
     }
@@ -816,7 +865,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     /// </summary>
     private static int GpuPoolMaxCapacity(int fps) => Math.Clamp(fps / 2, 8, 30);
 
-    private void StartMouseClickOverlay(CaptureTarget target, PixelRect? region)
+    private void StartMouseClickOverlay(CaptureTarget target)
     {
         // Mouse-click visuals only map reliably onto a (possibly cropped) monitor;
         // window targets move/resize, so skip them — matching the mac restriction.
@@ -832,8 +881,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
-        _clickOriginX = monitor.X + (region?.X ?? 0);
-        _clickOriginY = monitor.Y + (region?.Y ?? 0);
+        var geometry = _perf?.Geometry ?? throw new InvalidOperationException("Capture geometry has not been initialized.");
+        (_clickOriginX, _clickOriginY) = geometry.GetDesktopOrigin(monitor.X, monitor.Y);
         _clickStyle = _settings.MouseClickOverlayStyleFor(CaptureType.Video);
         _clickMonitor = new MouseClickMonitor();
         _clickMonitor.Start();
@@ -1108,7 +1157,6 @@ public sealed class VideoRecordingService : IVideoRecordingService
         Interlocked.Exchange(ref _webcamOverlayNullFrames, 0);
         Interlocked.Exchange(ref _webcamNoFrameFrames, 0);
 
-        WebcamDiagnostics.BeginRecording();
         WebcamDiagnostics.Log($"StartWebcamOverlay: WebcamEnabled={_settings.WebcamEnabled} deviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedWebcamId) ? "(default)" : _settings.SelectedWebcamId)}' shape={_settings.WebcamShape} size={_settings.WebcamSizePreset} corner={_settings.WebcamCornerPosition}");
 
         if (!_settings.WebcamEnabled)
@@ -1872,6 +1920,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _capture?.Dispose();
             _capture = null;
             DisposeGpuPipeline();
+            _branding = null;
             DisposeSinkWriter();
             DisposeAudio();
             _fileStream?.Dispose();

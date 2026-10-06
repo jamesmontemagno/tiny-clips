@@ -6,6 +6,9 @@ public sealed record CaptureOutputGeometry(PixelRect Requested, PixelRect Clippe
     public bool WasClipped => Requested != Clipped;
     public bool WasEvenSized => Clipped != Encoded;
 
+    public (int X, int Y) GetDesktopOrigin(int monitorX, int monitorY) =>
+        (checked(monitorX + Clipped.X), checked(monitorY + Clipped.Y));
+
     public static CaptureOutputGeometry Calculate(int contentWidth, int contentHeight, PixelRect? region)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(contentWidth);

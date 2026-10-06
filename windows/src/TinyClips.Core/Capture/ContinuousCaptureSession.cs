@@ -49,6 +49,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
     private volatile bool _running;
     private volatile bool _emittingPaused;
     private PixelRect _cropBounds;
+    private CaptureOutputGeometry? _geometry;
     private long _sourceVersion;
 
     /// <summary>Raised at the target frame rate: tightly-packed BGRA8 + relative PTS.</summary>
@@ -67,6 +68,9 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
     /// <summary>Output height in pixels (region height, or full monitor height), rounded down to even.</summary>
     public int OutputHeight { get; private set; }
+
+    public CaptureOutputGeometry OutputGeometry =>
+        _geometry ?? throw new InvalidOperationException("Capture geometry has not been initialized.");
 
     /// <summary>Presentation timestamp of the most recently emitted frame (MinValue if none).</summary>
     public TimeSpan LastEmittedPts => _lastEmittedPts;
@@ -109,6 +113,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
         _fullHeight = size.Height;
 
         var geometry = CaptureOutputGeometry.Calculate(size.Width, size.Height, _target.IsWindow ? null : _region);
+        _geometry = geometry;
         _cropBounds = geometry.Encoded;
         OutputWidth = _cropBounds.Width;
         OutputHeight = _cropBounds.Height;

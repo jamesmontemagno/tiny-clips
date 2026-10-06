@@ -13,7 +13,16 @@ own `CHANGELOG.md` at the repository root.
   static-frame repeats. The benchmark establishes DPI awareness before monitor queries; both
   capture paths report clipping and even-size crops consistently. Local process diagnostics use
   target-process API and loaded-runtime evidence, leaving missing/conflicting evidence explicit.
+  Video and GIF click overlays use the clipped capture origin so negative-origin requests stay aligned.
   Added deterministic accounting, geometry, serialization and architecture tests. (#404)
+- **Clips Library batches sidebar updates.** Loading or refreshing many distinct tags and
+  collections no longer synchronously rebuilds the entire navigation tree for each insertion.
+  One queued update uses the final entries and is skipped if the window closes first. (#409)
+- **Recording branding is prepared before the frame pump starts.** Badge font initialization and
+  rasterization now run on a worker; GPU upload finishes before capture callbacks start. CPU and
+  GPU recording draws use only prepared resources, preserving badge appearance and placement.
+  Cancellation waits for preparation before cleanup, failures remain best-effort, and separate
+  local preparation timings no longer get mixed into the first frame's branding work. (#408)
 - **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
   capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
   Scrolling captures and the saved-file fallback when the screenshot editor fails to open also

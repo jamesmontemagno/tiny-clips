@@ -1,4 +1,5 @@
 using TinyClips.Core.Capture;
+using TinyClips.Core.Models;
 
 namespace TinyClips.Core.Tests;
 
@@ -33,6 +34,27 @@ public sealed class CaptureOutputGeometryTests
         var result = CaptureOutputGeometry.Calculate(1920, 1080, new PixelRect(-101, -51, 500, 300));
         Assert.Equal(new PixelRect(0, 0, 399, 249), result.Clipped);
         Assert.Equal(new PixelRect(0, 0, 398, 248), result.Encoded);
+    }
+
+    [Theory]
+    [InlineData(-101, -51, -1920, -1080, 20, 30)]
+    [InlineData(101, -51, -1920, 0, 20, 30)]
+    [InlineData(-101, 51, 0, -1080, 20, 30)]
+    [InlineData(101, 51, 1920, 1080, 20, 30)]
+    public void ClickOverlay_UsesClippedPhysicalOriginOnAnyMonitor(
+        int requestedX, int requestedY, int monitorX, int monitorY, int frameX, int frameY)
+    {
+        var geometry = CaptureOutputGeometry.Calculate(1920, 1080, new PixelRect(requestedX, requestedY, 500, 300));
+        var origin = geometry.GetDesktopOrigin(monitorX, monitorY);
+        var click = new MouseClickSample(0, monitorX + Math.Max(0, requestedX) + frameX,
+            monitorY + Math.Max(0, requestedY) + frameY);
+        var style = new MouseClickOverlayStyle("#FFFFFF", 10, 2, 1, 1);
+
+        Assert.True(MouseClickOverlayCompositor.TryComputeRing(click, 0.5, origin.X, origin.Y, style, out var ring));
+        Assert.Equal(frameX, ring.CenterX);
+        Assert.Equal(frameY, ring.CenterY);
+        var intersected = CaptureOutputGeometry.Calculate(1920, 1080, geometry.Clipped);
+        Assert.Equal(origin, intersected.GetDesktopOrigin(monitorX, monitorY));
     }
 
     [Fact]

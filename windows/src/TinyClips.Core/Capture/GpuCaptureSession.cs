@@ -116,10 +116,19 @@ internal sealed class GpuCaptureSession : IDisposable
     /// <summary>Pacer grid slots skipped because a pump tick overran its frame interval.</summary>
     public long PumpOverruns => _pump?.SkippedTicks ?? _pumpOverrunsAtStop;
 
-    public ID3D11Device D3DDevice => _d3dDevice ?? throw new InvalidOperationException("Session not started.");
+    public ID3D11Device D3DDevice => _d3dDevice ?? throw new InvalidOperationException("Session not initialized.");
 
-    public void Start()
+    /// <summary>
+    /// Establishes the device and fixed output dimensions without starting WGC callbacks.
+    /// The owner can prepare device-bound overlays before calling <see cref="Start"/>.
+    /// </summary>
+    public void Initialize()
     {
+        if (_session is not null || _framePool is not null)
+        {
+            throw new InvalidOperationException("Session has already been initialized.");
+        }
+
         if (!GraphicsCaptureSession.IsSupported())
         {
             throw new NotSupportedException("Windows.Graphics.Capture is not supported on this device.");
@@ -153,6 +162,20 @@ internal sealed class GpuCaptureSession : IDisposable
 
         _session = _framePool.CreateCaptureSession(item);
         WgcInterop.TryConfigureSession(_session, _includeCursor);
+    }
+
+    /// <summary>Starts capture after initialization and overlay preparation, without emitting.</summary>
+    public void Start()
+    {
+        if (_running)
+        {
+            return;
+        }
+
+        if (_session is null || _framePool is null)
+        {
+            throw new InvalidOperationException("Initialize must be called before Start.");
+        }
 
         _running = true;
         _framePool.FrameArrived += OnFrameArrived;
@@ -161,7 +184,7 @@ internal sealed class GpuCaptureSession : IDisposable
 
     /// <summary>
     /// Supplies the encoder-frame allocator. Must be called before <see cref="BeginEmitting"/>;
-    /// the session disposes it. Separate from <see cref="Start"/> because the allocator depends
+    /// the session disposes it. Separate from <see cref="Initialize"/> because the allocator depends
     /// on the encoder backend, which in turn needs <see cref="OutputWidth"/>/<see cref="OutputHeight"/>.
     /// </summary>
     public void AttachAllocator(IGpuFrameAllocator allocator)

@@ -49,6 +49,8 @@ reduce the intersection rather than moving the rectangle; empty or sub-2-pixel i
 fail explicitly instead of inventing a 2x2 image. Both recording paths use `CaptureOutputGeometry`.
 The video performance report records `Requested`, `Clipped`, and `Encoded` rectangles and
 adjustment flags. A window target ignores a monitor-relative region and uses its own WGC size.
+Video and GIF click-overlay origins use that clipped rectangle plus the monitor's desktop origin,
+not the raw requested rectangle, including on monitors with negative desktop coordinates.
 The headless recording benchmark establishes Per-Monitor-V2 awareness before querying monitors;
 its requested dimensions are pixels, never scaled a second time.
 
