@@ -118,6 +118,29 @@ Settings uses the strict large-text editing read: an inaccessible transcript pro
 error and disables its text editor rather than caching a misleading empty value. Existing
 non-editing readers retain their fallback behavior.
 
+### Pending native Settings responsiveness validation
+
+The automated Settings tests establish lookup counts and persistence correctness, not
+navigation responsiveness. The native ARM64 and native x64 comparison required by #405 remains
+unperformed; neither the tests nor a cross-compiled build satisfies that acceptance criterion.
+No navigation timing improvement is claimed.
+
+Before marking hardware validation complete, compare the baseline and this change on a native
+ARM64 device and a native x64 device, using the same build configuration and synthetic settings
+on each device. Do not use x64 emulation as the ARM64 result or profile concurrently on a shared
+host. Keep credentials, transcripts, settings, traces, and local measurements private.
+
+For each build/device pair, repeat a fixed navigation sequence through General, Screenshot,
+GIF, Uploadcare, and Teleprompter. Record first realization and cached revisits separately,
+including selection-to-first-layout latency and UI-thread stalls, using identical synthetic
+transcript sizes and credential fixtures. Also exercise rapid navigation, pending transcript
+edits, and closing during delayed initialization. Confirm unrelated sections perform zero
+credential/transcript lookups and relevant sections perform one initial lookup without
+repeated reads on revisits. Preserve keyboard access and light/dark/system theme behavior.
+Record the before/after comparison privately with the build revisions, native architectures,
+fixture sizes, repetition count, and measurement method; do not infer responsiveness from
+service-call counts alone.
+
 To build the **Microsoft Store** flavor (same feature set, Store distribution behavior), set:
 
 ```powershell
@@ -133,6 +156,9 @@ the elapsed time. Global hotkeys work app-wide.
 
 For coordinate/DPI behaviour across mixed-DPI monitors, see
 [`docs/dpi-and-coordinates.md`](docs/dpi-and-coordinates.md).
+
+For opt-in window-construction phase diagnostics and the private cold/warm validation
+protocol, see [`docs/first-open-responsiveness.md`](docs/first-open-responsiveness.md).
 
 For how the screen, webcam, microphone, and system audio are kept in sync (shared timeline,
 WASAPI capture, drift/discontinuity correction, audio back-pressure, the *Audio offset* setting, and
