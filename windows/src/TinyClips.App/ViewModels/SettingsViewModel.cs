@@ -229,8 +229,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     // Tiny Clips Studio's part of this view model is in SettingsViewModel.Studio.cs. A build that
-    // leaves that file out, as the unit tests of this one do, has no Studio settings, and these
-    // two calls are then not there.
+    // leaves that file out has no Studio settings, and these two calls are then not there.
     partial void RestoreStudioSettings(SettingsSectionKind? kind);
 
     partial void ReleaseStudio();

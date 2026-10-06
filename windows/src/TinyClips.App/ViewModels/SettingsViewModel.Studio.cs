@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Dispatching;
 using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.ViewModels.Studio;
@@ -17,9 +18,9 @@ namespace TinyClips.App;
 /// recording choice, the storage rules, and the recordings that only a Studio project holds.
 /// </summary>
 /// <remarks>
-/// It is in a file of its own because the unit tests of <c>SettingsViewModel.cs</c> compile that
-/// file by itself, without the app's services. This file is not in that build. The other file
-/// reaches it through two partial methods, which are not there when this file is not.
+/// It is in a file of its own so that <c>SettingsViewModel.cs</c> compiles without it, and
+/// without the three Studio classes it needs. The other file reaches this one through two
+/// partial methods, which are not there when this file is not. The unit tests compile both.
 /// </remarks>
 public sealed partial class SettingsViewModel
 {
@@ -28,7 +29,7 @@ public sealed partial class SettingsViewModel
         StudioProjectCleanupService Cleanup,
         StudioProjectTracker Tracker);
 
-    // Set by the constructor below, which is the one the app uses. The constructors in the other
+    // Set by the two constructors below; the app uses the first. The constructors in the other
     // file know nothing of Studio.
     private readonly StudioServices? _studio;
     private Task? _studioStorageInitialization;
@@ -48,7 +49,26 @@ public sealed partial class SettingsViewModel
         IStudioProjectStore studioProjects,
         StudioProjectCleanupService studioCleanup,
         StudioProjectTracker studioTracker)
-        : this(settings, hotKeys, launchAtLogin, audioDevices, webcamDevices, storage, analytics, uploadcareCredentials)
+        : this(settings, hotKeys, launchAtLogin, audioDevices, webcamDevices, storage, analytics, uploadcareCredentials,
+            studioProjects, studioCleanup, studioTracker, DispatcherQueue.GetForCurrentThread())
+    {
+    }
+
+    // For the unit tests, which have no dispatcher queue to ask for and pass none.
+    internal SettingsViewModel(
+        ICaptureSettings settings,
+        IHotKeyService hotKeys,
+        ILaunchAtLoginService launchAtLogin,
+        IAudioDeviceService audioDevices,
+        IWebcamDeviceEnumerator webcamDevices,
+        IClipStorageService storage,
+        IClipAnalyticsService analytics,
+        IUploadcareCredentialStore uploadcareCredentials,
+        IStudioProjectStore studioProjects,
+        StudioProjectCleanupService studioCleanup,
+        StudioProjectTracker studioTracker,
+        DispatcherQueue? dispatcherQueue)
+        : this(settings, hotKeys, launchAtLogin, audioDevices, webcamDevices, storage, analytics, uploadcareCredentials, dispatcherQueue)
     {
         _studio = new StudioServices(studioProjects, studioCleanup, studioTracker);
         studioTracker.Changed += OnStudioOpenProjectsChanged;
