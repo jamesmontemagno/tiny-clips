@@ -214,20 +214,20 @@ struct StudioZoomLane: View {
 
 // MARK: - Zoom Inspector
 
-/// The Zoom section of the inspector: stepping through the zooms, adding and suggesting them, and
+/// The Zoom panel of the inspector: stepping through the zooms, adding and suggesting them, and
 /// every value of the selected one.
 struct StudioZoomInspectorSection: View {
     @ObservedObject var viewModel: StudioViewModel
 
     var body: some View {
-        StudioInspectorSection(title: "Zoom") {
+        VStack(alignment: .leading, spacing: 8) {
             navigationRow
             actionRow
             clickExplanation
             removeSuggestionsButton
-            selectedZoomControls
             noSelectionText
         }
+        selectedZoomControls
     }
 
     private var navigationRow: some View {
@@ -301,7 +301,7 @@ struct StudioZoomInspectorSection: View {
     private var selectedZoomControls: some View {
         if let index = viewModel.selectedZoomIndex, let zoom = viewModel.selectedZoom {
             StudioSliderRow(
-                title: "Scale",
+                title: "Zoom level",
                 value: min(max(zoom.scale, 1), 5),
                 range: 1...5,
                 step: 0.1,
@@ -309,14 +309,29 @@ struct StudioZoomInspectorSection: View {
                 onChange: { viewModel.setSelectedZoomScale($0) },
                 onEditingChanged: { gestureChanged($0) }
             )
-            Picker("Looks at", selection: focusModeBinding(zoom: zoom)) {
-                Text("A Point").tag(StudioZoomFocusMode.point)
-                Text("The Pointer").tag(StudioZoomFocusMode.cursor)
+            StudioInspectorSection(title: "Focus") {
+                Picker("Focus", selection: focusModeBinding(zoom: zoom)) {
+                    Text("Fixed Point").tag(StudioZoomFocusMode.point)
+                    Text("Follow Pointer").tag(StudioZoomFocusMode.cursor)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel("Focus")
+                .help("Zoom in on one point, or keep the pointer in view as it moves")
+                .disabled(!viewModel.hasPointerPositions && zoom.focus.mode == .point)
+                pointerExplanation
+                focusControls(index: index)
             }
-            .pickerStyle(.segmented)
-            .disabled(!viewModel.hasPointerPositions && zoom.focus.mode == .point)
-            pointerExplanation
-            focusControls(index: index)
+            timingSection(zoom: zoom)
+            Button("Delete Zoom", role: .destructive) {
+                viewModel.removeSelectedZoom()
+            }
+            .help("Delete this zoom (Delete)")
+        }
+    }
+
+    private func timingSection(zoom: StudioZoom) -> some View {
+        StudioInspectorSection(title: "Timing") {
             timeRow(
                 title: "Start",
                 time: zoom.start,
@@ -338,7 +353,7 @@ struct StudioZoomInspectorSection: View {
                 help: "End this zoom at the playhead"
             )
             StudioSliderRow(
-                title: "Ease in",
+                title: "Zoom-in time",
                 value: zoom.easeIn,
                 range: 0...3,
                 step: 0.1,
@@ -347,7 +362,7 @@ struct StudioZoomInspectorSection: View {
                 onEditingChanged: { gestureChanged($0) }
             )
             StudioSliderRow(
-                title: "Ease out",
+                title: "Zoom-out time",
                 value: zoom.easeOut,
                 range: 0...3,
                 step: 0.1,
@@ -355,10 +370,6 @@ struct StudioZoomInspectorSection: View {
                 onChange: { viewModel.setSelectedZoomEaseOut($0) },
                 onEditingChanged: { gestureChanged($0) }
             )
-            Button("Delete Zoom", role: .destructive) {
-                viewModel.removeSelectedZoom()
-            }
-            .help("Delete this zoom (Delete)")
         }
     }
 
@@ -435,10 +446,16 @@ struct StudioZoomInspectorSection: View {
 
     @ViewBuilder
     private var noSelectionText: some View {
-        if !viewModel.zooms.isEmpty && viewModel.selectedZoom == nil {
+        if viewModel.zooms.isEmpty {
+            Text("Press Z or Add Zoom to zoom in at the playhead.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if viewModel.selectedZoom == nil {
             Text("Select a zoom on the timeline, or step to one with the arrows above.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

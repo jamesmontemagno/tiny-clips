@@ -53,6 +53,17 @@ Two more, asked the same way late that evening:
 | The fix for the recording that a failed start deleted: on this branch only, or on `main` as well | A small pull request of its own against `main`. It is #418, merged on 6 October |
 | Esc in the Studio window, since #417 made it close the other editors | Esc closes Studio the way its close button does, behind the same setting. That was missing on Windows only: the Mac's Studio window has closed on Esc since 3 October, built then as a decision made while building, and the question did not say so. Built on Windows on 6 October; see "The evening of 5 October" |
 
+### Decided on 6 October
+
+The owner ran Studio on a Mac for the first time. The editing was right; the inspector, eleven sections in one scroll, was not.
+
+| Question | Decision |
+|---|---|
+| How the inspector is arranged | A rail of buttons down its edge and one panel on show at a time: Scene, Background, Screen, Camera, Zoom, Cut, Speed, Audio, Project. Taking hold of a zoom, a cut, a speed change, a scene, or the camera shows the panel that edits it. Some labels were reworded with it |
+| Which platform | The Mac now, built the same day. Windows from a written brief, [`windows/docs/studio-inspector-rail.md`](../windows/docs/studio-inspector-rail.md), which has the panels, what shows each, and every label that changed |
+
+Until Windows follows, "Shared design" below describes the inspector's sections and labels as Windows has them. The editor-model strings, the project format, the lanes, and the keys are the same on both.
+
 ## Where the code is today
 
 | | macOS | Windows |

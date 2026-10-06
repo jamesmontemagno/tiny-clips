@@ -101,7 +101,9 @@ struct StudioSceneLane: View {
             .accessibilityValue(isCurrent ? "Current scene" : "")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction {
-                _ = viewModel.showScene(index)
+                if viewModel.showScene(index) {
+                    viewModel.showInspectorPanel(.scene)
+                }
             }
     }
 
@@ -129,6 +131,7 @@ struct StudioSceneLane: View {
             .onChanged { value in
                 if drag == nil {
                     drag = pressedPart(index: index, range: range, localX: value.startLocation.x - x, width: width)
+                    viewModel.showInspectorPanel(.scene)
                 }
 
                 guard var current = drag else { return }
@@ -205,21 +208,37 @@ struct StudioSceneLane: View {
 
 // MARK: - Scene Inspector
 
-/// The Scene section of the inspector: stepping from scene to scene, splitting the current one,
-/// and what a scene has that the layout controls under it do not cover, which is when it starts,
-/// how it is entered, and deleting it. The current scene is the one the playhead is in.
+/// The Scene panel of the inspector: stepping from scene to scene, the current scene's layout,
+/// splitting it, and when it starts, how it is entered, and deleting it. The current scene is the
+/// one the playhead is in. Only a recording with a camera has scenes to arrange.
 struct StudioSceneInspectorSection: View {
     @ObservedObject var viewModel: StudioViewModel
 
     var body: some View {
-        StudioInspectorSection(title: "Scene") {
-            navigationRow
+        navigationRow
+        StudioInspectorSection(title: "Layout") {
+            layoutPicker
+        }
+        VStack(alignment: .leading, spacing: 8) {
             splitButton
             splitExplanation
             firstSceneExplanation
-            currentSceneControls
-            deleteButton
         }
+        currentSceneControls
+        deleteButton
+    }
+
+    private var layoutPicker: some View {
+        Picker("Layout", selection: layoutBinding) {
+            Text("Screen").tag(StudioLayout.screen)
+            Text("Bubble").tag(StudioLayout.bubble)
+            Text("Side by Side").tag(StudioLayout.sideBySide)
+            Text("Camera").tag(StudioLayout.camera)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .accessibilityLabel("Layout")
+        .help("Screen only, screen with a camera bubble, side by side, or camera only (1 to 4)")
     }
 
     private var navigationRow: some View {
@@ -255,7 +274,7 @@ struct StudioSceneInspectorSection: View {
     }
 
     private var splitButton: some View {
-        Button("Split at Playhead") {
+        Button("Split Scene") {
             viewModel.splitSceneAtPlayhead()
         }
         .disabled(!viewModel.canSplitSceneAtPlayhead)
@@ -276,7 +295,7 @@ struct StudioSceneInspectorSection: View {
     @ViewBuilder
     private var firstSceneExplanation: some View {
         if viewModel.scenes.count == 1 {
-            explanationText("Split the recording into scenes to change the layout partway through.")
+            explanationText("Split the recording at the playhead to change the layout partway through.")
         } else if viewModel.currentSceneIndex == 0 {
             explanationText(StudioEditorModel.firstSceneExplanation)
         }
@@ -287,23 +306,29 @@ struct StudioSceneInspectorSection: View {
     @ViewBuilder
     private var currentSceneControls: some View {
         if viewModel.currentSceneIndex >= 1, let scene = currentScene {
-            timeRow(
-                title: "Start",
-                time: scene.start,
-                accessibilityLabel: "Scene start",
-                nudgeForward: { viewModel.nudgeCurrentSceneStart(by: 0.1) },
-                nudgeBackward: { viewModel.nudgeCurrentSceneStart(by: -0.1) },
-                setAtPlayhead: { viewModel.setCurrentSceneStartAtPlayhead() },
-                buttonTitle: "Start scene at playhead",
-                help: "Start this scene at the playhead"
-            )
-            Picker("Entered by", selection: transitionKindBinding(scene: scene)) {
-                Text("A Cut").tag(StudioTransitionKind.cut)
-                Text("Moving").tag(StudioTransitionKind.morph)
+            StudioInspectorSection(title: "Transition") {
+                Picker("Transition", selection: transitionKindBinding(scene: scene)) {
+                    Text("Instant").tag(StudioTransitionKind.cut)
+                    Text("Animated").tag(StudioTransitionKind.morph)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel("Transition")
+                .help("Switch to this scene's layout instantly, or animate the screen and camera into place")
+                moveDurationControls(index: viewModel.currentSceneIndex, scene: scene)
             }
-            .pickerStyle(.segmented)
-            .help("Cut to this scene, or have the screen and camera move into place")
-            moveDurationControls(index: viewModel.currentSceneIndex, scene: scene)
+            StudioInspectorSection(title: "Timing") {
+                timeRow(
+                    title: "Start",
+                    time: scene.start,
+                    accessibilityLabel: "Scene start",
+                    nudgeForward: { viewModel.nudgeCurrentSceneStart(by: 0.1) },
+                    nudgeBackward: { viewModel.nudgeCurrentSceneStart(by: -0.1) },
+                    setAtPlayhead: { viewModel.setCurrentSceneStartAtPlayhead() },
+                    buttonTitle: "Start scene at playhead",
+                    help: "Start this scene at the playhead"
+                )
+            }
         }
     }
 
@@ -313,7 +338,8 @@ struct StudioSceneInspectorSection: View {
             let range = StudioEditorModel.sceneTransitionDurationRange
             let value = min(max(scene.transition.duration, range.lowerBound), range.upperBound)
             StudioSliderRow(
-                title: "Move takes",
+                title: "Duration",
+                accessibilityTitle: "Transition duration",
                 value: value,
                 range: range,
                 step: 0.05,
@@ -394,6 +420,13 @@ struct StudioSceneInspectorSection: View {
         let index = viewModel.currentSceneIndex
         guard viewModel.scenes.indices.contains(index) else { return nil }
         return viewModel.scenes[index]
+    }
+
+    private var layoutBinding: Binding<StudioLayout> {
+        Binding(
+            get: { viewModel.editor?.effectiveLayout ?? .screen },
+            set: { viewModel.setLayout($0) }
+        )
     }
 
     private func transitionKindBinding(scene: StudioScene) -> Binding<StudioTransitionKind> {

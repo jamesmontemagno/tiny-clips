@@ -79,7 +79,6 @@ private struct StudioEditorView: View {
                     .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
                 StudioInspectorView(viewModel: viewModel)
-                    .frame(width: 320)
             }
             Divider()
             StudioTimelineView(viewModel: viewModel)
@@ -247,6 +246,7 @@ private struct StudioPreviewView: View {
                         } else {
                             start = bubble
                             dragStartBubble = bubble
+                            viewModel.showInspectorPanel(.camera)
                             viewModel.beginGesture()
                         }
                         let topLeft = CGPoint(
@@ -310,88 +310,105 @@ final class StudioPlayerHostView: NSView {
 private struct StudioInspectorView: View {
     @ObservedObject var viewModel: StudioViewModel
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Whether each Crop group is open. Until its header is pressed, one is open when it has a crop.
+    @State private var isScreenCropOpen: Bool?
+    @State private var isCameraCropOpen: Bool?
+
     private static let shapes: [StudioCameraShape] = [.circle, .roundedRectangle, .squircle, .rectangle]
     private static let cutouts: [StudioCameraCutout] = [.none, .blur, .remove]
     private static let anchors: [StudioAnchor] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
     private static let swatchColumns = Array(repeating: GridItem(.fixed(22), spacing: 7), count: 9)
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                if viewModel.hasCamera {
-                    StudioSceneInspectorSection(viewModel: viewModel)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(panel.title)
+                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 12)
+                    .accessibilityAddTraits(.isHeader)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        panelContent
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                layoutSection
-                backgroundSection
-                screenSection
-                if viewModel.hasCamera {
-                    cameraSection
-                }
-                StudioZoomInspectorSection(viewModel: viewModel)
-                StudioCutInspectorSection(viewModel: viewModel)
-                StudioSpeedInspectorSection(viewModel: viewModel)
-                audioSection
-                extrasSection
-                projectSection
-                Divider()
-                Button("Save as Default Look") {
-                    viewModel.saveDefaultLook()
-                }
-                .help("New Studio recordings start with this canvas, background, screen, and camera styling")
+                // A panel of its own for each: a new panel starts at its top.
+                .id(panel)
+                .transition(.opacity)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(Color(nsColor: .controlBackgroundColor))
-    }
+            .frame(width: StudioInspectorMetrics.panelWidth, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: panel)
 
-    // MARK: Sections
+            Divider()
 
-    private var layoutSection: some View {
-        StudioInspectorSection(title: "Layout") {
-            if viewModel.hasCamera {
-                Picker("Layout", selection: layoutBinding) {
-                    Text("Screen").tag(StudioLayout.screen)
-                    Text("Bubble").tag(StudioLayout.bubble)
-                    Text("Side by Side").tag(StudioLayout.sideBySide)
-                    Text("Camera").tag(StudioLayout.camera)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .accessibilityLabel("Layout")
-                .help("Screen only, screen with a camera bubble, side by side, or camera only (1 to 4)")
-            } else {
-                Text("This recording has no camera, so it shows the screen only.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            StudioInspectorRail(viewModel: viewModel, selection: panel)
+                .frame(width: StudioInspectorMetrics.railWidth)
         }
     }
 
-    private var backgroundSection: some View {
-        StudioInspectorSection(title: "Background") {
-            Toggle("Show a background", isOn: backgroundEnabledBinding)
+    private var panel: StudioInspectorPanel {
+        StudioInspectorPanel.resolved(viewModel.inspectorPanel, hasCamera: viewModel.hasCamera)
+    }
+
+    @ViewBuilder
+    private var panelContent: some View {
+        switch panel {
+        case .scene:
+            StudioSceneInspectorSection(viewModel: viewModel)
+        case .background:
+            backgroundPanel
+        case .screen:
+            screenPanel
+        case .camera:
+            cameraPanel
+        case .zoom:
+            StudioZoomInspectorSection(viewModel: viewModel)
+        case .cut:
+            StudioCutInspectorSection(viewModel: viewModel)
+        case .speed:
+            StudioSpeedInspectorSection(viewModel: viewModel)
+        case .audio:
+            audioPanel
+        case .project:
+            projectPanel
+        }
+    }
+
+    // MARK: Panels
+
+    @ViewBuilder
+    private var backgroundPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Show background", isOn: backgroundEnabledBinding)
                 .toggleStyle(.checkbox)
                 .help("Off leaves the canvas black")
             if background.style != StudioBackgroundStyle.none {
                 swatchGrid(title: "Solid", presets: solidBackgroundPresets.filter { $0.style == .solid })
                 swatchGrid(title: "Gradient", presets: gradientBackgroundPresets.filter { $0.style == .gradient })
             }
-            StudioSliderRow(
-                title: "Padding",
-                value: canvasPadding,
-                range: 0...0.4,
-                step: 0.01,
-                valueText: percentText(canvasPadding),
-                onChange: { viewModel.setCanvasPadding($0) },
-                onEditingChanged: { gestureChanged($0) }
-            )
         }
+        StudioSliderRow(
+            title: "Padding",
+            value: canvasPadding,
+            range: 0...0.4,
+            step: 0.01,
+            valueText: percentText(canvasPadding),
+            onChange: { viewModel.setCanvasPadding($0) },
+            onEditingChanged: { gestureChanged($0) }
+        )
+        .help("The space between the edge of the video and the screen")
     }
 
-    private var screenSection: some View {
-        StudioInspectorSection(title: "Screen") {
+    @ViewBuilder
+    private var screenPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
             StudioSliderRow(
                 title: "Corner radius",
                 value: screenStyle.cornerRadius,
@@ -410,54 +427,71 @@ private struct StudioInspectorView: View {
                 onChange: { viewModel.setScreenShadow($0) },
                 onEditingChanged: { gestureChanged($0) }
             )
-            Text("Crop")
-                .font(.caption)
+        }
+        Toggle("Click highlights", isOn: clickRingsBinding)
+            .toggleStyle(.checkbox)
+            .help("Draws a ring where each mouse click happened")
+        cropGroup(
+            name: "Screen crop",
+            isOpen: $isScreenCropOpen,
+            insets: viewModel.editor?.screenCropInsets ?? StudioCropInsets(),
+            set: { edge, value in viewModel.setScreenCropInset(edge, to: value) },
+            reset: { viewModel.clearScreenCrop() }
+        )
+    }
+
+    @ViewBuilder
+    private var cameraPanel: some View {
+        switch layout {
+        case .screen:
+            Text("The camera is hidden in the Screen layout. Choose another layout in Scene to show it.")
+                .font(.callout)
                 .foregroundStyle(.secondary)
-            cropControls(
-                insets: viewModel.editor?.screenCropInsets ?? StudioCropInsets(),
-                set: { edge, value in viewModel.setScreenCropInset(edge, to: value) },
-                reset: { viewModel.clearScreenCrop() }
-            )
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Show Scene") {
+                viewModel.showInspectorPanel(.scene)
+            }
+        case .bubble:
+            StudioInspectorSection(title: "Placement") {
+                bubblePlacementControls
+                placementNote
+            }
+            StudioInspectorSection(title: "Appearance") {
+                bubbleShapeControls
+                cameraStyleControls
+            }
+            cameraCropGroup
+        case .sideBySide:
+            StudioInspectorSection(title: "Placement") {
+                sideBySideControls
+                placementNote
+            }
+            StudioInspectorSection(title: "Appearance") {
+                cameraStyleControls
+            }
+            cameraCropGroup
+        case .camera:
+            StudioInspectorSection(title: "Appearance") {
+                cameraStyleControls
+            }
+            cameraCropGroup
         }
     }
 
-    private var cameraSection: some View {
-        StudioInspectorSection(title: "Camera") {
-            switch layout {
-            case .screen:
-                Text("The camera is hidden in this layout.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            case .bubble:
-                bubbleControls
-                cameraStyleControls
-            case .sideBySide:
-                sideBySideControls
-                cameraStyleControls
-            case .camera:
-                cameraStyleControls
-            }
+    /// Where the camera is belongs to the scene, and how it looks to the whole video. Said once
+    /// there is more than one scene for it to matter in.
+    @ViewBuilder
+    private var placementNote: some View {
+        if viewModel.scenes.count > 1 {
+            Text("Placement is set for each scene. Appearance and crop are the same in every scene.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     @ViewBuilder
-    private var bubbleControls: some View {
-        Picker("Shape", selection: shapeBinding) {
-            ForEach(Self.shapes, id: \.self) { shape in
-                Text(StudioEditorModel.shapeName(shape)).tag(shape)
-            }
-        }
-        if camera.shape == .roundedRectangle {
-            StudioSliderRow(
-                title: "Corner radius",
-                value: camera.cornerRadius,
-                range: 0...0.5,
-                step: 0.01,
-                valueText: percentText(camera.cornerRadius * 2),
-                onChange: { viewModel.setCameraCornerRadius($0) },
-                onEditingChanged: { gestureChanged($0) }
-            )
-        }
+    private var bubblePlacementControls: some View {
         StudioSliderRow(
             title: "Size",
             value: scene.bubble.size,
@@ -494,13 +528,33 @@ private struct StudioInspectorView: View {
     }
 
     @ViewBuilder
+    private var bubbleShapeControls: some View {
+        Picker("Shape", selection: shapeBinding) {
+            ForEach(Self.shapes, id: \.self) { shape in
+                Text(StudioEditorModel.shapeName(shape)).tag(shape)
+            }
+        }
+        if camera.shape == .roundedRectangle {
+            StudioSliderRow(
+                title: "Corner radius",
+                value: camera.cornerRadius,
+                range: 0...0.5,
+                step: 0.01,
+                valueText: percentText(camera.cornerRadius * 2),
+                onChange: { viewModel.setCameraCornerRadius($0) },
+                onEditingChanged: { gestureChanged($0) }
+            )
+        }
+    }
+
+    @ViewBuilder
     private var sideBySideControls: some View {
         Picker("Camera side", selection: sideBinding) {
             Text("Left or top").tag(StudioCameraSide.leading)
             Text("Right or bottom").tag(StudioCameraSide.trailing)
         }
         StudioSliderRow(
-            title: "Camera share",
+            title: "Camera size",
             value: scene.split.cameraFraction,
             range: 0.15...0.6,
             step: 0.01,
@@ -508,13 +562,14 @@ private struct StudioInspectorView: View {
             onChange: { viewModel.setCameraShare($0) },
             onEditingChanged: { gestureChanged($0) }
         )
+        .help("How much of the video the camera takes; the screen has the rest")
     }
 
     @ViewBuilder
     private var cameraStyleControls: some View {
         Toggle("Mirror", isOn: mirrorBinding)
             .toggleStyle(.checkbox)
-        Picker("Background", selection: cutoutBinding) {
+        Picker("Camera background", selection: cutoutBinding) {
             ForEach(Self.cutouts, id: \.self) { cutout in
                 Text(StudioEditorModel.cutoutName(cutout)).tag(cutout)
             }
@@ -544,10 +599,12 @@ private struct StudioInspectorView: View {
             onChange: { viewModel.setCameraShadow($0) },
             onEditingChanged: { gestureChanged($0) }
         )
-        Text("Crop")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        cropControls(
+    }
+
+    private var cameraCropGroup: some View {
+        cropGroup(
+            name: "Camera crop",
+            isOpen: $isCameraCropOpen,
             insets: viewModel.editor?.cameraCropInsets ?? StudioCropInsets(),
             set: { edge, value in viewModel.setCameraCropInset(edge, to: value) },
             reset: { viewModel.clearCameraCrop() }
@@ -556,57 +613,68 @@ private struct StudioInspectorView: View {
 
     /// Mute, and a volume for each kind of sound the recording has in a track of its own. A
     /// recording with everything in one track, or one that does not say, has only Mute.
-    private var audioSection: some View {
-        StudioInspectorSection(title: "Audio") {
-            Toggle("Mute audio", isOn: muteBinding)
-                .toggleStyle(.checkbox)
-            if viewModel.editor?.hasSystemSoundTrack == true {
-                StudioSliderRow(
-                    title: "System audio",
-                    value: systemVolume,
-                    range: 0...1,
-                    step: 0.05,
-                    valueText: percentText(systemVolume),
-                    onChange: { viewModel.setSystemVolume($0) },
-                    onEditingChanged: { gestureChanged($0) }
-                )
-                .disabled(isMuted)
-                .help("How loud the computer's sound is in the video")
-            }
-            if viewModel.editor?.hasMicrophoneTrack == true {
-                StudioSliderRow(
-                    title: "Microphone",
-                    value: microphoneVolume,
-                    range: 0...1,
-                    step: 0.05,
-                    valueText: percentText(microphoneVolume),
-                    onChange: { viewModel.setMicrophoneVolume($0) },
-                    onEditingChanged: { gestureChanged($0) }
-                )
-                .disabled(isMuted)
-                .help("How loud the microphone is in the video")
-            }
+    @ViewBuilder
+    private var audioPanel: some View {
+        Toggle("Mute", isOn: muteBinding)
+            .toggleStyle(.checkbox)
+            .help("Export the video without sound")
+        if viewModel.editor?.hasSystemSoundTrack == true {
+            StudioSliderRow(
+                title: "System audio",
+                value: systemVolume,
+                range: 0...1,
+                step: 0.05,
+                valueText: percentText(systemVolume),
+                onChange: { viewModel.setSystemVolume($0) },
+                onEditingChanged: { gestureChanged($0) }
+            )
+            .disabled(isMuted)
+            .help("How loud the computer's sound is in the video")
+        }
+        if viewModel.editor?.hasMicrophoneTrack == true {
+            StudioSliderRow(
+                title: "Microphone",
+                value: microphoneVolume,
+                range: 0...1,
+                step: 0.05,
+                valueText: percentText(microphoneVolume),
+                onChange: { viewModel.setMicrophoneVolume($0) },
+                onEditingChanged: { gestureChanged($0) }
+            )
+            .disabled(isMuted)
+            .help("How loud the microphone is in the video")
         }
     }
 
-    private var extrasSection: some View {
-        StudioInspectorSection(title: "Extras") {
-            Toggle("Click rings", isOn: clickRingsBinding)
-                .toggleStyle(.checkbox)
-                .help("Draws a ring where each mouse click happened")
+    /// What is true of the whole project and not of a part of the picture. Keeping the project is
+    /// not an edit: Undo leaves it alone.
+    @ViewBuilder
+    private var projectPanel: some View {
+        StudioInspectorSection(title: "Export") {
             Toggle("Tiny Clips badge", isOn: brandingBinding)
                 .toggleStyle(.checkbox)
+                .help("Shows the Tiny Clips badge in a corner of the video")
         }
-    }
-
-    /// What is kept of the project, as opposed to what is in the video. Not an edit: Undo
-    /// leaves it alone.
-    private var projectSection: some View {
-        StudioInspectorSection(title: "Project") {
+        StudioInspectorSection(title: "Storage") {
             Toggle("Keep this project", isOn: keepsSourcesBinding)
                 .toggleStyle(.checkbox)
                 .help("Storage cleanup never removes a kept project, so its video stays editable. Otherwise a project goes by the rules in Video settings once its video has been exported.")
+            noteText("Storage cleanup skips a kept project, so its video stays editable.")
         }
+        StudioInspectorSection(title: "New Recordings") {
+            Button("Save as Default Look") {
+                viewModel.saveDefaultLook()
+            }
+            .help("New Studio recordings start with this canvas, background, screen, and camera styling")
+            noteText("New Studio recordings start with this background, screen, and camera styling.")
+        }
+    }
+
+    private func noteText(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func swatchGrid(title: String, presets: [ExportBackgroundPreset]) -> some View {
@@ -655,30 +723,65 @@ private struct StudioInspectorView: View {
         StudioEditorModel.signedPercentText(fraction)
     }
 
+    /// The four crop edges under a header that folds them away. Closed until a crop is set or
+    /// the header is pressed, so a panel is not half crop sliders that are rarely moved.
     @ViewBuilder
-    private func cropControls(
+    private func cropGroup(
+        name: String,
+        isOpen: Binding<Bool?>,
         insets: StudioCropInsets,
         set: @escaping (StudioCropEdge, Double) -> Void,
         reset: @escaping () -> Void
     ) -> some View {
-        cropSlider("Crop left", edge: .left, value: insets.left, set: set)
-        cropSlider("Crop top", edge: .top, value: insets.top, set: set)
-        cropSlider("Crop right", edge: .right, value: insets.right, set: set)
-        cropSlider("Crop bottom", edge: .bottom, value: insets.bottom, set: set)
-        Button("Reset Crop") {
-            reset()
+        let open = isOpen.wrappedValue ?? !insets.isEmpty
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                isOpen.wrappedValue = !open
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                    Text("Crop")
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                    if !open, !insets.isEmpty {
+                        Text("Cropped")
+                            .font(.caption)
+                    }
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(name)
+            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            .accessibilityAddTraits(.isHeader)
+            .help(open ? "Hide the crop controls" : "Show the crop controls")
+
+            if open {
+                cropSlider("Left", name: name, edge: .left, value: insets.left, set: set)
+                cropSlider("Top", name: name, edge: .top, value: insets.top, set: set)
+                cropSlider("Right", name: name, edge: .right, value: insets.right, set: set)
+                cropSlider("Bottom", name: name, edge: .bottom, value: insets.bottom, set: set)
+                Button("Reset Crop") {
+                    reset()
+                }
+                .disabled(insets.isEmpty)
+            }
         }
-        .disabled(insets.isEmpty)
     }
 
     private func cropSlider(
         _ title: String,
+        name: String,
         edge: StudioCropEdge,
         value: Double,
         set: @escaping (StudioCropEdge, Double) -> Void
     ) -> some View {
         StudioSliderRow(
             title: title,
+            accessibilityTitle: "\(name) \(title.lowercased())",
             value: value,
             range: 0...0.95,
             step: 0.01,
@@ -698,13 +801,6 @@ private struct StudioInspectorView: View {
     }
 
     // MARK: Bindings
-
-    private var layoutBinding: Binding<StudioLayout> {
-        Binding(
-            get: { layout },
-            set: { viewModel.setLayout($0) }
-        )
-    }
 
     private var backgroundEnabledBinding: Binding<Bool> {
         Binding(
@@ -802,6 +898,8 @@ struct StudioInspectorSection<Content: View>: View {
 /// `onEditingChanged` reports the start and end of a drag so it can be a single undo step.
 struct StudioSliderRow: View {
     let title: String
+    /// What VoiceOver calls the slider, when the title alone leans on the heading over it.
+    var accessibilityTitle: String?
     let value: Double
     let range: ClosedRange<Double>
     let step: Double
@@ -821,7 +919,7 @@ struct StudioSliderRow: View {
             .accessibilityHidden(true)
             Slider(value: binding, in: range, onEditingChanged: onEditingChanged)
                 .controlSize(.small)
-                .accessibilityLabel(title)
+                .accessibilityLabel(accessibilityTitle ?? title)
                 .accessibilityValue(valueText)
         }
     }
@@ -834,6 +932,92 @@ struct StudioSliderRow: View {
                 onChange(min(max(snapped, range.lowerBound), range.upperBound))
             }
         )
+    }
+}
+
+// MARK: - Inspector Rail
+
+enum StudioInspectorMetrics {
+    /// Wide enough for the four-part Layout picker between the panel's margins.
+    static let panelWidth: CGFloat = 328
+    /// Wide enough for the longest panel name, Background, under its symbol.
+    static let railWidth: CGFloat = 72
+}
+
+/// The buttons down the inspector's edge, one for each panel. The panel on show is marked, and a
+/// line is drawn between the groups: the look of the picture, the edits along the timeline, and
+/// the rest.
+private struct StudioInspectorRail: View {
+    @ObservedObject var viewModel: StudioViewModel
+    let selection: StudioInspectorPanel
+
+    var body: some View {
+        let groups = StudioInspectorPanel.groups(hasCamera: viewModel.hasCamera)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 2) {
+                ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                    if index > 0 {
+                        Divider()
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 5)
+                    }
+                    ForEach(group) { panel in
+                        StudioInspectorRailButton(panel: panel, isSelected: panel == selection) {
+                            viewModel.showInspectorPanel(panel)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 8)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Inspector panels")
+    }
+}
+
+private struct StudioInspectorRailButton: View {
+    let panel: StudioInspectorPanel
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: panel.symbolName)
+                    .font(.system(size: 15))
+                    .frame(height: 18)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                Text(panel.title)
+                    .font(.caption2.weight(isSelected ? .semibold : .regular))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(fill)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(panel.summary)
+        .accessibilityLabel(panel.title)
+        .accessibilityHint(panel.summary)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private var fill: Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.16)
+        }
+        return isHovering ? Color.primary.opacity(0.06) : Color.clear
     }
 }
 

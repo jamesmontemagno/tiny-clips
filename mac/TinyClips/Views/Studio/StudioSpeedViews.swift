@@ -210,18 +210,18 @@ struct StudioSpeedLane: View {
 
 // MARK: - Speed Inspector
 
-/// The Speed section of the inspector: stepping through speed changes, adding one at the
+/// The Speed panel of the inspector: stepping through speed changes, adding one at the
 /// playhead, and editing the selected speed change's rate, start and end without a pointer.
 struct StudioSpeedInspectorSection: View {
     @ObservedObject var viewModel: StudioViewModel
 
     var body: some View {
-        StudioInspectorSection(title: "Speed") {
+        VStack(alignment: .leading, spacing: 8) {
             navigationRow
             addButton
-            selectedSpeedControls
             noSelectionText
         }
+        selectedSpeedControls
     }
 
     private var navigationRow: some View {
@@ -257,7 +257,7 @@ struct StudioSpeedInspectorSection: View {
     }
 
     private var addButton: some View {
-        Button("Change Speed at Playhead") {
+        Button("Add Speed Change") {
             viewModel.addSpeedAtPlayhead()
         }
         .disabled(!viewModel.canAddSpeedAtPlayhead)
@@ -277,31 +277,33 @@ struct StudioSpeedInspectorSection: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .accessibilityLabel("Speed")
-            .help("How fast this stretch plays")
+            .help("How fast this part of the video plays")
 
-            timeRow(
-                title: "Start",
-                time: speed.start,
-                accessibilityLabel: "Speed change start",
-                nudgeForward: { viewModel.nudgeSelectedSpeedStart(by: 0.1) },
-                nudgeBackward: { viewModel.nudgeSelectedSpeedStart(by: -0.1) },
-                setAtPlayhead: { viewModel.setSelectedSpeedStartAtPlayhead() },
-                buttonTitle: "Start speed change at playhead",
-                help: "Start this speed change at the playhead"
-            )
-            timeRow(
-                title: "End",
-                time: speed.end,
-                accessibilityLabel: "Speed change end",
-                nudgeForward: { viewModel.nudgeSelectedSpeedEnd(by: 0.1) },
-                nudgeBackward: { viewModel.nudgeSelectedSpeedEnd(by: -0.1) },
-                setAtPlayhead: { viewModel.setSelectedSpeedEndAtPlayhead() },
-                buttonTitle: "End speed change at playhead",
-                help: "End this speed change at the playhead"
-            )
-            Text(StudioEditorModel.speedLengthText(speed))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            StudioInspectorSection(title: "Timing") {
+                timeRow(
+                    title: "Start",
+                    time: speed.start,
+                    accessibilityLabel: "Speed change start",
+                    nudgeForward: { viewModel.nudgeSelectedSpeedStart(by: 0.1) },
+                    nudgeBackward: { viewModel.nudgeSelectedSpeedStart(by: -0.1) },
+                    setAtPlayhead: { viewModel.setSelectedSpeedStartAtPlayhead() },
+                    buttonTitle: "Start speed change at playhead",
+                    help: "Start this speed change at the playhead"
+                )
+                timeRow(
+                    title: "End",
+                    time: speed.end,
+                    accessibilityLabel: "Speed change end",
+                    nudgeForward: { viewModel.nudgeSelectedSpeedEnd(by: 0.1) },
+                    nudgeBackward: { viewModel.nudgeSelectedSpeedEnd(by: -0.1) },
+                    setAtPlayhead: { viewModel.setSelectedSpeedEndAtPlayhead() },
+                    buttonTitle: "End speed change at playhead",
+                    help: "End this speed change at the playhead"
+                )
+                Text(StudioEditorModel.speedLengthText(speed))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Text(StudioEditorModel.speedSilentNote)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -309,16 +311,22 @@ struct StudioSpeedInspectorSection: View {
             Button("Delete Speed Change", role: .destructive) {
                 viewModel.removeSelectedSpeed()
             }
-            .help("Delete this speed change, so its stretch plays at the recording's own speed again (Delete)")
+            .help("Delete this speed change, so this part plays at normal speed again (Delete)")
         }
     }
 
     @ViewBuilder
     private var noSelectionText: some View {
-        if !viewModel.speedChanges.isEmpty && viewModel.selectedSpeed == nil {
+        if viewModel.speedChanges.isEmpty {
+            Text("Press R or Add Speed Change to play two seconds twice as fast from the playhead.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if viewModel.selectedSpeed == nil {
             Text(StudioEditorModel.selectSpeedHint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

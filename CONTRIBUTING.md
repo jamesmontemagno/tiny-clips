@@ -160,6 +160,7 @@ Accessibility is treated as a release gate. When adding or changing UI:
 
 - The project format is shared with the Windows app and specified in [docs/studio-project-format.md](docs/studio-project-format.md). The fixtures in `shared/studio/fixtures/` are run by both platforms' tests, so change the spec, the fixtures, and both implementations together.
 - Files directly inside `Studio/` use Foundation only (no AppKit, AVFoundation, or SwiftUI) so their logic is covered by plain unit tests. Rendering lives in `Studio/Rendering/` and UI in `Views/Studio/`.
+- The editor's inspector shows one panel at a time, chosen from a rail. `Studio/StudioInspectorPanel.swift` lists the panels; a control that edits something new goes in the panel it belongs to, and whatever selects that thing calls `StudioViewModel.showInspectorPanel(_:)`. The Windows brief for the same arrangement is [windows/docs/studio-inspector-rail.md](windows/docs/studio-inspector-rail.md).
 
 ---
 

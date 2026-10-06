@@ -136,6 +136,7 @@
 		B40000000000000000000001 /* StudioJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000001 /* StudioJSON.swift */; };
 		B40000000000000000000002 /* StudioProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000002 /* StudioProject.swift */; };
 		B40000000000000000000003 /* StudioEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000003 /* StudioEvents.swift */; };
+		B400000000000000000000F1 /* StudioInspectorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F1 /* StudioInspectorPanel.swift */; };
 		B40000000000000000000004 /* StudioProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* StudioProjectStore.swift */; };
 		B40000000000000000000005 /* StudioCleanupPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000005 /* StudioCleanupPolicy.swift */; };
 		B40000000000000000000006 /* StudioCanvasMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000006 /* StudioCanvasMath.swift */; };
@@ -144,6 +145,7 @@
 		B50000000000000000000001 /* StudioJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000001 /* StudioJSON.swift */; };
 		B50000000000000000000002 /* StudioProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000002 /* StudioProject.swift */; };
 		B50000000000000000000003 /* StudioEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000003 /* StudioEvents.swift */; };
+		B500000000000000000000F1 /* StudioInspectorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F1 /* StudioInspectorPanel.swift */; };
 		B50000000000000000000004 /* StudioProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* StudioProjectStore.swift */; };
 		B50000000000000000000005 /* StudioCleanupPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000005 /* StudioCleanupPolicy.swift */; };
 		B50000000000000000000006 /* StudioCanvasMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000006 /* StudioCanvasMath.swift */; };
@@ -151,6 +153,7 @@
 		B50000000000000000000008 /* StudioTimeMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000008 /* StudioTimeMap.swift */; };
 		B60000000000000000000001 /* StudioProjectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000001 /* StudioProjectTests.swift */; };
 		B60000000000000000000002 /* StudioLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000002 /* StudioLayoutTests.swift */; };
+		B600000000000000000000F1 /* StudioInspectorPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A500000000000000000000F1 /* StudioInspectorPanelTests.swift */; };
 		B60000000000000000000003 /* StudioFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000003 /* StudioFixtureTests.swift */; };
 		774667601CEB4B855CC1C93F /* StudioRenderGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */; };
 		D0D2B1E6D380CFA891E26F03 /* StudioRenderGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */; };
@@ -271,6 +274,7 @@
 		A40000000000000000000001 /* StudioJSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioJSON.swift; sourceTree = "<group>"; };
 		A40000000000000000000002 /* StudioProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProject.swift; sourceTree = "<group>"; };
 		A40000000000000000000003 /* StudioEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioEvents.swift; sourceTree = "<group>"; };
+		A400000000000000000000F1 /* StudioInspectorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioInspectorPanel.swift; sourceTree = "<group>"; };
 		A40000000000000000000004 /* StudioProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProjectStore.swift; sourceTree = "<group>"; };
 		A40000000000000000000005 /* StudioCleanupPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCleanupPolicy.swift; sourceTree = "<group>"; };
 		A40000000000000000000006 /* StudioCanvasMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCanvasMath.swift; sourceTree = "<group>"; };
@@ -287,6 +291,7 @@
 		A30000000000000000000006 /* TinyClipsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinyClipsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A50000000000000000000001 /* StudioProjectTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProjectTests.swift; sourceTree = "<group>"; };
 		A50000000000000000000002 /* StudioLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioLayoutTests.swift; sourceTree = "<group>"; };
+		A500000000000000000000F1 /* StudioInspectorPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioInspectorPanelTests.swift; sourceTree = "<group>"; };
 		A50000000000000000000003 /* StudioFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioFixtureTests.swift; sourceTree = "<group>"; };
 		F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRenderGeometry.swift; sourceTree = "<group>"; };
 		D1C92E15965D592980D7254C /* StudioCaptureEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptureEvents.swift; sourceTree = "<group>"; };
@@ -470,6 +475,7 @@
 				A40000000000000000000001 /* StudioJSON.swift */,
 				A40000000000000000000002 /* StudioProject.swift */,
 				A40000000000000000000003 /* StudioEvents.swift */,
+				A400000000000000000000F1 /* StudioInspectorPanel.swift */,
 				A40000000000000000000004 /* StudioProjectStore.swift */,
 				A40000000000000000000005 /* StudioCleanupPolicy.swift */,
 				A40000000000000000000006 /* StudioCanvasMath.swift */,
@@ -504,6 +510,7 @@
 				A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */,
 				A50000000000000000000001 /* StudioProjectTests.swift */,
 				A50000000000000000000002 /* StudioLayoutTests.swift */,
+				A500000000000000000000F1 /* StudioInspectorPanelTests.swift */,
 				A50000000000000000000003 /* StudioFixtureTests.swift */,
 				F3F398D2F36A0A31E3BB060B /* StudioRenderGeometryTests.swift */,
 				C575E8A9C0896B153E9401C5 /* StudioCaptureEventsTests.swift */,
@@ -729,6 +736,7 @@
 				B40000000000000000000001 /* StudioJSON.swift in Sources */,
 				B40000000000000000000002 /* StudioProject.swift in Sources */,
 				B40000000000000000000003 /* StudioEvents.swift in Sources */,
+				B400000000000000000000F1 /* StudioInspectorPanel.swift in Sources */,
 				B40000000000000000000004 /* StudioProjectStore.swift in Sources */,
 				B40000000000000000000005 /* StudioCleanupPolicy.swift in Sources */,
 				B40000000000000000000006 /* StudioCanvasMath.swift in Sources */,
@@ -821,6 +829,7 @@
 				B50000000000000000000001 /* StudioJSON.swift in Sources */,
 				B50000000000000000000002 /* StudioProject.swift in Sources */,
 				B50000000000000000000003 /* StudioEvents.swift in Sources */,
+				B500000000000000000000F1 /* StudioInspectorPanel.swift in Sources */,
 				B50000000000000000000004 /* StudioProjectStore.swift in Sources */,
 				B50000000000000000000005 /* StudioCleanupPolicy.swift in Sources */,
 				B50000000000000000000006 /* StudioCanvasMath.swift in Sources */,
@@ -859,6 +868,7 @@
 				B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */,
 				B60000000000000000000001 /* StudioProjectTests.swift in Sources */,
 				B60000000000000000000002 /* StudioLayoutTests.swift in Sources */,
+				B600000000000000000000F1 /* StudioInspectorPanelTests.swift in Sources */,
 				B60000000000000000000003 /* StudioFixtureTests.swift in Sources */,
 				FA0BE82E7B443BF2C65E796B /* StudioRenderGeometryTests.swift in Sources */,
 				2919C387E06C78C948A7CC3A /* StudioCaptureEventsTests.swift in Sources */,

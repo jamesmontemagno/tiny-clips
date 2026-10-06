@@ -43,6 +43,10 @@ final class StudioViewModel: ObservableObject {
     /// The speed change the inspector shows, as its place in the project's speed changes, or nil.
     @Published private(set) var selectedSpeedIndex: Int?
 
+    /// The inspector panel on show. Taking hold of a zoom, a cut, a speed change, a scene, or the
+    /// camera shows the panel that edits it.
+    @Published private(set) var inspectorPanel: StudioInspectorPanel = .background
+
     /// The size the preview is drawn at. It follows the project, except during a drag, when a new
     /// size waits for the drag to end so the player is not rebuilt for every step of it.
     @Published private(set) var previewSize = CGSize.zero
@@ -191,6 +195,7 @@ final class StudioViewModel: ObservableObject {
             newPlayback.player.actionAtItemEnd = .pause
             observe(newPlayback.player)
             player = newPlayback.player
+            inspectorPanel = StudioInspectorPanel.initial(hasCamera: model.hasCamera)
             state = .ready
             seek(to: model.trimStart)
         } catch {
@@ -440,6 +445,16 @@ final class StudioViewModel: ObservableObject {
         if selectedZoomIndex != nil {
             setSelectedCutIndex(nil)
             setSelectedSpeedIndex(nil)
+            showInspectorPanel(.zoom)
+        }
+    }
+
+    /// Shows an inspector panel, or the nearest one this recording has. The rail's buttons do
+    /// this, and so does taking hold of something a panel edits. Not an edit: Undo leaves it.
+    func showInspectorPanel(_ panel: StudioInspectorPanel) {
+        let resolved = StudioInspectorPanel.resolved(panel, hasCamera: hasCamera)
+        if inspectorPanel != resolved {
+            inspectorPanel = resolved
         }
     }
 
@@ -611,6 +626,7 @@ final class StudioViewModel: ObservableObject {
     /// undo step, and says how many there are. Zooms the user made or changed stay.
     func suggestZooms() {
         guard canSuggestZooms else { return }
+        showInspectorPanel(.zoom)
         let recordedEvents = events
         edit { model in
             let suggestions = StudioLayoutResolver.suggestZooms(project: model.project, events: recordedEvents)
@@ -652,6 +668,7 @@ final class StudioViewModel: ObservableObject {
         if selectedCutIndex != nil {
             setSelectedZoomIndex(nil)
             setSelectedSpeedIndex(nil)
+            showInspectorPanel(.cut)
         }
     }
 
@@ -815,6 +832,7 @@ final class StudioViewModel: ObservableObject {
         if selectedSpeedIndex != nil {
             setSelectedZoomIndex(nil)
             setSelectedCutIndex(nil)
+            showInspectorPanel(.speed)
         }
     }
 
@@ -980,6 +998,8 @@ final class StudioViewModel: ObservableObject {
     /// moves to where the new scene has been entered, which shows what is changed in it next.
     func splitSceneAtPlayhead() {
         guard isEditable else { return }
+        // Shown for a split that is refused as well: the panel says why.
+        showInspectorPanel(.scene)
         let time = playhead
         var result = StudioSceneEditResult(changed: false, index: currentSceneIndex)
         edit { model in
@@ -1078,6 +1098,7 @@ final class StudioViewModel: ObservableObject {
     /// anything of where it lands by itself.
     func stepToPreviousScene() {
         if showPreviousScene() {
+            showInspectorPanel(.scene)
             announceCurrentScene()
         }
     }
@@ -1085,6 +1106,7 @@ final class StudioViewModel: ObservableObject {
     /// The Next scene button and menu item. The scene it lands on is read out.
     func stepToNextScene() {
         if showNextScene() {
+            showInspectorPanel(.scene)
             announceCurrentScene()
         }
     }
@@ -1487,6 +1509,19 @@ final class StudioViewModel: ObservableObject {
         setSelectedZoomIndex(zoomIndex)
         setSelectedCutIndex(cutIndex)
         setSelectedSpeedIndex(speedIndex)
+
+        // An edit that says which zoom, cut, or speed change it left selected shows its panel.
+        // Adding one does, from the timeline, the menu, or the keyboard.
+        switch selection {
+        case .follow:
+            break
+        case .zoom:
+            if selectedZoomIndex != nil { showInspectorPanel(.zoom) }
+        case .cut:
+            if selectedCutIndex != nil { showInspectorPanel(.cut) }
+        case .speed:
+            if selectedSpeedIndex != nil { showInspectorPanel(.speed) }
+        }
 
         guard isChanged else { return }
         hasUnsavedEdits = true

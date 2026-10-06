@@ -213,18 +213,18 @@ struct StudioCutLane: View {
 
 // MARK: - Cut Inspector
 
-/// The Cut section of the inspector: stepping through cuts, adding one at the playhead, and
+/// The Cut panel of the inspector: stepping through cuts, adding one at the playhead, and
 /// editing the selected cut's start and end without a pointer.
 struct StudioCutInspectorSection: View {
     @ObservedObject var viewModel: StudioViewModel
 
     var body: some View {
-        StudioInspectorSection(title: "Cut") {
+        VStack(alignment: .leading, spacing: 8) {
             navigationRow
             addButton
-            selectedCutControls
             noSelectionText
         }
+        selectedCutControls
     }
 
     private var navigationRow: some View {
@@ -260,7 +260,7 @@ struct StudioCutInspectorSection: View {
     }
 
     private var addButton: some View {
-        Button("Cut at Playhead") {
+        Button("Add Cut") {
             viewModel.addCutAtPlayhead()
         }
         .disabled(!viewModel.canAddCutAtPlayhead)
@@ -270,42 +270,50 @@ struct StudioCutInspectorSection: View {
     @ViewBuilder
     private var selectedCutControls: some View {
         if let cut = viewModel.selectedCut {
-            timeRow(
-                title: "Start",
-                time: cut.start,
-                accessibilityLabel: "Cut start",
-                nudgeForward: { viewModel.nudgeSelectedCutStart(by: 0.1) },
-                nudgeBackward: { viewModel.nudgeSelectedCutStart(by: -0.1) },
-                setAtPlayhead: { viewModel.setSelectedCutStartAtPlayhead() },
-                buttonTitle: "Start cut at playhead",
-                help: "Start this cut at the playhead"
-            )
-            timeRow(
-                title: "End",
-                time: cut.end,
-                accessibilityLabel: "Cut end",
-                nudgeForward: { viewModel.nudgeSelectedCutEnd(by: 0.1) },
-                nudgeBackward: { viewModel.nudgeSelectedCutEnd(by: -0.1) },
-                setAtPlayhead: { viewModel.setSelectedCutEndAtPlayhead() },
-                buttonTitle: "End cut at playhead",
-                help: "End this cut at the playhead"
-            )
-            Text(StudioEditorModel.cutLengthText(cut))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            StudioInspectorSection(title: "Timing") {
+                timeRow(
+                    title: "Start",
+                    time: cut.start,
+                    accessibilityLabel: "Cut start",
+                    nudgeForward: { viewModel.nudgeSelectedCutStart(by: 0.1) },
+                    nudgeBackward: { viewModel.nudgeSelectedCutStart(by: -0.1) },
+                    setAtPlayhead: { viewModel.setSelectedCutStartAtPlayhead() },
+                    buttonTitle: "Start cut at playhead",
+                    help: "Start this cut at the playhead"
+                )
+                timeRow(
+                    title: "End",
+                    time: cut.end,
+                    accessibilityLabel: "Cut end",
+                    nudgeForward: { viewModel.nudgeSelectedCutEnd(by: 0.1) },
+                    nudgeBackward: { viewModel.nudgeSelectedCutEnd(by: -0.1) },
+                    setAtPlayhead: { viewModel.setSelectedCutEndAtPlayhead() },
+                    buttonTitle: "End cut at playhead",
+                    help: "End this cut at the playhead"
+                )
+                Text(StudioEditorModel.cutLengthText(cut))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Button("Delete Cut", role: .destructive) {
                 viewModel.removeSelectedCut()
             }
-            .help("Delete this cut, which puts its stretch back into the video (Delete)")
+            .help("Delete this cut and put the part it removed back in the video (Delete)")
         }
     }
 
     @ViewBuilder
     private var noSelectionText: some View {
-        if !viewModel.cuts.isEmpty && viewModel.selectedCut == nil {
+        if viewModel.cuts.isEmpty {
+            Text("Press X or Add Cut to cut a second out of the video at the playhead.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if viewModel.selectedCut == nil {
             Text("Select a cut on the timeline, or step to one with the arrows above.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
