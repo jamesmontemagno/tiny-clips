@@ -110,6 +110,8 @@ public interface ICaptureSettings
     bool ShowBrandingOverlay { get; set; }
     bool TeleprompterEnabled { get; set; }
     string TeleprompterTranscript { get; set; }
+    /// <summary>Loads the transcript for editing, surfacing failures instead of caching an empty fallback.</summary>
+    string GetTeleprompterTranscriptForEditing() => TeleprompterTranscript;
     double TeleprompterScrollSpeed { get; set; }
     /// <summary>Overlay transcript text size preset. Default Medium (24 DIP).</summary>
     TeleprompterDisplaySize TeleprompterFontSize { get; set; }

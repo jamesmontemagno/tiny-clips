@@ -6,6 +6,13 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Settings navigation no longer reloads unrelated preferences or external state.** First
+  realization restores only that section's scalar settings, preserving protection against
+  initial TwoWay-binding write-backs. Uploadcare credential status and teleprompter text load
+  only when their sections are first realized and stay cached until relevant mutations or
+  reopening. Rapid navigation preserves edits in already-loaded sections and pending transcript
+  saves; late device, launch-at-login, and file-picker results are ignored after closing.
+  Unreadable transcripts show an inline error instead of being cached as empty text. (#405)
 - **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
   capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
   Scrolling captures and the saved-file fallback when the screenshot editor fails to open also

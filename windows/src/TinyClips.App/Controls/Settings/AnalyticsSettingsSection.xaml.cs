@@ -25,7 +25,7 @@ public sealed partial class AnalyticsSettingsSection : UserControl, ISettingsSec
     public AnalyticsSettingsSection(SettingsViewModel viewModel, IntPtr settingsWindowHandle)
     {
         ViewModel = viewModel;
-        _realizationScope = viewModel.BeginSectionRealization();
+        _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.Analytics);
         _settingsWindowHandle = settingsWindowHandle;
         _dataTransferManager = DataTransferManagerInterop.GetForWindow(settingsWindowHandle);
         InitializeComponent();

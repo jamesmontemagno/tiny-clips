@@ -98,7 +98,25 @@ dotnet run --project windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:
 
 # Test
 dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Debug
+dotnet test windows/tests/TinyClips.App.Tests/TinyClips.App.Tests.csproj -c Debug -p:Platform=x64
 ```
+
+The App tests compile the shipping Settings view model with fake services and a controllable
+transcript-save scheduler, without launching XAML or querying devices, credentials, or real
+transcripts. They cover lazy lookup counts, initial TwoWay-binding write-backs, overlapping
+realization, edits/imports/reset, reopening, and late results after closure.
+
+Settings restores persisted scalar preferences at construction and repairs only the newly
+realized section after its first layout pass (or the rapid-navigation dispatcher fallback).
+Realization suppression is reference-counted per section; already-loaded sections can still
+persist edits while another section is realizing. Uploadcare credential status and teleprompter
+text are loaded only on their relevant section's first realization and cached for that window.
+Save/clear/import/reset update those caches without rereading external state; a pending
+transcript edit takes precedence over older persisted text and is flushed on close. Reopening
+Settings creates fresh caches. Analytics and media-device initialization remain lazy.
+Settings uses the strict large-text editing read: an inaccessible transcript produces an inline
+error and disables its text editor rather than caching a misleading empty value. Existing
+non-editing readers retain their fallback behavior.
 
 To build the **Microsoft Store** flavor (same feature set, Store distribution behavior), set:
 
@@ -126,8 +144,9 @@ CPU-vs-GPU numbers, see [`docs/gpu-recording-pipeline.md`](docs/gpu-recording-pi
 
 ## CI
 
-`.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core tests on
-`windows-latest`. It is path-filtered to `windows/**`, so it only runs when Windows code changes.
+`.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core and Settings
+view-model tests on `windows-latest`. It is path-filtered to `windows/**`, so it only runs when
+Windows code changes.
 
 ## Accessibility release gate
 
