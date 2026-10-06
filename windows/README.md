@@ -98,7 +98,48 @@ dotnet run --project windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:
 
 # Test
 dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Debug
+dotnet test windows/tests/TinyClips.App.Tests/TinyClips.App.Tests.csproj -c Debug -p:Platform=x64
 ```
+
+The App tests compile the shipping Settings view model with fake services and a controllable
+transcript-save scheduler, without launching XAML or querying devices, credentials, or real
+transcripts. They cover lazy lookup counts, initial TwoWay-binding write-backs, overlapping
+realization, edits/imports/reset, reopening, and late results after closure.
+
+Settings restores persisted scalar preferences at construction and repairs only the newly
+realized section after its first layout pass (or the rapid-navigation dispatcher fallback).
+Realization suppression is reference-counted per section; already-loaded sections can still
+persist edits while another section is realizing. Uploadcare credential status and teleprompter
+text are loaded only on their relevant section's first realization and cached for that window.
+Save/clear/import/reset update those caches without rereading external state; a pending
+transcript edit takes precedence over older persisted text and is flushed on close. Reopening
+Settings creates fresh caches. Analytics and media-device initialization remain lazy.
+Settings uses the strict large-text editing read: an inaccessible transcript produces an inline
+error and disables its text editor rather than caching a misleading empty value. Existing
+non-editing readers retain their fallback behavior.
+
+### Pending native Settings responsiveness validation
+
+The automated Settings tests establish lookup counts and persistence correctness, not
+navigation responsiveness. The native ARM64 and native x64 comparison required by #405 remains
+unperformed; neither the tests nor a cross-compiled build satisfies that acceptance criterion.
+No navigation timing improvement is claimed.
+
+Before marking hardware validation complete, compare the baseline and this change on a native
+ARM64 device and a native x64 device, using the same build configuration and synthetic settings
+on each device. Do not use x64 emulation as the ARM64 result or profile concurrently on a shared
+host. Keep credentials, transcripts, settings, traces, and local measurements private.
+
+For each build/device pair, repeat a fixed navigation sequence through General, Screenshot,
+GIF, Uploadcare, and Teleprompter. Record first realization and cached revisits separately,
+including selection-to-first-layout latency and UI-thread stalls, using identical synthetic
+transcript sizes and credential fixtures. Also exercise rapid navigation, pending transcript
+edits, and closing during delayed initialization. Confirm unrelated sections perform zero
+credential/transcript lookups and relevant sections perform one initial lookup without
+repeated reads on revisits. Preserve keyboard access and light/dark/system theme behavior.
+Record the before/after comparison privately with the build revisions, native architectures,
+fixture sizes, repetition count, and measurement method; do not infer responsiveness from
+service-call counts alone.
 
 To build the **Microsoft Store** flavor (same feature set, Store distribution behavior), set:
 
@@ -129,8 +170,9 @@ CPU-vs-GPU numbers, see [`docs/gpu-recording-pipeline.md`](docs/gpu-recording-pi
 
 ## CI
 
-`.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core tests on
-`windows-latest`. It is path-filtered to `windows/**`, so it only runs when Windows code changes.
+`.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core and Settings
+view-model tests on `windows-latest`. It is path-filtered to `windows/**`, so it only runs when
+Windows code changes.
 
 ## Accessibility release gate
 

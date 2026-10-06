@@ -33,6 +33,7 @@ public sealed partial class SettingsWindow : Window
     private readonly Dictionary<SettingsSectionKind, UserControl> _sectionCache = new();
     private readonly WindowOpenTrace? _openTrace;
     private XamlRoot? _xamlRoot;
+    private bool _closed;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -141,6 +142,7 @@ public sealed partial class SettingsWindow : Window
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        _closed = true;
         RootGrid.Loaded -= OnRootGridLoaded;
         if (_xamlRoot is not null)
         {
@@ -255,7 +257,7 @@ public sealed partial class SettingsWindow : Window
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
         StorageFolder? folder = await picker.PickSingleFolderAsync();
-        if (folder is not null)
+        if (!_closed && folder is not null)
         {
             switch (type)
             {
@@ -288,19 +290,28 @@ public sealed partial class SettingsWindow : Window
         try
         {
             var file = await picker.PickSingleFileAsync();
-            if (file is null)
+            if (_closed || file is null)
             {
                 return;
             }
 
             var properties = await file.GetBasicPropertiesAsync();
+            if (_closed)
+            {
+                return;
+            }
+
             if (properties.Size > MaximumTranscriptSizeInBytes)
             {
                 await ShowTranscriptLoadErrorAsync("The selected transcript is larger than 1 MB.");
                 return;
             }
 
-            ViewModel.TeleprompterTranscript = await FileIO.ReadTextAsync(file);
+            var transcript = await FileIO.ReadTextAsync(file);
+            if (!_closed)
+            {
+                ViewModel.ImportTeleprompterTranscript(transcript);
+            }
         }
         catch (Exception)
         {
@@ -311,6 +322,11 @@ public sealed partial class SettingsWindow : Window
 
     private async Task ShowTranscriptLoadErrorAsync(string message)
     {
+        if (_closed)
+        {
+            return;
+        }
+
         var dialog = new ContentDialog
         {
             CloseButtonText = "Close",
