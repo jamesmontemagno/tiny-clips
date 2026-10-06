@@ -177,8 +177,12 @@ public sealed class SettingsViewModelStudioTests : IDisposable
 
         vm.VideoAfterRecordingIndex = 2;
         Assert.Equal(VideoAfterRecording.Studio, _settings.VideoAfterRecording);
-        Assert.False(_settings.ShowTrimmer);
         Assert.True(_settings.IsStudioRecordingEnabled);
+
+        // Studio is chosen apart from the trimmer. The switch keeps what it said, and no
+        // trimmer opens.
+        Assert.True(_settings.ShowTrimmer);
+        Assert.False(_settings.OpensTrimmerAfterVideoRecording);
 
         // A ComboBox reports -1 while it has no selection.
         vm.VideoAfterRecordingIndex = -1;
@@ -201,25 +205,35 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Show(vm, SettingsSectionKind.General);
         Show(vm, SettingsSectionKind.Video);
         Assert.Equal(2, vm.VideoAfterRecordingIndex);
-        Assert.False(vm.ShowTrimmer);
 
-        // Off: the trimmer switch is what is on screen, and it is used.
+        // Off: the trimmer switch is what is on screen. It says what it said before Studio was
+        // chosen, which is what a recording does again, and it is used.
         vm.IsStudioPreviewEnabled = false;
-        vm.ShowTrimmer = true;
-        Assert.Equal(VideoAfterRecording.Trimmer, _settings.VideoAfterRecording);
+        Assert.True(vm.ShowTrimmer);
+        Assert.True(_settings.OpensTrimmerAfterVideoRecording);
+        vm.ShowTrimmer = false;
+        Assert.False(_settings.ShowTrimmer);
+        Assert.False(_settings.OpensTrimmerAfterVideoRecording);
 
-        // On again: the choice shows what the trimmer switch made of it, and saves nothing by showing it.
+        // On again: Studio is still the choice, and showing it saves nothing.
         var writes = _saved.Writes;
         vm.IsStudioPreviewEnabled = true;
-        Assert.Equal(1, vm.VideoAfterRecordingIndex);
+        Assert.Equal(2, vm.VideoAfterRecordingIndex);
         Assert.Equal(writes + 1, _saved.Writes);
-        Assert.Equal(VideoAfterRecording.Trimmer, _settings.VideoAfterRecording);
+        Assert.Equal(VideoAfterRecording.Studio, _settings.VideoAfterRecording);
 
-        // And the other way round.
-        vm.VideoAfterRecordingIndex = 0;
+        // A choice of Open trimmer or Save is the trimmer switch by another name, so each of
+        // the two shows what the other was set to. From the choice to the switch:
+        vm.VideoAfterRecordingIndex = 1;
         vm.IsStudioPreviewEnabled = false;
-        Assert.False(vm.ShowTrimmer);
-        Assert.False(_settings.ShowTrimmer);
+        Assert.True(vm.ShowTrimmer);
+        Assert.True(_settings.ShowTrimmer);
+
+        // And from the switch to the choice.
+        vm.ShowTrimmer = false;
+        vm.IsStudioPreviewEnabled = true;
+        Assert.Equal(0, vm.VideoAfterRecordingIndex);
+        Assert.Equal(VideoAfterRecording.Save, _settings.VideoAfterRecording);
     }
 
     // ---- The storage rules
@@ -579,6 +593,70 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Assert.Equal(0, _counted.CallsTo(nameof(IStudioProjectStore.Cleanup)));
     }
 
+    // ---- The cleanup service by itself, which is also what runs at launch and when an editor closes
+
+    [Fact]
+    public async Task TheCleanupService_DoesNothingWhileStudioIsOff()
+    {
+        var old = Record("Old");
+        Export(old);
+        _clock.Advance(TimeSpan.FromDays(40));
+        var said = 0;
+        _cleanup.CleanupCompleted += (_, _) => said++;
+
+        Assert.Null(await _cleanup.RunAsync());
+
+        Assert.True(_projects.Exists(old));
+        Assert.Equal(0, _counted.CallsTo(nameof(IStudioProjectStore.Cleanup)));
+        Assert.Equal(0, said);
+    }
+
+    [Fact]
+    public async Task TheCleanupService_RemovesWhatTheRulesSelect_AndSaysWhatItRemoved()
+    {
+        var old = Record("Old");
+        Export(old);
+        _clock.Advance(TimeSpan.FromDays(40));
+        var recent = Record("Recent");
+        Export(recent);
+        _settings.StudioPreviewEnabled = true;
+        StudioCleanupResult? said = null;
+        _cleanup.CleanupCompleted += (_, removed) => said = removed;
+
+        var result = await _cleanup.RunAsync();
+
+        Assert.NotNull(result);
+        Assert.Equal([old], result.ProjectIdsDeleted);
+        Assert.Same(result, said);
+        Assert.False(_projects.Exists(old));
+        Assert.True(_projects.Exists(recent));
+    }
+
+    [Fact]
+    public async Task TheCleanupService_LeavesAProjectThatIsOpen_AndOneThatIsBeingRecordedInto()
+    {
+        var open = Record("Open in an editor");
+        Export(open);
+        var recordedInto = Record("Being recorded into");
+        Export(recordedInto);
+        var neither = Record("Neither");
+        Export(neither);
+        _clock.Advance(TimeSpan.FromDays(40));
+        _tracker.MarkOpened(open);
+        var recorder = DispatchProxy.Create<IVideoRecordingService, RecordingInto>();
+        ((RecordingInto)recorder).ProjectId = recordedInto;
+        var cleanup = new StudioProjectCleanupService(_store, _settings, _tracker, recorder);
+        _settings.StudioPreviewEnabled = true;
+
+        var result = await cleanup.RunAsync();
+
+        Assert.NotNull(result);
+        Assert.Equal([neither], result.ProjectIdsDeleted);
+        Assert.True(_projects.Exists(open));
+        Assert.True(_projects.Exists(recordedInto));
+        Assert.False(_projects.Exists(neither));
+    }
+
     // ---- A window that closes, and a view model without Studio
 
     [Fact]
@@ -897,4 +975,15 @@ public class NothingRecording : DispatchProxy
         var type = targetMethod.ReturnType;
         return type == typeof(void) || !type.IsValueType ? null : Activator.CreateInstance(type);
     }
+}
+
+/// <summary>A recorder that is recording into one Studio project. Every other answer is the type's default.</summary>
+public class RecordingInto : NothingRecording
+{
+    public string? ProjectId { get; set; }
+
+    protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+        targetMethod?.Name == "get_" + nameof(IVideoRecordingService.ActiveStudioProjectId)
+            ? ProjectId
+            : base.Invoke(targetMethod, args);
 }

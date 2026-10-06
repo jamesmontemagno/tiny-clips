@@ -45,8 +45,7 @@ public sealed class CaptureSettingsStudioTests
     [Theory]
     [InlineData(VideoAfterRecording.Save, "save", false)]
     [InlineData(VideoAfterRecording.Trimmer, "trimmer", true)]
-    [InlineData(VideoAfterRecording.Studio, "studio", false)]
-    public void VideoAfterRecording_RoundTripsAndWritesShowTrimmer(VideoAfterRecording value, string stored, bool showTrimmer)
+    public void VideoAfterRecording_SaveAndTrimmerRoundTripAndWriteShowTrimmer(VideoAfterRecording value, string stored, bool showTrimmer)
     {
         var settings = Create(out var service);
         service.Set("showTrimmer", !showTrimmer);
@@ -55,6 +54,22 @@ public sealed class CaptureSettingsStudioTests
 
         Assert.Equal(value, settings.VideoAfterRecording);
         Assert.Equal(stored, service.Get("videoAfterRecording", string.Empty));
+        Assert.Equal(showTrimmer, settings.ShowTrimmer);
+        Assert.Equal(showTrimmer, service.Get("showTrimmer", !showTrimmer));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void VideoAfterRecording_StudioRoundTripsAndLeavesShowTrimmerAsItWas(bool showTrimmer)
+    {
+        var settings = Create(out var service);
+        service.Set("showTrimmer", showTrimmer);
+
+        settings.VideoAfterRecording = VideoAfterRecording.Studio;
+
+        Assert.Equal(VideoAfterRecording.Studio, settings.VideoAfterRecording);
+        Assert.Equal("studio", service.Get("videoAfterRecording", string.Empty));
         Assert.Equal(showTrimmer, settings.ShowTrimmer);
         Assert.Equal(showTrimmer, service.Get("showTrimmer", !showTrimmer));
     }
@@ -100,14 +115,10 @@ public sealed class CaptureSettingsStudioTests
     }
 
     [Fact]
-    public void ShowTrimmer_KeepsAStoredChoiceInStep()
+    public void ShowTrimmer_KeepsAStoredSaveOrTrimmerInStep()
     {
         var settings = Create(out var service);
-        settings.VideoAfterRecording = VideoAfterRecording.Studio;
-
-        // Turning the toggle off is already what a Studio choice means for the trimmer.
-        settings.ShowTrimmer = false;
-        Assert.Equal(VideoAfterRecording.Studio, settings.VideoAfterRecording);
+        settings.VideoAfterRecording = VideoAfterRecording.Save;
 
         settings.ShowTrimmer = true;
         Assert.Equal(VideoAfterRecording.Trimmer, settings.VideoAfterRecording);
@@ -116,6 +127,24 @@ public sealed class CaptureSettingsStudioTests
         settings.ShowTrimmer = false;
         Assert.Equal(VideoAfterRecording.Save, settings.VideoAfterRecording);
         Assert.Equal("save", service.Get("videoAfterRecording", string.Empty));
+    }
+
+    [Fact]
+    public void ShowTrimmer_LeavesAStoredStudioChoice()
+    {
+        var settings = Create(out var service);
+        settings.VideoAfterRecording = VideoAfterRecording.Studio;
+
+        // The toggle is what Settings shows while Studio is switched off. Using it there does
+        // not undo the choice of Studio, which is there again when Studio is switched back on.
+        settings.ShowTrimmer = false;
+        Assert.Equal(VideoAfterRecording.Studio, settings.VideoAfterRecording);
+        Assert.False(settings.ShowTrimmer);
+
+        settings.ShowTrimmer = true;
+        Assert.Equal(VideoAfterRecording.Studio, settings.VideoAfterRecording);
+        Assert.Equal("studio", service.Get("videoAfterRecording", string.Empty));
+        Assert.True(settings.ShowTrimmer);
     }
 
     [Fact]
@@ -149,20 +178,58 @@ public sealed class CaptureSettingsStudioTests
         Assert.Equal(expected, settings.IsStudioRecordingEnabled);
     }
 
-    [Fact]
-    public void StoredStudioChoice_BehavesLikeSaveWhileThePreviewSwitchIsOff()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TryingStudioAndSwitchingItOff_PutsTheTrimmerBackToWhatItWas(bool trimmerBefore)
     {
         var settings = Create(out _);
-        settings.VideoAfterRecording = VideoAfterRecording.Studio;
+        settings.ShowTrimmer = trimmerBefore;
+        Assert.Equal(trimmerBefore, settings.OpensTrimmerAfterVideoRecording);
 
-        Assert.False(settings.StudioPreviewEnabled);
-        Assert.False(settings.IsStudioRecordingEnabled);
-        Assert.False(settings.ShowTrimmer);
-
+        // Studio is tried: switched on, and chosen. No trimmer opens after a recording then.
         settings.StudioPreviewEnabled = true;
-
+        settings.VideoAfterRecording = VideoAfterRecording.Studio;
         Assert.True(settings.IsStudioRecordingEnabled);
-        Assert.False(settings.ShowTrimmer);
+        Assert.False(settings.OpensTrimmerAfterVideoRecording);
+
+        // Switched off again: a recording is made as it was before.
+        settings.StudioPreviewEnabled = false;
+        Assert.False(settings.IsStudioRecordingEnabled);
+        Assert.Equal(trimmerBefore, settings.ShowTrimmer);
+        Assert.Equal(trimmerBefore, settings.OpensTrimmerAfterVideoRecording);
+
+        // And on once more: Studio is still the choice.
+        settings.StudioPreviewEnabled = true;
+        Assert.True(settings.IsStudioRecordingEnabled);
+        Assert.False(settings.OpensTrimmerAfterVideoRecording);
+    }
+
+    [Theory]
+    [InlineData(false, VideoAfterRecording.Save, false)]
+    [InlineData(false, VideoAfterRecording.Trimmer, true)]
+    [InlineData(true, VideoAfterRecording.Save, false)]
+    [InlineData(true, VideoAfterRecording.Trimmer, true)]
+    public void OpensTrimmerAfterVideoRecording_FollowsAChoiceOfSaveOrTrimmer(bool preview, VideoAfterRecording choice, bool expected)
+    {
+        var settings = Create(out _);
+        settings.StudioPreviewEnabled = preview;
+
+        settings.VideoAfterRecording = choice;
+
+        Assert.Equal(expected, settings.OpensTrimmerAfterVideoRecording);
+    }
+
+    [Fact]
+    public void OpensTrimmerAfterVideoRecording_FollowsTheToggleUntilAChoiceIsStored()
+    {
+        var settings = Create(out _);
+
+        Assert.True(settings.OpensTrimmerAfterVideoRecording);
+
+        settings.ShowTrimmer = false;
+
+        Assert.False(settings.OpensTrimmerAfterVideoRecording);
     }
 
     [Theory]

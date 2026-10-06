@@ -293,9 +293,12 @@ public sealed class CaptureSettings : ICaptureSettings
         {
             _settings.Set("showTrimmer", value);
 
-            // A stored after-recording choice wins over this toggle when read, so keep it in step.
+            // A stored choice of Save or Trimmer wins over this toggle when read, so it is kept
+            // in step. A stored choice of Studio is left: it stands apart from the trimmer, and
+            // this toggle is what applies whenever Studio is not used.
             var stored = ParseVideoAfterRecording(_settings.Get(VideoAfterRecordingKey, string.Empty));
-            if (stored is { } choice && (choice == VideoAfterRecording.Trimmer) != value)
+            if (stored is VideoAfterRecording.Save or VideoAfterRecording.Trimmer
+                && (stored == VideoAfterRecording.Trimmer) != value)
             {
                 _settings.Set(
                     VideoAfterRecordingKey,
@@ -311,9 +314,18 @@ public sealed class CaptureSettings : ICaptureSettings
         set
         {
             _settings.Set(VideoAfterRecordingKey, ToPersistedVideoAfterRecording(value));
-            _settings.Set("showTrimmer", value == VideoAfterRecording.Trimmer);
+
+            // Choosing Studio says nothing about the trimmer. The toggle keeps what it said, and
+            // that applies again once Studio is switched off: a recording is then made as it was
+            // before Studio was tried.
+            if (value != VideoAfterRecording.Studio)
+            {
+                _settings.Set("showTrimmer", value == VideoAfterRecording.Trimmer);
+            }
         }
     }
+
+    public bool OpensTrimmerAfterVideoRecording => ShowTrimmer && !IsStudioRecordingEnabled;
 
     public bool StudioPreviewEnabled
     {

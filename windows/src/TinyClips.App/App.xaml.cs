@@ -1992,7 +1992,7 @@ public partial class App : Application
             Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
-            var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.ShowTrimmer;
+            var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.OpensTrimmerAfterVideoRecording;
             if (showTrimmer)
             {
                 OpenTrimmer(path, type, pickerInitiated: wasPickerInitiated);
@@ -2860,7 +2860,7 @@ public partial class App : Application
     }
 
     /// <summary>Shows a one-line toast whether or not save notifications are turned on.</summary>
-    private static void ShowMessageNotification(string message)
+    internal static void ShowMessageNotification(string message)
     {
         try
         {

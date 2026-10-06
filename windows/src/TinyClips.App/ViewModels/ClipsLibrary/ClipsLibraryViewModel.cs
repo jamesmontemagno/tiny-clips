@@ -401,12 +401,14 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
 
     /// <summary>
     /// Marks the videos that were exported from a Studio project still in the store, so they
-    /// offer Open in Studio. Does nothing while the Studio preview is switched off.
+    /// offer Open in Studio. While the Studio preview is switched off no video offers it.
     /// </summary>
     private async Task UpdateStudioLinksAsync()
     {
         if (!_captureSettings.StudioPreviewEnabled)
         {
+            // Also the ones that were marked while it was still on.
+            ClearStudioLinks();
             return;
         }
 
@@ -445,14 +447,22 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
         }
     }
 
-    /// <summary>Keeps a Studio project's export link pointing at a video that was renamed or moved.</summary>
+    private void ClearStudioLinks()
+    {
+        foreach (var item in _itemsByPath.Values)
+        {
+            item.StudioProjectId = null;
+        }
+    }
+
+    /// <summary>
+    /// Keeps a Studio project's export link pointing at a video that was renamed or moved. Also
+    /// while the Studio preview is switched off: the project is still on disk, and one that has
+    /// lost track of its video counts as holding the only copy from then on. Where Studio was
+    /// never used there is no project folder and this reads nothing.
+    /// </summary>
     private void MoveStudioExportLink(string oldPath, string newPath)
     {
-        if (!_captureSettings.StudioPreviewEnabled)
-        {
-            return;
-        }
-
         try
         {
             _studioProjects.UpdateExportPath(oldPath, newPath);
@@ -942,10 +952,21 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private void OpenInStudio(ClipItemViewModel? item)
     {
-        if ((item ?? SelectedClip)?.StudioProjectId is { } projectId)
+        if ((item ?? SelectedClip)?.StudioProjectId is not { } projectId)
         {
-            _interaction?.OpenInStudio(projectId);
+            return;
         }
+
+        if (!_captureSettings.StudioPreviewEnabled)
+        {
+            // Switched off since this list was read. Nothing would open, so it is said why, and
+            // the videos stop offering it.
+            ClearStudioLinks();
+            ShowStatus("Tiny Clips Studio is switched off. Switch it on in Settings to open this project.");
+            return;
+        }
+
+        _interaction?.OpenInStudio(projectId);
     }
 
     [RelayCommand]

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -75,8 +76,36 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
     }
 
     /// <summary>
+    /// Shows one of this section's dialogs, and returns what was chosen. Returns null when it
+    /// could not be shown: the section is no longer on a window, or another dialog is open in
+    /// it. WinUI shows one dialog at a time in a window and throws for a second one, and these
+    /// handlers are <c>async void</c>, where an exception that gets out ends the app, and with
+    /// it a recording that is running. A dialog can be asked for while another is open because
+    /// each of these handlers waits for a copy or a delete first.
+    /// </summary>
+    private async Task<ContentDialogResult?> TryShowAsync(ContentDialog dialog)
+    {
+        if (_closed || XamlRoot is null)
+        {
+            return null;
+        }
+
+        dialog.XamlRoot = XamlRoot;
+        try
+        {
+            return await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"A dialog of General settings could not be shown: {ex}");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Saves a row's screen recording as an ordinary video. From there it is a saved video like
-    /// any other, and the app announces it as one. A failure is said in a dialog.
+    /// any other, and the app announces it as one. A failure is said in a dialog, or in a
+    /// notification where no dialog can be shown.
     /// </summary>
     private async void OnSaveStudioDraftRecording(object sender, RoutedEventArgs e)
     {
@@ -93,7 +122,7 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
             return;
         }
 
-        if (error is null || _closed)
+        if (error is null)
         {
             return;
         }
@@ -103,9 +132,13 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
             Title = "The screen recording was not saved",
             Content = error,
             CloseButtonText = "OK",
-            XamlRoot = XamlRoot,
         };
-        await failure.ShowAsync();
+        if (await TryShowAsync(failure) is null)
+        {
+            // Settings was closed while the recording was being copied, or is asking something
+            // else. The failure is said all the same.
+            App.ShowMessageNotification($"The screen recording was not saved. {error}");
+        }
     }
 
     private async void OnDeleteStudioDraft(object sender, RoutedEventArgs e)
@@ -122,24 +155,23 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
             PrimaryButtonText = "Delete",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
         };
 
-        if (await confirmation.ShowAsync() != ContentDialogResult.Primary || _closed)
+        // Not shown, or not answered with Delete: nothing is deleted.
+        if (await TryShowAsync(confirmation) != ContentDialogResult.Primary || _closed)
         {
             return;
         }
 
         var index = ViewModel.StudioDrafts.IndexOf(draft);
         var error = await ViewModel.DeleteStudioDraftAsync(draft);
-        if (_closed)
-        {
-            return;
-        }
-
         if (error is null)
         {
-            FocusAfterDraftRemoved(index);
+            if (!_closed)
+            {
+                FocusAfterDraftRemoved(index);
+            }
+
             return;
         }
 
@@ -148,9 +180,11 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
             Title = "The draft was not deleted",
             Content = error,
             CloseButtonText = "OK",
-            XamlRoot = XamlRoot,
         };
-        await failure.ShowAsync();
+        if (await TryShowAsync(failure) is null)
+        {
+            App.ShowMessageNotification($"The draft was not deleted. {error}");
+        }
     }
 
     /// <summary>

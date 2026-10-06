@@ -58,16 +58,29 @@ public interface ICaptureSettings
     double GifMouseClickStrokeWidth { get; set; }
     double GifMouseClickOpacity { get; set; }
     double GifMouseClickDuration { get; set; }
+    /// <summary>
+    /// The trimmer toggle, which is what Settings shows while Studio is switched off. Whether the
+    /// trimmer opens after a recording is <see cref="OpensTrimmerAfterVideoRecording"/>.
+    /// </summary>
     bool ShowTrimmer { get; set; }
 
     /// <summary>
     /// What a video recording does when it stops. Until a choice has been stored this follows
-    /// <see cref="ShowTrimmer"/> (on is Trimmer, off is Save), and storing one keeps
-    /// <see cref="ShowTrimmer"/> in step (true only for Trimmer). A stored Studio choice only takes
-    /// effect while <see cref="StudioPreviewEnabled"/> is on, so decide with
-    /// <see cref="IsStudioRecordingEnabled"/> rather than by comparing this value.
+    /// <see cref="ShowTrimmer"/> (on is Trimmer, off is Save). Storing Save or Trimmer keeps
+    /// <see cref="ShowTrimmer"/> in step. Storing Studio leaves <see cref="ShowTrimmer"/> as it
+    /// was, and a stored Studio choice only takes effect while <see cref="StudioPreviewEnabled"/>
+    /// is on: decide with <see cref="IsStudioRecordingEnabled"/> and
+    /// <see cref="OpensTrimmerAfterVideoRecording"/> rather than by comparing this value.
     /// </summary>
     VideoAfterRecording VideoAfterRecording { get; set; }
+
+    /// <summary>
+    /// Whether the trimmer opens when a video recording stops: the trimmer toggle is on and the
+    /// recording is not one that goes to Studio. With Studio chosen and switched on this is
+    /// false. With Studio chosen and switched off it is whatever the toggle said before Studio
+    /// was chosen, so that switching Studio off puts a recording back to what it was.
+    /// </summary>
+    bool OpensTrimmerAfterVideoRecording { get; }
 
     /// <summary>
     /// Whether Tiny Clips Studio is switched on, while it is in preview. Default false. It is the
