@@ -470,6 +470,14 @@ public sealed class StudioProjectStoreTests : IDisposable
         Assert.Empty(store.Cleanup(rules).ProjectIdsDeleted);
         Assert.True(store.Exists(project.Id));
 
+        // A shorter file is no more the project's video than a longer one: a copy that was cut
+        // short, or an empty file left where the video was.
+        File.WriteAllBytes(video, [7, 8]);
+        Assert.True(Summary().ExportMissing);
+        File.WriteAllBytes(video, []);
+        Assert.True(Summary().ExportMissing);
+        Assert.Empty(store.Cleanup(rules).ProjectIdsDeleted);
+
         // The link from a video to its project goes by the path alone.
         Assert.Equal(project.Id, store.FindProjectIdByExportPath(video));
 
@@ -500,6 +508,71 @@ public sealed class StudioProjectStoreTests : IDisposable
 
         File.WriteAllBytes(video, [1, 2, 3, 4]);
         Assert.False(Summary().ExportMissing);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-3")]
+    [InlineData("null")]
+    public void Summary_AnExportWhoseSizeIsNotOneOrMore_GoesByThePathAlone(string bytes)
+    {
+        var store = CreateStore();
+        var project = CreateOldExportedProject(store, "odd-size");
+        var video = ExportedVideoPath("odd-size");
+        SetExportProperty(store, project.Id, "bytes", bytes);
+        var reopened = CreateStore();
+
+        // Not the three bytes that were exported.
+        File.WriteAllBytes(video, [1, 2, 3, 4, 5]);
+
+        Assert.False(reopened.ListSummaries().Single().ExportMissing);
+
+        File.Delete(video);
+
+        Assert.True(reopened.ListSummaries().Single().ExportMissing);
+    }
+
+    [Theory]
+    [InlineData("\"3\"")]
+    [InlineData("3.0")]
+    [InlineData("3.5")]
+    [InlineData("true")]
+    [InlineData("[3]")]
+    [InlineData("99999999999999999999")]
+    public void AProjectWhoseExportSizeIsNotAWholeNumber_CannotBeRead_AndIsLeftAlone(string bytes)
+    {
+        var store = CreateStore();
+        var project = CreateOldExportedProject(store, "wrong-size");
+        var other = CreateOldExportedProject(store, "other");
+        SetExportProperty(store, project.Id, "bytes", bytes);
+        var reopened = CreateStore();
+
+        // It is a project that cannot be read, as one written by a newer version is: listed
+        // apart, never cleaned up, and no reason for the listing of the others to fail.
+        Assert.Equal([other.Id], reopened.ListSummaries().Select(summary => summary.Id));
+        Assert.Equal([project.Id], reopened.ListUnreadableProjects().Select(unreadable => unreadable.Id));
+        Assert.Null(reopened.FindProjectIdByExportPath(ExportedVideoPath("wrong-size")));
+        Assert.Equal([other.Id], reopened.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0)).ProjectIdsDeleted);
+        Assert.True(reopened.Exists(project.Id));
+    }
+
+    [Fact]
+    public void AnExportKeepsItsSize_BesideWhatAnotherVersionWroteThere()
+    {
+        var store = CreateStore();
+        var project = CreateOldExportedProject(store, "extra");
+        SetExportProperty(store, project.Id, "codec", "\"hevc\"");
+        var reopened = CreateStore();
+
+        Assert.Equal(3, Assert.Single(reopened.Load(project.Id).Exports).Bytes);
+        Assert.False(reopened.ListSummaries().Single().ExportMissing);
+
+        // A save writes both back.
+        reopened.SetKeepSources(project.Id, true);
+
+        var export = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(reopened.GetPaths(project.Id).ProjectJsonPath))!["exports"]![0]!;
+        Assert.Equal(3, export["bytes"]!.GetValue<long>());
+        Assert.Equal("hevc", export["codec"]!.GetValue<string>());
     }
 
     [Fact]
@@ -785,6 +858,15 @@ public sealed class StudioProjectStoreTests : IDisposable
 
     // Not a project folder: the store only looks into folders named like a project id.
     private string ExportedVideoPath(string name) => Path.Combine(_directory, "Videos", name + "-export.mp4");
+
+    /// <summary>Writes a property of a project's first export into its file, as JSON text.</summary>
+    private static void SetExportProperty(StudioProjectStore store, string projectId, string property, string json)
+    {
+        var path = store.GetPaths(projectId).ProjectJsonPath;
+        var project = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        project["exports"]![0]![property] = System.Text.Json.Nodes.JsonNode.Parse(json);
+        File.WriteAllText(path, project.ToJsonString());
+    }
 
     private void WriteProject(string folderId, StudioProject project)
     {

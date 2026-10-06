@@ -328,6 +328,43 @@ public sealed class StudioProjectJsonTests
         Assert.Contains("\"createdAt\": \"2026-10-02T22:41:00Z\"", json, StringComparison.Ordinal);
     }
 
+    // What no writer writes, and what section 2 of the format says this reader does with it.
+
+    [Fact]
+    public void ReadProject_ReadsATimestampWithAnOffsetInPlaceOfZ()
+    {
+        var project = StudioProjectJson.ReadProject("""
+            {
+              "id": "p",
+              "lastOpenedAt": "2026-10-02T22:41:00+02:00",
+              "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } }
+            }
+            """);
+
+        Assert.Equal(new DateTimeOffset(2026, 10, 2, 20, 41, 0, TimeSpan.Zero), project.LastOpenedAt);
+    }
+
+    [Theory]
+    [InlineData("\"yesterday\"")]
+    [InlineData("1790973660")]
+    public void ReadProject_ATimestampThatIsNoDateMakesTheProjectInvalid(string lastOpenedAt)
+    {
+        var json = $$"""{ "id": "p", "lastOpenedAt": {{lastOpenedAt}}, "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } } }""";
+
+        Assert.Throws<StudioProjectInvalidException>(() => StudioProjectJson.ReadProject(json));
+    }
+
+    [Theory]
+    [InlineData("12.0")]
+    [InlineData("12.5")]
+    [InlineData("\"12\"")]
+    public void ReadProject_AnExportSizeNotWrittenAsAWholeNumberMakesTheProjectInvalid(string bytes)
+    {
+        var json = $$"""{ "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } }, "exports": [ { "path": "C:\\v.mp4", "bytes": {{bytes}} } ] }""";
+
+        Assert.Throws<StudioProjectInvalidException>(() => StudioProjectJson.ReadProject(json));
+    }
+
     [Fact]
     public void RoundTrip_PreservesOutOfRangeValues()
     {

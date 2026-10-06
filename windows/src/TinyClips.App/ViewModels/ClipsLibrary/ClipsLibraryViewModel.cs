@@ -48,6 +48,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     private bool _refreshQueued;
     private bool _refreshing;
     private bool _disposed;
+    private int _studioLinkLookup;
 
     public ClipsLibraryViewModel(
         IClipLibraryService library,
@@ -405,6 +406,10 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     /// </summary>
     private async Task UpdateStudioLinksAsync()
     {
+        // Each call replaces the one before it. A lookup that is still running when the next
+        // call starts, or when Studio is switched off, has been asked about a library that is
+        // no longer the one on screen, and must not mark anything when it comes back.
+        var lookup = ++_studioLinkLookup;
         if (!_captureSettings.StudioPreviewEnabled)
         {
             // Also the ones that were marked while it was still on.
@@ -433,8 +438,15 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        if (_disposed)
+        if (_disposed || lookup != _studioLinkLookup)
         {
+            return;
+        }
+
+        if (!_captureSettings.StudioPreviewEnabled)
+        {
+            // Switched off while the projects were read, and nothing has refreshed since.
+            ClearStudioLinks();
             return;
         }
 

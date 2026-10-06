@@ -208,6 +208,19 @@ public sealed class StudioCleanupPolicyTests
             Now,
             rules,
             ["open"]).ProjectIdsToDelete);
+
+        // The one opened last is the one that is open, and an older one is closed: the older
+        // one goes. What stays is the project opened last, not the last of those that are closed.
+        Assert.Equal(
+            ["closed"],
+            StudioCleanupPolicy.Plan(
+                [
+                    Eligible("closed", Now - TimeSpan.FromDays(3), sizeBytes: 80),
+                    Eligible("open", Now - TimeSpan.FromDays(1), sizeBytes: 30),
+                ],
+                Now,
+                rules,
+                ["open"]).ProjectIdsToDelete);
     }
 
     [Fact]
