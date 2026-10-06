@@ -309,8 +309,9 @@ public sealed partial class SettingsViewModel
 
     /// <summary>
     /// Saves a row's screen recording as an ordinary video, in the folder and under the name any
-    /// saved video gets. The project is left as it is. The copy is made off the UI thread, and the
-    /// row's button waits until it is done.
+    /// saved video gets. The project is left as it is. The copy is made off the UI thread. The
+    /// row's button stays enabled meanwhile and says that it is busy
+    /// (<see cref="StudioDraftItem.IsSavingRecording"/>); asked again then, this does nothing.
     /// </summary>
     /// <returns>
     /// The path of the video, or a sentence saying why there is none. Both are null when a copy
@@ -335,7 +336,7 @@ public sealed partial class SettingsViewModel
         }
         catch (Exception ex)
         {
-            return (null, $"The screen recording could not be saved: {ex.Message}");
+            return (null, StudioScreenRecording.GetNotSavedMessage(ex.Message));
         }
         finally
         {

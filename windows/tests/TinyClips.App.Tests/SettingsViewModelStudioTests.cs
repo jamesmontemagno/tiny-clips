@@ -477,7 +477,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Assert.Equal([path!], Directory.GetFiles(VideosFolder));
         Assert.Equal(Recording, File.ReadAllBytes(_projects.GetPaths(first).ScreenPath));
         Assert.True(_projects.ListSummaries().Single().IsDraft);
-        Assert.True(row.IsSaveRecordingEnabled);
+        AssertOffersToSave(row);
     }
 
     [Fact]
@@ -489,16 +489,17 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Show(vm, SettingsSectionKind.General);
         await vm.EnsureStudioStorageInitializedAsync();
         var row = Assert.Single(vm.StudioDrafts);
+        AssertOffersToSave(row);
         _names.HoldTheFirstName();
 
         var copying = Task.Run(() => vm.SaveStudioScreenRecordingAsync(row), TestContext.Current.CancellationToken);
         Assert.True(_names.FirstNameAskedFor.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
-        Assert.False(row.IsSaveRecordingEnabled);
+        AssertSaysItIsSaving(row);
 
         var again = await vm.SaveStudioScreenRecordingAsync(row);
         Assert.Null(again.Path);
         Assert.Null(again.Error);
-        Assert.False(row.IsSaveRecordingEnabled);
+        AssertSaysItIsSaving(row);
         Assert.Single(_names.AskedFor);
 
         _names.GiveTheFirstName();
@@ -506,7 +507,53 @@ public sealed class SettingsViewModelStudioTests : IDisposable
 
         Assert.Null(error);
         Assert.Equal([path!], Directory.GetFiles(VideosFolder));
-        Assert.True(row.IsSaveRecordingEnabled);
+        AssertOffersToSave(row);
+    }
+
+    /// <summary>
+    /// The row's button is not disabled while the recording is copied: one that is disabled
+    /// while it has the keyboard focus passes the focus on, to Delete. It keeps its name, and
+    /// says that it is busy in what it shows and in what a screen reader reads after its name.
+    /// The button is told of both when the copy starts and when it ends.
+    /// </summary>
+    [Fact]
+    public void ARow_WhileItsRecordingIsCopied_KeepsItsNameAndSaysThatItIsBusy()
+    {
+        var row = new StudioDraftItem("a-project", "Demo", "today, 1 MB", isOpen: false, canSaveRecording: true);
+        var told = new List<string?>();
+        row.PropertyChanged += (_, e) => told.Add(e.PropertyName);
+        AssertOffersToSave(row);
+
+        row.IsSavingRecording = true;
+
+        AssertSaysItIsSaving(row);
+        Assert.Equal("Save the screen recording of Demo", row.SaveRecordingButtonName);
+        Assert.Contains(nameof(StudioDraftItem.SaveRecordingLabel), told);
+        Assert.Contains(nameof(StudioDraftItem.SaveRecordingHelpText), told);
+
+        told.Clear();
+        row.IsSavingRecording = false;
+
+        AssertOffersToSave(row);
+        Assert.Equal("Save the screen recording of Demo", row.SaveRecordingButtonName);
+        Assert.Contains(nameof(StudioDraftItem.SaveRecordingLabel), told);
+        Assert.Contains(nameof(StudioDraftItem.SaveRecordingHelpText), told);
+    }
+
+    private static void AssertOffersToSave(StudioDraftItem row)
+    {
+        Assert.False(row.IsSavingRecording);
+        Assert.Equal("Save recording", row.SaveRecordingLabel);
+        Assert.Equal(
+            "Saves the screen recording to your videos folder as an ordinary video. The project is kept as it is.",
+            row.SaveRecordingHelpText);
+    }
+
+    private static void AssertSaysItIsSaving(StudioDraftItem row)
+    {
+        Assert.True(row.IsSavingRecording);
+        Assert.Equal("Saving\u2026", row.SaveRecordingLabel);
+        Assert.Equal("The screen recording is being saved.", row.SaveRecordingHelpText);
     }
 
     [Fact]
@@ -525,7 +572,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Assert.Null(path);
         Assert.Equal($"The screen recording could not be saved: {StudioScreenRecording.NothingToSaveMessage}", error);
         Assert.False(Directory.Exists(VideosFolder));
-        Assert.True(row.IsSaveRecordingEnabled);
+        AssertOffersToSave(row);
     }
 
     [Fact]

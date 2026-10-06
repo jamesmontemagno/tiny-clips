@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Models;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.App.Settings.Sections;
 
@@ -107,14 +108,26 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
     /// any other, and the app announces it as one. A failure is said in a dialog, or in a
     /// notification where no dialog can be shown.
     /// </summary>
+    /// <remarks>
+    /// The button stays as it is while the recording is copied, so that it keeps the keyboard
+    /// focus, and a press then saves nothing more. A screen reader is told that the recording
+    /// is being saved at the press that starts the copy and at every press while it runs, so
+    /// that no press goes without an answer.
+    /// </remarks>
     private async void OnSaveStudioDraftRecording(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: StudioDraftItem draft })
+        if (sender is not FrameworkElement { Tag: StudioDraftItem draft } button)
         {
             return;
         }
 
-        var (path, error) = await ViewModel.SaveStudioScreenRecordingAsync(draft);
+        var saving = ViewModel.SaveStudioScreenRecordingAsync(draft);
+        if (draft.IsSavingRecording && !_closed)
+        {
+            TellScreenReader(button, StudioScreenRecording.SavingMessage, "StudioDraftRecordingSaving");
+        }
+
+        var (path, error) = await saving;
         if (path is not null)
         {
             // Also when Settings was closed while the recording was being copied: the video is there.
@@ -138,6 +151,28 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
             // Settings was closed while the recording was being copied, or is asking something
             // else. The failure is said all the same.
             App.ShowMessageNotification($"The screen recording was not saved. {error}");
+        }
+    }
+
+    /// <summary>
+    /// Says a sentence through a screen reader, from the control it is about. Never fails: it
+    /// is called from handlers that are <c>async void</c>.
+    /// </summary>
+    private static void TellScreenReader(FrameworkElement element, string message, string activityId)
+    {
+        try
+        {
+            var peer = FrameworkElementAutomationPeer.FromElement(element)
+                ?? FrameworkElementAutomationPeer.CreatePeerForElement(element);
+            peer?.RaiseNotificationEvent(
+                AutomationNotificationKind.Other,
+                AutomationNotificationProcessing.MostRecent,
+                message,
+                activityId);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"General settings could not tell a screen reader \"{message}\": {ex}");
         }
     }
 

@@ -64,7 +64,8 @@ public sealed class StudioWindowService
 
     /// <summary>
     /// Raised with a sentence for the user when something failed and the window that would have
-    /// shown it is gone, for example a project that could not be deleted.
+    /// shown it is gone, for example a project that could not be deleted, or a screen recording
+    /// that was still being saved when its window closed and could not be.
     /// </summary>
     public event EventHandler<StudioEditorErrorEventArgs>? ErrorReported;
 
@@ -149,7 +150,9 @@ public sealed class StudioWindowService
     {
         // A window that is still open shows the message itself. One that is closing does not:
         // it saves its edits as its last act, while it is still in the list here, and a save
-        // that fails then would otherwise be told to nobody.
+        // that fails then would otherwise be told to nobody. Neither does one that has closed,
+        // and is in the list no more: a project that could not be deleted, or a screen
+        // recording whose copy failed after its window had gone.
         if (sender is StudioViewModel viewModel
             && _windows.TryGetValue(viewModel.ProjectId, out var window)
             && ReferenceEquals(window.ViewModel, viewModel)
@@ -199,7 +202,7 @@ public sealed class StudioWindowService
 
         // Only now, when the editor has closed and has nothing more to report. Until then it
         // can have: a project that could not be deleted, and a screen recording that was still
-        // being saved when its window closed.
+        // being saved when its window closed, which is then saved or could not be.
         window.ViewModel.Exported -= OnExported;
         window.ViewModel.ScreenRecordingSaved -= OnScreenRecordingSaved;
         window.ViewModel.ErrorReported -= OnErrorReported;

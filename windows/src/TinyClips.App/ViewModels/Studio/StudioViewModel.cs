@@ -24,6 +24,10 @@ public sealed partial class StudioViewModel : ObservableObject
     private const string PlayGlyph = "\uE768";
     private const string PauseGlyph = "\uE769";
 
+    // One id for everything said about saving the screen recording, so that what is said last
+    // takes the place of what has not been read out yet.
+    private const string ScreenRecordingActivityId = "StudioScreenRecordingSaved";
+
     private static readonly string[] PlaybackPropertyNames =
     [
         nameof(Playhead),
@@ -41,8 +45,16 @@ public sealed partial class StudioViewModel : ObservableObject
         nameof(ExportPercentText),
     ];
 
+    private static readonly string[] ScreenRecordingPropertyNames =
+    [
+        nameof(IsSavingScreenRecording),
+        nameof(SaveScreenRecordingLabel),
+        nameof(SaveScreenRecordingHelpText),
+        nameof(ScreenRecordingStatus),
+        nameof(HasScreenRecordingStatus),
+    ];
+
     private readonly StudioEditorSession _session;
-    private readonly IStudioProjectStore _store;
     private readonly ICaptureSettings _settings;
     private readonly IClipStorageService _storage;
     private readonly DispatcherQueue _dispatcher;
@@ -50,12 +62,6 @@ public sealed partial class StudioViewModel : ObservableObject
     private string _errorMessage = string.Empty;
     private bool _isSaveErrorShown;
     private string _defaultLookStatus = string.Empty;
-    private string _screenRecordingStatus = string.Empty;
-    private bool _isSavingScreenRecording;
-
-    // The save of the screen recording that was started last. It finishes when that save has
-    // said what came of it, and never fails.
-    private Task? _screenRecordingSave;
 
     public StudioViewModel(
         string projectId,
@@ -67,7 +73,6 @@ public sealed partial class StudioViewModel : ObservableObject
         DispatcherQueue dispatcher,
         bool canFindPeople)
     {
-        _store = store;
         _settings = settings;
         _storage = storage;
         _dispatcher = dispatcher;
@@ -81,6 +86,7 @@ public sealed partial class StudioViewModel : ObservableObject
             action => dispatcher.TryEnqueue(() => action()));
         _session.Changed += OnSessionChanged;
         _session.Exported += OnSessionExported;
+        _session.ScreenRecordingSaved += OnSessionScreenRecordingSaved;
         _session.ErrorReported += OnSessionErrorReported;
     }
 
@@ -95,11 +101,15 @@ public sealed partial class StudioViewModel : ObservableObject
 
     /// <summary>
     /// Raised once the screen recording of a project that cannot be shown has been saved as a
-    /// video of its own, with the path of that video.
+    /// video of its own, with the path of that video. Also when the window has closed in the
+    /// meantime.
     /// </summary>
     public event EventHandler<StudioExportedEventArgs>? ScreenRecordingSaved;
 
-    /// <summary>Raised with a sentence for the user when saving, exporting or deleting failed.</summary>
+    /// <summary>
+    /// Raised with a sentence for the user when saving, exporting or deleting failed, or when
+    /// the screen recording could not be saved and the window had closed by then.
+    /// </summary>
     public event EventHandler<StudioEditorErrorEventArgs>? ErrorReported;
 
     public string ProjectId => _session.ProjectId;
@@ -128,23 +138,34 @@ public sealed partial class StudioViewModel : ObservableObject
     /// </summary>
     public bool CanSaveScreenRecording => IsUnavailable && _session.HasScreenRecordingToSave;
 
-    /// <summary>False while the recording is being copied.</summary>
-    public bool IsSaveScreenRecordingEnabled => !_isSavingScreenRecording;
+    /// <summary>
+    /// True while the recording is being copied. The button stays enabled then, so that it
+    /// keeps the keyboard focus: a button that is disabled while it has the focus passes the
+    /// focus on. It says that it is busy instead, and a press does nothing more.
+    /// </summary>
+    public bool IsSavingScreenRecording => _session.IsSavingScreenRecording;
 
-    /// <summary>What came of saving the screen recording: the name it got, or why it was not saved. Empty before.</summary>
-    public string ScreenRecordingStatus
-    {
-        get => _screenRecordingStatus;
-        private set
-        {
-            if (SetProperty(ref _screenRecordingStatus, value))
-            {
-                OnPropertyChanged(nameof(HasScreenRecordingStatus));
-            }
-        }
-    }
+    /// <summary>What the button is called: its name for a screen reader at all times, and what it shows while nothing is being saved.</summary>
+    public string SaveScreenRecordingName => "Save the screen recording";
 
-    public bool HasScreenRecordingStatus => _screenRecordingStatus.Length > 0;
+    /// <summary>What the button shows: what it does, or that it is doing it.</summary>
+    public string SaveScreenRecordingLabel => IsSavingScreenRecording ? "Saving\u2026" : SaveScreenRecordingName;
+
+    /// <summary>
+    /// What a screen reader reads after the button's name: what the button does, or, while the
+    /// recording is being copied, that it is being saved.
+    /// </summary>
+    public string SaveScreenRecordingHelpText => IsSavingScreenRecording
+        ? "The screen recording is being saved."
+        : "Saves this project's screen recording to your videos folder as an ordinary video. The project is kept as it is.";
+
+    /// <summary>
+    /// What came of saving the screen recording: that it is being saved, the name it got, or why
+    /// it was not saved. Empty before.
+    /// </summary>
+    public string ScreenRecordingStatus => _session.ScreenRecordingStatus;
+
+    public bool HasScreenRecordingStatus => ScreenRecordingStatus.Length > 0;
 
     /// <summary>
     /// Saves the screen recording of a project that cannot be shown as an ordinary video, in the
@@ -153,66 +174,36 @@ public sealed partial class StudioViewModel : ObservableObject
     /// fails.
     /// </summary>
     /// <remarks>
-    /// The window may close while the recording is being copied. The copy goes on, and
-    /// <see cref="CloseAsync"/> does not finish before it has: whoever listens for
-    /// <see cref="ScreenRecordingSaved"/> until the editor has closed is told of the video.
+    /// A press while the recording is being copied saves nothing more. The window may close
+    /// while the recording is being copied. The copy goes on, and <see cref="CloseAsync"/> does
+    /// not finish before it has said what came of it: whoever listens until the editor has
+    /// closed is told of the video (<see cref="ScreenRecordingSaved"/>), or that there is none
+    /// (<see cref="ErrorReported"/>).
     /// </remarks>
     public async Task SaveScreenRecordingAsync()
     {
-        if (!CanSaveScreenRecording || _isSavingScreenRecording)
+        var saving = _session.SaveScreenRecordingAsync(() => _storage.GenerateFilePath(CaptureType.Video));
+        if (_session.IsSavingScreenRecording)
         {
+            // Said when the copy starts, and again at every press while it is under way. The
+            // button looks and reads as busy then, and its focus has not moved, so nothing
+            // else would answer the press.
+            Announce(ScreenRecordingStatus, ScreenRecordingActivityId, StudioAnnouncementKind.Information);
+        }
+
+        var outcome = await saving;
+        if (outcome == StudioScreenRecordingOutcome.NotStarted || _session.IsClosed)
+        {
+            // Nothing was saved by this press, or the window closed while the recording was
+            // being copied: nobody is left to read anything out to, and the session has told
+            // whoever still listens.
             return;
         }
 
-        _isSavingScreenRecording = true;
-
-        // What a close waits for. It is there before anything of the save is done, so that a
-        // close finds it at whatever moment of the save it comes.
-        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _screenRecordingSave = finished.Task;
-        try
-        {
-            await CopyScreenRecordingAsync();
-        }
-        finally
-        {
-            finished.SetResult();
-        }
-    }
-
-    private async Task CopyScreenRecordingAsync()
-    {
-        OnPropertyChanged(nameof(IsSaveScreenRecordingEnabled));
-        ScreenRecordingStatus = "Saving the screen recording\u2026";
-        string status;
-        StudioAnnouncementKind kind;
-        try
-        {
-            var path = await StudioScreenRecording.SaveAsync(
-                _store,
-                ProjectId,
-                () => _storage.GenerateFilePath(CaptureType.Video));
-            status = $"Saved as {Path.GetFileName(path)}.";
-            kind = StudioAnnouncementKind.Completed;
-            ScreenRecordingSaved?.Invoke(this, new StudioExportedEventArgs(ProjectId, path));
-        }
-        catch (Exception ex)
-        {
-            status = $"The screen recording could not be saved: {ex.Message}";
-            kind = StudioAnnouncementKind.Stopped;
-        }
-
-        _isSavingScreenRecording = false;
-        if (_session.IsClosed)
-        {
-            // The window closed while the recording was being copied. There is no button left
-            // to enable and no status to show, and nobody to read anything out to.
-            return;
-        }
-
-        OnPropertyChanged(nameof(IsSaveScreenRecordingEnabled));
-        ScreenRecordingStatus = status;
-        Announce(status, "StudioScreenRecordingSaved", kind);
+        Announce(
+            ScreenRecordingStatus,
+            ScreenRecordingActivityId,
+            outcome == StudioScreenRecordingOutcome.Saved ? StudioAnnouncementKind.Completed : StudioAnnouncementKind.Stopped);
     }
 
     /// <summary>False while loading, while exporting and after closing. The whole editor follows it.</summary>
@@ -485,16 +476,9 @@ public sealed partial class StudioViewModel : ObservableObject
     /// returns; the task finishes when the preview has let go of its files and, for
     /// <paramref name="deleteProject"/>, the project is gone. A screen recording that is being
     /// saved at that moment (<see cref="SaveScreenRecordingAsync"/>) is waited for as well, so
-    /// that the editor has not closed before <see cref="ScreenRecordingSaved"/> has been raised
-    /// for it.
+    /// that the editor has not closed before it has been said what came of that save.
     /// </summary>
-    public Task CloseAsync(bool deleteProject)
-    {
-        // The session first, and at once: what it saves is saved by the time this returns,
-        // whatever is waited for after that.
-        var closing = _session.CloseAsync(deleteProject);
-        return _screenRecordingSave is { IsCompleted: false } saving ? Task.WhenAll(closing, saving) : closing;
-    }
+    public Task CloseAsync(bool deleteProject) => _session.CloseAsync(deleteProject);
 
     // Session events
 
@@ -536,6 +520,11 @@ public sealed partial class StudioViewModel : ObservableObject
             {
                 Raise(ExportPropertyNames);
             }
+
+            if (e.Includes(StudioEditorChanges.ScreenRecording))
+            {
+                Raise(ScreenRecordingPropertyNames);
+            }
         }
 
         if (_session.State != _lastState)
@@ -550,6 +539,8 @@ public sealed partial class StudioViewModel : ObservableObject
         Announce("Export finished.", "StudioExportFinished", StudioAnnouncementKind.Completed);
         Exported?.Invoke(this, e);
     }
+
+    private void OnSessionScreenRecordingSaved(object? sender, StudioExportedEventArgs e) => ScreenRecordingSaved?.Invoke(this, e);
 
     private void OnSessionErrorReported(object? sender, StudioEditorErrorEventArgs e)
     {

@@ -45,6 +45,25 @@ public enum StudioExportOutcome
     Failed,
 }
 
+/// <summary>How <see cref="StudioEditorSession.SaveScreenRecordingAsync"/> ended.</summary>
+public enum StudioScreenRecordingOutcome
+{
+    /// <summary>
+    /// Nothing was copied: there is no screen recording to save, a save was already under way,
+    /// or the session has closed.
+    /// </summary>
+    NotStarted,
+
+    /// <summary>The recording is saved as a video of its own, and that has been reported.</summary>
+    Saved,
+
+    /// <summary>
+    /// The recording could not be saved. <see cref="StudioEditorSession.ScreenRecordingStatus"/>
+    /// says why, and a session that had closed by then has reported it as an error.
+    /// </summary>
+    Failed,
+}
+
 /// <summary>The parts of a <see cref="StudioEditorSession"/> that can change.</summary>
 [Flags]
 public enum StudioEditorChanges
@@ -69,7 +88,10 @@ public enum StudioEditorChanges
     /// <summary>Which scene the playhead is in. The layout controls show and change that scene.</summary>
     Scene = 32,
 
-    All = State | Project | Playback | Export | Selection | Scene,
+    /// <summary>Whether the screen recording is being saved as a video of its own, and what came of that.</summary>
+    ScreenRecording = 64,
+
+    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording,
 }
 
 public sealed class StudioEditorChangedEventArgs(StudioEditorChanges changes) : EventArgs
@@ -101,6 +123,13 @@ public enum StudioEditorErrorKind
 
     /// <summary>Pinning the project against cleanup, or letting go of it. The project keeps what it had.</summary>
     Keep,
+
+    /// <summary>
+    /// Saving the screen recording of a project that cannot be shown as a video of its own.
+    /// Reported only by a session that has closed: one that is open says it in
+    /// <see cref="StudioEditorSession.ScreenRecordingStatus"/>, under the button that was pressed.
+    /// </summary>
+    ScreenRecording,
 }
 
 public sealed class StudioEditorErrorEventArgs(StudioEditorErrorKind kind, string message) : EventArgs

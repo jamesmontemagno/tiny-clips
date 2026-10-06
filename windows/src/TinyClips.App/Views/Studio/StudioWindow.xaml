@@ -87,19 +87,35 @@
                 <!--
                     The way out, where the recording itself is still there: it is saved as an
                     ordinary video, and the project stays as it is. One Tab from the message.
+
+                    The button is not disabled while the recording is copied. A button that is
+                    disabled while it has the keyboard focus passes the focus on, and the next
+                    Enter or Space would press whatever got it. It keeps its name, shows and
+                    reads that it is busy, and a press then saves nothing more. Both of its
+                    labels take their room and one of them is seen, so that it keeps its width.
                 -->
                 <Button
                     x:Name="SaveScreenRecordingButton"
                     Margin="0,8,0,0"
                     HorizontalAlignment="Center"
                     AutomationProperties.AutomationId="StudioSaveScreenRecordingButton"
-                    AutomationProperties.HelpText="Saves this project's screen recording to your videos folder as an ordinary video. The project is kept as it is."
-                    AutomationProperties.Name="Save the screen recording"
+                    AutomationProperties.HelpText="{x:Bind ViewModel.SaveScreenRecordingHelpText, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind ViewModel.SaveScreenRecordingName}"
                     Click="OnSaveScreenRecordingClick"
-                    Content="Save the screen recording"
-                    IsEnabled="{x:Bind ViewModel.IsSaveScreenRecordingEnabled, Mode=OneWay}"
                     ToolTipService.ToolTip="Save the screen recording to your videos folder as an ordinary video"
-                    Visibility="{x:Bind ViewModel.CanSaveScreenRecording, Mode=OneWay}" />
+                    Visibility="{x:Bind ViewModel.CanSaveScreenRecording, Mode=OneWay}">
+                    <Grid>
+                        <TextBlock
+                            AutomationProperties.AccessibilityView="Raw"
+                            Opacity="0"
+                            Text="{x:Bind ViewModel.SaveScreenRecordingName}" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            AutomationProperties.AccessibilityView="Raw"
+                            AutomationProperties.AutomationId="StudioSaveScreenRecordingLabel"
+                            Text="{x:Bind ViewModel.SaveScreenRecordingLabel, Mode=OneWay}" />
+                    </Grid>
+                </Button>
                 <!--  What came of it. Read out by the window when it changes.  -->
                 <TextBlock
                     HorizontalAlignment="Center"

@@ -12,6 +12,15 @@ public static class StudioScreenRecording
     /// <summary>Said when a project has no screen recording in its folder.</summary>
     public const string NothingToSaveMessage = "This project has no screen recording to save.";
 
+    /// <summary>Said while the recording is being copied.</summary>
+    public const string SavingMessage = "Saving the screen recording\u2026";
+
+    /// <summary>Said once the recording has been saved, with the name the video got.</summary>
+    public static string GetSavedMessage(string path) => $"Saved as {Path.GetFileName(path)}.";
+
+    /// <summary>Said when the recording could not be saved, with the reason.</summary>
+    public static string GetNotSavedMessage(string reason) => $"The screen recording could not be saved: {reason}";
+
     /// <summary>
     /// Copies a project's screen recording to a new video file and returns the path it got. The
     /// copy never takes the place of a file that is there.

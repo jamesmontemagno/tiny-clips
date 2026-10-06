@@ -8,7 +8,8 @@ namespace TinyClips.Core.Studio.Editing;
 
 /// <summary>
 /// Everything one Studio editor window does that is not user interface: opening the project,
-/// editing it, the transport, autosave, export, and what closing means.
+/// editing it, the transport, autosave, export, saving the screen recording of a project it
+/// cannot show, and what closing means.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -111,7 +112,10 @@ public sealed partial class StudioEditorSession
     /// <summary>Raised once an export has finished and its link is recorded in the project.</summary>
     public event EventHandler<StudioExportedEventArgs>? Exported;
 
-    /// <summary>Raised with a sentence for the user when saving, exporting or deleting failed.</summary>
+    /// <summary>
+    /// Raised with a sentence for the user when saving, exporting or deleting failed, or when
+    /// the screen recording could not be saved and the session had closed by then.
+    /// </summary>
     public event EventHandler<StudioEditorErrorEventArgs>? ErrorReported;
 
     // State
@@ -1387,7 +1391,9 @@ public sealed partial class StudioEditorSession
     /// <summary>
     /// Ends the session, when its window is closing for good. A running export is stopped, the
     /// edits are saved, the preview is disposed, and then the poster image is written. The save has
-    /// happened by the time this returns; the task finishes when the rest has. Calling it again
+    /// happened by the time this returns; the task finishes when the rest has. A screen recording
+    /// that is being saved as a video (<see cref="SaveScreenRecordingAsync"/>) is not stopped:
+    /// the task does not finish before that save has said what came of it. Calling it again
     /// returns the same task.
     /// </summary>
     /// <param name="deleteProject">
@@ -1403,6 +1409,7 @@ public sealed partial class StudioEditorSession
         _lifetime.Cancel();
         _exportCancellation?.Cancel();
         var exportTask = _exportTask;
+        var screenRecordingSave = _screenRecordingSave;
         var preview = DetachPreview();
 
         if (deleteProject)
@@ -1423,6 +1430,12 @@ public sealed partial class StudioEditorSession
         {
             await DisposeQuietlyAsync(preview).ConfigureAwait(false);
         }
+
+        // A screen recording that is being saved as a video is waited for; that never fails.
+        // The session has not closed before the save has said what came of it, so whoever
+        // listens to the session until it has closed is told. And the copy reads the
+        // recording, so the project is not deleted from under it.
+        await screenRecordingSave.ConfigureAwait(false);
 
         if (deleteProject)
         {

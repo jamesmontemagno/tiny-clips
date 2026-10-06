@@ -17,7 +17,13 @@ public abstract class StudioEditorSessionTestBase : IDisposable
     protected const double Frame = 1.0 / 30;
 
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "TinyClipsTests", Guid.NewGuid().ToString("N"));
+
+    // What the session posted. A test runs it on its own thread. The session mostly posts from
+    // there too, but not always: what it posts when a file it was copying is finished comes
+    // from the thread the copy ended on, so the list is guarded.
     private readonly List<Action> _posted = [];
+    private readonly object _postedGate = new();
+    private TaskCompletionSource? _somethingPosted;
 
     protected StudioEditorSessionTestBase()
     {
@@ -56,7 +62,16 @@ public abstract class StudioEditorSessionTestBase : IDisposable
     protected List<StudioEditorChanges> Changes { get; } = [];
 
     /// <summary>Actions the session has posted to its thread and that have not run yet.</summary>
-    protected int PostedCount => _posted.Count;
+    protected int PostedCount
+    {
+        get
+        {
+            lock (_postedGate)
+            {
+                return _posted.Count;
+            }
+        }
+    }
 
     private protected FakePreview Preview => Previews.Opened[^1];
 
@@ -95,7 +110,7 @@ public abstract class StudioEditorSessionTestBase : IDisposable
 
     protected StudioEditorSession CreateSession(string projectId)
     {
-        var session = new StudioEditorSession(projectId, Store, Previews, Exporter, Settings, _posted.Add, Time);
+        var session = new StudioEditorSession(projectId, Store, Previews, Exporter, Settings, Post, Time);
         session.Changed += (_, e) => Changes.Add(e.Changes);
         session.ErrorReported += (_, e) =>
         {
@@ -117,12 +132,54 @@ public abstract class StudioEditorSessionTestBase : IDisposable
     /// <summary>Runs what the session posted to its thread, including anything those actions post.</summary>
     protected void Pump()
     {
-        while (_posted.Count > 0)
+        while (true)
         {
-            var action = _posted[0];
-            _posted.RemoveAt(0);
+            Action action;
+            lock (_postedGate)
+            {
+                if (_posted.Count == 0)
+                {
+                    return;
+                }
+
+                action = _posted[0];
+                _posted.RemoveAt(0);
+            }
+
             action();
         }
+    }
+
+    /// <summary>
+    /// Waits until the session has posted something, and runs it. For what the session posts
+    /// from another thread, which a test cannot pump for before it is there: the end of a file
+    /// copy. Nothing is waited for when something is posted already. A hang becomes a failure.
+    /// </summary>
+    protected async Task PumpWhenPostedAsync()
+    {
+        Task posted;
+        lock (_postedGate)
+        {
+            posted = _posted.Count > 0
+                ? Task.CompletedTask
+                : (_somethingPosted ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+
+        await posted.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Pump();
+    }
+
+    private void Post(Action action)
+    {
+        TaskCompletionSource? waiting;
+        lock (_postedGate)
+        {
+            _posted.Add(action);
+            waiting = _somethingPosted;
+            _somethingPosted = null;
+        }
+
+        waiting?.TrySetResult();
     }
 
     /// <summary>Pumps, then waits for a task that should now be finished. A hang becomes a failure.</summary>

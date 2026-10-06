@@ -45,6 +45,12 @@ more for `--memory`. One of the checks opens a
 drop-down list, which the tool had never done, and two have a recording read from a pipe, so
 that its copy lasts until they let it end. See "Written on 6 October 2026 and not run".
 
+**Nor this.** Written later on 6 October 2026, without a check tool as before: the button
+that saves the screen recording is no longer disabled while it works, so that it keeps the
+keyboard focus, and a copy that fails after its window has closed is told to the app. In
+`open`, four checks judge something else than they did and two are new, both with a recording
+read from a pipe. See "A button that is not disabled while it works".
+
 ## Needs
 
 - An x64 process. The tool refuses to run otherwise: see "What it does to the machine".
@@ -191,7 +197,8 @@ Someone may be working on the machine while the tool runs, so:
     folder. It writes down every name it gives out. A check can have the next name it gives
     out taken, by a file it writes under that name before handing it back, and can have
     something done in the middle of the next request for a name: both stand for a file that
-    something else saves while a video is being made.
+    something else saves while a video is being made. It can have every name taken from then
+    on as well, for a file that finds no free name however often it asks.
   - `NoRecorder`: the cleanup service asks whether a Studio recording is running. None ever is.
   - `GuardedStore`: the real `StudioProjectStore`, which refuses a root outside the temp folder,
     counts delete attempts, and never lets a cleanup throw (the app's cleanup service writes a
@@ -208,7 +215,7 @@ Someone may be working on the machine while the tool runs, so:
   same window, which in the app brings it to the front, is counted. What the window service
   hands the app is written down: every export it reports as finished, every screen recording
   it reports as saved from a project that cannot be shown, and every error it reports for a
-  window that is closing (`ErrorReported`), as the kind of the error and its sentence. In the
+  window that is closing or gone (`ErrorReported`), as the kind of the error and its sentence. In the
   app the first two finish the clip as any saved video is, and the third is shown as a
   notification; none of that is in the tool.
 - **Whether people can be found in a camera picture** is the tool's to say
@@ -263,7 +270,11 @@ Someone may be working on the machine while the tool runs, so:
   keys, Home and End on a lane, the lane's own `HandleKey` is called, which is what its key
   handler calls. Delete on the scene lane is checked with the focus put on the lane inside the
   window, which is what the window's key handler asks about. That a key reaches a handler, and
-  what a focused control does with it first, is not checked.
+  what a focused control does with it first, is not checked. Neither is the first thing the
+  window's handler does with a key: while a question is open it returns at once
+  (`if (_isPromptOpen) { return; }` in `StudioWindow.OnRootKeyDown`), so that no key runs
+  anything under a question. `RunShortcut`, which the checks call, comes after that line, so
+  nothing in this tool runs it: it has no check and no fault.
 - **Nothing is dragged or pressed with a pointer.** The camera in the preview, the handles of the
   trim bar and a slider's thumb are never moved. A slider drag as one undo step is checked by
   calling what the slider's row calls when a pointer takes hold of it and lets go
@@ -751,27 +762,32 @@ Automation and the project file is read by the tool itself, as JSON, not through
 In `Checks\CannotBeShown.cs`, in the `open` group. The project file is made one that this
 version cannot read by setting its `schemaVersion` to 99; nothing else in the folder is
 touched, and every check holds the folder against what it was before the window opened, file
-by file, by length, time and hash.
+by file, by length, time and hash. Four of these checks were changed on 6 October, when the
+button stopped being disabled while it works: they are given here as they are now, and
+"A button that is not disabled while it works" says what changed.
 
 - The window says why, and has a button Save the screen recording that is enabled, described,
-  and the next tab stop after the message; nothing of the editor is there. Its tree is audited
-  like the other states.
+  shows its name, and is the next tab stop after the message; nothing of the editor is there.
+  Its tree is audited like the other states.
 - The button puts a copy of `screen.mp4`, byte for byte, where the tool's storage says videos
   go, under the name it gave; the status says "Saved as" and that name and is read out; the
-  window service reports it once, and not as an export.
+  window service reports it once, and not as an export; and the button offers to save again.
 - A second request made in the middle of the save, from where the save asks for its name,
-  has to be over at once and ask for no name; the button is disabled meanwhile and the status
-  says that the recording is being saved.
+  has to be over at once and ask for no name; the button is enabled meanwhile, shows
+  "Saving…" and is described as saving, and the status says that the recording is being
+  saved.
 - With the name taken by another file by the time the copy is complete, the copy gets the
   next name and the other file is as it was.
 - Where the recording cannot be written, the status says that it could not be saved and why,
-  is read out, nothing is left behind, nothing is reported, and the button works again.
+  is read out, nothing is left behind, nothing is reported, and the button offers to save
+  again.
 - The close button closes the window without a question.
 - Without a recording in the folder the button is not there, neither for a screen reader nor
   among the tab stops.
 
-Not covered: five names taken one after the other, after which the app gives up with an
-error.
+Five names taken one after the other, after which the app gives up with an error, are in the
+check of a copy that fails after its window has closed. In a window that is still open they
+are not covered.
 
 ### A save that fails as a window closes
 
@@ -902,6 +918,14 @@ its project, which closes at once whatever the setting says, by the same conditi
 window that cannot show its project. A check of that would have to come between the window's
 first picture and the end of the load.
 
+Not covered, for the same reason: the other keys while a question is open. The focus is kept
+on the question, so no key should reach the window then. One that does all the same is
+passed over by the first line of the window's key handler (`StudioWindow.OnRootKeyDown`:
+`if (_isPromptOpen) { return; }`), which is in the handler for the real key and comes before
+anything this tool calls. It has no check, and no fault was written for it. It is for a
+person to try: with a question open, Space, Ctrl+E, Ctrl+Z and Delete must do nothing under
+it, and the question must still be there.
+
 `--memory` has two windows more, both on a project that was exported: one that is asked by
 Esc and told to stay, and one that is closed by Esc and Close Studio. The question is a
 dialog that the window does not make itself.
@@ -977,10 +1001,10 @@ to be the one new file where videos go; the project has to stop counting as open
 has to be as it was before the window opened; and no error may have been reported.
 
 Not covered: what the app does with the report (it finishes the clip and lists it, which is
-not in the tool), a copy that fails after its window has closed (the status that would say so
-is in a window that is gone, and nothing else says it), and the app exiting during a copy,
-which waits for it for three seconds at most, like everything else a closing window waits
-for.
+not in the tool), and the app exiting during a copy, which waits for it for three seconds at
+most, like everything else a closing window waits for. A copy that fails after its window
+has closed was told to nobody when this was written; it is told to the app now, and has a
+check: see "A button that is not disabled while it works".
 
 ### Two older checks, and a tooltip
 
@@ -989,6 +1013,72 @@ Each now does so only while the export runs. Without an export the key used to r
 now it would ask the window to close and leave a question open for the checks that follow.
 The window that had the keyboard focus put on Play, for the check of a drag, is kept open
 until the tooltip of Play has shown: see "A closed window that stays in memory".
+
+### A button that is not disabled while it works
+
+In `Checks\CannotBeShown.cs`, in the `open` group. Written later on 6 October 2026, without a
+check tool, and to be read like the rest of this section: it compiles, the rule behind it
+passes its unit tests (`StudioEditorSessionScreenRecordingTests`), and not one check below
+has run. If nothing ends a part early, `open` has two checks more, and four that were there
+judge something else than they did.
+
+Until then the button that saves the screen recording was disabled while the recording was
+copied. A button that is disabled while it has the keyboard focus cannot keep the focus: the
+framework passes it on, and the next Enter or Space presses whatever got it. Now the button
+stays enabled and keeps the focus. While the recording is copied it has the name it always
+has, shows "Saving…" in the room its own label takes, and reads "The screen recording is
+being saved." after its name, where it otherwise reads what it does. A press then saves
+nothing more. A screen reader is told "Saving the screen recording…" at the press that
+starts the copy and at every press while it runs. The saving itself moved from the window's
+view model into the editor's session (`StudioEditorSession.SaveScreenRecordingAsync`), where
+unit tests reach it.
+
+- **Changed.** The first check also reads what the button shows. The two checks that ended
+  with the button being enabled again now end with the button offering to save again:
+  enabled, with its name, its description and its own label. The check of a second request
+  in the middle of a save reads the button there: enabled, showing "Saving…", described as
+  saving, with the status saying so. The second request has to be over at once and ask for
+  no name, as before.
+- **New: the button in the middle of a copy that lasts, read from outside.** The keyboard
+  focus is put on the button, the store says once that the recording is at a pipe (see "A
+  window closed while its recording is being saved"), and the button is pressed. When the
+  first half of the recording has been taken, the button is read through UI Automation and
+  the focus through XAML: the button has to be enabled and have the focus, with its name,
+  the description of a save under way and "Saving…"; the status has to say that the
+  recording is being saved; and a screen reader has to have been told so. Then it is pressed
+  again: a screen reader has to be told the same once more, the button has to be as it was,
+  and no second name may have been asked for. Then the pipe hands out the rest: the status
+  has to name the video and be read out, the button has to offer to save again with the
+  focus still on it, and the recording has to have been saved once, byte for byte.
+- **New: a copy that fails after its window has closed.** As in "A window closed while its
+  recording is being saved", with the close button, and with every name the tool's storage
+  gives out taken by another file (`TempClipStorage.TakeEveryName`): the copy finds its name
+  taken when it is complete, asks for another four times, and gives up. While the copy waits
+  for the rest of the recording, the app must have been told nothing and the project has to
+  count as open. Afterwards the window service has to have reported one error, of the kind
+  `ScreenRecording`, in the words the line under the button would have had; nothing may have
+  been reported as saved; the five files that took the names have to be the only new files
+  where videos go; the project has to stop counting as open; and its folder has to be as it
+  was. The error is then taken out of what the run counts at its end, like every error a
+  check brings about on purpose.
+
+What these checks can show, and what they cannot. The focus is XAML's own, in a window that
+never has the keyboard (see "What stands in for a person"); the older checks of where the
+focus goes when a button switches itself off read it the same way. Whether the framework
+passes the focus on from a button that is disabled in such a window has not been seen. So of
+the two things the fault "the button is disabled while the recording is being saved" should
+fail, the button being enabled is the one to count on, and the focus is the one that matters.
+No screen reader runs: the checks hold that the sentence is sent, and that the name and the
+description are what UI Automation gives. What a screen reader says of them, and whether it
+says the sentence once, is for a person to hear. The **Save recording** button of a row in
+Settings › General behaves the same way and is not in this tool at all: what its row shows
+and reads is unit tested (`SettingsViewModelStudioTests`), and its XAML and the sentence its
+handler sends are compiled and nothing more.
+
+Not covered: where the focus is after a copy that failed in a window that is still open (the
+check of a recording that cannot be written reads the status and the button, not the focus);
+what the app does with the error (it shows a notification, which is not in the tool); and
+the app exiting during a copy.
 
 ## Three checks on a smaller preview
 
@@ -1203,14 +1293,21 @@ is read in every picture of every group, so it is for after a run.
 ## Faults that were tried
 
 **For speed changes, the Background choice and the trim bar, for what was written on
-5 October 2026, and for what was written on 6 October, none was tried.** Eighty-two are
+5 October 2026, and for what was written on 6 October, none was tried.** Eighty-nine are
 written down in `faults-evening.ps1`, which is with the report of that work and not in the
 repository: the twenty-four for speed changes, the Background choice and the trim bar;
 twenty-six for the evening of 5 October, six for what is dragged while the preview plays and
 the keys that wait, seven for Keep this project, eight for a project that cannot be shown,
 two for a save that fails as a window closes, and three for an export whose name is taken;
-and thirty-two for 6 October. One of those is a window that closes without waiting for a
-recording that is being saved. Thirty-one are for Esc:
+and thirty-nine for 6 October. One of those is a window that closes without waiting for a
+recording that is being saved, and seven are for the button that is not disabled while it
+works: the button not showing that it saves, not reading it, the window not told that a save
+has started or ended, a press that says nothing to a screen reader, a press in the middle of
+a copy that says nothing, and a copy that fails after its window has closed being told to
+nobody, or told as a failed export. Five of the eight for a project that cannot be shown
+were brought to where the code is now, and one of them was turned round: it had the button
+stay enabled while the recording is saved, which is what the button does now, so the fault
+is the button being disabled, as the app had it. Thirty-one are for Esc:
 
 - eight in the rule for the key (an export that runs, a held key, a held key that stops an
   export, Shift, an open list, a drop-down that only has the focus, a drag, a window that
@@ -1227,14 +1324,17 @@ recording that is being saved. Thirty-one are for Esc:
   question is open when it is asked for.
 
 Each names the group to run and the check that is expected to catch it; the script says for
-each whether its place in the code is still there, which it is for all eighty-two, and
+each whether its place in the code is still there, which it is for all eighty-nine, and
 refuses to do more while the machine is not to be used for check tools. The fifteen in the
 two rules for Esc were tried against the unit tests of the rules, which is not this tool's
 doing but all that could be run: each failed exactly the tests that had been named for it,
-between two and five of them. Three of the sixteen in the window say for themselves when
-they would fail nothing: the three about the focus, if the framework does not let the focus
-be taken from a question that is open, or puts it on Export itself when a question goes.
-One of the
+between two and five of them. The same was done for the saving of a screen recording, with
+twenty-one faults of its own in the editor's session and in the row of the drafts list
+(`faults-r7-unit.ps1`, with the report): each failed exactly the unit tests that had been
+named for it, between one and four of them. Three of the sixteen in the window say for
+themselves when they would fail nothing: the three about the focus, if the framework does
+not let the focus be taken from a question that is open, or puts it on Export itself when a
+question goes. One of the
 twenty-four, the transport row handing the focus past Speed when Split switches itself off,
 would have failed nothing as the checks stood, so the `scene` group got a check for it: a
 place where neither a zoom nor a cut fits and a speed change does. Whether that check, or any

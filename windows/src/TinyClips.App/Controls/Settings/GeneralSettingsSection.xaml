@@ -329,17 +329,35 @@
                                             Tag="{x:Bind Mode=OneTime}"
                                             ToolTipService.ToolTip="Open this draft in Studio"
                                             Visibility="{x:Bind CanOpen, Mode=OneTime}" />
-                                        <!--  The way out for a recording Studio cannot show: the screen recording as an ordinary video.  -->
+                                        <!--
+                                            The way out for a recording Studio cannot show: the screen recording as an ordinary video.
+
+                                            The button is not disabled while the recording is copied. A button that is disabled
+                                            while it has the keyboard focus passes the focus on, here to Delete, and the next
+                                            Enter or Space would ask to delete the draft. It keeps its name, shows and reads
+                                            that it is busy, and a press then saves nothing more. Both of its labels take their
+                                            room and one of them is seen, so that it keeps its width and the buttons beside it
+                                            stay where they are.
+                                        -->
                                         <Button
                                             AutomationProperties.AutomationId="{x:Bind SaveRecordingButtonId, Mode=OneTime}"
-                                            AutomationProperties.HelpText="Saves the screen recording to your videos folder as an ordinary video. The project is kept as it is."
+                                            AutomationProperties.HelpText="{x:Bind SaveRecordingHelpText, Mode=OneWay}"
                                             AutomationProperties.Name="{x:Bind SaveRecordingButtonName, Mode=OneTime}"
                                             Click="OnSaveStudioDraftRecording"
-                                            Content="Save recording"
-                                            IsEnabled="{x:Bind IsSaveRecordingEnabled, Mode=OneWay}"
                                             Tag="{x:Bind Mode=OneTime}"
                                             ToolTipService.ToolTip="Save the screen recording to your videos folder as an ordinary video"
-                                            Visibility="{x:Bind CanSaveRecording, Mode=OneTime}" />
+                                            Visibility="{x:Bind CanSaveRecording, Mode=OneTime}">
+                                            <Grid>
+                                                <TextBlock
+                                                    AutomationProperties.AccessibilityView="Raw"
+                                                    Opacity="0"
+                                                    Text="{x:Bind studio:StudioDraftItem.SaveRecordingText, Mode=OneTime}" />
+                                                <TextBlock
+                                                    HorizontalAlignment="Center"
+                                                    AutomationProperties.AccessibilityView="Raw"
+                                                    Text="{x:Bind SaveRecordingLabel, Mode=OneWay}" />
+                                            </Grid>
+                                        </Button>
                                         <Button
                                             AutomationProperties.AutomationId="{x:Bind DeleteButtonId, Mode=OneTime}"
                                             AutomationProperties.HelpText="{x:Bind DeleteHelpText, Mode=OneWay}"

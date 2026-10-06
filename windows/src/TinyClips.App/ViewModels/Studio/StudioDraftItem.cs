@@ -25,6 +25,18 @@ public sealed partial class StudioDraftItem : ObservableObject
     /// <summary>What a project that cannot be read is called. Its name is in the file that cannot be read.</summary>
     public const string UnreadableName = "Unreadable project";
 
+    /// <summary>What the Save recording button shows while nothing is being saved.</summary>
+    public const string SaveRecordingText = "Save recording";
+
+    /// <summary>What the Save recording button shows while the recording is being copied.</summary>
+    public const string SavingRecordingText = "Saving\u2026";
+
+    /// <summary>What Save recording does. A screen reader reads it after the button's name.</summary>
+    public const string SaveRecordingHelp = "Saves the screen recording to your videos folder as an ordinary video. The project is kept as it is.";
+
+    /// <summary>What a screen reader reads after the button's name while the recording is being copied.</summary>
+    public const string SavingRecordingHelp = "The screen recording is being saved.";
+
     private string _details;
     private bool _isOpen;
     private bool _isSavingRecording;
@@ -109,7 +121,11 @@ public sealed partial class StudioDraftItem : ObservableObject
     /// <summary>What Delete does, or why it cannot be used right now.</summary>
     public string DeleteHelpText => IsOpen ? OpenInStudioNote : "Delete this draft and its recordings.";
 
-    /// <summary>True while the screen recording is being copied. The button waits until it is done.</summary>
+    /// <summary>
+    /// True while the screen recording is being copied. The button stays enabled then, so that
+    /// it keeps the keyboard focus: a button that is disabled while it has the focus passes the
+    /// focus on, here to Delete. It says that it is busy instead, and a press does nothing more.
+    /// </summary>
     public bool IsSavingRecording
     {
         get => _isSavingRecording;
@@ -117,12 +133,17 @@ public sealed partial class StudioDraftItem : ObservableObject
         {
             if (SetProperty(ref _isSavingRecording, value))
             {
-                OnPropertyChanged(nameof(IsSaveRecordingEnabled));
+                OnPropertyChanged(nameof(SaveRecordingLabel));
+                OnPropertyChanged(nameof(SaveRecordingHelpText));
             }
         }
     }
 
-    public bool IsSaveRecordingEnabled => !IsSavingRecording;
+    /// <summary>What the Save recording button shows: what it does, or that it is doing it.</summary>
+    public string SaveRecordingLabel => IsSavingRecording ? SavingRecordingText : SaveRecordingText;
+
+    /// <summary>What Save recording does, or, while the recording is being copied, that it is being saved.</summary>
+    public string SaveRecordingHelpText => IsSavingRecording ? SavingRecordingHelp : SaveRecordingHelp;
 
     /// <summary>Whether another row shows the same project the same way, apart from what a row brings up to date by itself.</summary>
     public bool IsSameDraft(StudioDraftItem other) =>

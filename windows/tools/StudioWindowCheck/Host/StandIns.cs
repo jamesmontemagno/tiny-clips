@@ -61,6 +61,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
         private int _serial;
         private string? _nextPath;
         private byte[]? _takeNext;
+        private byte[]? _takeEvery;
         private Action? _whenAsked;
 
         public string Directory { get; } = directory;
@@ -83,6 +84,13 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
         /// under it while the file that asked for the name was still being made. Null to take none.
         /// </summary>
         public void TakeNextName(byte[]? content) => Volatile.Write(ref _takeNext, content);
+
+        /// <summary>
+        /// Makes every name that is given out from now on a taken one, as
+        /// <see cref="TakeNextName"/> does once: for a file that finds no free name, however
+        /// often it asks. Null to take none.
+        /// </summary>
+        public void TakeEveryName(byte[]? content) => Volatile.Write(ref _takeEvery, content);
 
         /// <summary>
         /// Something to do, once, in the middle of the next request for a name: on the thread
@@ -115,7 +123,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
                 _given.Add(path);
             }
 
-            if (Interlocked.Exchange(ref _takeNext, null) is { } content)
+            if ((Interlocked.Exchange(ref _takeNext, null) ?? Volatile.Read(ref _takeEvery)) is { } content)
             {
                 File.WriteAllBytes(path, content);
             }
