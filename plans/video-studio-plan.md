@@ -107,7 +107,7 @@ Format rules:
   "scenes": [ { "start": 0, "layout": "bubble", "bubble": { "anchor": "bottomRight", "size": 0.24 }, "transition": { "kind": "cut" } } ],
   "zooms":  [ { "start": 12.0, "end": 16.5, "scale": 2.0, "focus": { "mode": "point", "x": 0.31, "y": 0.62 }, "origin": "manual" } ],
   "edits":  { "trimStart": 0.21, "trimEnd": 92.4, "cuts": [], "speed": [] },
-  "exports": [ { "path": "TinyClips 2026-10-02 at 15.28.06.mp4", "exportedAt": "2026-10-02T22:41:00Z" } ]
+  "exports": [ { "path": "TinyClips 2026-10-02 at 15.28.06.mp4", "exportedAt": "2026-10-02T22:41:00Z", "bytes": 48211304 } ]
 }
 ```
 
@@ -117,8 +117,9 @@ Format rules:
 
 Defaults, all adjustable in Settings:
 
-- Sources of an exported project are deleted 30 days after it was last in use, or sooner when the exported projects together pass 10 GB (the one opened longest ago first). Only what cleanup may remove is counted in the 10 GB. Drafts and kept projects are not: counted, they would use the room up, and every exported project would lose its sources the moment it was exported.
-- A project that has never been exported (a draft) is never deleted automatically. Neither is a project whose exported video is no longer where it was saved: it is then the only copy of the recording, and is listed with the drafts again, marked.
+- Sources of an exported project are deleted 30 days after it was last in use, or sooner when the exported projects together pass 10 GB (the one opened longest ago first). Only what cleanup may remove is counted in the 10 GB. Drafts and kept projects are not: counted, they would use the room up, and every exported project would lose its sources the moment it was exported. The project opened last is never removed for the 10 GB, so that one project larger than the limit does not go the moment its editor closes. That rule is from 6 October and was not asked about; see "Open questions".
+- A project that has never been exported (a draft) is never deleted automatically. Neither is a project whose exported video is no longer where it was saved: it is then the only copy of the recording, and is listed with the drafts again, marked. Still where it was saved means a file at the path that is as large as the video was when it was exported. A project remembers that size since 6 October, so that another recording saved under the name of a deleted video does not stand in for it.
+- A project file that does not say when it was last opened is not removed until the project has been opened, which writes the time.
 - "Keep this project" in the editor pins a project. Settings shows project storage and a Clean up now button.
 - After cleanup the exported MP4 remains, and is then an ordinary video. Opening it in Studio again as a single layer, with the background, padding, zooms and cuts applied to the flattened video, was part of this design and is not built. It is in the backlog, where the same mode would open any existing MP4.
 
@@ -515,7 +516,7 @@ On 5 October a fifth reviewer that only reads went through what the Windows app 
 - **"Last opened" was written when an editor opened and never again**, so a project whose editor stayed open for longer than projects are kept was removed by the cleanup that follows the editor closing. It is now written again at close. Unit tested on Windows; in the view model on the Mac.
 - **A project that was removed since the Clips Library last looked** opened an editor with the file system's own error and a path. It now says that the project is no longer stored on this PC and that a video exported from it is not affected. Unit tested.
 
-Left as it was: with the switch off, projects were neither shown nor cleaned up, and Reset All Settings switches Studio off. The visible switch of the same day says under itself what is kept. Renaming or archiving a video in the Clips Library while Studio is off still loses the video's link to its project.
+Left as it was: with the switch off, projects were neither shown nor cleaned up, and Reset All Settings switches Studio off. The visible switch of the same day says under itself what is kept. Renaming or archiving a video in the Clips Library while Studio was off lost the video's link to its project until 6 October. The link is kept now, on both platforms.
 
 The Windows unit tests were run once without the four Core fixes: 9 of the 79 tests that cover those rules fail, the ones that state them.
 
@@ -545,7 +546,7 @@ Studio is off on both platforms until it is switched on, and since 5 October the
 - Switching it off deletes nothing. The projects stay where they are and are not cleaned up while it is off, because the rules that would delete them are not shown then. A line under the switch says how many projects are kept and how much room they take. Where Studio was never used there is no project folder, and reading for that line makes none.
 - The switch is the setting `studioPreviewEnabled` on both platforms, as before, so a Mac on which the `defaults` key was set has Studio switched on. Reset All Settings switches it off.
 - On Windows the environment variable `TINYCLIPS_STUDIO_PREVIEW` is gone. It forced Studio on whatever the setting said, so with it the switch in Settings could not have switched Studio off.
-- On Windows, switching Studio on or off puts the trimmer switch and the After recording choice, which stand in for each other in Settings › Video, back in step with what is stored.
+- Choosing Open in Studio leaves the trimmer switch as it was, on both platforms, so that switching Studio off puts a recording back to what it was before Studio was tried. Until 6 October the choice turned the trimmer off, and it stayed off. A choice of Save or Open trimmer is the trimmer switch by another name: each of the two shows what the other was set to.
 
 What the visible switch changes about what is known: everything under "Where each platform stands" that has been compiled and never run can now be reached by anyone who flips a switch that says Preview. On the Mac that is all of Studio. On Windows it is the recorder for Studio, the app around the editor, and what was written on 5 October. The owner chose this over two more careful ways, which had been the recommendation: compiling the App Store build without Studio, and leaving Windows hidden until someone had used it.
 
@@ -623,16 +624,42 @@ All of that is compiled and, in the window and the view model, not run. Left as 
 
 After it, 1,866 Core tests pass and 3 are skipped, and both flavours of the app and the four tools build without warnings.
 
+**The code for the decisions was read through as well**, on 6 October, by two more reviewers that only read, one for each platform: what was written on 5 October for the limit, the drafts, Keep this project, Save the screen recording and the switch. The owner was away with a slide show on the PC's screen, and had not said that the tools may run, so nothing ran. What they found is mended on both platforms. On Windows it is built and unit tested. On the Mac it was written without a compiler and is compiled and unit tested by the workflow. **None of it has been run.**
+
+- **Windows: a failure dialog in Settings could end the app.** The buttons Save recording and Delete wait for a copy or a delete and then show a dialog. If another dialog was open by then, WinUI threw, nothing caught it, and the process ended, with a recording that was running. Their dialogs now go through one helper that catches, and a failure that cannot be shown in a dialog comes as a notification. That includes one after Settings was closed, which was told to nobody.
+- **Both: trying Open in Studio left the trimmer off.** See "The Studio switch". The Mac's reviewer had looked at this and found nothing; the Windows reviewer found it; it was in both, from my own design. With Studio on and chosen nothing changes: no trimmer opens, also not for a recording made without Studio. An earlier rule went with it: on Windows, turning the trimmer switch on while Studio was off used to turn a stored choice of Studio into Open trimmer, and on the Mac the trimmer toggle of the onboarding wizard did. The choice of Studio now stays whatever the switch does.
+- **Both: cleanup could remove a project whose own video was gone.** A deleted video, and another recording saved under its name, counted as the video being there. See "Cleanup of old sources". What it costs: a video that is changed in place after the export, in another program or by a tag given in Explorer, counts as gone as well, so its project is kept until someone deletes it, and is listed with the drafts. The line on such a row says "or has been changed since". The link from a video to its project, which Open in Studio goes by, still goes by the path alone.
+- **Both: one exported project larger than the limit went when its editor closed**, and **a project file without the time it was last opened went at the first cleanup.** Both are rules now, in section 12 of the format.
+- **Both: a video that was renamed or archived while Studio was off lost its project.** The project then counted as holding the only copy, for good. The link follows the video now, which is the one thing the app writes into a project while Studio is off. Where Studio was never used there is no folder to read. On Windows a video that was marked while Studio was on no longer offers Open in Studio once it is off, and choosing it at that moment says why nothing opens.
+- **Mac: cleanup ran while Studio was switched off**, from a closing editor and from a launch that had read the switch once. The cleanup asks the switch itself now.
+- **Mac, in Settings › Video.** The drafts list hears when an editor opens, closes or exports, so Delete is unavailable for exactly the drafts that are open. The question before a delete is an alert of the app's own, where Return does nothing and Esc cancels; it was a dialog hung on a row of the form, which may not have been shown. Save Screen Recording says what the video was saved as, under the list; with the settings as they come nothing showed. The saved video is dated when it is saved, because the Clips Manager sorts and archives by the day a file was made, and a copy carries the recording's. A failure to save after the editor's window has closed is shown, where it was dropped. If Keep This Project cannot be written, the check box goes back. VoiceOver is told the result of Clean Up Now, and the buttons of a row name the row by its date as well.
+- **Windows: the cleanup service had no test of its own.** It has three: it does nothing while Studio is off, removes what the rules select and says so, and leaves a project that is open or being recorded into.
+- **Windows: Settings now says that uninstalling Tiny Clips, or resetting it, deletes every project**, drafts included. See "Open questions".
+
+On Windows each rule was taken out once to see its tests fail: the service's look at the switch, its list of what is in use, the limit sparing the project opened last, the size, the project without a time, and writing the size. Each failed the tests written for it and no other. The Mac's tests are the same cases and pass on the runner; nobody has seen them fail.
+
+Left as they are, and known:
+
+- Settings and the Clips Library can wait on a network drive: the store looks whether each exported video is there while it holds its lock.
+- The same recording can be copied twice at once, from its row in Settings and from its editor. Each copy gets a name of its own.
+- A half-written export file (`.tcexport`) is swept only when Studio is on at launch.
+- On the Mac, project folders are walked on the main thread on several paths, and the Studio menu stays in the menu bar after the switch goes off until the menu is next rebuilt.
+- On the App Store build, a video in a folder the app may no longer read looks the same as one that is gone, and the line on its row says so.
+- A time in a project file that is there and cannot be read: the Mac reads it as 1970, Windows calls the project unreadable. The format only says what a missing one reads as. Seen while reading; neither reviewer raised it.
+
+After it, 1,883 Core tests pass and 3 are skipped, the 53 tests of the Settings view model pass, both flavours of the app and the four tools build without warnings, and the Mac's 318 tests pass on the runner.
+
 ### Decisions made while building
 
 - **A failed project save keeps the recording.** If the project cannot be saved when a Studio recording stops, the screen track is kept as an ordinary video.
 - **Drafts.** A recording kept as a draft has no exported file, so it does not appear in the Clips Manager. The drafts are listed in Settings, where they can be opened or deleted: under Video on macOS and under General on Windows.
-- **Deleting an exported video leaves its export link in place, and the project then counts as a draft again.** Until 5 October such a project still counted as exported, and cleanup removed its sources later, which left nothing of the recording. Now a project none of whose exported videos is where it was saved is never removed by cleanup, and is listed with the drafts, marked, where it can be opened, exported again or deleted. The link stays so that a video that comes back, from the Recycle Bin or with the drive it is on, is linked again; both stores have a call that removes a link, and nothing uses it. A video on a drive that is not connected counts as gone for as long as that lasts, which keeps the project: the safe side of not knowing. What this costs: someone who exports, shares and then deletes the video keeps the project until they delete it in Settings.
+- **Deleting an exported video leaves its export link in place, and the project then counts as a draft again.** Until 5 October such a project still counted as exported, and cleanup removed its sources later, which left nothing of the recording. Now a project none of whose exported videos is where it was saved is never removed by cleanup, and is listed with the drafts, marked, where it can be opened, exported again or deleted. The link stays so that a video that comes back, from the Recycle Bin or with the drive it is on, is linked again; both stores have a call that removes a link, and nothing uses it. A video on a drive that is not connected counts as gone for as long as that lasts, which keeps the project: the safe side of not knowing. What this costs: someone who exports, shares and then deletes the video keeps the project until they delete it in Settings. Since 6 October a file at the path counts only when it is as large as the exported video was.
+- **The storage limit spares the project opened last**, and **Open in Studio is stored apart from the trimmer switch.** Both were decided on 6 October without asking, from what the read-through found. The first is one line in each platform's cleanup rules and is in "Open questions". The second changes what two switches in Settings › Video do to each other, and has no setting of its own.
 - **Cleanup can be switched off.** Zero days keeps projects until they are deleted by hand, and zero gigabytes means no storage limit.
 - **Events during pauses.** Clicks and cursor samples from before the first frame or during a pause are not recorded. Cursor samples are capped at 60 per second, drop consecutive duplicates, and are steps, not points to interpolate between.
 - **Drawing rules** are in section 6.7 of `docs/studio-project-format.md`: sRGB with gamma-space blending, no color conversion of screen pixels, the shadow model, where the border goes, and the click ring geometry.
 - **Camera size on Windows.** The camera track is recorded at the camera's own aspect, fitted inside 1920×1080 and never enlarged.
-- **Where projects are kept on Windows.** The installed app is packaged, so its projects are in the package's own folder, `%LOCALAPPDATA%\Packages\<package family>\LocalState\TinyClips\Projects`. Only an unpackaged run uses `%LOCALAPPDATA%\TinyClips\Projects`.
+- **Where projects are kept on Windows.** The installed app is packaged, so its projects are in the package's own folder, `%LOCALAPPDATA%\Packages\<package family>\LocalState\TinyClips\Projects`. Only an unpackaged run uses `%LOCALAPPDATA%\TinyClips\Projects`. The package's folder goes with the package: uninstalling Tiny Clips, or resetting it in Windows Settings, deletes every project, drafts included. Settings says so since 6 October, and whether projects should be kept somewhere else is in "Open questions".
 - **Windows editor behavior lives in Core.** `StudioEditorModel` (edits and undo), `StudioEditorSession` (loading, transport, autosave, export, closing) and the preview and export contracts are in `TinyClips.Core`, so the editor's rules are unit tested and the window only binds to them.
 - **Windows preview and export.** The preview engine is in Core (`Studio/Preview`), not in the app as planned; the app has only the panel it draws into. The preview owns one Direct3D device per editor window and each export creates its own, so neither shares a device with a recording in progress. The exporter writes through its own sink-writer wrapper rather than the recorder's `MfSinkWriterEncoder`.
 - **Frame rate.** `sources.screen.frameRate` is the rate the recording was set to, on both platforms. The rate a media library reads from the file is an average of unevenly spaced frames and can be far lower.
@@ -789,9 +816,15 @@ Known limits to state up front:
 
 ## Open questions
 
-None. The two that were open on the evening of 5 October, Esc in the Studio window and the fix for `main`, were answered that same evening.
+Three, from 6 October. None of them holds up work.
 
-Everything is settled: the name, price, cleanup defaults, and first-run look in "Decisions confirmed" above, and the questions that came up while building in "Decided on 5 October" and "Decided later on 5 October" under it.
+1. **Where should Windows keep its projects?** They are in the installed app's own folder, which Windows deletes when the app is uninstalled or reset, drafts included. Settings says so now. The other way is a folder of the user's own, under Videos for instance, which outlives an uninstall and is in plain sight.
+2. **Should the storage limit spare the project opened last?** It does since 6 October, because the read-through found that one exported project larger than the limit was removed the moment its editor closed. The limit can then be passed by that one project. Decided without asking; it is one line in each platform's rules.
+3. **May the check tools run while the owner is away from the PC?** They were stopped on 5 October because they use the screen and the machine. Leave was given once, for one absence. The rule I would suggest: after 15 minutes without input and with no slide show or full-screen app in front, stopping at the first key or mouse move. Until there is an answer they do not run, and every run that is owed stays owed ("Where it stands" in the pull request).
+
+The two that were open on the evening of 5 October, Esc in the Studio window and the fix for `main`, were answered that same evening.
+
+Everything else is settled: the name, price, cleanup defaults, and first-run look in "Decisions confirmed" above, and the questions that came up while building in "Decided on 5 October" and "Decided later on 5 October" under it.
 
 What is left is work that waits for the PC or for a Mac, not for an answer:
 
@@ -840,6 +873,13 @@ First with the switch off, against the released build, since this is what every 
    - During an export, Esc should stop it; keep the key held until well after the export is gone, and the window should stay. Then Esc twice quickly during an export: the question about the recording should have the keyboard, so that Enter is Export and Esc is Cancel.
    - The questions and the keyboard. Ctrl+E and at once the X: with "An export is still running" open, Enter should keep exporting and not stop the export, and so should Esc; hold Esc for a second there, and the export should go on. Then the X during an export, and wait until the export has ended behind the question: Enter, Space and Esc should each answer the question and press nothing under it, and the X should do nothing until it is answered.
    - A project that cannot be shown, with a long recording: Save the screen recording, and at once the X; and again with Esc. When the copy is done the video should be announced and listed under Recent captures.
+18. What the read-through of 6 October changed (never run):
+   - With **Open trimmer after recording** on, switch Studio on, choose Open in Studio, and switch Studio off again: the trimmer switch should be on, and a recording should open the trimmer. Switch Studio on once more: After recording should still say Open in Studio.
+   - Export a project and look into its `project.json`: the export should have `bytes`, the size of the video. Delete the video and save any other video under its name: the project should be under Studio drafts, with the line that says its video is gone or has been changed. Put the exported video back and the project should leave the list.
+   - Set the storage limit to 1 GB, export a project larger than that, and close its editor: the project should stay. With a second, older one, the older one should go.
+   - With Studio switched off, rename an exported video in the Clips Library. Switch Studio on: the video should still offer Open in Studio…. With the Clips Library open, switch Studio off and choose Open in Studio… on a video that still shows it: the status line should say that Studio is switched off.
+   - In Settings › General, make a copy fail (a save folder that cannot be written to), press Save recording on a draft, and at once Delete… on another row. The app must not close, and the failure should come as a notification while the question is open.
+   - The Project storage card should say that uninstalling deletes the projects.
 
 **macOS**
 
@@ -883,3 +923,11 @@ First with the switch off, against the released build: no `Application Support/T
    - The Layout control should fit the inspector, also with scroll bars set to always show.
    - Drag the camera near a corner, then choose that same corner under Position: the offsets should clear.
    - Hold a stepper's arrow for a few seconds, then count the ⌘Z it takes to get back: one for each repeat, which is left as it is.
+11. What the read-through of 6 October changed (written without a compiler, never run):
+   - With **Open trimmer after recording** on, switch Studio on, choose Open in Studio (Preview), and switch Studio off again: the trimmer toggle should be on and a recording should open the trimmer, with Save immediately as it was. Switch Studio on once more: After recording should still say Open in Studio.
+   - Settings › Video, Studio Drafts: with a draft open in an editor its Delete… should be unavailable, and become available when the editor closes, without Settings being closed in between. Delete… should ask in an alert in which Return does nothing and Esc cancels.
+   - Save a draft's screen recording: "Saved as" and the name should appear under the list, and the video should be at the top of the Clips Manager, dated today, and not in the archive.
+   - With VoiceOver, press Clean Up Now: the result should be spoken.
+   - Export a project, delete the video, and save another video under its name: the project should be under Studio Drafts with the line that says its video is gone or has been changed.
+   - With Studio switched off, let the Clips Manager archive an exported video (or set Archive after to one day): after switching Studio on, the archived video should still offer Open in Studio….
+   - Switch Studio off while an editor is open, then close the editor: nothing should be cleaned up.
