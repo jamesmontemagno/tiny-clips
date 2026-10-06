@@ -3363,8 +3363,14 @@ public partial class App : Application
     {
         try
         {
-            window.Activate();
-            BringWindowToForeground(window);
+            using (WindowOpenDiagnostics.Measure(window, WindowOpenPhase.NativeActivation))
+            {
+                window.Activate();
+            }
+            using (WindowOpenDiagnostics.Measure(window, WindowOpenPhase.ForegroundRequest))
+            {
+                BringWindowToForeground(window);
+            }
             _ = ActivateWindowToForegroundDelayedAsync(window);
         }
         catch (Exception ex)
@@ -3383,6 +3389,7 @@ public partial class App : Application
 
         try
         {
+            using var activation = WindowOpenDiagnostics.Measure(window, WindowOpenPhase.DeferredActivation);
             window.Activate();
             BringWindowToForeground(window);
         }
