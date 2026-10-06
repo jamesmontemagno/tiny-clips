@@ -14,8 +14,6 @@ own `CHANGELOG.md` at the repository root.
   trimmers, a confirmed Esc behaves like **Cancel** and keeps the original; trim range and
   "Remove audio" count as unsaved for video, frame range and speed for GIFs. Esc is ignored
   while a save, export, or delete is running. (#396)
-  Build and unit tests cover the setting and the Esc decision logic; hands-on validation of the
-  Esc key routing in the running editor and trimmers is still pending.
 
 ### Fixed
 - **Settings navigation no longer reloads unrelated preferences or external state.** First
