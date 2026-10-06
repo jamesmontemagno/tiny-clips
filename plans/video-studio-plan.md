@@ -649,6 +649,21 @@ Left as they are, and known:
 
 After it, 1,883 Core tests pass and 3 are skipped, the 53 tests of the Settings view model pass, both flavours of the app and the four tools build without warnings, and the Mac's 318 tests pass on the runner.
 
+**The preview's change of the evening before was read through too**, by a third reviewer that only reads, with one question above all: with both of its switches off, does the engine do exactly what it did before? It went through every changed place and could not break that. In the code that only the switch reaches it found one fault that had to go before the switch is ever turned on, and smaller ones. Their author mended them the same day. Built and unit tested; no check tool ran.
+
+- **The reader of a file's index could be made to end the app.** It went into parts one inside the other without a limit, so a file of under a megabyte used up its stack, and that cannot be caught. The file can be a video from anywhere. The reader was rewritten: it calls nothing a second time, each part of an index is looked for where it belongs and nowhere else, and what a file can ask for is counted (its parts, its tracks, its frames, the size of its index).
+- **A damaged index was read in part.** A part that did not fit ended the reading without a word, so the offsets after it were lost and the times frames are decoded at passed for the times they are shown at. Such a file is refused whole now and plays on the grid, as every file does today. Refused as well: a fragment anywhere in the file, two indexes, and two video tracks, of which the first used to be taken.
+- **Just after the middle of a slot the preview's rule was not the export's.** A table of frame times allowed what the grid allows at a frame's edge, a thousandth of a frame. It allows nothing now, and the unit tests hold it against the export's own functions. What that leaves open: a player that reports a position cut off to the unit below a frame's start would be named one frame low. Its author reasons that this hardly arises, the check tool now counts it, and if a run shows it, the two questions that one function answers get a function each.
+- **Two guards of the engine's old behaviour had no test that would have failed without them.** "On the grid the scene is drawn for the frame the screen delivered" is now held before and after every call the seek policy's tests make. Two faults that break it passed every test until a screen clip one frame short of its recording was added. So the reading that the engine is unchanged with the switches off was right, and until this round no unit test would have said so had it been wrong.
+
+17 faults put into the reader, the timeline and the policy by their author each fail a test. The reader's code also read the index of 244 files that were on the PC, which is less than it sounds: 238 are seven files written 34 times over by the render check and the exporter, each with a frame every thirtieth of a second from zero, and six are ffmpeg's. None is a recording.
+
+Three clips whose frames are stored out of the order they are shown in are written into the check tool and have never been made. The recorder writes no such file, and the reader takes one by the book. Whether a player does is for the run. The queue has 42 steps now, and **the switch is not to go on before the last two have been looked at.**
+
+One thing went wrong on the way. A fault its author put into a private copy on purpose, the count of frames taken out, kept the unit tests' host working for nine and a half minutes, at low priority, before it was stopped. Nothing in the tree was touched.
+
+After it, 1,965 Core tests pass and 3 are skipped.
+
 ### Decisions made while building
 
 - **A failed project save keeps the recording.** If the project cannot be saved when a Studio recording stops, the screen track is kept as an ordinary video.
