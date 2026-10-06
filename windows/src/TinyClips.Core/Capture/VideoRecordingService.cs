@@ -2021,9 +2021,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _limitTimer = null;
             IsPaused = false;
 
-            if (_activeOptions.RecordForStudio)
+            // A stop that failed part of the way comes through here a second time, and the click
+            // monitor went with the first.
+            if (_activeOptions.RecordForStudio && _clickMonitor is { } clickMonitor)
             {
-                _studioClickSamples = _clickMonitor?.GetClicks() ?? [];
+                _studioClickSamples = clickMonitor.GetClicks();
             }
 
             _clickMonitor?.Dispose();
@@ -2105,11 +2107,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
             catch when (cpuPipeline)
             {
+                // The camera first: the cleanup below forgets its recorder, and after that
+                // nothing would stop the device.
+                await StopStudioCameraAsync(studioCamera).ConfigureAwait(false);
                 DisposeRecordingPipeline();
 
-                // A Studio recording that could not be finished keeps what was written. Its folder
-                // has no project in it, and the storage cleanup removes such a folder after a day.
-                CleanupStudioRecording(deleteProject: false);
+                // A Studio recording that could not be finished keeps what was written, unless it
+                // was to be discarded anyway. A folder that is kept has no project in it, and the
+                // storage cleanup removes such a folder after a day.
+                CleanupStudioRecording(deleteProject: discard || Volatile.Read(ref _discardRequested) == 1);
                 _activeOptions = VideoRecordingOptions.Default;
                 _activeTarget = null;
                 _activeRegion = null;
@@ -2162,6 +2168,14 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             _outputPath = path;
             return path;
+        }
+        catch when (_studioCameraRecorder is not null)
+        {
+            // A stop that fails leaves the recorder as it is, to be stopped again. The camera of a
+            // Studio recording is another matter: it goes on until the screen track is finished,
+            // and a stop that does not get that far must not leave it on.
+            await StopStudioCameraAsync(_studioCameraRecorder).ConfigureAwait(false);
+            throw;
         }
         finally
         {
