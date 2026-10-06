@@ -32,9 +32,14 @@ and the first webcam frame is warm). See `VideoRecordingService.StartAsync`.
 - **Audio** packets keep their real WASAPI capture timestamps and are aligned to the same origin by
   `TimelineAlignedWaveProvider` (below).
 
+Branding rasterization and GPU upload are also prepared on workers before that shared origin and
+before the recording pump starts; see [GPU pipeline preparation](gpu-recording-pipeline.md#branding-preparation-and-ownership).
+Cancellation during preparation is awaited before teardown and checked before creating the origin.
+The audio packet alignment and pause/resume rules below are unchanged.
+
 Anchoring to the real start moment (rather than PTS 0 = whatever arrives first) keeps encoder
-warm-up and camera spin-up out of the recorded timeline — otherwise several seconds of frozen
-pre-roll get baked into the front of every clip.
+warm-up, branding preparation, and camera spin-up out of the recorded timeline — otherwise several
+seconds of frozen pre-roll get baked into the front of every clip.
 
 ## Aligning audio to the timeline — `TimelineAlignedWaveProvider`
 

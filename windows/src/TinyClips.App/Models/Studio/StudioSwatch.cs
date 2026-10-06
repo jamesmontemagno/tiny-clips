@@ -1,5 +1,6 @@
 using System.Globalization;
 using TinyClips.App.ScreenshotEditor;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Studio;
 using Windows.UI;
 

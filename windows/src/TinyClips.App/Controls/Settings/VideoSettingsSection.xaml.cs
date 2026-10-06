@@ -34,7 +34,7 @@ public sealed partial class VideoSettingsSection : UserControl, ISettingsSection
     {
         ViewModel = viewModel;
         _mediaPermissions = App.Services.GetRequiredService<IMediaDevicePermissionService>();
-        _realizationScope = viewModel.BeginSectionRealization();
+        _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.Video);
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
 

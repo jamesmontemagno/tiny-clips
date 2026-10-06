@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Studio;
@@ -301,8 +300,9 @@ internal static class RecorderChecks
     /// The regular recorder's CPU path, reproduced without capturing anything: the encoder as
     /// <c>VideoRecordingService.TryCreateSinkWriter</c> creates it (default arguments: hardware
     /// transforms on, the shared device, low latency), and each frame as <c>WriteCpuFrame</c>
-    /// passes it on, through the recorder's own <c>CreateBottomUpVideoBuffer</c>. This measures
-    /// that path as it is. An upside-down file is reported, and does not fail the run.
+    /// passes it on, to the encoder's own <c>WriteVideo(CapturedFrame, …)</c>, which turns the
+    /// rows bottom-up before it writes them. This measures that path as it is. An upside-down
+    /// file is reported, and does not fail the run.
     /// </summary>
     private static void CpuPath(CheckContext context, VideoCodec codec)
     {
@@ -313,8 +313,6 @@ internal static class RecorderChecks
             throw new CheckSkippedException("this PC has no HEVC encoder");
         }
 
-        var flip = typeof(VideoRecordingService).GetMethod("CreateBottomUpVideoBuffer", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new CheckSkippedException("VideoRecordingService.CreateBottomUpVideoBuffer is not there any more, so what the recorder hands its encoder cannot be reproduced");
 
         const int width = 1920;
         const int height = 1080;
@@ -353,8 +351,7 @@ internal static class RecorderChecks
             {
                 // A captured frame: tightly packed BGRA, top row first.
                 spec.StampBgra(pixels, frame);
-                var buffer = (byte[])flip.Invoke(null, [new CapturedFrame(pixels, width, height)])!;
-                encoder.WriteVideo(buffer, TimeSpan.FromTicks(Media.FrameTime(frame, fps, 1)), frameDuration);
+                encoder.WriteVideo(new CapturedFrame(pixels, width, height), TimeSpan.FromTicks(Media.FrameTime(frame, fps, 1)), frameDuration);
             }
 
             encoder.Finish();

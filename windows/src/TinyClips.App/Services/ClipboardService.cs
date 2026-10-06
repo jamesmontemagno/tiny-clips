@@ -46,12 +46,35 @@ internal static class ClipboardService
 
     public static async Task CopyBitmapAsync(SoftwareBitmap bitmap)
     {
-        using var stream = new InMemoryRandomAccessStream();
-        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
-        encoder.SetSoftwareBitmap(bitmap);
-        await encoder.FlushAsync();
-        stream.Seek(0);
+        using var stream = await EncodeBitmapAsync(bitmap);
+        SetBitmapContent(stream);
+    }
 
+    /// <summary>Encodes PNG on a worker; the caller retains the bitmap until this task completes.</summary>
+    public static Task<InMemoryRandomAccessStream> EncodeBitmapAsync(
+        SoftwareBitmap bitmap, CancellationToken cancellationToken = default) => Task.Run(async () =>
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var stream = new InMemoryRandomAccessStream();
+        try
+        {
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+            encoder.SetSoftwareBitmap(bitmap);
+            await encoder.FlushAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            stream.Seek(0);
+            return stream;
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
+    }, cancellationToken);
+
+    /// <summary>UI-thread publication, separate from encoding so callers can reject stale results.</summary>
+    public static void SetBitmapContent(IRandomAccessStream stream)
+    {
         var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
         package.SetBitmap(RandomAccessStreamReference.CreateFromStream(stream));
 

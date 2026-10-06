@@ -78,6 +78,47 @@ own `CHANGELOG.md` at the repository root.
     the speed.
 
 ### Fixed
+- **Recording diagnostics distinguish requests from observed execution.** Schema-2 reports preserve
+  legacy JSON fields while adding actual capture/encoder backends, D3D hardware/WARP selection,
+  explicit unverified hardware encoding, preparation/active/pause/finalization timings, sample
+  submission accounting, separate CPU skipped-tick and GPU overrun event/slot counters, and normal
+  static-frame repeats. The benchmark establishes DPI awareness before monitor queries; both
+  capture paths report clipping and even-size crops consistently. Local process diagnostics use
+  target-process API and loaded-runtime evidence, leaving missing/conflicting evidence explicit.
+  Video and GIF click overlays use the clipped capture origin so negative-origin requests stay aligned.
+  CPU borrowed-frame integration retains fixed resize dimensions and counts processing-gate
+  contention without double submission; both encoder paths retain actual-acceptance accounting.
+  Added deterministic accounting, geometry, serialization and architecture tests. (#404)
+- **CPU video recording creates fewer full-frame pixel arrays.** The explicit CPU path and GPU
+  startup fallback reuse private capture/overlay buffers. The low-latency encoder copies directly
+  into its own bottom-up buffer, while the standard encoder retains one independent array instead
+  of three. GIF and scrolling snapshots remain safe to retain, and stopping waits for borrowed
+  frame processing before disposing the encoder. Resized windows keep the configured video
+  dimensions with black letterboxing instead of submitting short encoder samples. (#407)
+- **Settings navigation no longer reloads unrelated preferences or external state.** First
+  realization restores only that section's scalar settings, preserving protection against
+  initial TwoWay-binding write-backs. Uploadcare credential status and teleprompter text load
+  only when their sections are first realized and stay cached until relevant mutations or
+  reopening. Rapid navigation preserves edits in already-loaded sections and pending transcript
+  saves; late device, launch-at-login, and file-picker results are ignored after closing.
+  Unreadable transcripts show an inline error instead of being cached as empty text. (#405)
+- **Screenshot-editor exports no longer resample twice.** Save and Copy composite directly at
+  the requested output size, including 100%, with one explicit final bitmap readback. Rendering,
+  redaction-preview processing, and encoding run on workers using immutable document snapshots.
+  Superseded previews and clipboard results are discarded; Reset and closure cancel pending work
+  without disposing its source pixels early. Saving an older snapshot keeps newer edits dirty,
+  repeated output requests are coalesced, and canceled/failed saves preserve the previous file.
+  Background, frame, padding, shadow, corner, alignment, and scale changes now count as edits. (#406)
+  These implementation changes do not complete #406: native x64/ARM64 runtime, fidelity, and
+  responsiveness validation is still pending, and no measured speedup is claimed.
+- **Clips Library batches sidebar updates.** Loading or refreshing many distinct tags and
+  collections no longer synchronously rebuilds the entire navigation tree for each insertion.
+  One queued update uses the final entries and is skipped if the window closes first. (#409)
+- **Recording branding is prepared before the frame pump starts.** Badge font initialization and
+  rasterization now run on a worker; GPU upload finishes before capture callbacks start. CPU and
+  GPU recording draws use only prepared resources, preserving badge appearance and placement.
+  Cancellation waits for preparation before cleanup, failures remain best-effort, and separate
+  local preparation timings no longer get mixed into the first frame's branding work. (#408)
 - **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
   capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
   Scrolling captures and the saved-file fallback when the screenshot editor fails to open also

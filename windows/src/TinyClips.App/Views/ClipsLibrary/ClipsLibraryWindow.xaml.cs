@@ -1,3 +1,5 @@
+using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Dispatching;
@@ -30,45 +32,71 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     private const int MinimumHeightDip = 480;
 
     private readonly WindowChromeController _chromeController;
+    private readonly WindowOpenTrace? _openTrace;
+    private readonly CoalescedAction _navigationRebuild;
     private bool _syncingSelection;
     private bool _syncingNavigation;
 
     public ClipsLibraryWindow()
+        : this(WindowOpenTrace.Start(WindowOpenKind.Library))
     {
-        var services = App.Services;
-        ViewModel = new ClipsLibraryViewModel(
-            services.GetRequiredService<IClipLibraryService>(),
-            services.GetRequiredService<IClipMetadataStore>(),
-            services.GetRequiredService<IClipsLibrarySettings>(),
-            services.GetRequiredService<ICaptureSettings>(),
-            services.GetRequiredService<IUploadcareUploadService>(),
-            services.GetRequiredService<IClipArchiveService>(),
-            services.GetRequiredService<IClipLibraryWatcher>(),
-            services.GetRequiredService<IThumbnailCache>(),
-            services.GetRequiredService<TinyClips.Core.Studio.IStudioProjectStore>(),
-            services.GetRequiredService<TimeProvider>(),
-            DispatcherQueue.GetForCurrentThread());
-        ViewModel.Attach(this);
+    }
 
-        InitializeComponent();
+    private ClipsLibraryWindow(WindowOpenTrace? openTrace)
+    {
+        _openTrace = openTrace;
+        _openTrace?.Mark(WindowOpenMilestone.ConstructorEntered);
+        using var construction = _openTrace?.Measure(WindowOpenPhase.ConstructorBody);
+        _navigationRebuild = new CoalescedAction(
+            callback => DispatcherQueue.TryEnqueue(callback.Invoke), BuildNavigationItems);
+        using (_openTrace?.Measure(WindowOpenPhase.ServicesAndViewModel))
+        {
+            var services = App.Services;
+            ViewModel = new ClipsLibraryViewModel(
+                services.GetRequiredService<IClipLibraryService>(),
+                services.GetRequiredService<IClipMetadataStore>(),
+                services.GetRequiredService<IClipsLibrarySettings>(),
+                services.GetRequiredService<ICaptureSettings>(),
+                services.GetRequiredService<IUploadcareUploadService>(),
+                services.GetRequiredService<IClipArchiveService>(),
+                services.GetRequiredService<IClipLibraryWatcher>(),
+                services.GetRequiredService<IThumbnailCache>(),
+                services.GetRequiredService<TinyClips.Core.Studio.IStudioProjectStore>(),
+                services.GetRequiredService<TimeProvider>(),
+                DispatcherQueue.GetForCurrentThread());
+            ViewModel.Attach(this);
+        }
 
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, DefaultWidthDip, DefaultHeightDip);
-        _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
+        using (_openTrace?.Measure(WindowOpenPhase.Xaml))
+        {
+            InitializeComponent();
+        }
 
-        ApplyTheme();
-        BuildNavigationItems();
-        SyncViewModeBar();
+        WindowOpenDiagnostics.Observe(this, RootGrid, _openTrace);
+        using (_openTrace?.Measure(WindowOpenPhase.ChromeAndPlacement))
+        {
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(AppTitleBar);
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, DefaultWidthDip, DefaultHeightDip);
+            _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
+        }
 
-        ViewModel.SmartCollections.CollectionChanged += (_, _) => BuildNavigationItems();
-        ViewModel.Collections.CollectionChanged += (_, _) => BuildNavigationItems();
-        ViewModel.TagEntries.CollectionChanged += (_, _) => BuildNavigationItems();
-        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        using (_openTrace?.Measure(WindowOpenPhase.ThemeAndSubscriptions))
+        {
+            ApplyTheme();
+            BuildNavigationItems();
+            SyncViewModeBar();
 
-        Activated += OnFirstActivated;
-        Closed += OnClosed;
+            ViewModel.SmartCollections.CollectionChanged += OnNavigationEntriesChanged;
+            ViewModel.Collections.CollectionChanged += OnNavigationEntriesChanged;
+            ViewModel.TagEntries.CollectionChanged += OnNavigationEntriesChanged;
+            ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+            Activated += OnFirstActivated;
+            Closed += OnClosed;
+        }
+        _openTrace?.Mark(WindowOpenMilestone.ConstructorCompleted);
     }
 
     public ClipsLibraryViewModel ViewModel { get; }
@@ -78,13 +106,34 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     private void OnFirstActivated(object sender, WindowActivatedEventArgs e)
     {
         Activated -= OnFirstActivated;
-        _ = ViewModel.InitializeAsync();
+        _ = _openTrace is null ? ViewModel.InitializeAsync() : InitializeContentAsync();
+    }
+
+    private async Task InitializeContentAsync()
+    {
+        using var loading = _openTrace?.Measure(WindowOpenPhase.ContentLoad);
+        try
+        {
+            await ViewModel.InitializeAsync();
+            _openTrace?.Mark(ViewModel.IsStatusError
+                ? WindowOpenMilestone.ContentFailed
+                : WindowOpenMilestone.ContentReady);
+        }
+        catch
+        {
+            _openTrace?.Mark(WindowOpenMilestone.ContentFailed);
+            throw;
+        }
     }
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
         Activated -= OnFirstActivated;
         Closed -= OnClosed;
+        _navigationRebuild.Dispose();
+        ViewModel.SmartCollections.CollectionChanged -= OnNavigationEntriesChanged;
+        ViewModel.Collections.CollectionChanged -= OnNavigationEntriesChanged;
+        ViewModel.TagEntries.CollectionChanged -= OnNavigationEntriesChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         DetailPane.ReleaseMedia();
         ViewModel.Dispose();
@@ -138,8 +187,17 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
 
     // ------------------------------------------------------------------ navigation pane
 
+    private void OnNavigationEntriesChanged(object? sender, NotifyCollectionChangedEventArgs args)
+    {
+        if (!_navigationRebuild.Request())
+        {
+            Debug.WriteLine("Clips Library navigation rebuild could not be queued: dispatcher unavailable.");
+        }
+    }
+
     private void BuildNavigationItems()
     {
+        using var rebuilding = _openTrace?.Measure(WindowOpenPhase.NavigationRebuild);
         _syncingNavigation = true;
         try
         {

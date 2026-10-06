@@ -214,7 +214,12 @@ internal sealed class MfSinkWriterEncoder : IDisposable
 
             writer.BeginWriting();
 
-            var description = $"{(codec == VideoCodec.Hevc ? "HEVC Main" : "H.264 High")} via IMFSinkWriter ({(enableHardwareTransforms ? "hardware" : "software fallback")}, low-latency, no B-frames)";
+            // What was asked for, not what Media Foundation chose: which transform encodes is not
+            // looked up. With hardware transforms switched off it can only be a software one.
+            var codecName = codec == VideoCodec.Hevc ? "HEVC Main" : "H.264 High";
+            var description = enableHardwareTransforms
+                ? $"{codecName} via IMFSinkWriter (hardware/low-latency/no B-frames requested; transform unverified)"
+                : $"{codecName} via IMFSinkWriter (software fallback; low-latency/no B-frames requested)";
             var encoder = new MfSinkWriterEncoder(writer, deviceManager, videoIn, videoStream, audioStream, width, height, description)
             {
                 _began = true,
@@ -306,7 +311,7 @@ internal sealed class MfSinkWriterEncoder : IDisposable
     }
 
     /// <summary>Writes a GPU frame obtained from <see cref="CreateFrameAllocator"/>.</summary>
-    public void WriteVideo(GpuFrame frame, TimeSpan duration)
+    public bool WriteVideo(GpuFrame frame, TimeSpan duration)
     {
         if (frame.BackendSample is not IMFSample sample)
         {
@@ -315,32 +320,30 @@ internal sealed class MfSinkWriterEncoder : IDisposable
 
         sample.SampleTime = frame.Pts.Ticks;
         sample.SampleDuration = duration.Ticks;
-        Write(_videoStream, sample, ref _videoSamples, _videoGate);
+        return Write(_videoStream, sample, ref _videoSamples, _videoGate);
     }
 
-    /// <summary>Writes a CPU frame (tightly packed bottom-up BGRA, as Media Foundation expects for RGB32).</summary>
-    public unsafe void WriteVideo(byte[] bottomUpBgra, TimeSpan pts, TimeSpan duration)
+    /// <summary>Synchronously copies borrowed top-down pixels into an encoder-owned bottom-up RGB32 buffer.</summary>
+    public bool WriteVideo(CapturedFrame frame, TimeSpan pts, TimeSpan duration)
     {
-        using var buffer = MediaFactory.MFCreateMemoryBuffer(bottomUpBgra.Length);
+        var length = CpuVideoBuffer.GetLength(frame);
+        using var buffer = MediaFactory.MFCreateMemoryBuffer(length);
         buffer.Lock(out var data, out _, out _);
         try
         {
-            fixed (byte* src = bottomUpBgra)
-            {
-                Buffer.MemoryCopy(src, (void*)data, bottomUpBgra.Length, bottomUpBgra.Length);
-            }
+            CpuVideoBuffer.CopyBottomUp(frame, data, length);
         }
         finally
         {
             buffer.Unlock();
         }
 
-        buffer.CurrentLength = bottomUpBgra.Length;
+        buffer.CurrentLength = length;
         using var sample = MediaFactory.MFCreateSample();
         sample.AddBuffer(buffer);
         sample.SampleTime = pts.Ticks;
         sample.SampleDuration = duration.Ticks;
-        Write(_videoStream, sample, ref _videoSamples, _videoGate);
+        return Write(_videoStream, sample, ref _videoSamples, _videoGate);
     }
 
     /// <summary>
@@ -411,17 +414,18 @@ internal sealed class MfSinkWriterEncoder : IDisposable
 
     // IMFSinkWriter accepts concurrent WriteSample calls on different streams (that is how its
     // throttling model is meant to be driven); a per-stream lock only serializes same-stream writers.
-    private void Write(int stream, IMFSample sample, ref long counter, object gate)
+    private bool Write(int stream, IMFSample sample, ref long counter, object gate)
     {
         lock (gate)
         {
             if (!_began || Volatile.Read(ref _finishedFlag) != 0 || _disposed)
             {
-                return;
+                return false;
             }
 
             _writer.WriteSample(stream, sample);
             Interlocked.Increment(ref counter);
+            return true;
         }
     }
 

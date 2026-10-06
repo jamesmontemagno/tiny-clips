@@ -6,12 +6,10 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
-using TinyClips.App.Services.Studio;
-using TinyClips.App.ViewModels.Studio;
+using TinyClips.App.Settings;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
-using TinyClips.Core.Studio;
 
 namespace TinyClips.App;
 
@@ -37,21 +35,21 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IClipStorageService _storage;
     private readonly IClipAnalyticsService _analytics;
     private readonly IUploadcareCredentialStore _uploadcareCredentials;
-    private readonly IStudioProjectStore _studioProjects;
-    private readonly StudioProjectCleanupService _studioCleanup;
-    private readonly StudioProjectTracker _studioTracker;
     private readonly DispatcherQueue? _dispatcherQueue;
-    private readonly DispatcherQueueTimer? _teleprompterTranscriptSaveTimer;
+    private readonly ITeleprompterTranscriptSaveScheduler? _teleprompterTranscriptSaveScheduler;
     private bool _loading;
     private string? _pendingTeleprompterTranscript;
     private string _savedMicrophoneId = string.Empty;
     private string _savedWebcamId = string.Empty;
+    private bool _uploadcareCredentialsInitialized;
+    private string? _savedTeleprompterTranscript;
+    private bool _teleprompterTranscriptInitialized;
 
     // Persistence stays suppressed while one or more Settings sections are realizing their
     // visual tree for the first time. WinUI TwoWay x:Bind targets (ComboBox.SelectedIndex,
     // TextBox.Text, ToggleSwitch.IsOn) push their transient initial values back into the
     // source as their controls are realized — which happens *after* this constructor's
-    // Load() call. Without this gate those write-backs overwrite the loaded values (blanking
+    // scalar restoration. Without this gate those write-backs overwrite the loaded values (blanking
     // ComboBoxes to -1, emptying text boxes) and persist the garbage.
     //
     // Because sections are now created lazily (one per first navigation, cached afterward),
@@ -60,9 +58,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     // at once if the user navigates quickly before an earlier section's Loaded has fired. This
     // counter is incremented when a section begins realizing (see <see cref="BeginSectionRealization"/>)
     // and decremented once that section's first layout pass has completed and its values have been
-    // rehydrated (see <see cref="CompleteSectionRealization"/>); persistence stays suppressed as long
-    // as the count is above zero, regardless of how many sections are overlapping.
+    // rehydrated (see <see cref="CompleteSectionRealization"/>). Each realizing section remains
+    // suppressed independently, so edits in an already-realized section are not dropped while an
+    // unrelated section is still waiting for its Loaded event or dispatcher fallback.
     private int _pendingSectionRealizations;
+    private readonly Dictionary<SettingsSectionKind, int> _realizingSections = new();
 
     // Set once the owning SettingsWindow has closed, so in-flight async continuations (media
     // device enumeration, permission prompts) stop touching view-model state.
@@ -70,7 +70,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private Task? _analyticsInitialization;
     private Task? _mediaDeviceInitialization;
-    private Task? _studioStorageInitialization;
+    private int _launchAtLoginRequestVersion;
+    private Task _launchAtLoginMutation = Task.CompletedTask;
+    internal Task LaunchAtLoginInitialization { get; }
+    internal Task LaunchAtLoginMutation => _launchAtLoginMutation;
 
     /// <summary>Raised when the selected theme changes so the window can re-apply it live.</summary>
     public event Action? ThemeChanged;
@@ -88,10 +91,23 @@ public sealed partial class SettingsViewModel : ObservableObject
         IWebcamDeviceEnumerator webcamDevices,
         IClipStorageService storage,
         IClipAnalyticsService analytics,
+        IUploadcareCredentialStore uploadcareCredentials)
+        : this(settings, hotKeys, launchAtLogin, audioDevices, webcamDevices, storage, analytics,
+            uploadcareCredentials, DispatcherQueue.GetForCurrentThread())
+    {
+    }
+
+    internal SettingsViewModel(
+        ICaptureSettings settings,
+        IHotKeyService hotKeys,
+        ILaunchAtLoginService launchAtLogin,
+        IAudioDeviceService audioDevices,
+        IWebcamDeviceEnumerator webcamDevices,
+        IClipStorageService storage,
+        IClipAnalyticsService analytics,
         IUploadcareCredentialStore uploadcareCredentials,
-        IStudioProjectStore studioProjects,
-        StudioProjectCleanupService studioCleanup,
-        StudioProjectTracker studioTracker)
+        DispatcherQueue? dispatcherQueue,
+        ITeleprompterTranscriptSaveScheduler? transcriptSaveScheduler = null)
     {
         _settings = settings;
         _hotKeys = hotKeys;
@@ -101,20 +117,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         _storage = storage;
         _analytics = analytics;
         _uploadcareCredentials = uploadcareCredentials;
-        _studioProjects = studioProjects;
-        _studioCleanup = studioCleanup;
-        _studioTracker = studioTracker;
-        _studioTracker.Changed += OnStudioOpenProjectsChanged;
-        _studioCleanup.CleanupCompleted += OnStudioCleanupCompleted;
-        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
-        if (_dispatcherQueue is not null)
-        {
-            _teleprompterTranscriptSaveTimer = _dispatcherQueue.CreateTimer();
-            _teleprompterTranscriptSaveTimer.Interval = TimeSpan.FromMilliseconds(500);
-            _teleprompterTranscriptSaveTimer.IsRepeating = false;
-            _teleprompterTranscriptSaveTimer.Tick += (_, _) => PersistPendingTeleprompterTranscript();
-        }
-        Load();
+        _dispatcherQueue = dispatcherQueue;
+        _teleprompterTranscriptSaveScheduler = transcriptSaveScheduler ??
+            (_dispatcherQueue is null ? null : new DispatcherTranscriptSaveScheduler(_dispatcherQueue));
+        RestoreScalarSettings();
 
         // Analytics history and microphone/webcam enumeration are deferred until their
         // sections are first selected (see EnsureAnalyticsInitializedAsync /
@@ -123,7 +129,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         // Reconcile the toggle with the OS-owned launch-at-login (StartupTask) state. General
         // is always the first section realized, so this stays eager.
-        _ = RefreshLaunchAtLoginAsync();
+        LaunchAtLoginInitialization = RefreshLaunchAtLoginAsync();
     }
 
     /// <summary>
@@ -133,51 +139,101 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// can be mid-realization at once (e.g. rapid navigation) without prematurely re-enabling
     /// persistence.
     /// </summary>
-    public IDisposable BeginSectionRealization()
+    public IDisposable BeginSectionRealization(SettingsSectionKind kind)
     {
+        if (_closed)
+        {
+            throw new InvalidOperationException("Cannot realize a section after Settings has closed.");
+        }
+
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown Settings section.");
+        }
+
         _pendingSectionRealizations++;
-        return new SectionRealizationScope(this);
+        _realizingSections[kind] = _realizingSections.GetValueOrDefault(kind) + 1;
+        return new SectionRealizationScope(this, kind);
     }
 
     /// <summary>
-    /// Completes a section's first realization: re-reads the (still-intact) persisted values
+    /// Completes a section's first realization: restores only that section's persisted scalars
     /// into the bound properties to overwrite anything the section's initial TwoWay binding
     /// write-backs may have corrupted, then releases this section's persistence suppression.
     /// Safe to call even if the window has since closed.
     /// </summary>
     public void CompleteSectionRealization(IDisposable realizationScope)
     {
-        if (!_closed)
+        if (realizationScope is not SectionRealizationScope scope)
         {
-            Load();
+            throw new ArgumentException("Expected a Settings section realization scope.", nameof(realizationScope));
         }
 
-        realizationScope.Dispose();
+        if (scope.IsCompleted)
+        {
+            return;
+        }
 
-        if (!_closed)
+        if (!scope.IsOwnedBy(this))
+        {
+            throw new ArgumentException("The realization scope belongs to another Settings window.", nameof(realizationScope));
+        }
+
+        try
+        {
+            if (!_closed)
+            {
+                RestoreScalarSettings(scope.Kind);
+                InitializeSectionState(scope.Kind);
+            }
+        }
+        finally
+        {
+            scope.Dispose();
+        }
+
+        if (!_closed && scope.Kind == SettingsSectionKind.General)
         {
             ThemeChanged?.Invoke();
         }
     }
 
-    private void EndSectionRealization()
+    private void EndSectionRealization(SettingsSectionKind kind)
     {
         if (_pendingSectionRealizations > 0)
         {
             _pendingSectionRealizations--;
+            if (--_realizingSections[kind] == 0)
+            {
+                _realizingSections.Remove(kind);
+            }
         }
     }
+
+    private bool IsPersistenceSuppressed(SettingsSectionKind kind) =>
+        _closed || _loading || (_pendingSectionRealizations > 0 && _realizingSections.ContainsKey(kind));
 
     /// <summary>Stops async continuations (media enumeration, permission prompts) from touching
     /// this view model once the owning window has closed.</summary>
     public void NotifyClosed()
     {
-        _teleprompterTranscriptSaveTimer?.Stop();
-        PersistPendingTeleprompterTranscript();
-        _studioTracker.Changed -= OnStudioOpenProjectsChanged;
-        _studioCleanup.CleanupCompleted -= OnStudioCleanupCompleted;
+        if (_closed)
+        {
+            return;
+        }
+
         _closed = true;
+        _teleprompterTranscriptSaveScheduler?.Stop();
+        PersistPendingTeleprompterTranscript();
+        ReleaseStudio();
     }
+
+    // Tiny Clips Studio's part of this view model is in SettingsViewModel.Studio.cs. A build that
+    // leaves that file out, as the unit tests of this one do, has no Studio settings, and these
+    // two calls are then not there.
+    partial void RestoreStudioSettings(SettingsSectionKind? kind);
+
+    partial void ReleaseStudio();
 
     private void PersistPendingTeleprompterTranscript()
     {
@@ -186,19 +242,28 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        _pendingTeleprompterTranscript = null;
         _settings.TeleprompterTranscript = transcript;
+        _pendingTeleprompterTranscript = null;
     }
 
     private sealed class SectionRealizationScope : IDisposable
     {
         private SettingsViewModel? _owner;
 
-        public SectionRealizationScope(SettingsViewModel owner) => _owner = owner;
+        public SettingsSectionKind Kind { get; }
+        public bool IsCompleted => _owner is null;
+
+        public SectionRealizationScope(SettingsViewModel owner, SettingsSectionKind kind)
+        {
+            _owner = owner;
+            Kind = kind;
+        }
+
+        public bool IsOwnedBy(SettingsViewModel owner) => ReferenceEquals(_owner, owner);
 
         public void Dispose()
         {
-            _owner?.EndSectionRealization();
+            _owner?.EndSectionRealization(Kind);
             _owner = null;
         }
     }
@@ -326,9 +391,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(UploadcareSecretKeyStatus))]
     private bool _hasUploadcareSecretKey;
 
-    public string UploadcareSecretKeyStatus => HasUploadcareSecretKey
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UploadcareSecretKeyStatus))]
+    private string? _uploadcareLoadError;
+
+    public string UploadcareSecretKeyStatus => UploadcareLoadError ?? (HasUploadcareSecretKey
         ? "A secret key is stored securely in Windows Credential Locker."
-        : "No secret key is stored. It is only required for signed Uploadcare uploads.";
+        : "No secret key is stored. It is only required for signed Uploadcare uploads.");
 
     [ObservableProperty]
     private bool _launchAtLogin;
@@ -517,75 +586,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public bool VideoCapturePickerAfterCaptureEnabled => ShowVideoCapturePicker;
 
-    // Studio. Its switch is always shown. Everything else bound to these stays hidden unless the
-    // switch is on.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StudioPreviewVisibility))]
-    [NotifyPropertyChangedFor(nameof(ShowTrimmerToggleVisibility))]
-    [NotifyPropertyChangedFor(nameof(StudioDraftsVisibility))]
-    [NotifyPropertyChangedFor(nameof(StudioKeptNoteVisibility))]
-    private bool _isStudioPreviewEnabled;
-
-    public Microsoft.UI.Xaml.Visibility StudioPreviewVisibility => IsStudioPreviewEnabled
-        ? Microsoft.UI.Xaml.Visibility.Visible
-        : Microsoft.UI.Xaml.Visibility.Collapsed;
-
-    /// <summary>
-    /// What is still on disk while Studio is switched off, such as "3 Studio projects are kept and
-    /// use 1.2 GB." Empty when there is nothing. Shown under the switch, only while it is off.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StudioKeptNoteVisibility))]
-    private string _studioKeptNote = string.Empty;
-
-    public Microsoft.UI.Xaml.Visibility StudioKeptNoteVisibility => !IsStudioPreviewEnabled && StudioKeptNote.Length > 0
-        ? Microsoft.UI.Xaml.Visibility.Visible
-        : Microsoft.UI.Xaml.Visibility.Collapsed;
-
-    /// <summary>The trimmer toggle shows until the After recording choice takes its place.</summary>
-    public Microsoft.UI.Xaml.Visibility ShowTrimmerToggleVisibility => IsStudioPreviewEnabled
-        ? Microsoft.UI.Xaml.Visibility.Collapsed
-        : Microsoft.UI.Xaml.Visibility.Visible;
-
-    /// <summary>0 = Save, 1 = Open trimmer, 2 = Open in Studio.</summary>
-    [ObservableProperty]
-    private int _videoAfterRecordingIndex = 1;
-
-    [ObservableProperty]
-    private double _studioSourceRetentionDays = CaptureSettings.DefaultStudioSourceRetentionDays;
-
-    [ObservableProperty]
-    private double _studioStorageCapGigabytes = CaptureSettings.DefaultStudioStorageCapGigabytes;
-
-    /// <summary>Project count and total size, such as "3 projects, 1.2 GB".</summary>
-    [ObservableProperty]
-    private string _studioStorageDisplay = "Calculating\u2026";
-
-    /// <summary>What the last Clean up now did. Empty until one has run.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StudioCleanupStatusVisibility))]
-    private string _studioCleanupStatus = string.Empty;
-
-    public Microsoft.UI.Xaml.Visibility StudioCleanupStatusVisibility => string.IsNullOrEmpty(StudioCleanupStatus)
-        ? Microsoft.UI.Xaml.Visibility.Collapsed
-        : Microsoft.UI.Xaml.Visibility.Visible;
-
-    private bool _studioCleanupRunning;
-    private int _studioRefreshGeneration;
-    private readonly HashSet<string> _studioRecordingsBeingSaved = new(StringComparer.Ordinal);
-
-    /// <summary>
-    /// The recordings that only their Studio project holds, newest first: the projects that were
-    /// never exported, the ones whose exported video is gone, and after them the ones Studio
-    /// cannot read. None of them has a video in the Clips Library: this list is the way back to
-    /// them.
-    /// </summary>
-    public System.Collections.ObjectModel.ObservableCollection<StudioDraftItem> StudioDrafts { get; } = new();
-
-    public Microsoft.UI.Xaml.Visibility StudioDraftsVisibility => IsStudioPreviewEnabled && StudioDrafts.Count > 0
-        ? Microsoft.UI.Xaml.Visibility.Visible
-        : Microsoft.UI.Xaml.Visibility.Collapsed;
-
     // GIF
     [ObservableProperty]
     private double _gifFrameRate;
@@ -659,7 +659,17 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // Teleprompter
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TeleprompterTranscriptEditorEnabled))]
     private bool _teleprompterEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TeleprompterTranscriptEditorEnabled))]
+    private bool _isTeleprompterTranscriptLoaded;
+
+    [ObservableProperty]
+    private string? _teleprompterTranscriptLoadError;
+
+    public bool TeleprompterTranscriptEditorEnabled => TeleprompterEnabled && IsTeleprompterTranscriptLoaded;
 
     [ObservableProperty]
     private string _teleprompterTranscript = string.Empty;
@@ -804,7 +814,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// load and caches the task; later calls just await the same completed task instead of
     /// re-querying the analytics store.
     /// </summary>
-    public Task EnsureAnalyticsInitializedAsync() => _analyticsInitialization ??= InitializeAnalyticsAsync();
+    public Task EnsureAnalyticsInitializedAsync() => _closed
+        ? Task.CompletedTask
+        : _analyticsInitialization ??= InitializeAnalyticsAsync();
 
     private Task InitializeAnalyticsAsync()
     {
@@ -827,411 +839,233 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// Idempotent — the first call kicks off enumeration and caches the task; later calls just
     /// await the same in-flight/completed task instead of re-enumerating devices.
     /// </summary>
-    public Task EnsureMediaDevicesInitializedAsync() => _mediaDeviceInitialization ??= InitializeMediaDevicesAsync();
+    public Task EnsureMediaDevicesInitializedAsync() => _closed
+        ? Task.CompletedTask
+        : _mediaDeviceInitialization ??= InitializeMediaDevicesAsync();
 
     private async Task InitializeMediaDevicesAsync()
     {
         MediaDevicesLoadError = null;
 
         var errors = await Task.WhenAll(LoadMicrophonesAsync(), LoadWebcamsAsync());
-        if (!_closed)
+        await RunOnOwnerThreadAsync(() =>
         {
             MediaDevicesLoadError = string.Join(
                 " ",
                 errors
                     .Where(error => !string.IsNullOrWhiteSpace(error))
                     .Distinct());
-        }
-    }
-
-    /// <summary>
-    /// Reads the Studio project count and size the first time they are shown. Idempotent, like the
-    /// analytics and media device loads. With Studio switched off it reads them all the same, for
-    /// the line under the switch that says what is still kept; where Studio was never used there
-    /// is no folder to read, and none is made.
-    /// </summary>
-    public Task EnsureStudioStorageInitializedAsync() => _studioStorageInitialization ??= RefreshStudioStorageAsync();
-
-    private async Task RefreshStudioStorageAsync()
-    {
-        // Several things ask for a refresh at once: a window closing, then the cleanup it starts.
-        // Only the answer to the newest request is shown.
-        var generation = ++_studioRefreshGeneration;
-        try
-        {
-            // Sizing every project folder reads the disk, so it stays off the UI thread.
-            var listed = await Task.Run(() =>
-            {
-                var summaries = _studioProjects.ListSummaries();
-                var unreadable = _studioProjects.ListUnreadableProjects();
-
-                // Whether each row can offer its screen recording to be saved.
-                var withRecording = summaries
-                    .Where(IsShownAsDraft)
-                    .Where(summary => _studioProjects.FindScreenRecording(summary.Id) is not null)
-                    .Select(summary => summary.Id)
-                    .ToHashSet(StringComparer.Ordinal);
-                return (Summaries: summaries, Unreadable: unreadable, WithRecording: withRecording);
-            });
-            if (!_closed && generation == _studioRefreshGeneration)
-            {
-                var storage = new StudioStorageSummary(
-                    listed.Summaries.Count + listed.Unreadable.Count,
-                    listed.Summaries.Sum(summary => summary.SizeBytes) + listed.Unreadable.Sum(project => project.SizeBytes));
-                StudioStorageDisplay = FormatStudioStorage(storage);
-                StudioKeptNote = FormatStudioKeptNote(storage);
-                ShowStudioDrafts(listed.Summaries, listed.Unreadable, listed.WithRecording);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Unable to read Studio project storage: {ex}");
-            if (!_closed && generation == _studioRefreshGeneration)
-            {
-                StudioStorageDisplay = "Couldn't read Studio project storage.";
-                StudioKeptNote = string.Empty;
-            }
-        }
-    }
-
-    // A recording that only its project holds: never exported, or exported to a video that is gone.
-    private static bool IsShownAsDraft(StudioProjectSummary summary) =>
-        (summary.IsDraft || summary.ExportMissing) && !summary.IsFlat;
-
-    /// <summary>
-    /// Shows the recordings that only their project holds, newest first, and after them the
-    /// projects that cannot be read. Rows that are still there keep their place, and only what
-    /// changes by itself is brought up to date, so a button in the list does not lose keyboard
-    /// focus because another row changed.
-    /// </summary>
-    private void ShowStudioDrafts(
-        IReadOnlyList<StudioProjectSummary> summaries,
-        IReadOnlyList<StudioUnreadableProject> unreadable,
-        IReadOnlySet<string> withRecording)
-    {
-        var drafts = summaries
-            .Where(IsShownAsDraft)
-            .OrderByDescending(summary => summary.CreatedAt)
-            .Select(summary => new StudioDraftItem(
-                summary.Id,
-                summary.Name,
-                $"{summary.CreatedAt.ToLocalTime():g}, {FormatFileSize(summary.SizeBytes)}",
-                _studioTracker.IsOpen(summary.Id),
-                note: summary.ExportMissing ? StudioDraftItem.ExportMissingNote : string.Empty,
-                canOpen: true,
-                canSaveRecording: withRecording.Contains(summary.Id)))
-            .Concat(unreadable
-                .OrderByDescending(project => project.CreatedAt)
-                .Select(project => new StudioDraftItem(
-                    project.Id,
-                    StudioDraftItem.UnreadableName,
-                    $"{project.CreatedAt.ToLocalTime():g}, {FormatFileSize(project.SizeBytes)}",
-                    _studioTracker.IsOpen(project.Id),
-                    note: StudioDraftItem.UnreadableNote,
-                    canOpen: false,
-                    canSaveRecording: project.HasScreenRecording)))
-            .ToList();
-
-        var isSameList = drafts.Count == StudioDrafts.Count
-            && drafts.Zip(StudioDrafts).All(pair => pair.First.IsSameDraft(pair.Second));
-        if (isSameList)
-        {
-            for (var index = 0; index < drafts.Count; index++)
-            {
-                StudioDrafts[index].Details = drafts[index].Details;
-                StudioDrafts[index].IsOpen = drafts[index].IsOpen;
-            }
-        }
-        else
-        {
-            StudioDrafts.Clear();
-            foreach (var draft in drafts)
-            {
-                // A copy that is under way belongs to the project, not to the row it was started from.
-                draft.IsSavingRecording = _studioRecordingsBeingSaved.Contains(draft.Id);
-                StudioDrafts.Add(draft);
-            }
-        }
-
-        OnPropertyChanged(nameof(StudioDraftsVisibility));
-    }
-
-    // Raised on the UI thread, by a Studio window opening or having finished closing.
-    private void OnStudioOpenProjectsChanged(object? sender, EventArgs e) => RefreshStudioProjectsIfShown();
-
-    // Raised on a background thread. Clean up now refreshes by itself when it is done.
-    private void OnStudioCleanupCompleted(object? sender, StudioCleanupResult e) =>
-        _dispatcherQueue?.TryEnqueue(() =>
-        {
-            if (!_studioCleanupRunning)
-            {
-                RefreshStudioProjectsIfShown();
-            }
         });
-
-    private void RefreshStudioProjectsIfShown()
-    {
-        // Nothing to refresh until General has shown the numbers for the first time.
-        if (!_closed && _studioStorageInitialization is not null)
-        {
-            _ = RefreshStudioStorageAsync();
-        }
     }
 
-    /// <summary>
-    /// Deletes a draft and its recordings, off the UI thread, then refreshes the list and the
-    /// storage numbers. A draft that is open in an editor is left alone.
-    /// </summary>
-    /// <returns>Null when the draft is gone or was left alone, otherwise a sentence saying why not.</returns>
-    public async Task<string?> DeleteStudioDraftAsync(StudioDraftItem draft)
+    private void RestoreScalarSettings(SettingsSectionKind? kind = null)
     {
-        if (!IsStudioPreviewEnabled || _studioTracker.IsOpen(draft.Id))
-        {
-            return null;
-        }
-
-        string? error = null;
+        var wasLoading = _loading;
+        _loading = true;
         try
         {
-            await Task.Run(() => _studioProjects.Delete(draft.Id));
-        }
-        catch (Exception ex)
-        {
-            error = $"The draft could not be deleted: {ex.Message}";
-        }
+            if (kind is null or SettingsSectionKind.General)
+            {
+                ThemeIndex = _settings.Theme switch
+                {
+                    AppTheme.Light => 1,
+                    AppTheme.Dark => 2,
+                    _ => 0,
+                };
+                UseDefaultSaveDirectories = _settings.UseDefaultSaveDirectories;
+                ScreenshotSaveDirectory = _settings.ScreenshotSaveDirectory;
+                VideoSaveDirectory = _settings.VideoSaveDirectory;
+                GifSaveDirectory = _settings.GifSaveDirectory;
+                FileNameTemplate = string.IsNullOrWhiteSpace(_settings.FileNameTemplate)
+                    ? "TinyClips {date} at {time}"
+                    : _settings.FileNameTemplate;
+                ShowInExplorer = _settings.ShowInExplorer;
+                ShowSaveNotifications = _settings.ShowSaveNotifications;
+                LaunchAtLogin = _settings.LaunchAtLogin;
+                ShowBrandingOverlay = _settings.ShowBrandingOverlay;
+                MultiMonitorCaptureModeIndex = _settings.MultiMonitorCaptureMode switch
+                {
+                    MultiMonitorCaptureMode.UnderCursor => 1,
+                    MultiMonitorCaptureMode.MainDisplay => 2,
+                    _ => 0,
+                };
+            }
 
-        await RefreshStudioStorageAsync();
-        return error;
-    }
+            if (kind is null or SettingsSectionKind.Uploadcare)
+            {
+                UploadcareEnabled = _settings.UploadcareEnabled;
+                UploadcarePublicKey = _settings.UploadcarePublicKey;
+                UploadcareAutoUpload = _settings.UploadcareAutoUpload;
+                UploadcareCopyUrl = _settings.UploadcareCopyUrl;
+            }
 
-    /// <summary>
-    /// Saves a row's screen recording as an ordinary video, in the folder and under the name any
-    /// saved video gets. The project is left as it is. The copy is made off the UI thread, and the
-    /// row's button waits until it is done.
-    /// </summary>
-    /// <returns>
-    /// The path of the video, or a sentence saying why there is none. Both are null when a copy
-    /// of that recording was already under way.
-    /// </returns>
-    public async Task<(string? Path, string? Error)> SaveStudioScreenRecordingAsync(StudioDraftItem draft)
-    {
-        var id = draft.Id;
-        if (!IsStudioPreviewEnabled || !_studioRecordingsBeingSaved.Add(id))
-        {
-            return (null, null);
-        }
+            if (kind is null or SettingsSectionKind.Screenshot)
+            {
+                CopyScreenshotToClipboard = _settings.CopyScreenshotToClipboard;
+                ScreenshotFormatIndex = _settings.ImageFormat switch
+                {
+                    ImageFormat.Png => 0,
+                    ImageFormat.Webp => 2,
+                    _ => 1,
+                };
+                ScreenshotScale = _settings.ScreenshotScale;
+                JpegQuality = _settings.JpegQuality;
+                ScreenshotCountdownEnabled = _settings.ScreenshotCountdownEnabled;
+                ScreenshotCountdownDuration = _settings.ScreenshotCountdownDuration;
+                ShowScreenshotEditor = _settings.ShowScreenshotEditor;
+                ScreenshotUsesLiveCapture = _settings.ScreenshotUsesLiveCapture;
+                ShowScreenshotCapturePicker = _settings.ShowScreenshotCapturePicker;
+                ShowScreenshotCapturePickerAfterCapture = _settings.ShowScreenshotCapturePickerAfterCapture;
+            }
 
-        SetSavingStudioRecording(id, true);
-        try
-        {
-            var path = await StudioScreenRecording.SaveAsync(
-                _studioProjects,
-                id,
-                () => _storage.GenerateFilePath(CaptureType.Video));
-            return (path, null);
-        }
-        catch (Exception ex)
-        {
-            return (null, $"The screen recording could not be saved: {ex.Message}");
+            if (kind is null or SettingsSectionKind.Video)
+            {
+                CopyVideoToClipboard = _settings.CopyVideoToClipboard;
+                VideoFrameRate = _settings.VideoFrameRate;
+                KeepDisplayAwakeWhileRecording = _settings.KeepDisplayAwakeWhileRecording;
+                UseGpuRecordingPipeline = _settings.UseGpuRecordingPipeline;
+                VideoEncoderBackendIndex = _settings.VideoEncoderBackend == VideoEncoderBackend.SinkWriter ? 1 : 0;
+                VideoCodecIndex = _settings.VideoCodec == VideoCodec.Hevc ? 1 : 0;
+                RecordAudio = _settings.RecordAudio;
+                RecordMicrophone = _settings.RecordMicrophone;
+                MicrophoneLimiterEnabled = _settings.MicrophoneLimiterEnabled;
+                AudioOffsetMilliseconds = _settings.AudioOffsetMilliseconds;
+
+                _savedMicrophoneId = _settings.SelectedMicrophoneId ?? string.Empty;
+                if (Microphones.Count > 0)
+                {
+                    SelectedMicrophone = Microphones.FirstOrDefault(device => device.Id == _savedMicrophoneId) ?? Microphones[0];
+                }
+                WebcamEnabled = _settings.WebcamEnabled;
+                _savedWebcamId = _settings.SelectedWebcamId ?? string.Empty;
+                if (Webcams.Count > 0)
+                {
+                    SelectedWebcam = Webcams.FirstOrDefault(device => device.Id == _savedWebcamId) ?? Webcams[0];
+                }
+                WebcamShapeIndex = _settings.WebcamShape switch
+                {
+                    WebcamShape.Rectangle => 0,
+                    WebcamShape.RoundedRectangle => 1,
+                    _ => 2,
+                };
+                WebcamSizePresetIndex = _settings.WebcamSizePreset switch
+                {
+                    WebcamSizePreset.Small => 0,
+                    WebcamSizePreset.Large => 2,
+                    _ => 1,
+                };
+                WebcamCornerPositionIndex = _settings.WebcamCornerPosition switch
+                {
+                    WebcamCornerPosition.TopLeft => 0,
+                    WebcamCornerPosition.TopRight => 1,
+                    WebcamCornerPosition.BottomLeft => 2,
+                    _ => 3,
+                };
+                WebcamCornerRadius = _settings.WebcamCornerRadius ?? -1;
+
+                VideoRecordingTimeLimitMinutes = _settings.VideoRecordingTimeLimitMinutes;
+                VideoCountdownEnabled = _settings.VideoCountdownEnabled;
+                VideoCountdownDuration = _settings.VideoCountdownDuration;
+                ShowTrimmer = _settings.ShowTrimmer;
+                ShowVideoCapturePicker = _settings.ShowVideoCapturePicker;
+                ShowVideoCapturePickerAfterCapture = _settings.ShowVideoCapturePickerAfterCapture;
+            }
+
+            if (kind is null or SettingsSectionKind.Gif)
+            {
+                CopyGifToClipboard = _settings.CopyGifToClipboard;
+                GifFrameRate = _settings.GifFrameRate;
+                GifMaxWidth = _settings.GifMaxWidth;
+                GifCountdownEnabled = _settings.GifCountdownEnabled;
+                GifCountdownDuration = _settings.GifCountdownDuration;
+                ShowGifTrimmer = _settings.ShowGifTrimmer;
+                ShowGifCapturePicker = _settings.ShowGifCapturePicker;
+                ShowGifCapturePickerAfterCapture = _settings.ShowGifCapturePickerAfterCapture;
+            }
+
+            if (kind is null or SettingsSectionKind.MouseClicks)
+            {
+                ShowMouseClicksInVideo = _settings.ShowMouseClickVisualsInVideo;
+                ShowMouseClicksInGif = _settings.ShowMouseClickVisualsInGif;
+                GifMouseClicksUseVideoSettings = _settings.GifMouseClicksUseVideoSettings;
+                VideoMouseClickSize = _settings.VideoMouseClickSize;
+                VideoMouseClickOpacity = _settings.VideoMouseClickOpacity;
+                VideoMouseClickColorHex = _settings.VideoMouseClickColorHex;
+                GifMouseClickSize = _settings.GifMouseClickSize;
+                GifMouseClickOpacity = _settings.GifMouseClickOpacity;
+                GifMouseClickColorHex = _settings.GifMouseClickColorHex;
+            }
+
+            if (kind is null or SettingsSectionKind.Teleprompter)
+            {
+                TeleprompterEnabled = _settings.TeleprompterEnabled;
+                TeleprompterScrollSpeed = Math.Clamp(_settings.TeleprompterScrollSpeed, 10.0, 200.0);
+                TeleprompterFontSizeIndex = (int)_settings.TeleprompterFontSize;
+                TeleprompterPanelHeightIndex = (int)_settings.TeleprompterPanelHeight;
+            }
+
+            RestoreStudioSettings(kind);
         }
         finally
         {
-            _studioRecordingsBeingSaved.Remove(id);
-            SetSavingStudioRecording(id, false);
+            _loading = wasLoading;
         }
     }
 
-    // The list may have been filled again since the copy started, so the row is found by its project.
-    private void SetSavingStudioRecording(string projectId, bool isSaving)
+    private void InitializeSectionState(SettingsSectionKind kind)
     {
-        foreach (var row in StudioDrafts)
-        {
-            if (string.Equals(row.Id, projectId, StringComparison.Ordinal))
-            {
-                row.IsSavingRecording = isSaving;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Runs the Studio cleanup rules now, off the UI thread, then refreshes the storage numbers and
-    /// reports the outcome in <see cref="StudioCleanupStatus"/>. A request made while one is already
-    /// running is ignored.
-    /// </summary>
-    public async Task CleanUpStudioProjectsAsync()
-    {
-        if (_studioCleanupRunning || !IsStudioPreviewEnabled)
+        if (_closed)
         {
             return;
         }
 
-        _studioCleanupRunning = true;
-        StudioCleanupStatus = "Cleaning up\u2026";
+        var wasLoading = _loading;
+        _loading = true;
         try
         {
-            var result = await _studioCleanup.RunAsync();
-            await RefreshStudioStorageAsync();
-            if (!_closed)
+            if (kind == SettingsSectionKind.Uploadcare && !_uploadcareCredentialsInitialized)
             {
-                StudioCleanupStatus = result switch
+                _uploadcareCredentialsInitialized = true;
+                try
                 {
-                    null => "Cleanup couldn't finish. Try again later.",
-                    { DeletedProjectCount: 0 } => "Nothing needed cleaning up.",
-                    { DeletedProjectCount: 1 } => "Removed 1 project.",
-                    _ => $"Removed {result.DeletedProjectCount:N0} projects.",
-                };
+                    HasUploadcareSecretKey = _uploadcareCredentials.HasSecretKey();
+                    UploadcareLoadError = null;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Unable to read Uploadcare credential status ({ex.GetType().Name}).");
+                    UploadcareLoadError = "Couldn't read the stored secret key status. Reopen Settings to try again.";
+                }
+            }
+
+            if (kind == SettingsSectionKind.Teleprompter)
+            {
+                if (!_teleprompterTranscriptInitialized)
+                {
+                    _teleprompterTranscriptInitialized = true;
+                    try
+                    {
+                        _savedTeleprompterTranscript = _settings.GetTeleprompterTranscriptForEditing();
+                        IsTeleprompterTranscriptLoaded = true;
+                        TeleprompterTranscriptLoadError = null;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Unable to load the teleprompter transcript ({ex.GetType().Name}).");
+                        TeleprompterTranscriptLoadError = "Couldn't load the transcript. Reopen Settings to try again.";
+                    }
+                }
+
+                // An edit awaiting the debounce timer is newer than the persisted text.
+                if (_savedTeleprompterTranscript is { } transcript)
+                {
+                    TeleprompterTranscript = _pendingTeleprompterTranscript ?? transcript;
+                }
             }
         }
         finally
         {
-            _studioCleanupRunning = false;
-        }
-    }
-
-    private static string FormatStudioStorage(StudioStorageSummary summary)
-    {
-        var projectLabel = summary.ProjectCount == 1 ? "project" : "projects";
-        return $"{summary.ProjectCount:N0} {projectLabel}, {FormatFileSize(summary.TotalBytes)}";
-    }
-
-    // What switching Studio off leaves on disk. Nothing is deleted by the switch, and nothing is
-    // cleaned up while it is off, so it is said where the switch is.
-    private static string FormatStudioKeptNote(StudioStorageSummary summary) => summary.ProjectCount switch
-    {
-        0 => string.Empty,
-        1 => $"1 Studio project is kept and uses {FormatFileSize(summary.TotalBytes)}. It is not cleaned up while Studio is off. Switch Studio on to open or delete it.",
-        _ => $"{summary.ProjectCount:N0} Studio projects are kept and use {FormatFileSize(summary.TotalBytes)}. They are not cleaned up while Studio is off. Switch Studio on to open or delete them.",
-    };
-
-    private void Load()
-    {
-        _loading = true;
-        try
-        {
-            ThemeIndex = _settings.Theme switch
-            {
-                AppTheme.Light => 1,
-                AppTheme.Dark => 2,
-                _ => 0,
-            };
-            UseDefaultSaveDirectories = _settings.UseDefaultSaveDirectories;
-            ScreenshotSaveDirectory = _settings.ScreenshotSaveDirectory;
-            VideoSaveDirectory = _settings.VideoSaveDirectory;
-            GifSaveDirectory = _settings.GifSaveDirectory;
-            FileNameTemplate = string.IsNullOrWhiteSpace(_settings.FileNameTemplate)
-                ? "TinyClips {date} at {time}"
-                : _settings.FileNameTemplate;
-            ShowInExplorer = _settings.ShowInExplorer;
-            ShowSaveNotifications = _settings.ShowSaveNotifications;
-            UploadcareEnabled = _settings.UploadcareEnabled;
-            UploadcarePublicKey = _settings.UploadcarePublicKey;
-            UploadcareAutoUpload = _settings.UploadcareAutoUpload;
-            UploadcareCopyUrl = _settings.UploadcareCopyUrl;
-            HasUploadcareSecretKey = _uploadcareCredentials.HasSecretKey();
-            LaunchAtLogin = _settings.LaunchAtLogin;
-            CopyScreenshotToClipboard = _settings.CopyScreenshotToClipboard;
-            CopyVideoToClipboard = _settings.CopyVideoToClipboard;
-            CopyGifToClipboard = _settings.CopyGifToClipboard;
-            MultiMonitorCaptureModeIndex = _settings.MultiMonitorCaptureMode switch
-            {
-                MultiMonitorCaptureMode.UnderCursor => 1,
-                MultiMonitorCaptureMode.MainDisplay => 2,
-                _ => 0,
-            };
-
-            ScreenshotFormatIndex = _settings.ImageFormat switch
-            {
-                ImageFormat.Png => 0,
-                ImageFormat.Webp => 2,
-                _ => 1,
-            };
-            ScreenshotScale = _settings.ScreenshotScale;
-            JpegQuality = _settings.JpegQuality;
-            ScreenshotCountdownEnabled = _settings.ScreenshotCountdownEnabled;
-            ScreenshotCountdownDuration = _settings.ScreenshotCountdownDuration;
-            ShowScreenshotEditor = _settings.ShowScreenshotEditor;
-            ScreenshotUsesLiveCapture = _settings.ScreenshotUsesLiveCapture;
-            ShowScreenshotCapturePicker = _settings.ShowScreenshotCapturePicker;
-            ShowScreenshotCapturePickerAfterCapture = _settings.ShowScreenshotCapturePickerAfterCapture;
-
-            VideoFrameRate = _settings.VideoFrameRate;
-            KeepDisplayAwakeWhileRecording = _settings.KeepDisplayAwakeWhileRecording;
-            UseGpuRecordingPipeline = _settings.UseGpuRecordingPipeline;
-            VideoEncoderBackendIndex = _settings.VideoEncoderBackend == VideoEncoderBackend.SinkWriter ? 1 : 0;
-            VideoCodecIndex = _settings.VideoCodec == VideoCodec.Hevc ? 1 : 0;
-            RecordAudio = _settings.RecordAudio;
-            RecordMicrophone = _settings.RecordMicrophone;
-            MicrophoneLimiterEnabled = _settings.MicrophoneLimiterEnabled;
-            AudioOffsetMilliseconds = _settings.AudioOffsetMilliseconds;
-
-            _savedMicrophoneId = _settings.SelectedMicrophoneId ?? string.Empty;
-            WebcamEnabled = _settings.WebcamEnabled;
-            _savedWebcamId = _settings.SelectedWebcamId ?? string.Empty;
-            WebcamShapeIndex = _settings.WebcamShape switch
-            {
-                WebcamShape.Rectangle => 0,
-                WebcamShape.RoundedRectangle => 1,
-                _ => 2,
-            };
-            WebcamSizePresetIndex = _settings.WebcamSizePreset switch
-            {
-                WebcamSizePreset.Small => 0,
-                WebcamSizePreset.Large => 2,
-                _ => 1,
-            };
-            WebcamCornerPositionIndex = _settings.WebcamCornerPosition switch
-            {
-                WebcamCornerPosition.TopLeft => 0,
-                WebcamCornerPosition.TopRight => 1,
-                WebcamCornerPosition.BottomLeft => 2,
-                _ => 3,
-            };
-            WebcamCornerRadius = _settings.WebcamCornerRadius ?? -1;
-
-            VideoRecordingTimeLimitMinutes = _settings.VideoRecordingTimeLimitMinutes;
-            VideoCountdownEnabled = _settings.VideoCountdownEnabled;
-            VideoCountdownDuration = _settings.VideoCountdownDuration;
-            ShowTrimmer = _settings.ShowTrimmer;
-            IsStudioPreviewEnabled = _settings.StudioPreviewEnabled;
-            VideoAfterRecordingIndex = _settings.VideoAfterRecording switch
-            {
-                VideoAfterRecording.Save => 0,
-                VideoAfterRecording.Studio => 2,
-                _ => 1,
-            };
-            StudioSourceRetentionDays = _settings.StudioSourceRetentionDays;
-            StudioStorageCapGigabytes = _settings.StudioStorageCapGigabytes;
-            ShowVideoCapturePicker = _settings.ShowVideoCapturePicker;
-            ShowVideoCapturePickerAfterCapture = _settings.ShowVideoCapturePickerAfterCapture;
-
-            GifFrameRate = _settings.GifFrameRate;
-            GifMaxWidth = _settings.GifMaxWidth;
-            GifCountdownEnabled = _settings.GifCountdownEnabled;
-            GifCountdownDuration = _settings.GifCountdownDuration;
-            ShowGifTrimmer = _settings.ShowGifTrimmer;
-            ShowGifCapturePicker = _settings.ShowGifCapturePicker;
-            ShowGifCapturePickerAfterCapture = _settings.ShowGifCapturePickerAfterCapture;
-
-            ShowMouseClicksInVideo = _settings.ShowMouseClickVisualsInVideo;
-            ShowMouseClicksInGif = _settings.ShowMouseClickVisualsInGif;
-            GifMouseClicksUseVideoSettings = _settings.GifMouseClicksUseVideoSettings;
-            VideoMouseClickSize = _settings.VideoMouseClickSize;
-            VideoMouseClickOpacity = _settings.VideoMouseClickOpacity;
-            VideoMouseClickColorHex = _settings.VideoMouseClickColorHex;
-            GifMouseClickSize = _settings.GifMouseClickSize;
-            GifMouseClickOpacity = _settings.GifMouseClickOpacity;
-            GifMouseClickColorHex = _settings.GifMouseClickColorHex;
-            ShowBrandingOverlay = _settings.ShowBrandingOverlay;
-
-            TeleprompterEnabled = _settings.TeleprompterEnabled;
-            TeleprompterTranscript = _settings.TeleprompterTranscript;
-            TeleprompterScrollSpeed = Math.Clamp(_settings.TeleprompterScrollSpeed, 10.0, 200.0);
-            TeleprompterFontSizeIndex = (int)_settings.TeleprompterFontSize;
-            TeleprompterPanelHeightIndex = (int)_settings.TeleprompterPanelHeight;
-        }
-        finally
-        {
-            _loading = false;
+            _loading = wasLoading;
         }
     }
 
@@ -1246,7 +1080,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 return null;
             }
 
-            await ApplyMicrophonesAsync(microphones);
+            await RunOnOwnerThreadAsync(() => ApplyMicrophones(microphones));
             return null;
         }
         catch (Exception ex)
@@ -1258,7 +1092,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         finally
         {
-            IsMicrophonesLoading = false;
+            await RunOnOwnerThreadAsync(() => IsMicrophonesLoading = false);
         }
     }
 
@@ -1273,7 +1107,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 return null;
             }
 
-            await ApplyWebcamsAsync(webcams);
+            await RunOnOwnerThreadAsync(() => ApplyWebcams(webcams));
             return null;
         }
         catch (Exception ex)
@@ -1285,15 +1119,20 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         finally
         {
-            IsWebcamsLoading = false;
+            await RunOnOwnerThreadAsync(() => IsWebcamsLoading = false);
         }
     }
 
-    private async Task ApplyMicrophonesAsync(IReadOnlyList<AudioInputDevice> microphones)
+    private async Task RunOnOwnerThreadAsync(Action apply)
     {
+        if (_closed)
+        {
+            return;
+        }
+
         if (_dispatcherQueue is null || _dispatcherQueue.HasThreadAccess)
         {
-            ApplyMicrophones(microphones);
+            apply();
             return;
         }
 
@@ -1302,7 +1141,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             {
                 try
                 {
-                    ApplyMicrophones(microphones);
+                    if (!_closed)
+                    {
+                        apply();
+                    }
                     completion.SetResult(true);
                 }
                 catch (Exception ex)
@@ -1311,7 +1153,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 }
             }))
         {
-            throw new InvalidOperationException("Unable to update microphone list on the UI thread.");
+            throw new InvalidOperationException("Unable to update Settings on the UI thread.");
         }
 
         await completion.Task;
@@ -1319,6 +1161,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private void ApplyMicrophones(IReadOnlyList<AudioInputDevice> microphones)
     {
+        var wasLoading = _loading;
         _loading = true;
         try
         {
@@ -1341,41 +1184,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         finally
         {
-            _loading = false;
             IsMicrophonesLoading = false;
+            _loading = wasLoading;
         }
-    }
-
-    private async Task ApplyWebcamsAsync(IReadOnlyList<WebcamDeviceInfo> webcams)
-    {
-        if (_dispatcherQueue is null || _dispatcherQueue.HasThreadAccess)
-        {
-            ApplyWebcams(webcams);
-            return;
-        }
-
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_dispatcherQueue.TryEnqueue(() =>
-            {
-                try
-                {
-                    ApplyWebcams(webcams);
-                    completion.SetResult(true);
-                }
-                catch (Exception ex)
-                {
-                    completion.SetException(ex);
-                }
-            }))
-        {
-            throw new InvalidOperationException("Unable to update webcam list on the UI thread.");
-        }
-
-        await completion.Task;
     }
 
     private void ApplyWebcams(IReadOnlyList<WebcamDeviceInfo> webcams)
     {
+        var wasLoading = _loading;
         _loading = true;
         try
         {
@@ -1391,14 +1207,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         finally
         {
-            _loading = false;
             IsWebcamsLoading = false;
+            _loading = wasLoading;
         }
     }
 
     partial void OnThemeIndexChanged(int value)
     {
-        if (_loading || _pendingSectionRealizations > 0)
+        if (IsPersistenceSuppressed(SettingsSectionKind.General))
         {
             return;
         }
@@ -1413,46 +1229,60 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnUseDefaultSaveDirectoriesChanged(bool value) =>
-        Persist(() => _settings.UseDefaultSaveDirectories = value);
+        Persist(SettingsSectionKind.General, () => _settings.UseDefaultSaveDirectories = value);
 
     partial void OnScreenshotSaveDirectoryChanged(string value) =>
-        Persist(() => _settings.ScreenshotSaveDirectory = value);
+        Persist(SettingsSectionKind.General, () => _settings.ScreenshotSaveDirectory = value);
 
     partial void OnVideoSaveDirectoryChanged(string value) =>
-        Persist(() => _settings.VideoSaveDirectory = value);
+        Persist(SettingsSectionKind.General, () => _settings.VideoSaveDirectory = value);
 
     partial void OnGifSaveDirectoryChanged(string value) =>
-        Persist(() => _settings.GifSaveDirectory = value);
+        Persist(SettingsSectionKind.General, () => _settings.GifSaveDirectory = value);
 
-    partial void OnFileNameTemplateChanged(string value) => Persist(() => _settings.FileNameTemplate = value);
+    partial void OnFileNameTemplateChanged(string value) => Persist(SettingsSectionKind.General, () => _settings.FileNameTemplate = value);
 
-    partial void OnShowInExplorerChanged(bool value) => Persist(() => _settings.ShowInExplorer = value);
+    partial void OnShowInExplorerChanged(bool value) => Persist(SettingsSectionKind.General, () => _settings.ShowInExplorer = value);
 
-    partial void OnShowSaveNotificationsChanged(bool value) => Persist(() => _settings.ShowSaveNotifications = value);
+    partial void OnShowSaveNotificationsChanged(bool value) => Persist(SettingsSectionKind.General, () => _settings.ShowSaveNotifications = value);
 
-    partial void OnUploadcareEnabledChanged(bool value) => Persist(() => _settings.UploadcareEnabled = value);
+    partial void OnUploadcareEnabledChanged(bool value) => Persist(SettingsSectionKind.Uploadcare, () => _settings.UploadcareEnabled = value);
 
-    partial void OnUploadcarePublicKeyChanged(string value) => Persist(() => _settings.UploadcarePublicKey = value);
+    partial void OnUploadcarePublicKeyChanged(string value) => Persist(SettingsSectionKind.Uploadcare, () => _settings.UploadcarePublicKey = value);
 
-    partial void OnUploadcareAutoUploadChanged(bool value) => Persist(() => _settings.UploadcareAutoUpload = value);
+    partial void OnUploadcareAutoUploadChanged(bool value) => Persist(SettingsSectionKind.Uploadcare, () => _settings.UploadcareAutoUpload = value);
 
-    partial void OnUploadcareCopyUrlChanged(bool value) => Persist(() => _settings.UploadcareCopyUrl = value);
+    partial void OnUploadcareCopyUrlChanged(bool value) => Persist(SettingsSectionKind.Uploadcare, () => _settings.UploadcareCopyUrl = value);
 
     public void SaveUploadcareSecretKey(string secretKey)
     {
+        if (_closed)
+        {
+            return;
+        }
+
         _uploadcareCredentials.SaveSecretKey(secretKey);
+        _uploadcareCredentialsInitialized = true;
+        UploadcareLoadError = null;
         HasUploadcareSecretKey = true;
     }
 
     public void ClearUploadcareSecretKey()
     {
+        if (_closed)
+        {
+            return;
+        }
+
         _uploadcareCredentials.RemoveSecretKey();
+        _uploadcareCredentialsInitialized = true;
+        UploadcareLoadError = null;
         HasUploadcareSecretKey = false;
     }
 
     partial void OnLaunchAtLoginChanged(bool value)
     {
-        if (_loading || _pendingSectionRealizations > 0 || _suppressLaunchAtLogin)
+        if (IsPersistenceSuppressed(SettingsSectionKind.General) || _suppressLaunchAtLogin)
         {
             return;
         }
@@ -1460,16 +1290,55 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ = ApplyLaunchAtLoginAsync(value);
     }
 
-    private async Task ApplyLaunchAtLoginAsync(bool value)
+    private Task ApplyLaunchAtLoginAsync(bool value)
     {
-        var state = await _launchAtLoginService.SetEnabledAsync(value);
-        ApplyLaunchAtLoginState(state);
+        var version = ++_launchAtLoginRequestVersion;
+        return _launchAtLoginMutation = ApplyLaunchAtLoginAfterAsync(_launchAtLoginMutation, value, version);
+    }
+
+    private async Task ApplyLaunchAtLoginAfterAsync(Task previousMutation, bool value, int version)
+    {
+        // Consent may complete after a later toggle edit. Serialize OS mutations so the last
+        // requested state is applied last, not merely displayed last.
+        await previousMutation;
+        if (_closed)
+        {
+            return;
+        }
+
+        await ReconcileLaunchAtLoginAsync(() => _launchAtLoginService.SetEnabledAsync(value), version);
     }
 
     private async Task RefreshLaunchAtLoginAsync()
     {
-        var state = await _launchAtLoginService.GetStateAsync();
-        ApplyLaunchAtLoginState(state);
+        var version = ++_launchAtLoginRequestVersion;
+        await ReconcileLaunchAtLoginAsync(_launchAtLoginService.GetStateAsync, version);
+    }
+
+    private async Task ReconcileLaunchAtLoginAsync(Func<Task<LaunchAtLoginState>> readState, int version)
+    {
+        try
+        {
+            var state = await readState();
+            await RunOnOwnerThreadAsync(() =>
+            {
+                if (version == _launchAtLoginRequestVersion)
+                {
+                    ApplyLaunchAtLoginState(state);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Unable to reconcile launch at login ({ex.GetType().Name}).");
+            await RunOnOwnerThreadAsync(() =>
+            {
+                if (version == _launchAtLoginRequestVersion)
+                {
+                    LaunchAtLoginNote = "Couldn't update launch at login. Reopen Settings to try again.";
+                }
+            });
+        }
     }
 
     private void ApplyLaunchAtLoginState(LaunchAtLoginState state)
@@ -1478,8 +1347,14 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         // Reflect OS truth without re-triggering the change handler.
         _suppressLaunchAtLogin = true;
-        LaunchAtLogin = enabled;
-        _suppressLaunchAtLogin = false;
+        try
+        {
+            LaunchAtLogin = enabled;
+        }
+        finally
+        {
+            _suppressLaunchAtLogin = false;
+        }
 
         // The app can only flip the toggle when Windows hasn't locked it.
         LaunchAtLoginToggleEnabled = state is LaunchAtLoginState.Enabled or LaunchAtLoginState.Disabled;
@@ -1498,13 +1373,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.LaunchAtLogin = enabled;
     }
 
-    partial void OnCopyScreenshotToClipboardChanged(bool value) => Persist(() => _settings.CopyScreenshotToClipboard = value);
+    partial void OnCopyScreenshotToClipboardChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.CopyScreenshotToClipboard = value);
 
-    partial void OnCopyVideoToClipboardChanged(bool value) => Persist(() => _settings.CopyVideoToClipboard = value);
+    partial void OnCopyVideoToClipboardChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.CopyVideoToClipboard = value);
 
-    partial void OnCopyGifToClipboardChanged(bool value) => Persist(() => _settings.CopyGifToClipboard = value);
+    partial void OnCopyGifToClipboardChanged(bool value) => Persist(SettingsSectionKind.Gif, () => _settings.CopyGifToClipboard = value);
 
-    partial void OnMultiMonitorCaptureModeIndexChanged(int value) => Persist(() => _settings.MultiMonitorCaptureMode = value switch
+    partial void OnMultiMonitorCaptureModeIndexChanged(int value) => Persist(SettingsSectionKind.General, () => _settings.MultiMonitorCaptureMode = value switch
     {
         1 => MultiMonitorCaptureMode.UnderCursor,
         2 => MultiMonitorCaptureMode.MainDisplay,
@@ -1512,28 +1387,28 @@ public sealed partial class SettingsViewModel : ObservableObject
     });
 
     partial void OnScreenshotFormatIndexChanged(int value) =>
-        Persist(() => _settings.ImageFormat = value switch
+        Persist(SettingsSectionKind.Screenshot, () => _settings.ImageFormat = value switch
         {
             0 => ImageFormat.Png,
             2 => ImageFormat.Webp,
             _ => ImageFormat.Jpeg,
         });
 
-    partial void OnScreenshotScaleChanged(double value) => Persist(() => _settings.ScreenshotScale = (int)Math.Round(value));
+    partial void OnScreenshotScaleChanged(double value) => Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotScale = (int)Math.Round(value));
 
-    partial void OnJpegQualityChanged(double value) => Persist(() => _settings.JpegQuality = value);
+    partial void OnJpegQualityChanged(double value) => Persist(SettingsSectionKind.Screenshot, () => _settings.JpegQuality = value);
 
-    partial void OnScreenshotCountdownEnabledChanged(bool value) => Persist(() => _settings.ScreenshotCountdownEnabled = value);
+    partial void OnScreenshotCountdownEnabledChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotCountdownEnabled = value);
 
     partial void OnScreenshotCountdownDurationChanged(double value) =>
-        Persist(() => _settings.ScreenshotCountdownDuration = (int)Math.Round(value));
+        Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotCountdownDuration = (int)Math.Round(value));
 
-    partial void OnShowScreenshotEditorChanged(bool value) => Persist(() => _settings.ShowScreenshotEditor = value);
+    partial void OnShowScreenshotEditorChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.ShowScreenshotEditor = value);
 
-    partial void OnScreenshotUsesLiveCaptureChanged(bool value) => Persist(() => _settings.ScreenshotUsesLiveCapture = value);
+    partial void OnScreenshotUsesLiveCaptureChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotUsesLiveCapture = value);
 
     partial void OnShowScreenshotCapturePickerChanged(bool value) =>
-        Persist(() =>
+        Persist(SettingsSectionKind.Screenshot, () =>
         {
             _settings.ShowScreenshotCapturePicker = value;
             if (!value)
@@ -1550,28 +1425,28 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        Persist(() => _settings.ShowScreenshotCapturePickerAfterCapture = value);
+        Persist(SettingsSectionKind.Screenshot, () => _settings.ShowScreenshotCapturePickerAfterCapture = value);
     }
 
-    partial void OnVideoFrameRateChanged(double value) => Persist(() => _settings.VideoFrameRate = (int)Math.Round(value));
+    partial void OnVideoFrameRateChanged(double value) => Persist(SettingsSectionKind.Video, () => _settings.VideoFrameRate = (int)Math.Round(value));
 
     partial void OnKeepDisplayAwakeWhileRecordingChanged(bool value) =>
-        Persist(() => _settings.KeepDisplayAwakeWhileRecording = value);
+        Persist(SettingsSectionKind.Video, () => _settings.KeepDisplayAwakeWhileRecording = value);
 
     partial void OnUseGpuRecordingPipelineChanged(bool value) =>
-        Persist(() => _settings.UseGpuRecordingPipeline = value);
+        Persist(SettingsSectionKind.Video, () => _settings.UseGpuRecordingPipeline = value);
 
     partial void OnVideoEncoderBackendIndexChanged(int value) =>
-        Persist(() => _settings.VideoEncoderBackend = value == 1 ? VideoEncoderBackend.SinkWriter : VideoEncoderBackend.Transcoder);
+        Persist(SettingsSectionKind.Video, () => _settings.VideoEncoderBackend = value == 1 ? VideoEncoderBackend.SinkWriter : VideoEncoderBackend.Transcoder);
 
     partial void OnVideoCodecIndexChanged(int value) =>
-        Persist(() => _settings.VideoCodec = value == 1 ? VideoCodec.Hevc : VideoCodec.H264);
+        Persist(SettingsSectionKind.Video, () => _settings.VideoCodec = value == 1 ? VideoCodec.Hevc : VideoCodec.H264);
 
-    partial void OnRecordAudioChanged(bool value) => Persist(() => _settings.RecordAudio = value);
+    partial void OnRecordAudioChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.RecordAudio = value);
 
-    partial void OnRecordMicrophoneChanged(bool value) => Persist(() => _settings.RecordMicrophone = value);
+    partial void OnRecordMicrophoneChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.RecordMicrophone = value);
 
-    partial void OnMicrophoneLimiterEnabledChanged(bool value) => Persist(() => _settings.MicrophoneLimiterEnabled = value);
+    partial void OnMicrophoneLimiterEnabledChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.MicrophoneLimiterEnabled = value);
 
     partial void OnAudioOffsetMillisecondsChanged(double value)
     {
@@ -1582,32 +1457,40 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        Persist(() => _settings.AudioOffsetMilliseconds = (int)Math.Round(value));
+        Persist(SettingsSectionKind.Video, () => _settings.AudioOffsetMilliseconds = (int)Math.Round(value));
     }
 
     partial void OnSelectedMicrophoneChanged(AudioInputDevice? value) =>
-        Persist(() => _settings.SelectedMicrophoneId = value?.Id ?? string.Empty);
+        Persist(SettingsSectionKind.Video, () =>
+        {
+            _savedMicrophoneId = value?.Id ?? string.Empty;
+            _settings.SelectedMicrophoneId = _savedMicrophoneId;
+        });
 
-    partial void OnWebcamEnabledChanged(bool value) => Persist(() => _settings.WebcamEnabled = value);
+    partial void OnWebcamEnabledChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.WebcamEnabled = value);
 
     partial void OnSelectedWebcamChanged(WebcamDeviceInfo? value) =>
-        Persist(() => _settings.SelectedWebcamId = value?.Id ?? string.Empty);
+        Persist(SettingsSectionKind.Video, () =>
+        {
+            _savedWebcamId = value?.Id ?? string.Empty;
+            _settings.SelectedWebcamId = _savedWebcamId;
+        });
 
-    partial void OnWebcamShapeIndexChanged(int value) => Persist(() => _settings.WebcamShape = value switch
+    partial void OnWebcamShapeIndexChanged(int value) => Persist(SettingsSectionKind.Video, () => _settings.WebcamShape = value switch
     {
         0 => WebcamShape.Rectangle,
         1 => WebcamShape.RoundedRectangle,
         _ => WebcamShape.Circle,
     });
 
-    partial void OnWebcamSizePresetIndexChanged(int value) => Persist(() => _settings.WebcamSizePreset = value switch
+    partial void OnWebcamSizePresetIndexChanged(int value) => Persist(SettingsSectionKind.Video, () => _settings.WebcamSizePreset = value switch
     {
         0 => WebcamSizePreset.Small,
         2 => WebcamSizePreset.Large,
         _ => WebcamSizePreset.Medium,
     });
 
-    partial void OnWebcamCornerPositionIndexChanged(int value) => Persist(() => _settings.WebcamCornerPosition = value switch
+    partial void OnWebcamCornerPositionIndexChanged(int value) => Persist(SettingsSectionKind.Video, () => _settings.WebcamCornerPosition = value switch
     {
         0 => WebcamCornerPosition.TopLeft,
         1 => WebcamCornerPosition.TopRight,
@@ -1616,87 +1499,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     });
 
     partial void OnWebcamCornerRadiusChanged(double value) =>
-        Persist(() => _settings.WebcamCornerRadius = value < 0 ? null : value);
+        Persist(SettingsSectionKind.Video, () => _settings.WebcamCornerRadius = value < 0 ? null : value);
 
     partial void OnVideoRecordingTimeLimitMinutesChanged(double value) =>
-        Persist(() => _settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(value));
+        Persist(SettingsSectionKind.Video, () => _settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(value));
 
-    partial void OnVideoCountdownEnabledChanged(bool value) => Persist(() => _settings.VideoCountdownEnabled = value);
+    partial void OnVideoCountdownEnabledChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.VideoCountdownEnabled = value);
 
     partial void OnVideoCountdownDurationChanged(double value) =>
-        Persist(() => _settings.VideoCountdownDuration = (int)Math.Round(value));
+        Persist(SettingsSectionKind.Video, () => _settings.VideoCountdownDuration = (int)Math.Round(value));
 
-    partial void OnShowTrimmerChanged(bool value) => Persist(() => _settings.ShowTrimmer = value);
-
-    partial void OnIsStudioPreviewEnabledChanged(bool value)
-    {
-        Persist(() => _settings.StudioPreviewEnabled = value);
-        if (!_loading)
-        {
-            // The trimmer switch and the After recording choice stand in for each other, and
-            // the one that was hidden has not followed what the other was set to.
-            _loading = true;
-            try
-            {
-                ShowTrimmer = _settings.ShowTrimmer;
-                VideoAfterRecordingIndex = _settings.VideoAfterRecording switch
-                {
-                    VideoAfterRecording.Save => 0,
-                    VideoAfterRecording.Studio => 2,
-                    _ => 1,
-                };
-            }
-            finally
-            {
-                _loading = false;
-            }
-        }
-
-        // The numbers, the drafts, and the line that says what is kept while Studio is off.
-        RefreshStudioProjectsIfShown();
-    }
-
-    partial void OnVideoAfterRecordingIndexChanged(int value) => PersistStudio(() =>
-    {
-        // A ComboBox reports -1 while it has no selection.
-        if (value is < 0 or > 2)
-        {
-            return;
-        }
-
-        _settings.VideoAfterRecording = value switch
-        {
-            0 => VideoAfterRecording.Save,
-            2 => VideoAfterRecording.Studio,
-            _ => VideoAfterRecording.Trimmer,
-        };
-    });
-
-    partial void OnStudioSourceRetentionDaysChanged(double value)
-    {
-        // NumberBox reports NaN when its text is cleared; put the saved value back.
-        if (double.IsNaN(value))
-        {
-            StudioSourceRetentionDays = _settings.StudioSourceRetentionDays;
-            return;
-        }
-
-        PersistStudio(() => _settings.StudioSourceRetentionDays = (int)Math.Round(value));
-    }
-
-    partial void OnStudioStorageCapGigabytesChanged(double value)
-    {
-        if (double.IsNaN(value))
-        {
-            StudioStorageCapGigabytes = _settings.StudioStorageCapGigabytes;
-            return;
-        }
-
-        PersistStudio(() => _settings.StudioStorageCapGigabytes = (int)Math.Round(value));
-    }
+    partial void OnShowTrimmerChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.ShowTrimmer = value);
 
     partial void OnShowVideoCapturePickerChanged(bool value) =>
-        Persist(() =>
+        Persist(SettingsSectionKind.Video, () =>
         {
             _settings.ShowVideoCapturePicker = value;
             if (!value)
@@ -1713,22 +1529,22 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        Persist(() => _settings.ShowVideoCapturePickerAfterCapture = value);
+        Persist(SettingsSectionKind.Video, () => _settings.ShowVideoCapturePickerAfterCapture = value);
     }
 
-    partial void OnGifFrameRateChanged(double value) => Persist(() => _settings.GifFrameRate = value);
+    partial void OnGifFrameRateChanged(double value) => Persist(SettingsSectionKind.Gif, () => _settings.GifFrameRate = value);
 
-    partial void OnGifMaxWidthChanged(double value) => Persist(() => _settings.GifMaxWidth = (int)Math.Round(value));
+    partial void OnGifMaxWidthChanged(double value) => Persist(SettingsSectionKind.Gif, () => _settings.GifMaxWidth = (int)Math.Round(value));
 
-    partial void OnGifCountdownEnabledChanged(bool value) => Persist(() => _settings.GifCountdownEnabled = value);
+    partial void OnGifCountdownEnabledChanged(bool value) => Persist(SettingsSectionKind.Gif, () => _settings.GifCountdownEnabled = value);
 
     partial void OnGifCountdownDurationChanged(double value) =>
-        Persist(() => _settings.GifCountdownDuration = (int)Math.Round(value));
+        Persist(SettingsSectionKind.Gif, () => _settings.GifCountdownDuration = (int)Math.Round(value));
 
-    partial void OnShowGifTrimmerChanged(bool value) => Persist(() => _settings.ShowGifTrimmer = value);
+    partial void OnShowGifTrimmerChanged(bool value) => Persist(SettingsSectionKind.Gif, () => _settings.ShowGifTrimmer = value);
 
     partial void OnShowGifCapturePickerChanged(bool value) =>
-        Persist(() =>
+        Persist(SettingsSectionKind.Gif, () =>
         {
             _settings.ShowGifCapturePicker = value;
             if (!value)
@@ -1745,24 +1561,24 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        Persist(() => _settings.ShowGifCapturePickerAfterCapture = value);
+        Persist(SettingsSectionKind.Gif, () => _settings.ShowGifCapturePickerAfterCapture = value);
     }
 
-    partial void OnShowMouseClicksInVideoChanged(bool value) => Persist(() => _settings.ShowMouseClickVisualsInVideo = value);
+    partial void OnShowMouseClicksInVideoChanged(bool value) => Persist(SettingsSectionKind.MouseClicks, () => _settings.ShowMouseClickVisualsInVideo = value);
 
-    partial void OnShowMouseClicksInGifChanged(bool value) => Persist(() => _settings.ShowMouseClickVisualsInGif = value);
+    partial void OnShowMouseClicksInGifChanged(bool value) => Persist(SettingsSectionKind.MouseClicks, () => _settings.ShowMouseClickVisualsInGif = value);
 
-    partial void OnGifMouseClicksUseVideoSettingsChanged(bool value) => Persist(() =>
+    partial void OnGifMouseClicksUseVideoSettingsChanged(bool value) => Persist(SettingsSectionKind.MouseClicks, () =>
     {
         _settings.GifMouseClicksUseVideoSettings = value;
         OnPropertyChanged(nameof(GifMouseClickPreviewColorHex));
     });
 
-    partial void OnVideoMouseClickSizeChanged(double value) => Persist(() => _settings.VideoMouseClickSize = value);
+    partial void OnVideoMouseClickSizeChanged(double value) => Persist(SettingsSectionKind.MouseClicks, () => _settings.VideoMouseClickSize = value);
 
-    partial void OnVideoMouseClickOpacityChanged(double value) => Persist(() => _settings.VideoMouseClickOpacity = value);
+    partial void OnVideoMouseClickOpacityChanged(double value) => Persist(SettingsSectionKind.MouseClicks, () => _settings.VideoMouseClickOpacity = value);
 
-    partial void OnVideoMouseClickColorHexChanged(string value) => Persist(() =>
+    partial void OnVideoMouseClickColorHexChanged(string value) => Persist(SettingsSectionKind.MouseClicks, () =>
     {
         _settings.VideoMouseClickColorHex = value;
         if (_settings.GifMouseClicksUseVideoSettings)
@@ -1772,43 +1588,72 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     });
 
-    partial void OnGifMouseClickSizeChanged(double value) => Persist(() => _settings.GifMouseClickSize = value);
+    partial void OnGifMouseClickSizeChanged(double value) => Persist(SettingsSectionKind.MouseClicks, () => _settings.GifMouseClickSize = value);
 
-    partial void OnGifMouseClickOpacityChanged(double value) => Persist(() => _settings.GifMouseClickOpacity = value);
+    partial void OnGifMouseClickOpacityChanged(double value) => Persist(SettingsSectionKind.MouseClicks, () => _settings.GifMouseClickOpacity = value);
 
-    partial void OnGifMouseClickColorHexChanged(string value) => Persist(() => _settings.GifMouseClickColorHex = value);
+    partial void OnGifMouseClickColorHexChanged(string value) => Persist(SettingsSectionKind.MouseClicks, () => _settings.GifMouseClickColorHex = value);
 
-    partial void OnShowBrandingOverlayChanged(bool value) => Persist(() => _settings.ShowBrandingOverlay = value);
+    partial void OnShowBrandingOverlayChanged(bool value) => Persist(SettingsSectionKind.General, () => _settings.ShowBrandingOverlay = value);
 
-    partial void OnTeleprompterEnabledChanged(bool value) => Persist(() => _settings.TeleprompterEnabled = value);
+    partial void OnTeleprompterEnabledChanged(bool value) => Persist(SettingsSectionKind.Teleprompter, () => _settings.TeleprompterEnabled = value);
 
     partial void OnTeleprompterTranscriptChanged(string value)
     {
-        if (_loading || _pendingSectionRealizations > 0)
+        if (IsPersistenceSuppressed(SettingsSectionKind.Teleprompter))
         {
             return;
         }
 
+        AcceptTeleprompterTranscript(value);
+    }
+
+    /// <summary>Applies an imported transcript as an intentional mutation, not a binding write-back.</summary>
+    public void ImportTeleprompterTranscript(string transcript)
+    {
+        if (_closed)
+        {
+            return;
+        }
+
+        var wasLoading = _loading;
+        _loading = true;
+        try
+        {
+            TeleprompterTranscript = transcript;
+            AcceptTeleprompterTranscript(transcript);
+        }
+        finally
+        {
+            _loading = wasLoading;
+        }
+    }
+
+    private void AcceptTeleprompterTranscript(string value)
+    {
+        _savedTeleprompterTranscript = value;
+        _teleprompterTranscriptInitialized = true;
+        IsTeleprompterTranscriptLoaded = true;
+        TeleprompterTranscriptLoadError = null;
         _pendingTeleprompterTranscript = value;
-        if (_teleprompterTranscriptSaveTimer is null)
+        if (_teleprompterTranscriptSaveScheduler is null)
         {
             PersistPendingTeleprompterTranscript();
             return;
         }
 
-        _teleprompterTranscriptSaveTimer.Stop();
-        _teleprompterTranscriptSaveTimer.Start();
+        _teleprompterTranscriptSaveScheduler.Restart(PersistPendingTeleprompterTranscript);
     }
 
-    partial void OnTeleprompterScrollSpeedChanged(double value) => Persist(() => _settings.TeleprompterScrollSpeed = value);
+    partial void OnTeleprompterScrollSpeedChanged(double value) => Persist(SettingsSectionKind.Teleprompter, () => _settings.TeleprompterScrollSpeed = value);
 
-    partial void OnTeleprompterFontSizeIndexChanged(int value) => Persist(() =>
+    partial void OnTeleprompterFontSizeIndexChanged(int value) => Persist(SettingsSectionKind.Teleprompter, () =>
     {
         _settings.TeleprompterFontSize = ToTeleprompterDisplaySize(value);
         TeleprompterDisplayChanged?.Invoke();
     });
 
-    partial void OnTeleprompterPanelHeightIndexChanged(int value) => Persist(() =>
+    partial void OnTeleprompterPanelHeightIndexChanged(int value) => Persist(SettingsSectionKind.Teleprompter, () =>
     {
         _settings.TeleprompterPanelHeight = ToTeleprompterDisplaySize(value);
         TeleprompterDisplayChanged?.Invoke();
@@ -1833,24 +1678,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowGifsInChartChanged(bool value) =>
         RefreshAnalyticsChartOrKeepSeriesSelected(value, () => ShowGifsInChart = true);
 
-    private void Persist(Action apply)
+    private void Persist(SettingsSectionKind kind, Action apply)
     {
-        if (_loading || _pendingSectionRealizations > 0)
+        if (IsPersistenceSuppressed(kind))
         {
             return;
         }
 
         apply();
-    }
-
-    // The Studio controls are hidden while the preview is switched off, so nothing they are bound
-    // to may reach the saved settings then.
-    private void PersistStudio(Action apply)
-    {
-        if (IsStudioPreviewEnabled)
-        {
-            Persist(apply);
-        }
     }
 
     /// <summary>
@@ -1859,13 +1694,29 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public void ResetAllSettings()
     {
+        if (_closed)
+        {
+            return;
+        }
+
         _uploadcareCredentials.RemoveSecretKey();
         _settings.ResetToDefaults();
-        Load();
+        _teleprompterTranscriptSaveScheduler?.Stop();
+        _pendingTeleprompterTranscript = null;
+        _savedTeleprompterTranscript = string.Empty;
+        _teleprompterTranscriptInitialized = true;
+        _uploadcareCredentialsInitialized = true;
+        UploadcareLoadError = null;
+        HasUploadcareSecretKey = false;
+        TeleprompterTranscriptLoadError = null;
+        IsTeleprompterTranscriptLoaded = true;
+        RestoreScalarSettings();
+        InitializeSectionState(SettingsSectionKind.Teleprompter);
         ThemeChanged?.Invoke();
-        // Load() runs under the _loading guard, so the per-property persistence callbacks (and
+        // Restoration runs under the _loading guard, so the per-property persistence callbacks (and
         // their live notifications) are suppressed; tell an active overlay explicitly.
         TeleprompterDisplayChanged?.Invoke();
+        _ = ApplyLaunchAtLoginAsync(_settings.LaunchAtLogin);
     }
 
     public void ResetAnalytics()

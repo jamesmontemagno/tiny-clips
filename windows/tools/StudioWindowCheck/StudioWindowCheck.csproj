@@ -84,6 +84,7 @@
     <Compile Include="$(AppSource)\Infrastructure\AppWindowPlacement.cs" Link="Infrastructure\AppWindowPlacement.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorController.cs" Link="Controls\ScreenshotEditor\EditorController.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorModels.cs" Link="Controls\ScreenshotEditor\EditorModels.cs" />
+    <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorRenderSnapshot.cs" Link="Controls\ScreenshotEditor\EditorRenderSnapshot.cs" />
 
     <!-- The title bar's icon. -->
     <Content Include="$(AppSource)\Assets\AppIcon.ico" Link="Assets\AppIcon.ico" />

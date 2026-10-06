@@ -4,7 +4,9 @@
 
 .DESCRIPTION
     Run this on the machine that shows the problem (x64 or ARM64). It never uploads anything; it
-    writes a folder and a zip to the Desktop. It gathers:
+    writes a folder and a zip to the Desktop. Run from a repository checkout: the shared
+    src\TinyClips.Core\Services\ProcessArchitectureClassifier.cs source must be present.
+    It gathers:
 
       - system.txt        OS build, CPU, native architecture, VM/model, GPU adapters and drivers,
                           displays, power state, storage, memory pressure, busiest processes,
@@ -77,7 +79,7 @@ if ($EnableTrace -or $DisableTrace) {
     return
 }
 
-Add-Type -TypeDefinition @'
+$diagnosticSource = @'
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -98,6 +100,16 @@ public static class TinyClipsDiag
     private static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessMachineInformation
+    {
+        public ushort ProcessMachine;
+        public ushort Reserved;
+        public uint Attributes;
+    }
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetProcessInformation(IntPtr process, int informationClass,
+        out ProcessMachineInformation information, uint size);
 
     public sealed class WindowInfo
     {
@@ -145,7 +157,7 @@ public static class TinyClipsDiag
     {
         switch (machine)
         {
-            case 0x0000: return "native";
+            case 0x0000: return "unspecified (not a runtime architecture)";
             case 0x014c: return "x86";
             case 0x8664: return "x64";
             case 0xAA64: return "ARM64";
@@ -157,11 +169,26 @@ public static class TinyClipsDiag
     public static string ProcessArchitecture(IntPtr processHandle)
     {
         ushort processMachine, nativeMachine;
-        if (!IsWow64Process2(processHandle, out processMachine, out nativeMachine)) { return "unknown"; }
-        return "process=" + DescribeMachine(processMachine) + " os=" + DescribeMachine(nativeMachine);
+        bool wowOk = IsWow64Process2(processHandle, out processMachine, out nativeMachine);
+        int wowError = wowOk ? 0 : Marshal.GetLastWin32Error();
+        ProcessMachineInformation info;
+        bool infoOk = GetProcessInformation(processHandle, 9 /* ProcessMachineTypeInfo */, out info,
+            (uint)Marshal.SizeOf(typeof(ProcessMachineInformation)));
+        int infoError = infoOk ? 0 : Marshal.GetLastWin32Error();
+        ushort? target = infoOk ? (ushort?)info.ProcessMachine : (wowOk && processMachine != 0 ? (ushort?)processMachine : null);
+        string classification = wowOk
+            ? TinyClips.Core.Services.ProcessArchitectureClassifier.Classify(nativeMachine, processMachine, infoOk ? (ushort?)info.ProcessMachine : null)
+            : "unknown";
+        return "targetProcess=" + (target.HasValue ? TinyClips.Core.Services.ProcessArchitectureClassifier.Machine(target.Value) : "unknown")
+            + " os=" + (wowOk ? DescribeMachine(nativeMachine) : "unknown")
+            + " execution=" + classification
+            + " evidence: IsWow64Process2=" + (wowOk ? "processMachine=0x" + processMachine.ToString("X4") + ",nativeMachine=0x" + nativeMachine.ToString("X4") : "failed Win32=" + wowError)
+            + "; ProcessMachineTypeInfo=" + (infoOk ? "0x" + info.ProcessMachine.ToString("X4") : "failed Win32=" + infoError);
     }
 }
 '@
+$classifierPath = Join-Path $PSScriptRoot '..\src\TinyClips.Core\Services\ProcessArchitectureClassifier.cs'
+Add-Type -TypeDefinition ($diagnosticSource + (Get-Content -LiteralPath $classifierPath -Raw -ErrorAction Stop)) -ErrorAction Stop
 
 function Write-Section([string] $Path, [string] $Title, [scriptblock] $Body) {
     "===== $Title =====" | Out-File $Path -Append -Encoding utf8
@@ -403,10 +430,17 @@ Write-Section $packageReport 'Running Tiny Clips processes' {
     $running = @(Get-Process $processName -ErrorAction SilentlyContinue)
     if ($running.Count -eq 0) { 'Tiny Clips is not running.' }
     foreach ($p in $running) {
+        $runtimeEvidence = 'unknown (loaded coreclr module unavailable)'
+        try {
+            $runtimeModule = $p.Modules | Where-Object { $_.ModuleName -ieq 'coreclr.dll' } | Select-Object -First 1
+            if ($runtimeModule) { $runtimeEvidence = "$(Get-PeMachine $runtimeModule.FileName) (loaded coreclr.dll PE machine; hybrid execution unverified; not collector architecture)" }
+        }
+        catch { $runtimeEvidence = "unknown (module query failed: $($_.Exception.Message))" }
         [pscustomobject]@{
             Id = $p.Id
             Path = $p.Path
             Architecture = [TinyClipsDiag]::ProcessArchitecture($p.Handle)
+            RuntimeArchitectureEvidence = $runtimeEvidence
             StartTime = $p.StartTime
             Responding = $p.Responding
             CpuSeconds = [Math]::Round($p.TotalProcessorTime.TotalSeconds, 1)

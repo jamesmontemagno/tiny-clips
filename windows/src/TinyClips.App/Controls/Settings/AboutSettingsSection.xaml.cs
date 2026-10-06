@@ -32,7 +32,7 @@ public sealed partial class AboutSettingsSection : UserControl
     public AboutSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel;
-        _realizationScope = viewModel.BeginSectionRealization();
+        _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.About);
         _updateService = App.Services.GetRequiredService<IAppUpdateService>();
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);

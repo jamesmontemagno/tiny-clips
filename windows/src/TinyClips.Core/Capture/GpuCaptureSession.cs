@@ -58,6 +58,8 @@ internal sealed class GpuCaptureSession : IDisposable
     private long _pumpOverrunsAtStop;
     private volatile bool _running;
     private volatile bool _emittingPaused;
+    private PixelRect _cropBounds;
+    private long _sourceVersion;
 
     /// <summary>
     /// Raised on the pump thread with an acquired, cropped, overlay-composited frame. The handler
@@ -114,10 +116,19 @@ internal sealed class GpuCaptureSession : IDisposable
     /// <summary>Pacer grid slots skipped because a pump tick overran its frame interval.</summary>
     public long PumpOverruns => _pump?.SkippedTicks ?? _pumpOverrunsAtStop;
 
-    public ID3D11Device D3DDevice => _d3dDevice ?? throw new InvalidOperationException("Session not started.");
+    public ID3D11Device D3DDevice => _d3dDevice ?? throw new InvalidOperationException("Session not initialized.");
 
-    public void Start()
+    /// <summary>
+    /// Establishes the device and fixed output dimensions without starting WGC callbacks.
+    /// The owner can prepare device-bound overlays before calling <see cref="Start"/>.
+    /// </summary>
+    public void Initialize()
     {
+        if (_session is not null || _framePool is not null)
+        {
+            throw new InvalidOperationException("Session has already been initialized.");
+        }
+
         if (!GraphicsCaptureSession.IsSupported())
         {
             throw new NotSupportedException("Windows.Graphics.Capture is not supported on this device.");
@@ -127,6 +138,7 @@ internal sealed class GpuCaptureSession : IDisposable
         _d3dDevice = d3dDevice;
         _device = device;
         _context = d3dDevice.ImmediateContext;
+        if (_perf is not null) { _perf.D3DDriver = WgcInterop.GetDeviceDriver(d3dDevice); }
 
         var item = _target.CreateItem()
             ?? throw new InvalidOperationException("Failed to create a GraphicsCaptureItem for the target.");
@@ -136,10 +148,11 @@ internal sealed class GpuCaptureSession : IDisposable
         _contentWidth = size.Width;
         _contentHeight = size.Height;
 
-        var outW = _region?.Width ?? size.Width;
-        var outH = _region?.Height ?? size.Height;
-        OutputWidth = Math.Max(2, outW - (outW % 2));
-        OutputHeight = Math.Max(2, outH - (outH % 2));
+        var geometry = CaptureOutputGeometry.Calculate(size.Width, size.Height, _target.IsWindow ? null : _region);
+        _cropBounds = geometry.Encoded;
+        OutputWidth = _cropBounds.Width;
+        OutputHeight = _cropBounds.Height;
+        if (_perf is not null) { _perf.Geometry = geometry; }
 
         _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
             _device,
@@ -149,6 +162,20 @@ internal sealed class GpuCaptureSession : IDisposable
 
         _session = _framePool.CreateCaptureSession(item);
         WgcInterop.TryConfigureSession(_session, _includeCursor);
+    }
+
+    /// <summary>Starts capture after initialization and overlay preparation, without emitting.</summary>
+    public void Start()
+    {
+        if (_running)
+        {
+            return;
+        }
+
+        if (_session is null || _framePool is null)
+        {
+            throw new InvalidOperationException("Initialize must be called before Start.");
+        }
 
         _running = true;
         _framePool.FrameArrived += OnFrameArrived;
@@ -157,7 +184,7 @@ internal sealed class GpuCaptureSession : IDisposable
 
     /// <summary>
     /// Supplies the encoder-frame allocator. Must be called before <see cref="BeginEmitting"/>;
-    /// the session disposes it. Separate from <see cref="Start"/> because the allocator depends
+    /// the session disposes it. Separate from <see cref="Initialize"/> because the allocator depends
     /// on the encoder backend, which in turn needs <see cref="OutputWidth"/>/<see cref="OutputHeight"/>.
     /// </summary>
     public void AttachAllocator(IGpuFrameAllocator allocator)
@@ -187,7 +214,7 @@ internal sealed class GpuCaptureSession : IDisposable
             _emittingPaused = false;
             _lastEmittedPts = TimeSpan.MinValue;
             Interlocked.Exchange(ref _emittedFrameCount, 0);
-            _pump = new FramePacer(_frameInterval, OnPump, "TinyClips.GpuCapturePump");
+            _pump = new FramePacer(_frameInterval, OnPump, "TinyClips.GpuCapturePump", _perf);
             _pump.Start();
         }
     }
@@ -250,6 +277,7 @@ internal sealed class GpuCaptureSession : IDisposable
                 _context.CopyResource(_latest, frameTexture);
                 _context.Flush();
                 _hasLatest = true;
+                Interlocked.Increment(ref _sourceVersion);
 
                 // The surface is pool-sized; real content occupies the top-left ContentSize. A
                 // resized window first shows up as a ContentSize change on an old-size surface.
@@ -273,6 +301,7 @@ internal sealed class GpuCaptureSession : IDisposable
         }
         catch
         {
+            _perf?.ReadbackFailed();
             // A single failed frame must not tear down the recording.
         }
         finally
@@ -292,10 +321,16 @@ internal sealed class GpuCaptureSession : IDisposable
         // for the WGC thread's ~1 ms CopyResource — skipping cost the Timer-based pump ~15% of
         // its ticks at 30 fps.
         GpuFrame frame;
+        long sourceVersion;
         lock (_sync)
         {
-            if (!_running || !_hasLatest || _latest is null || _context is null || _allocator is null)
+            if (!_running || _emittingPaused)
             {
+                return;
+            }
+            if (!_hasLatest || _latest is null || _context is null || _allocator is null)
+            {
+                _perf?.NoSourceFrameTick();
                 return;
             }
 
@@ -303,7 +338,7 @@ internal sealed class GpuCaptureSession : IDisposable
             if (!_allocator.TryAcquire(out frame))
             {
                 Interlocked.Increment(ref _poolExhaustedDrops);
-                _perf?.FrameDropped();
+                _perf?.PoolExhausted();
                 return;
             }
 
@@ -312,17 +347,18 @@ internal sealed class GpuCaptureSession : IDisposable
             try
             {
                 ProduceFrame(frame, produce);
+                sourceVersion = Interlocked.Read(ref _sourceVersion);
             }
             catch
             {
                 frame.Release();
-                _perf?.FrameDropped();
+                _perf?.ProductionFailed();
                 return;
             }
         }
 
         Interlocked.Increment(ref _emittedFrameCount);
-        _perf?.FrameEmitted();
+        _perf?.FrameEmitted(sourceVersion, frame.Pts);
         FrameReady?.Invoke(frame);
     }
 
@@ -332,10 +368,10 @@ internal sealed class GpuCaptureSession : IDisposable
             // Source rectangle in capture-surface pixels: the region (clamped to current content)
             // or the whole content area.
             int x = 0, y = 0, width = _contentWidth, height = _contentHeight;
-            if (_region is { } r)
+            if (_region is not null && !_target.IsWindow)
             {
-                x = Math.Clamp(r.X, 0, Math.Max(0, _contentWidth - 1));
-                y = Math.Clamp(r.Y, 0, Math.Max(0, _contentHeight - 1));
+                x = Math.Clamp(_cropBounds.X, 0, Math.Max(0, _contentWidth - 1));
+                y = Math.Clamp(_cropBounds.Y, 0, Math.Max(0, _contentHeight - 1));
                 width = Math.Clamp(OutputWidth, 1, _contentWidth - x);
                 height = Math.Clamp(OutputHeight, 1, _contentHeight - y);
             }
@@ -408,9 +444,8 @@ internal sealed class GpuCaptureSession : IDisposable
         _pump = null;
         if (pump is not null)
         {
-            // Snapshot before disposing: the end-of-recording report reads this after Stop().
-            _pumpOverrunsAtStop = pump.SkippedTicks;
             pump.Dispose();
+            _pumpOverrunsAtStop = pump.SkippedTicks;
         }
 
         _timeline = null;

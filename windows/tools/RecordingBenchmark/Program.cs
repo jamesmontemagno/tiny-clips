@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using TinyClips.Core.Capture;
@@ -30,6 +32,8 @@ internal static class Program
             return 2;
         }
 
+        // Must precede MonitorService and any monitor/window geometry query.
+        EnsurePhysicalPixelCoordinates();
         Console.WriteLine($"TinyClips recording benchmark — {options.Seconds}s per scenario @ {options.Fps} fps, region={(options.Region is null ? "full monitor" : $"{options.Region.Value.Width}x{options.Region.Value.Height}")}, webcam={(options.Webcam ? "on" : "off")}, audio={(options.Audio ? "on" : "off")}");
         Console.WriteLine($"Machine: {Environment.ProcessorCount} logical cores, {Environment.OSVersion}");
         Console.WriteLine();
@@ -65,9 +69,8 @@ internal static class Program
         if (options.Region is { } r)
         {
             // MonitorInfo is already in physical pixels, matching the WGC item size.
-            var w = Math.Min(r.Width, primary.Width);
-            var h = Math.Min(r.Height, primary.Height);
-            region = new PixelRect((primary.Width - w) / 2, (primary.Height - h) / 2, w, h);
+            region = new PixelRect(Math.Max(0, (primary.Width - r.Width) / 2),
+                Math.Max(0, (primary.Height - r.Height) / 2), r.Width, r.Height);
         }
 
         CaptureTarget? target = null;
@@ -98,7 +101,7 @@ internal static class Program
                     results.Add(result);
                     Console.WriteLine(result.Report is null
                         ? "no report"
-                        : $"pipeline={result.Report.Pipeline} cpu={result.Report.ProcessCpuPercent:F1}% effFps={result.Report.EffectiveFps:F1} dropped={result.Report.FramesDropped}");
+                        : $"requested={result.Report.RequestedPipeline} actual={result.Report.Pipeline} cpu={result.Report.ProcessCpuPercent:F1}% activeFps={result.Report.ActiveFps:F1} queueDrops={result.Report.QueueDrops} cpuSkipped={result.Report.CpuSkippedTickEvents} gpuMissedSlots={result.Report.GpuPacingMissedSlots}");
                 }
                 catch (Exception ex)
                 {
@@ -127,6 +130,10 @@ internal static class Program
             var json = JsonSerializer.Serialize(
                 results.Select(r => new
                 {
+                    SchemaVersion = 2,
+                    DpiAwareness = "PerMonitorV2",
+                    RequestedRegion = options.Region is { } requested
+                        ? new { requested.Width, requested.Height } : null,
                     r.Label,
                     Scenario = r.Scenario.Name,
                     r.Scenario.RequestGpu,
@@ -220,7 +227,7 @@ internal static class Program
     private static string BuildComparisonTable(IReadOnlyList<ScenarioResult> results)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("scenario               pipeline  size       cpu%   cores  effFps  emitted  encoded  dropped  alloc MB/s  gc0/1/2   gcPause%  composite avg/p99 ms  readback avg ms  produce avg ms  encWait avg ms  MB   encoder");
+        sb.AppendLine("scenario               req/actual  size       cpu%   cores activeFps emitted submitted dropped* cpuSkip gpuEvents/slots alloc MB/s gc0/1/2 gcPause% composite avg/p99 ms readback avg ms produce avg ms encWait avg ms MB encoder (selection unverified)");
         foreach (var r in results)
         {
             if (r.Report is null)
@@ -236,11 +243,35 @@ internal static class Program
             var encWait = rep.Stages.FirstOrDefault(s => s.Stage == RecordingStage.EncoderWait);
             sb.AppendLine(string.Create(
                 CultureInfo.InvariantCulture,
-                $"{r.Label,-22} {rep.Pipeline,-8} {rep.Width}x{rep.Height,-5} {rep.ProcessCpuPercent,6:F1} {rep.ProcessCpuCores,6:F2} {rep.EffectiveFps,7:F1} {rep.FramesEmitted,8} {rep.FramesEncoded,8} {rep.FramesDropped,8} {rep.AllocationMbPerSecond,11:F1}  {rep.Gen0Collections}/{rep.Gen1Collections}/{rep.Gen2Collections,-6} {rep.GcPausePercent,7:F1}  {composite?.AverageMs ?? 0,8:F3}/{composite?.P99Ms ?? 0,-8:F3} {readback?.AverageMs ?? 0,15:F3} {produce?.AverageMs ?? 0,15:F3} {encWait?.AverageMs ?? 0,15:F3} {r.OutputBytes / 1024.0 / 1024.0,5:F1}  {rep.EncoderPath}"));
+                $"{r.Label,-22} {rep.RequestedPipeline}/{rep.Pipeline,-6} {rep.Width}x{rep.Height,-5} {rep.ProcessCpuPercent,6:F1} {rep.ProcessCpuCores,6:F2} {rep.ActiveFps,7:F1} {rep.FramesEmitted,8} {rep.FramesSubmitted,9} {rep.FramesDropped,8} {rep.CpuSkippedTickEvents,7} {rep.GpuPacingOverrunEvents}/{rep.GpuPacingMissedSlots} {rep.AllocationMbPerSecond,11:F1}  {rep.Gen0Collections}/{rep.Gen1Collections}/{rep.Gen2Collections,-6} {rep.GcPausePercent,7:F1}  {composite?.AverageMs ?? 0,8:F3}/{composite?.P99Ms ?? 0,-8:F3} {readback?.AverageMs ?? 0,15:F3} {produce?.AverageMs ?? 0,15:F3} {encWait?.AverageMs ?? 0,15:F3} {r.OutputBytes / 1024.0 / 1024.0,5:F1}  {rep.EncoderPath}"));
         }
 
+        sb.AppendLine("* dropped = queue + pool + production only; pacing events/slots are separate and must not be summed. Submitted is not decoded output.");
         return sb.ToString();
     }
+
+    private static void EnsurePhysicalPixelCoordinates()
+    {
+        var perMonitorV2 = (nint)(-4);
+        var established = SetProcessDpiAwarenessContext(perMonitorV2);
+        var error = established ? 0 : Marshal.GetLastWin32Error();
+        if (!established &&
+            !AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(), perMonitorV2))
+        {
+            throw new Win32Exception(error, "Benchmark requires Per-Monitor-V2 DPI awareness.");
+        }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessDpiAwarenessContext(nint context);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetThreadDpiAwarenessContext();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AreDpiAwarenessContextsEqual(nint first, nint second);
 
     private static nint FindWindowByTitle(string titleFragment)
     {

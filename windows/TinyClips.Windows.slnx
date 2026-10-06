@@ -16,6 +16,10 @@
     </Project>
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TinyClips.App.Tests/TinyClips.App.Tests.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
     <Project Path="tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj">
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|ARM64" Project="ARM64" />
