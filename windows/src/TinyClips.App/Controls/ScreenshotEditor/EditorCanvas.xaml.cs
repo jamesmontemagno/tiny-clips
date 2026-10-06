@@ -469,7 +469,7 @@ public sealed partial class EditorCanvas : UserControl
             EnsureArrowShaft(ann, visual!);
         }
 
-        if (exists && ann.Tool == EditTool.Redact)
+        if (ann.Tool == EditTool.Redact)
         {
             var isMoving = ReferenceEquals(ann, _movingAnnotation);
             if (!isMoving)
@@ -477,7 +477,7 @@ public sealed partial class EditorCanvas : UserControl
                 _controller.EnsureRedactPreview(ann);
             }
             var wantsImage = !isMoving && !ReferenceEquals(ann, _controller.ActiveAnnotation) && ann.RedactPreview is not null;
-            var isImage = visual!.Primary is Image;
+            var isImage = exists && visual!.Primary is Image;
             if (wantsImage != isImage)
             {
                 RemoveVisual(ann);

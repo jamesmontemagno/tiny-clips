@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
@@ -17,6 +19,7 @@ using Windows.Storage;
 using Windows.Storage.Streams;
 using Windows.UI;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Capture;
 
 namespace TinyClips.App.ScreenshotEditor;
 
@@ -34,7 +37,13 @@ internal sealed class EditorController : IDisposable
     private readonly DispatcherQueue _dispatcherQueue;
 
     private SoftwareBitmap? _bitmap;
-    private CanvasBitmap? _canvasSource;
+    private SharedResource<EditorImage>? _imageOwner;
+    private readonly ScreenshotDocumentRevision _revision = new();
+    private CancellationTokenSource _documentCancellation = new();
+    private readonly SemaphoreSlim _renderGate = new(1, 1);
+    private readonly Dictionary<Annotation, RedactPreviewRequest> _previewRequests = new();
+    private CancellationTokenSource? _cropCancellation;
+    private bool _isReplacingImage;
     private bool _isDisposed;
 
     private readonly List<Annotation> _annotations = new();
@@ -88,7 +97,7 @@ internal sealed class EditorController : IDisposable
 
     /// <summary>
     /// True when the document has genuine committed edits (annotation added/removed/undone,
-    /// crop applied, or an existing annotation moved/resized/restyled) since the last
+    /// crop applied, an existing annotation moved/resized/restyled, or export styling changed) since the last
     /// <see cref="MarkSaved"/> call. Deliberately not derived from <see cref="AnnotationVisualInvalidated"/>
     /// or <see cref="AnnotationsStructureChanged"/> subscriptions — those also fire for
     /// non-edits (in-progress drag previews, async redaction-preview refreshes) and for
@@ -96,12 +105,25 @@ internal sealed class EditorController : IDisposable
     /// see false positives. <see cref="MarkDirty"/> is called only at the specific mutation
     /// sites that represent a real, persistable change to the document.
     /// </summary>
-    public bool IsDirty { get; private set; }
+    public bool IsDirty => _revision.IsDirty;
 
-    private void MarkDirty() => IsDirty = true;
+    private void MarkDirty() => _revision.MarkEdited();
 
-    /// <summary>Called after a successful Save/Save-a-copy (or the initial image load) to reset the dirty flag.</summary>
-    public void MarkSaved() => IsDirty = false;
+    public bool CanExport => !_isDisposed && !_isReplacingImage && _bitmap is not null;
+
+    public bool IsCurrent(DocumentRevision revision, CancellationToken cancellationToken = default) =>
+        _revision.IsCurrent(revision, cancellationToken);
+
+    public bool IsSameDocument(DocumentRevision revision) => _revision.IsSameDocument(revision);
+
+    /// <summary>A save may clear dirty state only for the exact revision it encoded.</summary>
+    public bool MarkSaved(DocumentRevision revision) => _revision.MarkSaved(revision);
+
+    public void NotifyExportSettingsEdited()
+    {
+        VerifyAccess();
+        if (!_isDisposed && _bitmap is not null) MarkDirty();
+    }
 
     public Annotation? SelectedAnnotation { get; private set; }
 
@@ -203,63 +225,105 @@ internal sealed class EditorController : IDisposable
     public async Task LoadAsync(string filePath)
     {
         if (_isDisposed) return;
-        var file = await StorageFile.GetFileFromPathAsync(filePath);
-        if (_isDisposed) return;
-        using var stream = await file.OpenAsync(FileAccessMode.Read);
-        if (_isDisposed) return;
-        var decoder = await BitmapDecoder.CreateAsync(stream);
-        if (_isDisposed) return;
-        var bitmap = await decoder.GetSoftwareBitmapAsync(
-            BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-        await SetBitmapFromCaptureAsync(bitmap);
-    }
-
-    /// <summary>
-    /// Loads a freshly captured bitmap (already BGRA8 premultiplied) as the document, resetting
-    /// annotations — the in-memory equivalent of <see cref="LoadAsync"/>.
-    /// Takes ownership of <paramref name="bitmap"/>, even if the controller has been disposed.
-    /// </summary>
-    public async Task SetBitmapFromCaptureAsync(SoftwareBitmap bitmap)
-    {
-        await SetBitmapAsync(bitmap);
-        if (_isDisposed || !ReferenceEquals(_bitmap, bitmap)) return;
-        _annotations.Clear();
-        _counterValue = 1;
-        SelectedAnnotation = null;
-        AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    public async Task SetBitmapAsync(SoftwareBitmap bitmap)
-    {
-        // Keep pending resources local: closing must not dispose a bitmap while XAML is still
-        // copying it, and neither a late file decode nor a capture copy may revive this controller.
-        CanvasBitmap? canvasSource = null;
-        var ownsBitmap = true;
+        var revision = BeginImageReplacement();
         try
         {
-            if (_isDisposed) return;
-            canvasSource = CanvasBitmap.CreateFromSoftwareBitmap(CanvasDevice.GetSharedDevice(), bitmap);
-            var source = new SoftwareBitmapSource();
-            await source.SetBitmapAsync(bitmap);
-            if (_isDisposed) return;
-
-            _bitmap?.Dispose();
-            _canvasSource?.Dispose();
-            _bitmap = bitmap;
-            _canvasSource = canvasSource;
-            ownsBitmap = false;
-            canvasSource = null;
-            PreviewSource = source;
-            ImageChanged?.Invoke(this, EventArgs.Empty);
+            var file = await StorageFile.GetFileFromPathAsync(filePath);
+            if (!IsSameDocument(revision)) return;
+            using var stream = await file.OpenAsync(FileAccessMode.Read);
+            if (!IsSameDocument(revision)) return;
+            var decoder = await BitmapDecoder.CreateAsync(stream);
+            if (!IsSameDocument(revision)) return;
+            var bitmap = await decoder.GetSoftwareBitmapAsync(
+                BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+            await SetBitmapAsync(bitmap, revision, resetAnnotations: true);
         }
         finally
         {
-            canvasSource?.Dispose();
+            if (IsSameDocument(revision)) _isReplacingImage = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads captured pixels as the document. Invalidation starts before the worker copy so a
+    /// second Reset or closure cannot allow an older result to replace the new document.
+    /// </summary>
+    public async Task LoadCapturedFrameAsync(CapturedFrame frame)
+    {
+        if (_isDisposed) return;
+        var revision = BeginImageReplacement();
+        try
+        {
+            var bitmap = await Task.Run(() => SoftwareBitmap.CreateCopyFromBuffer(
+                frame.BgraPixels.AsBuffer(), BitmapPixelFormat.Bgra8,
+                frame.Width, frame.Height, BitmapAlphaMode.Premultiplied));
+            await SetBitmapAsync(bitmap, revision, resetAnnotations: true);
+        }
+        finally
+        {
+            if (IsSameDocument(revision)) _isReplacingImage = false;
+        }
+    }
+
+    private DocumentRevision BeginImageReplacement()
+    {
+        VerifyAccess();
+        CancelDocumentWork();
+        _revision.ReplaceDocument();
+        _isReplacingImage = true;
+        return _revision.Current;
+    }
+
+    private void CancelDocumentWork()
+    {
+        _documentCancellation.Cancel();
+        _documentCancellation.Dispose();
+        _documentCancellation = new CancellationTokenSource();
+        _cropCancellation?.Cancel();
+        foreach (var request in _previewRequests.Values) request.Cancellation.Cancel();
+        _previewRequests.Clear();
+    }
+
+    private async Task<bool> SetBitmapAsync(
+        SoftwareBitmap bitmap, DocumentRevision revision, bool resetAnnotations, CancellationToken cancellationToken = default)
+    {
+        var ownsBitmap = true;
+        SoftwareBitmapSource? source = null;
+        try
+        {
+            bool CanInstall() => !cancellationToken.IsCancellationRequested
+                && (resetAnnotations ? IsSameDocument(revision) : IsCurrent(revision, cancellationToken));
+            if (!CanInstall()) return false;
+            source = new SoftwareBitmapSource();
+            await source.SetBitmapAsync(bitmap);
+            if (!CanInstall()) return false;
+
+            CancelActiveAnnotation();
+            CancelDocumentWork();
+            if (!resetAnnotations) _revision.ReplaceDocument();
+            _imageOwner?.Dispose();
+            _bitmap = bitmap;
+            _imageOwner = new SharedResource<EditorImage>(new EditorImage(bitmap));
+            ownsBitmap = false;
+            PreviewSource = source;
+            source = null;
+            _annotations.Clear();
+            _counterValue = 1;
+            SelectedAnnotation = null;
+            if (resetAnnotations) _revision.MarkSaved(_revision.Current);
+            else MarkDirty();
+            ImageChanged?.Invoke(this, EventArgs.Empty);
+            AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+            return true;
+        }
+        finally
+        {
+            source?.Dispose();
             if (ownsBitmap) bitmap.Dispose();
         }
     }
 
-    /// <summary>Bindable image source for the preview <c>Image</c> element; refreshed by <see cref="SetBitmapAsync"/>.</summary>
+    /// <summary>Bindable image source for the preview <c>Image</c> element.</summary>
     public SoftwareBitmapSource? PreviewSource { get; private set; }
 
     // -- Tool / selection ----------------------------------------------------------------------
@@ -602,67 +666,87 @@ internal sealed class EditorController : IDisposable
 
     public void ApplyPreset(BackgroundPreset preset)
     {
+        if (BgStyle == preset.Style && BgColor == preset.Primary && BgColor2 == (preset.Secondary ?? preset.Primary)) return;
         BgStyle = preset.Style;
         BgColor = preset.Primary;
         BgColor2 = preset.Secondary ?? preset.Primary;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetBackgroundStyle(ExportBackgroundStyle style)
     {
+        if (BgStyle == style) return;
         BgStyle = style;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetCustomBgColor(Color color)
     {
+        if (BgColor == color) return;
         BgColor = color;
-        if (BgStyle == ExportBackgroundStyle.Solid)
+        if (BgStyle is ExportBackgroundStyle.Solid or ExportBackgroundStyle.Gradient)
         {
+            MarkDirty();
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
     public void ApplyCustomSolidBackground(Color color)
     {
+        if (BgStyle == ExportBackgroundStyle.Solid && BgColor == color) return;
         BgStyle = ExportBackgroundStyle.Solid;
         BgColor = color;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetPadding(double padding)
     {
+        if (CanvasPadding == padding) return;
         CanvasPadding = padding;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetCornerRadius(double corner)
     {
+        if (CanvasCornerRadius == corner) return;
         CanvasCornerRadius = corner;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetShadow(double shadow)
     {
+        if (CanvasShadow == shadow) return;
         CanvasShadow = shadow;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetExportFramePreset(ExportFramePreset preset)
     {
+        if (FramePreset == preset) return;
         FramePreset = preset;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetHorizontalExportAlignment(ExportHorizontalAlignment alignment)
     {
+        if (HorizontalExportAlignment == alignment) return;
         HorizontalExportAlignment = alignment;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetVerticalExportAlignment(ExportVerticalAlignment alignment)
     {
+        if (VerticalExportAlignment == alignment) return;
         VerticalExportAlignment = alignment;
+        MarkDirty();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1154,6 +1238,7 @@ internal sealed class EditorController : IDisposable
         }
 
         var last = _annotations[^1];
+        CancelRedactPreview(last);
         if (last.Tool == EditTool.Counter)
         {
             _counterValue = Math.Max(1, _counterValue - 1);
@@ -1171,6 +1256,7 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
+        CancelRedactPreview(SelectedAnnotation);
         _annotations.Remove(SelectedAnnotation);
         SelectedAnnotation = null;
         MarkDirty();
@@ -1210,22 +1296,35 @@ internal sealed class EditorController : IDisposable
 
     public async Task ApplyCropAsync(BitmapBounds bounds)
     {
-        if (_bitmap is null || bounds.Width < 1 || bounds.Height < 1)
+        if (!CanExport || bounds.Width < 1 || bounds.Height < 1)
         {
             return;
         }
 
-        // Bake annotations first so they crop with the image, then crop.
-        // The export background is applied at save time, not during crop.
-        var flattened = await RenderToBitmapAsync(includeBackground: false);
-        var cropped = await CropAsync(flattened, bounds);
-        flattened.Dispose();
-        await SetBitmapAsync(cropped);
-        _annotations.Clear();
-        _counterValue = 1;
-        SelectedAnnotation = null;
-        MarkDirty();
-        AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+        using var snapshot = CaptureRenderSnapshot(includeBackground: false);
+        _cropCancellation?.Cancel();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(snapshot.DocumentCancellation);
+        _cropCancellation = cancellation;
+        try
+        {
+            // Crop pre-baking excludes export styling and always uses native image dimensions.
+            using var flattened = await RenderToBitmapAsync(snapshot, cancellation.Token);
+            var cropped = await Task.Run(() => CropAsync(flattened, bounds), cancellation.Token);
+            if (cancellation.IsCancellationRequested)
+            {
+                cropped.Dispose();
+                cancellation.Token.ThrowIfCancellationRequested();
+            }
+            await SetBitmapAsync(cropped, snapshot.Revision, resetAnnotations: false, cancellationToken: cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Replacement, closure or a newer crop superseded this operation.
+        }
+        finally
+        {
+            if (ReferenceEquals(_cropCancellation, cancellation)) _cropCancellation = null;
+        }
     }
 
     private static async Task<SoftwareBitmap> CropAsync(SoftwareBitmap source, BitmapBounds bounds)
@@ -1248,74 +1347,71 @@ internal sealed class EditorController : IDisposable
 
     // -- Win2D baking of annotations ----------------------------------------------------------
 
-    /// <summary>
-    /// Flattens the current bitmap plus all annotations into a new <see cref="SoftwareBitmap"/>
-    /// at full resolution using Win2D. Returns a copy even when there are no annotations.
-    /// </summary>
-    public async Task<SoftwareBitmap> RenderToBitmapAsync(bool includeBackground = true)
+    private void VerifyAccess()
     {
-        if (_bitmap is null)
+        if (!_dispatcherQueue.HasThreadAccess)
         {
-            throw new InvalidOperationException("No bitmap loaded.");
+            throw new InvalidOperationException("Editor state must be accessed on its owning thread.");
         }
+    }
 
-        await Task.CompletedTask;
+    public EditorRenderSnapshot CaptureRenderSnapshot(int scalePercent = 100, bool includeBackground = true)
+    {
+        VerifyAccess();
+        if (!CanExport || _imageOwner is null) throw new InvalidOperationException("No image ready for export.");
+        var frame = includeBackground
+            ? GetExportFrameLayout()
+            : ExportFrameLayout.Create(_bitmap!.PixelWidth, _bitmap.PixelHeight, 0,
+                ExportFramePreset.Original, ExportHorizontalAlignment.Center, ExportVerticalAlignment.Center);
+        var state = new ScreenshotRenderState(
+            _annotations.Select(ann => ann.CaptureSnapshot()).ToImmutableArray(),
+            frame, BgStyle, BgColor, BgColor2, CanvasCornerRadius, CanvasShadow, includeBackground,
+            ScreenshotExportSize.Create(frame.FrameSize, scalePercent));
+        return new EditorRenderSnapshot(_imageOwner.Acquire(), state, _revision.Current, _documentCancellation.Token);
+    }
+
+    public async Task<SoftwareBitmap> RenderToBitmapAsync(EditorRenderSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        // The gate bounds GPU work per editor. Workers receive only immutable data and a source
+        // lease; replacing/closing the editor cannot dispose the bitmap underneath them.
+        await _renderGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await Task.Run(() => RenderSnapshot(snapshot, cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _renderGate.Release();
+        }
+    }
+
+    private static SoftwareBitmap RenderSnapshot(EditorRenderSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var state = snapshot.State;
+        var image = snapshot.Image;
         var device = CanvasDevice.GetSharedDevice();
-        using var source = CanvasBitmap.CreateFromSoftwareBitmap(device, _bitmap);
-        var imgW = (float)_bitmap.PixelWidth;
-        var imgH = (float)_bitmap.PixelHeight;
-
-        var hasBackground = BgStyle != ExportBackgroundStyle.Transparent
-            || CanvasPadding > 0
-            || CanvasCornerRadius > 0
-            || CanvasShadow > 0
-            || FramePreset != ExportFramePreset.Original;
-
-        // Simple path: no background/padding/corners/shadow, or caller opted out (crop pre-bake).
-        if (!includeBackground || !hasBackground)
-        {
-            using var flatTarget = new CanvasRenderTarget(device, imgW, imgH, 96);
-            using (var ds = flatTarget.CreateDrawingSession())
-            {
-                ds.Clear(Colors.Transparent);
-                ds.DrawImage(source);
-                // Single stable-order pass over the annotation list so bake/export z-order always
-                // matches the canvas's live preview (which stacks by list order via ApplyZOrder) —
-                // rather than drawing every redaction underneath every other annotation regardless
-                // of when it was added.
-                foreach (var ann in _annotations)
-                {
-                    DrawAnnotation(ds, source, ann);
-                }
-            }
-
-            return SoftwareBitmap.CreateCopyFromBuffer(
-                flatTarget.GetPixelBytes().AsBuffer(),
-                BitmapPixelFormat.Bgra8,
-                (int)imgW,
-                (int)imgH,
-                BitmapAlphaMode.Premultiplied);
-        }
-
-        // Composited path: padded background frame, rounded screenshot card, optional shadow.
-        var frame = GetExportFrameLayout();
-        var corner = (float)CanvasCornerRadius;
+        var source = image.GetCanvasSource(device);
+        var imgW = (float)image.Bitmap.PixelWidth;
+        var imgH = (float)image.Bitmap.PixelHeight;
+        var frame = state.Frame;
+        var corner = (float)state.CornerRadius;
         var outW = (float)frame.FrameSize.Width;
         var outH = (float)frame.FrameSize.Height;
 
-        using var target = new CanvasRenderTarget(device, outW, outH, 96);
-        using (var ds = target.CreateDrawingSession())
+        // Record logical-size composition without an intermediate bitmap/readback. Replay once
+        // into the final-sized target, preserving clipping, effects and list-order annotations.
+        using var commands = new CanvasCommandList(device);
+        using (var ds = commands.CreateDrawingSession())
         {
-            ds.Clear(Colors.Transparent);
-
             var fullRect = new Rect(0, 0, outW, outH);
-            if (BgStyle == ExportBackgroundStyle.Solid)
+            if (state.IncludeBackground && state.BackgroundStyle == ExportBackgroundStyle.Solid)
             {
-                ds.FillRectangle(fullRect, BgColor);
+                ds.FillRectangle(fullRect, state.BackgroundColor);
             }
-            else if (BgStyle == ExportBackgroundStyle.Gradient)
+            else if (state.IncludeBackground && state.BackgroundStyle == ExportBackgroundStyle.Gradient)
             {
-                using var brush = new CanvasLinearGradientBrush(device, BgColor, BgColor2)
+                using var brush = new CanvasLinearGradientBrush(device, state.BackgroundColor, state.BackgroundColor2)
                 {
                     StartPoint = new Vector2(0, 0),
                     EndPoint = new Vector2(outW, outH),
@@ -1323,52 +1419,73 @@ internal sealed class EditorController : IDisposable
                 ds.FillRectangle(fullRect, brush);
             }
 
-            using var cardGeo = CanvasGeometry.CreateRoundedRectangle(
-                device,
-                (float)frame.ImageBounds.X,
-                (float)frame.ImageBounds.Y,
-                imgW,
-                imgH,
-                corner,
-                corner);
-
-            if (CanvasShadow > 0)
+            if (!state.IncludeBackground)
             {
-                using var shadowList = new CanvasCommandList(device);
-                using (var sds = shadowList.CreateDrawingSession())
-                {
-                    sds.FillGeometry(cardGeo, Colors.Black);
-                }
-
-                using var shadow = new ShadowEffect
-                {
-                    Source = shadowList,
-                    BlurAmount = (float)CanvasShadow,
-                    ShadowColor = Color.FromArgb(120, 0, 0, 0),
-                };
-                ds.DrawImage(shadow, new Vector2(0, (float)(CanvasShadow * 0.35)));
-            }
-
-            using (ds.CreateLayer(1f, cardGeo))
-            {
-                ds.Transform = Matrix3x2.CreateTranslation((float)frame.ImageBounds.X, (float)frame.ImageBounds.Y);
                 ds.DrawImage(source);
-                // Same single stable-order pass as the simple path above (kept in sync
-                // deliberately — see the comment there).
-                foreach (var ann in _annotations)
+                foreach (var ann in state.Annotations) DrawAnnotation(ds, source, ann);
+            }
+            else
+            {
+                using var cardGeo = CanvasGeometry.CreateRoundedRectangle(
+                    device,
+                    (float)frame.ImageBounds.X,
+                    (float)frame.ImageBounds.Y,
+                    imgW,
+                    imgH,
+                    corner,
+                    corner);
+
+                if (state.Shadow > 0)
                 {
-                    DrawAnnotation(ds, source, ann);
+                    using var shadowList = new CanvasCommandList(device);
+                    using (var sds = shadowList.CreateDrawingSession())
+                    {
+                        sds.FillGeometry(cardGeo, Colors.Black);
+                    }
+
+                    using var shadow = new ShadowEffect
+                    {
+                        Source = shadowList,
+                        BlurAmount = (float)state.Shadow,
+                        ShadowColor = Color.FromArgb(120, 0, 0, 0),
+                    };
+                    ds.DrawImage(shadow, new Vector2(0, (float)(state.Shadow * 0.35)));
                 }
-                ds.Transform = Matrix3x2.Identity;
+
+                using (ds.CreateLayer(1f, cardGeo))
+                {
+                    ds.Transform = Matrix3x2.CreateTranslation((float)frame.ImageBounds.X, (float)frame.ImageBounds.Y);
+                    ds.DrawImage(source);
+                    foreach (var ann in state.Annotations)
+                    {
+                        DrawAnnotation(ds, source, ann);
+                    }
+                    ds.Transform = Matrix3x2.Identity;
+                }
             }
         }
 
-        return SoftwareBitmap.CreateCopyFromBuffer(
-            target.GetPixelBytes().AsBuffer(),
-            BitmapPixelFormat.Bgra8,
-            (int)outW,
-            (int)outH,
-            BitmapAlphaMode.Premultiplied);
+        cancellationToken.ThrowIfCancellationRequested();
+        var size = state.OutputSize;
+        using var target = new CanvasRenderTarget(device, size.Width, size.Height, 96);
+        using (var ds = target.CreateDrawingSession())
+        {
+            ds.Clear(Colors.Transparent);
+            ds.DrawImage(commands,
+                new Rect(0, 0, size.Width, size.Height),
+                new Rect(0, 0, size.RenderWidth, size.RenderHeight));
+        }
+
+        return ReadTarget(target, size.Width, size.Height, cancellationToken);
+    }
+
+    private static SoftwareBitmap ReadTarget(CanvasRenderTarget target, int width, int height, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var pixels = target.GetPixelBytes();
+        cancellationToken.ThrowIfCancellationRequested();
+        return SoftwareBitmap.CreateCopyFromBuffer(pixels.AsBuffer(),
+            BitmapPixelFormat.Bgra8, width, height, BitmapAlphaMode.Premultiplied);
     }
 
     // -- Redaction ----------------------------------------------------------------------------
@@ -1397,7 +1514,9 @@ internal sealed class EditorController : IDisposable
     /// </summary>
     public void EnsureRedactPreview(Annotation ann)
     {
-        if (_canvasSource is null || ReferenceEquals(ann, ActiveAnnotation))
+        VerifyAccess();
+        if (!CanExport || _imageOwner is null || !_annotations.Contains(ann)
+            || ReferenceEquals(ann, ActiveAnnotation))
         {
             return;
         }
@@ -1413,84 +1532,159 @@ internal sealed class EditorController : IDisposable
         if (ann.RedactPreview is not null
             && ann.RedactPreviewLevel == ann.Redaction
             && ann.RedactPreviewStyle == ann.RedactStyle
-            && SameRect(ann.RedactPreviewBounds, b))
+            && ann.RedactPreviewBounds == b)
         {
             return;
         }
 
-        try
+        ann.RedactPreview = null;
+        if (_previewRequests.TryGetValue(ann, out var pending))
         {
-            var device = CanvasDevice.GetSharedDevice();
-            var w = (int)Math.Round(b.Width);
-            var h = (int)Math.Round(b.Height);
-            if (w < 1 || h < 1)
-            {
-                return;
-            }
+            if (pending.Revision == _revision.Current && pending.Bounds == b
+                && pending.Level == ann.Redaction && pending.Style == ann.RedactStyle) return;
+            pending.Cancellation.Cancel();
+        }
 
-            var srcRect = new Rect(b.X, b.Y, w, h);
-            using var rt = new CanvasRenderTarget(device, w, h, 96);
-            using (var ds = rt.CreateDrawingSession())
-            {
-                ds.Clear(Colors.Transparent);
-                using var effect = BuildRedactEffect(_canvasSource, srcRect, ann.Redaction, ann.RedactStyle);
-                ds.DrawImage(effect, new Rect(0, 0, w, h), srcRect);
-            }
+        var request = new RedactPreviewRequest(b, ann.Redaction, ann.RedactStyle, _revision.Current,
+            CancellationTokenSource.CreateLinkedTokenSource(_documentCancellation.Token));
+        _previewRequests[ann] = request;
+        _ = GenerateRedactPreviewAsync(ann, request, _imageOwner.Acquire());
+    }
 
-            var sb = SoftwareBitmap.CreateCopyFromBuffer(
-                rt.GetPixelBytes().AsBuffer(),
-                BitmapPixelFormat.Bgra8,
-                w,
-                h,
-                BitmapAlphaMode.Premultiplied);
+    private sealed record RedactPreviewRequest(
+        Rect Bounds, RedactionLevel Level, RedactionStyle Style,
+        DocumentRevision Revision, CancellationTokenSource Cancellation);
 
-            var preview = new SoftwareBitmapSource();
-            ann.RedactPreview = preview;
-            ann.RedactPreviewBounds = b;
-            ann.RedactPreviewLevel = ann.Redaction;
-            ann.RedactPreviewStyle = ann.RedactStyle;
-            // sb is a native SoftwareBitmap copy owned only by this method — SetBitmapAsync copies
-            // its pixels into the SoftwareBitmapSource, so sb must be disposed once that completes,
-            // whether it succeeds or throws, or every redaction preview leaks native memory. Guard
-            // the call itself too, in case SetBitmapAsync throws synchronously before returning a
-            // task (the outer catch below logs it; sb must still be disposed here first).
+    private void CancelRedactPreview(Annotation ann)
+    {
+        if (_previewRequests.Remove(ann, out var request)) request.Cancellation.Cancel();
+    }
+
+    private bool IsCurrentPreview(Annotation ann, RedactPreviewRequest request) =>
+        IsCurrent(request.Revision, request.Cancellation.Token)
+        && _annotations.Contains(ann)
+        && NormalizedBounds(ann) == request.Bounds
+        && ann.Redaction == request.Level && ann.RedactStyle == request.Style
+        && _previewRequests.TryGetValue(ann, out var current) && ReferenceEquals(current, request);
+
+    private async Task GenerateRedactPreviewAsync(
+        Annotation ann, RedactPreviewRequest request, SharedResource<EditorImage>.Lease image)
+    {
+        using (image)
+        using (request.Cancellation)
+        {
+            var token = request.Cancellation.Token;
             try
             {
-                _ = preview.SetBitmapAsync(sb).AsTask().ContinueWith(
-                    t =>
+                await _renderGate.WaitAsync(token).ConfigureAwait(false);
+                SoftwareBitmap bitmap;
+                try
+                {
+                    bitmap = await Task.Run(() => RenderRedactPreview(image.Value, request.Bounds,
+                        request.Level, request.Style, token), token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _renderGate.Release();
+                }
+
+                using (bitmap)
+                {
+                    await OnOwningThreadAsync(async () =>
                     {
-                        sb.Dispose();
-                        if (t.IsFaulted)
+                        if (!IsCurrentPreview(ann, request)) return;
+                        var preview = new SoftwareBitmapSource();
+                        var published = false;
+                        try
                         {
-                            System.Diagnostics.Debug.WriteLine($"Redact preview bitmap set failed: {t.Exception}");
+                            await preview.SetBitmapAsync(bitmap);
+                            if (!IsCurrentPreview(ann, request)) return;
+                            ann.RedactPreview = preview;
+                            ann.RedactPreviewBounds = request.Bounds;
+                            ann.RedactPreviewLevel = request.Level;
+                            ann.RedactPreviewStyle = request.Style;
+                            published = true;
+                            AnnotationVisualInvalidated?.Invoke(this, ann);
                         }
-                        _dispatcherQueue.TryEnqueue(() =>
+                        finally
                         {
-                            // This callback can already be queued when the window closes or resets.
-                            if (!_isDisposed && ReferenceEquals(ann.RedactPreview, preview)
-                                && _annotations.Contains(ann))
-                            {
-                                AnnotationVisualInvalidated?.Invoke(this, ann);
-                            }
-                        });
-                    },
-                    TaskScheduler.Default);
+                            if (!published) preview.Dispose();
+                        }
+                    }).ConfigureAwait(false);
+                }
             }
-            catch
+            catch (OperationCanceledException) when (token.IsCancellationRequested || _isDisposed)
             {
-                sb.Dispose();
-                throw;
+                // Superseded requests keep their leases until their worker finishes.
             }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Redact preview failed: {ex}");
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Redact preview failed: {ex}");
+            }
+            finally
+            {
+                try
+                {
+                    await OnOwningThreadAsync(() =>
+                    {
+                        if (_previewRequests.TryGetValue(ann, out var current) && ReferenceEquals(current, request))
+                        {
+                            _previewRequests.Remove(ann);
+                            // An unrelated edit can invalidate work without redrawing this annotation.
+                            // Ask the canvas for the latest preview only after the stale worker drains.
+                            if (IsSameDocument(request.Revision) && !IsCurrent(request.Revision) && _annotations.Contains(ann))
+                                AnnotationVisualInvalidated?.Invoke(this, ann);
+                        }
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (_isDisposed)
+                {
+                    // Dispatcher shutdown: closure already cleared the pending requests.
+                }
+            }
         }
     }
 
-    private static bool SameRect(Rect a, Rect b) =>
-        Math.Abs(a.X - b.X) < 0.5 && Math.Abs(a.Y - b.Y) < 0.5
-        && Math.Abs(a.Width - b.Width) < 0.5 && Math.Abs(a.Height - b.Height) < 0.5;
+    private Task OnOwningThreadAsync(Func<Task> action)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                await action();
+                completion.SetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.SetException(ex);
+            }
+        }))
+        {
+            completion.SetCanceled();
+        }
+        return completion.Task;
+    }
+
+    private static SoftwareBitmap RenderRedactPreview(
+        EditorImage image, Rect bounds, RedactionLevel level, RedactionStyle style, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var device = CanvasDevice.GetSharedDevice();
+        var source = image.GetCanvasSource(device);
+        var w = checked((int)Math.Round(bounds.Width));
+        var h = checked((int)Math.Round(bounds.Height));
+        var srcRect = new Rect(bounds.X, bounds.Y, w, h);
+        using var target = new CanvasRenderTarget(device, w, h, 96);
+        using (var ds = target.CreateDrawingSession())
+        {
+            ds.Clear(Colors.Transparent);
+            using var effect = BuildRedactEffect(source, srcRect, level, style);
+            ds.DrawImage(effect, new Rect(0, 0, w, h), srcRect);
+        }
+        return ReadTarget(target, w, h, token);
+    }
 
     private static ICanvasImage BuildRedactEffect(CanvasBitmap source, Rect region, RedactionLevel level, RedactionStyle style)
     {
@@ -1541,7 +1735,7 @@ internal sealed class EditorController : IDisposable
         };
     }
 
-    private static void DrawRedaction(CanvasDrawingSession ds, CanvasBitmap source, Annotation ann)
+    private static void DrawRedaction(CanvasDrawingSession ds, CanvasBitmap source, AnnotationSnapshot ann)
     {
         var b = NormalizedBounds(ann);
         if (b.Width < 1 || b.Height < 1)
@@ -1560,7 +1754,7 @@ internal sealed class EditorController : IDisposable
     /// used to draw every redaction underneath every other annotation regardless of list order,
     /// mismatching the canvas's live list-order stacking).
     /// </summary>
-    private static void DrawAnnotation(CanvasDrawingSession ds, CanvasBitmap source, Annotation ann)
+    private static void DrawAnnotation(CanvasDrawingSession ds, CanvasBitmap source, AnnotationSnapshot ann)
     {
         if (ann.Tool == EditTool.Redact)
         {
@@ -1572,7 +1766,7 @@ internal sealed class EditorController : IDisposable
         }
     }
 
-    private static void DrawAnnotationToSession(CanvasDrawingSession ds, Annotation ann)
+    private static void DrawAnnotationToSession(CanvasDrawingSession ds, AnnotationSnapshot ann)
     {
         var color = ann.Color;
         var thickness = (float)ann.Thickness;
@@ -1597,7 +1791,7 @@ internal sealed class EditorController : IDisposable
         }
     }
 
-    private static void DrawAnnotationCore(CanvasDrawingSession ds, Annotation ann, Color color, float thickness)
+    private static void DrawAnnotationCore(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
     {
         switch (ann.Tool)
         {
@@ -1650,7 +1844,7 @@ internal sealed class EditorController : IDisposable
             }
             case EditTool.Pen:
             {
-                if (ann.Points.Count > 1)
+                if (ann.Points.Length > 1)
                 {
                     var style = new CanvasStrokeStyle
                     {
@@ -1658,7 +1852,7 @@ internal sealed class EditorController : IDisposable
                         EndCap = CanvasCapStyle.Round,
                         LineJoin = CanvasLineJoin.Round,
                     };
-                    for (var i = 1; i < ann.Points.Count; i++)
+                    for (var i = 1; i < ann.Points.Length; i++)
                     {
                         ds.DrawLine(ann.Points[i - 1], ann.Points[i], color, thickness, style);
                     }
@@ -1724,7 +1918,7 @@ internal sealed class EditorController : IDisposable
         }
     }
 
-    private static void DrawArrowToSession(CanvasDrawingSession ds, Annotation ann, Color color, float thickness)
+    private static void DrawArrowToSession(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
     {
         var (start, end) = Segment(ann);
         var shape = BuildArrow(start, end, thickness, ann.ArrowStyle);
@@ -1750,9 +1944,12 @@ internal sealed class EditorController : IDisposable
 
     // -- Geometry helpers (also used by EditorCanvas for the live XAML preview) ----------------
 
-    public static Rect NormalizedBounds(Annotation ann)
+    public static Rect NormalizedBounds(Annotation ann) => NormalizeBounds(ann.Bounds);
+
+    private static Rect NormalizedBounds(AnnotationSnapshot ann) => NormalizeBounds(ann.Bounds);
+
+    private static Rect NormalizeBounds(Rect b)
     {
-        var b = ann.Bounds;
         var x = b.Width < 0 ? b.X + b.Width : b.X;
         var y = b.Height < 0 ? b.Y + b.Height : b.Y;
         return new Rect(x, y, Math.Abs(b.Width), Math.Abs(b.Height));
@@ -1836,6 +2033,13 @@ internal sealed class EditorController : IDisposable
         }
         var s = new Vector2((float)ann.Bounds.X, (float)ann.Bounds.Y);
         return (s, s);
+    }
+
+    private static (Vector2 Start, Vector2 End) Segment(AnnotationSnapshot ann)
+    {
+        if (ann.Points.Length >= 2) return (ann.Points[0], ann.Points[^1]);
+        var start = new Vector2((float)ann.Bounds.X, (float)ann.Bounds.Y);
+        return (start, start);
     }
 
     public static bool IsShiftDown() =>
@@ -1924,10 +2128,12 @@ internal sealed class EditorController : IDisposable
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        _bitmap?.Dispose();
+        _revision.Close();
+        CancelDocumentWork();
+        _documentCancellation.Dispose();
+        _imageOwner?.Dispose();
+        _imageOwner = null;
         _bitmap = null;
-        _canvasSource?.Dispose();
-        _canvasSource = null;
         PreviewSource = null;
     }
 }
