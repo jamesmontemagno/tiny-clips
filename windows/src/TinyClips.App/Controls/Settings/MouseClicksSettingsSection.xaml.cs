@@ -16,7 +16,7 @@ public sealed partial class MouseClicksSettingsSection : UserControl
     public MouseClicksSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel;
-        _realizationScope = viewModel.BeginSectionRealization();
+        _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.MouseClicks);
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
     }

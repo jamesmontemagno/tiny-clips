@@ -88,4 +88,48 @@ public sealed class SettingsServiceTests
         Directory.CreateDirectory(path);
         return path;
     }
+
+    [Fact]
+    public void LargeTextForEditing_SurfacesLockedFileWithoutChangingLegacyReadBehavior()
+    {
+        var directory = CreateTemporaryDirectory();
+        var key = $"syntheticTranscript-{Guid.NewGuid():N}";
+        var path = Path.Combine(directory, $"{key}.txt");
+        try
+        {
+            File.WriteAllText(path, "Synthetic transcript fixture");
+            var settings = new SettingsService(directory);
+            using (var lockedFile = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Assert.Throws<IOException>(() => settings.GetLargeTextForEditing(key, string.Empty));
+                Assert.Empty(settings.GetLargeText(key, string.Empty));
+            }
+
+            Assert.Equal("Synthetic transcript fixture", settings.GetLargeTextForEditing(key, string.Empty));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LargeTextForEditing_AbsentFileUsesDefaultAndStillMigratesLegacyText()
+    {
+        var directory = CreateTemporaryDirectory();
+        var key = $"syntheticTranscript-{Guid.NewGuid():N}";
+        var settings = new SettingsService(directory);
+        try
+        {
+            Assert.Empty(settings.GetLargeTextForEditing(key, string.Empty));
+            settings.Set(key, "Synthetic legacy script");
+            Assert.Equal("Synthetic legacy script", settings.GetLargeTextForEditing(key, string.Empty));
+            Assert.Equal("Synthetic legacy script", File.ReadAllText(Path.Combine(directory, $"{key}.txt")));
+        }
+        finally
+        {
+            settings.Set(key, string.Empty);
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }

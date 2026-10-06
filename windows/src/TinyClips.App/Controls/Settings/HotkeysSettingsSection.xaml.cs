@@ -23,7 +23,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
     public HotkeysSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel;
-        _realizationScope = viewModel.BeginSectionRealization();
+        _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.Hotkeys);
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
     }
