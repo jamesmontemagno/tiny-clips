@@ -6,6 +6,12 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **CPU video recording creates fewer full-frame pixel arrays.** The explicit CPU path and GPU
+  startup fallback reuse private capture/overlay buffers. The low-latency encoder copies directly
+  into its own bottom-up buffer, while the standard encoder retains one independent array instead
+  of three. GIF and scrolling snapshots remain safe to retain, and stopping waits for borrowed
+  frame processing before disposing the encoder. Resized windows keep the configured video
+  dimensions with black letterboxing instead of submitting short encoder samples. (#407)
 - **Settings navigation no longer reloads unrelated preferences or external state.** First
   realization restores only that section's scalar settings, preserving protection against
   initial TwoWay-binding write-backs. Uploadcare credential status and teleprompter text load

@@ -23,7 +23,7 @@ timeline model — both pipelines stamp frames with the same `RecordingTimeline`
 
 ## 1. Problem: where the time went in the CPU pipeline
 
-The original recorder (still the default, now called the **CPU pipeline**) moves every frame through
+The original recorder (now the **CPU fallback pipeline**) moved every frame through
 system memory four times before the encoder sees it:
 
 | # | Step | Where | Cost per 3440×1440 frame (19.8 MB) |
@@ -45,6 +45,59 @@ only counts channel back-pressure, while the real loss was the **pump skipping t
 used `Monitor.TryEnter` and gave up whenever the WGC thread held the lock during its 10–17 ms
 readback, and `System.Threading.Timer`'s ~15.6 ms granularity cannot hold a 33.3 ms cadence
 precisely.
+
+### 1.1 Current CPU buffer ownership
+
+The CPU fallback no longer allocates those three full-frame managed arrays on every frame.
+`ContinuousCaptureSession` keeps an exact-size private readback buffer and, for video, an
+exact-size private processing buffer (`CpuCaptureBuffers`). Readback and the screen-to-processing
+copy use the capture lock. The optional synchronous `processBorrowedFrame` callback owns the
+processing buffer only until it returns; `CpuFrameProcessingGate` serializes timer callbacks
+through overlays and encoder submission. Stop waits for that callback before disposing capture
+resources or the encoder. A static desktop still copies the unchanged screen into the processing
+buffer every tick, so click/webcam overlays animate without accumulating on the cached screen.
+The existing shared timeline, pause/resume, crop coordinates, and output dimensions are unchanged.
+
+The two CPU encoder backends intentionally have different ownership boundaries:
+
+| Backend | Pixel handoff | Full-frame managed allocation after warm-up |
+|---------|---------------|--------------------------------------------|
+| Sink writer | Copy top-down processing rows directly into a bottom-up `IMFMediaBuffer`. `WriteVideo` owns/disposes its native buffer and sample wrappers; MF retains its own COM references if encoding is asynchronous. | None for screen frame buffers; the two private capture buffers are reused. |
+| MediaTranscoder | `CpuVideoBuffer.Create` makes one independent bottom-up array and wraps it in an `IBuffer`. The bounded channel and then `MediaStreamSample` retain that array, never the borrowed processing buffer. | One exact-size array per prepared sample, instead of readback + pump clone + bottom-up array. |
+
+The transcoder array is deliberately **not pooled**: an encoder may retain it after sample
+submission, including error/stop paths. Keeping it independently owned and GC-accounted avoids
+both use-after-return and per-frame native WinRT allocations whose release would otherwise depend
+on collection of small managed wrappers. The existing four-second bounded channel and its
+DropWrite accounting remain unchanged; completed/abandoned CPU queues are drained on cleanup.
+Sink-writer write failures leave only encoder-owned pixels, and CPU finalization failures still
+dispose the stopped pipeline before propagating.
+
+The general `FrameReady` and `FrameArrived` events retain their snapshot contract. GIF stores
+frames for later quantization, and scrolling capture retains frames for stitching, so their arrays
+must never be reused. `FrameReady` gets an independent clone. A readback published through
+`FrameArrived` is permanently excluded from reuse, even when that subscriber later unsubscribes.
+Video readback always keeps the initial encoder dimensions, including during window resize. It
+uses WGC `ContentSize` rather than unused pool-surface pixels, then recreates the pool/staging
+texture as the source size changes. Resized whole windows are aspect-fitted with opaque black
+letterboxing and allocation-free nearest-neighbour sampling (the GPU compositor uses linear
+sampling); the ordinary one-pixel even-dimension trim remains an unscaled crop. Monitor/region
+captures retain physical crop coordinates, padding unavailable pixels black instead of submitting
+a short sample. The private video arrays stay fixed-size across source resizes. Retained non-video
+snapshots still use their captured dimensions; no oversized pooled capacity becomes pixel data.
+
+`CpuRecordingBufferTests` and `CpuVideoFrameReadbackTests` use synthetic BGRA fixtures to cover retained snapshots/samples,
+DropWrite, cancelled reads and queue draining, encoder exceptions, overlapping callbacks, stop,
+repeated start/stop, static-frame overlays, region coordinates, bottom-up orientation, and fixed-size
+encoder samples through source shrink/grow and pool-pitch changes. Its
+allocation regression submits the same number of known 1280x720 physical-pixel frames to both
+copy paths: after warming the private buffers, managed bytes per submitted frame must stay below
+16 KiB for sink-writer copying, or one exact pixel array plus 16 KiB for transcoder preparation.
+These are deterministic ownership/allocation checks, **not** real-time WGC/encoder throughput,
+GC-pause, working-set, or native-device benchmark results. The historical measurements below do
+not describe this updated CPU implementation. Native x64/ARM64 cadence, long-recording memory,
+overlays, and forced GPU-initialization fallback still require device validation at matching,
+verified physical output dimensions; a lower allocation rate alone is not evidence of a win.
 
 ## 2. Options considered
 
@@ -176,10 +229,10 @@ local measurements private, and include actual audio sources/listening before cl
 | Stage | CPU pipeline | GPU pipeline |
 |-------|--------------|--------------|
 | `CaptureReadback` | staging copy + `Map` + memcpy to `byte[]` | `CopyResource` + `Flush` (GPU→GPU) |
-| `FrameProduce` | `byte[]` clone | pool rent + `CopySubresourceRegion` |
+| `FrameProduce` | copy into reusable video processing buffer | pool rent + `CopySubresourceRegion` |
 | `Composite` | all CPU overlay blends | all Direct2D draws + `Flush` |
 | `OverlayClicks` / `OverlayBranding` / `OverlayWebcam` | sub-stages of `Composite` | same (webcam includes the GPU upload) |
-| `SamplePrepare` | bottom-up flip copy | `CreateFromDirect3D11Surface` |
+| `SamplePrepare` | bottom-up copy into encoder-owned memory | `CreateFromDirect3D11Surface` |
 | `EncoderWait` | time `SampleRequested` waited for a frame | same |
 | `EncoderHold` | — | hand-off → `MediaStreamSample.Processed` (how long the encoder held the texture) |
 
@@ -270,8 +323,8 @@ Takeaways:
   disabled, recording continues) or as encoder failure (recording stops), same as today.
 - **Pause/resume**, **time limit**, **discard**, and **pre-warm** (`PrepareAsync`) paths are shared
   with the CPU pipeline and exercised by the same `VideoRecordingService` state machine.
-- **GIF and scrolling capture** still use `ContinuousCaptureSession` (they need CPU pixels for
-  quantization/stitching); it gained optional instrumentation only.
+- **GIF and scrolling capture** still use `ContinuousCaptureSession` (they need retained CPU pixels
+  for quantization/stitching); their published snapshots are not recycled (§1.1).
 - **Next steps, in order of payoff:** (1) flip the default to GPU once NVIDIA/Intel are validated;
   (2) GPU webcam frames; (3) low-latency encoder configuration or Option B to cut `EncoderHold`;
   (4) expose the perf report in the Quick Bug Report so users can attach it.
