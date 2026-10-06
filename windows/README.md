@@ -200,10 +200,17 @@ With the switch on:
 - **Settings › Video** offers **Open in Studio (Preview)** under **After recording**, and the
   recording setup panel has **Record for Studio**. A Studio recording is saved as a project (a
   clean screen track, a camera track, and click and cursor data) and opens in the editor.
-- **The editor** has a live preview, an inspector (scene, layout, background, padding, screen and
-  camera styling with crops, the zooms, the cuts, and the speed changes), a scene lane, a zoom
-  lane, a cut lane, and a speed lane above a trim bar, undo and redo, and Export. A recording
-  without a camera has no scenes.
+- **The editor** has a live preview, an inspector, a scene lane, a zoom lane, a cut lane, and a
+  speed lane above a trim bar, undo and redo, and Export. A recording without a camera has no
+  scenes.
+  The inspector shows one panel at a time, chosen on the rail down its outer edge: **Scene**,
+  **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**, **Audio**, and
+  **Project** (no Scene and no Camera without a camera). The rail is one stop for `Tab`, and
+  `Up`/`Down`/`Home`/`End` choose a panel. Selecting or adding a zoom, a cut, or a speed change,
+  splitting or going to a scene, and dragging the camera in the preview show that panel by
+  themselves; undo, redo, the layout keys, playing, and scrubbing leave the panel alone. The
+  crop sliders of the screen and of the camera are in a **Crop** group that is closed while
+  nothing is cropped.
   Keys: `Space` play or pause, `Left`/`Right` step a frame, `I`/`O` start and end the video at the
   playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
   at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
@@ -216,10 +223,10 @@ With the switch on:
   the first and the last; on the scene lane, `Delete` removes the scene the playhead is in.
   While something is being dragged, the keys that change the project do nothing; `Space` and
   the arrow keys still work.
-  The Camera section has a **Background** choice: keep, blur, or remove what is behind you. The
+  The Camera panel has a **Camera background** choice: keep, blur, or remove what is behind you. The
   people are found on this PC with the MediaPipe Selfie Segmentation model, which ships with the
   app under the Apache License 2.0 (**Settings › About › Third-party notices**).
-  **Keep this project**, at the end of the inspector, pins a project against the storage
+  **Keep this project**, in the Project panel, pins a project against the storage
   cleanup; it is written at once and is not undone by `Ctrl+Z`.
   A project the editor cannot show says why, and where its screen recording is still there,
   **Save the screen recording** saves that as an ordinary video.

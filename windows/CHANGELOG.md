@@ -23,33 +23,34 @@ own `CHANGELOG.md` at the repository root.
   also sets how long projects are kept and how much disk space they may use.
   - **Zooms.** Press **Z** or choose **Add zoom** to zoom in on the screen recording at the
     playhead. Zooms sit on a lane above the trim bar: drag one to move it, or drag one of its ends
-    to change when it starts or stops. The **Zoom** section of the inspector steps through the
-    zooms and sets how far each one zooms in, whether it looks at a point or follows the pointer,
-    when it starts and ends, and how long it takes to move in and out. **Suggest zooms** adds
+    to change when it starts or stops. The **Zoom** panel of the inspector steps through the
+    zooms and sets each one's zoom level, whether its focus is a fixed point or follows the
+    pointer, when it starts and ends, and how long it takes to zoom in and out. **Suggest zooms** adds
     zooms where you clicked during the recording, and **Remove suggestions** takes away the
     suggestions you have not changed. **Delete** removes the selected zoom.
-  - **Crops.** The **Crop left**, **Crop top**, **Crop right**, and **Crop bottom** sliders in the
-    Screen and Camera sections cut the edges off the screen recording or the camera, and
-    **Reset crop** brings them back.
+  - **Crops.** The **Left**, **Top**, **Right**, and **Bottom** sliders in the **Crop** group of
+    the Screen and of the Camera panel cut the edges off the screen recording or the camera,
+    and **Reset crop** brings them back. The group is closed while nothing is cropped, and says
+    "Cropped" when it is closed over a crop.
   - **Scenes.** In a recording with a camera, press **S** or choose **Split** to start a new scene
     at the playhead. Each scene has its own layout and its own camera position, so a video can
     go from the camera bubble to side by side and back. Scenes sit on a lane at the top of the
     timeline: press one to go to it, or drag the line between two to change when the later one
-    begins. The **Scene** section of the inspector steps through the scenes, and sets when a
-    scene starts and whether the video cuts to it or the screen and the camera move into place,
-    and how long that takes. The Layout and Camera sections show and change the scene the
-    playhead is in. **Delete scene**, or **Delete** while the scene lane has the keyboard focus,
+    begins. The **Scene** panel of the inspector steps through the scenes, and sets a scene's
+    layout, when it starts, and whether its transition is instant or the screen and the camera
+    move into place, and how long that takes. The Scene and Camera panels show and change the
+    scene the playhead is in. **Delete scene**, or **Delete** while the scene lane has the keyboard focus,
     removes that scene, and the scene before it then lasts until the next one.
   - **Cuts.** Press **X** or choose **Cut** to take a second out of the video at the playhead.
     Cuts sit on a lane above the trim bar, and the trim bar shows a gap where each one is: drag
     a cut to move it, or drag one of its ends to change where it starts or stops. The **Cut**
-    section of the inspector steps through the cuts and sets where each one starts and ends.
+    panel of the inspector steps through the cuts and sets where each one starts and ends.
     **Delete** or **Delete cut** puts the stretch back into the video. The time above the
     timeline counts the video as it will be exported, without what is cut out.
   - **Speed.** Press **R** or choose **Speed** to have the video play the two seconds from the
     playhead twice as fast. Speed changes sit on a lane between the cuts and the trim bar: drag
     one to move it, or drag one of its ends to change where it starts or stops. The **Speed**
-    section of the inspector steps through them and sets how fast each stretch plays (0.25×,
+    panel of the inspector steps through them and sets how fast each stretch plays (0.25×,
     0.5×, 1.5×, 2×, 4×, or 8×) and where it starts and ends, and says how long the stretch then
     takes. A stretch at another speed plays without sound. **Delete** or **Delete speed change**
     makes the stretch play at the recording's own speed again. The time above the timeline
@@ -63,12 +64,12 @@ own `CHANGELOG.md` at the repository root.
     Studio was switched on. Projects are
     stored with the app, so uninstalling Tiny Clips or resetting it in Windows Settings deletes
     them; exported videos stay.
-  - **Camera background.** **Background** in the Camera section keeps the camera picture as it
-    is, blurs everything but you, or removes it so that only you stand in front of the screen.
+  - **Camera background.** **Camera background** in the Camera panel keeps the camera picture as
+    it is, blurs everything but you, or removes it so that only you stand in front of the screen.
     The people are found on your PC with the MediaPipe Selfie Segmentation model, which ships
     with Tiny Clips under the Apache License 2.0; see **Third-party notices** in Settings ›
     About.
-  - **Keeping and saving.** **Keep this project** in the editor pins a project against the
+  - **Keeping and saving.** **Keep this project** in the Project panel pins a project against the
     storage cleanup. The storage limit counts only the exported projects that cleanup may
     remove, so drafts never push one out, and it never removes the project you opened last. A
     project whose exported video is no longer where it was saved, or has been replaced by
@@ -91,6 +92,16 @@ own `CHANGELOG.md` at the repository root.
     as it is made. While an export runs, Esc only stops the export. An open drop-down list
     keeps the key for itself, and Esc that is held down, or pressed with Ctrl, Shift, or Alt,
     does nothing.
+  - **The inspector shows one panel at a time.** A rail down its outer edge has an item for each
+    panel: **Scene**, **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**,
+    **Audio**, and **Project** (a recording without a camera has no Scene and no Camera). The
+    chosen panel shows under its name, and the others are out of the way: for a pointer, for
+    the Tab key, and for a screen reader. The rail is one tab stop, and Up, Down, Home, and End
+    choose a panel. Selecting or adding a zoom, a cut, or a speed change, splitting or going to
+    a scene, and dragging the camera in the preview show that panel by themselves; undo, redo,
+    the layout keys, playing, and scrubbing leave the panel alone. When the panel that had the
+    keyboard focus goes away, the focus is on the rail's item for the new panel. A panel
+    without a zoom, a cut, or a speed change says how to add the first one.
   - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
     for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
     layer. The live preview does not play a speed change at its speed yet: it shows the stretch
