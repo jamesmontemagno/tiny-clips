@@ -333,9 +333,15 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
 
     /// Esc, or Command-Period. It reaches the window because no control in Studio uses it as a key
     /// equivalent. It stops a running export; otherwise it closes the editor like the other Tiny
-    /// Clips editors, asking first when that setting is on.
+    /// Clips editors, asking first when that setting is on. A key that is being held does
+    /// nothing: the press it belongs to has done what there was to do, perhaps in another window.
+    /// Held a little too long, the Esc that closed a window in front would otherwise stop an
+    /// export here, and the Esc that answered "Close Studio?" with Cancel would ask it again.
     override func cancelOperation(_ sender: Any?) {
         guard attachedSheet == nil else { return }
+        if let event = NSApp.currentEvent, event.type == .keyDown, event.isARepeat {
+            return
+        }
         if viewModel.isExporting {
             viewModel.cancelExport()
             return
