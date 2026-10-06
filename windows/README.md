@@ -116,6 +116,9 @@ the elapsed time. Global hotkeys work app-wide.
 For coordinate/DPI behaviour across mixed-DPI monitors, see
 [`docs/dpi-and-coordinates.md`](docs/dpi-and-coordinates.md).
 
+For opt-in window-construction phase diagnostics and the private cold/warm validation
+protocol, see [`docs/first-open-responsiveness.md`](docs/first-open-responsiveness.md).
+
 For how the screen, webcam, microphone, and system audio are kept in sync (shared timeline,
 WASAPI capture, drift/discontinuity correction, audio back-pressure, the *Audio offset* setting, and
 the end-of-recording sync report), see [`docs/audio-video-sync.md`](docs/audio-video-sync.md).
