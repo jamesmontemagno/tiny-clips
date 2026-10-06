@@ -86,6 +86,11 @@ own `CHANGELOG.md` at the repository root.
     the speed.
 
 ### Fixed
+- **A video recording that fails to start no longer deletes the previous one.** The cleanup after
+  a failed start deleted the file the recorder had last written. Until the new recording had a
+  file of its own, that was the video of the recording before it, saved and finished. The same
+  cleanup runs when a countdown is cancelled while the recorder is still getting ready. A start
+  now forgets the previous file before it does anything else.
 - **Recording diagnostics distinguish requests from observed execution.** Schema-2 reports preserve
   legacy JSON fields while adding actual capture/encoder backends, D3D hardware/WARP selection,
   explicit unverified hardware encoding, preparation/active/pause/finalization timings, sample

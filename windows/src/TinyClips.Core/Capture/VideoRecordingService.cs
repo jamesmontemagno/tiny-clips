@@ -258,6 +258,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
     /// </summary>
     private async Task PrepareCoreAsync(CaptureTarget captureTarget, PixelRect? region, VideoRecordingOptions options, CancellationToken cancellationToken)
     {
+        // Until here this is the video of the recording before, kept for a discard that arrives
+        // after its stop. This start has no file yet, and if it fails before it has one, the
+        // cleanup must find nothing to delete.
+        _outputPath = null;
         cancellationToken.ThrowIfCancellationRequested();
         WebcamDiagnostics.BeginRecording();
         Interlocked.Exchange(ref _discardRequested, 0);
