@@ -29,7 +29,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
 - **Recording indicator** — a floating always-on-top panel shows the elapsed time and a Stop button
   (with the stop hotkey) while recording.
 - **Editor & trimmers** — an optional post-capture **screenshot editor** (crop, copy, save / save-a-copy),
-  a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture.
+  a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture. `Esc`
+  closes each of them, asking first unless **Confirm before closing editors with Esc** is turned
+  off in General settings; in the editor it clears a crop selection first.
 - **Tiny Clips Studio (early preview, off by default)** — records the screen and the camera as
   separate layers and opens a compositing editor when the recording ends: background and padding,
   a rounded screen card, camera shape and four layouts, a draggable camera bubble, scenes that

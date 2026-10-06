@@ -52,6 +52,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     // HasUnsavedChanges below decides whether closing needs to be guarded.
     private bool _hasPendingCropSelection;
     private bool _closeConfirmed;
+    private bool _isClosePromptOpen;
     private bool _isDeletingSource;
     private bool _isClosed;
     private int _outputScalePercent = 100;
@@ -215,21 +216,69 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private bool HasUnsavedChanges => _controller.IsDirty || _hasPendingCropSelection;
 
-    private async Task<bool> ShowDiscardChangesDialogAsync()
-    {
-        var dialog = new ContentDialog
-        {
-            Title = "Discard changes?",
-            Content = "You have unsaved annotations. Close anyway?",
-            PrimaryButtonText = "Discard",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = RootGrid.XamlRoot,
-            RequestedTheme = RootGrid.RequestedTheme,
-        };
-        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+    private Task<bool> ShowDiscardChangesDialogAsync() => ShowClosePromptAsync(EditorEscapePrompt.DiscardChanges);
 
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    /// <summary>
+    /// Every close path (Esc, the toolbar Close button, the title-bar X) asks through here, so a
+    /// second prompt is never stacked on one that is already showing.
+    /// </summary>
+    private async Task<bool> ShowClosePromptAsync(EditorEscapePrompt prompt)
+    {
+        if (_isClosePromptOpen)
+        {
+            return false;
+        }
+
+        _isClosePromptOpen = true;
+        try
+        {
+            return await EditorEscapeConfirmation.ConfirmAsync(RootGrid, prompt, EditorEscapeSurface.ScreenshotEditor);
+        }
+        finally
+        {
+            _isClosePromptOpen = false;
+        }
+    }
+
+    private void OnEscapeKey(KeyRoutedEventArgs e)
+    {
+        var action = EditorEscape.ResolveEditorAction(IsTextInputSource(e.OriginalSource), _hasPendingCropSelection);
+        if (action == ScreenshotEditorEscapeAction.LeaveToTextInput)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (_isClosed || _isOutputBusy || _isDeletingSource || _isClosePromptOpen)
+        {
+            return;
+        }
+
+        if (action == ScreenshotEditorEscapeAction.ClearCropSelection)
+        {
+            Canvas.ClearCropSelection();
+            return;
+        }
+
+        _ = CloseFromEscapeAsync();
+    }
+
+    private async Task CloseFromEscapeAsync()
+    {
+        var confirmOnEscape = App.Services.GetRequiredService<ICaptureSettings>().ConfirmEditorEscape;
+        if (EditorEscape.ResolvePrompt(confirmOnEscape, HasUnsavedChanges) is { } prompt &&
+            !await ShowClosePromptAsync(prompt))
+        {
+            return;
+        }
+
+        if (_isClosed)
+        {
+            return;
+        }
+
+        _closeConfirmed = true;
+        Close();
     }
 
     // -- Load -------------------------------------------------------------------------------
@@ -319,6 +368,12 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (EditorEscapeConfirmation.IsUnmodifiedEscape(e))
+        {
+            OnEscapeKey(e);
+            return;
+        }
+
         var ctrl = Microsoft.UI.Input.InputKeyboardSource
             .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
             .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);

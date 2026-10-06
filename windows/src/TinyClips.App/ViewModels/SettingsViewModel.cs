@@ -373,6 +373,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _showSaveNotifications;
 
+    [ObservableProperty]
+    private bool _confirmEditorEscape;
+
     // Uploadcare
     [ObservableProperty]
     private bool _uploadcareEnabled;
@@ -880,6 +883,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                     : _settings.FileNameTemplate;
                 ShowInExplorer = _settings.ShowInExplorer;
                 ShowSaveNotifications = _settings.ShowSaveNotifications;
+                ConfirmEditorEscape = _settings.ConfirmEditorEscape;
                 LaunchAtLogin = _settings.LaunchAtLogin;
                 ShowBrandingOverlay = _settings.ShowBrandingOverlay;
                 MultiMonitorCaptureModeIndex = _settings.MultiMonitorCaptureMode switch
@@ -1244,6 +1248,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowInExplorerChanged(bool value) => Persist(SettingsSectionKind.General, () => _settings.ShowInExplorer = value);
 
     partial void OnShowSaveNotificationsChanged(bool value) => Persist(SettingsSectionKind.General, () => _settings.ShowSaveNotifications = value);
+
+    partial void OnConfirmEditorEscapeChanged(bool value) => Persist(SettingsSectionKind.General, () => _settings.ConfirmEditorEscape = value);
 
     partial void OnUploadcareEnabledChanged(bool value) => Persist(SettingsSectionKind.Uploadcare, () => _settings.UploadcareEnabled = value);
 

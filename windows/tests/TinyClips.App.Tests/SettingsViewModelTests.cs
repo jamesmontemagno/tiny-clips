@@ -161,6 +161,23 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void ConfirmEditorEscape_LoadsWithGeneralAndPersistsChanges()
+    {
+        var fixture = new Fixture();
+        var vm = fixture.CreateViewModel();
+        Realize(vm, SettingsSectionKind.General);
+
+        Assert.True(vm.ConfirmEditorEscape);
+
+        vm.ConfirmEditorEscape = false;
+        Assert.False(fixture.Settings.ConfirmEditorEscape);
+
+        vm.ResetAllSettings();
+        Assert.True(vm.ConfirmEditorEscape);
+        Assert.True(fixture.Settings.ConfirmEditorEscape);
+    }
+
+    [Fact]
     public void Reset_DoesNotReadExternalStateOrRestoreOldTranscript()
     {
         var fixture = new Fixture();

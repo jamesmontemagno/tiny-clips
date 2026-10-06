@@ -5,8 +5,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using TinyClips.Core.Capture;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Foundation;
@@ -42,6 +44,9 @@ public sealed partial class GifTrimmerWindow : Window
     private double _speed = 1.0;
     private bool _ready;
     private bool _isDeletingSource;
+    private bool _isEscapePromptOpen;
+    private bool _isClosed;
+    private int _exportsInFlight;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _playTimer;
     private int _playIndex;
 
@@ -73,8 +78,69 @@ public sealed partial class GifTrimmerWindow : Window
             _ => ElementTheme.Default,
         };
 
+        RootGrid.KeyDown += OnRootKeyDown;
         Closed += OnWindowClosed;
         _decodeTask = LoadAsync(_decodeCts.Token);
+    }
+
+    // -- Esc to close ---------------------------------------------------------
+
+    /// <summary>Whether a trimmed export would differ from the GIF as it was opened.</summary>
+    private bool HasUnexportedChanges => _ready && (_start > 0 || _end < LastFrame || _speed != 1.0);
+
+    private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        // An open speed list or a text input uses Esc itself.
+        if (!EditorEscapeConfirmation.IsUnmodifiedEscape(e) ||
+            SpeedCombo.IsDropDownOpen ||
+            e.OriginalSource is TextBox)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _ = CloseFromEscapeAsync();
+    }
+
+    private bool CanCloseFromEscape =>
+        !_isClosed && !_isDeletingSource && !_isEscapePromptOpen && _exportsInFlight == 0;
+
+    private async Task CloseFromEscapeAsync()
+    {
+        if (!CanCloseFromEscape)
+        {
+            return;
+        }
+
+        var confirmOnEscape = App.Services.GetRequiredService<ICaptureSettings>().ConfirmEditorEscape;
+        if (EditorEscape.ResolvePrompt(confirmOnEscape, HasUnexportedChanges) is { } prompt)
+        {
+            StopPlayback();
+            _isEscapePromptOpen = true;
+            bool confirmed;
+            try
+            {
+                confirmed = await EditorEscapeConfirmation.ConfirmAsync(RootGrid, prompt, EditorEscapeSurface.GifTrimmer);
+            }
+            finally
+            {
+                _isEscapePromptOpen = false;
+            }
+
+            if (!confirmed || !CanCloseFromEscape)
+            {
+                return;
+            }
+        }
+
+        CloseKeepingOriginal();
+    }
+
+    /// <summary>Closes the trimmer the way Cancel does: nothing is exported and the original is kept.</summary>
+    private void CloseKeepingOriginal()
+    {
+        Completed?.Invoke(this, null);
+        Close();
     }
 
     /// <summary>
@@ -404,6 +470,7 @@ public sealed partial class GifTrimmerWindow : Window
 
         StopPlayback();
         ExportFrameButton.IsEnabled = false;
+        _exportsInFlight++;
         string? outputPath = null;
 
         try
@@ -440,6 +507,7 @@ public sealed partial class GifTrimmerWindow : Window
         }
         finally
         {
+            _exportsInFlight--;
             ExportFrameButton.IsEnabled = true;
         }
     }
@@ -455,6 +523,7 @@ public sealed partial class GifTrimmerWindow : Window
 
         BusyBar.Visibility = Visibility.Visible;
         SaveTrimmedButton.IsEnabled = false;
+        _exportsInFlight++;
         string? outputPath = null;
 
         try
@@ -514,6 +583,7 @@ public sealed partial class GifTrimmerWindow : Window
         }
         finally
         {
+            _exportsInFlight--;
             BusyBar.Visibility = Visibility.Collapsed;
             SaveTrimmedButton.IsEnabled = true;
         }
@@ -540,8 +610,7 @@ public sealed partial class GifTrimmerWindow : Window
             return;
         }
 
-        Completed?.Invoke(this, null);
-        Close();
+        CloseKeepingOriginal();
     }
 
     /// <summary>
@@ -607,6 +676,7 @@ public sealed partial class GifTrimmerWindow : Window
 
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
+        _isClosed = true;
         _playTimer?.Stop();
         _decodeCts.Cancel();
         _ = DisposeFramesWhenDecodeSettlesAsync();
