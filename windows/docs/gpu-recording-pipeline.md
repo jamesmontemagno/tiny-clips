@@ -77,12 +77,19 @@ The general `FrameReady` and `FrameArrived` events retain their snapshot contrac
 frames for later quantization, and scrolling capture retains frames for stitching, so their arrays
 must never be reused. `FrameReady` gets an independent clone. A readback published through
 `FrameArrived` is permanently excluded from reuse, even when that subscriber later unsubscribes.
-Changing frame dimensions replaces the private buffers with exact-size arrays and recreates a
-mismatched staging texture; no oversized pooled array capacity becomes encoded pixel data.
+Video readback always keeps the initial encoder dimensions, including during window resize. It
+uses WGC `ContentSize` rather than unused pool-surface pixels, then recreates the pool/staging
+texture as the source size changes. Resized whole windows are aspect-fitted with opaque black
+letterboxing and allocation-free nearest-neighbour sampling (the GPU compositor uses linear
+sampling); the ordinary one-pixel even-dimension trim remains an unscaled crop. Monitor/region
+captures retain physical crop coordinates, padding unavailable pixels black instead of submitting
+a short sample. The private video arrays stay fixed-size across source resizes. Retained non-video
+snapshots still use their captured dimensions; no oversized pooled capacity becomes pixel data.
 
-`CpuRecordingBufferTests` uses synthetic BGRA fixtures to cover retained snapshots/samples,
+`CpuRecordingBufferTests` and `CpuVideoFrameReadbackTests` use synthetic BGRA fixtures to cover retained snapshots/samples,
 DropWrite, cancelled reads and queue draining, encoder exceptions, overlapping callbacks, stop,
-repeated start/stop, static-frame overlays, region coordinates, and bottom-up orientation. Its
+repeated start/stop, static-frame overlays, region coordinates, bottom-up orientation, and fixed-size
+encoder samples through source shrink/grow and pool-pitch changes. Its
 allocation regression submits the same number of known 1280x720 physical-pixel frames to both
 copy paths: after warming the private buffers, managed bytes per submitted frame must stay below
 16 KiB for sink-writer copying, or one exact pixel array plus 16 KiB for transcoder preparation.

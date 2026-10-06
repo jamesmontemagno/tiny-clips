@@ -193,6 +193,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
             }
 
             var arrived = FrameArrived;
+            var contentSize = frame.ContentSize;
             CapturedFrame captured;
             lock (_sync)
             {
@@ -227,7 +228,21 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
                 _context.CopyResource(_stagingTexture, frameTexture);
 
-                captured = ReadStaging((int)desc.Width, (int)desc.Height, arrived is not null);
+                captured = ReadStaging(
+                    (int)desc.Width, (int)desc.Height,
+                    contentSize.Width, contentSize.Height,
+                    arrived is not null);
+
+                if (_processBorrowedFrame is not null &&
+                    contentSize.Width > 0 && contentSize.Height > 0 &&
+                    (contentSize.Width != _fullWidth || contentSize.Height != _fullHeight))
+                {
+                    // The first resized frame still uses the old pool-sized surface. Recreate for
+                    // subsequent full-resolution frames, while the encoder dimensions stay fixed.
+                    pool.Recreate(_device!, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, contentSize);
+                    _fullWidth = contentSize.Width;
+                    _fullHeight = contentSize.Height;
+                }
             }
 
             arrived?.Invoke(captured);
@@ -331,19 +346,22 @@ internal sealed class ContinuousCaptureSession : IDisposable
         }
     }
 
-    private unsafe CapturedFrame ReadStaging(int frameWidth, int frameHeight, bool publishSnapshot)
+    private unsafe CapturedFrame ReadStaging(int frameWidth, int frameHeight, int contentWidth, int contentHeight, bool publishSnapshot)
     {
         int x = 0, y = 0;
         int width = OutputWidth, height = OutputHeight;
 
-        if (_region is { } r)
+        if (_processBorrowedFrame is null)
         {
-            x = Math.Clamp(r.X, 0, frameWidth);
-            y = Math.Clamp(r.Y, 0, frameHeight);
-        }
+            if (_region is { } r)
+            {
+                x = Math.Clamp(r.X, 0, frameWidth);
+                y = Math.Clamp(r.Y, 0, frameHeight);
+            }
 
-        width = Math.Clamp(width, 1, frameWidth - x);
-        height = Math.Clamp(height, 1, frameHeight - y);
+            width = Math.Clamp(width, 1, frameWidth - x);
+            height = Math.Clamp(height, 1, frameHeight - y);
+        }
 
         var mapped = _context!.Map(_stagingTexture!, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
         try
@@ -353,6 +371,15 @@ internal sealed class ContinuousCaptureSession : IDisposable
             var src = (byte*)mapped.DataPointer;
             int srcPitch = (int)mapped.RowPitch;
             int rowBytes = width * 4;
+
+            if (_processBorrowedFrame is not null)
+            {
+                CpuVideoFrameReadback.CopyTo(
+                    new ReadOnlySpan<byte>(src, checked(srcPitch * frameHeight)),
+                    srcPitch, frameWidth, frameHeight, contentWidth, contentHeight, captured, _region,
+                    letterbox: _target.IsWindow);
+                return captured;
+            }
 
             fixed (byte* dst = pixels)
             {

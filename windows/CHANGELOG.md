@@ -10,7 +10,8 @@ own `CHANGELOG.md` at the repository root.
   startup fallback reuse private capture/overlay buffers. The low-latency encoder copies directly
   into its own bottom-up buffer, while the standard encoder retains one independent array instead
   of three. GIF and scrolling snapshots remain safe to retain, and stopping waits for borrowed
-  frame processing before disposing the encoder. (#407)
+  frame processing before disposing the encoder. Resized windows keep the configured video
+  dimensions with black letterboxing instead of submitting short encoder samples. (#407)
 - **Recording branding is prepared before the frame pump starts.** Badge font initialization and
   rasterization now run on a worker; GPU upload finishes before capture callbacks start. CPU and
   GPU recording draws use only prepared resources, preserving badge appearance and placement.
