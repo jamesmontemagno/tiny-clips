@@ -387,22 +387,27 @@ class CaptureSettings: ObservableObject {
     @AppStorage("videoAfterRecording") private var storedVideoAfterRecording: String = ""
     var videoAfterRecording: VideoAfterRecording {
         get {
-            // `showTrimmer` has writers that do not know this property: the toggle shown while
-            // Studio is switched off, onboarding, and older builds. The recorder reads it too.
-            // So the trimmer is read from there, where the last choice made anywhere is, and
-            // only the choice of Studio, which nothing else knows of, from what was stored here.
-            if showTrimmer {
-                return .trimmer
+            // The choice of Studio stands apart from the trimmer switch, and counts only while
+            // Studio is switched on. Everything else is read from `showTrimmer`, where the last
+            // choice made anywhere is: it has writers that do not know this property, which are
+            // the toggle shown while Studio is switched off, onboarding, and older builds.
+            if studioPreviewEnabled, storedVideoAfterRecording == VideoAfterRecording.studio.rawValue {
+                return .studio
             }
-            return storedVideoAfterRecording == VideoAfterRecording.studio.rawValue ? .studio : .save
+            return showTrimmer ? .trimmer : .save
         }
         set {
             storedVideoAfterRecording = newValue.rawValue
             switch newValue {
-            case .save, .studio:
+            case .save:
                 showTrimmer = false
             case .trimmer:
                 showTrimmer = true
+            case .studio:
+                // Says nothing about the trimmer. The switch keeps what it said, and that
+                // applies again once Studio is switched off: a recording is then made as it
+                // was before Studio was tried.
+                break
             }
         }
     }

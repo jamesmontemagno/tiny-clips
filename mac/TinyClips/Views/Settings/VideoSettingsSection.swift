@@ -149,7 +149,9 @@ struct VideoSettingsSection: View {
                 }
                 .help("Choose what happens when a video recording ends. Studio keeps the screen and camera as separate layers that you arrange before exporting.")
                 .onChange(of: settings.videoAfterRecording) { _, choice in
-                    if choice != .trimmer {
+                    // Studio leaves this alone, as it leaves the trimmer switch: both are what
+                    // applies again once Studio is switched off.
+                    if choice == .save {
                         settings.saveImmediatelyVideo = true
                     }
                 }
@@ -165,7 +167,7 @@ struct VideoSettingsSection: View {
 
             Toggle("Save immediately", isOn: $settings.saveImmediatelyVideo)
                 .help("Save immediately instead of waiting for actions in the trimmer.")
-                .disabled(!settings.showTrimmer)
+                .disabled(settings.videoAfterRecording != .trimmer)
             Toggle("Copy to clipboard", isOn: $settings.copyVideoToClipboard)
                 .help("Copy saved videos to the clipboard as a file URL.")
         }
