@@ -233,6 +233,101 @@ public sealed class CaptureSettingsStudioTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OpensTrimmerAfterVideoRecording_WithStudioOnAndNoChoiceStored_FollowsTheToggle(bool showTrimmer)
+    {
+        var settings = Create(out var service);
+        settings.ShowTrimmer = showTrimmer;
+
+        settings.StudioPreviewEnabled = true;
+
+        Assert.Equal(showTrimmer, settings.OpensTrimmerAfterVideoRecording);
+        Assert.Equal("unset", service.Get("videoAfterRecording", "unset"));
+    }
+
+    [Theory]
+    [InlineData(VideoAfterRecording.Save, true)]
+    [InlineData(VideoAfterRecording.Trimmer, false)]
+    public void VideoAfterRecording_WhileStudioIsOn_SaveAndTrimmerDecideAndLeaveTheToggle(VideoAfterRecording choice, bool toggleBefore)
+    {
+        var settings = Create(out var service);
+        settings.ShowTrimmer = toggleBefore;
+        settings.StudioPreviewEnabled = true;
+
+        settings.VideoAfterRecording = choice;
+
+        Assert.Equal(choice, settings.VideoAfterRecording);
+        Assert.Equal(choice == VideoAfterRecording.Trimmer, settings.OpensTrimmerAfterVideoRecording);
+        Assert.Equal(toggleBefore, settings.ShowTrimmer);
+        Assert.Equal(toggleBefore, service.Get("showTrimmer", !toggleBefore));
+    }
+
+    [Theory]
+    [InlineData(false, VideoAfterRecording.Trimmer)]
+    [InlineData(true, VideoAfterRecording.Save)]
+    public void SwitchingStudioOff_WithStudioLeftAsTheChoice_PutsTheTrimmerBackToWhatItWasBeforeStudio(bool toggleBefore, VideoAfterRecording passed)
+    {
+        var settings = Create(out _);
+        settings.ShowTrimmer = toggleBefore;
+        settings.StudioPreviewEnabled = true;
+
+        // The list in Settings takes each press of an arrow key as a choice, so the way from
+        // Save to Studio passes Open trimmer, and the way back passes it again.
+        settings.VideoAfterRecording = passed;
+        settings.VideoAfterRecording = VideoAfterRecording.Studio;
+        Assert.False(settings.OpensTrimmerAfterVideoRecording);
+
+        settings.StudioPreviewEnabled = false;
+
+        Assert.Equal(toggleBefore, settings.ShowTrimmer);
+        Assert.Equal(toggleBefore, settings.OpensTrimmerAfterVideoRecording);
+
+        // Studio is still the choice when it is switched on again.
+        settings.StudioPreviewEnabled = true;
+        Assert.True(settings.IsStudioRecordingEnabled);
+    }
+
+    [Theory]
+    [InlineData(true, VideoAfterRecording.Save)]
+    [InlineData(false, VideoAfterRecording.Trimmer)]
+    [InlineData(true, VideoAfterRecording.Trimmer)]
+    [InlineData(false, VideoAfterRecording.Save)]
+    public void SwitchingStudioOff_WithSaveOrTrimmerLeftAsTheChoice_TheToggleTakesItOver(bool toggleBefore, VideoAfterRecording left)
+    {
+        var settings = Create(out var service);
+        settings.ShowTrimmer = toggleBefore;
+        settings.StudioPreviewEnabled = true;
+        settings.VideoAfterRecording = left;
+
+        settings.StudioPreviewEnabled = false;
+
+        var trimmer = left == VideoAfterRecording.Trimmer;
+        Assert.Equal(trimmer, settings.ShowTrimmer);
+        Assert.Equal(trimmer, service.Get("showTrimmer", !trimmer));
+        Assert.Equal(left, settings.VideoAfterRecording);
+        Assert.Equal(trimmer, settings.OpensTrimmerAfterVideoRecording);
+
+        // The toggle is on screen again, and keeps the choice in step from here on.
+        settings.ShowTrimmer = !trimmer;
+        Assert.Equal(trimmer ? VideoAfterRecording.Save : VideoAfterRecording.Trimmer, settings.VideoAfterRecording);
+        Assert.Equal(!trimmer, settings.OpensTrimmerAfterVideoRecording);
+    }
+
+    [Fact]
+    public void SwitchingStudioOff_WhenItIsOffAlready_WritesNothingToTheToggle()
+    {
+        var settings = Create(out var service);
+        service.Set("videoAfterRecording", "trimmer");
+        service.Set("showTrimmer", false);
+
+        settings.StudioPreviewEnabled = false;
+
+        // Only the switch from on to off is the moment the toggle takes the choice over.
+        Assert.False(service.Get("showTrimmer", true));
+    }
+
+    [Theory]
     [InlineData(-5, 0)]
     [InlineData(0, 0)]
     [InlineData(1, 1)]

@@ -446,8 +446,10 @@ public sealed partial class SettingsViewModel
         {
             _settings.StudioPreviewEnabled = value;
 
-            // The trimmer switch and the After recording choice stand in for each other, and
-            // the one that was hidden has not followed what the other was set to.
+            // The trimmer switch and the After recording choice stand in for each other: one is
+            // shown while Studio is off, the other while it is on. Switching Studio off has
+            // just brought the saved switch in step with the choice that was left (the settings
+            // do that), and each of the two now shows what is saved.
             var wasLoading = _loading;
             _loading = true;
             try

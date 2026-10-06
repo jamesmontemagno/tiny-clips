@@ -57,8 +57,10 @@ own `CHANGELOG.md` at the repository root.
     one longer.
   - To try it, switch on **Tiny Clips Studio (Preview)** in Settings › General. Then choose
     **Open in Studio (Preview)** under **After recording** in Settings › Video, or switch on
-    **Record for Studio** in the recording setup panel. Switching it off again hides Studio,
-    deletes nothing, and leaves **Open trimmer after recording** as you had it. Projects are
+    **Record for Studio** in the recording setup panel. Switching it off again hides Studio and
+    deletes nothing. A recording then does what **After recording** was left on, Save or Open
+    trimmer; left on Open in Studio, **Open trimmer after recording** is as you had it before
+    Studio was switched on. Projects are
     stored with the app, so uninstalling Tiny Clips or resetting it in Windows Settings deletes
     them; exported videos stay.
   - **Camera background.** **Background** in the Camera section keeps the camera picture as it

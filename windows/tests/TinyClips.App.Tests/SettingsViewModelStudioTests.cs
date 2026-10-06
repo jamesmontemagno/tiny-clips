@@ -188,12 +188,39 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         vm.VideoAfterRecordingIndex = -1;
         Assert.Equal(VideoAfterRecording.Studio, _settings.VideoAfterRecording);
 
+        // Save and Open trimmer decide while Studio is on, and leave the switch as it was too.
         vm.VideoAfterRecordingIndex = 0;
         Assert.Equal(VideoAfterRecording.Save, _settings.VideoAfterRecording);
+        Assert.True(_settings.ShowTrimmer);
+        Assert.False(_settings.OpensTrimmerAfterVideoRecording);
 
         vm.VideoAfterRecordingIndex = 1;
         Assert.Equal(VideoAfterRecording.Trimmer, _settings.VideoAfterRecording);
-        Assert.True(_settings.ShowTrimmer);
+        Assert.True(_settings.OpensTrimmerAfterVideoRecording);
+    }
+
+    [Fact]
+    public void GoingToStudioWithTheArrowKeys_PassesOpenTrimmer_AndLeavesTheTrimmerSwitchAsItWas()
+    {
+        _settings.ShowTrimmer = false;
+        var vm = CreateViewModel();
+        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Video);
+        vm.IsStudioPreviewEnabled = true;
+        Assert.Equal(0, vm.VideoAfterRecordingIndex);
+
+        // A closed list takes each press of the Down key as a choice: Save, Open trimmer, Studio.
+        vm.VideoAfterRecordingIndex = 1;
+        Assert.True(_settings.OpensTrimmerAfterVideoRecording);
+        vm.VideoAfterRecordingIndex = 2;
+        Assert.True(_settings.IsStudioRecordingEnabled);
+
+        // Open trimmer was passed, not chosen, so it is not what a recording does afterwards.
+        vm.IsStudioPreviewEnabled = false;
+
+        Assert.False(vm.ShowTrimmer);
+        Assert.False(_settings.ShowTrimmer);
+        Assert.False(_settings.OpensTrimmerAfterVideoRecording);
     }
 
     [Fact]

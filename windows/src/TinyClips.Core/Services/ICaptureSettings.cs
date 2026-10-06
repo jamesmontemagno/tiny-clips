@@ -59,33 +59,38 @@ public interface ICaptureSettings
     double GifMouseClickOpacity { get; set; }
     double GifMouseClickDuration { get; set; }
     /// <summary>
-    /// The trimmer toggle, which is what Settings shows while Studio is switched off. Whether the
-    /// trimmer opens after a recording is <see cref="OpensTrimmerAfterVideoRecording"/>.
+    /// The trimmer toggle, which is what Settings shows, and what decides, while Studio is
+    /// switched off. While Studio is switched on it is not shown and keeps what it said before.
+    /// Whether the trimmer opens after a recording is <see cref="OpensTrimmerAfterVideoRecording"/>.
     /// </summary>
     bool ShowTrimmer { get; set; }
 
     /// <summary>
-    /// What a video recording does when it stops. Until a choice has been stored this follows
-    /// <see cref="ShowTrimmer"/> (on is Trimmer, off is Save). Storing Save or Trimmer keeps
-    /// <see cref="ShowTrimmer"/> in step. Storing Studio leaves <see cref="ShowTrimmer"/> as it
-    /// was, and a stored Studio choice only takes effect while <see cref="StudioPreviewEnabled"/>
-    /// is on: decide with <see cref="IsStudioRecordingEnabled"/> and
-    /// <see cref="OpensTrimmerAfterVideoRecording"/> rather than by comparing this value.
+    /// What a video recording does when it stops: the choice Settings shows, and what decides,
+    /// while Studio is switched on. Until a choice has been stored this follows
+    /// <see cref="ShowTrimmer"/> (on is Trimmer, off is Save). While Studio is switched off,
+    /// storing Save or Trimmer keeps <see cref="ShowTrimmer"/> in step. While it is switched on,
+    /// storing a choice leaves <see cref="ShowTrimmer"/> as it was; see
+    /// <see cref="StudioPreviewEnabled"/> for what happens to it when Studio is switched off. A
+    /// stored Studio choice only takes effect while Studio is switched on: decide with
+    /// <see cref="IsStudioRecordingEnabled"/> and <see cref="OpensTrimmerAfterVideoRecording"/>
+    /// rather than by comparing this value.
     /// </summary>
     VideoAfterRecording VideoAfterRecording { get; set; }
 
     /// <summary>
-    /// Whether the trimmer opens when a video recording stops: the trimmer toggle is on and the
-    /// recording is not one that goes to Studio. With Studio chosen and switched on this is
-    /// false. With Studio chosen and switched off it is whatever the toggle said before Studio
-    /// was chosen, so that switching Studio off puts a recording back to what it was.
+    /// Whether the trimmer opens when a video recording stops. While Studio is switched on: the
+    /// choice is Trimmer. While it is switched off: the trimmer toggle is on.
     /// </summary>
     bool OpensTrimmerAfterVideoRecording { get; }
 
     /// <summary>
     /// Whether Tiny Clips Studio is switched on, while it is in preview. Default false. It is the
     /// "Tiny Clips Studio (Preview)" switch in Settings; with it off, nothing of Studio is shown
-    /// and a recording is made as it always was.
+    /// and a recording is made as it always was. Switching it off brings
+    /// <see cref="ShowTrimmer"/> in step with the choice that was left in
+    /// <see cref="VideoAfterRecording"/>: Save or Trimmer is taken over, and with Studio left as
+    /// the choice the toggle keeps what it said before Studio was switched on.
     /// </summary>
     bool StudioPreviewEnabled { get; set; }
 

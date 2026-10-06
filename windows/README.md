@@ -190,8 +190,10 @@ Studio is off until you switch it on: **Settings › General › Tiny Clips Stud
 the switch off nothing else of Studio is shown, and a recording is made as it always was.
 Switching it off again deletes nothing: the projects stay where they are, are not cleaned up while
 it is off, and the line under the switch says how many there are and how much room they take.
-Choosing **Open in Studio (Preview)** leaves **Open trimmer after recording** as it was set, so
-that is what applies again once the switch is off.
+While the switch is on, **After recording** decides what a recording does, and **Open trimmer
+after recording** is left as it was. When the switch goes off, the trimmer setting takes over
+what **After recording** was left on, Save or Open trimmer. Left on **Open in Studio (Preview)**,
+the trimmer setting is what it was before Studio was switched on.
 
 With the switch on:
 

@@ -315,22 +315,41 @@ public sealed class CaptureSettings : ICaptureSettings
         {
             _settings.Set(VideoAfterRecordingKey, ToPersistedVideoAfterRecording(value));
 
-            // Choosing Studio says nothing about the trimmer. The toggle keeps what it said, and
-            // that applies again once Studio is switched off: a recording is then made as it was
-            // before Studio was tried.
-            if (value != VideoAfterRecording.Studio)
+            // While Studio is switched on the choice is what decides, and the trimmer toggle is
+            // left as it was before. The list the choice is made in takes each press of an arrow
+            // key as a choice, so going from Save to Studio passes Open trimmer on the way, and
+            // that must not be what a recording does once Studio is switched off again. The
+            // toggle is brought in step when Studio is switched off, from the choice left then.
+            if (value != VideoAfterRecording.Studio && !StudioPreviewEnabled)
             {
                 _settings.Set("showTrimmer", value == VideoAfterRecording.Trimmer);
             }
         }
     }
 
-    public bool OpensTrimmerAfterVideoRecording => ShowTrimmer && !IsStudioRecordingEnabled;
+    public bool OpensTrimmerAfterVideoRecording =>
+        StudioPreviewEnabled ? VideoAfterRecording == VideoAfterRecording.Trimmer : ShowTrimmer;
 
     public bool StudioPreviewEnabled
     {
         get => _settings.Get("studioPreviewEnabled", false);
-        set => _settings.Set("studioPreviewEnabled", value);
+        set
+        {
+            // Switched off: the trimmer toggle is what decides from here on. It takes over the
+            // choice that was left, Save or Open trimmer. With Studio left as the choice it
+            // keeps what it said before Studio was switched on. Written before the switch, so
+            // that an app that ends between the two never has Studio off and the toggle stale.
+            if (!value
+                && StudioPreviewEnabled
+                && ParseVideoAfterRecording(_settings.Get(VideoAfterRecordingKey, string.Empty)) is { } stored
+                && stored != VideoAfterRecording.Studio
+                && ShowTrimmer != (stored == VideoAfterRecording.Trimmer))
+            {
+                _settings.Set("showTrimmer", stored == VideoAfterRecording.Trimmer);
+            }
+
+            _settings.Set("studioPreviewEnabled", value);
+        }
     }
 
     public bool IsStudioRecordingEnabled => StudioPreviewEnabled && VideoAfterRecording == VideoAfterRecording.Studio;
