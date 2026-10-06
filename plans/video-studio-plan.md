@@ -400,7 +400,7 @@ This section records what was built and how it differs from the plan above. It i
 | Studio window | Done | Done. Run by `tools/StudioWindowCheck` with the real preview and exporter, without a person at the controls |
 | Settings, Record for Studio, reopening projects | Done | Done |
 
-Nothing on macOS has been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. Capture, the compositor, the preview, export, and the whole Studio window are unverified at runtime. Since 5 October anyone can switch Studio on in Settings, so whoever does is the first to run them.
+Until 6 October nothing on macOS had been run on a Mac. This work was done on Windows, where the macOS code can only be compiled and unit tested by the pull request's `Build` workflow. On 6 October the owner ran Studio on a Mac for the first time, with another session, which rebuilt the inspector there and drew it off screen (see "Decided on 6 October"). What that run used beyond the editing and the inspector is not written down, so for capture, the compositor, the preview, export, and the rest of the Studio window this section still says what is known here: compiled and unit tested, and not seen running by the session that wrote them.
 
 Since it cannot be run here, the macOS code was read through twice more by reviewers that only read (5 October): once the composition, the compositor, the player and the export, and once the capture path, the project store and the window's lifetime. They found eight defects that follow from the code and the documented behavior of the frameworks, all fixed and compiled:
 
@@ -897,7 +897,7 @@ One thing for the owner of the App Store account, which the visible switch does 
 
 ## Hands-on checklist
 
-**Nobody has done any of this.** It is what a person with the app in front of them should do, in this order, and where a step goes somewhere no check tool has been, it says so. It was in the pull request's description until 6 October.
+**Nobody has done any of this on Windows. On the Mac the owner ran Studio once, on 6 October; which of these steps that run went through is not recorded.** It is what a person with the app in front of them should do, in this order, and where a step goes somewhere no check tool has been, it says so. It was in the pull request's description until 6 October.
 
 **Windows**
 
