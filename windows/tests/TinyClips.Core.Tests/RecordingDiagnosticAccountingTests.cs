@@ -55,6 +55,59 @@ public sealed class RecordingDiagnosticAccountingTests
     }
 
     [Fact]
+    public async Task BorrowedFrameGate_CountsActiveContentionButNotPauseOrStop()
+    {
+        var monitor = new RecordingPerformanceMonitor("cpu", 4, 4, 30);
+        monitor.Start();
+        var gate = new CpuFrameProcessingGate();
+        gate.Start();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var processing = Task.Run(() => gate.TryProcess(() =>
+        {
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        }, monitor), TestContext.Current.CancellationToken);
+
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            Assert.False(gate.TryProcess(() => throw new InvalidOperationException("Overlapping consumer ran"), monitor));
+            monitor.Pause();
+            Assert.False(gate.TryProcess(() => throw new InvalidOperationException("Paused consumer ran"), monitor));
+        }
+        finally
+        {
+            release.Set();
+            await processing.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            gate.Stop();
+        }
+
+        monitor.Resume();
+        Assert.False(gate.TryProcess(() => throw new InvalidOperationException("Stopped consumer ran"), monitor));
+        var report = monitor.Complete();
+        Assert.Equal(1, report.CpuSkippedTickEvents);
+        Assert.Equal(0, report.FramesDropped);
+        Assert.Equal(0, report.FramesEmitted);
+        Assert.Equal(0, report.SubmissionAttempts);
+    }
+
+    [Fact]
+    public void SinkWriter_BorrowedCpuAndGpuOverloadsRetainActualAcceptanceContract()
+    {
+        foreach (var signature in new[]
+        {
+            new[] { typeof(CapturedFrame), typeof(TimeSpan), typeof(TimeSpan) },
+            new[] { typeof(GpuFrame), typeof(TimeSpan) },
+        })
+        {
+            var method = typeof(MfSinkWriterEncoder).GetMethod(nameof(MfSinkWriterEncoder.WriteVideo), signature);
+            Assert.NotNull(method);
+            Assert.Equal(typeof(bool), method.ReturnType);
+        }
+    }
+
+    [Fact]
     public void Counters_DoNotAddPacingEventsToQueuePoolProductionDrops()
     {
         var monitor = new RecordingPerformanceMonitor("gpu", 640, 480, 30);
