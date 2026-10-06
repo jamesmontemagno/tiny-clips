@@ -170,7 +170,7 @@
                     Click="OnClose"
                     Icon="Cancel"
                     Label="Close"
-                    ToolTipService.ToolTip="Close the editor" />
+                    ToolTipService.ToolTip="Close the editor (Esc)" />
             </CommandBar>
         </Border>
 

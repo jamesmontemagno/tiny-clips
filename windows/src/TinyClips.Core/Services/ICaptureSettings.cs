@@ -78,6 +78,12 @@ public interface ICaptureSettings
     bool ShowScreenshotEditor { get; set; }
 
     /// <summary>
+    /// Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. When false, Esc
+    /// closes them straight away and discards anything unsaved. Default true.
+    /// </summary>
+    bool ConfirmEditorEscape { get; set; }
+
+    /// <summary>
     /// When true, a region screenshot re-captures the screen after the selection overlay closes
     /// (reflects changes made while selecting, slower). When false (default), the frozen frame
     /// shown behind the overlay is cropped and saved directly — no second capture.

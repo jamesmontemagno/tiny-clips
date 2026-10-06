@@ -176,6 +176,16 @@
                         <ComboBoxItem Content="Always use main display" />
                     </ComboBox>
                 </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. Turn off to close them right away, discarding anything unsaved."
+                    Header="Confirm before closing editors with Esc"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE711;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ConfirmEditorEscapeToggle"
+                        AutomationProperties.Name="Confirm before closing editors with Esc"
+                        IsOn="{x:Bind ViewModel.ConfirmEditorEscape, Mode=TwoWay}" />
+                </controls:SettingsCard>
             </StackPanel>
 
             <TextBlock

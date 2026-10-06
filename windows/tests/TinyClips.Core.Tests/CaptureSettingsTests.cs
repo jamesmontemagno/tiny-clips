@@ -481,6 +481,23 @@ public sealed class CaptureSettingsTests
     }
 
     [Fact]
+    public void ConfirmEditorEscape_DefaultsTrue_RoundTrips_AndResetRestoresDefault()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.True(settings.ConfirmEditorEscape);
+
+        settings.ConfirmEditorEscape = false;
+        Assert.False(settings.ConfirmEditorEscape);
+        Assert.False(settingsService.Get("confirmEditorEscape", true));
+
+        settings.ResetToDefaults();
+        Assert.True(settings.ConfirmEditorEscape);
+        Assert.True(settingsService.Get("confirmEditorEscape", false));
+    }
+
+    [Fact]
     public void TeleprompterSettings_RoundTripThroughPersistedKeys()
     {
         var settingsService = new TestSettingsService();

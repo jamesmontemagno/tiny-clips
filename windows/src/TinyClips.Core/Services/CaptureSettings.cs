@@ -366,6 +366,12 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("showScreenshotEditor", value);
     }
 
+    public bool ConfirmEditorEscape
+    {
+        get => _settings.Get("confirmEditorEscape", true);
+        set => _settings.Set("confirmEditorEscape", value);
+    }
+
     public bool ScreenshotUsesLiveCapture
     {
         get => _settings.Get("screenshotUsesLiveCapture", false);
@@ -823,6 +829,7 @@ public sealed class CaptureSettings : ICaptureSettings
         WebcamCornerPosition = WebcamCornerPosition.BottomRight;
         WebcamCornerRadius = null;
         ShowScreenshotEditor = true;
+        ConfirmEditorEscape = true;
         ScreenshotUsesLiveCapture = false;
         ShowGifTrimmer = true;
         SaveImmediatelyScreenshot = true;
