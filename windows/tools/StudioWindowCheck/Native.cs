@@ -14,6 +14,7 @@ internal static partial class Native
     private const int DwmwaExtendedFrameBounds = 9;
     private const int GwlExStyle = -20;
     private const long WsExNoActivate = 0x08000000;
+    private const long WsExTopmost = 0x00000008;
     private const int SwHide = 0;
     private const uint WmActivate = 0x0006;
     private static readonly nint HwndBottom = 1;
@@ -145,13 +146,21 @@ internal static partial class Native
     }
 
     /// <summary>The visible top-level windows of this process.</summary>
-    internal static unsafe List<nint> VisibleWindowsOfThisProcess()
+    internal static List<nint> VisibleWindowsOfThisProcess() => VisibleWindows(everyProcess: false);
+
+    /// <summary>Every visible top-level window on the desktop, from the one in front to the one at the back.</summary>
+    internal static List<nint> VisibleWindowsFromTheFront() => VisibleWindows(everyProcess: true);
+
+    /// <summary>Whether a window is one the system keeps in front of every window that is not.</summary>
+    internal static bool IsTopmost(nint window) => ((long)GetWindowLongPtr(window, GwlExStyle) & WsExTopmost) != 0;
+
+    private static unsafe List<nint> VisibleWindows(bool everyProcess)
     {
         var found = new List<nint>();
         _enumerated = found;
         try
         {
-            EnumWindows(&OnWindow, 0);
+            EnumWindows(&OnWindow, everyProcess ? 1 : 0);
         }
         finally
         {
@@ -161,10 +170,11 @@ internal static partial class Native
         return found;
     }
 
+    // Windows hands the top-level windows over from the front to the back.
     [UnmanagedCallersOnly]
-    private static int OnWindow(nint window, nint parameter)
+    private static int OnWindow(nint window, nint everyProcess)
     {
-        if (IsWindowVisible(window) && ProcessOf(window) == (uint)Environment.ProcessId)
+        if (IsWindowVisible(window) && (everyProcess != 0 || ProcessOf(window) == (uint)Environment.ProcessId))
         {
             _enumerated?.Add(window);
         }

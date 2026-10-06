@@ -56,6 +56,13 @@ internal sealed partial class WindowChecks
     private StudioShortcutAction Key(Editor editor, StudioShortcutKey key, bool control = false) =>
         OnUi(() => editor.Window.RunShortcut(key, isControlDown: control, isShiftDown: false, isAltDown: false, isRepeat: false));
 
+    /// <summary>
+    /// What the window does with Esc, as <see cref="Key"/>: with Ctrl, Shift or Alt held, and as
+    /// a first press or as the key being held.
+    /// </summary>
+    private StudioShortcutAction Escape(Editor editor, bool control = false, bool shift = false, bool alt = false, bool repeat = false) =>
+        OnUi(() => editor.Window.RunShortcut(StudioShortcutKey.Escape, isControlDown: control, isShiftDown: shift, isAltDown: alt, isRepeat: repeat));
+
     /// <summary>Presses the window's own close button through UI Automation: the Close button of its title bar.</summary>
     private static bool PressClose(Editor editor)
     {

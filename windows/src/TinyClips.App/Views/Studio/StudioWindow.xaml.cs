@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using TinyClips.App.Controls.Studio;
 using TinyClips.App.Services.Studio;
 using TinyClips.App.ViewModels.Studio;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
@@ -35,6 +36,7 @@ public sealed partial class StudioWindow : Window
     private const int MinimumHeightDip = 640;
 
     private readonly IStudioPreviewViewFactory _previewViews;
+    private readonly ICaptureSettings _settings;
     private readonly WindowChromeController _chromeController;
     private readonly StudioTimeline _timeline;
     private readonly Action<StudioWindow, Task> _onClosed;
@@ -50,7 +52,7 @@ public sealed partial class StudioWindow : Window
 
     /// <param name="viewModel">The editor for the project this window shows.</param>
     /// <param name="previewViews">Makes the element the preview is drawn in.</param>
-    /// <param name="settings">Where the app theme comes from.</param>
+    /// <param name="settings">Where the app theme comes from, and whether Esc asks before it closes the window.</param>
     /// <param name="onClosed">
     /// Called once when the window is closing for good, with a task that finishes when the
     /// project's files have been let go of and, if the user chose to delete the project, it is
@@ -64,6 +66,7 @@ public sealed partial class StudioWindow : Window
     {
         ViewModel = viewModel;
         _previewViews = previewViews;
+        _settings = settings;
         _onClosed = onClosed;
 
         InitializeComponent();
@@ -415,6 +418,11 @@ public sealed partial class StudioWindow : Window
             IsExporting: ViewModel.IsExporting)
         {
             IsTypeToSearchFocused = focused is ComboBox or ComboBoxItem,
+
+            // Esc is a drop-down's only while its list is open. An open list closes on Esc itself
+            // and marks the key as handled, so that press should never come here: this is for
+            // the case that it does.
+            IsDropDownOpen = focused is ComboBoxItem or ComboBox { IsDropDownOpen: true },
             HasSelectedZoom = ViewModel.HasSelectedZoom,
             HasSelectedCut = ViewModel.HasSelectedCut,
             HasSelectedSpeed = ViewModel.HasSelectedSpeed,
@@ -428,6 +436,12 @@ public sealed partial class StudioWindow : Window
         };
 
         var action = StudioShortcuts.Resolve(input);
+        if (action == StudioShortcutAction.RequestClose)
+        {
+            // The one key the editor cannot act on itself: it has no window to close.
+            return RequestCloseByEscape() ? action : StudioShortcutAction.None;
+        }
+
         if (action != StudioShortcutAction.None)
         {
             ViewModel.Run(action);
@@ -465,6 +479,72 @@ public sealed partial class StudioWindow : Window
 
     // Closing
 
+    /// <summary>How the user asked for the window to close.</summary>
+    private enum CloseRequest
+    {
+        /// <summary>The close button, Alt+F4, or a close from the system: anything that raises the AppWindow's Closing event.</summary>
+        CloseButton,
+
+        /// <summary>Esc.</summary>
+        Escape,
+    }
+
+    /// <summary>What the user is asked before the window closes.</summary>
+    private enum CloseQuestion
+    {
+        /// <summary>Nothing. The window closes.</summary>
+        None,
+
+        /// <summary>An export is running: keep exporting, or stop and close.</summary>
+        RunningExport,
+
+        /// <summary>The recording was never exported: export it, keep it as a draft, or delete it.</summary>
+        Draft,
+
+        /// <summary>Whether Esc was meant. Only Esc asks this, and only of a project that is open, where nothing else is asked.</summary>
+        Escape,
+    }
+
+    /// <summary>
+    /// What has to be asked when the user asks the window to close. The close button and Esc
+    /// both come here, and to nothing else, so that Esc can never close what the close button
+    /// would have asked about.
+    /// </summary>
+    /// <remarks>
+    /// Esc differs in one place, the same as on the Mac: a project that is open and has been
+    /// exported. Closing asks nothing there, so Esc asks whether it was meant, as it does in the
+    /// other editors and behind the same setting. Where closing has a question of its own, that
+    /// question is the confirmation, whatever the setting says, and Esc adds none to it. A
+    /// window whose project is not open, because it is still being opened or cannot be shown,
+    /// closes on Esc as it does by its close button, whatever the setting says: the question
+    /// says that the edits are saved, which is no sentence for a window that opened nothing.
+    /// </remarks>
+    private CloseQuestion QuestionBeforeClosing(CloseRequest request)
+    {
+        switch (ViewModel.GetClosePrompt())
+        {
+            case StudioClosePrompt.ExportRunning:
+                return CloseQuestion.RunningExport;
+            case StudioClosePrompt.NeverExported:
+                return CloseQuestion.Draft;
+        }
+
+        // Studio saves every edit as it is made, so there is never anything unsaved to ask about.
+        return request == CloseRequest.Escape
+            && ViewModel.IsReady
+            && EditorEscape.ResolvePrompt(_settings.ConfirmEditorEscape, hasUnsavedChanges: false) is not null
+                ? CloseQuestion.Escape
+                : CloseQuestion.None;
+    }
+
+    private Task AskBeforeClosingAsync(CloseQuestion question) => question switch
+    {
+        CloseQuestion.RunningExport => AskAboutRunningExportAsync(),
+        CloseQuestion.Draft => AskAboutDraftAsync(),
+        CloseQuestion.Escape => AskWhetherEscapeWasMeantAsync(),
+        _ => Task.CompletedTask,
+    };
+
     /// <summary>
     /// Guards the close button, Alt+F4 and a close from the system: anything that raises the
     /// AppWindow's Closing event.
@@ -476,8 +556,11 @@ public sealed partial class StudioWindow : Window
             return;
         }
 
-        var prompt = ViewModel.GetClosePrompt();
-        if (prompt == StudioClosePrompt.None)
+        // No window closes from under a question. While one is open the close button waits for
+        // its answer, also where closing by now asks nothing: Esc's question is asked there,
+        // and an export can end behind the question about it.
+        var question = QuestionBeforeClosing(CloseRequest.CloseButton);
+        if (question == CloseQuestion.None && !_isPromptOpen)
         {
             return;
         }
@@ -488,14 +571,35 @@ public sealed partial class StudioWindow : Window
             return;
         }
 
-        if (prompt == StudioClosePrompt.ExportRunning)
+        await AskBeforeClosingAsync(question);
+    }
+
+    /// <summary>
+    /// Esc asks the window to close, as its close button does. Returns false when the key is not
+    /// the window's to act on: a question is open, and Esc belongs to that.
+    /// </summary>
+    /// <remarks>
+    /// Window.Close does not raise the AppWindow's Closing event, so a key that called it would
+    /// close past every question. This asks them itself.
+    /// </remarks>
+    private bool RequestCloseByEscape()
+    {
+        if (_isClosed || _isPromptOpen)
         {
-            await AskAboutRunningExportAsync();
+            return false;
+        }
+
+        var question = QuestionBeforeClosing(CloseRequest.Escape);
+        if (question == CloseQuestion.None)
+        {
+            CloseWithoutAsking();
         }
         else
         {
-            await AskAboutDraftAsync();
+            _ = AskBeforeClosingAsync(question);
         }
+
+        return true;
     }
 
     /// <summary>Shows one question at a time: a window can hold only one dialog.</summary>
@@ -528,6 +632,32 @@ public sealed partial class StudioWindow : Window
         if (await ShowPromptAsync(dialog) == ContentDialogResult.Primary && !_isClosed)
         {
             // Closing the session stops the export.
+            CloseWithoutAsking();
+        }
+    }
+
+    /// <summary>
+    /// The confirmation the other editors ask before Esc closes them, with Studio's words. The
+    /// window closes only on its primary button.
+    /// </summary>
+    private async Task AskWhetherEscapeWasMeantAsync()
+    {
+        ViewModel.Pause();
+        _isPromptOpen = true;
+        bool confirmed;
+        try
+        {
+            confirmed = await EditorEscapeConfirmation.ConfirmAsync(RootGrid, EditorEscapePrompt.CloseWithoutChanges, EditorEscapeSurface.Studio);
+        }
+        finally
+        {
+            _isPromptOpen = false;
+        }
+
+        // This question stands in only where closing asks nothing. Should closing have come to
+        // need a question of its own while this one was open, the window stays.
+        if (confirmed && !_isClosed && ViewModel.GetClosePrompt() == StudioClosePrompt.None)
+        {
             CloseWithoutAsking();
         }
     }

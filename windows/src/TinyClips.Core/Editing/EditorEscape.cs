@@ -21,6 +21,13 @@ public enum EditorEscapeSurface
     ScreenshotEditor,
     VideoTrimmer,
     GifTrimmer,
+
+    /// <summary>
+    /// The Studio editor. It saves every edit as it is made, so the only thing it ever asks here
+    /// is <see cref="EditorEscapePrompt.CloseWithoutChanges"/>. What else Esc does in its window
+    /// is decided in <c>StudioShortcuts</c>.
+    /// </summary>
+    Studio,
 }
 
 /// <summary>
@@ -58,11 +65,17 @@ public static class EditorEscape
     public static string Title(EditorEscapePrompt prompt, EditorEscapeSurface surface) => prompt switch
     {
         EditorEscapePrompt.DiscardChanges => "Discard changes?",
+        _ when surface == EditorEscapeSurface.Studio => "Close Studio?",
         _ => surface == EditorEscapeSurface.ScreenshotEditor ? "Close the editor?" : "Close the trimmer?",
     };
 
     public static string Message(EditorEscapePrompt prompt, EditorEscapeSurface surface)
     {
+        if (surface == EditorEscapeSurface.Studio)
+        {
+            return "Your edits are saved with the project, and you can reopen it from the Clips Library. You can turn off this confirmation in General settings.";
+        }
+
         if (surface == EditorEscapeSurface.ScreenshotEditor)
         {
             return prompt == EditorEscapePrompt.DiscardChanges
@@ -78,6 +91,11 @@ public static class EditorEscape
 
     public static string ConfirmButtonText(EditorEscapePrompt prompt, EditorEscapeSurface surface)
     {
+        if (surface == EditorEscapeSurface.Studio)
+        {
+            return "Close Studio";
+        }
+
         if (surface == EditorEscapeSurface.ScreenshotEditor)
         {
             return prompt == EditorEscapePrompt.DiscardChanges ? "Discard" : "Close editor";

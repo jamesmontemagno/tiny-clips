@@ -204,11 +204,14 @@ With the switch on:
   playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
   at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
   selected zoom, cut, or speed change, `1`–`4` layout of the scene the playhead is in,
-  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export. While a lane has the
-  keyboard focus, `Left`/`Right` go to the previous and the next scene, zoom, cut, or speed
-  change on it, and `Home`/`End` to the first and the last; on the scene lane, `Delete` removes
-  the scene the playhead is in. While something is being dragged, the keys that change the
-  project do nothing; `Space` and the arrow keys still work.
+  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export, and otherwise close
+  the editor as its close button does: a recording that was never exported asks what to do with
+  it, and a project that was exported asks first unless **Confirm before closing editors with
+  Esc** is turned off in General settings. While a lane has the keyboard focus, `Left`/`Right`
+  go to the previous and the next scene, zoom, cut, or speed change on it, and `Home`/`End` to
+  the first and the last; on the scene lane, `Delete` removes the scene the playhead is in.
+  While something is being dragged, the keys that change the project do nothing; `Space` and
+  the arrow keys still work.
   The Camera section has a **Background** choice: keep, blur, or remove what is behind you. The
   people are found on this PC with the MediaPipe Selfie Segmentation model, which ships with the
   app under the Apache License 2.0 (**Settings › About › Third-party notices**).

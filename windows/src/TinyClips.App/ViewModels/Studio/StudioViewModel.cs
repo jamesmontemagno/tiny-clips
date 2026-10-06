@@ -340,7 +340,10 @@ public sealed partial class StudioViewModel : ObservableObject
     public void MoveBubbleTopLeft(double x, double y) =>
         _session.MoveBubbleTopLeft(x, y, CanvasWidth, CanvasHeight);
 
-    /// <summary>Runs what a key press means. A layout chosen this way is read out, and so is what came of a scene, a zoom, a cut or a speed change.</summary>
+    /// <summary>
+    /// Runs what a key press means. A layout chosen this way is read out, and so is what came of a scene, a zoom, a cut or a speed change.
+    /// Closing is the window's to do: <see cref="StudioShortcutAction.RequestClose"/> does nothing here.
+    /// </summary>
     public void Run(StudioShortcutAction action)
     {
         switch (action)

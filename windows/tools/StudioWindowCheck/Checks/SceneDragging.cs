@@ -853,7 +853,9 @@ internal sealed partial class WindowChecks
         var filesBefore = ExportFiles();
         var export = Key(editor, StudioShortcutKey.E, control: true);
         var started = Find(editor, "StudioCancelExportButton", 3) is not null;
-        var escape = Key(editor, StudioShortcutKey.Escape);
+
+        // Only while it runs: without an export, Esc asks the window to close.
+        var escape = IsExporting(editor) ? Key(editor, StudioShortcutKey.Escape) : StudioShortcutAction.None;
         var stopped = Gone(editor, "StudioCancelExportButton", 15);
         var files = Until(() => ExportFiles().Except(filesBefore).ToArray(), left => left.Length == 0, 3, 50);
         after.Add($"Ctrl+E ran {export} and an export started: {started}; Esc ran {escape} and it stopped: {stopped}, leaving {(files.Length == 0 ? "no file" : string.Join(", ", files.Select(Path.GetFileName)))}");

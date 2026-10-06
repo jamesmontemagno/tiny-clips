@@ -37,6 +37,11 @@ fails, and what was prepared for the three failures, which the tool does only wh
 to (`--as-prepared`). They compile, and that is all that is known of them: see "Written on
 5 October 2026 and not run" and "Three checks on a smaller preview".
 
+**Not run either.** Written on 6 October 2026, still without a check tool: what Esc does in
+the window and the close button while a question is open (both in `close`), and two windows
+more for `--memory`. One of the checks opens a drop-down list, which the tool had never done.
+See "Written on 6 October 2026 and not run".
+
 ## Needs
 
 - An x64 process. The tool refuses to run otherwise: see "What it does to the machine".
@@ -162,6 +167,10 @@ Someone may be working on the machine while the tool runs, so:
   call into the system, and it was once seen not to return: a run stood still in it for six
   minutes. The tool makes that call on a thread of its own, goes on without it after 5 s, and
   says in the report how often that happened.
+- **One drop-down list is opened**, for about half a second, in the `close` group: see "Combo
+  boxes" under "What stands in for a person". Activating it is refused like every other
+  activation. Whether it shows in front of anything is read while it is open, and fails a
+  check if it does. No run has made that check yet.
 - **No input is sent**: no keys, no pointer. See "What stands in for a person".
 - **No sound.** The preview is created with `StudioPreviewOptions.ForceMuted`. Audible playback is
   not checked.
@@ -224,12 +233,22 @@ Someone may be working on the machine while the tool runs, so:
   Automation patterns (Invoke, Toggle, SelectionItem, RangeValue), which work on a window that is
   not in front. The window's own close button is the Close button of its title bar, invoked the
   same way, so the window's question on closing is the real one.
-- **Combo boxes** are set by `SelectedIndex` on the UI thread. An open drop-down is a window of
-  its own, in front of other windows, so none is ever opened.
+- **Combo boxes** are set by `SelectedIndex` on the UI thread, and their lists stay closed,
+  with one exception: for what Esc does while a list is open (`close`), the canvas drop-down
+  is opened through UI Automation, as a screen reader opens it, for as long as it takes to
+  hand the key over, and closed again the same way. Whether an open list is a window of its
+  own, and whether such a window is in front of anything, had not been looked at before that
+  check was written; the tooltip of a window in the background, which the framework makes the
+  same way, is a window of its own and is not in front (see "A closed window that stays in
+  memory"). So the check reads what the open list was to the system, and a check of its own
+  fails if it was in front.
 - **Keys are not pressed.** Where a check says "what the Space key runs", it calls what the
   window's key handler calls once it has mapped the key: `StudioWindow.RunShortcut`, which asks
-  `StudioShortcuts.Resolve` what the key means in the window as it is, and runs that. That the
-  window maps the R, S, X, Z and Delete keys is checked on `StudioWindow.MapKey`. For the arrow
+  `StudioShortcuts.Resolve` what the key means in the window as it is, and runs that. For Esc
+  the method is also told that Ctrl, Shift or Alt is held and that the key is being held, which
+  the window's handler reads from the keyboard and from the key event: that reading is not
+  run. That the window maps the R, S, X, Z and Delete keys is checked on
+  `StudioWindow.MapKey`. For the arrow
   keys, Home and End on a lane, the lane's own `HandleKey` is called, which is what its key
   handler calls. Delete on the scene lane is checked with the focus put on the lane inside the
   window, which is what the window's key handler asks about. That a key reaches a handler, and
@@ -316,8 +335,10 @@ Someone may be working on the machine while the tool runs, so:
 - `close`: the question on a project that was never exported and each of its four answers, the
   draft opened again, and an exported project. After an answer the tool waits 0.7 s before it
   presses the close button again: the window asks one question at a time, and passes over its
-  close button until the last question has finished closing. Then a save that fails
-  (`Checks\ClosingUnsaved.cs`): see "A save that fails as a window closes".
+  close button until the last question has finished closing. Then the close button after an
+  export has ended behind the question about it: see "The close button while a question is
+  open". Then what Esc does (`Checks\ClosingByEscape.cs`): see "Esc closes the window". Then
+  a save that fails (`Checks\ClosingUnsaved.cs`): see "A save that fails as a window closes".
 - `windows`: two projects in two windows, a project opened twice, and, as the last thing of a
   run, the app exiting with two editors open (after which the window service opens nothing).
 - `accessibility`: every element in the window's content has a name, every control a person
@@ -760,6 +781,128 @@ file under that name. The video then has to be whole under the next name (read w
 its codec, size, rate and number of frames), the other file has to be as it was, the project
 has to link to the name the video got, and the app has to be told once, of that name.
 
+## Written on 6 October 2026 and not run
+
+### Esc closes the window
+
+In `Checks\ClosingByEscape.cs`, in the `close` group, after the question on a recording that
+was never exported and before a save that fails. It was written while no check tool could be
+run, like the section before this one, and is to be read the same way: it compiles, the rule
+behind it passes its unit tests (`StudioEditorSessionShortcutTests`, `EditorEscapeTests`), and
+not one check below has run. If nothing ends a part early, the `close` group has 20 checks
+more: 18 for Esc, and 2 for the close button while a question is open, which are at the end of
+this section.
+
+Esc asks the window to close as its close button does, by the rule the Mac's window has.
+Where closing asks a question of its own, that question is asked. Where a project is open
+and closing asks nothing, which is a project that was exported, Esc asks whether it was
+meant, with the question the screenshot editor and the trimmers ask
+(`EditorEscapeConfirmation`) in Studio's words, while the setting "Confirm before closing
+editors with Esc" is on, and closes the window at once while it is off. A window whose
+project is not open, because it cannot be shown or is still being opened, closes at once
+whatever the setting says: the question says that the edits are saved, which is no sentence
+for a window that opened nothing. The tool's settings are the app's settings in memory, so
+the checks switch the real setting, and put it back.
+
+The key is not pressed: each check hands `StudioWindow.RunShortcut` the key, its modifiers and
+whether it is held, and reads what the window then shows. That the window maps the Esc key is
+checked on `StudioWindow.MapKey`, like the other keys. A project that "was exported" lists an
+export in its file, written there by the tool; no export is run for it.
+
+- **A project that was exported, with the setting on.** While the video plays: the question
+  has to be there, with the automation id the other editors' question has, the title "Close
+  Studio?", Studio's sentence, Close Studio and Cancel and no third answer, and the focus on
+  Close Studio; and the video has to stop. While it is open, what the window runs for Esc,
+  pressed and held, has to be nothing, and the window's close button, pressed then, has to
+  leave the one question and the window where they are. Cancel: the question goes, the
+  project file is byte for byte as it was, and Next frame steps a frame on. Esc again and
+  Close Studio: the window closes, and the project stays with its export listed.
+- **The same with the setting off:** the window has to be gone, and no question asked.
+- **A recording that was never exported.** With the setting off: the question its close
+  button asks (Export, Keep as draft, Cancel, Delete recording), as the one question, and the
+  video stops. With the setting on: that question again, and after Keep as draft the tool
+  looks, until the window is gone, for a question with the other one's automation id or
+  title. There must be none.
+- **While an export runs**, with the real exporter: what Esc runs has to be the stop of the
+  export; the window stays, nothing is asked and no file is left. The key, as a held one, is
+  handed over again while the export stops and once it is gone, and then has to run nothing.
+  Pressed anew, it has to ask what to do with the recording.
+- **Esc that is not the window's:** held; with Ctrl, with Shift, with Alt, and with Ctrl and
+  Shift; while the list of a drop-down is open; with the focus in a text box; and in a drag
+  (`BeginGesture`), after which the same key has to ask. The editor has no text box. The tool
+  puts one into the window's root grid for this check and takes it out again, so that the
+  window's own test of whether text is being edited is the one that answers.
+- **A drop-down.** With the focus on the canvas drop-down and its list closed, which is where
+  the focus is left after a choice was made from it, Esc is the window's: on this project it
+  has to ask, and the question is cancelled. With its list open, what the window runs for Esc
+  has to be nothing: no question, the window stays, the list is still open and what is chosen
+  in it is as it was. The list is opened and closed through UI Automation (`Expand`,
+  `Collapse`), and is open for about half a second. It is the one list the tool opens. While
+  it is open the tool reads whether it has a window more than before, whether the system
+  keeps that window in front, and where it is among the windows on the desktop; a check of
+  its own fails if the list was in front of the window that was in front. The drop-down has a
+  tooltip, which is a window of its own as well, so the tool waits for it before it counts.
+  In the app an open list takes Esc itself and closes, so the window should never be asked
+  about that press. The check is of what the window answers if it is.
+- **A window that cannot show its project** (its recording is missing), with the setting on
+  and again with it off: the window has to be gone, as by its close button, and nothing may
+  be asked. The tool looks for a question for as long as the window is there.
+
+That the close button still does what it did is judged by the checks that were there. In
+`close`: the question on a recording that was never exported, where the focus is in it,
+Cancel, Keep as draft, the draft opened again, Delete, Export as the answer (cancelled, and
+left to finish), and an exported project that closes without a question. In `export`: the
+close button while an export runs, Keep exporting, and Stop and close. In `open`: the close
+button of a window that cannot show its project. And the three of a save that fails as a
+window closes.
+
+Not covered, because a key is never pressed: that the key reaches the window's handler from
+each control (a slider, a lane, a closed drop-down), and that it does not from an open list;
+what the window reads from the keyboard
+for Ctrl and Shift, and from the key event for Alt and for a key that is held; and what the
+framework's dialog does with a held key. The first repeat of an Esc that opened a question
+goes to the question, which is expected to take it for Cancel, so that a held Esc opens the
+question and takes it away again. Not covered either: Esc in a window that is still opening
+its project, which closes at once whatever the setting says, by the same condition as a
+window that cannot show its project. A check of that would have to come between the window's
+first picture and the end of the load.
+
+`--memory` has two windows more, both on a project that was exported: one that is asked by
+Esc and told to stay, and one that is closed by Esc and Close Studio. The question is a
+dialog that the window does not make itself.
+
+### The close button while a question is open
+
+In `Checks\Closing.cs`, in the `close` group, before the checks of Esc. No window closes from
+under a question: while one is open, the close button waits for its answer. That was so
+already wherever closing still had its question to ask. It was not so in one place, where
+closing has come to ask nothing while its question is open: the question about a running
+export, with the export ending behind it. The close button, pressed again then, used to close
+the window from under that question. Since 6 October it waits there too, and with Esc's
+question, which is asked only where closing asks nothing, it would otherwise have been the
+usual case.
+
+- A recording trimmed to three seconds is exported, the close button is pressed while the
+  export runs, and the question about it is asked. The tool waits until the export has ended
+  behind the question and the app has been told of the video, and presses the close button
+  again: the window and the one question have to stay. A note says where the keyboard focus
+  was then, in the question or behind it: the window asks for the focus on Export when an
+  export ends, and does not look whether a question is open.
+- Keep exporting, which is the answer that leaves the window: the question goes, the window
+  stays, and the close button then closes it at once, because the recording has been
+  exported.
+
+If the export has ended before the question could be asked, the first of the two fails and
+says so, and the second is not made.
+
+### Two older checks, and a tooltip
+
+Two older checks hand the window Esc to stop an export, one in `export` and one in `scene`.
+Each now does so only while the export runs. Without an export the key used to run nothing;
+now it would ask the window to close and leave a question open for the checks that follow.
+The window that had the keyboard focus put on Play, for the check of a drag, is kept open
+until the tooltip of Play has shown: see "A closed window that stays in memory".
+
 ## Three checks on a smaller preview
 
 With the speed lane under it, the preview is smaller than it was: the canvas of a window with
@@ -972,15 +1115,25 @@ found, and leaves no picture of either play-through right but for an edge. It ch
 is read in every picture of every group, so it is for after a run.
 ## Faults that were tried
 
-**For speed changes, the Background choice and the trim bar, and for what was written on
-5 October 2026, none was tried.** Fifty are written down in `faults-evening.ps1`, which is with
-the report of that work and not in the repository: the twenty-four for speed changes, the
-Background choice and the trim bar, and twenty-six more, six for what is dragged while the
-preview plays and the keys that wait, seven for Keep this project, eight for a project that
-cannot be shown, two for a save that fails as a window closes, and three for an export whose
-name is taken. Each names the group to run and the check that is expected to catch it; the
-script says for each whether its place in the code is still there, which it is for all fifty,
-and refuses to do more while the machine is not to be used for check tools. One of the
+**For speed changes, the Background choice and the trim bar, for what was written on
+5 October 2026, and for Esc, none was tried.** Seventy-one are written down in
+`faults-evening.ps1`, which is with the report of that work and not in the repository: the
+twenty-four for speed changes, the Background choice and the trim bar; twenty-six for the
+evening of 5 October, six for what is dragged while the preview plays and the keys that wait,
+seven for Keep this project, eight for a project that cannot be shown, two for a save that
+fails as a window closes, and three for an export whose name is taken; and twenty-one for
+Esc, seven in the rule (an export that runs, a held key, Shift, an open list, a drop-down
+that only has the focus, a drag, a window that cannot show its project) and fourteen in the
+window (the key not mapped, text being edited, an open list not told of, a recording closed
+without its question, the setting not asked either way, the wrong question, a second
+question, a question on top of one that is open, the close button not waiting, the video
+playing on, the wrong words, Cancel closing the window, and a window that opened nothing
+being asked). Each names the group to
+run and the check that is expected to catch it; the script says for each whether its place in
+the code is still there, which it is for all seventy-one, and refuses to do more while the
+machine is not to be used for check tools. The seven in the rule for Esc were tried against
+the unit tests of the rule, which is not this tool's doing but all that could be run: each
+failed two or three of them. One of the
 twenty-four, the transport row handing the focus past Speed when Split switches itself off,
 would have failed nothing as the checks stood, so the `scene` group got a check for it: a
 place where neither a zoom nor a cut fits and a speed change does. Whether that check, or any

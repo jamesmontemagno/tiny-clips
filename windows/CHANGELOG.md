@@ -79,6 +79,13 @@ own `CHANGELOG.md` at the repository root.
     scene, zoom, cut, or speed change before and after, and **Home** and **End** to the first
     and the last. While you drag something, the keys that change the video do nothing;
     **Space** and the arrow keys still work.
+  - **Esc closes the editor**, the way its close button does. A recording that was never
+    exported asks what to do with it, as it does from the close button. A project that was
+    exported asks "Close Studio?" first, unless **Confirm before closing editors with Esc** is
+    turned off in General settings; nothing is lost either way, because Studio saves every edit
+    as it is made. While an export runs, Esc only stops the export. An open drop-down list
+    keeps the key for itself, and Esc that is held down, or pressed with Ctrl, Shift, or Alt,
+    does nothing.
   - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
     for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
     layer. The live preview does not play a speed change at its speed yet: it shows the stretch

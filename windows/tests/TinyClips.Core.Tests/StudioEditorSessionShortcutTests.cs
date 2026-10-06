@@ -19,7 +19,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Delete, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Y, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.E, StudioShortcutAction.None)]
-    [InlineData(StudioShortcutKey.Escape, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Escape, StudioShortcutAction.RequestClose)]
     [InlineData(StudioShortcutKey.Other, StudioShortcutAction.None)]
     public void PlainKeys(StudioShortcutKey key, StudioShortcutAction expected)
     {
@@ -173,22 +173,228 @@ public sealed class StudioEditorSessionShortcutTests
     }
 
     [Fact]
-    public void Escape_StopsARunningExport_AndOtherwiseDoesNothing()
+    public void Escape_AsksTheWindowToClose()
     {
         var escape = Press(StudioShortcutKey.Escape);
 
+        Assert.Equal(StudioShortcutAction.RequestClose, StudioShortcuts.Resolve(escape));
+
+        // Also where the project is not open: a window that cannot show its project closes on Esc too.
+        Assert.Equal(StudioShortcutAction.RequestClose, StudioShortcuts.Resolve(escape with { IsReady = false }));
+
+        // Esc lets go of nothing first: what is selected, and a scene that has the focus, change nothing.
+        Assert.Equal(
+            StudioShortcutAction.RequestClose,
+            StudioShortcuts.Resolve(escape with { HasSelectedZoom = true, HasSelectedCut = true, HasSelectedSpeed = true, IsSceneFocused = true }));
+    }
+
+    [Fact]
+    public void Escape_WithCtrlShiftOrAlt_IsLeftToTheSystem()
+    {
+        var escape = Press(StudioShortcutKey.Escape);
+        StudioShortcutInput[] modified =
+        [
+            escape with { IsControlDown = true },
+            escape with { IsShiftDown = true },
+            escape with { IsAltDown = true },
+            escape with { IsControlDown = true, IsShiftDown = true },
+            escape with { IsControlDown = true, IsAltDown = true },
+            escape with { IsShiftDown = true, IsAltDown = true },
+            escape with { IsControlDown = true, IsShiftDown = true, IsAltDown = true },
+        ];
+
+        foreach (var press in modified)
+        {
+            Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press));
+
+            // Not even to stop an export.
+            Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press with { IsExporting = true }));
+        }
+    }
+
+    [Fact]
+    public void Escape_WhileAnExportRuns_StopsTheExport_AndThatIsAll()
+    {
+        // Wherever the focus is, held or not, in a drag or not: the export is stopped, and the
+        // window is not asked to close.
+        bool[] either = [false, true];
+        var presses =
+            from repeat in either
+            from text in either
+            from list in either
+            from open in either
+            from dragging in either
+            from ready in either
+            select Press(StudioShortcutKey.Escape) with
+            {
+                IsExporting = true,
+                IsRepeat = repeat,
+                IsTextInputFocused = text,
+                IsTypeToSearchFocused = list,
+                IsDropDownOpen = open,
+                IsDragging = dragging,
+                IsReady = ready,
+            };
+
+        foreach (var press in presses)
+        {
+            Assert.Equal(StudioShortcutAction.CancelExport, StudioShortcuts.Resolve(press));
+        }
+    }
+
+    [Fact]
+    public void Escape_HeldDown_DoesNothingMore()
+    {
+        // The press that stopped an export must not go on to close the window, and the press
+        // whose question was answered must not ask it again.
+        var held = Press(StudioShortcutKey.Escape) with { IsRepeat = true };
+
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(held));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(held with { IsReady = false }));
+    }
+
+    [Fact]
+    public void Escape_InTextBeingEdited_OrWhileADropDownListIsOpen_BelongsToThatControl()
+    {
+        var escape = Press(StudioShortcutKey.Escape);
+
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsTextInputFocused = true }));
+
+        // An open list closes on Esc. The focus is then on one of its items, or on the drop-down
+        // itself: either way it is also a list that searches as you type.
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsDropDownOpen = true }));
+        Assert.Equal(
+            StudioShortcutAction.None,
+            StudioShortcuts.Resolve(escape with { IsDropDownOpen = true, IsTypeToSearchFocused = true }));
+    }
+
+    [Fact]
+    public void Escape_OnADropDownThatIsClosed_AsksTheWindowToClose()
+    {
+        // The focus stays on a drop-down after a choice is made from it. Esc must not be dead
+        // there until the focus is moved: only an open list keeps the key.
+        var onAClosedDropDown = Press(StudioShortcutKey.Escape) with { IsTypeToSearchFocused = true };
+
+        Assert.Equal(StudioShortcutAction.RequestClose, StudioShortcuts.Resolve(onAClosedDropDown));
+        Assert.Equal(StudioShortcutAction.RequestClose, StudioShortcuts.Resolve(onAClosedDropDown with { IsReady = false }));
+    }
+
+    [Fact]
+    public void Escape_WhileSomethingIsDragged_DoesNotAskTheWindowToClose()
+    {
+        var escape = Press(StudioShortcutKey.Escape) with { IsDragging = true };
+
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape));
-        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsReady = false }));
-        Assert.Equal(StudioShortcutAction.CancelExport, StudioShortcuts.Resolve(escape with { IsExporting = true }));
-        Assert.Equal(
-            StudioShortcutAction.CancelExport,
-            StudioShortcuts.Resolve(escape with { IsExporting = true, IsTextInputFocused = true, IsRepeat = true }));
-        Assert.Equal(
-            StudioShortcutAction.CancelExport,
-            StudioShortcuts.Resolve(escape with { IsExporting = true, IsTypeToSearchFocused = true }));
-        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsExporting = true, IsControlDown = true }));
-        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsExporting = true, IsShiftDown = true }));
-        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(escape with { IsExporting = true, IsAltDown = true }));
+    }
+
+    [Fact]
+    public void Escape_TakesTheFirstRuleThatApplies()
+    {
+        // Every state an Esc press can arrive in. In this order: a modifier leaves the key to
+        // the system; an export that runs is stopped; a held key, text being edited, an open
+        // drop-down list and a drag keep the window open; otherwise it is asked to close. A
+        // drop-down that has the focus, and whether the project is open, change nothing.
+        bool[] either = [false, true];
+        var presses =
+            from control in either
+            from shift in either
+            from alt in either
+            from exporting in either
+            from repeat in either
+            from text in either
+            from list in either
+            from open in either
+            from dragging in either
+            from ready in either
+            select Press(StudioShortcutKey.Escape) with
+            {
+                IsControlDown = control,
+                IsShiftDown = shift,
+                IsAltDown = alt,
+                IsExporting = exporting,
+                IsRepeat = repeat,
+                IsTextInputFocused = text,
+                IsTypeToSearchFocused = list,
+                IsDropDownOpen = open,
+                IsDragging = dragging,
+                IsReady = ready,
+            };
+
+        foreach (var press in presses)
+        {
+            var expected =
+                press.IsControlDown || press.IsShiftDown || press.IsAltDown ? StudioShortcutAction.None
+                : press.IsExporting ? StudioShortcutAction.CancelExport
+                : press.IsRepeat || press.IsTextInputFocused || press.IsDropDownOpen || press.IsDragging ? StudioShortcutAction.None
+                : StudioShortcutAction.RequestClose;
+            var actual = StudioShortcuts.Resolve(press);
+
+            Assert.True(expected == actual, $"{press}: expected {expected}, and it was {actual}");
+        }
+    }
+
+    [Fact]
+    public void NoOtherKeyAsksTheWindowToClose()
+    {
+        bool[] either = [false, true];
+        var presses =
+            from key in Enum.GetValues<StudioShortcutKey>().Where(key => key != StudioShortcutKey.Escape)
+            from control in either
+            from shift in either
+            from alt in either
+            from repeat in either
+            from ready in either
+            from exporting in either
+            select Press(key) with
+            {
+                IsControlDown = control,
+                IsShiftDown = shift,
+                IsAltDown = alt,
+                IsRepeat = repeat,
+                IsReady = ready,
+                IsExporting = exporting,
+                HasSelectedZoom = true,
+                HasSelectedCut = true,
+                HasSelectedSpeed = true,
+            };
+
+        foreach (var press in presses)
+        {
+            Assert.NotEqual(StudioShortcutAction.RequestClose, StudioShortcuts.Resolve(press));
+        }
+    }
+
+    [Fact]
+    public void AnOpenDropDownList_ChangesNoOtherKey()
+    {
+        // The fact is Esc's alone. What a drop-down keeps of the other keys goes by whether it
+        // has the focus, as it did.
+        bool[] either = [false, true];
+        var presses =
+            from key in Enum.GetValues<StudioShortcutKey>().Where(key => key != StudioShortcutKey.Escape)
+            from control in either
+            from shift in either
+            from repeat in either
+            from list in either
+            from exporting in either
+            from dragging in either
+            select Press(key) with
+            {
+                IsControlDown = control,
+                IsShiftDown = shift,
+                IsRepeat = repeat,
+                IsTypeToSearchFocused = list,
+                IsExporting = exporting,
+                IsDragging = dragging,
+                HasSelectedZoom = true,
+                HasSelectedCut = true,
+                HasSelectedSpeed = true,
+            };
+
+        foreach (var press in presses)
+        {
+            Assert.Equal(StudioShortcuts.Resolve(press), StudioShortcuts.Resolve(press with { IsDropDownOpen = true }));
+        }
     }
 
     [Theory]

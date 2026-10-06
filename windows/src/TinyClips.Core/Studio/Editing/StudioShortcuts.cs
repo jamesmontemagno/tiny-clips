@@ -51,6 +51,12 @@ public enum StudioShortcutAction
     Redo,
     Export,
     CancelExport,
+
+    /// <summary>
+    /// Asks the window to close, as its close button does. The window acts on this one itself,
+    /// with whatever closing asks first: an editor cannot close its window.
+    /// </summary>
+    RequestClose,
 }
 
 /// <summary>One key press, and what the editor was doing when it arrived.</summary>
@@ -63,7 +69,10 @@ public enum StudioShortcutAction
 /// True when the focused control is text being edited. It keeps every key, including its own Undo
 /// and Redo.
 /// </param>
-/// <param name="IsReady">Whether the project is open (<see cref="StudioEditorSession.IsReady"/>).</param>
+/// <param name="IsReady">
+/// Whether the project is open (<see cref="StudioEditorSession.IsReady"/>). Esc is the one key
+/// this makes no difference to: a window that cannot show its project closes on Esc too.
+/// </param>
 /// <param name="IsExporting">Whether an export is running.</param>
 public readonly record struct StudioShortcutInput(
     StudioShortcutKey Key,
@@ -80,6 +89,14 @@ public readonly record struct StudioShortcutInput(
     /// keeps the keys that type something, and leaves the Ctrl shortcuts to the editor.
     /// </summary>
     public bool IsTypeToSearchFocused { get; init; }
+
+    /// <summary>
+    /// True while the list of a drop-down is open. Esc is then the list's, which closes on it. A
+    /// drop-down that only has the focus, with its list closed, does not keep Esc: the focus
+    /// stays on a drop-down after a choice is made from it, and Esc would otherwise do nothing
+    /// in the window until the focus was moved.
+    /// </summary>
+    public bool IsDropDownOpen { get; init; }
 
     /// <summary>Whether a zoom is selected. Delete removes it, and without one is left alone.</summary>
     public bool HasSelectedZoom { get; init; }
@@ -106,7 +123,8 @@ public readonly record struct StudioShortcutInput(
     /// in the middle of a drag of the camera would take the camera away from under the pointer,
     /// and Delete would take away the zoom, cut or speed change the pointer is holding, after
     /// which the rest of the drag moves the one next to it. Space and the arrow keys only move
-    /// the playhead, and still do.
+    /// the playhead, and still do. Esc does not ask the window to close in the middle of a drag
+    /// either.
     /// </summary>
     public bool IsDragging { get; init; }
 }
@@ -117,7 +135,8 @@ public readonly record struct StudioShortcutInput(
 /// scene at the playhead, Z adds a zoom there, X a cut and R a speed change, Delete removes the
 /// selected zoom, cut or speed change, or the current scene while a scene on the lane has the
 /// focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Esc stops a running
-/// export. While something is being dragged, only Space and the arrow keys act.
+/// export, and otherwise asks the window to close. While something is being dragged, only Space
+/// and the arrow keys act.
 /// </summary>
 /// <remarks>
 /// The window only asks about a key that the focused control did not use, so a focused slider
@@ -134,9 +153,7 @@ public static class StudioShortcuts
 
         if (input.Key == StudioShortcutKey.Escape)
         {
-            return input is { IsExporting: true, IsControlDown: false, IsShiftDown: false }
-                ? StudioShortcutAction.CancelExport
-                : StudioShortcutAction.None;
+            return ResolveEscape(input);
         }
 
         // Text being edited keeps every key, including its own Undo and Redo.
@@ -151,6 +168,39 @@ public static class StudioShortcuts
 
         // A drag keeps what it holds until the pointer lets go.
         return input.IsDragging && !MovesOnlyThePlayhead(action) ? StudioShortcutAction.None : action;
+    }
+
+    /// <summary>
+    /// Esc. Each press takes the first of these that applies. With Ctrl or Shift held it is the
+    /// system's, as it is with Alt, which <see cref="Resolve"/> has dealt with by now. While an
+    /// export runs it stops the export, and that is all. A key that is being held does nothing
+    /// more: without that, the Esc that stopped an export would go on to close the window, and
+    /// the Esc whose question was answered would ask it again. In text that is being edited, and
+    /// while the list of a drop-down is open, the key belongs to that control. In the middle of
+    /// a drag it waits, like every key that does more than move the playhead. Otherwise it asks
+    /// the window to close.
+    /// </summary>
+    /// <remarks>
+    /// Whether the project is open does not come into it: an editor that cannot show its
+    /// project closes on Esc as it does by its close button. What is selected does not either:
+    /// Esc lets go of nothing first. Nor does a drop-down that has the focus while its list is
+    /// closed (<see cref="StudioShortcutInput.IsTypeToSearchFocused"/>), as in the other editors.
+    /// </remarks>
+    private static StudioShortcutAction ResolveEscape(StudioShortcutInput input)
+    {
+        if (input.IsControlDown || input.IsShiftDown)
+        {
+            return StudioShortcutAction.None;
+        }
+
+        if (input.IsExporting)
+        {
+            return StudioShortcutAction.CancelExport;
+        }
+
+        return input.IsRepeat || input.IsTextInputFocused || input.IsDropDownOpen || input.IsDragging
+            ? StudioShortcutAction.None
+            : StudioShortcutAction.RequestClose;
     }
 
     private static bool MovesOnlyThePlayhead(StudioShortcutAction action) => action

@@ -82,6 +82,8 @@
     <!-- What those need from the rest of the app. WindowIcon is replaced: see Host\StandIns.cs. -->
     <Compile Include="$(AppSource)\Infrastructure\WindowChromeController.cs" Link="Infrastructure\WindowChromeController.cs" />
     <Compile Include="$(AppSource)\Infrastructure\AppWindowPlacement.cs" Link="Infrastructure\AppWindowPlacement.cs" />
+    <!-- The question the other editors ask before Esc closes them. The Studio window asks it too. -->
+    <Compile Include="$(AppSource)\Views\EditorEscapeConfirmation.cs" Link="Views\EditorEscapeConfirmation.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorController.cs" Link="Controls\ScreenshotEditor\EditorController.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorModels.cs" Link="Controls\ScreenshotEditor\EditorModels.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorRenderSnapshot.cs" Link="Controls\ScreenshotEditor\EditorRenderSnapshot.cs" />

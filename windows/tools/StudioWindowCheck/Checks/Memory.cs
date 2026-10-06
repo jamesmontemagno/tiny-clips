@@ -90,6 +90,20 @@ internal sealed partial class WindowChecks
             StudioWindowClosed(what, act);
         }
 
+        // Esc asks a project that was exported whether it was meant, with the question the other
+        // editors ask: a dialog this window does not make itself. Told to stay, and told to close.
+        StudioWindowClosed("is asked by Esc whether to close, and is told to stay", editor =>
+        {
+            Escape(editor);
+            Dismiss(editor, Dialog(editor));
+        }, exported: true);
+        StudioWindowClosed("is closed by Esc and Close Studio", editor =>
+        {
+            Escape(editor);
+            Dialog(editor)?.Find("PrimaryButton")?.Invoke();
+            WindowGone(editor);
+        }, exported: true);
+
         var plainButtonsOwner = ToolTipWait();
 
         // A project whose recording is missing has a window without a preview.
@@ -146,9 +160,10 @@ internal sealed partial class WindowChecks
 
     // What comes back has let go of its window: it knows it only weakly from here on.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private Editor? StudioWindowClosed(string what, Action<Editor> act, Action<Editor>? last = null)
+    private Editor? StudioWindowClosed(string what, Action<Editor> act, Action<Editor>? last = null, bool exported = false)
     {
-        if (OpenReady(NewCameraProject("Memory"), $"a Studio window that {what}") is not { } editor)
+        // A project that was exported closes without the question about a recording that never was.
+        if (OpenReady(exported ? NewExportedProject("Memory") : NewCameraProject("Memory"), $"a Studio window that {what}") is not { } editor)
         {
             return null;
         }

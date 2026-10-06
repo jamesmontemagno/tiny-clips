@@ -206,6 +206,12 @@ internal sealed class UiaElement
         _ => true,
     });
 
+    /// <summary>Opens what can be expanded, such as the list of a combo box, as a screen reader does.</summary>
+    public bool Expand() => Act<UIA.IUIAutomationExpandCollapsePattern>(UIA.UIA_PatternIds.UIA_ExpandCollapsePatternId, static pattern => pattern.Expand());
+
+    /// <summary>Closes what <see cref="Expand"/> opened.</summary>
+    public bool Collapse() => Act<UIA.IUIAutomationExpandCollapsePattern>(UIA.UIA_PatternIds.UIA_ExpandCollapsePatternId, static pattern => pattern.Collapse());
+
     /// <summary>Whether a list says that one of its items is always selected, or null when the element has no selection pattern.</summary>
     public bool? IsSelectionRequired => Get<UIA.IUIAutomationSelectionPattern, bool?>(UIA.UIA_PatternIds.UIA_SelectionPatternId, static pattern => pattern.CurrentIsSelectionRequired != 0);
 

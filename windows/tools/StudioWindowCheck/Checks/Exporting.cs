@@ -104,7 +104,9 @@ internal sealed partial class WindowChecks
         values = WatchProgress(editor, value => value >= 3, 20);
         underWay = IsExporting(editor);
         watch.Restart();
-        var escape = Key(editor, StudioShortcutKey.Escape);
+
+        // Only while it runs: without an export, Esc asks the window to close (ClosingByEscape.cs).
+        var escape = underWay ? Key(editor, StudioShortcutKey.Escape) : StudioShortcutAction.None;
         Stopped("what Esc runs while exporting stops the export", escape == StudioShortcutAction.CancelExport && underWay, values, focusWanted: "StudioExportButton");
 
         ExportThatFails(editor, filesBefore);

@@ -7,9 +7,10 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 6. Closing: the question a project that was never exported asks, what each answer does, and a
-// project that was exported. A window that closes while its edits cannot be saved is in
-// ClosingUnsaved.cs.
+// 6. Closing: the question a project that was never exported asks, what each answer does, a
+// project that was exported, and the close button while a question is open that closing no
+// longer asks. What Esc does is in ClosingByEscape.cs, and a window that closes while its edits
+// cannot be saved in ClosingUnsaved.cs.
 internal sealed partial class WindowChecks
 {
     // The window asks one question at a time, and passes over its close button until the last
@@ -20,6 +21,8 @@ internal sealed partial class WindowChecks
     {
         DraftQuestion();
         ExportAnswer();
+        CloseButtonAfterTheExportEndedBehindItsQuestion();
+        ClosingByEscape();
         ClosingWhenTheSaveFails();
     }
 
@@ -228,5 +231,80 @@ internal sealed partial class WindowChecks
             "a project that was exported closes without a question, and stays",
             closePressed && closedAtOnce && !question && File.Exists(folder.Paths.ScreenPath) && _services.Store.Load(again.Id).Exports.Length == 1,
             $"window gone {closedAtOnce}{(question ? ", a question was asked" : string.Empty)}; the project is there: {File.Exists(folder.Paths.ScreenPath)}");
+    }
+
+    /// <summary>
+    /// No window closes from under a question. Closing can come to ask nothing while its
+    /// question is open in one place: the question about a running export, with the export
+    /// ending behind it. The close button, pressed again then, used to close the window from
+    /// under that question. It waits for the answer now, like every other press of the close
+    /// button while a question is open.
+    /// </summary>
+    private void CloseButtonAfterTheExportEndedBehindItsQuestion()
+    {
+        Timeline.Mark("6: the close button after an export has ended behind the question about it");
+        const string ExportQuestion = "An export is still running.";
+        var folder = NewScreenProject("Closing, the export ended", p => p with { Edits = new StudioEdits { TrimStart = 2.0, TrimEnd = 5.0 } });
+        if (OpenReady(folder, "closing, the export ended") is not { } editor)
+        {
+            return;
+        }
+
+        // The question about the export, asked while it runs.
+        Invoke(editor, "StudioExportButton");
+        var overlay = Find(editor, "StudioCancelExportButton", 3) is not null;
+        var pressed = PressClose(editor);
+        var question = Dialog(editor);
+        if (question is not { Name: ExportQuestion })
+        {
+            _report.Check(
+                "the close button, pressed again once the export has ended behind the question about it, waits for the answer",
+                false,
+                $"the question about a running export could not be asked first: an export started {overlay}, close pressed {pressed}, and what was asked is \"{question?.Name}\"; window open {Native.Exists(editor.Handle)}");
+            CloseQuietly(editor);
+            return;
+        }
+
+        // The export ends behind it. From here on closing asks nothing.
+        var ended = Until(() => !IsExporting(editor), done => done, 120, 50);
+        var finished = Until(() => _services.Exports.FirstOrDefault(e => e.ProjectId == editor.Id), e => e is not null, 5, 30);
+        Thread.Sleep(300);
+        var focus = FocusedId(editor);
+        var pressedAgain = PressClose(editor);
+        Thread.Sleep(300);
+        var questions = Questions(editor);
+        var stays = Native.Exists(editor.Handle);
+        _report.Check(
+            "the close button, pressed again once the export has ended behind the question about it, waits for the answer like every other press while a question is open: the window and the one question stay",
+            overlay && pressed && ended && finished is not null && pressedAgain && stays && questions.Count == 1 && questions[0].Name == ExportQuestion,
+            $"the export ended behind the question: {ended}, with {(finished is null ? "no video" : Path.GetFileName(finished.Path))}; the close button was pressed again: {pressedAgain}; window open {stays}; {questions.Count} question(s){(questions.Count > 0 ? $", \"{questions[0].Name}\"" : string.Empty)}");
+        _report.Note($"when the export had ended behind the question about it, the keyboard focus was on \"{focus}\"; the question's own buttons are PrimaryButton and CloseButton, and anything else is behind the question");
+        if (!stays)
+        {
+            Release(editor);
+            return;
+        }
+
+        // Keep exporting is the answer that leaves the window. The close button then has nothing to ask.
+        var kept = Dialog(editor, 1)?.Find("CloseButton")?.Invoke() ?? false;
+        var questionGone = Until(() => !HasDialog(editor), gone => gone, 3);
+        var staysAfter = Native.Exists(editor.Handle);
+        Thread.Sleep(QuestionSettles);
+        var closePressed = staysAfter && PressClose(editor);
+        var goneAtLast = WindowGone(editor, 5);
+        if (goneAtLast)
+        {
+            Release(editor);
+        }
+        else
+        {
+            CloseQuietly(editor);
+        }
+
+        var listed = _services.Store.Load(editor.Id).Exports.Length;
+        _report.Check(
+            "answered with Keep exporting, the question goes and the window stays; the close button then closes the window at once, because the recording has been exported",
+            kept && questionGone && staysAfter && closePressed && goneAtLast && listed == 1 && File.Exists(folder.Paths.ScreenPath),
+            $"Keep exporting pressed {kept}; question gone {questionGone}; window open after it {staysAfter}; the close button pressed {closePressed}, and the window gone {goneAtLast}; exports listed {listed}");
     }
 }
