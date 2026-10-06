@@ -28,8 +28,17 @@ internal sealed class StudioPreviewFrameTimes
     /// <summary>A file with more frames than this is not read: ten hours at 120 frames a second.</summary>
     internal const int MostFrames = 4_320_000;
 
-    // An index is a few megabytes for an hour of video. More than this is not an index worth reading.
-    private const long LargestIndex = 256L * 1024 * 1024;
+    /// <summary>An index is a few megabytes for an hour of video. More than this is not an index worth reading.</summary>
+    internal const long LargestIndex = 256L * 1024 * 1024;
+
+    /// <summary>A file has a handful of tracks: picture, sound, perhaps some of each. More than this is not a file a camera or a recorder writes.</summary>
+    internal const int MostTracks = 64;
+
+    /// <summary>
+    /// The most parts a file, or one part of its index, is gone through: a file has a few, and so
+    /// has each part of an index. It bounds the work a file can ask for that is all parts and nothing in them.
+    /// </summary>
+    internal const int MostParts = 4096;
 
     private readonly long[] _starts;
 
@@ -53,18 +62,30 @@ internal sealed class StudioPreviewFrameTimes
     public long Start(long frame) => _starts[Math.Clamp(frame, 0, _starts.Length - 1)];
 
     /// <summary>
-    /// The frame that is showing at a time: the last one that has begun by then, counting one
-    /// that begins within <paramref name="tolerance"/> after it. -1 while none has begun.
+    /// The frame that is showing at a time: the last one that begins at or before it, which is
+    /// the export's rule (<c>StudioVideoSource.GetFrame</c>). -1 while none has begun. There is
+    /// no allowance: a frame that begins a 100 ns unit after the time has not begun.
+    /// <para>
+    /// The times are rounded to the nearest unit, as the export's reader was measured to hand
+    /// them out (the spike's findings: 0, 333333, 666667 for the RGB output the export asks
+    /// for). A player was measured to change frames within one unit of a frame's start, on the
+    /// early side for some frames, so for a time within a unit of a frame's start this and a
+    /// player can differ. The middle of a slot is not such a time in a recording's screen
+    /// track: a file's frames begin at whole numbers of the file's own unit, a 30000th of a
+    /// second in what Media Foundation's writer makes, and half a frame at 30 or 60 a second
+    /// is a whole number of those. So a frame begins at the middle of a slot or a whole unit
+    /// of the file from it, which is 33 millionths of a second. A camera's offset can put the
+    /// middle anywhere, and there the two can differ for a frame that begins within a unit of it.
+    /// </para>
     /// </summary>
-    public long FrameAt(long ticks, long tolerance = 0)
+    public long FrameAt(long ticks)
     {
-        var limit = ticks + tolerance;
         var low = 0;
         var high = _starts.Length;
         while (low < high)
         {
             var middle = low + ((high - low) / 2);
-            if (_starts[middle] <= limit)
+            if (_starts[middle] <= ticks)
             {
                 low = middle + 1;
             }
@@ -155,8 +176,7 @@ internal sealed class StudioPreviewFrameTimes
             }
 
             var movie = new Movie();
-            Walk(index, movie, null);
-            return FromMovie(movie, out problem);
+            return ReadMovie(index, movie, ref problem) ? FromMovie(index, movie, out problem) : null;
         }
         catch (Exception ex) when (ex is IOException or OverflowException or ArgumentException or IndexOutOfRangeException or InvalidDataException or OutOfMemoryException)
         {
@@ -185,36 +205,94 @@ internal sealed class StudioPreviewFrameTimes
     // ----------------------------------------------------------------------------------------
     // The index of an MP4 file: the movie box, the video track's time units, its edit list, and
     // the two tables that say when each sample is decoded and how much later it is shown.
+    //
+    // What is read is what a file's index is made of and nothing else. The parts have their
+    // places: moov holds mvhd and the tracks; a trak holds edts, with elst in it, and mdia; mdia
+    // holds mdhd, hdlr and minf; minf holds stbl; stbl holds stts and ctts. Each is looked for
+    // where it belongs and only there, so nothing here calls itself and no file can make it go
+    // deeper than that, and what a file can make it do is counted: the parts of the file and of
+    // each part of the index (MostParts), the tracks (MostTracks), the frames before room is
+    // made for them (MostFrames), the index itself (LargestIndex).
+    //
+    // A part that does not fit the part it is in, bytes that are left over, one of these parts
+    // in another place or twice, a table that is shorter or longer than it says: the index is
+    // damaged, and a damaged index is not read in part. What stays possible is a part this has
+    // no use for whose length takes in the part after it: that hides the part, and nothing in
+    // the file says it should not. A file whose times this cannot be sure of is played as
+    // every file was before: on the grid.
     // ----------------------------------------------------------------------------------------
+
+    private static readonly uint Moov = Code("moov");
+    private static readonly uint Moof = Code("moof");
+    private static readonly uint Mvhd = Code("mvhd");
+    private static readonly uint Mvex = Code("mvex");
+    private static readonly uint Trak = Code("trak");
+    private static readonly uint Edts = Code("edts");
+    private static readonly uint Elst = Code("elst");
+    private static readonly uint Mdia = Code("mdia");
+    private static readonly uint Mdhd = Code("mdhd");
+    private static readonly uint Hdlr = Code("hdlr");
+    private static readonly uint Minf = Code("minf");
+    private static readonly uint Stbl = Code("stbl");
+    private static readonly uint Stts = Code("stts");
+    private static readonly uint Ctts = Code("ctts");
+
+    /// <summary>Stands for the file itself where the place of a part is asked for: no part has this for a name.</summary>
+    private const uint TheFile = uint.MaxValue;
+
+    /// <summary>A stretch of the index: from a byte of it up to another.</summary>
+    private readonly record struct Part(int Start, int End)
+    {
+        public int Length => End - Start;
+    }
+
+    /// <summary>A table of the index: its kind, how many entries it says it has, and where they are.</summary>
+    private readonly record struct Table(byte Version, uint Count, Part Entries);
 
     private sealed class Movie
     {
+        public bool HasHeader;
         public uint Timescale;
-        public bool Fragmented;
         public List<Track> Tracks { get; } = [];
     }
 
     private sealed class Track
     {
+        public bool HasEdits;
+        public bool HasMedia;
+        public bool HasMediaHeader;
+        public bool HasHandler;
+        public bool HasMediaInformation;
+        public bool HasSampleTable;
         public bool IsVideo;
         public uint Timescale;
-        public bool EditsUnreadable;
-        public bool TablesUnreadable;
-        public List<(long Duration, long MediaTime, bool AtRateOne)> Edits { get; } = [];
-        public List<(uint Count, uint Delta)> TimeToSample { get; } = [];
-        public List<(uint Count, long Offset)> CompositionOffsets { get; } = [];
+        public Table? EditList;
+        public Table? TimeToSample;
+        public Table? CompositionOffsets;
     }
 
-    /// <summary>The contents of the file's movie box, or null when it has none.</summary>
+    /// <summary>
+    /// The contents of the file's movie box, or null when it has none, more than one, or one
+    /// that is in fragments. The whole file is gone through, part by part, and nothing of it is
+    /// read but the parts' names and lengths and the movie box.
+    /// </summary>
     private static byte[]? ReadIndex(Stream file, out string? problem)
     {
         problem = null;
         var header = new byte[16];
         var length = file.Length;
         long position = 0;
-        var fragments = false;
-        while (position + 8 <= length)
+        long indexAt = -1;
+        long indexLength = 0;
+        var parts = 0;
+        while (length - position >= 8)
         {
+            if (++parts > MostParts)
+            {
+                problem = $"it is in more than {MostParts} parts";
+                return null;
+            }
+
             file.Position = position;
             file.ReadExactly(header, 0, 8);
             long size = BinaryPrimitives.ReadUInt32BigEndian(header);
@@ -222,225 +300,471 @@ internal sealed class StudioPreviewFrameTimes
             var headerLength = 8;
             if (size == 1)
             {
-                if (position + 16 > length)
+                // The length is in the 64 bits after the name.
+                if (length - position < 16)
                 {
-                    break;
+                    problem = "a part of it does not fit the file";
+                    return null;
                 }
 
                 file.ReadExactly(header, 8, 8);
-                size = checked((long)BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8)));
+                var large = BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8));
+                if (large > long.MaxValue)
+                {
+                    problem = "a part of it does not fit the file";
+                    return null;
+                }
+
+                size = (long)large;
                 headerLength = 16;
             }
             else if (size == 0)
             {
+                // The last part of a file may leave its length out: it goes to the end.
                 size = length - position;
             }
 
-            if (size < headerLength || position + size > length)
+            if (size < headerLength || size > length - position)
             {
-                problem = "a part of it is longer than the file";
+                problem = "a part of it does not fit the file";
                 return null;
             }
 
-            if (type == Code("moov"))
+            if (type == Moof)
             {
+                // Before the index or after it, with or without the index saying so.
+                problem = "its index is in fragments";
+                return null;
+            }
+
+            var place = PlaceOf(type);
+            if (place != 0 && place != TheFile)
+            {
+                problem = $"its index is damaged: '{Name(type)}' is outside it";
+                return null;
+            }
+
+            if (type == Moov)
+            {
+                if (indexAt >= 0)
+                {
+                    problem = "it has two indexes";
+                    return null;
+                }
+
                 if (size - headerLength > LargestIndex)
                 {
                     problem = "its index is too large";
                     return null;
                 }
 
-                var payload = new byte[size - headerLength];
-                file.ReadExactly(payload);
-                if (fragments)
-                {
-                    problem = "its index is in fragments";
-                    return null;
-                }
-
-                return payload;
+                indexAt = position + headerLength;
+                indexLength = size - headerLength;
             }
 
-            fragments |= type == Code("moof");
             position += size;
         }
 
-        problem = "it has no index";
-        return null;
-    }
-
-    private static void Walk(ReadOnlySpan<byte> data, Movie movie, Track? track)
-    {
-        var position = 0;
-        while (position + 8 <= data.Length)
+        // Fewer than eight bytes after the last part are no part, and say nothing about the index.
+        if (indexAt < 0)
         {
-            long size = BinaryPrimitives.ReadUInt32BigEndian(data[position..]);
-            var type = BinaryPrimitives.ReadUInt32BigEndian(data[(position + 4)..]);
-            var headerLength = 8;
-            if (size == 1 && position + 16 <= data.Length)
-            {
-                size = checked((long)BinaryPrimitives.ReadUInt64BigEndian(data[(position + 8)..]));
-                headerLength = 16;
-            }
-            else if (size == 0)
-            {
-                size = data.Length - position;
-            }
-
-            if (size < headerLength || position + size > data.Length)
-            {
-                return;
-            }
-
-            var payload = data.Slice(position + headerLength, (int)size - headerLength);
-            if (type == Code("trak"))
-            {
-                var inner = new Track();
-                movie.Tracks.Add(inner);
-                Walk(payload, movie, inner);
-            }
-            else if (type == Code("edts") || type == Code("mdia") || type == Code("minf") || type == Code("stbl"))
-            {
-                Walk(payload, movie, track);
-            }
-            else if (type == Code("mvex"))
-            {
-                movie.Fragmented = true;
-            }
-            else
-            {
-                Leaf(type, payload, movie, track);
-            }
-
-            position += (int)size;
-        }
-    }
-
-    private static void Leaf(uint type, ReadOnlySpan<byte> box, Movie movie, Track? track)
-    {
-        if (box.Length < 4)
-        {
-            return;
-        }
-
-        var version = box[0];
-        var body = box[4..];
-        if (type == Code("mvhd"))
-        {
-            if (version == 1 && body.Length >= 20)
-            {
-                movie.Timescale = BinaryPrimitives.ReadUInt32BigEndian(body[16..]);
-            }
-            else if (version != 1 && body.Length >= 12)
-            {
-                movie.Timescale = BinaryPrimitives.ReadUInt32BigEndian(body[8..]);
-            }
-
-            return;
-        }
-
-        if (track is null)
-        {
-            return;
-        }
-
-        if (type == Code("mdhd"))
-        {
-            if (version == 1 && body.Length >= 20)
-            {
-                track.Timescale = BinaryPrimitives.ReadUInt32BigEndian(body[16..]);
-            }
-            else if (version != 1 && body.Length >= 12)
-            {
-                track.Timescale = BinaryPrimitives.ReadUInt32BigEndian(body[8..]);
-            }
-        }
-        else if (type == Code("hdlr") && body.Length >= 8)
-        {
-            track.IsVideo = BinaryPrimitives.ReadUInt32BigEndian(body[4..]) == Code("vide");
-        }
-        else if (type == Code("elst") && body.Length >= 4)
-        {
-            var count = BinaryPrimitives.ReadUInt32BigEndian(body);
-            var entry = version == 1 ? 20 : 12;
-            if (count > (uint)((body.Length - 4) / entry))
-            {
-                track.EditsUnreadable = true;
-                return;
-            }
-
-            for (var index = 0; index < count; index++)
-            {
-                var at = body[(4 + (index * entry))..];
-                long duration;
-                long mediaTime;
-                ReadOnlySpan<byte> rate;
-                if (version == 1)
-                {
-                    duration = checked((long)BinaryPrimitives.ReadUInt64BigEndian(at));
-                    mediaTime = BinaryPrimitives.ReadInt64BigEndian(at[8..]);
-                    rate = at[16..];
-                }
-                else
-                {
-                    duration = BinaryPrimitives.ReadUInt32BigEndian(at);
-                    mediaTime = BinaryPrimitives.ReadInt32BigEndian(at[4..]);
-                    rate = at[8..];
-                }
-
-                track.Edits.Add((duration, mediaTime, BinaryPrimitives.ReadInt16BigEndian(rate) == 1 && BinaryPrimitives.ReadUInt16BigEndian(rate[2..]) == 0));
-            }
-        }
-        else if (type == Code("stts") && body.Length >= 4)
-        {
-            var count = BinaryPrimitives.ReadUInt32BigEndian(body);
-            if (count > (uint)((body.Length - 4) / 8))
-            {
-                track.TablesUnreadable = true;
-                return;
-            }
-
-            for (var index = 0; index < count; index++)
-            {
-                var at = body[(4 + (index * 8))..];
-                track.TimeToSample.Add((BinaryPrimitives.ReadUInt32BigEndian(at), BinaryPrimitives.ReadUInt32BigEndian(at[4..])));
-            }
-        }
-        else if (type == Code("ctts") && body.Length >= 4)
-        {
-            var count = BinaryPrimitives.ReadUInt32BigEndian(body);
-            if (count > (uint)((body.Length - 4) / 8))
-            {
-                track.TablesUnreadable = true;
-                return;
-            }
-
-            for (var index = 0; index < count; index++)
-            {
-                var at = body[(4 + (index * 8))..];
-                long offset = version == 0 ? BinaryPrimitives.ReadUInt32BigEndian(at[4..]) : BinaryPrimitives.ReadInt32BigEndian(at[4..]);
-                track.CompositionOffsets.Add((BinaryPrimitives.ReadUInt32BigEndian(at), offset));
-            }
-        }
-    }
-
-    private static StudioPreviewFrameTimes? FromMovie(Movie movie, out string? problem)
-    {
-        problem = null;
-        if (movie.Fragmented)
-        {
-            problem = "its index is in fragments";
+            problem = "it has no index";
             return null;
         }
 
+        var payload = new byte[indexLength];
+        file.Position = indexAt;
+        file.ReadExactly(payload);
+        return payload;
+    }
+
+    /// <summary>
+    /// Takes the next part of a stretch of the index. False at the end of the stretch; false
+    /// with <paramref name="problem"/> set when what is there is not a part that fits it.
+    /// </summary>
+    /// <param name="where">The name of the part the stretch is the contents of, for the reason.</param>
+    /// <param name="position">Where the next part begins; moved past it.</param>
+    /// <param name="count">How many parts of the stretch have been taken.</param>
+    private static bool Next(byte[] index, Part within, string where, ref int position, ref int count, out uint type, out Part contents, ref string? problem)
+    {
+        type = 0;
+        contents = default;
+        var left = within.End - position;
+        if (left == 0)
+        {
+            return false;
+        }
+
+        if (left < 8)
+        {
+            problem = $"its index is damaged: bytes are left over in '{where}'";
+            return false;
+        }
+
+        if (++count > MostParts)
+        {
+            problem = $"its index is damaged: '{where}' is in more than {MostParts} parts";
+            return false;
+        }
+
+        ulong size = BinaryPrimitives.ReadUInt32BigEndian(index.AsSpan(position));
+        type = BinaryPrimitives.ReadUInt32BigEndian(index.AsSpan(position + 4));
+        var headerLength = 8;
+        if (size == 1)
+        {
+            if (left < 16)
+            {
+                problem = $"its index is damaged: a part of '{where}' does not fit it";
+                return false;
+            }
+
+            size = BinaryPrimitives.ReadUInt64BigEndian(index.AsSpan(position + 8));
+            headerLength = 16;
+        }
+
+        // A length of 0, which stands for "to the end of the file", is for the last part of a
+        // file and has no meaning inside the index.
+        if (size < (ulong)headerLength || size > (ulong)left)
+        {
+            problem = $"its index is damaged: a part of '{where}' does not fit it";
+            return false;
+        }
+
+        contents = new Part(position + headerLength, position + (int)size);
+        position += (int)size;
+        return true;
+    }
+
+    /// <summary>
+    /// The part of the index a part belongs in, when it has one place only; 0 otherwise. The
+    /// index itself and a fragment belong in the file and in no part of the index.
+    /// </summary>
+    private static uint PlaceOf(uint type) =>
+        type == Moov || type == Moof ? TheFile
+        : type == Mvhd || type == Mvex || type == Trak ? Moov
+        : type == Edts || type == Mdia ? Trak
+        : type == Elst ? Edts
+        : type == Mdhd || type == Minf ? Mdia
+        : type == Stbl ? Minf
+        : type == Stts || type == Ctts ? Stbl
+        : 0;
+
+    /// <summary>True, with the reason, for a part that is met where it does not belong.</summary>
+    private static bool IsMisplaced(uint type, uint where, ref string? problem)
+    {
+        var place = PlaceOf(type);
+        if (place == 0 || place == where)
+        {
+            return false;
+        }
+
+        problem = $"its index is damaged: '{Name(type)}' has no place in '{Name(where)}'";
+        return true;
+    }
+
+    /// <summary>Notes that a part of which there is one was met; false, with the reason, when it was met before.</summary>
+    private static bool Once(ref bool met, uint type, uint where, ref string? problem)
+    {
+        if (met)
+        {
+            problem = $"its index is damaged: '{Name(where)}' has '{Name(type)}' twice";
+            return false;
+        }
+
+        met = true;
+        return true;
+    }
+
+    private static bool ReadMovie(byte[] index, Movie movie, ref string? problem)
+    {
+        var all = new Part(0, index.Length);
+        var position = 0;
+        var count = 0;
+        while (Next(index, all, "moov", ref position, ref count, out var type, out var contents, ref problem))
+        {
+            if (type == Mvhd)
+            {
+                if (!Once(ref movie.HasHeader, type, Moov, ref problem) || !ReadTimescale(index, contents, type, out movie.Timescale, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (type == Trak)
+            {
+                if (movie.Tracks.Count == MostTracks)
+                {
+                    problem = $"it has more than {MostTracks} tracks";
+                    return false;
+                }
+
+                var track = new Track();
+                movie.Tracks.Add(track);
+                if (!ReadTrack(index, contents, track, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (type == Mvex)
+            {
+                problem = "its index is in fragments";
+                return false;
+            }
+            else if (IsMisplaced(type, Moov, ref problem))
+            {
+                return false;
+            }
+        }
+
+        return problem is null;
+    }
+
+    private static bool ReadTrack(byte[] index, Part trak, Track track, ref string? problem)
+    {
+        var position = trak.Start;
+        var count = 0;
+        while (Next(index, trak, "trak", ref position, ref count, out var type, out var contents, ref problem))
+        {
+            if (type == Edts)
+            {
+                if (!Once(ref track.HasEdits, type, Trak, ref problem) || !ReadEdits(index, contents, track, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (type == Mdia)
+            {
+                if (!Once(ref track.HasMedia, type, Trak, ref problem) || !ReadMedia(index, contents, track, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (IsMisplaced(type, Trak, ref problem))
+            {
+                return false;
+            }
+        }
+
+        return problem is null;
+    }
+
+    private static bool ReadEdits(byte[] index, Part edts, Track track, ref string? problem)
+    {
+        var position = edts.Start;
+        var count = 0;
+        var met = false;
+        while (Next(index, edts, "edts", ref position, ref count, out var type, out var contents, ref problem))
+        {
+            if (type == Elst)
+            {
+                if (!Once(ref met, type, Edts, ref problem) || !ReadTable(index, contents, type, lastVersion: 1, entryOf: version => version == 1 ? 20 : 12, out track.EditList, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (IsMisplaced(type, Edts, ref problem))
+            {
+                return false;
+            }
+        }
+
+        return problem is null;
+    }
+
+    private static bool ReadMedia(byte[] index, Part mdia, Track track, ref string? problem)
+    {
+        var position = mdia.Start;
+        var count = 0;
+        while (Next(index, mdia, "mdia", ref position, ref count, out var type, out var contents, ref problem))
+        {
+            if (type == Mdhd)
+            {
+                if (!Once(ref track.HasMediaHeader, type, Mdia, ref problem) || !ReadTimescale(index, contents, type, out track.Timescale, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (type == Hdlr)
+            {
+                // What the track is. A file of QuickTime's kind has another one in minf, which
+                // says where its data is: that one is not asked.
+                if (!Once(ref track.HasHandler, type, Mdia, ref problem))
+                {
+                    return false;
+                }
+
+                if (contents.Length < 12)
+                {
+                    problem = CutShort(type);
+                    return false;
+                }
+
+                track.IsVideo = BinaryPrimitives.ReadUInt32BigEndian(index.AsSpan(contents.Start + 8)) == Code("vide");
+            }
+            else if (type == Minf)
+            {
+                if (!Once(ref track.HasMediaInformation, type, Mdia, ref problem) || !ReadMediaInformation(index, contents, track, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (IsMisplaced(type, Mdia, ref problem))
+            {
+                return false;
+            }
+        }
+
+        return problem is null;
+    }
+
+    private static bool ReadMediaInformation(byte[] index, Part minf, Track track, ref string? problem)
+    {
+        var position = minf.Start;
+        var count = 0;
+        while (Next(index, minf, "minf", ref position, ref count, out var type, out var contents, ref problem))
+        {
+            if (type == Stbl)
+            {
+                if (!Once(ref track.HasSampleTable, type, Minf, ref problem) || !ReadSampleTable(index, contents, track, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (IsMisplaced(type, Minf, ref problem))
+            {
+                return false;
+            }
+        }
+
+        return problem is null;
+    }
+
+    private static bool ReadSampleTable(byte[] index, Part stbl, Track track, ref string? problem)
+    {
+        var position = stbl.Start;
+        var count = 0;
+        var times = false;
+        var offsets = false;
+        while (Next(index, stbl, "stbl", ref position, ref count, out var type, out var contents, ref problem))
+        {
+            if (type == Stts)
+            {
+                if (!Once(ref times, type, Stbl, ref problem) || !ReadTable(index, contents, type, lastVersion: 0, entryOf: _ => 8, out track.TimeToSample, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (type == Ctts)
+            {
+                if (!Once(ref offsets, type, Stbl, ref problem) || !ReadTable(index, contents, type, lastVersion: 1, entryOf: _ => 8, out track.CompositionOffsets, ref problem))
+                {
+                    return false;
+                }
+            }
+            else if (IsMisplaced(type, Stbl, ref problem))
+            {
+                return false;
+            }
+        }
+
+        return problem is null;
+    }
+
+    /// <summary>The time units of a movie's or a track's header, which has them in one of two places by its kind.</summary>
+    private static bool ReadTimescale(byte[] index, Part contents, uint type, out uint timescale, ref string? problem)
+    {
+        timescale = 0;
+        if (contents.Length < 4)
+        {
+            problem = CutShort(type);
+            return false;
+        }
+
+        // After the kind and its flags: two times of 32 bits, or of 64, and then the units.
+        var version = index[contents.Start];
+        if (version > 1)
+        {
+            problem = UnknownKind(type);
+            return false;
+        }
+
+        var at = 4 + (version == 1 ? 16 : 8);
+        if (contents.Length < at + 4)
+        {
+            problem = CutShort(type);
+            return false;
+        }
+
+        timescale = BinaryPrimitives.ReadUInt32BigEndian(index.AsSpan(contents.Start + at));
+        return true;
+    }
+
+    /// <summary>
+    /// A table: its kind, the number of entries it says it has, and the entries, which have to be
+    /// there and to be all there is. A table of a kind this does not know, one with fewer
+    /// entries than it says, or one with more in it than its entries, is not a table to go by:
+    /// what follows a table's last entry is where the next part of the index would begin, and
+    /// a table that has taken that in has hidden it.
+    /// </summary>
+    private static bool ReadTable(byte[] index, Part contents, uint type, byte lastVersion, Func<byte, int> entryOf, out Table? table, ref string? problem)
+    {
+        table = null;
+        if (contents.Length < 8)
+        {
+            problem = CutShort(type);
+            return false;
+        }
+
+        var version = index[contents.Start];
+        if (version > lastVersion)
+        {
+            problem = UnknownKind(type);
+            return false;
+        }
+
+        var count = BinaryPrimitives.ReadUInt32BigEndian(index.AsSpan(contents.Start + 4));
+        var entries = new Part(contents.Start + 8, contents.End);
+        var said = (long)count * entryOf(version);
+        if (said > entries.Length)
+        {
+            problem = CutShort(type);
+            return false;
+        }
+
+        if (said < entries.Length)
+        {
+            problem = $"its index is damaged: '{Name(type)}' is longer than it says";
+            return false;
+        }
+
+        table = new Table(version, count, entries);
+        return true;
+    }
+
+    private static string CutShort(uint type) => type == Stts
+        ? "its table of frame times is cut short"
+        : $"its index is damaged: '{Name(type)}' is cut short";
+
+    private static string UnknownKind(uint type) => $"its index has a '{Name(type)}' of a kind that is not known";
+
+    private static StudioPreviewFrameTimes? FromMovie(byte[] index, Movie movie, out string? problem)
+    {
+        problem = null;
         Track? video = null;
         foreach (var track in movie.Tracks)
         {
-            if (track.IsVideo)
+            if (!track.IsVideo)
             {
-                video = track;
-                break;
+                continue;
             }
+
+            if (video is not null)
+            {
+                // Which of them a player plays is not known, and they need not have the same times.
+                problem = "it has more than one video track";
+                return null;
+            }
+
+            video = track;
         }
 
         if (video is null)
@@ -455,59 +779,78 @@ internal sealed class StudioPreviewFrameTimes
             return null;
         }
 
-        if (video.TablesUnreadable)
-        {
-            problem = "its table of frame times is cut short";
-            return null;
-        }
-
         // The edit list moves the track on the movie's timeline: stretches of nothing first, then
         // the track from some time of its own. More than that is not a recording, and not read.
         // How long the edit list shows the track for is not looked at.
         long lead = 0;
         long mediaStart = 0;
-        if (video.EditsUnreadable)
+        if (video.EditList is { } editList)
         {
-            problem = "its edit list could not be read";
-            return null;
-        }
-
-        long nothing = 0;
-        var shows = 0;
-        foreach (var (duration, mediaTime, atRateOne) in video.Edits)
-        {
-            if (mediaTime < 0)
+            long nothing = 0;
+            var shows = 0;
+            var entry = editList.Version == 1 ? 20 : 12;
+            for (var number = 0; number < editList.Count; number++)
             {
-                if (shows > 0)
+                var at = index.AsSpan(editList.Entries.Start + (number * entry), entry);
+                long duration;
+                long mediaTime;
+                ReadOnlySpan<byte> rate;
+                if (editList.Version == 1)
                 {
-                    problem = "its edit list has a stretch of nothing in the middle";
+                    duration = checked((long)BinaryPrimitives.ReadUInt64BigEndian(at));
+                    mediaTime = BinaryPrimitives.ReadInt64BigEndian(at[8..]);
+                    rate = at[16..];
+                }
+                else
+                {
+                    duration = BinaryPrimitives.ReadUInt32BigEndian(at);
+                    mediaTime = BinaryPrimitives.ReadInt32BigEndian(at[4..]);
+                    rate = at[8..];
+                }
+
+                if (mediaTime < 0)
+                {
+                    if (shows > 0)
+                    {
+                        problem = "its edit list has a stretch of nothing in the middle";
+                        return null;
+                    }
+
+                    nothing = checked(nothing + duration);
+                    continue;
+                }
+
+                var atRateOne = BinaryPrimitives.ReadInt16BigEndian(rate) == 1 && BinaryPrimitives.ReadUInt16BigEndian(rate[2..]) == 0;
+                if (++shows > 1 || !atRateOne)
+                {
+                    problem = shows > 1 ? "its edit list has more than one part" : "its edit list changes the speed";
                     return null;
                 }
 
-                nothing = checked(nothing + duration);
-                continue;
+                lead = Ticks(nothing, movie.Timescale);
+                mediaStart = mediaTime;
             }
 
-            if (++shows > 1 || !atRateOne)
+            if (shows == 0 && editList.Count > 0)
             {
-                problem = shows > 1 ? "its edit list has more than one part" : "its edit list changes the speed";
+                problem = "its edit list shows nothing of the video";
                 return null;
             }
-
-            lead = Ticks(nothing, movie.Timescale);
-            mediaStart = mediaTime;
         }
 
-        if (shows == 0 && video.Edits.Count > 0)
-        {
-            problem = "its edit list shows nothing of the video";
-            return null;
-        }
-
+        // How many frames, before anything is made for them.
         long samples = 0;
-        foreach (var (count, _) in video.TimeToSample)
+        if (video.TimeToSample is { } runs)
         {
-            samples += count;
+            for (var number = 0; number < runs.Count; number++)
+            {
+                samples += BinaryPrimitives.ReadUInt32BigEndian(index.AsSpan(runs.Entries.Start + (number * 8)));
+                if (samples > MostFrames)
+                {
+                    problem = $"it has more than {MostFrames} frames";
+                    return null;
+                }
+            }
         }
 
         if (samples == 0)
@@ -516,58 +859,76 @@ internal sealed class StudioPreviewFrameTimes
             return null;
         }
 
-        if (samples > MostFrames)
-        {
-            problem = $"it has {samples} frames";
-            return null;
-        }
-
         // When each sample is decoded, then how much later it is shown.
         var times = new long[samples];
         long decode = 0;
         long lastDelta = 0;
         var sample = 0;
-        foreach (var (count, delta) in video.TimeToSample)
+        for (var number = 0; number < video.TimeToSample!.Value.Count; number++)
         {
-            for (var index = 0; index < count; index++)
+            var at = index.AsSpan(video.TimeToSample.Value.Entries.Start + (number * 8), 8);
+            var count = BinaryPrimitives.ReadUInt32BigEndian(at);
+            var delta = BinaryPrimitives.ReadUInt32BigEndian(at[4..]);
+            for (var one = 0; one < count; one++)
             {
                 times[sample++] = decode;
                 decode += delta;
             }
 
-            lastDelta = delta;
+            if (count > 0)
+            {
+                lastDelta = delta;
+            }
         }
 
-        var reordered = video.CompositionOffsets.Count > 0;
-        if (reordered)
+        var reordered = video.CompositionOffsets is not null;
+        if (video.CompositionOffsets is { } offsets)
         {
+            // An offset for every sample, no fewer and no more: a table that covers part of the
+            // file leaves the rest to a guess.
             sample = 0;
-            foreach (var (count, offset) in video.CompositionOffsets)
+            for (var number = 0; number < offsets.Count; number++)
             {
-                for (var index = 0; index < count && sample < times.Length; index++, sample++)
+                var at = index.AsSpan(offsets.Entries.Start + (number * 8), 8);
+                var count = BinaryPrimitives.ReadUInt32BigEndian(at);
+                long offset = offsets.Version == 0 ? BinaryPrimitives.ReadUInt32BigEndian(at[4..]) : BinaryPrimitives.ReadInt32BigEndian(at[4..]);
+                if (count > (uint)(times.Length - sample))
                 {
-                    times[sample] += offset;
+                    problem = "its table of when frames are shown is for more frames than it has";
+                    return null;
                 }
+
+                for (var one = 0; one < count; one++)
+                {
+                    times[sample++] += offset;
+                }
+            }
+
+            if (sample != times.Length)
+            {
+                problem = "its table of when frames are shown is for fewer frames than it has";
+                return null;
             }
 
             // The samples are stored in the order they are decoded; they are shown in the order of their times.
             Array.Sort(times);
         }
 
-        // A frame the edit list puts before the start: whether a player shows it, and until when,
-        // is more than the index says.
+        // A frame that is shown before the track begins, because the edit list starts the track
+        // after it or because its offset goes backwards past zero: whether a player shows it,
+        // and until when, is more than the index says.
         if (times[0] < mediaStart)
         {
-            problem = "its edit list begins inside the video";
+            problem = mediaStart > 0 ? "its edit list begins inside the video" : "its first frame is shown before its track begins";
             return null;
         }
 
         // In the track's own units from where the edit list starts it, then in 100 ns, then
         // after the stretch of nothing: so that each time is rounded once.
         var last = times[^1];
-        for (var index = 0; index < times.Length; index++)
+        for (var number = 0; number < times.Length; number++)
         {
-            times[index] = Ticks(times[index] - mediaStart, video.Timescale) + lead;
+            times[number] = Ticks(times[number] - mediaStart, video.Timescale) + lead;
         }
 
         var end = reordered ? 0 : Ticks(last + lastDelta - mediaStart, video.Timescale) + lead;
@@ -578,4 +939,14 @@ internal sealed class StudioPreviewFrameTimes
         (long)Math.Round(units * (decimal)StudioPreviewTimeMath.TicksPerSecond / timescale, MidpointRounding.AwayFromZero);
 
     private static uint Code(string type) => ((uint)type[0] << 24) | ((uint)type[1] << 16) | ((uint)type[2] << 8) | type[3];
+
+    /// <summary>A part's name as it is written, for a reason; what is not a letter or a digit comes out as a question mark.</summary>
+    private static string Name(uint type) => string.Create(4, type, static (text, code) =>
+    {
+        for (var index = 0; index < 4; index++)
+        {
+            var letter = (char)((code >> (24 - (index * 8))) & 0xFF);
+            text[index] = char.IsAsciiLetterOrDigit(letter) ? letter : '?';
+        }
+    });
 }

@@ -329,8 +329,8 @@ internal sealed record StudioPreviewDiagnostics
     /// <summary>The frame each player delivered last.</summary>
     public long[] ShownFrames { get; init; } = [];
 
-    /// <summary>The timeline frame the screen's picture is shown under, or -1: the frame the scene is drawn for.</summary>
-    public long ShownTimelineFrame { get; init; }
+    /// <summary>The timeline frame the screen's picture is shown under, or -1 while it has none: the frame the scene is drawn for.</summary>
+    public long ShownTimelineFrame { get; init; } = -1;
 
     /// <summary>
     /// What each clip's frame numbers count, per clip: "the grid" with the reason, or what the

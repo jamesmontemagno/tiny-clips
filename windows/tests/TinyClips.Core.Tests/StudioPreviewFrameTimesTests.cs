@@ -7,9 +7,10 @@ namespace TinyClips.Core.Tests;
 /// <summary>
 /// The table of a clip's frame times, and the reading of it from an MP4 file's index. The files
 /// are written here box by box, as Media Foundation's writer lays a recording out and as other
-/// writers do, with nothing of the reader's in them.
+/// writers do, with nothing of the reader's in them. What the reader does with an index that is
+/// damaged, or made to wear it out, is in the other half of this class.
 /// </summary>
-public sealed class StudioPreviewFrameTimesTests
+public sealed partial class StudioPreviewFrameTimesTests
 {
     // A thirtieth of a second in the units of a 30000th: what Media Foundation's writer counts a 30 a second track in.
     private const uint Frame30 = 1000;
@@ -33,13 +34,16 @@ public sealed class StudioPreviewFrameTimesTests
     }
 
     [Fact]
-    public void FrameAt_CountsAFrameThatBeginsWithinTheToleranceAfterTheTime()
+    public void FrameAt_HasNoAllowance_AFrameHasBegunWhenTheTimeHasReachedItsStart()
     {
         var times = Table(0, 333_333, 666_667);
 
-        Assert.Equal(0, times.FrameAt(333_000));
-        Assert.Equal(1, times.FrameAt(333_000, tolerance: 333));
-        Assert.Equal(0, times.FrameAt(332_999, tolerance: 333));
+        // One unit before a frame's start it has not begun; at its start it has. That is the
+        // export's rule, and a table needs no margin for rounding as the grid does.
+        Assert.Equal(0, times.FrameAt(333_332));
+        Assert.Equal(1, times.FrameAt(333_333));
+        Assert.Equal(1, times.FrameAt(666_666));
+        Assert.Equal(2, times.FrameAt(666_667));
     }
 
     [Fact]
@@ -241,6 +245,7 @@ public sealed class StudioPreviewFrameTimesTests
     [InlineData("nothing in the middle")]
     [InlineData("only nothing")]
     [InlineData("inside")]
+    [InlineData("before the track")]
     [InlineData("cut short")]
     [InlineData("same time")]
     [InlineData("no frames")]
@@ -259,6 +264,9 @@ public sealed class StudioPreviewFrameTimesTests
             "nothing in the middle" => (File(Elst(0, (1000, 0), (500, -1)), Stts((90, Frame30))), "its edit list has a stretch of nothing in the middle"),
             "only nothing" => (File(Elst(0, (1000, -1)), Stts((90, Frame30))), "its edit list shows nothing of the video"),
             "inside" => (File(Elst(0, (1000, 1500)), Stts((90, Frame30))), "its edit list begins inside the video"),
+            "before the track" => (
+                Concat(Box("ftyp", Ascii("isom\0\0\0\0")), Movie(1000, Video(90000, null, Stts((4, 3000)), Ctts(1, (1, unchecked((uint)-3000)), (3, 0))))),
+                "its first frame is shown before its track begins"),
             "cut short" => (File(null, Full("stts", 0, U32(5), U32(3), U32(Frame30))), "its table of frame times is cut short"),
             "same time" => (File(null, Stts((2, Frame30), (1, 0), (2, Frame30))), "frame 3 does not begin after frame 2"),
             "no frames" => (File(null, Stts()), "it has no frames"),
@@ -293,9 +301,15 @@ public sealed class StudioPreviewFrameTimesTests
     }
 
     [Fact]
-    public void BytesAtRandom_AreNeverTakenForAFile_AndNothingIsThrown()
+    public void BytesAtRandom_AreReadOrRefusedWithAReason_AndNothingIsThrown()
     {
-        // Every index of a good file with a stretch of it overwritten: read or refused, and never thrown at.
+        // Every index of a good file with a stretch of it overwritten: read or refused, and never
+        // thrown at. This shows no more than that. A few bytes changed inside a number are
+        // another number, and a file with other numbers is a file, so whether what was read is
+        // what the damage left cannot be said here. What a damaged index has to come to is in
+        // the other half of this class: a part that does not fit, a table that is not as long
+        // as it says, and PartsMovedAboutAtRandom_AreRefused_OrReadAsTheFileWas, where the
+        // answer is known.
         var good = File(Elst(0, (1680, -1), (144_000, 0)), Stts((3, Frame30), (1, 2 * Frame30), (40, Frame30)));
         var random = new Random(11);
         for (var round = 0; round < 3000; round++)
@@ -369,20 +383,28 @@ public sealed class StudioPreviewFrameTimesTests
 
     private static byte[] VideoTrack(uint timescale, byte[]? editList, byte[] timeToSample, byte[]? offsets = null) =>
         Box("trak", Concat(
-            Full("tkhd", 0, U32(0), U32(0), U32(1), U32(0), U32(0), new byte[60]),
+            Tkhd(1),
             editList is null ? [] : Box("edts", editList),
             Box("mdia", Concat(
-                Full("mdhd", 0, U32(0), U32(0), U32(timescale), U32(0), U16(0), U16(0)),
-                Full("hdlr", 0, U32(0), Ascii("vide"), new byte[13]),
-                Box("minf", Box("stbl", Concat(timeToSample, offsets ?? [], Full("stsz", 0, U32(100), U32(1)))))))));
+                Mdhd(timescale),
+                Hdlr("vide"),
+                Box("minf", Box("stbl", Concat(timeToSample, offsets ?? [], Stsz())))))));
 
-    private static byte[] Sound() =>
-        Box("trak", Concat(
-            Full("tkhd", 0, U32(0), U32(0), U32(2), U32(0), U32(0), new byte[60]),
-            Box("mdia", Concat(
-                Full("mdhd", 0, U32(0), U32(0), U32(48000), U32(0), U16(0), U16(0)),
-                Full("hdlr", 0, U32(0), Ascii("soun"), new byte[13]),
-                Box("minf", Box("stbl", Full("stts", 0, U32(1), U32(500), U32(960))))))));
+    /// <summary>A track that is not video: sound, unless another kind is named.</summary>
+    private static byte[] Sound(string kind = "soun") =>
+        Box("trak", Concat(Tkhd(2), Box("mdia", Concat(Mdhd(48000), Hdlr(kind), Box("minf", Box("stbl", SoundStts()))))));
+
+    private static byte[] Tkhd(uint track) => Full("tkhd", 0, U32(0), U32(0), U32(track), U32(0), U32(0), new byte[60]);
+
+    private static byte[] Mdhd(uint timescale) => Full("mdhd", 0, U32(0), U32(0), U32(timescale), U32(0), U16(0), U16(0));
+
+    /// <summary>What a track is: "vide" for video.</summary>
+    private static byte[] Hdlr(string kind) => Full("hdlr", 0, U32(0), Ascii(kind), new byte[13]);
+
+    /// <summary>The sizes of the samples: a table the reader has no use for.</summary>
+    private static byte[] Stsz() => Full("stsz", 0, U32(100), U32(1));
+
+    private static byte[] SoundStts() => Full("stts", 0, U32(1), U32(500), U32(960));
 
     private static byte[] Stts(params (uint Count, uint Delta)[] runs) =>
         Full("stts", 0, [U32((uint)runs.Length), .. runs.SelectMany(run => new[] { U32(run.Count), U32(run.Delta) })]);

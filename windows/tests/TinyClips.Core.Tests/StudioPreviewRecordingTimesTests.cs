@@ -1,4 +1,6 @@
+using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Rendering;
 
 namespace TinyClips.Core.Tests;
 
@@ -30,13 +32,16 @@ public sealed class StudioPreviewRecordingTimesTests
         var compared = 0;
         for (var round = 0; round < 20_000; round++)
         {
-            // Anywhere from the start to three frames past the end. Not within a few 100 ns of
-            // where one frame turns into the next: there the grid rounds a product and the table
-            // a sum, and they may differ by one unit.
+            // Anywhere from the start to three frames past the end, but for the last thousandth
+            // of a frame before the next one begins. There the grid already says the next frame:
+            // it allows that much for rounding (StudioPreviewTimeMath.BoundaryTolerance). The
+            // table, which holds each start as a number and allows nothing, still says this
+            // one. That is the test after this. And not within a few 100 ns of a frame's start,
+            // where the grid rounds a product and the table a sum.
             var position = (long)(random.NextDouble() * (frames + 3) * 10_000_000 / fps);
-            var inFrames = (position * fps / 10_000_000.0) + StudioPreviewTimeMath.BoundaryTolerance;
+            var inFrames = position * fps / 10_000_000.0;
             var fraction = inFrames - Math.Floor(inFrames);
-            if (fraction < 2e-5 || fraction > 1 - 2e-5)
+            if (fraction < 2e-5 || fraction > 1 - StudioPreviewTimeMath.BoundaryTolerance - 2e-5)
             {
                 continue;
             }
@@ -45,11 +50,52 @@ public sealed class StudioPreviewRecordingTimesTests
             Assert.Equal(grid.FrameAtPlayerTicks(position), timed.FrameAtPlayerTicks(position));
             var name = grid.NameAtPlayerTicks(position, out var into);
             Assert.Equal(name, timed.NameAtPlayerTicks(position, out var intoTimed));
-            Assert.Equal(into, intoTimed, 0.001);
+
+            // How far into the frame: the grid counts its allowance in, a thousandth of a frame.
+            Assert.Equal(into - (StudioPreviewTimeMath.BoundaryTolerance * 1000 / fps), intoTimed, 0.001);
             Assert.Equal(grid.FrameAtTimeline(position / 10_000_000.0), timed.FrameAtTimeline(position / 10_000_000.0));
         }
 
         Assert.True(compared > 19_000);
+    }
+
+    [Theory]
+    [InlineData(30.0)]
+    [InlineData(60.0)]
+    [InlineData(Ntsc)]
+    public void TimesOnTheGrid_SayTheFrameThatIsShowing_InTheLastThousandthOfIt_WhereTheGridSaysTheNext(double fps)
+    {
+        const int frames = 360;
+        var grid = new StudioPreviewClipTiming(fps, frames, 0);
+        var table = OnTheGrid(frames, fps);
+        var timed = StudioPreviewClipTiming.WithTimes(table, fps, 0);
+
+        // The grid's allowance in 100 ns units: 333 at 30 frames a second.
+        var allowance = (long)(StudioPreviewTimeMath.BoundaryTolerance * 10_000_000 / fps);
+        foreach (var frame in new long[] { 1, 2, 3, 100, 101, 102, 359 })
+        {
+            var start = table.Start(frame);
+
+            // From its start a frame is the frame by both.
+            Assert.Equal(frame, grid.FrameAtPlayerTicks(start));
+            Assert.Equal(frame, timed.FrameAtPlayerTicks(start));
+            Assert.Equal(frame, timed.NameAtPlayerTicks(start, out var into));
+            Assert.Equal(0, into);
+
+            // One unit before it, and as far before as the grid allows, the frame has not
+            // begun: the one before it is showing, and the table says so. The export, which
+            // asks whether a frame's time is at or before the time it wants, says the same.
+            foreach (var before in new long[] { 1, 2, 100, allowance - 3 })
+            {
+                Assert.Equal(frame, grid.FrameAtPlayerTicks(start - before));
+                Assert.Equal(frame - 1, timed.FrameAtPlayerTicks(start - before));
+                Assert.Equal(frame - 1, timed.NameAtPlayerTicks(start - before, out _));
+            }
+
+            // Farther back than that, the frame before by both.
+            Assert.Equal(frame - 1, grid.FrameAtPlayerTicks(start - allowance - 4));
+            Assert.Equal(frame - 1, timed.FrameAtPlayerTicks(start - allowance - 4));
+        }
     }
 
     [Theory]
@@ -226,7 +272,10 @@ public sealed class StudioPreviewRecordingTimesTests
                 }
 
                 var slots = (int)(3 * fps);
-                var timeline = Timeline(Table([.. starts]), slots, fps);
+                long[] table = [.. starts];
+                var timeline = Timeline(Table(table), slots, fps);
+                var plan = Plan(slots, fps);
+                Assert.Equal(slots, plan.Count);
                 long before = 0;
                 for (long frame = 0; frame < starts.Count; frame++)
                 {
@@ -238,13 +287,125 @@ public sealed class StudioPreviewRecordingTimesTests
                     // No earlier timeline frame shows it or a later one; this one does, unless the timeline ends first.
                     Assert.True(slot == 0 || timeline.PlayerFrame(0, slot - 1) < frame);
                     Assert.True(timeline.PlayerFrame(0, slot) >= frame || slot == timeline.LastFrame);
+
+                    // By the export's reckoning, which shares nothing with the preview's.
+                    Assert.Equal(FirstSlotTheExportShows(table, plan, frame), slot);
                 }
 
-                // And the other way round: what a timeline frame shows belongs to it or to an earlier one.
                 for (long slot = 0; slot <= timeline.LastFrame; slot++)
                 {
+                    // The frame the export draws in that frame of the video.
+                    Assert.Equal(ExportShows(table, plan[(int)slot].SourceTimeSeconds), timeline.PlayerFrame(0, slot));
+
+                    // And the other way round: what a timeline frame shows belongs to it or to an earlier one.
                     Assert.True(timeline.TimelineFrameOfScreen(timeline.PlayerFrame(0, slot)) <= slot);
                 }
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // The preview's rule is the export's, to the 100 ns unit
+    // ----------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(30.0)]
+    [InlineData(60.0)]
+    [InlineData(Ntsc)]
+    public void AFrameThatBeginsAtTheMiddleOfASlot_OrBesideIt_IsShownWhereTheExportShowsIt(double fps)
+    {
+        const int slots = 60;
+        var plan = Plan(slots, fps);
+        foreach (var slot in new[] { 1, 7, 20, 44, 58 })
+        {
+            // 333 units are a thousandth of a frame at 30 frames a second: what the grid allows
+            // for rounding, and what a table must not allow.
+            foreach (var beside in new long[] { -400, -300, -2, -1, 0, 1, 2, 100, 300, 333, 400 })
+            {
+                // 4 ms into every slot, but in this one, where the frame begins so many units from the middle.
+                var middle = StudioRenderingMath.SecondsToMfTicks(plan[slot].SourceTimeSeconds);
+                long[] starts = [.. Enumerable.Range(0, slots).Select(at => at == slot ? middle + beside : SlotStart(at, fps) + 40_000)];
+                var timeline = Timeline(Table(starts), slots, fps);
+
+                // The export: a frame that has begun by the middle of its slot is shown in it,
+                // and one that begins a unit later is shown from the next slot on.
+                Assert.Equal(beside <= 0 ? slot : slot - 1, ExportShows(starts, plan[slot].SourceTimeSeconds));
+                Assert.Equal(beside <= 0 ? slot : slot + 1, FirstSlotTheExportShows(starts, plan, slot));
+
+                // The preview: the same in every slot, and for every frame.
+                for (var at = 0; at < slots; at++)
+                {
+                    Assert.Equal(ExportShows(starts, plan[at].SourceTimeSeconds), timeline.PlayerFrame(0, at));
+                    Assert.Equal(FirstSlotTheExportShows(starts, plan, at), timeline.TimelineFrameOfScreen(at));
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(30.0, 0.137)]
+    [InlineData(30.0, -0.25)]
+    [InlineData(60.0, 0.137)]
+    [InlineData(Ntsc, 0.2)]
+    public void ACamerasFrameAtTheMiddleOfASlot_OrBesideIt_IsShownWhereTheExportShowsIt(double fps, double offset)
+    {
+        // The offset is a whole number of 100 ns units. The export takes it off the time in
+        // seconds and rounds once; a player's clock and its offset are each in whole units.
+        const int slots = 60;
+        var project = Project(slots, fps, offset);
+        var plan = StudioRenderingMath.BuildFramePlan(project, fps);
+        foreach (var slot in new[] { 12, 20, 44 })
+        {
+            foreach (var beside in new long[] { -300, -2, -1, 0, 1, 2, 300, 333 })
+            {
+                // The camera's frames on a grid of its own time, but the one nearest the slot's
+                // middle: that one begins so many units from it.
+                var middle = StudioRenderingMath.SecondsToMfTicks(StudioRenderingMath.CameraSourceTime(project, plan[slot].SourceTimeSeconds));
+                var nearest = (int)Math.Round(middle * fps / 10_000_000.0);
+                long[] starts = [.. Enumerable.Range(0, 80).Select(frame => frame == nearest ? middle + beside : SlotStart(frame, fps))];
+                var camera = StudioPreviewClipTiming.WithTimes(Table(starts), fps, offset, slots / fps);
+                var timeline = new StudioPreviewTimeline(slots / fps, fps, [new StudioPreviewClipTiming(fps, slots, 0), camera]);
+
+                Assert.Equal(beside <= 0 ? nearest : nearest - 1, ExportShows(starts, StudioRenderingMath.CameraSourceTime(project, plan[slot].SourceTimeSeconds)));
+                for (var at = 0; at < slots; at++)
+                {
+                    Assert.Equal(ExportShows(starts, StudioRenderingMath.CameraSourceTime(project, plan[at].SourceTimeSeconds)), timeline.PlayerFrame(1, at));
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void ACameraOffsetWithAFractionOfAUnit_PutsThePlayerOneUnitFromTheTimeTheExportAsksFor()
+    {
+        // What the rule above does not reach, written down so that it is known: an offset of
+        // 137 ms and four tenths of a unit. The export takes it off in seconds and rounds once
+        // (…666.67 − …000.4 = …666.27, which is …666). A player's clock stands at a whole
+        // number of units and its offset is one (…667 − …000 = …667). A camera frame that
+        // begins in that one unit is, by the preview's reckoning, shown a slot before the
+        // export shows it. What a player does with such a frame has not been looked at.
+        const double fps = 30;
+        const double offset = 0.13700004;
+        var project = Project(60, fps, offset);
+        var plan = StudioRenderingMath.BuildFramePlan(project, fps);
+        var cameraTime = StudioRenderingMath.CameraSourceTime(project, plan[12].SourceTimeSeconds);
+
+        // The camera's frames on a grid of its own time, but the eighth, which begins in that unit.
+        long[] starts = [.. Enumerable.Range(0, 80).Select(frame => frame == 8 ? 2_796_667 : SlotStart(frame))];
+        var camera = StudioPreviewClipTiming.WithTimes(Table(starts), fps, offset, 2);
+        var timeline = new StudioPreviewTimeline(2, fps, [new StudioPreviewClipTiming(fps, 60, 0), camera]);
+
+        Assert.Equal(2_796_666, StudioRenderingMath.SecondsToMfTicks(cameraTime));
+        Assert.Equal(2_796_667, timeline.MiddleTicks(12) - StudioPreviewTimeMath.ToTicks(offset));
+        Assert.Equal(7, ExportShows(starts, cameraTime));
+        Assert.Equal(8, timeline.PlayerFrame(1, 12));
+
+        // In every other slot the two agree.
+        for (var slot = 0; slot < 60; slot++)
+        {
+            if (slot != 12)
+            {
+                Assert.Equal(ExportShows(starts, StudioRenderingMath.CameraSourceTime(project, plan[slot].SourceTimeSeconds)), timeline.PlayerFrame(1, slot));
             }
         }
     }
@@ -268,10 +429,12 @@ public sealed class StudioPreviewRecordingTimesTests
         Assert.Equal(1, timing.NameAtPlayerTicks(1_300_000, out var inTheGap));
         Assert.InRange(inTheGap, 61.6, 61.75);
 
-        // A position a hair before a frame's start counts as that frame, as on the grid.
-        Assert.Equal(2, timing.NameAtPlayerTicks(1_350_000 - 200, out var aHairBefore));
-        Assert.InRange(aHairBefore, 0, 0.05);
-        Assert.Equal(1, timing.NameAtPlayerTicks(1_350_000 - 400, out _));
+        // One unit before a frame's start the frame has not begun. Nothing is allowed for
+        // rounding, as nothing is in the export: the table holds the start as a number.
+        Assert.Equal(1, timing.NameAtPlayerTicks(1_350_000 - 1, out var aUnitBefore));
+        Assert.InRange(aUnitBefore, 66.66, 66.67);
+        Assert.Equal(2, timing.NameAtPlayerTicks(1_350_000, out var atItsStart));
+        Assert.Equal(0, atItsStart);
 
         // After the last frame's end the count goes on in frames of the usual length, so that
         // the last frame does not stand for what comes after it; clamped, it is the last frame.
@@ -570,6 +733,52 @@ public sealed class StudioPreviewRecordingTimesTests
 
     private static StudioPreviewTimeline Timeline(StudioPreviewFrameTimes screen, int slots, double fps = 30) =>
         new(slots / fps, fps, [StudioPreviewClipTiming.WithTimes(screen, fps, 0)]);
+
+    /// <summary>
+    /// The frame of a clip the export draws for a time of that clip, written out from the
+    /// export's reader and not from the preview (<c>StudioVideoSource.GetFrame</c>: "while
+    /// the next frame's time is at or before the time, or there is no frame yet"). It takes the
+    /// first frame whatever its time, and then every next one that has begun by the time it is
+    /// asked for, which it is given in 100 ns units, rounded once
+    /// (<c>StudioExporter</c>: <see cref="StudioRenderingMath.SecondsToMfTicks"/>).
+    /// </summary>
+    private static long ExportShows(long[] starts, double clipSeconds)
+    {
+        var time = StudioRenderingMath.SecondsToMfTicks(clipSeconds);
+        var current = 0;
+        while (current + 1 < starts.Length && starts[current + 1] <= time)
+        {
+            current++;
+        }
+
+        return current;
+    }
+
+    /// <summary>The first frame of the video in which the export shows a frame of the screen or a later one; the last, when none does.</summary>
+    private static long FirstSlotTheExportShows(long[] starts, IReadOnlyList<StudioExportFrame> plan, long frame)
+    {
+        for (var slot = 0; slot < plan.Count; slot++)
+        {
+            if (ExportShows(starts, plan[slot].SourceTimeSeconds) >= frame)
+            {
+                return slot;
+            }
+        }
+
+        return plan.Count - 1;
+    }
+
+    /// <summary>The export's own frames for a recording of so many slots: where in the source each is taken from (<see cref="StudioRenderingMath.BuildFramePlan"/>).</summary>
+    private static IReadOnlyList<StudioExportFrame> Plan(int slots, double fps) => StudioRenderingMath.BuildFramePlan(Project(slots, fps), fps);
+
+    private static StudioProject Project(int slots, double fps, double cameraOffset = 0) => new()
+    {
+        Sources = new StudioSources
+        {
+            Screen = new StudioScreenSource { Width = 1920, Height = 1080, FrameRate = fps, Duration = slots / fps },
+            Camera = new StudioCameraSource { Width = 1280, Height = 720, Duration = slots / fps, StartOffset = cameraOffset },
+        },
+    };
 
     private sealed class Players : IStudioPreviewTransport
     {

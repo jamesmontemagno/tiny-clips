@@ -23,6 +23,23 @@ internal enum RecordedWriter
 
     /// <summary>StudioRenderCheck's own clip writer, with that tool's picture: the clip the exporter is checked with.</summary>
     RenderCheck,
+
+    /// <summary>
+    /// ffmpeg, from the usual screen clip, with two B-frames between the others: frames stored
+    /// out of the order they are shown in, which the app's recorder never writes and a video
+    /// from elsewhere can have. Its edit list starts the track at the first frame shown.
+    /// </summary>
+    FfmpegReordered,
+
+    /// <summary>The same without an edit list: by the file's own times the first frame is then shown two frames into the track.</summary>
+    FfmpegReorderedNoEdits,
+
+    /// <summary>
+    /// Media Foundation's sink writer with the H.264 encoder that comes with Windows, asked for
+    /// two B-frames between the others, given StudioRenderCheck's picture: what Windows itself
+    /// writes for such a video.
+    /// </summary>
+    SinkReordered,
 }
 
 /// <summary>What a recorded clip is to be: its name, how it is written, and when its frames are.</summary>
@@ -31,6 +48,13 @@ internal enum RecordedWriter
 internal sealed record RecordedPlan(string Name, string What, RecordedWriter Writer, int Fps, int Slots, long[] Asked)
 {
     public bool IsCamera => Writer == RecordedWriter.Camera;
+
+    /// <summary>
+    /// The clip is asked to have its frames stored out of the order they are shown in. Nothing
+    /// in the tool is made for such a clip but looking at its file, and at what a player makes
+    /// of it when the clip is named.
+    /// </summary>
+    public bool IsReordered => Writer is RecordedWriter.FfmpegReordered or RecordedWriter.FfmpegReorderedNoEdits or RecordedWriter.SinkReordered;
 
     public string FileName => Path.Combine(RecordedMedia.Folder, Name + ".mp4");
 }
@@ -79,6 +103,10 @@ internal static class RecordedMedia
 
     private const long Second = 10_000_000;
 
+    // The encoder's settings a sink writer is given with a stream: how many B-frames between the others, and how far apart the key frames are.
+    private static readonly Guid CodecApiAvEncMpvDefaultBPictureCount = new("8D390AAC-DC5C-4200-B57F-814D04BABAB2");
+    private static readonly Guid CodecApiAvEncMpvGopSize = new("95F31B26-95A4-41AA-9303-246A7FC6EEF1");
+
     // Bump when the clips change, so that clips from an older build are made again.
     private const string Version = "studio-preview-check recorded clips v1";
 
@@ -123,6 +151,9 @@ internal static class RecordedMedia
             {
                 RecordedWriter.Screen => WriteScreen(path, plan),
                 RecordedWriter.Camera => WriteCamera(path, plan),
+                RecordedWriter.FfmpegReordered => WriteWithFfmpegReordered(mediaDirectory, path, plan, editList: true, report),
+                RecordedWriter.FfmpegReorderedNoEdits => WriteWithFfmpegReordered(mediaDirectory, path, plan, editList: false, report),
+                RecordedWriter.SinkReordered => WriteWithSinkReordered(path, plan),
                 _ => WriteWithRenderCheck(path, plan),
             };
             File.WriteAllLines(notes, [signature, startOffset.ToString("R", CultureInfo.InvariantCulture)]);
@@ -134,6 +165,13 @@ internal static class RecordedMedia
         }
 
         var (times, _) = ReadVideoSampleTimes(path);
+        if (plan.IsReordered)
+        {
+            // The reader hands the frames out as they are stored. A frame's number, here and in
+            // its picture, is its place in the order they are shown in.
+            Array.Sort(times);
+        }
+
         var probed = MediaFileProbe.Probe(path, plan.Fps);
         var spec = SpecOf(plan) with { Duration = probed.Duration };
         return new RecordedClip(plan, spec, times, startOffset, probed.Duration, probed.FrameRate);
@@ -142,10 +180,12 @@ internal static class RecordedMedia
     /// <summary>The geometry of a plan's clip: where its strip and patches are.</summary>
     public static ClipSpec SpecOf(RecordedPlan plan)
     {
-        if (plan.Writer == RecordedWriter.RenderCheck)
+        if (plan.Writer is RecordedWriter.RenderCheck or RecordedWriter.SinkReordered)
         {
+            // That tool's picture. Its clip with dropped frames has sound; the one written here with B-frames has none.
+            var gaps = plan.Writer == RecordedWriter.RenderCheck;
             var theirs = RenderCheck.ClipSpec.Screen(1280, 720);
-            return new ClipSpec(plan.FileName, "GAPS", theirs.Width, theirs.Height, plan.Slots / plan.Fps, HasAudio: true, theirs.CodeX, theirs.CodeY, theirs.CodeCell, theirs.PatchX, theirs.PatchY, theirs.PatchSize, theirs.PatchPitch) { Fps = plan.Fps };
+            return new ClipSpec(plan.FileName, gaps ? "GAPS" : "REORDERED", theirs.Width, theirs.Height, plan.Slots / plan.Fps, HasAudio: gaps, theirs.CodeX, theirs.CodeY, theirs.CodeCell, theirs.PatchX, theirs.PatchY, theirs.PatchSize, theirs.PatchPitch) { Fps = plan.Fps };
         }
 
         var like = plan.IsCamera ? TestMedia.Camera : TestMedia.Screen;
@@ -306,6 +346,18 @@ internal static class RecordedMedia
 
         // A camera in low light: 15 frames a second on a track that is written as 30.
         plans.Add(new RecordedPlan("camera-15", "a camera that delivers 15 frames a second, give or take 2 ms, to a track written as 30", RecordedWriter.Camera, fps, slots, CameraTimes(slots, every: 2, stallBefore: [], stallSlots: 0, seed: 310)));
+
+        // Frames stored out of the order they are shown in, a frame at the start of every slot.
+        // The app's recorder writes no such file. They are here for what the file says and for
+        // what Media Foundation makes of it: whether the times its reader hands out, and the
+        // frame a player shows, start at the first frame shown or two frames after it; whether
+        // an edit list is honoured; and so whether the engine's reading of such an index gives
+        // the times a player goes by. Last in the list, and only looked at where they are named
+        // or where files are looked at: see RecordedPlan.IsReordered.
+        long[] grid = [.. Enumerable.Range(0, slots).Select(slot => SlotStart(slot, fps))];
+        plans.Add(new RecordedPlan("screen-reordered", "the usual screen clip encoded again by ffmpeg with two B-frames between the others: frames stored out of the order they are shown in, and an edit list that starts the track at the first frame shown", RecordedWriter.FfmpegReordered, fps, slots, grid));
+        plans.Add(new RecordedPlan("screen-reordered-noedits", "the same without an edit list: by the file's own times its first frame is shown two frames into the track", RecordedWriter.FfmpegReorderedNoEdits, fps, slots, grid));
+        plans.Add(new RecordedPlan("screen-reordered-sink", "Media Foundation's sink writer with the H.264 encoder that comes with Windows, asked for two B-frames between the others, 1280×720 with StudioRenderCheck's picture and no sound", RecordedWriter.SinkReordered, fps, slots, grid));
         return [.. plans];
     }
 
@@ -576,6 +628,134 @@ internal static class RecordedMedia
         }
 
         return recorder.StartOffset?.TotalSeconds ?? 0;
+    }
+
+    /// <summary>
+    /// The usual screen clip, its picture encoded again by ffmpeg with two B-frames between the
+    /// others and its sound copied. With an edit list, which is how ffmpeg writes such a file,
+    /// the track starts at the first frame shown; without one, the first frame shown is two
+    /// frames into the track by the file's own times, and the sound is not.
+    /// </summary>
+    private static double WriteWithFfmpegReordered(string mediaDirectory, string path, RecordedPlan plan, bool editList, Report report)
+    {
+        TestMedia.EnsureClip(mediaDirectory, TestMedia.Screen, report);
+        var clip = TestMedia.Screen;
+        var c = CultureInfo.InvariantCulture;
+        var bitrate = Math.Clamp((long)clip.Width * clip.Height * plan.Fps / 10, 2_000_000, 24_000_000);
+        var gop = (plan.Fps * 2).ToString(c);
+        List<string> arguments =
+        [
+            "-hide_banner", "-loglevel", "error", "-y",
+            "-i", TestMedia.PathOf(mediaDirectory, clip),
+            "-map", "0:v:0", "-map", "0:a:0", "-c:a", "copy",
+            "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            "-b:v", bitrate.ToString(c), "-maxrate", bitrate.ToString(c), "-bufsize", (bitrate * 2).ToString(c),
+
+            // Two B-frames between the others, always, and none used to predict another: the
+            // order stored is then 0 3 1 2 6 4 5 and so on.
+            "-g", gop, "-keyint_min", gop, "-sc_threshold", "0", "-bf", "2", "-b_strategy", "0", "-x264-params", "b-pyramid=none",
+            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
+            "-r", plan.Fps.ToString(c),
+        ];
+        if (!editList)
+        {
+            arguments.AddRange(["-use_editlist", "0"]);
+        }
+
+        arguments.AddRange(["-movflags", "+faststart", path]);
+        TestMedia.Run("ffmpeg", arguments);
+        return 0;
+    }
+
+    /// <summary>
+    /// Media Foundation's sink writer with the H.264 encoder that comes with Windows, asked for
+    /// two B-frames between the others. The frames go in as StudioRenderCheck's clip writer
+    /// gives them, NV12 in memory, each with the time of its slot; that writer itself asks for
+    /// no B-frames, and for an encoder of the graphics card where there is one, which need not
+    /// do as it is asked here. Whether the encoder stores the frames out of order after all is
+    /// for the look at the file to say.
+    /// </summary>
+    private static double WriteWithSinkReordered(string path, RecordedPlan plan)
+    {
+        var theirs = RenderCheck.ClipSpec.Screen(1280, 720);
+        MediaFactory.MFStartup(true).CheckError();
+        try
+        {
+            using var attributes = MediaFactory.MFCreateAttributes(1);
+            attributes.Set(SinkWriterAttributeKeys.ReadwriteEnableHardwareTransforms, 0u);
+            using var writer = MediaFactory.MFCreateSinkWriterFromURL(path, null!, attributes);
+
+            using var videoOut = MediaFactory.MFCreateMediaType();
+            videoOut.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Video);
+            videoOut.Set(MediaTypeAttributeKeys.Subtype, VideoFormatGuids.H264);
+            videoOut.Set(MediaTypeAttributeKeys.AvgBitrate, 4_000_000u);
+            videoOut.Set(MediaTypeAttributeKeys.InterlaceMode, (uint)VideoInterlaceMode.Progressive);
+
+            // H.264 High: the profiles below Main have no B-frames.
+            videoOut.Set(MediaTypeAttributeKeys.Mpeg2Profile, 100u);
+            SetShape(videoOut, theirs.Width, theirs.Height, plan.Fps);
+            var stream = writer.AddStream(videoOut);
+
+            using var videoIn = MediaFactory.MFCreateMediaType();
+            videoIn.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Video);
+            videoIn.Set(MediaTypeAttributeKeys.Subtype, VideoFormatGuids.NV12);
+            videoIn.Set(MediaTypeAttributeKeys.InterlaceMode, (uint)VideoInterlaceMode.Progressive);
+            videoIn.Set(MediaTypeAttributeKeys.AllSamplesIndependent, 1u);
+            videoIn.Set(MediaTypeAttributeKeys.DefaultStride, (uint)theirs.Width);
+            SetShape(videoIn, theirs.Width, theirs.Height, plan.Fps);
+
+            using var parameters = MediaFactory.MFCreateAttributes(2);
+            parameters.Set(CodecApiAvEncMpvDefaultBPictureCount, 2u);
+            parameters.Set(CodecApiAvEncMpvGopSize, (uint)(plan.Fps * 2));
+            writer.SetInputMediaType(stream, videoIn, parameters);
+            writer.BeginWriting();
+
+            var frame = theirs.DrawNv12Background();
+            var end = SlotStart(plan.Slots, plan.Fps);
+            for (var index = 0; index < plan.Asked.Length; index++)
+            {
+                theirs.StampNv12(frame, index);
+                var until = index + 1 < plan.Asked.Length ? plan.Asked[index + 1] : end;
+                using var sample = MemorySample(frame, plan.Asked[index], until - plan.Asked[index]);
+                writer.WriteSample(stream, sample);
+            }
+
+            writer.Finalize();
+        }
+        finally
+        {
+            MediaFactory.MFShutdown();
+        }
+
+        return 0;
+    }
+
+    private static void SetShape(IMFMediaType type, int width, int height, int fps)
+    {
+        MediaFactory.MFSetAttributeSize(type, MediaTypeAttributeKeys.FrameSize, (uint)width, (uint)height).CheckError();
+        MediaFactory.MFSetAttributeRatio(type, MediaTypeAttributeKeys.FrameRate, (uint)fps, 1).CheckError();
+        MediaFactory.MFSetAttributeRatio(type, MediaTypeAttributeKeys.PixelAspectRatio, 1, 1).CheckError();
+    }
+
+    private static unsafe IMFSample MemorySample(ReadOnlySpan<byte> data, long time, long duration)
+    {
+        using var buffer = MediaFactory.MFCreateMemoryBuffer(data.Length);
+        buffer.Lock(out var pointer, out _, out _);
+        try
+        {
+            data.CopyTo(new Span<byte>((void*)pointer, data.Length));
+        }
+        finally
+        {
+            buffer.Unlock();
+        }
+
+        buffer.CurrentLength = data.Length;
+        var sample = MediaFactory.MFCreateSample();
+        sample.AddBuffer(buffer);
+        sample.SampleTime = time;
+        sample.SampleDuration = duration;
+        return sample;
     }
 
     /// <summary>StudioRenderCheck's clip with dropped frames, made by that tool's own code.</summary>

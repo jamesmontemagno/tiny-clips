@@ -550,7 +550,9 @@ frame of each clip begins: from the file's index, without decoding anything
 - The frame of the timeline it is shown under, which is what `Position` reports and what the
   scene is laid out for, is the first one whose middle the frame has begun by. That is the
   frame the export shows it in, and the frame a pause or a seek rests on with that picture: a
-  frame plays under the number it rests under.
+  frame plays under the number it rests under. "Begun by" is the export's own rule to the
+  100 ns unit: the frame's time is at or before the middle, with nothing allowed for rounding
+  (see *How exact the rule is* below).
 - A seek knows which frame of the file a frame of the timeline shows. A frame of the timeline
   that has no frame of its own shows the one before it: no picture is owed for it, it is
   reached at once, and the scene is drawn again for it, since its layout may be another. One
@@ -559,9 +561,9 @@ frame of each clip begins: from the file's index, without decoding anything
 - The camera's frame rate, which its rules go by, is the rate its frames usually come at. Frames
   by length, which is what the probe reads, is wrong for a camera that stalled or gave half its
   frames in low light.
-- A file whose index it cannot read, or whose times it cannot be sure of (an index in
-  fragments, an edit list in more than one part or at another speed, two frames at one time),
-  is played on the grid as before. The engine's diagnostics say which (`FrameTimes`).
+- A file whose index it cannot read, or whose times it cannot be sure of, is played on the
+  grid as before. The engine's diagnostics say which, and why (`FrameTimes`). What that is,
+  is in *What the reading of an index refuses* below.
 
 By the model above every frame then has its number at once, wherever it sits in its slot and
 with or without an empty slot, and plays under the number a pause shows it under
@@ -569,8 +571,99 @@ with or without an empty slot, and plays under the number a pause shows it under
 Given frame times that are on the grid, every answer is the grid's
 (`StudioPreviewRecordingTimesTests`), and the seek policy's own tests run unchanged.
 
+#### What the reading of an index refuses
+
+The index is read whole or not at all. The file can be a video from anywhere, and what the
+reader does with one that is damaged, or made to wear a reader out, was gone through on
+6 October after a review of the code found a way to end the process with a file of less than
+a megabyte: parts one inside the other, which the reader went into without a limit until its
+stack was used up. Now:
+
+- Each part is looked for where it belongs and nowhere else: `moov` holds `mvhd` and the
+  tracks; a track holds `edts`, with `elst` in it, and `mdia`; `mdia` holds `mdhd`, `hdlr` and
+  `minf`; `minf` holds `stbl`; `stbl` holds `stts` and `ctts`. Nothing in the reader calls
+  itself, so no file can take it deeper than that.
+- What a file can ask for is counted: 4096 parts in the file and in each part of the index,
+  64 tracks, 4,320,000 frames (ten hours at 120 a second) before any room is made for them,
+  and an index of 256 MB.
+- A part that does not fit the part it is in, bytes left over at the end of a part, one of
+  the parts above met in another place or met twice, a table that is shorter or longer than
+  the number of entries it says it has, a header cut short or of a kind that is not known:
+  the index is damaged and the file is refused. Before, the reading of a part stopped without
+  a word at a part that did not fit, so that the offsets after it were lost and the times of
+  decoding passed for the times of showing; and a table too short to hold its count was taken
+  for no table.
+- A fragment (`moof`) anywhere in the file, before the index or after it, whether the index
+  says so (`mvex`) or not. A file with a fragment after an index that does not announce it is
+  not one a writer makes by the standard; it is refused all the same, and finding it costs a
+  look at the name and length of every part of the file.
+- Two indexes, and two video tracks: which of two a player shows is not known. (Until
+  6 October the first was taken.)
+- What a track is, is said by the handler of its media. A second one, which QuickTime puts
+  beside a track's data, is not asked: before, the last one met decided, and such a file was
+  refused as having no video.
+- As before: an edit list in more than one part, at another speed, with a stretch of nothing
+  in the middle or that begins inside the video; a frame shown before its track begins; two
+  frames at one time; no frames; no time units.
+
+One thing stays possible and cannot be told from the file: a part the reader has no use for
+whose length takes in the part after it hides that part.
+
+Three kinds of file are read by the book and not by anything seen here. The app's recorder
+writes none of them: a stretch of nothing before the video (an edit list with a lead); frames
+stored out of the order they are shown in, with an edit list that starts the track at the
+first frame shown; and the same without an edit list, where the first frame is then taken to
+be shown two frames in. If a player counts from the first frame shown, every number for the
+last kind is two low. The check tool has three clips for it (`screen-reordered` and the two
+beside it); they have never been made.
+
+How this stands: 101 unit tests on bytes (`StudioPreviewFrameTimesTests`, in two files), among
+them 6000 files with their parts moved about at random, each of which has to be refused or
+read to exactly the times it had (5157 and 843). Seventeen faults put into the reader, the
+timeline and the seek policy one at a time in a private copy: every one makes a test fail
+that says what is wrong, two of them only after a test was added for them. And the reader's
+own code over the index of 244 files on this PC: 238 that Media Foundation wrote for
+`StudioRenderCheck` and the exporter, and six of ffmpeg's. All were read, the 238 in 12 ms a
+file at the median and 35 at most. The 238 are seven files written 34 times over, each with
+a frame every thirtieth of a second from zero. So they show that the stricter rules refuse
+nothing those two writers make, and they show nothing about a recording, which none of them
+is. That is the unit tests' host reading bytes: no check tool, and no player.
+
+#### How exact the rule is
+
+Until 6 October a table of frame times allowed what the grid allows at a frame's edge, a
+thousandth of a frame (333 units of 100 ns at 30 a second). On the grid that is needed: the
+grid multiplies seconds by a rate, and a frame's start is not a number it can hold. A table
+holds every start as a number, and with the allowance a frame that began up to 33 millionths
+of a second after the middle of a slot counted as showing there, where the export shows the
+frame before it. In a file from Media Foundation's writer, whose frames begin at whole
+30000ths of a second, that is one of the thousand places in a slot a frame can begin at. The
+table now allows nothing, and the unit tests hold the frame it gives for every slot against
+the export's own reckoning
+(`StudioRenderingMath.BuildFramePlan` and `SecondsToMfTicks`, and the reader's rule written
+out from `StudioVideoSource.GetFrame`), at the middle of a slot and one unit either side.
+
+What that leaves, known and not measured in this engine:
+
+- The times are rounded to the nearest unit, which is how the export's reader was measured to
+  hand them out (the spike: 0, 333333, 666667 for RGB output). A player was measured to change
+  frames within one unit of a frame's start, and to report a step's position cut off
+  (666666). So a time within one unit of a frame's start can be on the other side for a
+  player. The middle of a slot is not such a time in a recording's screen track: a frame
+  begins at the middle or a whole 30000th of a second from it. A step's answer is taken for
+  the next frame whichever side its position is on. While playing, a frame handed over in the
+  very unit in which it begins would be named one low. That is a guess at once in a hundred
+  thousand frames, from hand-overs that were measured to begin anywhere in the first 13 ms of
+  a frame. `--investigate recordings --scenario players` now says, in units, whether any
+  position came before its frame's time.
+- A camera's offset that is not a whole number of units puts the player one unit from the
+  time the export asks for: the export takes the offset off in seconds and rounds once, and a
+  player's clock and offset are each in whole units. A camera frame that begins in that unit
+  is one slot earlier in the preview's reckoning. It is pinned as it is
+  (`ACameraOffsetWithAFractionOfAUnit...`).
+
 **It is off, and the app runs as before.** It was written on 5 October while no check tool
-could be run, and it rests on three things only a run can say:
+could be run, and it rests on things only a run can say:
 
 1. That the times in the index are the times a player goes by. `StudioPreviewCheck
    --investigate recordings --scenario files` holds the engine's reading against what Media
@@ -583,6 +676,15 @@ could be run, and it rests on three things only a run can say:
    whether the preview of a recording opens on a picture. The export shows the first frame there.
 3. What a player hands over for a position inside the frame it shows already, which is every
    seek to a slot that has no frame of its own.
+4. Whether Media Foundation honours an edit list and the offsets of frames stored out of
+   order, which of two video tracks a player shows, and whether it plays a file whose index is
+   damaged. The first is what the three clips above are for; the other two decide nothing
+   while such files are refused.
+5. That the scene is drawn again when the players are brought to a frame of the timeline that
+   shows the picture already there (a slot without a frame of its own, inside a zoom). It is
+   one line in the engine's loop that no unit test reaches, because it needs the loop and its
+   players: `--only recordings --frame-times file` holds it (the rests inside the zoom), and
+   the fault `R3` takes it out.
 
 What remains, with the times or without:
 

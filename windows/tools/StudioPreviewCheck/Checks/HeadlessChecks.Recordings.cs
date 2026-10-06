@@ -26,8 +26,14 @@ internal sealed partial class HeadlessChecks
     private void InvestigateRecordings()
     {
         var names = _options.Names("clip");
-        IReadOnlyList<RecordedPlan> plans = names.Length == 0 ? RecordedMedia.Plans : names.Select(RecordedMedia.Plan).ToList();
-        switch (_options.Text("scenario", "files").ToLowerInvariant())
+        var scenario = _options.Text("scenario", "files").ToLowerInvariant();
+
+        // The clips whose frames are stored out of the order they are shown in are looked at as
+        // files, and by a player only when they are named: nothing else here is made for them.
+        IReadOnlyList<RecordedPlan> plans = names.Length > 0 ? names.Select(RecordedMedia.Plan).ToList()
+            : scenario == "files" ? RecordedMedia.Plans
+            : RecordedMedia.Plans.Where(plan => !plan.IsReordered).ToList();
+        switch (scenario)
         {
             case "files":
                 RecordedFiles(plans);
@@ -88,7 +94,14 @@ internal sealed partial class HeadlessChecks
                 if (index.Video is { } video)
                 {
                     indexed = video.Times(index.Timescale);
-                    _report.Line($"  index, the video's frames: {Compare(asked, indexed)}");
+                    if (plan.IsReordered)
+                    {
+                        // Held against the times asked for in the order the frames are shown in, which is the order asked for.
+                        _report.Line($"  index, the video's frames in the order stored: the first three at {string.Join(", ", indexed.Take(3).Select(Ms))} ms; the times {(IsAscending(indexed) ? "only go up: the frames are NOT stored out of order" : "do not only go up: the frames are stored out of order")}");
+                        indexed = [.. indexed.Order()];
+                    }
+
+                    _report.Line($"  index, the video's frames{(plan.IsReordered ? " in the order shown" : string.Empty)}: {Compare(asked, indexed)}");
                     var shift = video.EditShift(index.Timescale);
                     if (shift != 0)
                     {
@@ -113,7 +126,13 @@ internal sealed partial class HeadlessChecks
             {
                 var (times, durations) = RecordedMedia.ReadVideoSampleTimes(path);
                 handedOut = times;
-                _report.Line($"  Media Foundation's reader, the video's frames: {Compare(asked, times)}{(indexed is null ? string.Empty : "; against the index: " + Compare(indexed, times))}");
+                long[] shown = plan.IsReordered ? [.. times.Order()] : times;
+                if (plan.IsReordered)
+                {
+                    _report.Line($"  Media Foundation's reader, the video's frames in the order it hands them out: the first three at {string.Join(", ", times.Take(3).Select(Ms))} ms");
+                }
+
+                _report.Line($"  Media Foundation's reader, the video's frames{(plan.IsReordered ? " in the order shown" : string.Empty)}: {Compare(asked, shown)}{(indexed is null ? string.Empty : "; against the index: " + Compare(indexed, shown))}");
                 var lengths = durations.Distinct().OrderBy(d => d).ToList();
                 var sound = RecordedMedia.ReadFirstAudioSampleTime(path);
                 _report.Line($"  Media Foundation's reader, the sound: {(sound is { } first ? $"the first piece at {Ms(first)} ms" : "none")}");
@@ -196,9 +215,20 @@ internal sealed partial class HeadlessChecks
             }
         }
 
-        // A hundredth of a millisecond is within what the engine allows at a frame's edge: a thousandth of a frame.
-        return worst == 0 ? $"{text}; the same as Media Foundation's reader hands out, to the last 100 ns"
-            : Math.Abs(worst) <= 100 ? $"{text}; the same as Media Foundation's reader hands out to within {Ms(Math.Abs(worst))} ms (the most at frame {at})"
+        if (worst == 0)
+        {
+            return $"{text}; the same as Media Foundation's reader hands out, to the last 100 ns";
+        }
+
+        // The engine allows nothing at a frame's edge where it counts by these times: a frame has
+        // begun when the time has reached its start, as in the export. So a difference of one
+        // unit is a difference, and how many frames have it, and which way, is what to know: a
+        // time that is 0.67 of a unit past a whole one is rounded up here, and cut off by a reader that cuts.
+        var differing = Enumerable.Range(0, starts.Length).Where(index => starts[index] != shown[index]).ToArray();
+        var least = differing.Min(index => starts[index] - shown[index]);
+        var most = differing.Max(index => starts[index] - shown[index]);
+        return Math.Abs(worst) <= 100
+            ? $"{text}; NOT the same to the last 100 ns: {differing.Length} of the {starts.Length} frames are {least} to {most} units of 100 ns from where Media Foundation's reader has them (here less there; the first of them frame {differing[0]}, at {starts[differing[0]]} here and {shown[differing[0]]} there)"
             : $"{text}; NOT what Media Foundation's reader hands out: frame {at} is at {Ms(starts[at])} ms here and at {Ms(shown[at])} ms there, and the first frame at {Ms(starts[0])} ms here and {Ms(shown[0])} ms there";
     }
 
@@ -511,6 +541,13 @@ internal sealed partial class HeadlessChecks
         var odd = new List<string>();
         var afterTheirTime = new Samples();
         var into = new Samples();
+
+        // Whether a player ever hands a frame over with a position before the frame's own time,
+        // and how near to it at the nearest: where the engine counts by a file's frame times it
+        // allows nothing at a frame's edge, so a position one unit early would name the frame before.
+        var aheadOfTheirTime = 0;
+        long mostAhead = 0;
+        var nearestAfter = long.MaxValue;
         foreach (var frame in frames)
         {
             // The number the frame was given, at once or by the frame after it, and the slot of
@@ -548,7 +585,17 @@ internal sealed partial class HeadlessChecks
             wrong += right ? 0 : 1;
             if (frame.Truth >= 0 && frame.Truth < clip.Frames)
             {
-                afterTheirTime.Add((frame.PositionTicks - clip.Times[frame.Truth]) / 10000.0);
+                var afterItsTime = frame.PositionTicks - clip.Times[frame.Truth];
+                afterTheirTime.Add(afterItsTime / 10000.0);
+                if (afterItsTime < 0)
+                {
+                    aheadOfTheirTime++;
+                    mostAhead = Math.Max(mostAhead, -afterItsTime);
+                }
+                else
+                {
+                    nearestAfter = Math.Min(nearestAfter, afterItsTime);
+                }
             }
 
             into.Add(frame.IntoMilliseconds);
@@ -581,6 +628,7 @@ internal sealed partial class HeadlessChecks
 
         var stateAfter = session.Engine.GetDiagnostics();
         _report.Line($"  of those {frames.Count} frames: {atOnce} numbered at once, {late} by the frame after them, {never} never ({longestWithout} in a row at most), {unsure} shown under the number of their position and called unsure{(plan.IsCamera ? (countsFileFrames ? $"; {wrong} had a number that is not their place in the file" : string.Empty) : $"; {wrong} were shown under a slot the export does not have them in{(countsFileFrames ? ", or had a number that is not their place in the file" : string.Empty)}")}. The position that came with a frame was {afterTheirTime.Summary()} after the frame's own time, and {into.Summary()} into its slot");
+        _report.Line($"  in units of 100 ns: {aheadOfTheirTime} of those positions were before the frame's own time as Media Foundation's reader has it{(aheadOfTheirTime > 0 ? $" (by {mostAhead} units at most)" : string.Empty)}, and the nearest after it was {(nearestAfter == long.MaxValue ? "none" : $"{nearestAfter} units")} after");
         var restSlot = Slot();
         var rest = Showing();
         var restExport = Visible(restSlot) ? clip.FrameOfSlot(restSlot, fps) : FrameCode.Unreadable;

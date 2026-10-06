@@ -1126,6 +1126,51 @@ public sealed class StudioPreviewSeekPolicyTests
     }
 
     [Fact]
+    public void ForgettingTheScreensPicture_LeavesNoFrameForTheScene_UntilTheScreenDeliversAgain()
+    {
+        var h = new Harness();
+        h.SettleAt(100);
+        Assert.Equal(100, h.Policy.ShownTimelineFrame);
+
+        // The screen's texture was recreated and could not be refilled: there is no picture to
+        // draw a scene for, and the scene's frame goes with it.
+        h.Policy.Forget(Screen);
+        Assert.Equal(-1, h.Policy.ShownFrame(Screen));
+        Assert.Equal(-1, h.Policy.ShownTimelineFrame);
+
+        h.Policy.RequestSeek(100);
+        h.Pump();
+        Assert.Equal(["seek 99"], h.Calls);
+
+        h.Advance(50);
+        h.DeliverDetour(99);
+        Assert.Equal(["seek 99", "seek 100"], h.Calls);
+
+        h.Advance(50);
+        h.Deliver(100);
+        h.Pump();
+        Assert.Equal(100, Assert.Single(h.Landings).Frame);
+        Assert.Equal(100, h.Policy.ShownFrame(Screen));
+        Assert.Equal(100, h.Policy.ShownTimelineFrame);
+    }
+
+    [Fact]
+    public void OnTheGrid_AScreenClipThatEndsBeforeTheRecording_RestsOnItsLastFrame_AndTheSceneIsThatFrame()
+    {
+        // The file is a frame short of what the project says: 899 frames in a recording of 900.
+        var h = new Harness(new StudioPreviewTimeline(30, 30, [new(30, 899, 0)]));
+
+        h.SettleAt(899);
+
+        // The players were brought to frame 899 of the timeline, and the screen shows the last
+        // frame it has. On the grid the scene is drawn for the frame the screen delivered, as it
+        // always was, and not for the frame the players were brought to: that is what a screen
+        // goes by that counts in frames of its file, and only such a screen.
+        Assert.Equal(898, h.Policy.ShownFrame(Screen));
+        Assert.Equal(898, h.Policy.ShownTimelineFrame);
+    }
+
+    [Fact]
     public void RepairOfAPositionNobodyWantsAnyMore_IsDropped()
     {
         var h = new Harness();
@@ -2840,14 +2885,39 @@ public sealed class StudioPreviewSeekPolicyTests
 
         public long Pump()
         {
+            SceneIsTheScreensFrame();
             var deadline = Policy.Pump();
             Policy.TakeLandings(Landings);
+            SceneIsTheScreensFrame();
             return deadline;
         }
 
-        public void Frame(int track, long playerFrame) => Policy.OnFrame(track, playerFrame, Now);
+        public void Frame(int track, long playerFrame)
+        {
+            SceneIsTheScreensFrame();
+            Policy.OnFrame(track, playerFrame, Now);
+            SceneIsTheScreensFrame();
+        }
 
-        public void Completed(int track) => Policy.OnSeekCompleted(track, Now);
+        public void Completed(int track)
+        {
+            SceneIsTheScreensFrame();
+            Policy.OnSeekCompleted(track, Now);
+            SceneIsTheScreensFrame();
+        }
+
+        /// <summary>
+        /// On the grid, which every timeline of this suite is, the timeline frame the scene is
+        /// drawn for is the frame the screen's player delivered: at every moment, whatever was
+        /// asked of the policy since. It is what leaves the engine doing what it did before a
+        /// screen could count in frames of its file. Held before and after every call the
+        /// harness makes, so that what a test asks of the policy directly is held too.
+        /// </summary>
+        private void SceneIsTheScreensFrame()
+        {
+            Assert.False(_timeline.ScreenHasTimes);
+            Assert.Equal(Policy.ShownFrame(Screen), Policy.ShownTimelineFrame);
+        }
 
         /// <summary>
         /// Every player answers a position change the way a real one does: with a frame when the

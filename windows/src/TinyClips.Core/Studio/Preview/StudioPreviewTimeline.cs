@@ -73,9 +73,6 @@ internal readonly record struct StudioPreviewClipTiming(double FrameRate, long F
     public static StudioPreviewClipTiming WithTimes(StudioPreviewFrameTimes times, double frameRate, double startOffset, double duration = double.PositiveInfinity) =>
         new(frameRate, times.Count, startOffset, duration) { Times = times };
 
-    // The boundary tolerance in a player's units: a thousandth of a usual frame.
-    private long ToleranceTicks => (long)Math.Round(StudioPreviewTimeMath.BoundaryTolerance * StudioPreviewTimeMath.TicksPerSecond / FrameRate);
-
     /// <summary>
     /// The frame the clip's player shows when the timeline clock is at
     /// <paramref name="timelineSeconds"/>. Outside the clip's range the player parks on its first
@@ -88,12 +85,22 @@ internal readonly record struct StudioPreviewClipTiming(double FrameRate, long F
 
     /// <summary>
     /// The frame a position reported by the clip's own player shows: the one that contains it,
-    /// or, where the frame times are known, the last frame that has begun by then and the first
-    /// while none has, which is the export's rule.
+    /// or, where the frame times are known, the last frame that begins at or before it and the
+    /// first while none has begun, which is the export's rule to the 100 ns unit
+    /// (<c>StudioVideoSource.GetFrame</c>: the reader moves on while the next frame's time is at
+    /// or before the time asked for).
+    /// <para>
+    /// The grid allows a thousandth of a frame before a frame's start
+    /// (<see cref="StudioPreviewTimeMath.BoundaryTolerance"/>), because it multiplies seconds by
+    /// a rate and a frame's start is not a number it can hold. A table holds each start as the
+    /// file has it, and needs no allowance: with one, a frame that begins a few millionths of a
+    /// second after the middle of a timeline frame would count as showing there, where the
+    /// export shows the frame before it.
+    /// </para>
     /// </summary>
     public long FrameAtPlayerTicks(long positionTicks) =>
         Times is { } times
-            ? StudioPreviewTimeMath.ClampFrame(times.FrameAt(positionTicks, ToleranceTicks), FrameCount)
+            ? StudioPreviewTimeMath.ClampFrame(times.FrameAt(positionTicks), FrameCount)
             : StudioPreviewTimeMath.ClampFrame(StudioPreviewTimeMath.FrameAt(StudioPreviewTimeMath.ToSeconds(positionTicks), FrameRate), FrameCount);
 
     /// <summary>
@@ -106,17 +113,17 @@ internal readonly record struct StudioPreviewClipTiming(double FrameRate, long F
     {
         if (Times is { } times)
         {
-            var reached = positionTicks + ToleranceTicks;
-            if (reached >= times.End)
+            // As FrameAtPlayerTicks: a frame has begun when the position has reached its start.
+            if (positionTicks >= times.End)
             {
-                var beyond = (reached - times.End) * FrameRate / StudioPreviewTimeMath.TicksPerSecond;
+                var beyond = (positionTicks - times.End) * FrameRate / StudioPreviewTimeMath.TicksPerSecond;
                 var whole = (long)Math.Floor(beyond);
                 intoMilliseconds = (beyond - whole) * 1000.0 / FrameRate;
                 return times.Count + whole;
             }
 
-            var shown = times.FrameAt(positionTicks, ToleranceTicks);
-            intoMilliseconds = shown < 0 ? 0 : (reached - times.Start(shown)) / (StudioPreviewTimeMath.TicksPerSecond / 1000.0);
+            var shown = times.FrameAt(positionTicks);
+            intoMilliseconds = shown < 0 ? 0 : (positionTicks - times.Start(shown)) / (StudioPreviewTimeMath.TicksPerSecond / 1000.0);
             return shown;
         }
 
