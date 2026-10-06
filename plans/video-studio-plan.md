@@ -658,7 +658,7 @@ After it, 1,883 Core tests pass and 3 are skipped, the 53 tests of the Settings 
 
 17 faults put into the reader, the timeline and the policy by their author each fail a test. The reader's code also read the index of 244 files that were on the PC, which is less than it sounds: 238 are seven files written 34 times over by the render check and the exporter, each with a frame every thirtieth of a second from zero, and six are ffmpeg's. None is a recording.
 
-Three clips whose frames are stored out of the order they are shown in are written into the check tool and have never been made. The recorder writes no such file, and the reader takes one by the book. Whether a player does is for the run. The queue has 42 steps now, and **the switch is not to go on before the last two have been looked at.**
+Three clips whose frames are stored out of the order they are shown in are written into the check tool and have never been made. The recorder writes no such file, and the reader takes one by the book. Whether a player does is for the run. The queue has 42 steps now, and **the switch is not to go on before the steps that look at those three clips have run and been read**: `recordings-files`, `reordered-players` and `reordered-players-file`.
 
 One thing went wrong on the way. A fault its author put into a private copy on purpose, the count of frames taken out, kept the unit tests' host working for nine and a half minutes, at low priority, before it was stopped. Nothing in the tree was touched.
 
