@@ -57,8 +57,10 @@ own `CHANGELOG.md` at the repository root.
     one longer.
   - To try it, switch on **Tiny Clips Studio (Preview)** in Settings › General. Then choose
     **Open in Studio (Preview)** under **After recording** in Settings › Video, or switch on
-    **Record for Studio** in the recording setup panel. Switching it off again hides Studio and
-    deletes nothing.
+    **Record for Studio** in the recording setup panel. Switching it off again hides Studio,
+    deletes nothing, and leaves **Open trimmer after recording** as you had it. Projects are
+    stored with the app, so uninstalling Tiny Clips or resetting it in Windows Settings deletes
+    them; exported videos stay.
   - **Camera background.** **Background** in the Camera section keeps the camera picture as it
     is, blurs everything but you, or removes it so that only you stand in front of the screen.
     The people are found on your PC with the MediaPipe Selfie Segmentation model, which ships
@@ -66,10 +68,11 @@ own `CHANGELOG.md` at the repository root.
     About.
   - **Keeping and saving.** **Keep this project** in the editor pins a project against the
     storage cleanup. The storage limit counts only the exported projects that cleanup may
-    remove, so drafts never push one out. A project whose exported video is no longer where it
-    was saved is kept and listed with the drafts again. Each draft in Settings › General, and
-    an editor that cannot show its project, has **Save the screen recording**, which saves the
-    recording as an ordinary video.
+    remove, so drafts never push one out, and it never removes the project you opened last. A
+    project whose exported video is no longer where it was saved, or has been replaced by
+    another file of the same name, is kept and listed with the drafts again. Each draft in
+    Settings › General, and an editor that cannot show its project, has **Save the screen
+    recording**, which saves the recording as an ordinary video.
   - Keys in the editor: **Space** plays or pauses, **Left** and **Right** step a frame, **I** and
     **O** start and end the video at the playhead, **S** splits the scene, **Z** adds a zoom,
     **X** starts a cut, and **R** changes the speed at the playhead, **Delete** removes the

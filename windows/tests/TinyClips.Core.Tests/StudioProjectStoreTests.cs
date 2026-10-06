@@ -432,6 +432,134 @@ public sealed class StudioProjectStoreTests : IDisposable
     }
 
     [Fact]
+    public void RecordExport_WritesHowLargeTheVideoIs_WhereThereIsOne()
+    {
+        var store = CreateStore();
+        var project = CreateCompletedProject(store);
+        var there = WriteExportedVideo("there");
+        var notThere = ExportedVideoPath("not-there");
+
+        store.RecordExport(project.Id, there);
+        var saved = store.RecordExport(project.Id, notThere);
+
+        Assert.Equal(new long?[] { 3, null }, saved.Exports.Select(export => export.Bytes));
+        Assert.Equal(new long?[] { 3, null }, CreateStore().Load(project.Id).Exports.Select(export => export.Bytes));
+
+        // Where it is not known it is left out of the file.
+        var json = File.ReadAllText(store.GetPaths(project.Id).ProjectJsonPath);
+        Assert.Contains("\"bytes\": 3", json);
+        Assert.Equal(json.IndexOf("\"bytes\"", StringComparison.Ordinal), json.LastIndexOf("\"bytes\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Summary_AFileOfAnotherSizeUnderTheVideosName_IsNotTheProjectsVideo()
+    {
+        var store = CreateStore();
+        var project = CreateOldExportedProject(store, "reused");
+        var video = ExportedVideoPath("reused");
+        var rules = new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0);
+        StudioProjectSummary Summary() => store.ListSummaries().Single();
+        Assert.False(Summary().ExportMissing);
+        Assert.True(Summary().IsRemovableByCleanup);
+
+        // The video was deleted, and another recording was saved under its name.
+        File.WriteAllBytes(video, [1, 2, 3, 4, 5]);
+
+        Assert.True(Summary().ExportMissing);
+        Assert.False(Summary().IsRemovableByCleanup);
+        Assert.Empty(store.Cleanup(rules).ProjectIdsDeleted);
+        Assert.True(store.Exists(project.Id));
+
+        // The link from a video to its project goes by the path alone.
+        Assert.Equal(project.Id, store.FindProjectIdByExportPath(video));
+
+        // The project's own video again.
+        File.WriteAllBytes(video, [7, 8, 9]);
+
+        Assert.False(Summary().ExportMissing);
+        Assert.Equal([project.Id], store.Cleanup(rules).ProjectIdsDeleted);
+    }
+
+    [Fact]
+    public void Summary_AnExportThatDoesNotSayHowLargeItWas_GoesByThePathAlone()
+    {
+        var store = CreateStore();
+        var project = CreateCompletedProject(store);
+        var video = ExportedVideoPath("no-size");
+        StudioProjectSummary Summary() => store.ListSummaries().Single();
+
+        // No file is there yet, so no size is written: what a project from before sizes were
+        // written has.
+        store.RecordExport(project.Id, video);
+        Assert.Null(Assert.Single(store.Load(project.Id).Exports).Bytes);
+        Assert.True(Summary().ExportMissing);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(video)!);
+        File.WriteAllBytes(video, [1]);
+        Assert.False(Summary().ExportMissing);
+
+        File.WriteAllBytes(video, [1, 2, 3, 4]);
+        Assert.False(Summary().ExportMissing);
+    }
+
+    [Fact]
+    public void UpdateExportPath_KeepsHowLargeTheVideoIs()
+    {
+        var store = CreateStore();
+        var project = CreateCompletedProject(store);
+        var video = WriteExportedVideo("moved");
+        var movedTo = ExportedVideoPath("moved-to");
+        store.RecordExport(project.Id, video);
+
+        File.Move(video, movedTo);
+        Assert.True(store.UpdateExportPath(video, movedTo));
+
+        Assert.Equal(3, Assert.Single(store.Load(project.Id).Exports).Bytes);
+        Assert.False(store.ListSummaries().Single().ExportMissing);
+    }
+
+    [Fact]
+    public void Summary_AProjectThatDoesNotSayWhenItWasLastOpened_IsNotRemovable_UntilItIsOpened()
+    {
+        var store = CreateStore();
+        var project = CreateOldExportedProject(store, "undated");
+        var path = store.GetPaths(project.Id).ProjectJsonPath;
+
+        // The time is taken out of the file, as a damaged or a hand-made one might be without it.
+        var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        Assert.True(json.Remove("lastOpenedAt"));
+        File.WriteAllText(path, json.ToJsonString());
+        var reopened = CreateStore();
+
+        var summary = reopened.ListSummaries().Single();
+        Assert.Equal(DateTimeOffset.UnixEpoch, summary.LastOpenedAt);
+        Assert.False(summary.ExportMissing);
+        Assert.False(summary.IsRemovableByCleanup);
+        Assert.Empty(reopened.Cleanup(new StudioCleanupOptions(RetentionDays: 1, SizeCapBytes: 1)).ProjectIdsDeleted);
+        Assert.True(reopened.Exists(project.Id));
+
+        // Opening it writes the time, and it is a project like any other from then on.
+        reopened.MarkOpened(project.Id);
+
+        Assert.True(reopened.ListSummaries().Single().IsRemovableByCleanup);
+    }
+
+    [Fact]
+    public void Cleanup_StorageLimitLeavesTheProjectOpenedLast_HoweverLargeItIs()
+    {
+        var store = CreateStore();
+        var project = CreateCompletedProject(store);
+        File.WriteAllBytes(store.GetPaths(project.Id).ScreenPath, new byte[400_000]);
+        store.RecordExport(project.Id, WriteExportedVideo("large"));
+        var rules = new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 250_000);
+        Assert.True(store.ListSummaries().Single().IsRemovableByCleanup);
+
+        // What the cleanup that follows its editor closing would have taken.
+        Assert.Empty(store.Cleanup(rules).ProjectIdsDeleted);
+        Assert.True(store.Exists(project.Id));
+    }
+
+    [Fact]
     public void Cleanup_StorageLimitCountsWhatCleanupMayRemove_SoDraftsCostNoExportedProjectItsSources()
     {
         var store = CreateStore();

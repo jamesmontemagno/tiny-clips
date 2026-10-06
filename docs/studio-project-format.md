@@ -165,6 +165,7 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `overlays.branding` | bool | false | |
 | `exports[].path` | string | | Absolute path of a rendered video |
 | `exports[].exportedAt` | timestamp | | |
+| `exports[].bytes` | int or null | null | How large the video file was when it was exported, in bytes. Left out, or null, when that is not known. Section 12 says what it is used for |
 
 ## 4. events.json
 
@@ -645,18 +646,19 @@ Opening an existing video that has no project creates a flat project: `sources.s
 
 ## 11. Export links
 
-Each export adds `{ path, exportedAt }` to `exports`. The project store indexes those paths, compared case-insensitively, so the Clips Library can find the project for a video.
+Each export adds `{ path, exportedAt, bytes }` to `exports`, where `bytes` is the size of the video file at that moment and is left out when it cannot be read. The project store indexes the paths, compared case-insensitively, so the Clips Library can find the project for a video. That link goes by the path alone.
 
 - Exporting to a path the project already lists replaces that entry instead of adding a second one.
 - A path belongs to one project. Recording an export removes the same path from every other project, because the file there has been overwritten.
-- Renaming or moving an exported video in Tiny Clips updates its entry. Deleting the video leaves the entry where it is, whether it was deleted in Tiny Clips or outside it: a video that comes back, from the Recycle Bin or with the drive it is on, is linked again. What a missing video means for its project is in section 12.
+- Renaming or moving an exported video in Tiny Clips updates the `path` of its entry and leaves the rest of it. Tiny Clips does that whether Studio is switched on or off. Deleting the video leaves the entry where it is, whether it was deleted in Tiny Clips or outside it: a video that comes back, from the Recycle Bin or with the drive it is on, is linked again. What a missing video means for its project is in section 12.
 
 ## 12. Cleanup
 
-- A project is **eligible** for automatic cleanup when at least one of its exported videos is still where it was saved, `keepSources` is false, and it is not a flat project.
+- A project is **eligible** for automatic cleanup when at least one of its exported videos is still where it was saved, `keepSources` is false, it is not a flat project, and its `lastOpenedAt` is not `1970-01-01T00:00:00Z`. That is what a missing `lastOpenedAt` reads as (section 2): it says nothing about when the project was opened, and would make it the oldest there is. Opening the project writes the time.
+- An exported video is **still where it was saved** when a file is at the `path` of its entry and, where the entry has `bytes` of 1 or more, the file is that many bytes long. A file of another size is another video that has taken the name, or the same one changed since. Either way it is not what the project exported, and counting it would let cleanup delete a project that holds the only copy of its recording. An entry without `bytes` goes by the path alone.
 - A project that is open in Studio, or still being recorded, is never deleted. The app passes those ids to every cleanup.
 - **Age rule**: an eligible project is deleted when `lastOpenedAt` is more than 30 days old. The number of days is a setting; 0 disables the rule.
-- **Size rule**: applied after the age rule. When the eligible projects that remain total more than 10 GB (10 × 1024³ bytes), they are deleted in ascending `lastOpenedAt` order, ties broken by id, until their total is at or under the cap or none remain. Only eligible projects are counted. A draft, a pinned project and a flat project are never removed, so counting them would only use the room up: with more drafts than the cap allows, every exported project would lose its sources the moment it was exported. An eligible project that is open counts and is not the one that goes. The cap is a setting; 0 disables the rule.
+- **Size rule**: applied after the age rule. When the eligible projects that remain total more than 10 GB (10 × 1024³ bytes), they are deleted in ascending `lastOpenedAt` order, ties broken by id, until their total is at or under the cap or only the last in that order is left. That one, the project opened most recently, is never deleted by this rule: it is what was just worked on, and where it is over the cap by itself the rule would otherwise delete it the moment its editor closed. Only eligible projects are counted. A draft, a pinned project and a flat project are never removed, so counting them would only use the room up: with more drafts than the cap allows, every exported project would lose its sources the moment it was exported. An eligible project that is open counts and is not the one that goes. The cap is a setting; 0 disables the rule.
 - A draft (no exports) is never deleted automatically. Neither is a project whose exported videos are all gone: it holds the only copy of the recording, as a draft does, and is listed with the drafts. A video on a drive that is not connected, or in a folder the app may not read, counts as gone for as long as that lasts.
 - A flat project is deleted when its external video no longer exists.
 - A folder with no `project.json` is a recording that never finished. It is deleted once it is more than 24 hours old.

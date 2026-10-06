@@ -165,13 +165,77 @@ public sealed class StudioCleanupPolicyTests
         var plan = StudioCleanupPolicy.Plan(
             [
                 Eligible("open", Now - TimeSpan.FromDays(3), sizeBytes: 80),
-                Eligible("closed", Now - TimeSpan.FromDays(1), sizeBytes: 30),
+                Eligible("closed", Now - TimeSpan.FromDays(2), sizeBytes: 30),
+                Eligible("last", Now - TimeSpan.FromDays(1), sizeBytes: 30),
             ],
             Now,
             new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 100),
             ["open"]);
 
+        // 140 with the open one counted, and 60 without it, which would be under the limit.
         Assert.Equal(["closed"], plan.ProjectIdsToDelete);
+    }
+
+    [Fact]
+    public void Plan_SizeRuleNeverDeletesTheProjectOpenedLast()
+    {
+        var rules = new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 50);
+
+        // By itself over the limit: it stays. It would otherwise go the moment its editor closed.
+        Assert.Empty(StudioCleanupPolicy.Plan(
+            [Eligible("only", Now - TimeSpan.FromDays(1), sizeBytes: 80)],
+            Now,
+            rules).ProjectIdsToDelete);
+
+        // With others, they go first, and it stays although what is left is still over the limit.
+        Assert.Equal(
+            ["oldest", "older"],
+            StudioCleanupPolicy.Plan(
+                [
+                    Eligible("last", Now - TimeSpan.FromDays(1), sizeBytes: 80),
+                    Eligible("older", Now - TimeSpan.FromDays(3), sizeBytes: 10),
+                    Eligible("oldest", Now - TimeSpan.FromDays(5), sizeBytes: 10),
+                ],
+                Now,
+                rules).ProjectIdsToDelete);
+
+        // The one opened last and one that is open: neither is the one that goes.
+        Assert.Empty(StudioCleanupPolicy.Plan(
+            [
+                Eligible("open", Now - TimeSpan.FromDays(3), sizeBytes: 80),
+                Eligible("last", Now - TimeSpan.FromDays(1), sizeBytes: 30),
+            ],
+            Now,
+            rules,
+            ["open"]).ProjectIdsToDelete);
+    }
+
+    [Fact]
+    public void Plan_TheAgeRuleStillDeletesTheProjectOpenedLast()
+    {
+        var plan = StudioCleanupPolicy.Plan(
+            [Eligible("only", Now - TimeSpan.FromDays(31), sizeBytes: 80)],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 50));
+
+        Assert.Equal(["only"], plan.ProjectIdsToDelete);
+    }
+
+    [Fact]
+    public void Plan_AProjectThatDoesNotSayWhenItWasLastOpenedIsKeptAndNotCounted()
+    {
+        // A project file without the time reads as 1970: older than any rule allows, and the
+        // first in line for the limit.
+        var plan = StudioCleanupPolicy.Plan(
+            [
+                Eligible("undated", DateTimeOffset.UnixEpoch, sizeBytes: 500),
+                Eligible("old", Now - TimeSpan.FromDays(3), sizeBytes: 40),
+                Eligible("new", Now - TimeSpan.FromDays(1), sizeBytes: 60),
+            ],
+            Now,
+            new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 100));
+
+        Assert.Empty(plan.ProjectIdsToDelete);
     }
 
     [Fact]

@@ -232,6 +232,11 @@
                                 <TextBlock
                                     Text="The sources of exported projects are deleted by the two rules below. Drafts that were never exported are never deleted automatically, and neither is a project whose exported video is gone or one you chose to keep. Exported videos are never touched."
                                     TextWrapping="Wrap" />
+                                <!--  The projects are in the package's own folder, which goes with the package.  -->
+                                <TextBlock
+                                    AutomationProperties.AutomationId="StudioUninstallNoteText"
+                                    Text="Projects are stored with the app. Uninstalling Tiny Clips, or resetting it in Windows Settings, deletes all of them, drafts included."
+                                    TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="StudioCleanupStatusText"
                                     AutomationProperties.AutomationId="StudioCleanupStatusText"
@@ -264,7 +269,7 @@
                     </controls:SettingsCard>
 
                     <controls:SettingsCard
-                        Description="Gigabytes the exported projects may use. Past that, the ones opened longest ago are deleted first. Drafts and projects you keep are not counted. 0 means no limit."
+                        Description="Gigabytes the exported projects may use. Past that, the ones opened longest ago are deleted first, and the one you opened last is always kept. Drafts and projects you keep are not counted. 0 means no limit."
                         Header="Storage limit"
                         HeaderIcon="{ui:FontIcon Glyph=&#xE7B8;}">
                         <NumberBox

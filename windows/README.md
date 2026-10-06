@@ -190,6 +190,8 @@ Studio is off until you switch it on: **Settings › General › Tiny Clips Stud
 the switch off nothing else of Studio is shown, and a recording is made as it always was.
 Switching it off again deletes nothing: the projects stay where they are, are not cleaned up while
 it is off, and the line under the switch says how many there are and how much room they take.
+Choosing **Open in Studio (Preview)** leaves **Open trimmer after recording** as it was set, so
+that is what applies again once the switch is off.
 
 With the switch on:
 
@@ -223,11 +225,15 @@ With the switch on:
   choosing such a video in **Recent captures** opens its project instead of the trimmer.
   **Settings › General** shows the space projects take, the cleanup rules, and the drafts: the
   recordings that only their project holds. Those are the ones kept without exporting, the ones
-  whose exported video is no longer where it was saved, and any project Studio cannot read. Each
-  can be deleted, and has **Save recording** to save its screen recording as an ordinary video.
-  Cleanup never removes them, and the storage limit counts only what cleanup may remove.
+  whose exported video is no longer where it was saved (a file of another size under its name
+  counts as gone), and any project Studio cannot read. Each can be deleted, and has **Save
+  recording** to save its screen recording as an ordinary video. Cleanup never removes them.
+  The storage limit counts only what cleanup may remove, and never removes the project that was
+  opened last.
 
-Projects are kept in the app's local data folder under `TinyClips\Projects`. The format, layout
+Projects are kept in the app's local data folder under `TinyClips\Projects`. That folder belongs
+to the installed app: uninstalling Tiny Clips, or resetting it in Windows Settings, deletes it,
+and with it every project, drafts included. Exported videos are not in it. The format, layout
 math and drawing rules are in [`/docs/studio-project-format.md`](../docs/studio-project-format.md),
 shared with the macOS app; the design and its status are in
 [`/plans/video-studio-plan.md`](../plans/video-studio-plan.md). The renderer and exporter are

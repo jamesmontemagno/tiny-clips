@@ -354,6 +354,13 @@ public sealed record StudioExport
     public string Path { get; init; } = string.Empty;
     public DateTimeOffset ExportedAt { get; init; } = DateTimeOffset.UnixEpoch;
 
+    /// <summary>
+    /// How large the video was when it was exported, in bytes, or null when that is not known.
+    /// It tells the video apart from another file that has taken its name since.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? Bytes { get; init; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
 }

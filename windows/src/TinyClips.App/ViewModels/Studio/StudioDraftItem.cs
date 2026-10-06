@@ -13,8 +13,11 @@ public sealed partial class StudioDraftItem : ObservableObject
     /// <summary>Why Delete is unavailable while the draft is open in an editor.</summary>
     public const string OpenInStudioNote = "Close this draft in Studio before deleting it.";
 
-    /// <summary>Said of a project whose exported videos are all gone.</summary>
-    public const string ExportMissingNote = "Its exported video is no longer where it was saved.";
+    /// <summary>
+    /// Said of a project whose exported videos are all gone. A file of another size under a
+    /// video's name counts as gone too: it is another video, or the same one changed since.
+    /// </summary>
+    public const string ExportMissingNote = "Its exported video is no longer where it was saved, or has been changed since.";
 
     /// <summary>Said of a project whose file cannot be read.</summary>
     public const string UnreadableNote = "Studio cannot read this project. It may be damaged, or made by a newer version of Tiny Clips.";

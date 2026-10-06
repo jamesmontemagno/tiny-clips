@@ -326,7 +326,11 @@ public sealed class StudioProjectStore : IStudioProjectStore
 
                 if (project.Id == projectId)
                 {
-                    exports = [.. exports, new StudioExport { Path = normalizedExportPath, ExportedAt = now }];
+                    exports =
+                    [
+                        .. exports,
+                        new StudioExport { Path = normalizedExportPath, ExportedAt = now, Bytes = FileLength(normalizedExportPath) },
+                    ];
                     updatedProject = project with { ModifiedAt = now, Exports = exports };
                     SaveProjectFile(folder.Directory, updatedProject);
                 }
@@ -704,8 +708,7 @@ public sealed class StudioProjectStore : IStudioProjectStore
 
             // Looked at where each video was saved. One on a drive that is not connected counts
             // as not there, which keeps the project: the safe side of not knowing.
-            var exportMissing = project.Exports.Length > 0
-                && !project.Exports.Any(static export => !string.IsNullOrWhiteSpace(export.Path) && File.Exists(export.Path));
+            var exportMissing = project.Exports.Length > 0 && !project.Exports.Any(IsStillWhereItWasSaved);
             return new StudioProjectSummary(
                 folder.Id,
                 project.Name,
@@ -719,6 +722,37 @@ public sealed class StudioProjectStore : IStudioProjectStore
                 exportMissing);
         }
         catch (Exception ex) when (CanSkipProjectRead(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether the video of an export is still where it was saved: a file is at its path and,
+    /// where the export says how large the video was, the file is that large. A file of another
+    /// size is another video that has taken the name, or the same one changed since. Either way
+    /// it is not what the project exported, and counting it would let cleanup remove a project
+    /// that holds the only copy of its recording.
+    /// </summary>
+    private static bool IsStillWhereItWasSaved(StudioExport export)
+    {
+        if (string.IsNullOrWhiteSpace(export.Path) || FileLength(export.Path) is not { } length)
+        {
+            return false;
+        }
+
+        return export.Bytes is not > 0 || length == export.Bytes;
+    }
+
+    /// <summary>The size of a file in bytes, or null where there is no file or it cannot be read.</summary>
+    private static long? FileLength(string path)
+    {
+        try
+        {
+            var file = new FileInfo(path);
+            return file.Exists ? file.Length : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
         {
             return null;
         }
@@ -885,9 +919,12 @@ public sealed record StudioProjectSummary(
 {
     /// <summary>
     /// Whether cleanup may remove the project: a video exported from it is still where it was
-    /// saved, the project is not pinned, and it is not built around a video kept elsewhere.
+    /// saved, the project is not pinned, it is not built around a video kept elsewhere, and it
+    /// says when it was last opened. A project file without that time reads as the start of
+    /// 1970, which would make the project the oldest there is and the first to go.
     /// </summary>
-    public bool IsRemovableByCleanup => !IsDraft && !ExportMissing && !KeepSources && !IsFlat;
+    public bool IsRemovableByCleanup =>
+        !IsDraft && !ExportMissing && !KeepSources && !IsFlat && LastOpenedAt != DateTimeOffset.UnixEpoch;
 }
 
 /// <summary>A project folder whose <c>project.json</c> cannot be read.</summary>
@@ -944,12 +981,16 @@ public static class StudioCleanupPolicy
             // The limit is on what cleanup may remove. Drafts, pinned projects and the like are
             // not counted: they are never removed, and counted they would use the room up, so
             // that every exported project went the moment it was exported.
-            var removable = remaining.Values.Where(static summary => summary.IsRemovableByCleanup).ToArray();
-            var total = removable.Sum(summary => summary.SizeBytes);
-            foreach (var summary in removable
-                .Where(summary => !inUse.Contains(summary.Id))
+            var removable = remaining.Values
+                .Where(static summary => summary.IsRemovableByCleanup)
                 .OrderBy(summary => summary.LastOpenedAt)
-                .ThenBy(summary => summary.Id, StringComparer.Ordinal))
+                .ThenBy(summary => summary.Id, StringComparer.Ordinal)
+                .ToArray();
+            var total = removable.Sum(summary => summary.SizeBytes);
+
+            // The one opened last stays, whatever it weighs. With that one alone over the limit,
+            // the limit would otherwise take a project the moment its editor closed.
+            foreach (var summary in removable.SkipLast(1).Where(summary => !inUse.Contains(summary.Id)))
             {
                 if (total <= options.SizeCapBytes)
                 {
