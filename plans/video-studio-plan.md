@@ -521,7 +521,7 @@ All of it was written the same day, with the PC in use, so nothing with a window
 | Keep this project | The store's call is unit tested. The check box in the inspector's new Project section, and the view model's call, are compiled, never run | The store's call and the editor session's are unit tested. The check box is compiled, never run |
 | Save the screen recording | The copy is unit tested: it never replaces a file and leaves nothing behind when it fails. The button in the editor's message and the one on each draft are compiled, never run | The same, unit tested, with a copy that can be cancelled and that reads beside an editor that has the file open. Both buttons are compiled, never run |
 | Projects that cannot be read, listed with the drafts | The list is unit tested. Its rows are compiled, never run | The same |
-| The Studio switch in Settings | Compiled, never run | The setting is unit tested. The switch, the line under it, and what it shows and hides are compiled, never run |
+| The Studio switch in Settings | Compiled, never run | The setting is unit tested, and so is the view model behind the switch, the line under it and the drafts list. The controls themselves are compiled, never run |
 | The model and its notice | Not needed: the Mac uses the Vision framework | The file and the notice are in the package, read from the build's packaging recipe. The About card and its dialog are compiled, never run |
 
 The Windows unit tests were also run with six of these rules taken out together: the limit counting everything, a project whose videos are gone being removable, an editor never saying that there is a recording to save, an unreadable project having no recording to find, a finished file replacing whatever has its name, and keeping a project counting as a change to it. 18 of the 146 tests in the classes concerned fail, the 18 that were listed beforehand as the ones that state those rules.
@@ -547,7 +547,7 @@ The switch itself has been compiled and never run, on both platforms.
 **`main` had moved by six pull requests (#411 to #416), all in the Windows app**, and seven files conflicted. They were merged by hand as `c81a8ea`:
 
 - **The recorder (`VideoRecordingService`).** `main`'s order of preparing and its stop are kept, and what a Studio recording does differently is put back into them. Three things are different from before the merge. The stop lets go of the pipeline before the project is made, which forgets the timeline and where the camera was, so both are read first and handed to the project. Where the recorded picture starts on the desktop, which the clicks and the pointer are measured from, now comes from `main`'s capture geometry: the region after it was clipped to the display, where it was the region as asked for. And a recording on the CPU path that cannot be finished lets go of its Studio state too; what was written stays in its folder, which has no project in it, and the storage cleanup removes such a folder after a day. **None of this has recorded anything.**
-- **The Settings view model.** `main`'s new unit tests compile that one file by itself, without the app's services, and Studio's part of it needs three of them. Studio's part is now in `SettingsViewModel.Studio.cs`, which those tests do not compile; the file they do compile reaches it through two partial methods. A view model made the way those tests make it has no Studio services, and says so in a sentence if Studio's lists are touched. **Studio's part has no unit tests of its own.**
+- **The Settings view model.** `main`'s new unit tests compile that one file by itself, without the app's services, and Studio's part of it needs three of them. Studio's part is now in `SettingsViewModel.Studio.cs`, which those tests do not compile; the file they do compile reaches it through two partial methods. A view model made the way those tests make it has no Studio services, and says so in a sentence if Studio's lists are touched. Studio's part had no unit tests of its own at that point. It has 24 since later that evening; see below.
 - The encoder's description, the constructors of the Settings and Clips Library windows, the README, and one `using`. Four places did not conflict and no longer compiled. The one worth knowing is the render check's measurement of the regular recorder's CPU path, which called a method `main` replaced and now calls the encoder as the recorder does.
 
 After it, 1,711 Core tests pass and 3 are skipped as before, `main`'s 25 tests of the Settings view model pass, both flavours of the app and the four tools build without warnings, and both workflows are green on the pull request (macOS: both schemes, 311 tests).
@@ -563,6 +563,10 @@ After it, 1,711 Core tests pass and 3 are skipped as before, `main`'s 25 tests o
 | `StudioWindowCheck`, memory only | 5 of 5 |
 
 **The Tiny Clips app was not started.** It was prepared: a copy of the build's package layout under a package name of its own (`TinyClips.StudioCheck`), so that its settings and data would be its own, and the Tiny Clips that is installed on the PC, which belongs to other work, would not be touched. It was registered, and before it was started the owner was back at the PC. It was unregistered again without having run. So what "The recording path: read, never run" and "The app around the editor: read, never run" say still holds, and of the recorder it now holds for code that was merged by hand as well.
+
+**Later that evening: unit tests for Studio's part of the Settings view model.** It is the logic behind the switch, the drafts list and its buttons, none of which anyone has run. The tests of the view model now compile both of its files and the three Studio classes the second one needs, and 24 of them are about Studio's part: the switch and what is saved with it, the After recording choice that stands in for the trimmer switch, the storage rules, the list of recordings that only a project holds, Delete, Save recording, Clean up now, and what a closed window lets go of. The projects are real ones, in a store on a temp folder. `main`'s own tests of the view model pass with Studio's part compiled in. 47 faults were put into Studio's part one at a time, in a scratch copy, and each fails a test. The Settings window that is bound to all of it has still never been shown.
+
+**And `main` moved once more: #417, which makes Esc close the screenshot editor and the trimmers.** Two conflicts, in the Windows changelog and README, both sides kept. Merged as `f738c80` and checked in a clean checkout: 1,727 Core tests pass and 3 are skipped, the 50 tests of the Settings view model pass, and both flavours of the app and the four tools build without warnings. It leaves Studio the one editor that Esc does not close; see "Open questions".
 
 ### Decisions made while building
 
@@ -719,7 +723,11 @@ Known limits to state up front:
 
 ## Open questions
 
-None. The name, price, cleanup defaults, and first-run look are settled in "Decisions confirmed" above, and the questions that came up while building in "Decided on 5 October" under it.
+One, since the evening of 5 October:
+
+- **Esc in the Studio window.** Since #417, Esc closes the screenshot editor and the trimmers, asking first unless "Confirm before closing editors with Esc" is switched off in Settings › General. In the Studio window Esc stops a running export and does nothing else, so Studio is the one editor Esc does not close. The proposal is to have it close the Studio window the way its close button does, behind the same setting. Not built: it is new behaviour for a key, in a window no key has been pressed in yet.
+
+Everything else is settled: the name, price, cleanup defaults, and first-run look in "Decisions confirmed" above, and the questions that came up while building in "Decided on 5 October" under it.
 
 What is left is work that waits for the PC or for a Mac, not for an answer:
 
