@@ -93,6 +93,30 @@ public sealed class CpuVideoFrameReadbackTests
     }
 
     [Theory]
+    [InlineData(-2, -1, 8, 6)]
+    [InlineData(2, 1, 10, 10)]
+    public void DiagnosticGeometryMatchesBorrowedReadbackBeforeAndAfterContentShrink(
+        int x, int y, int width, int height)
+    {
+        var geometry = CaptureOutputGeometry.Calculate(8, 6, new PixelRect(x, y, width, height));
+        var encoded = geometry.Encoded;
+        var output = new CapturedFrame(new byte[encoded.Width * encoded.Height * 4], encoded.Width, encoded.Height);
+        CpuVideoFrameReadback.CopyTo(
+            Surface(8, 6, 40), 40, 8, 6, 8, 6, output, encoded, letterbox: false);
+
+        Assert.Equal(new byte[] { (byte)(encoded.X + 1), (byte)(encoded.Y + 1), 100, 255 }, Pixel(output, 0, 0));
+        Assert.Equal(new byte[] { (byte)(encoded.X + encoded.Width), (byte)(encoded.Y + encoded.Height), 100, 255 },
+            Pixel(output, encoded.Width - 1, encoded.Height - 1));
+
+        CpuVideoFrameReadback.CopyTo(
+            Surface(8, 6, 40), 40, 8, 6, encoded.X + 1, encoded.Y + 1, output, encoded, letterbox: false);
+        Assert.Equal(encoded.Width, output.Width);
+        Assert.Equal(encoded.Height, output.Height);
+        Assert.Equal(new byte[] { (byte)(encoded.X + 1), (byte)(encoded.Y + 1), 100, 255 }, Pixel(output, 0, 0));
+        Assert.Equal(new byte[] { 0, 0, 0, 255 }, Pixel(output, encoded.Width - 1, encoded.Height - 1));
+    }
+
+    [Theory]
     [InlineData(0, 3, 0, 0)]
     [InlineData(4, 0, 0, 0)]
     [InlineData(4, 3, 20, 30)]

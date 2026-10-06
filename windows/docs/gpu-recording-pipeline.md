@@ -39,8 +39,8 @@ the benchmark measured **100–180 Gen2 GCs per 10 s recording** with **3–5 % 
 GC pauses**. The pauses are what make the CPU path's latency spiky: a branding blend that costs
 microseconds showed a **400 ms max** simply because a Gen2 GC landed inside it.
 
-Measured on the reference machine (below), the CPU pipeline at 3440×1440@30 sustained only
-**~11 fps** end-to-end (114 frames encoded in 10 s) with zero "dropped" frames — the drop counter
+The historical reference run (below) reported **~11 submitted samples/s** at 3440×1440@30
+(114 sample handoffs in the legacy interval) with zero "dropped" frames — the drop counter
 only counts channel back-pressure, while the real loss was the **pump skipping ticks**: the pump
 used `Monitor.TryEnter` and gave up whenever the WGC thread held the lock during its 10–17 ms
 readback, and `System.Threading.Timer`'s ~15.6 ms granularity cannot hold a 33.3 ms cadence
@@ -103,7 +103,7 @@ verified physical output dimensions; a lower allocation rate alone is not eviden
 
 | Option | Verdict | Why |
 |--------|---------|-----|
-| **A. Keep `MediaTranscoder` + `MediaStreamSource`, feed D3D11 surfaces** via `MediaStreamSample.CreateFromDirect3D11Surface` | **Chosen** | It is the documented Microsoft pattern ([Screen capture to video](https://learn.microsoft.com/windows/uwp/audio-video-camera/screen-capture-video), SimpleRecorder). Keeps the existing encoder prep / Baseline fallback / AAC mux / audio back-pressure code untouched. MF handles BGRA→NV12 on the GPU through its Video Processor MFT, so the hardware encoder receives GPU memory end-to-end. |
+| **A. Keep `MediaTranscoder` + `MediaStreamSource`, feed D3D11 surfaces** via `MediaStreamSample.CreateFromDirect3D11Surface` | **Chosen** | It is the documented Microsoft pattern ([Screen capture to video](https://learn.microsoft.com/windows/uwp/audio-video-camera/screen-capture-video), SimpleRecorder). Keeps the existing encoder prep / Baseline fallback / AAC mux / audio back-pressure code untouched. Surface handoff allows MF to use a GPU colour converter/encoder, but does not verify the selected transforms or an end-to-end hardware path. |
 | B. Native MF `IMFSinkWriter` + `IMFDXGIDeviceManager` + own Video Processor MFT | **Adopted in phase 2** (§8) | Full control (encoder MFT attributes, HEVC, push model). The earlier `MediaFoundationEncoderSpike` found Vortice's MF wrappers unusable, but `Vortice.MediaFoundation` 3.8.3 exposes everything needed (`MFCreateSinkWriterFromURL`, `MFCreateDXGIDeviceManager`, `IMFVideoSampleAllocatorEx`), as [crutkas/tiny-clips](https://github.com/crutkas/tiny-clips) demonstrated. Phase 1 measured the transcoder's encoder hold time as the remaining bottleneck, which is exactly what this fixes. |
 | C. Direct Desktop Duplication (`IDXGIOutputDuplication`) instead of WGC | Rejected | No window capture, no cursor composition without extra work, and WGC already hands us a D3D11 texture. |
 | D. Win2D (`CanvasDevice`) for overlays | Rejected | Win2D is WinUI-app-only (the `TinyClips.App` package); the compositor must live in UI-free `TinyClips.Core`. Direct2D via `Vortice.Direct2D1` gives the same primitives on the same D3D11 device. |
@@ -128,7 +128,7 @@ Channel<GpuFrame> (bounded to pool size, DropWrite ⇒ texture released)
 MediaStreamSample.CreateFromDirect3D11Surface(surface, pts)
    │  sample.Processed ⇒ GpuFrame.Release() ⇒ back to pool
    ▼
-MediaTranscoder (HardwareAccelerationEnabled) → Video Processor MFT (BGRA→NV12 on GPU) → H.264 HW encoder → MP4
+MediaTranscoder (hardware requested) → colour conversion / selected encoder (unverified) → MP4
 ```
 
 Key decisions and the bugs they avoid:
@@ -145,7 +145,8 @@ Key decisions and the bugs they avoid:
 - **No bottom-up flip.** `CreateFromDirect3D11Surface` samples are top-down; the orientation bug
   class is gone.
 - **Texture pool, not per-frame textures.** Hardware encoders hold input surfaces for their
-  look-ahead window. Measured `EncoderHold` (hand-off → `Processed`) on AMD VCN: **~25–50 ms avg,
+  look-ahead window. Historical `EncoderHold` (hand-off → `Processed`) on the reference adapter,
+  with encoder transform unverified: **~25–50 ms avg,
   100–220 ms p99/max**, i.e. up to ~7 frames in flight at 30 fps and ~14 at 60. The pool starts at 4
   and grows on demand to `clamp(fps/2, 8, 30)`; when it is exhausted the pump **drops at the source**
   (no texture churn) and the frame's wall-clock PTS slot is simply absent, so audio never slides.
@@ -242,12 +243,65 @@ and core-equivalents (`Process.TotalProcessorTime` delta), **managed allocation 
 collection counts, **total GC pause time** (`GC.GetTotalPauseDuration`), peak working set, and for
 the GPU path the texture-pool high-water mark and pacer overruns.
 
+### 4.1 Diagnostic contract (schema 2)
+
+Reports and benchmark JSON now include `SchemaVersion: 2`. Existing report fields and the benchmark
+array/scenario shape remain available. These are additive fields; the legacy `EffectiveFps`,
+`DropPercent`, and `FramesEncoded` calculations are retained for existing consumers, **not** renamed
+or silently reinterpreted. Use the following meanings when comparing new recordings:
+
+| Fields | Meaning |
+| --- | --- |
+| `RequestedPipeline` / `Pipeline` | Requested CPU/GPU path versus the capture/composite path that actually initialized. CPU fallback does not inherit a GPU label. |
+| `RequestedEncoderBackend` / `EncoderBackend` | Requested sink writer/transcoder versus the initialized backend, independently of CPU/GPU capture. |
+| `D3DDriver` | `hardware`, `warp`, or `unknown`, recorded from the successful D3D device creation call. A GPU-resident path can use WARP. This is **not** encoder evidence. |
+| `HardwareEncodingRequested` / `HardwareEncoding` | Acceleration request on the selected backend versus verified transform selection. Selection is currently `unknown`: neither backend inspects the encoder transform. Baseline fallback disables the hardware request but is still not a transform-inspection result. Sink-writer low-latency/no-B-frame settings are requests too. |
+| `Geometry` | Initial requested physical rectangle, its intersection with WGC content, and the final even encoder rectangle. `WasClipped` and `WasEvenSized` identify intentional adjustments. Window targets use their WGC item size, not a monitor/DIP estimate. Encoder dimensions remain fixed during resize. |
+| `Phases.Preparation` | Building the pipeline, including a failed GPU/backend attempt before fallback, until encoder-ready. |
+| `Phases.PreparedWait` | Encoder-ready until emission starts; includes countdown reuse and the first-webcam wait. |
+| `Phases.FirstFrameLatency` | Active time from emission start to the first successfully produced frame, excluding intentional pauses; `null` if none. Not latency to the first encoded/decoded output frame. |
+| `Phases.ActiveRecording` / `Phases.Paused` | Time from pump start until both pumps stop, separated at pause/resume. Existing stop-time webcam/audio shutdown can still occur before the pumps stop and is included here. |
+| `Phases.Finalization` / `FinalizationSucceeded` | Pump-stop through encoder/audio drain and finalization; no exception versus failure (or `null` if not established). This does not verify file contents and excludes subsequent resource disposal. |
+| `WallClock` / `EffectiveFps` | Legacy start-to-report interval, including pause and finalization; submitted samples divided by that interval. CPU/GC/allocation denominators use this same interval, not active-only time. Preparation is separately timed, not included in these process deltas. |
+| `FramesEncoded` / `FramesSubmitted` | The same count: accepted sink-writer `WriteVideo` results or `MediaStreamSample` handoffs. A stopped/disposed sink-writer rejection is not counted as submitted. Neither means decoded output. `VerifiedOutputFrames` remains `null` without independent decoding. |
+| `SubmissionAttempts` / `SubmissionFailures` | Per-video-sample handoff attempts and exceptions, including drain-time handoffs. Failed channel reads without a sample are logged but are not submission attempts/failures. |
+| `FramesNotSubmitted` | Emitted frames rejected at a pause boundary, after a channel completes, by a stopped/disposed sink writer, or by a CPU consumer failure before sample submission; not queue-full drops. |
+| `FramesPendingSubmission` | Emitted minus submitted, queue-dropped, submission-failed and explicitly rejected frames (clamped at zero). An undrained queue or in-flight producer remains explicit at the report snapshot, not mislabeled as encoded/dropped. Pool/production loss precedes emission and is not subtracted here. |
+| `ActiveFps` | All successful video submissions (including draining pre-stop frames) divided by active recording time. No intentional pause or encoder-finalization denominator. |
+| `QueueDrops` / `PoolExhaustionEvents` / `ProductionFailures` | Separate failed queue admissions, failed allocator acquisitions, and failed CPU/GPU frame-production attempts before emission. Each site increments exactly one category and legacy `FramesDropped` once. CPU borrowed-consumer failures after emission belong to the submission budget instead. |
+| `CpuSkippedTickEvents` | Observed active CPU timer callbacks rejected by the borrowed-frame processing gate or capture-cache `TryEnter`; at most one event per callback, **not** an estimate of every missed timer slot. Timer callbacks never dispatched cannot be recovered from this counter. |
+| `GpuPacingOverrunEvents` / `GpuPacingMissedSlots` | One active overrun event per grid jump and the number of due slots it skips. Only a stable active cadence epoch across the previous callback and jump is counted, excluding pause/resume boundaries. |
+| `CaptureReadbackFailures` / `NoSourceFrameTicks` | Failed WGC readbacks across the session (including preparation/pause), versus active pump attempts with no cached source yet. Neither is an encoder queue drop. Stage timing still starts at recording start. |
+| `RepeatedSourceFrames` / `MaxEmittedFrameGap` | Frames reusing the same cached WGC source version, versus largest within-active-segment emitted PTS gap. Static-content repeats are normal output, not drops. The gap resets at pause/resume; no derived “lost frames” are added to any counter. |
+
+**Do not sum** pacing events, pacing slots, frame gaps, readback failures and the drop aggregate into
+a single loss count. An event and its skipped slots describe the same overrun; frame gaps can
+describe those same slots. Legacy `DropPercent` uses emitted frames as its denominator even though
+pool/production drops happen *before* emission, so it is not an overall cadence-loss percentage and
+can exceed 100%. Use the individual categories and `ActiveFps`. The console comparison table,
+full report, local log and JSON share these meanings. The extra raw GPU pacer slot log explicitly
+includes pauses and is **not** the active-only structured counter.
+
+Instrumentation uses atomic counters, a fixed 4096-entry reservoir per stage and constant-size
+phase/emission state. There is no per-frame diagnostic object allocation, trace list or per-frame
+success log write; CPU readback/processing failure messages are capped at three per category while
+the counters continue counting. Working-set queries are throttled to approximately once per second. Output inspection,
+driver/transform validation, live mixed-DPI capture and native ARM64 runs are separate manual
+checks, not implied by deterministic tests.
+
 ## 5. Benchmark harness
 
 `windows/tools/RecordingBenchmark` drives the production `VideoRecordingService` headlessly
 (in-memory settings, temp output, no-op analytics) against the primary monitor and prints a
 comparison table plus the full per-stage report for each scenario. It must run from an interactive
 desktop session (WGC needs the DWM).
+
+The harness establishes and verifies Per-Monitor-V2 awareness **before monitor enumeration**;
+if it cannot establish physical coordinates, it fails rather than accepting DPI-virtualized bounds.
+An oversized `--region` remains in the requested metadata; capture intersects it with the actual
+WGC item before even-size cropping. Benchmark JSON also records `DpiAwareness` and `RequestedRegion`.
+Only use synthetic/disposable or explicitly consented content. Do not run simultaneous real-time
+benchmarks on a shared host. Reports remain local; nothing is uploaded.
 
 ```powershell
 dotnet run --project windows/tools/RecordingBenchmark -c Release -p:Platform=x64 -- --seconds 10
@@ -266,13 +320,45 @@ inspection (e.g. `ffmpeg -ss 3 -i file.mp4 -frames:v 1 frame.png`).
 Caveat: the click overlay is only exercised if you actually click during the run (the harness does
 not synthesize input), so `OverlayClicks` rows mostly measure the no-clicks early-out.
 
+### Local diagnostic collection and architecture evidence
+
+Run `windows/tools/Collect-Diagnostics.ps1` from a repository checkout. The collector compiles the
+same dependency-free `src/TinyClips.Core/Services/ProcessArchitectureClassifier.cs` used by the
+deterministic tests; keep that file at its repository-relative location when distributing the
+collector. Missing helper source fails before creating a results folder.
+
+Target process, OS, and loaded runtime architectures are separate evidence:
+`IsWow64Process2` supplies native OS / WOW machine codes, `GetProcessInformation` with
+`ProcessMachineTypeInfo` supplies the target process machine, and a readable **loaded**
+`coreclr.dll` PE supplies corroborating runtime-module evidence (not a bundled file or the
+collector's own architecture). Both API results/failures are printed explicitly. A zero WOW
+machine is “unspecified”, not proof of a native ARM64 runtime. Missing evidence yields `unknown`,
+conflicting codes `ambiguous`, explicit ARM64EC/ARM64X codes `hybrid`, x86 on ARM64 `emulated`,
+and x86 on x64 `wow64`. x64 on ARM64 is `emulated-or-hybrid`: final ARM64EC images can expose the
+x64 ABI/machine code, so neither those APIs nor the simple PE machine read proves that all code
+is emulated. The runtime PE field is corroborating module/ABI evidence, not an instruction-level
+execution measurement. Module access failures also remain explicit; package PE entries are
+distribution metadata, not runtime proof. See Microsoft's
+[PROCESS_MACHINE_INFORMATION contract](https://learn.microsoft.com/windows/win32/api/processthreadsapi/ns-processthreadsapi-process_machine_information)
+and [ARM64EC binary identification](https://learn.microsoft.com/windows/arm/arm64ec#identifying-arm64ec-binaries-and-apps).
+
+The collector is opt-in and never uploads. Its existing logs/system/window-title collection can
+contain private information: review the archive locally, and do not paste raw logs or machine
+details into public issues. Classification tests use invented machine codes, not host profiling.
+
 ## 6. Results
 
+The measurements below are historical, pre-schema-2 results. Their “encoded” columns count sample
+submissions, their fps includes finalization, hardware transform selection was not verified, and
+CPU skipped ticks were not structured. They do not establish hardware execution or universal
+cadence guarantees. Re-measure with synthetic content and the schema-2 contract before drawing
+new device-specific conclusions; this diagnostic change claims no measured performance gain.
+
 Reference machine: AMD Ryzen AI 7 PRO 350 (16 logical cores) with integrated **Radeon 860M**
-(H.264 encoding via AMD VCN through Media Foundation), 3440×1440 primary display, Windows 11
+(Media Foundation H.264 requested; encoder transform unverified), 3440×1440 primary display, Windows 11
 26200, .NET 10. Static desktop with a few windows; 10 s per scenario, 30 fps target, no audio.
 
-| Scenario | Pipeline | Encoded fps | CPU (cores) | Alloc rate | Gen2 GCs | GC pause | Readback avg | Produce avg | Composite avg / p99 |
+| Scenario | Pipeline | Legacy submission fps | CPU (cores) | Alloc rate | Gen2 GCs | GC pause | Readback avg | Produce avg | Composite avg / p99 |
 |----------|----------|------------:|------------:|-----------:|---------:|---------:|-------------:|------------:|--------------------:|
 | cpu | cpu | **11.3** | 5.4 % (0.86) | **1180 MB/s** | 122 | 4.5 % | 16.6 ms | 2.9 ms | 0.01 / 0.09 ms |
 | gpu | gpu | **28.0** | 2.0 % (0.33) | 0.5 MB/s | 1 | 0.1 % | 1.2 ms | 0.03 ms | 0.40 / 2.2 ms |
@@ -283,41 +369,42 @@ Reference machine: AMD Ryzen AI 7 PRO 350 (16 logical cores) with integrated **R
 
 At a **60 fps** target (10 s, no overlays):
 
-| Scenario | Encoded fps | CPU (cores) | Alloc rate | Gen2 GCs | Dropped (pool exhausted) | EncoderWait avg |
+| Scenario | Legacy submission fps | CPU (cores) | Alloc rate | Gen2 GCs | Dropped (pool exhausted) | EncoderWait avg |
 |----------|------------:|------------:|-----------:|---------:|-------------------------:|----------------:|
 | cpu | 38.9 | 5.3 % (0.85) | 2412 MB/s | 182 | 0 (pump skipped instead) | 24.6 ms |
 | gpu | **42.6** | 2.5 % (0.40) | 0.6 MB/s | 0 | 73 of 576 | 3.1 ms |
 
-Takeaways:
+Historical observations, not current cadence or transform-validation results:
 
-1. **The GPU pipeline delivers the requested frame rate.** 28–30 fps vs 11 fps at 30 fps target on
-   a 5 MP display; 2.5× the frames for 0.4× the CPU.
-2. **Allocations drop from ~1.2 GB/s to ~0.5 MB/s** and Gen2 collections from >100 to ~0 per
-   recording. This is what removes the latency spikes — the CPU path's 400 ms composite max and
-   850 ms+ `EncoderWait` p99 were GC pauses, not compute.
-3. **Overlays are effectively free on the GPU** (0.08 ms badge, 0.4 ms webcam including upload,
-   0.1 ms clicks) and pixel-identical to the CPU output (verified by frame extraction).
-4. **The remaining bottleneck is the hardware encoder's hold time**, not our pipeline: at 60 fps the
-   encoder held frames long enough to exhaust a 30-texture pool (73 drops), and `EncoderHold`
-   p99 was 170–220 ms. That is an encoder/driver property (look-ahead, B-frames — we request the
-   High profile) and the lever for it is Option B (own sink writer with tuned encoder attributes) or
-   requesting a low-latency encoder mode.
-5. **With the webcam on, the CPU cost is now in webcam *capture*, not compositing.** The
-   gpu+webcam run allocated 55 MB/s and paid 42 Gen2 GCs, all from
-   `WebcamCaptureService` converting each `MediaFrameReference` to a managed `byte[]`. That is the
-   next obvious GPU move (keep the camera frame as a `Direct3DSurface` and draw it straight into the
-   Direct2D pass).
+1. **Higher sample-submission rates were observed on the GPU path.** The legacy interval reported
+   roughly 28 vs 11 submitted samples/s at a 30 fps target with lower process CPU usage.
+   These averages do not establish delivered output cadence or a guaranteed frame rate.
+2. **Lower allocation and collection counts were reported in these runs.** GC could contribute
+   to the CPU path's long composite/encoder-wait timings, but aggregate stage and GC counters
+   alone do not attribute individual latency spikes.
+3. **GPU overlay stage timings were small in the reference runs.** Historical frame extraction
+   compared rendered appearance; it does not make overlays free or establish full-output parity.
+4. **Long sample lifetimes coincided with pool exhaustion at 60 fps.** `EncoderHold` p99 was
+   170-220 ms and 73 allocator drops were reported. This motivates testing buffering/backpressure
+   and backend configuration, but does not identify the uninspected transform as a hardware
+   encoder, prove look-ahead/B-frames caused the holds, or exclude other pipeline bottlenecks.
+5. **Webcam delivery was another allocation candidate.** The GPU+webcam run reported 55 MB/s
+   and 42 Gen2 collections; the camera-to-managed-buffer path warranted investigation, not
+   exclusive attribution of every allocation or collection from these aggregate counts.
 
 ## 7. Risks and follow-ups
 
-- **Driver coverage.** Validated on AMD VCN only. NVIDIA (NVENC) and Intel (QSV) MFTs should accept
-  the same `IDirect3DSurface` samples (it is the documented pattern), but hold times, pool high-water
-  marks and `VIDEO_SUPPORT` behaviour need checking; WARP falls back to software encoding and the
-  `pipeline=`/`encoder=` report columns make that visible. (Phase 1 shipped the setting off; it was
+- **Driver coverage.** Historical runs used the reference AMD adapter; no encoder transform was
+  inspected. NVIDIA/Intel and other adapter/transform combinations remain unvalidated follow-ups,
+  including surface compatibility, hold times, pool high-water marks and `VIDEO_SUPPORT`
+  behaviour. `D3DDriver=warp` explicitly identifies WARP,
+  independently of the unverified encoder transform. (Phase 1 shipped the setting off; it was
   turned on by default in phase 2 alongside the What's new window — see §8.5.)
-- **Window capture.** Window targets resize mid-recording; the GPU session recreates the "latest"
-  texture on size change but the pooled encoder textures are fixed to the initial size (as in the CPU
-  path, the encoder profile is fixed too). Behaviour is unchanged from the CPU path (crop/clamp).
+- **Window capture.** Window targets resize mid-recording; both video paths preserve the initial
+  encoder dimensions and aspect-fit resized content with opaque black bars. CPU video recreates
+  its WGC frame pool and bounds readback by both `ContentSize` and physical pitch/surface size;
+  its allocation-free nearest-neighbour resize differs from GPU linear filtering (§1.1).
+  Physical regions keep their clipped origin and black-pad missing pixels without scaling.
 - **Device removal.** `GetSharedDevice` already recreates the shared D3D device on
   `DeviceRemovedReason`; a GPU reset mid-recording will surface as D2D `RECREATE_TARGET` (overlays
   disabled, recording continues) or as encoder failure (recording stops), same as today.
@@ -385,7 +472,10 @@ copied through `IMemoryBufferByteAccess` into a reusable ring instead of two fre
 
 ### 8.4 Results (same machine as §6; 10 s, 3440×1440)
 
-| Scenario | Encoded fps | CPU cores | Alloc | Gen2 | Composite avg/p99 | Size |
+These historical results use the same legacy sample-submission and unverified-transform semantics
+as section 6; neither zero queue/pool drops nor near-target average submissions proves output cadence.
+
+| Scenario | Legacy submission fps | CPU cores | Alloc | Gen2 | Composite avg/p99 | Size |
 |---|---:|---:|---:|---:|---:|---:|
 | cpu (transcoder) | 17.0 | 0.75 | 1546 MB/s | 167 | 0.01 / 0.05 ms | 10.2 MB |
 | gpu (transcoder) | 27.5 | 0.22 | 0.4 MB/s | 0 | 0.8 / 13.5 ms | 17.7 MB |
@@ -397,7 +487,7 @@ copied through `IMemoryBufferByteAccess` into a reusable ring instead of two fre
 
 **60 fps** target:
 
-| Scenario | Encoded fps | Dropped | CPU cores | Encoder held frames (high-water) |
+| Scenario | Legacy submission fps | Dropped | CPU cores | Allocator high-water |
 |---|---:|---:|---:|---:|
 | cpu (transcoder) | 19.6 | 0 (pump skipped) | 0.99 | — |
 | gpu (transcoder) | 44.3 | 57 | 0.25 | 14–16 of 30 |
@@ -407,24 +497,25 @@ copied through `IMemoryBufferByteAccess` into a reusable ring instead of two fre
 with GPU delivery (all 268 camera frames stayed on the GPU, source = `Direct3DSurface`); total CPU
 0.43 cores vs 1.03 for the CPU pipeline with the same overlays, 29.4 fps vs 20.9.
 
-Takeaways:
+Historical observations:
 
-1. **Low-latency encoder configuration removed the last bottleneck.** With `AVLowLatencyMode` and
-   no B-frames the encoder holds **one** input frame instead of 14+, so 60 fps is sustained with zero
-   drops and `WriteSample` costs ~0.1 ms. The transcoder's opaque look-ahead was the whole problem.
-2. **HEVC** cuts file size ~40 % (17.7 → 10.6 MB) at identical CPU cost; keep H.264 the default for
-   playback compatibility.
-3. **The GPU webcam path makes the webcam overlay free** (<0.1 ms). The remaining Gen2 collections
-   seen with the webcam on (~60 per 8 s even at 0.2 MB/s managed allocation) are *induced* by the
-   WinRT camera pipeline's RCW/finalizer pressure, not by our code — bisected by swapping the copy
-   path with `TINYCLIPS_WEBCAM_DIRECT_COPY=0` and by recording with no webcam (0 GCs).
-4. **Transcoder vs sink writer on the CPU pipeline** is a wash (both bounded by the readback); the
-   sink writer's value is on the GPU pipeline.
+1. **The sink-writer run reported near-target submission averages and a lower allocator
+   high-water mark.** Low-latency/no-B-frame configuration was requested, not verified.
+   These results do not prove those settings were honored, that 60 fps output was sustained,
+   or that transcoder look-ahead was the only bottleneck.
+2. **The HEVC sample file was smaller with similar reported CPU usage.** This is a result for
+   these files, not a general 40% saving; H.264 remains the default for playback compatibility.
+3. **GPU webcam delivery had lower measured overlay-stage cost in these runs.** The historical
+   direct-copy/no-webcam comparisons motivated investigating camera/interop collection pressure,
+   but do not make the overlay free or establish exclusive GC causality.
+4. **The two CPU backend runs had similar submission rates.** Readback was a candidate cost,
+   but aggregate averages do not establish it as the sole bottleneck.
 
 ### 8.5 Remaining follow-ups
 
-- GPU + Low latency are now the defaults (validated on AMD VCN; NVIDIA/Intel use the same documented
-  MF pattern). Both fall back automatically, the `encoder=`/`pipeline=` report columns show what ran,
+- GPU + Low latency are now the defaults. Historical runs used the reference AMD adapter, with
+  selected encoder transforms unverified; NVIDIA/Intel compatibility still needs device testing.
+  Both fall back automatically, the `encoder=`/`pipeline=` report columns show the initialized paths,
   and the What's new window tells users where the switch is. Watch the first release's bug reports for
   `falling back to` lines in `webcam-diagnostics.log`.
 - The CodecAPI keys are applied best-effort; log which ones the encoder accepted (`ICodecAPI::IsSupported`).

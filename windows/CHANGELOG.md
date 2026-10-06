@@ -6,6 +6,17 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- **Recording diagnostics distinguish requests from observed execution.** Schema-2 reports preserve
+  legacy JSON fields while adding actual capture/encoder backends, D3D hardware/WARP selection,
+  explicit unverified hardware encoding, preparation/active/pause/finalization timings, sample
+  submission accounting, separate CPU skipped-tick and GPU overrun event/slot counters, and normal
+  static-frame repeats. The benchmark establishes DPI awareness before monitor queries; both
+  capture paths report clipping and even-size crops consistently. Local process diagnostics use
+  target-process API and loaded-runtime evidence, leaving missing/conflicting evidence explicit.
+  Video and GIF click overlays use the clipped capture origin so negative-origin requests stay aligned.
+  CPU borrowed-frame integration retains fixed resize dimensions and counts processing-gate
+  contention without double submission; both encoder paths retain actual-acceptance accounting.
+  Added deterministic accounting, geometry, serialization and architecture tests. (#404)
 - **CPU video recording creates fewer full-frame pixel arrays.** The explicit CPU path and GPU
   startup fallback reuse private capture/overlay buffers. The low-latency encoder copies directly
   into its own bottom-up buffer, while the standard encoder retains one independent array instead

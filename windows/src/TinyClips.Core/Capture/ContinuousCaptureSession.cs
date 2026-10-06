@@ -48,6 +48,11 @@ internal sealed class ContinuousCaptureSession : IDisposable
     private int _fullHeight;
     private volatile bool _running;
     private volatile bool _emittingPaused;
+    private PixelRect _cropBounds;
+    private CaptureOutputGeometry? _geometry;
+    private long _sourceVersion;
+    private int _readbackFailuresLogged;
+    private int _processingFailuresLogged;
 
     /// <summary>Raised at the target frame rate: an owned BGRA8 snapshot + relative PTS, safe to retain.</summary>
     public event Action<CapturedFrame, TimeSpan>? FrameReady;
@@ -66,6 +71,9 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
     /// <summary>Output height in pixels (region height, or full monitor height), rounded down to even.</summary>
     public int OutputHeight { get; private set; }
+
+    public CaptureOutputGeometry OutputGeometry =>
+        _geometry ?? throw new InvalidOperationException("Capture geometry has not been initialized.");
 
     /// <summary>Presentation timestamp of the most recently emitted frame (MinValue if none).</summary>
     public TimeSpan LastEmittedPts => _lastEmittedPts;
@@ -104,6 +112,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
         _d3dDevice = d3dDevice;
         _device = device;
         _context = _d3dDevice.ImmediateContext;
+        if (_perf is not null) { _perf.D3DDriver = WgcInterop.GetDeviceDriver(d3dDevice); }
 
         var item = _target.CreateItem()
             ?? throw new InvalidOperationException("Failed to create a GraphicsCaptureItem for the target.");
@@ -112,11 +121,12 @@ internal sealed class ContinuousCaptureSession : IDisposable
         _fullWidth = size.Width;
         _fullHeight = size.Height;
 
-        var outW = _region?.Width ?? size.Width;
-        var outH = _region?.Height ?? size.Height;
-        // H.264 requires even dimensions; GIF tolerates any but even keeps both happy.
-        OutputWidth = Math.Max(2, outW - (outW % 2));
-        OutputHeight = Math.Max(2, outH - (outH % 2));
+        var geometry = CaptureOutputGeometry.Calculate(size.Width, size.Height, _target.IsWindow ? null : _region);
+        _geometry = geometry;
+        _cropBounds = geometry.Encoded;
+        OutputWidth = _cropBounds.Width;
+        OutputHeight = _cropBounds.Height;
+        if (_perf is not null) { _perf.Geometry = geometry; }
 
         _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
             _device,
@@ -232,6 +242,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
                     (int)desc.Width, (int)desc.Height,
                     contentSize.Width, contentSize.Height,
                     arrived is not null);
+                Interlocked.Increment(ref _sourceVersion);
 
                 if (_processBorrowedFrame is not null &&
                     contentSize.Width > 0 && contentSize.Height > 0 &&
@@ -249,7 +260,11 @@ internal sealed class ContinuousCaptureSession : IDisposable
         }
         catch (Exception ex)
         {
-            WebcamDiagnostics.Log($"CPU capture frame failed: {ex.GetType().Name}: {ex.Message}");
+            _perf?.ReadbackFailed();
+            if (Interlocked.Increment(ref _readbackFailuresLogged) <= 3)
+            {
+                WebcamDiagnostics.Log($"CPU capture frame failed: {ex.GetType().Name}: {ex.Message}");
+            }
         }
         finally
         {
@@ -263,16 +278,35 @@ internal sealed class ContinuousCaptureSession : IDisposable
         // Only one callback may own the reusable overlay buffer; Stop waits for its return.
         try
         {
-            _processingGate.TryProcess(PumpFrame);
+            _processingGate.TryProcess(PumpFrame, _emittingPaused ? null : _perf);
         }
         catch (Exception ex)
         {
-            WebcamDiagnostics.Log($"CPU frame processing failed: {ex.GetType().Name}: {ex.Message}");
-            _perf?.FrameDropped();
+            if (Interlocked.Increment(ref _processingFailuresLogged) <= 3)
+            {
+                WebcamDiagnostics.Log($"CPU frame processing failed: {ex.GetType().Name}: {ex.Message}");
+            }
         }
     }
 
     private void PumpFrame()
+    {
+        // This method runs exclusively under the processing gate, so the emission count cannot
+        // advance on another pump while attributing a failed production versus consumer handoff.
+        var emittedBefore = EmittedFrameCount;
+        try
+        {
+            EmitFrame();
+        }
+        catch
+        {
+            if (EmittedFrameCount == emittedBefore) { _perf?.ProductionFailed(); }
+            else { _perf?.FrameNotSubmitted(); }
+            throw;
+        }
+    }
+
+    private void EmitFrame()
     {
         if (!_running || _emittingPaused)
         {
@@ -283,9 +317,11 @@ internal sealed class ContinuousCaptureSession : IDisposable
         CapturedFrame? snapshot;
         var ready = FrameReady;
         TimeSpan pts;
+        long sourceVersion;
 
         if (!Monitor.TryEnter(_sync))
         {
+            _perf?.CpuSkippedTick();
             return;
         }
 
@@ -302,8 +338,11 @@ internal sealed class ContinuousCaptureSession : IDisposable
             if (borrowed is null && snapshot is null)
             {
                 // No screen frame captured yet; nothing to emit.
+                _perf?.NoSourceFrameTick();
                 return;
             }
+
+            sourceVersion = Interlocked.Read(ref _sourceVersion);
 
             // Screen frames use the same QPC origin as webcam and audio.
             pts = _timeline?.Elapsed ?? TimeSpan.Zero;
@@ -332,7 +371,7 @@ internal sealed class ContinuousCaptureSession : IDisposable
         }
 
         Interlocked.Increment(ref _emittedFrameCount);
-        _perf?.FrameEmitted();
+        _perf?.FrameEmitted(sourceVersion, pts);
 
         // Raise outside the lock so heavy per-frame compositing doesn't stall WGC delivery.
         if (borrowed is not null)
@@ -348,17 +387,11 @@ internal sealed class ContinuousCaptureSession : IDisposable
 
     private unsafe CapturedFrame ReadStaging(int frameWidth, int frameHeight, int contentWidth, int contentHeight, bool publishSnapshot)
     {
-        int x = 0, y = 0;
+        int x = _cropBounds.X, y = _cropBounds.Y;
         int width = OutputWidth, height = OutputHeight;
 
         if (_processBorrowedFrame is null)
         {
-            if (_region is { } r)
-            {
-                x = Math.Clamp(r.X, 0, frameWidth);
-                y = Math.Clamp(r.Y, 0, frameHeight);
-            }
-
             width = Math.Clamp(width, 1, frameWidth - x);
             height = Math.Clamp(height, 1, frameHeight - y);
         }
@@ -376,7 +409,8 @@ internal sealed class ContinuousCaptureSession : IDisposable
             {
                 CpuVideoFrameReadback.CopyTo(
                     new ReadOnlySpan<byte>(src, checked(srcPitch * frameHeight)),
-                    srcPitch, frameWidth, frameHeight, contentWidth, contentHeight, captured, _region,
+                    srcPitch, frameWidth, frameHeight, contentWidth, contentHeight, captured,
+                    !_target.IsWindow && _region is not null ? _cropBounds : null,
                     letterbox: _target.IsWindow);
                 return captured;
             }

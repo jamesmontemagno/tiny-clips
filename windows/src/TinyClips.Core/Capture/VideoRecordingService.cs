@@ -231,6 +231,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
         var fps = Math.Clamp(_settings.VideoFrameRate, 1, 60);
         _frameDuration = TimeSpan.FromSeconds(1.0 / fps);
         Interlocked.Exchange(ref _videoFramesDropped, 0);
+        LastPerformanceReport = null;
+        _perf = new RecordingPerformanceMonitor("cpu", 0, 0, fps)
+        {
+            RequestedPipeline = _settings.UseGpuRecordingPipeline ? "gpu" : "cpu",
+            RequestedEncoderBackend = _settings.VideoEncoderBackend.ToString(),
+        };
+        _perf.BeginPreparation();
 
         int width;
         int height;
@@ -243,7 +250,6 @@ public sealed class VideoRecordingService : IVideoRecordingService
             (width, height) = StartCpuCapture(captureTarget, region, fps);
         }
 
-        StartMouseClickOverlay(captureTarget, region);
         _branding = _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
         await PrepareBrandingAsync(height, cancellationToken).ConfigureAwait(false);
 
@@ -253,6 +259,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             try
             {
                 gpu.Start();
+                _perf.Pipeline = "gpu";
                 CaptureFlowTrace.Mark("video: GPU capture session started");
             }
             catch (Exception ex)
@@ -264,6 +271,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
         }
 
+        StartMouseClickOverlay(captureTarget);
         await StartWebcamOverlayAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         CaptureFlowTrace.Mark("video: webcam overlay started");
@@ -294,19 +302,22 @@ public sealed class VideoRecordingService : IVideoRecordingService
         {
             CaptureFlowTrace.Mark("video: sink writer prepared");
             _prepared = new PreparedPipeline(captureTarget, region, null);
+            _perf.Prepared();
             return;
         }
 
         await PrepareTranscoderAsync(captureTarget, region, width, height, fps, codec, includeAudio, cancellationToken).ConfigureAwait(false);
+        _perf.Prepared();
     }
 
     private (int Width, int Height) StartCpuCapture(CaptureTarget captureTarget, PixelRect? region, int fps)
     {
-        _perf = new RecordingPerformanceMonitor("cpu", 0, 0, fps);
-        _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true, _perf, processBorrowedFrame: OnFrameReady);
+        var perf = _perf ?? throw new InvalidOperationException("Performance monitor has not been initialized.");
+        perf.Pipeline = "cpu";
+        _capture = new ContinuousCaptureSession(captureTarget, region, fps, includeCursor: true, perf, processBorrowedFrame: OnFrameReady);
         _capture.Start();
-        _perf.Width = _capture.OutputWidth;
-        _perf.Height = _capture.OutputHeight;
+        perf.Width = _capture.OutputWidth;
+        perf.Height = _capture.OutputHeight;
         CaptureFlowTrace.Mark("video: capture session started");
         return (_capture.OutputWidth, _capture.OutputHeight);
     }
@@ -366,7 +377,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 _ =>
                 {
                     Interlocked.Increment(ref _videoFramesDropped);
-                    _perf?.FrameDropped();
+                    _perf?.QueueDropped();
                 });
         }
 
@@ -420,11 +431,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
 
         _encoderPath = usedFallbackProfile
-            ? "software H.264 Baseline (fallback)"
-            : $"{(codec == VideoCodec.Hevc ? "HEVC" : "H.264 High")} via MediaTranscoder (hardware-accelerated)";
+            ? "H.264 Baseline via MediaTranscoder (fallback; hardware disabled; transform unverified)"
+            : $"{(codec == VideoCodec.Hevc ? "HEVC" : "H.264 High")} via MediaTranscoder (hardware requested; transform unverified)";
         if (_perf is not null)
         {
             _perf.EncoderPath = _encoderPath;
+            _perf.EncoderBackend = "Transcoder";
+            _perf.HardwareEncodingRequested = !usedFallbackProfile;
         }
 
         CaptureFlowTrace.Mark("video: transcoder prepared");
@@ -472,6 +485,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
             if (_perf is not null)
             {
                 _perf.EncoderPath = _encoderPath;
+                _perf.EncoderBackend = "SinkWriter";
+                _perf.HardwareEncodingRequested = true;
             }
 
             WebcamDiagnostics.Log($"Sink writer encoder ready: {encoder.Description}, audio={includeAudio}.");
@@ -541,6 +556,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     {
         if (IsPaused)
         {
+            _perf?.FrameNotSubmitted();
             return;
         }
 
@@ -584,11 +600,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
             // Push model: the sink writer throttles internally if the encoder falls behind.
             try
             {
-                sink.WriteVideo(frame, pts, _frameDuration);
-                _perf?.FrameEncoded();
+                _perf?.SubmissionAttempt();
+                if (sink.WriteVideo(frame, pts, _frameDuration)) { _perf?.FrameEncoded(); }
+                else { _perf?.FrameNotSubmitted(); }
             }
             catch (Exception ex)
             {
+                _perf?.SubmissionFailed();
                 LogEncoderWriteFailure(ex);
             }
 
@@ -600,7 +618,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
         if (channel is not null)
         {
             var buffer = CpuVideoBuffer.Create(frame);
-            channel.Writer.TryWrite(new TimestampedFrame(buffer, pts));
+            if (!channel.Writer.TryWrite(new TimestampedFrame(buffer, pts))) { _perf?.FrameNotSubmitted(); }
+        }
+        else
+        {
+            _perf?.FrameNotSubmitted();
         }
 
         _perf?.End(RecordingStage.SamplePrepare, prepare);
@@ -649,7 +671,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     {
         width = 0;
         height = 0;
-        var perf = new RecordingPerformanceMonitor("gpu", 0, 0, fps);
+        var perf = _perf ?? throw new InvalidOperationException("Performance monitor has not been initialized.");
         GpuCaptureSession? session = null;
         GpuOverlayCompositor? overlay = null;
         try
@@ -686,7 +708,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _gpuCapture = session;
             _gpuOverlay = overlay;
             _perf = perf;
-            WebcamDiagnostics.Log($"GPU recording pipeline active: {width}x{height}@{fps}.");
+            WebcamDiagnostics.Log($"GPU recording pipeline initialized: {width}x{height}@{fps} (capture not started).");
             return true;
         }
         catch (Exception ex)
@@ -721,7 +743,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             {
                 dropped.Release();
                 Interlocked.Increment(ref _videoFramesDropped);
-                perf?.FrameDropped();
+                perf?.QueueDropped();
             });
         WebcamDiagnostics.Log($"GPU pipeline feeding MediaTranscoder; texture pool up to {max}.");
     }
@@ -800,6 +822,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     {
         if (IsPaused)
         {
+            _perf?.FrameNotSubmitted();
             frame.Release();
             return;
         }
@@ -811,11 +834,13 @@ public sealed class VideoRecordingService : IVideoRecordingService
             var write = RecordingPerformanceMonitor.Begin();
             try
             {
-                sink.WriteVideo(frame, _frameDuration);
-                _perf?.FrameEncoded();
+                _perf?.SubmissionAttempt();
+                if (sink.WriteVideo(frame, _frameDuration)) { _perf?.FrameEncoded(); }
+                else { _perf?.FrameNotSubmitted(); }
             }
             catch (Exception ex)
             {
+                _perf?.SubmissionFailed();
                 LogEncoderWriteFailure(ex);
             }
             finally
@@ -833,6 +858,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         if (channel is null || !channel.Writer.TryWrite(frame))
         {
             // Writer completed (stopping) — DropWrite handles the "full" case via the callback.
+            _perf?.FrameNotSubmitted();
             frame.Release();
         }
     }
@@ -844,7 +870,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     /// </summary>
     private static int GpuPoolMaxCapacity(int fps) => Math.Clamp(fps / 2, 8, 30);
 
-    private void StartMouseClickOverlay(CaptureTarget target, PixelRect? region)
+    private void StartMouseClickOverlay(CaptureTarget target)
     {
         // Mouse-click visuals only map reliably onto a (possibly cropped) monitor;
         // window targets move/resize, so skip them — matching the mac restriction.
@@ -860,8 +886,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
-        _clickOriginX = monitor.X + (region?.X ?? 0);
-        _clickOriginY = monitor.Y + (region?.Y ?? 0);
+        var geometry = _perf?.Geometry ?? throw new InvalidOperationException("Capture geometry has not been initialized.");
+        (_clickOriginX, _clickOriginY) = geometry.GetDesktopOrigin(monitor.X, monitor.Y);
         _clickStyle = _settings.MouseClickOverlayStyleFor(CaptureType.Video);
         _clickMonitor = new MouseClickMonitor();
         _clickMonitor.Start();
@@ -1296,6 +1322,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
         var deferral = args.Request.GetDeferral();
         var wait = RecordingPerformanceMonitor.Begin();
+        var submissionAttempted = false;
         try
         {
             while (await channel.Reader.WaitToReadAsync().ConfigureAwait(false))
@@ -1303,6 +1330,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 if (channel.Reader.TryRead(out var frame))
                 {
                     _perf?.End(RecordingStage.EncoderWait, wait);
+                    submissionAttempted = true;
+                    _perf?.SubmissionAttempt();
                     var sample = MediaStreamSample.CreateFromBuffer(frame.Pixels, frame.Pts);
                     sample.Duration = _frameDuration;
                     args.Request.Sample = sample;
@@ -1316,6 +1345,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
         catch (Exception ex)
         {
+            if (submissionAttempted) { _perf?.SubmissionFailed(); }
             WebcamDiagnostics.Log($"CPU video sample request failed: {ex.GetType().Name}: {ex.Message}");
             args.Request.Sample = null;
         }
@@ -1329,6 +1359,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     {
         var deferral = args.Request.GetDeferral();
         var wait = RecordingPerformanceMonitor.Begin();
+        var submissionAttempted = false;
         try
         {
             while (await channel.Reader.WaitToReadAsync().ConfigureAwait(false))
@@ -1344,6 +1375,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
                     // to the sample (Processed hooked and the sample accepted), a failure must
                     // return the frame to the pool ourselves.
                     var handedOff = false;
+                    submissionAttempted = true;
+                    _perf?.SubmissionAttempt();
                     try
                     {
                         var sample = MediaStreamSample.CreateFromDirect3D11Surface(frame.Surface!, frame.Pts);
@@ -1376,8 +1409,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             args.Request.Sample = null;
         }
-        catch
+        catch (Exception ex)
         {
+            if (submissionAttempted) { _perf?.SubmissionFailed(); }
+            LogEncoderWriteFailure(ex);
             args.Request.Sample = null;
         }
         finally
@@ -1726,6 +1761,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
 
             _recordingTimeline?.Pause();
+            _perf?.Pause();
             _capture?.PauseEmitting();
             _gpuCapture?.PauseEmitting();
             _audio?.Pause();
@@ -1748,6 +1784,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
 
             _recordingTimeline?.Resume();
+            _perf?.Resume();
             _audio?.Resume();
             _capture?.ResumeEmitting();
             _gpuCapture?.ResumeEmitting();
@@ -1844,6 +1881,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _channel?.Writer.TryComplete();
             _gpuCapture?.Stop();
             _gpuChannel?.Writer.TryComplete();
+            _perf?.BeginFinalization();
+            var finalized = true;
 
             var cpuPipeline = _capture is not null;
             try
@@ -1856,9 +1895,14 @@ public sealed class VideoRecordingService : IVideoRecordingService
                     }
                     catch (Exception ex)
                     {
+                        finalized = false;
                         if (_capture is not null)
                         {
                             WebcamDiagnostics.Log($"CPU transcode failed: {ex.GetType().Name}: {ex.Message}");
+                        }
+                        else
+                        {
+                            WebcamDiagnostics.Log($"Transcoder finalization failed: 0x{(uint)ex.HResult:X8} {ex.GetType().Name}: {ex.Message}");
                         }
                     }
                 }
@@ -1868,9 +1912,19 @@ public sealed class VideoRecordingService : IVideoRecordingService
                     // Capture pumps are stopped (no more video writes). Let the audio mux drain what
                     // was captured before Stop, then finalize the MP4 (blocking until the encoder flushes).
                     StopAudioMux();
-                    await Task.Run(sink.Finish).ConfigureAwait(false);
+                    try
+                    {
+                        await Task.Run(sink.Finish).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        if (_perf is not null) { _perf.FinalizationSucceeded = false; }
+                        LogSyncReport();
+                        throw;
+                    }
                 }
 
+                if (_perf is not null) { _perf.FinalizationSucceeded = finalized; }
                 LogSyncReport();
             }
             catch when (cpuPipeline)
@@ -1960,7 +2014,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
                 if (_gpuCapture is { } gpu)
                 {
-                    WebcamDiagnostics.Log($"Perf report: GPU frames highWater={gpu.PoolHighWaterMark}/{gpu.PoolMaxCapacity} exhaustedDrops={gpu.PoolExhaustedDrops} pumpOverruns={gpu.PumpOverruns} contentResizes={gpu.ContentResizes}.");
+                    WebcamDiagnostics.Log($"Perf report: GPU frames highWater={gpu.PoolHighWaterMark}/{gpu.PoolMaxCapacity} exhaustedDrops={gpu.PoolExhaustedDrops} rawPacerSkippedSlotsIncludingPause={gpu.PumpOverruns} contentResizes={gpu.ContentResizes}.");
                 }
 
                 if (_sinkWriter is { } sink)
@@ -1970,7 +2024,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
 
             WebcamDiagnostics.Log($"Sync report: encoder='{_encoderPath}' elapsed={elapsed.TotalSeconds:F3}s pauses={pauses} pausedTotal={paused.TotalSeconds:F3}s.");
-            WebcamDiagnostics.Log($"Sync report: video lastPts={(videoPts == TimeSpan.MinValue ? "none" : $"{videoPts.TotalSeconds:F3}s")} framesEmitted={videoEmitted} framesDroppedByEncoderBackpressure={videoDropped}.");
+            WebcamDiagnostics.Log($"Sync report: video lastPts={(videoPts == TimeSpan.MinValue ? "none" : $"{videoPts.TotalSeconds:F3}s")} framesEmitted={videoEmitted} framesDroppedQueuePoolProduction={videoDropped}.");
 
             if (!_hasAudio || _audio is null)
             {

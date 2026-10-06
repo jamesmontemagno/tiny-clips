@@ -14,10 +14,11 @@ internal sealed class CpuFrameProcessingGate
         }
     }
 
-    public bool TryProcess(Action process)
+    public bool TryProcess(Action process, RecordingPerformanceMonitor? perf = null)
     {
         if (!Monitor.TryEnter(_sync))
         {
+            if (_running) { perf?.CpuSkippedTick(); }
             return false;
         }
 

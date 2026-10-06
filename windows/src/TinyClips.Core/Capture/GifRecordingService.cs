@@ -123,7 +123,7 @@ public sealed class GifRecordingService : IGifRecordingService
             _preparedTarget = null;
             _preparedRegion = null;
 
-            StartMouseClickOverlay(captureTarget, region);
+            StartMouseClickOverlay(captureTarget);
             _branding = _settings.ShowBrandingOverlay ? new BrandingOverlayCompositor() : null;
 
             _capture!.BeginEmitting();
@@ -207,7 +207,7 @@ public sealed class GifRecordingService : IGifRecordingService
         }
     }
 
-    private void StartMouseClickOverlay(CaptureTarget target, PixelRect? region)
+    private void StartMouseClickOverlay(CaptureTarget target)
     {
         if (target.IsWindow || !_settings.ShouldShowMouseClickVisuals(CaptureType.Gif))
         {
@@ -221,8 +221,8 @@ public sealed class GifRecordingService : IGifRecordingService
             return;
         }
 
-        _clickOriginX = monitor.X + (region?.X ?? 0);
-        _clickOriginY = monitor.Y + (region?.Y ?? 0);
+        var geometry = _capture?.OutputGeometry ?? throw new InvalidOperationException("Capture geometry has not been initialized.");
+        (_clickOriginX, _clickOriginY) = geometry.GetDesktopOrigin(monitor.X, monitor.Y);
         _clickStyle = _settings.MouseClickOverlayStyleFor(CaptureType.Gif);
         _clickMonitor = new MouseClickMonitor();
         _clickMonitor.Start();
