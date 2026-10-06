@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -18,7 +19,7 @@ namespace TinyClips.Core.Capture;
 /// directly onto a D3D11 BGRA render-target texture with Direct2D, so the GPU pipeline never
 /// touches frame pixels on the CPU. Geometry and placement are shared with the CPU compositors
 /// (<see cref="MouseClickOverlayCompositor.TryComputeRing"/>, <see cref="WebcamOverlayLayout"/>,
-/// <see cref="BrandingOverlayCompositor.TryGetBadge"/>) so both pipelines render the same picture.
+/// <see cref="BrandingOverlayCompositor.TryGetPreparedBadge"/>) so both pipelines render the same picture.
 ///
 /// The only CPU→GPU traffic is the webcam frame upload (a small ~1 MP bitmap, uploaded only
 /// when a new camera frame arrives) and the one-time badge upload.
@@ -37,7 +38,6 @@ internal sealed class GpuOverlayCompositor : IDisposable
     private (byte R, byte G, byte B) _clickColor;
     private string? _clickColorHex;
 
-    private BrandingOverlayCompositor? _branding;
     private ID2D1Bitmap1? _badge;
     private int _badgeWidth;
     private int _badgeHeight;
@@ -68,8 +68,54 @@ internal sealed class GpuOverlayCompositor : IDisposable
         }
     }
 
-    /// <summary>Enables branding-badge drawing, reusing the CPU compositor's rasterized badge.</summary>
-    public void EnableBranding(BrandingOverlayCompositor branding) => _branding = branding;
+    /// <summary>
+    /// Uploads an already rasterized badge before capture starts. The owner serializes this
+    /// with all draw/dispose calls; call on a worker, not under the active capture lock.
+    /// A failed upload disables only branding, without retrying in DrawBranding.
+    /// </summary>
+    public bool PrepareBranding(BrandingOverlayCompositor branding, int frameHeight, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _badge?.Dispose();
+        _badge = null;
+        _badgeBuiltForHeight = -1;
+        var started = Stopwatch.GetTimestamp();
+        var result = "unavailable";
+        ID2D1Bitmap1? badge = null;
+        try
+        {
+            if (!branding.TryGetPreparedBadge(frameHeight, out var straightBgra, out var width, out var height, out var margin))
+            {
+                return false;
+            }
+
+            badge = CreatePremultipliedBitmap(straightBgra, width, height);
+            cancellationToken.ThrowIfCancellationRequested();
+            _badge = badge;
+            badge = null;
+            _badgeWidth = width;
+            _badgeHeight = height;
+            _badgeMargin = margin;
+            _badgeBuiltForHeight = frameHeight;
+            result = "ready";
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            result = "cancelled";
+            throw;
+        }
+        catch (Exception ex)
+        {
+            WebcamDiagnostics.Log($"Branding GPU upload unavailable (0x{(uint)ex.HResult:X8} {ex.GetType().Name}); recording without the GPU badge.");
+            return false;
+        }
+        finally
+        {
+            badge?.Dispose();
+            WebcamDiagnostics.Log($"Branding preparation: gpu={result} uploadMs={Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1}.");
+        }
+    }
 
     /// <summary>Begins a draw pass onto <paramref name="target"/>. Must be paired with <see cref="EndFrame"/>.</summary>
     public void BeginFrame(ID3D11Texture2D target)
@@ -114,26 +160,7 @@ internal sealed class GpuOverlayCompositor : IDisposable
 
     public void DrawBranding(int frameWidth, int frameHeight)
     {
-        if (_branding is null)
-        {
-            return;
-        }
-
         if (_badge is null || _badgeBuiltForHeight != frameHeight)
-        {
-            _badgeBuiltForHeight = frameHeight;
-            _badge?.Dispose();
-            _badge = null;
-            if (_branding.TryGetBadge(frameHeight, out var straightBgra, out var width, out var height, out var margin))
-            {
-                _badge = CreatePremultipliedBitmap(straightBgra, width, height);
-                _badgeWidth = width;
-                _badgeHeight = height;
-                _badgeMargin = margin;
-            }
-        }
-
-        if (_badge is null)
         {
             return;
         }
