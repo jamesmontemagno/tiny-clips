@@ -863,7 +863,11 @@ final class StudioProjectStore {
     private func isStillWhereItWasSaved(_ export: StudioExport) -> Bool {
         guard !export.path.isEmpty else { return false }
         let url = URL(fileURLWithPath: export.path).standardizedFileURL
-        guard fileManager.fileExists(atPath: url.path) else { return false }
+        // A folder that has taken the video's name is not the video.
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            return false
+        }
         guard let bytes = export.bytes, bytes > 0 else { return true }
         return fileSize(of: url) == bytes
     }

@@ -165,8 +165,10 @@ struct VideoSettingsSection: View {
                     }
             }
 
-            Toggle("Save immediately", isOn: $settings.saveImmediatelyVideo)
-                .help("Save immediately instead of waiting for actions in the trimmer.")
+            Toggle("Save immediately", isOn: saveImmediatelyShown)
+                .help(settings.videoAfterRecording == .trimmer
+                    ? "Save immediately instead of waiting for actions in the trimmer."
+                    : "Applies when the trimmer opens after a recording. Without the trimmer, a recording is saved as soon as it ends.")
                 .disabled(settings.videoAfterRecording != .trimmer)
             Toggle("Copy to clipboard", isOn: $settings.copyVideoToClipboard)
                 .help("Copy saved videos to the clipboard as a file URL.")
@@ -193,5 +195,20 @@ struct VideoSettingsSection: View {
                 .help("Set the countdown duration in seconds.")
             }
         }
+    }
+
+    /// What the Save immediately switch shows. With the trimmer it is the setting. Without it a
+    /// recording is saved as soon as it ends, whatever the setting says: the switch is greyed
+    /// then and shows on, which is what happens. Nothing is written while it is greyed, so the
+    /// setting is as it was when the trimmer is chosen again.
+    private var saveImmediatelyShown: Binding<Bool> {
+        Binding(
+            get: { settings.videoAfterRecording != .trimmer || settings.saveImmediatelyVideo },
+            set: { isOn in
+                if settings.videoAfterRecording == .trimmer {
+                    settings.saveImmediatelyVideo = isOn
+                }
+            }
+        )
     }
 }

@@ -1,21 +1,69 @@
 import AppKit
+import Combine
 import SwiftUI
+
+/// What the Studio section of Settings lists: the projects, and which of them are open in an
+/// editor. An object of its own and not state of the view, so that it hears of a change whether
+/// or not a row of the section is on the screen. A form may let go of rows that are scrolled
+/// out of it, and with a row goes whatever listens on it.
+@MainActor
+private final class StudioSettingsProjects: ObservableObject {
+    @Published private(set) var projects: [StudioProjectSummary] = []
+    @Published private(set) var unreadableProjects: [StudioUnreadableProject] = []
+
+    /// The projects that are open in an editor, as of the last reload. Kept here because the
+    /// registry that knows them tells nobody when they change.
+    @Published private(set) var openProjectIDs: Set<String> = []
+
+    private var changes: AnyCancellable?
+
+    init() {
+        // An editor opened or closed. While it was open it may have exported its project, or
+        // deleted it, and nothing else tells this list.
+        changes = NotificationCenter.default.publisher(for: .studioProjectsDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.reload()
+            }
+    }
+
+    func reload() {
+        openProjectIDs = StudioWindowRegistry.shared.openProjectIDs
+        // On the App Store build this is what opens a save folder the user chose. The list
+        // says whether each exported video is still where it was saved, and could not see into
+        // that folder otherwise.
+        _ = SaveService.shared.outputDirectoryURL(for: .video)
+        Task {
+            // Sizing every project reads the disk, so it stays off the main thread.
+            let loaded = await Task.detached(priority: .utility) {
+                (
+                    (try? StudioProjectStore.shared.listSummaries()) ?? [],
+                    (try? StudioProjectStore.shared.listUnreadableProjects()) ?? []
+                )
+            }.value
+            projects = loaded.0
+            unreadableProjects = loaded.1
+        }
+    }
+}
 
 /// Settings for Tiny Clips Studio: the switch that turns it on while it is in preview, how long
 /// project sources are kept, and the recordings that have no exported video to stand for them.
 struct StudioSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
 
-    @State private var projects: [StudioProjectSummary] = []
-    @State private var unreadableProjects: [StudioUnreadableProject] = []
+    @StateObject private var studioProjects = StudioSettingsProjects()
     @State private var isCleaningUp = false
     @State private var cleanUpResult: String?
     @State private var savingRecordingIDs: Set<String> = []
-    @State private var savedRecordingNote: String?
+    @State private var savedRecordingNote: SavedRecordingNote?
 
-    /// The projects that are open in an editor, as of the last reload. Kept here because the
-    /// registry that knows them tells nobody when they change.
-    @State private var openProjectIDs: Set<String> = []
+    /// What the last save of a screen recording said, and the draft it said it about. It is
+    /// shown while that draft is in the list, and not after the draft has gone.
+    private struct SavedRecordingNote {
+        let projectID: String
+        let text: String
+    }
 
     /// One row of the drafts list: a recording that only its project holds.
     private struct DraftRow: Identifiable {
@@ -57,18 +105,14 @@ struct StudioSettingsSection: View {
     var body: some View {
         Section("Tiny Clips Studio") {
             // The task hangs off this one row so it exists once, whether Studio is on or off.
+            // What an editor changes is heard by the list itself, not by a row.
             Toggle("Tiny Clips Studio (Preview)", isOn: $settings.studioPreviewEnabled)
                 .help("Turns on Tiny Clips Studio, an editor for video recordings that is still being built.")
                 .task {
-                    reload()
+                    studioProjects.reload()
                 }
                 .onChange(of: settings.studioPreviewEnabled) { _, _ in
-                    reload()
-                }
-                // An editor opened or closed. While it was open it may have exported its
-                // project, or deleted it, and nothing else tells this list.
-                .onReceive(NotificationCenter.default.publisher(for: .studioProjectsDidChange)) { _ in
-                    reload()
+                    studioProjects.reload()
                 }
 
             Text("Studio is an editor for video recordings. A recording made for Studio keeps the screen, the camera, and the clicks apart, so you can arrange them over a background, zoom, cut, and change the layout before you export. It is a preview: parts of it are unfinished.")
@@ -128,8 +172,8 @@ struct StudioSettingsSection: View {
                     draftRow(row)
                 }
 
-                if let savedRecordingNote {
-                    Text(savedRecordingNote)
+                if let note = savedRecordingNote, draftRows.contains(where: { $0.id == note.projectID }) {
+                    Text(note.text)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -138,7 +182,7 @@ struct StudioSettingsSection: View {
     }
 
     private func draftRow(_ row: DraftRow) -> some View {
-        let isOpen = openProjectIDs.contains(row.id)
+        let isOpen = studioProjects.openProjectIDs.contains(row.id)
         let isSaving = savingRecordingIDs.contains(row.id)
 
         return HStack(spacing: 8) {
@@ -193,7 +237,7 @@ struct StudioSettingsSection: View {
     /// exporting, the ones whose exported video is gone, and after them the ones Studio cannot
     /// read.
     private var draftRows: [DraftRow] {
-        let drafts = projects
+        let drafts = studioProjects.projects
             .filter { ($0.isDraft || $0.exportMissing) && !$0.isFlat }
             .sorted { $0.createdAt > $1.createdAt }
             .map { project in
@@ -206,7 +250,7 @@ struct StudioSettingsSection: View {
                     canSaveRecording: project.sourceExists
                 )
             }
-        let unreadable = unreadableProjects
+        let unreadable = studioProjects.unreadableProjects
             .sorted { $0.createdAt > $1.createdAt }
             .map { project in
                 DraftRow(
@@ -222,12 +266,12 @@ struct StudioSettingsSection: View {
     }
 
     private var projectCount: Int {
-        projects.count + unreadableProjects.count
+        studioProjects.projects.count + studioProjects.unreadableProjects.count
     }
 
     private var totalBytes: Int64 {
-        projects.reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
-            + unreadableProjects.reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
+        studioProjects.projects.reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
+            + studioProjects.unreadableProjects.reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
     }
 
     private var storageText: String {
@@ -269,25 +313,6 @@ struct StudioSettingsSection: View {
 
     // MARK: - Actions
 
-    private func reload() {
-        openProjectIDs = StudioWindowRegistry.shared.openProjectIDs
-        // On the App Store build this is what opens a save folder the user chose. The list
-        // says whether each exported video is still where it was saved, and could not see into
-        // that folder otherwise.
-        _ = SaveService.shared.outputDirectoryURL(for: .video)
-        Task {
-            // Sizing every project reads the disk, so it stays off the main thread.
-            let loaded = await Task.detached(priority: .utility) {
-                (
-                    (try? StudioProjectStore.shared.listSummaries()) ?? [],
-                    (try? StudioProjectStore.shared.listUnreadableProjects()) ?? []
-                )
-            }.value
-            projects = loaded.0
-            unreadableProjects = loaded.1
-        }
-    }
-
     private func cleanUpNow() {
         isCleaningUp = true
         cleanUpResult = nil
@@ -310,7 +335,7 @@ struct StudioSettingsSection: View {
                 // would not come by it.
                 AccessibilityAnnouncementService.shared.announce(result, priority: .medium)
             }
-            reload()
+            studioProjects.reload()
         }
     }
 
@@ -323,7 +348,7 @@ struct StudioSettingsSection: View {
                 // The saved video is announced the way every saved video is. With the settings
                 // as they come that shows nothing on the screen, so it is said here as well.
                 let url = try await StudioMaintenance.saveScreenRecording(projectID: id)
-                savedRecordingNote = "Saved as \(url.lastPathComponent)."
+                savedRecordingNote = SavedRecordingNote(projectID: id, text: "Saved as \(url.lastPathComponent).")
             } catch {
                 savedRecordingNote = nil
                 SaveService.shared.showError("The screen recording could not be saved: \(error.localizedDescription)")
@@ -346,7 +371,12 @@ struct StudioSettingsSection: View {
         // An alert's first button answers Return. This one must not: it cannot be undone.
         deleteButton.keyEquivalent = ""
         // Esc, by its title.
-        alert.addButton(withTitle: "Cancel")
+        let cancelButton = alert.addButton(withTitle: "Cancel")
+        // With Keyboard Navigation switched on, Space presses the button that has the focus.
+        // That is to be Cancel. The alert is laid out here, so that what is set after it is
+        // what the alert opens with.
+        alert.layout()
+        alert.window.initialFirstResponder = cancelButton
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         delete(row)
     }
@@ -365,6 +395,6 @@ struct StudioSettingsSection: View {
         } catch {
             SaveService.shared.showError("The draft could not be deleted: \(error.localizedDescription)")
         }
-        reload()
+        studioProjects.reload()
     }
 }

@@ -31,6 +31,11 @@ Both platforms implement sections 5 to 8 as pure functions, and both test suites
 - Enumerations are camelCase strings. An unrecognized value reads as the field's default.
 - Times are seconds as finite doubles. Unless stated otherwise they are **source time**: seconds on the pause-adjusted recording timeline, where 0 is the first screen frame.
 - Timestamps are ISO 8601 UTC with a `Z` suffix, written to whole seconds (`2026-10-02T22:41:00Z`). Readers accept fractional seconds.
+- **What no writer writes.** Tiny Clips writes whole numbers without a fraction or an exponent, and timestamps as above. A project never goes from a Mac to a Windows PC or back, so the two readers were not made to agree on anything else, and they do not:
+  - A whole number written with a fraction (`"bytes": 12.0`): the Mac reads the number, and Windows calls the project invalid. A number that is not whole, or a value of another type, makes the project invalid on both.
+  - A timestamp with an offset in place of `Z` and no fractional seconds (`2026-10-02T22:41:00+02:00`): Windows reads the time, and the Mac reads the timestamp as missing. Text that is no date at all reads as missing on the Mac and makes the project invalid on Windows. A timestamp that is not a string makes the project invalid on both.
+
+  None of these lets cleanup delete a project it would otherwise keep: an invalid project is never cleaned up, and neither is one whose `lastOpenedAt` reads as missing (section 12).
 - Colors are `#RRGGBB` in uppercase. Readers also accept lowercase and `#RRGGBBAA`.
 - A `Rect` is `{ "x", "y", "width", "height" }`. A normalized rect uses 0 to 1 with the origin at the top-left of the frame it describes, x to the right, y down.
 - "Canvas short side" means `min(W, H)` of the canvas being rendered.
@@ -165,7 +170,7 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `overlays.branding` | bool | false | |
 | `exports[].path` | string | | Absolute path of a rendered video |
 | `exports[].exportedAt` | timestamp | | |
-| `exports[].bytes` | int or null | null | How large the video file was when it was exported, in bytes. Left out, or null, when that is not known. Section 12 says what it is used for |
+| `exports[].bytes` | int or null | null | How large the video file was when it was exported, in bytes. Left out, or null, when that is not known; 0 or less is read the same way. Section 12 says what it is used for |
 
 ## 4. events.json
 
@@ -655,7 +660,7 @@ Each export adds `{ path, exportedAt, bytes }` to `exports`, where `bytes` is th
 ## 12. Cleanup
 
 - A project is **eligible** for automatic cleanup when at least one of its exported videos is still where it was saved, `keepSources` is false, it is not a flat project, and its `lastOpenedAt` is not `1970-01-01T00:00:00Z`. That is what a missing `lastOpenedAt` reads as (section 2): it says nothing about when the project was opened, and would make it the oldest there is. Opening the project writes the time.
-- An exported video is **still where it was saved** when a file is at the `path` of its entry and, where the entry has `bytes` of 1 or more, the file is that many bytes long. A file of another size is another video that has taken the name, or the same one changed since. Either way it is not what the project exported, and counting it would let cleanup delete a project that holds the only copy of its recording. An entry without `bytes` goes by the path alone.
+- An exported video is **still where it was saved** when a file, and not a folder, is at the `path` of its entry and, where the entry has `bytes` of 1 or more, the file is that many bytes long. A file of another size, larger or smaller, is another video that has taken the name, or the same one changed since. Either way it is not what the project exported, and counting it would let cleanup delete a project that holds the only copy of its recording. An entry without `bytes`, or with `bytes` of 0 or less, goes by the path alone.
 - A project that is open in Studio, or still being recorded, is never deleted. The app passes those ids to every cleanup.
 - **Age rule**: an eligible project is deleted when `lastOpenedAt` is more than 30 days old. The number of days is a setting; 0 disables the rule.
 - **Size rule**: applied after the age rule. When the eligible projects that remain total more than 10 GB (10 × 1024³ bytes), they are deleted in ascending `lastOpenedAt` order, ties broken by id, until their total is at or under the cap or only the last in that order is left. That one, the project opened most recently, is never deleted by this rule: it is what was just worked on, and where it is over the cap by itself the rule would otherwise delete it the moment its editor closed. Only eligible projects are counted. A draft, a pinned project and a flat project are never removed, so counting them would only use the room up: with more drafts than the cap allows, every exported project would lose its sources the moment it was exported. An eligible project that is open counts and is not the one that goes. The cap is a setting; 0 disables the rule.

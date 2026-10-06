@@ -397,6 +397,41 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertTrue(encoded.contains("\"modifiedAt\" : \"2026-10-02T22:41:01Z\""))
     }
 
+    /// What no writer writes, and what section 2 of the format says this reader does with it.
+    func testWhatNoWriterWritesIsReadAsTheFormatSaysThisReaderReadsIt() throws {
+        let project = try decodeProject("""
+        {
+          "id": "\(validID)",
+          "createdAt": "2026-10-02T22:41:00+02:00",
+          "modifiedAt": "2026-10-02T22:41:00.500+02:00",
+          "lastOpenedAt": "yesterday",
+          "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } },
+          "exports": [ { "path": "/v.mp4", "bytes": 12.0 } ]
+        }
+        """)
+
+        // A timestamp with an offset in place of Z reads as missing without fractional seconds,
+        // and is read with them. Text that is no date reads as missing.
+        XCTAssertEqual(project.createdAt, Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(project.modifiedAt.timeIntervalSince1970, 1_790_973_660.5, accuracy: 0.001)
+        XCTAssertEqual(project.lastOpenedAt, Date(timeIntervalSince1970: 0))
+
+        // A whole number written with a fraction is read as the number.
+        XCTAssertEqual(project.exports.map(\.bytes), [12])
+
+        // A number that is not whole, and a value of another type, make the project invalid.
+        for bytes in ["12.5", "\"12\""] {
+            XCTAssertThrowsError(try decodeProject("""
+            { "id": "\(validID)", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } }, "exports": [ { "path": "/v.mp4", "bytes": \(bytes) } ] }
+            """), "bytes \(bytes)")
+        }
+
+        // So does a timestamp that is not a string.
+        XCTAssertThrowsError(try decodeProject("""
+        { "id": "\(validID)", "lastOpenedAt": 1790973660, "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } } }
+        """))
+    }
+
     func testStoreRejectsPathTraversalIDsBeforeBuildingURLs() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         let invalidID = "../\(validID)"
@@ -659,6 +694,20 @@ final class StudioProjectTests: XCTestCase {
             []
         )
 
+        // The one opened last is the one that is open, and an older one is closed: the older
+        // one goes. What stays is the project opened last, not the last of those that are closed.
+        let closedOlder = summary(id: "closed-older", lastOpenedAt: now.addingTimeInterval(-30), isDraft: false, sizeOnDisk: 80)
+        let openNewer = summary(id: "open-newer", lastOpenedAt: now.addingTimeInterval(-10), isDraft: false, sizeOnDisk: 30)
+        XCTAssertEqual(
+            StudioCleanupPolicy.plan(
+                summaries: [closedOlder, openNewer],
+                currentDate: now,
+                options: options,
+                inUseProjectIDs: ["open-newer"]
+            ),
+            ["closed-older"]
+        )
+
         // The age rule is another matter: it takes the one opened last once that is old enough.
         let day: TimeInterval = 24 * 60 * 60
         let later = Date(timeIntervalSince1970: 100 * day)
@@ -885,6 +934,14 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertEqual(try store.cleanup(options: rules), [])
         XCTAssertTrue(store.exists(id: validID))
 
+        // A shorter file is no more the project's video than a longer one: a copy that was cut
+        // short, or an empty file left where the video was.
+        try Data([7, 8]).write(to: videoURL)
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).exportMissing)
+        try Data().write(to: videoURL)
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).exportMissing)
+        XCTAssertEqual(try store.cleanup(options: rules), [])
+
         // The link from a video to its project goes by the path alone.
         XCTAssertEqual(try store.findProjectID(exportedPath: videoURL.path), validID)
 
@@ -893,6 +950,47 @@ final class StudioProjectTests: XCTestCase {
         summary = try XCTUnwrap(store.listSummaries().first)
         XCTAssertFalse(summary.exportMissing)
         XCTAssertEqual(try store.cleanup(options: rules), [validID])
+    }
+
+    func testAnExportWhoseSizeIsNotOneOrMoreGoesByThePathAloneAndAFolderIsNotTheVideo() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
+        let videoURL = directoryURL.appendingPathComponent("Odd Size.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: videoURL.path, contents: Data([7, 8, 9])))
+        _ = try store.recordExport(id: validID, path: videoURL.path)
+        let projectURL = directoryURL.appendingPathComponent(validID).appendingPathComponent("project.json")
+
+        // Not the three bytes that were exported.
+        try Data([1, 2, 3, 4, 5]).write(to: videoURL)
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).exportMissing)
+
+        // A size of nothing, or of less, says nothing about the video.
+        for bytes in [0, -3] {
+            try setExportBytes(bytes, in: projectURL)
+            XCTAssertEqual(try store.load(id: validID).exports.map(\.bytes), [Int64(bytes)])
+            XCTAssertFalse(try XCTUnwrap(store.listSummaries().first).exportMissing, "bytes \(bytes)")
+        }
+
+        // A folder that has taken the video's name is not the video, with a size or without.
+        try FileManager.default.removeItem(at: videoURL)
+        try FileManager.default.createDirectory(at: videoURL, withIntermediateDirectories: false)
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).exportMissing)
+        try setExportBytes(nil, in: projectURL)
+        XCTAssertEqual(try store.load(id: validID).exports.map(\.bytes), [nil])
+        XCTAssertTrue(try XCTUnwrap(store.listSummaries().first).exportMissing)
+    }
+
+    /// Writes the size of a project's first export into its file, or takes it out.
+    private func setExportBytes(_ bytes: Int?, in projectURL: URL) throws {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: projectURL)) as? [String: Any])
+        var exports = try XCTUnwrap(object["exports"] as? [[String: Any]])
+        if let bytes {
+            exports[0]["bytes"] = bytes
+        } else {
+            exports[0].removeValue(forKey: "bytes")
+        }
+        object["exports"] = exports
+        try JSONSerialization.data(withJSONObject: object).write(to: projectURL)
     }
 
     func testAnExportWithoutASizeGoesByThePathAloneAndMovingAVideoKeepsItsSize() throws {
