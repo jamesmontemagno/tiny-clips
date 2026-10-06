@@ -18,8 +18,9 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 // nothing, which is a project that was exported, Esc asks whether it was meant while the
 // setting is on, and closes at once while it is off. A window that cannot show its project
 // closes at once either way. And Esc that is not the window's to act on does nothing: with a
-// modifier, held, in a text box, while the list of a drop-down is open, in a drag, and while an
-// export runs, which it stops. It is the Mac's rule.
+// modifier, held, in a text box, while the list of a drop-down is open and in a drag. While an
+// export runs a press stops the export and that is all, and a held key does not even do that.
+// It is the Mac's rule.
 //
 // The key is not pressed. Each check hands the window what its key handler hands it once it
 // has mapped a key (StudioWindow.RunShortcut), with the modifiers and as a first press or a
@@ -317,8 +318,9 @@ internal sealed partial class WindowChecks
     }
 
     /// <summary>
-    /// While an export runs Esc stops it, and that is all. The key that is still held once the
-    /// export is gone must not go on to close the window; a new press asks.
+    /// While an export runs a press of Esc stops it, and that is all. A key that is held does
+    /// nothing at all: it does not stop an export it comes to from somewhere else, and once
+    /// the export it stopped is gone it does not go on to close the window. A new press asks.
     /// </summary>
     private void EscapeWhileAnExportRuns()
     {
@@ -334,6 +336,21 @@ internal sealed partial class WindowChecks
         Invoke(editor, "StudioExportButton");
         var overlay = Find(editor, "StudioCancelExportButton", 3);
         WatchProgress(editor, value => value >= 3, 20);
+
+        // A key that is still held when it comes to this window: the Esc that answered Keep
+        // exporting in the question about this export and was held a little too long, or the
+        // one that closed a window in front of this one. It was not meant for the export.
+        var heldBefore = Escape(editor, repeat: true);
+
+        // An export that is stopped was gone within 0.4 s in every run so far.
+        Thread.Sleep(600);
+        var goesOn = IsExporting(editor) && editor.Root.Find("StudioCancelExportButton") is not null;
+        var endedByItself = _services.Exports.Any(e => e.ProjectId == editor.Id);
+        _report.Check(
+            "Esc that is being held when it comes to a window whose export runs stops nothing: what the window runs for it is nothing, and the export goes on",
+            overlay is not null && heldBefore == StudioShortcutAction.None && goesOn,
+            $"held, Esc ran {heldBefore}; 0.6 s later the export was still running: {goesOn}{(endedByItself ? "; the export had finished by itself by then, so the tool could not see it go on" : string.Empty)}");
+
         var underWay = IsExporting(editor);
         var ran = Escape(editor);
 
@@ -347,8 +364,8 @@ internal sealed partial class WindowChecks
         var files = Until(() => ExportFiles().Except(filesBefore).ToArray(), left => left.Length == 0, 3, 50);
         var listed = _services.Store.Load(editor.Id).Exports.Length;
         _report.Check(
-            "Esc while an export runs stops the export, and that is all: the window stays, nothing is asked and nothing is written; and the key, still held when the export is gone, does nothing",
-            overlay is not null && underWay && ran == StudioShortcutAction.CancelExport && (heldWhileItStops is StudioShortcutAction.CancelExport or StudioShortcutAction.None)
+            "a press of Esc while an export runs stops the export, and that is all: the window stays, nothing is asked and nothing is written; and the key, still held while the export stops and when it is gone, runs nothing",
+            overlay is not null && underWay && ran == StudioShortcutAction.CancelExport && heldWhileItStops == StudioShortcutAction.None
                 && overlayGone && working && heldAfter == StudioShortcutAction.None && asked == 0 && Native.Exists(editor.Handle) && files.Length == 0 && listed == 0,
             $"an export was under way: {underWay}; Esc ran {ran}; held while it stopped, {heldWhileItStops}; the overlay went: {overlayGone}, and the editor works again: {working}; held after that, {heldAfter}; questions asked: {asked}; window open {Native.Exists(editor.Handle)}; files left: {(files.Length == 0 ? "none" : string.Join(", ", files.Select(Path.GetFileName)))}; exports listed {listed}");
 
@@ -360,7 +377,113 @@ internal sealed partial class WindowChecks
             pressedAgain == StudioShortcutAction.RequestClose && IsDraftQuestion(question) && Questions(editor).Count == 1 && Native.Exists(editor.Handle),
             $"Esc ran {pressedAgain}; {QuestionAsked(question)}");
         Dismiss(editor, question);
+        if (Native.Exists(editor.Handle))
+        {
+            EscapeTwiceBeforeTheFocusIsPlaced(editor);
+        }
+
         CloseQuietly(editor);
+    }
+
+    /// <summary>
+    /// Esc pressed twice in quick succession while an export runs. The first press stops the
+    /// export, and the end of an export asks for the keyboard focus to go back to Export, which
+    /// the window does after everything else it has to do. The second press comes before that,
+    /// and opens the question about the recording. The focus has to stay with that question:
+    /// on Export under it, it would take Esc away from the question, and Enter or Space would
+    /// start an export under it. Once the question has been answered, the focus that waited is
+    /// put on Export.
+    /// </summary>
+    /// <remarks>
+    /// The second press is made on the UI thread, in the window's own turn in which the export
+    /// is gone: after the window has asked for the focus, and before it has put it anywhere. A
+    /// key that is in the queue when the export ends is handled at the same point.
+    /// </remarks>
+    private void EscapeTwiceBeforeTheFocusIsPlaced(Editor editor)
+    {
+        Timeline.Mark("6: Esc twice, the second before the focus that the stopped export asked for has been placed");
+        Invoke(editor, "StudioExportButton");
+        var overlay = Find(editor, "StudioCancelExportButton", 3);
+        WatchProgress(editor, value => value >= 3, 20);
+        var underWay = IsExporting(editor);
+
+        var viewModel = OnUi(() => editor.Window.ViewModel);
+        var window = editor.Window;
+        var second = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var armed = 1;
+        void PressAgain(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            // Added after the window's own handler, so it runs after that one has asked for the focus.
+            if (viewModel.IsExporting || Interlocked.Exchange(ref armed, 0) == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                second.SetResult(window.RunShortcut(StudioShortcutKey.Escape, isControlDown: false, isShiftDown: false, isAltDown: false, isRepeat: false).ToString());
+            }
+            catch (Exception ex)
+            {
+                second.SetResult($"an exception: {ex.Message}");
+            }
+        }
+
+        var first = StudioShortcutAction.None;
+        var secondRan = "nothing, the export did not end";
+        UiaElement? question = null;
+        var (givenFocus, stopWatching) = WatchFocusUnderAQuestion(editor);
+        var focusAtFirst = string.Empty;
+        var focus = string.Empty;
+        try
+        {
+            OnUi(() => { viewModel.PropertyChanged += PressAgain; });
+            try
+            {
+                first = underWay ? Escape(editor) : StudioShortcutAction.None;
+                if (second.Task.Wait(TimeSpan.FromSeconds(15)))
+                {
+                    secondRan = second.Task.Result;
+                }
+            }
+            finally
+            {
+                OnUi(() => { viewModel.PropertyChanged -= PressAgain; });
+            }
+
+            question = Dialog(editor);
+            focusAtFirst = question is null ? string.Empty : Until(() => FocusedId(editor), IsOnTheQuestion, 1.5);
+            WhenTheUiThreadHasNothingWaiting();
+            focus = FocusedId(editor);
+        }
+        finally
+        {
+            stopWatching();
+        }
+
+        var asked = Questions(editor).Count;
+        var given = givenFocus.Given().Where(id => !IsOnTheQuestion(id)).ToArray();
+        _report.Check(
+            "Esc pressed twice, the second press before the window has put the focus back on Export for the export the first one stopped: the question about the recording is asked, once, and the keyboard stays with it, on one of its own answers",
+            overlay is not null && underWay && first == StudioShortcutAction.CancelExport && secondRan == nameof(StudioShortcutAction.RequestClose)
+                && IsDraftQuestion(question) && asked == 1 && IsOnTheQuestion(focusAtFirst) && IsOnTheQuestion(focus) && Native.Exists(editor.Handle),
+            $"an export was under way: {underWay}; the first press ran {first}, and the second, made as the export went, {secondRan}; {asked} question(s): {QuestionAsked(question)}; "
+                + $"the focus was on \"{focusAtFirst}\" when the question had opened, and on \"{focus}\" once the window had done what it had waiting; "
+                + $"given the focus in the window itself from the first press on: {(given.Length == 0 ? "nothing" : string.Join(", ", given))}, which the end of an export may account for without the question being open yet");
+        if (question is null)
+        {
+            return;
+        }
+
+        // Cancel. The focus that waited for the answer is put where the end of the export wanted it.
+        var cancelled = question.Find("CloseButton")?.Invoke() ?? false;
+        var questionGone = Until(() => !HasDialog(editor), gone => gone, 3);
+        var focusAfter = Until(() => FocusedId(editor), id => id == "StudioExportButton", 2);
+        _report.Check(
+            "answered with Cancel, the question goes, the window stays, and the focus that waited for the answer is on Export",
+            cancelled && questionGone && Native.Exists(editor.Handle) && focusAfter == "StudioExportButton" && !IsExporting(editor),
+            $"Cancel pressed {cancelled}; question gone {questionGone}; window open {Native.Exists(editor.Handle)}; the focus is on \"{focusAfter}\"; an export is running: {IsExporting(editor)}");
+        Thread.Sleep(QuestionSettles);
     }
 
     /// <summary>

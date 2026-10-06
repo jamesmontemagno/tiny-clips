@@ -197,6 +197,9 @@ public sealed class StudioWindowService
             Debug.WriteLine($"Studio window for {projectId} did not close cleanly: {ex}");
         }
 
+        // Only now, when the editor has closed and has nothing more to report. Until then it
+        // can have: a project that could not be deleted, and a screen recording that was still
+        // being saved when its window closed.
         window.ViewModel.Exported -= OnExported;
         window.ViewModel.ScreenRecordingSaved -= OnScreenRecordingSaved;
         window.ViewModel.ErrorReported -= OnErrorReported;

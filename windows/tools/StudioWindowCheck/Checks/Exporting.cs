@@ -209,16 +209,32 @@ internal sealed partial class WindowChecks
             return;
         }
 
+        // The start of an export asks for the focus to go to Cancel, which the window does
+        // after everything else it has to do. With the close button pressed this soon, that is
+        // after the question has opened: the focus has to wait for the answer.
+        WhenTheUiThreadHasNothingWaiting();
+        var questionFocus = Until(() => FocusedId(editor), IsOnTheQuestion, 1.5);
+        _report.Check(
+            "while that question is open the keyboard is the question's: the focus is on one of its answers, and not on Cancel export under it, where the start of an export puts the focus",
+            IsOnTheQuestion(questionFocus),
+            $"once the window had done what the start of the export had it waiting to do, the focus was on \"{questionFocus}\"");
+
         // Keep exporting: the question goes, the export goes on.
         var before = Find(editor, "StudioExportProgressBar", 0.5)?.Range?.Value ?? double.NaN;
         var kept = keep!.Invoke();
         var questionGone = Until(() => !HasDialog(editor), gone => gone, 3);
+        WhenTheUiThreadHasNothingWaiting();
+        var focusAfterKeep = Until(() => FocusedId(editor), id => id == "StudioCancelExportButton", 1);
         var after = WatchProgress(editor, value => value > before + 1, 10);
         var goesOn = IsExporting(editor) && Native.Exists(editor.Handle);
         _report.Check(
             "Keep exporting: the question goes, the window stays and the export goes on",
             kept && questionGone && goesOn && after.Count > 0 && after[^1] > before,
             $"progress {F(before, "0.#")} % when it was asked, {(after.Count == 0 ? "not read" : F(after[^1], "0.#") + " %")} after; still exporting {goesOn}");
+        _report.Check(
+            "and with the question gone the focus is on Cancel export, the one control that works while an export runs",
+            kept && questionGone && focusAfterKeep == "StudioCancelExportButton",
+            $"focus on \"{focusAfterKeep}\"");
 
         // That export is stopped, and the question is given the time to finish closing: the
         // window asks one question at a time, and passes over a close button pressed before then.

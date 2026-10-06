@@ -135,8 +135,8 @@ public readonly record struct StudioShortcutInput(
 /// scene at the playhead, Z adds a zoom there, X a cut and R a speed change, Delete removes the
 /// selected zoom, cut or speed change, or the current scene while a scene on the lane has the
 /// focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Esc stops a running
-/// export, and otherwise asks the window to close. While something is being dragged, only Space
-/// and the arrow keys act.
+/// export, and otherwise asks the window to close; held down, it does neither. While something
+/// is being dragged, only Space and the arrow keys act.
 /// </summary>
 /// <remarks>
 /// The window only asks about a key that the focused control did not use, so a focused slider
@@ -172,13 +172,15 @@ public static class StudioShortcuts
 
     /// <summary>
     /// Esc. Each press takes the first of these that applies. With Ctrl or Shift held it is the
-    /// system's, as it is with Alt, which <see cref="Resolve"/> has dealt with by now. While an
-    /// export runs it stops the export, and that is all. A key that is being held does nothing
-    /// more: without that, the Esc that stopped an export would go on to close the window, and
-    /// the Esc whose question was answered would ask it again. In text that is being edited, and
-    /// while the list of a drop-down is open, the key belongs to that control. In the middle of
-    /// a drag it waits, like every key that does more than move the playhead. Otherwise it asks
-    /// the window to close.
+    /// system's, as it is with Alt, which <see cref="Resolve"/> has dealt with by now. A key
+    /// that is being held does nothing at all: the press it belongs to has done what there was
+    /// to do, and may have done it somewhere else. Held a little too long, the Esc that answered
+    /// "Keep exporting" would otherwise stop the export it was asked to keep, the Esc that
+    /// stopped an export would go on to close the window, and the Esc whose question was
+    /// answered would ask it again. While an export runs it stops the export, and that is all.
+    /// In text that is being edited, and while the list of a drop-down is open, the key belongs
+    /// to that control. In the middle of a drag it waits, like every key that does more than
+    /// move the playhead. Otherwise it asks the window to close.
     /// </summary>
     /// <remarks>
     /// Whether the project is open does not come into it: an editor that cannot show its
@@ -188,7 +190,7 @@ public static class StudioShortcuts
     /// </remarks>
     private static StudioShortcutAction ResolveEscape(StudioShortcutInput input)
     {
-        if (input.IsControlDown || input.IsShiftDown)
+        if (input.IsControlDown || input.IsShiftDown || input.IsRepeat)
         {
             return StudioShortcutAction.None;
         }
@@ -198,7 +200,7 @@ public static class StudioShortcuts
             return StudioShortcutAction.CancelExport;
         }
 
-        return input.IsRepeat || input.IsTextInputFocused || input.IsDropDownOpen || input.IsDragging
+        return input.IsTextInputFocused || input.IsDropDownOpen || input.IsDragging
             ? StudioShortcutAction.None
             : StudioShortcutAction.RequestClose;
     }

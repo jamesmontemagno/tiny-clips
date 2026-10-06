@@ -217,9 +217,10 @@ public sealed partial class StudioWindow : Window
     }
 
     // Later, so that what has only just become visible or enabled is laid out and can take focus.
+    // Not once the window has closed: a question that the closing window takes away comes here.
     private void PlaceFocusLater()
     {
-        if (_isActive && _focusRequest != FocusRequest.None)
+        if (!_isClosed && _isActive && _focusRequest != FocusRequest.None)
         {
             DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, PlaceFocus);
         }
@@ -227,7 +228,13 @@ public sealed partial class StudioWindow : Window
 
     private void PlaceFocus()
     {
-        if (_isClosed || !_isActive || _focusRequest == FocusRequest.None)
+        // A question that is open has the keyboard, and the request waits for its answer. Put
+        // on a control under the question, the focus would take Esc away from the question, and
+        // Enter or Space would press what is under it. The test is here, where the focus is
+        // put, and not where it is asked for: an export can end behind the question about it,
+        // and a question can open between the request and this, when the close button or Esc
+        // follows the start or the end of an export at once.
+        if (_isClosed || !_isActive || _isPromptOpen || _focusRequest == FocusRequest.None)
         {
             return;
         }
@@ -391,6 +398,13 @@ public sealed partial class StudioWindow : Window
     /// </summary>
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // While a question is open every key is the question's. The focus is kept on it, so no
+        // key should come here then; one that does all the same runs nothing under it.
+        if (_isPromptOpen)
+        {
+            return;
+        }
+
         var key = MapKey(e.Key);
         if (key != StudioShortcutKey.Other
             && RunShortcut(key, IsKeyDown(VirtualKey.Control), IsKeyDown(VirtualKey.Shift), e.KeyStatus.IsMenuKeyDown, e.KeyStatus.WasKeyDown) != StudioShortcutAction.None)
@@ -479,69 +493,20 @@ public sealed partial class StudioWindow : Window
 
     // Closing
 
-    /// <summary>How the user asked for the window to close.</summary>
-    private enum CloseRequest
-    {
-        /// <summary>The close button, Alt+F4, or a close from the system: anything that raises the AppWindow's Closing event.</summary>
-        CloseButton,
-
-        /// <summary>Esc.</summary>
-        Escape,
-    }
-
-    /// <summary>What the user is asked before the window closes.</summary>
-    private enum CloseQuestion
-    {
-        /// <summary>Nothing. The window closes.</summary>
-        None,
-
-        /// <summary>An export is running: keep exporting, or stop and close.</summary>
-        RunningExport,
-
-        /// <summary>The recording was never exported: export it, keep it as a draft, or delete it.</summary>
-        Draft,
-
-        /// <summary>Whether Esc was meant. Only Esc asks this, and only of a project that is open, where nothing else is asked.</summary>
-        Escape,
-    }
-
     /// <summary>
     /// What has to be asked when the user asks the window to close. The close button and Esc
     /// both come here, and to nothing else, so that Esc can never close what the close button
-    /// would have asked about.
+    /// would have asked about. Which question it is, is decided by
+    /// <see cref="StudioCloseQuestions"/>, where it can be tested.
     /// </summary>
-    /// <remarks>
-    /// Esc differs in one place, the same as on the Mac: a project that is open and has been
-    /// exported. Closing asks nothing there, so Esc asks whether it was meant, as it does in the
-    /// other editors and behind the same setting. Where closing has a question of its own, that
-    /// question is the confirmation, whatever the setting says, and Esc adds none to it. A
-    /// window whose project is not open, because it is still being opened or cannot be shown,
-    /// closes on Esc as it does by its close button, whatever the setting says: the question
-    /// says that the edits are saved, which is no sentence for a window that opened nothing.
-    /// </remarks>
-    private CloseQuestion QuestionBeforeClosing(CloseRequest request)
-    {
-        switch (ViewModel.GetClosePrompt())
-        {
-            case StudioClosePrompt.ExportRunning:
-                return CloseQuestion.RunningExport;
-            case StudioClosePrompt.NeverExported:
-                return CloseQuestion.Draft;
-        }
+    private StudioCloseQuestion QuestionBeforeClosing(StudioCloseRequest request) =>
+        StudioCloseQuestions.Resolve(request, ViewModel.GetClosePrompt(), ViewModel.IsReady, _settings.ConfirmEditorEscape);
 
-        // Studio saves every edit as it is made, so there is never anything unsaved to ask about.
-        return request == CloseRequest.Escape
-            && ViewModel.IsReady
-            && EditorEscape.ResolvePrompt(_settings.ConfirmEditorEscape, hasUnsavedChanges: false) is not null
-                ? CloseQuestion.Escape
-                : CloseQuestion.None;
-    }
-
-    private Task AskBeforeClosingAsync(CloseQuestion question) => question switch
+    private Task AskBeforeClosingAsync(StudioCloseQuestion question) => question switch
     {
-        CloseQuestion.RunningExport => AskAboutRunningExportAsync(),
-        CloseQuestion.Draft => AskAboutDraftAsync(),
-        CloseQuestion.Escape => AskWhetherEscapeWasMeantAsync(),
+        StudioCloseQuestion.RunningExport => AskAboutRunningExportAsync(),
+        StudioCloseQuestion.Draft => AskAboutDraftAsync(),
+        StudioCloseQuestion.Escape => AskWhetherEscapeWasMeantAsync(),
         _ => Task.CompletedTask,
     };
 
@@ -559,8 +524,8 @@ public sealed partial class StudioWindow : Window
         // No window closes from under a question. While one is open the close button waits for
         // its answer, also where closing by now asks nothing: Esc's question is asked there,
         // and an export can end behind the question about it.
-        var question = QuestionBeforeClosing(CloseRequest.CloseButton);
-        if (question == CloseQuestion.None && !_isPromptOpen)
+        var question = QuestionBeforeClosing(StudioCloseRequest.CloseButton);
+        if (question == StudioCloseQuestion.None && !_isPromptOpen)
         {
             return;
         }
@@ -589,8 +554,8 @@ public sealed partial class StudioWindow : Window
             return false;
         }
 
-        var question = QuestionBeforeClosing(CloseRequest.Escape);
-        if (question == CloseQuestion.None)
+        var question = QuestionBeforeClosing(StudioCloseRequest.Escape);
+        if (question == StudioCloseQuestion.None)
         {
             CloseWithoutAsking();
         }
@@ -614,8 +579,18 @@ public sealed partial class StudioWindow : Window
         }
         finally
         {
-            _isPromptOpen = false;
+            OnPromptClosed();
         }
+    }
+
+    /// <summary>
+    /// A question has been answered. The keyboard focus that was asked for while it was open,
+    /// and waited, is put where it belongs now.
+    /// </summary>
+    private void OnPromptClosed()
+    {
+        _isPromptOpen = false;
+        PlaceFocusLater();
     }
 
     private async Task AskAboutRunningExportAsync()
@@ -651,7 +626,7 @@ public sealed partial class StudioWindow : Window
         }
         finally
         {
-            _isPromptOpen = false;
+            OnPromptClosed();
         }
 
         // This question stands in only where closing asks nothing. Should closing have come to

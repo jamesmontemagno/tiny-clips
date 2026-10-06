@@ -186,10 +186,12 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
     }
 
     /// <summary>
-    /// The real project store on the tool's temp folder, with four additions: it refuses a root
+    /// The real project store on the tool's temp folder, with five additions: it refuses a root
     /// outside the temp folder, it counts how often a delete was tried and how often it failed, it
-    /// never lets a cleanup throw, and it can be told to refuse to write, as a disk that is full
-    /// or a folder that may not be written does. The app's cleanup service writes a cleanup that
+    /// never lets a cleanup throw, it can be told to refuse to write, as a disk that is full
+    /// or a folder that may not be written does, and it can be told to say, once, that a
+    /// project's screen recording is somewhere else: where it is read as slowly as a check
+    /// wants (<see cref="SlowRecording"/>). The app's cleanup service writes a cleanup that
     /// threw to the app's crash log, and this tool must never write there.
     /// </summary>
     internal sealed class GuardedStore : IStudioProjectStore
@@ -205,6 +207,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
         private int _refusedSaves;
         private string? _refuseNextKeep;
         private (string ProjectId, string Message)? _refuseSaves;
+        private (string ProjectId, string Path)? _recordingElsewhere;
 
         public GuardedStore(string rootDirectory)
         {
@@ -242,6 +245,18 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
             lock (_gate)
             {
                 _refuseSaves = projectId is null ? null : (projectId, message);
+            }
+        }
+
+        /// <summary>
+        /// Says, once, that the screen recording of one project is somewhere else: the next time
+        /// it is looked for, this path is handed out in its place. Null to say nothing.
+        /// </summary>
+        public void SendNextRecordingFrom(string? projectId, string path = "")
+        {
+            lock (_gate)
+            {
+                _recordingElsewhere = projectId is null ? null : (projectId, path);
             }
         }
 
@@ -314,7 +329,19 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
         public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects() => _inner.ListUnreadableProjects();
 
-        public string? FindScreenRecording(string projectId) => _inner.FindScreenRecording(projectId);
+        public string? FindScreenRecording(string projectId)
+        {
+            lock (_gate)
+            {
+                if (_recordingElsewhere is { } elsewhere && elsewhere.ProjectId == projectId)
+                {
+                    _recordingElsewhere = null;
+                    return elsewhere.Path;
+                }
+            }
+
+            return _inner.FindScreenRecording(projectId);
+        }
 
         public StudioStorageSummary GetStorageSummary() => _inner.GetStorageSummary();
 

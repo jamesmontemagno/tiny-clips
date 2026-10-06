@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using TinyClips.App.Models.Studio;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 using TinyClips.Tools.StudioPreviewCheck.Media;
 using TinyClips.Tools.StudioWindowCheck.Automation;
 using TinyClips.Tools.StudioWindowCheck.Host;
@@ -8,9 +9,9 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 6. Closing: the question a project that was never exported asks, what each answer does, a
-// project that was exported, and the close button while a question is open that closing no
-// longer asks. What Esc does is in ClosingByEscape.cs, and a window that closes while its edits
-// cannot be saved in ClosingUnsaved.cs.
+// project that was exported, and an export that ends behind the question about it: the close
+// button then, and where the keyboard focus is. What Esc does is in ClosingByEscape.cs, and a
+// window that closes while its edits cannot be saved in ClosingUnsaved.cs.
 internal sealed partial class WindowChecks
 {
     // The window asks one question at a time, and passes over its close button until the last
@@ -234,11 +235,14 @@ internal sealed partial class WindowChecks
     }
 
     /// <summary>
-    /// No window closes from under a question. Closing can come to ask nothing while its
-    /// question is open in one place: the question about a running export, with the export
-    /// ending behind it. The close button, pressed again then, used to close the window from
-    /// under that question. It waits for the answer now, like every other press of the close
-    /// button while a question is open.
+    /// No window closes from under a question, and nothing under a question is given the
+    /// keyboard. Closing can come to ask nothing while its question is open in one place: the
+    /// question about a running export, with the export ending behind it. The end of an export
+    /// asks for the keyboard focus to go back to Export: that waits until the question has been
+    /// answered, because the focus on Export would take Esc away from the question, and Enter
+    /// or Space would start a second export under it. And the close button, pressed again then,
+    /// used to close the window from under that question: it waits for the answer now, like
+    /// every other press of the close button while a question is open.
     /// </summary>
     private void CloseButtonAfterTheExportEndedBehindItsQuestion()
     {
@@ -265,11 +269,38 @@ internal sealed partial class WindowChecks
             return;
         }
 
-        // The export ends behind it. From here on closing asks nothing.
-        var ended = Until(() => !IsExporting(editor), done => done, 120, 50);
-        var finished = Until(() => _services.Exports.FirstOrDefault(e => e.ProjectId == editor.Id), e => e is not null, 5, 30);
-        Thread.Sleep(300);
-        var focus = FocusedId(editor);
+        // The question has the keyboard, and keeps it. The start of an export asks for the
+        // focus to go to Cancel, and its end for the focus to go back to Export; the window
+        // does either after everything else it has to do, which here is after the question has
+        // opened. Both have to wait for the answer.
+        var (givenFocus, stopWatching) = WatchFocusUnderAQuestion(editor);
+        bool ended;
+        StudioExportedEventArgs? finished;
+        string focusAtFirst;
+        string focus;
+        try
+        {
+            WhenTheUiThreadHasNothingWaiting();
+            focusAtFirst = Until(() => FocusedId(editor), IsOnTheQuestion, 1.5);
+
+            // The export ends behind the question. From here on closing asks nothing.
+            ended = Until(() => !IsExporting(editor), done => done, 120, 50);
+            finished = Until(() => _services.Exports.FirstOrDefault(e => e.ProjectId == editor.Id), e => e is not null, 5, 30);
+            Thread.Sleep(300);
+            WhenTheUiThreadHasNothingWaiting();
+            focus = FocusedId(editor);
+        }
+        finally
+        {
+            stopWatching();
+        }
+
+        var under = givenFocus.Given().Where(id => !IsOnTheQuestion(id)).ToArray();
+        _report.Check(
+            "while the question about a running export is open, the keyboard stays with it: the focus is on one of the question's own answers once the export has started, and still when the export has ended behind the question, and nothing under the question was given it, although the start of an export puts the focus on Cancel and its end on Export",
+            ended && IsOnTheQuestion(focusAtFirst) && IsOnTheQuestion(focus) && under.Length == 0,
+            $"with the question open and the window having done what the start of the export had it waiting to do, the focus was on \"{focusAtFirst}\"; once the export had ended behind the question ({ended}) and the window had again done what it had waiting, on \"{focus}\"; given the focus under the question in that time: {(under.Length == 0 ? "nothing" : string.Join(", ", under))}");
+
         var pressedAgain = PressClose(editor);
         Thread.Sleep(300);
         var questions = Questions(editor);
@@ -278,7 +309,6 @@ internal sealed partial class WindowChecks
             "the close button, pressed again once the export has ended behind the question about it, waits for the answer like every other press while a question is open: the window and the one question stay",
             overlay && pressed && ended && finished is not null && pressedAgain && stays && questions.Count == 1 && questions[0].Name == ExportQuestion,
             $"the export ended behind the question: {ended}, with {(finished is null ? "no video" : Path.GetFileName(finished.Path))}; the close button was pressed again: {pressedAgain}; window open {stays}; {questions.Count} question(s){(questions.Count > 0 ? $", \"{questions[0].Name}\"" : string.Empty)}");
-        _report.Note($"when the export had ended behind the question about it, the keyboard focus was on \"{focus}\"; the question's own buttons are PrimaryButton and CloseButton, and anything else is behind the question");
         if (!stays)
         {
             Release(editor);
@@ -289,6 +319,13 @@ internal sealed partial class WindowChecks
         var kept = Dialog(editor, 1)?.Find("CloseButton")?.Invoke() ?? false;
         var questionGone = Until(() => !HasDialog(editor), gone => gone, 3);
         var staysAfter = Native.Exists(editor.Handle);
+
+        // The focus that the end of the export asked for has waited for this.
+        var focusAfterAnswer = staysAfter ? Until(() => FocusedId(editor), id => id == "StudioExportButton", 2) : string.Empty;
+        _report.Check(
+            "the keyboard focus that the end of the export asked for has waited for the answer: once the question is gone, it is on Export",
+            kept && questionGone && staysAfter && focusAfterAnswer == "StudioExportButton",
+            $"Keep exporting pressed {kept}; question gone {questionGone}; window open {staysAfter}; the focus is on \"{focusAfterAnswer}\"");
         Thread.Sleep(QuestionSettles);
         var closePressed = staysAfter && PressClose(editor);
         var goneAtLast = WindowGone(editor, 5);

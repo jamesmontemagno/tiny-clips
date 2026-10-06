@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 using TinyClips.Tools.StudioPreviewCheck.Media;
 using TinyClips.Tools.StudioWindowCheck.Automation;
 using TinyClips.Tools.StudioWindowCheck.Host;
@@ -12,7 +13,8 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 // 1, continued. A project that cannot be shown although its screen recording is still in its
 // folder: one whose project file this version cannot read. The window says why, and offers the
 // one thing that is left: to save the screen recording as an ordinary video, where saved videos
-// go. The project is left as it is.
+// go. The project is left as it is. A window that is closed while the recording is still being
+// copied closes at once, and the recording is saved and reported all the same.
 internal sealed partial class WindowChecks
 {
     private const string SaveRecordingButton = "StudioSaveScreenRecordingButton";
@@ -227,7 +229,97 @@ internal sealed partial class WindowChecks
             closePressed && gone && FolderState(folder) == folderBefore,
             $"close pressed {closePressed}, window gone {gone}; the folder: [{FolderState(folder)}]");
 
+        ClosedWhileItsRecordingIsSaved(byEscape: false);
+        ClosedWhileItsRecordingIsSaved(byEscape: true);
         NothingToSave();
+    }
+
+    /// <summary>
+    /// A window that is closed while its screen recording is still being copied, by its close
+    /// button or by Esc. The window closes at once, the copy goes on, and the app is told of
+    /// the video once it is complete, although the window is gone by then: the editor has not
+    /// closed before the copy has reported, so until then the window service still listens to
+    /// it, and the project still counts as open.
+    /// </summary>
+    /// <remarks>
+    /// The copy is made to last. The store says, once, that the recording is at a pipe which
+    /// hands out the first half of the recording's bytes and then waits
+    /// (<see cref="SlowRecording"/>). The window is closed in that wait, the way a person
+    /// closes it: by the Close button of its title bar, or by what the window does with Esc.
+    /// Then the pipe hands out the rest.
+    /// </remarks>
+    private void ClosedWhileItsRecordingIsSaved(bool byEscape)
+    {
+        var how = byEscape ? "Esc" : "its close button";
+        var label = $"cannot be shown, closed by {(byEscape ? "Esc" : "the close button")} while saving";
+        Timeline.Mark($"1: the window is closed by {how} while its screen recording is being saved");
+        var check = $"a window that is closed by {how} while its screen recording is being saved closes at once, and the recording is saved all the same: nothing is reported while the copy is under way, the project counts as open until it is complete, and then the app is told, once, where the video is";
+        var folder = NewScreenProject($"Cannot be shown, closed by {(byEscape ? "Esc" : "the close button")} while saving");
+        var made = MakeUnreadable(folder);
+        var folderBefore = FolderState(folder);
+        var editor = Open(folder, label);
+        var state = WaitLoaded(editor);
+        if (!made || state != "unavailable" || Find(editor, SaveRecordingButton, 1) is null)
+        {
+            _report.Check(check, false, $"the project file was made unreadable: {made}; the window is {state}; the button is {(editor.Root.Find(SaveRecordingButton) is null ? "not there" : "there")}");
+            CloseQuietly(editor);
+            return;
+        }
+
+        // The save, started by the button, and held up in the middle of its copy.
+        using var slow = new SlowRecording(folder.Paths.ScreenPath);
+        var filesBefore = ExportFiles();
+        var givenBefore = _services.Storage.Given().Length;
+        var reportedBefore = _services.ScreenRecordingsSaved.Count;
+        var errorsBefore = _services.Errors().Length;
+        _services.Store.SendNextRecordingFrom(editor.Id, slow.Path);
+        var pressed = Invoke(editor, SaveRecordingButton);
+        var copying = slow.WaitUntilHalfIsRead(10);
+        _services.Store.SendNextRecordingFrom(null);
+        var statusDuring = NameOf(editor, SaveRecordingStatus, 1);
+
+        // Closed while the copy waits for the rest of the recording.
+        var closed = byEscape ? Escape(editor) == StudioShortcutAction.RequestClose : PressClose(editor);
+        var gone = WindowGone(editor);
+        if (gone)
+        {
+            Release(editor);
+        }
+
+        Thread.Sleep(300);
+        var reportedDuring = _services.ScreenRecordingsSaved.Count - reportedBefore;
+        var openDuring = _services.Tracker.IsOpen(editor.Id);
+        var given = _services.Storage.Given().Skip(givenBefore).ToArray();
+        var namedDuring = given.Length > 0 && File.Exists(given[0]);
+
+        // The rest of the recording, and its end.
+        var taken = slow.Finish(10);
+        Until(() => _services.ScreenRecordingsSaved.Count > reportedBefore, told => told, 10);
+        var notOpen = Until(() => !_services.Tracker.IsOpen(editor.Id), ok => ok, 10, 50);
+        Thread.Sleep(300);
+        var reported = _services.ScreenRecordingsSaved.Skip(reportedBefore).ToArray();
+        given = _services.Storage.Given().Skip(givenBefore).ToArray();
+        var files = Until(() => ExportFiles().Except(filesBefore).ToArray(), now => now.Length == 1, 3, 50);
+        var copied = given.Length == 1 && SameBytes(given[0], folder.Paths.ScreenPath);
+        var folderAfter = FolderState(folder);
+        var errors = _services.Errors().Length - errorsBefore;
+        if (!gone)
+        {
+            CloseQuietly(editor);
+        }
+
+        _report.Check(
+            check,
+            pressed && copying && statusDuring == "Saving the screen recording\u2026" && closed && gone
+                && reportedDuring == 0 && openDuring && !namedDuring
+                && taken && reported.Length == 1 && reported[0].ProjectId == editor.Id && given.Length == 1 && string.Equals(reported[0].Path, given[0], StringComparison.OrdinalIgnoreCase)
+                && copied && files.Length == 1 && string.Equals(files[0], given[0], StringComparison.OrdinalIgnoreCase)
+                && notOpen && folderAfter == folderBefore && errors == 0,
+            $"Save pressed {pressed}; the copy had opened the recording and taken its first half: {copying}; the status then: \"{statusDuring}\"; closed by {how}: {closed}, and the window gone: {gone}; "
+                + $"while the copy waited for the rest, the app had been told {reportedDuring} time(s), the project counted as open: {openDuring}, and a file was under the video's name: {namedDuring}; "
+                + $"the rest was taken: {taken}; after that the app was told {reported.Length} time(s){(reported.Length == 0 ? string.Empty : ": " + string.Join(", ", reported.Select(e => Path.GetFileName(e.Path))))}, of {given.Length} name(s) asked for{(given.Length == 0 ? string.Empty : ": " + string.Join(", ", given.Select(Path.GetFileName)))}; "
+                + $"the copy is the recording byte for byte: {copied} ({(given.Length > 0 && File.Exists(given[0]) ? new FileInfo(given[0]).Length : 0)} bytes, the recording {slow.Length}); new files where videos go: {(files.Length == 0 ? "none" : string.Join(", ", files.Select(Path.GetFileName)))}; "
+                + $"the project counts as open afterwards: {!notOpen}; the project folder {(folderAfter == folderBefore ? "is as it was" : $"was [{folderBefore}] and is [{folderAfter}]")}; errors told to the app: {errors}");
     }
 
     /// <summary>A project that cannot be read and has no recording in its folder has nothing to offer.</summary>

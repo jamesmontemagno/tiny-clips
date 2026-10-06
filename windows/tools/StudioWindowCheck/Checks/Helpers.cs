@@ -112,6 +112,60 @@ internal sealed partial class WindowChecks
         return FocusedId(editor);
     }
 
+    /// <summary>
+    /// Whether the keyboard focus, as <see cref="FocusedId"/> reads it, is on one of the answers
+    /// of a question the window is asking. A question is a window inside the window, and has
+    /// the keyboard while it is open: anything else that has the focus then is behind it.
+    /// </summary>
+    private static bool IsOnTheQuestion(string focused) =>
+        focused is "PrimaryButton" or "SecondaryButton" or "CloseButton" or "StudioClosePromptDeleteButton";
+
+    /// <summary>What of a window was given the keyboard focus while it was watched, in the order it happened.</summary>
+    private sealed class FocusLog
+    {
+        private readonly object _gate = new();
+        private readonly List<string> _given = [];
+
+        public void Add(string element)
+        {
+            lock (_gate)
+            {
+                _given.Add(element);
+            }
+        }
+
+        public string[] Given()
+        {
+            lock (_gate)
+            {
+                return [.. _given];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Notes every control of the window itself that is given the keyboard focus from now until
+    /// the action that is returned has run. A question's own buttons are not among them: a
+    /// question is drawn in a layer of its own, and what gets the focus there is not told to
+    /// the window's content.
+    /// </summary>
+    private (FocusLog Log, Action Stop) WatchFocusUnderAQuestion(Editor editor) => OnUi(() =>
+    {
+        var log = new FocusLog();
+        if (editor.Window.Content is not UIElement content)
+        {
+            return (log, (Action)(() => { }));
+        }
+
+        RoutedEventHandler onFocus = (_, e) =>
+        {
+            var id = e.OriginalSource is DependencyObject element ? AutomationProperties.GetAutomationId(element) : string.Empty;
+            log.Add(id.Length > 0 ? id : (e.OriginalSource as FrameworkElement)?.Name is { Length: > 0 } name ? name : e.OriginalSource?.GetType().Name ?? "something");
+        };
+        content.GotFocus += onFocus;
+        return (log, (Action)(() => OnUi(() => { content.GotFocus -= onFocus; })));
+    });
+
     /// <summary>Waits until the window is gone.</summary>
     private static bool WindowGone(Editor editor, double seconds = 5) => Until(() => !Native.Exists(editor.Handle), gone => gone, seconds);
 

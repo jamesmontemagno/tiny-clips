@@ -69,6 +69,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Z, true, StudioShortcutAction.Undo)]
     [InlineData(StudioShortcutKey.Y, true, StudioShortcutAction.Redo)]
     [InlineData(StudioShortcutKey.E, true, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.Escape, false, StudioShortcutAction.None)]
     public void HoldingAKey_RepeatsOnlySteppingUndoAndRedo(StudioShortcutKey key, bool control, StudioShortcutAction expected)
     {
         Assert.Equal(expected, StudioShortcuts.Resolve(Press(key) with { IsControlDown = control, IsRepeat = true }));
@@ -215,11 +216,10 @@ public sealed class StudioEditorSessionShortcutTests
     [Fact]
     public void Escape_WhileAnExportRuns_StopsTheExport_AndThatIsAll()
     {
-        // Wherever the focus is, held or not, in a drag or not: the export is stopped, and the
+        // A press, wherever the focus is, in a drag or not: the export is stopped, and the
         // window is not asked to close.
         bool[] either = [false, true];
         var presses =
-            from repeat in either
             from text in either
             from list in either
             from open in either
@@ -228,7 +228,6 @@ public sealed class StudioEditorSessionShortcutTests
             select Press(StudioShortcutKey.Escape) with
             {
                 IsExporting = true,
-                IsRepeat = repeat,
                 IsTextInputFocused = text,
                 IsTypeToSearchFocused = list,
                 IsDropDownOpen = open,
@@ -239,18 +238,29 @@ public sealed class StudioEditorSessionShortcutTests
         foreach (var press in presses)
         {
             Assert.Equal(StudioShortcutAction.CancelExport, StudioShortcuts.Resolve(press));
+
+            // The same key, still held, stops nothing: see Escape_HeldDown_DoesNothingAtAll.
+            Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press with { IsRepeat = true }));
         }
     }
 
     [Fact]
-    public void Escape_HeldDown_DoesNothingMore()
+    public void Escape_HeldDown_DoesNothingAtAll()
     {
-        // The press that stopped an export must not go on to close the window, and the press
-        // whose question was answered must not ask it again.
+        // The press it belongs to has done what there was to do: the press that stopped an
+        // export must not go on to close the window, and the press whose question was answered
+        // must not ask it again.
         var held = Press(StudioShortcutKey.Escape) with { IsRepeat = true };
 
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(held));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(held with { IsReady = false }));
+
+        // Also while an export runs, because the press may have been someone else's. The Esc
+        // that answered "Keep exporting" in the question about a running export, held a little
+        // too long, comes to the window once the question is gone: it must not stop the export
+        // it was asked to keep. The same for a window in front that closed on Esc.
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(held with { IsExporting = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(held with { IsExporting = true, IsDragging = true }));
     }
 
     [Fact]
@@ -291,9 +301,10 @@ public sealed class StudioEditorSessionShortcutTests
     public void Escape_TakesTheFirstRuleThatApplies()
     {
         // Every state an Esc press can arrive in. In this order: a modifier leaves the key to
-        // the system; an export that runs is stopped; a held key, text being edited, an open
-        // drop-down list and a drag keep the window open; otherwise it is asked to close. A
-        // drop-down that has the focus, and whether the project is open, change nothing.
+        // the system; a held key does nothing at all; an export that runs is stopped; text
+        // being edited, an open drop-down list and a drag keep the window open; otherwise it is
+        // asked to close. A drop-down that has the focus, and whether the project is open,
+        // change nothing.
         bool[] either = [false, true];
         var presses =
             from control in either
@@ -324,8 +335,9 @@ public sealed class StudioEditorSessionShortcutTests
         {
             var expected =
                 press.IsControlDown || press.IsShiftDown || press.IsAltDown ? StudioShortcutAction.None
+                : press.IsRepeat ? StudioShortcutAction.None
                 : press.IsExporting ? StudioShortcutAction.CancelExport
-                : press.IsRepeat || press.IsTextInputFocused || press.IsDropDownOpen || press.IsDragging ? StudioShortcutAction.None
+                : press.IsTextInputFocused || press.IsDropDownOpen || press.IsDragging ? StudioShortcutAction.None
                 : StudioShortcutAction.RequestClose;
             var actual = StudioShortcuts.Resolve(press);
 

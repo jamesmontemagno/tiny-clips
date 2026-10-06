@@ -329,6 +329,27 @@ internal sealed partial class WindowChecks
         return true;
     });
 
+    /// <summary>
+    /// Waits until the UI thread has done what it had waiting at low priority. The window puts
+    /// the keyboard focus where it belongs at that priority, after everything else it has to
+    /// do, so whatever it had asked for before this was called has had its turn when this
+    /// returns.
+    /// </summary>
+    private void WhenTheUiThreadHasNothingWaiting()
+    {
+        StopIfInFront();
+        using var done = new ManualResetEventSlim(false);
+        if (!_dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () => done.Set()))
+        {
+            throw new InvalidOperationException("The UI thread is gone.");
+        }
+
+        if (!done.Wait(TimeSpan.FromSeconds(30)))
+        {
+            throw new TimeoutException("The UI thread did not come to what waits at low priority within 30 s.");
+        }
+    }
+
     /// <summary>Ends the checks when a window of the tool was in front. The windows are closed on the way out.</summary>
     private void StopIfInFront()
     {
