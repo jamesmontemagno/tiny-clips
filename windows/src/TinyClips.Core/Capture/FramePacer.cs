@@ -23,9 +23,12 @@ internal sealed partial class FramePacer : IDisposable
     private readonly ManualResetEventSlim _stop = new(false);
     private nint _timer;
     private long _skippedTicks;
+    private readonly RecordingPerformanceMonitor? _perf;
 
-    public FramePacer(TimeSpan interval, Action tick, string name)
+    public FramePacer(TimeSpan interval, Action tick, string name, RecordingPerformanceMonitor? perf = null)
     {
+        if (interval <= TimeSpan.Zero) { throw new ArgumentOutOfRangeException(nameof(interval)); }
+        _perf = perf;
         _interval = interval;
         _tick = tick;
         _thread = new Thread(Run)
@@ -53,6 +56,7 @@ internal sealed partial class FramePacer : IDisposable
         var intervalTicks = (long)(_interval.TotalSeconds * Stopwatch.Frequency);
         var start = Stopwatch.GetTimestamp();
         long slot = 0;
+        var previousEpoch = _perf?.CadenceEpoch ?? 0;
 
         while (!_stop.IsSet)
         {
@@ -62,8 +66,13 @@ internal sealed partial class FramePacer : IDisposable
             if (due <= now)
             {
                 // Overran: jump to the next slot that is still in the future so PTS stays wall-clock.
-                var behind = (now - due) / intervalTicks + 1;
+                var behind = MissedSlots(now, due, intervalTicks);
                 Interlocked.Add(ref _skippedTicks, behind);
+                var epoch = _perf?.CadenceEpoch ?? 0;
+                if (epoch != 0 && epoch == previousEpoch)
+                {
+                    _perf?.GpuPacingOverrun(behind, epoch);
+                }
                 slot += behind;
                 due = start + (slot * intervalTicks);
             }
@@ -76,6 +85,7 @@ internal sealed partial class FramePacer : IDisposable
 
             try
             {
+                previousEpoch = _perf?.CadenceEpoch ?? 0;
                 _tick();
             }
             catch
@@ -89,6 +99,12 @@ internal sealed partial class FramePacer : IDisposable
             CloseHandle(_timer);
             _timer = nint.Zero;
         }
+    }
+
+    internal static long MissedSlots(long now, long due, long intervalTicks)
+    {
+        if (intervalTicks <= 0) { throw new ArgumentOutOfRangeException(nameof(intervalTicks)); }
+        return now < due ? 0 : (now - due) / intervalTicks + 1;
     }
 
     private void WaitUntil(long dueTimestamp)

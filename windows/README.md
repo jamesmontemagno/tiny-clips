@@ -170,6 +170,11 @@ For the experimental **GPU recording pipeline** (zero-copy WGC → Direct2D over
 encoder), the per-recording performance report, and the `RecordingBenchmark` harness with measured
 CPU-vs-GPU numbers, see [`docs/gpu-recording-pipeline.md`](docs/gpu-recording-pipeline.md).
 
+For schema-2 timing/cadence/submission definitions, requested versus actual backends, unverified
+encoder selection, and the local collector's target-process architecture evidence and required
+helper source, see the [diagnostic contract](docs/gpu-recording-pipeline.md#41-diagnostic-contract-schema-2).
+Historical benchmark values are not verified encoder/output-frame measurements.
+
 ## CI
 
 `.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core and Settings
