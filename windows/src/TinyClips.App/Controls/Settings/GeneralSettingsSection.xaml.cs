@@ -79,29 +79,10 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
     /// <summary>
     /// Shows one of this section's dialogs, and returns what was chosen. Returns null when it
     /// could not be shown: the section is no longer on a window, or another dialog is open in
-    /// it. WinUI shows one dialog at a time in a window and throws for a second one, and these
-    /// handlers are <c>async void</c>, where an exception that gets out ends the app, and with
-    /// it a recording that is running. A dialog can be asked for while another is open because
-    /// each of these handlers waits for a copy or a delete first.
+    /// it. See <see cref="SettingsDialog"/> for why that has to be answered and not thrown.
     /// </summary>
-    private async Task<ContentDialogResult?> TryShowAsync(ContentDialog dialog)
-    {
-        if (_closed || XamlRoot is null)
-        {
-            return null;
-        }
-
-        dialog.XamlRoot = XamlRoot;
-        try
-        {
-            return await dialog.ShowAsync();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"A dialog of General settings could not be shown: {ex}");
-            return null;
-        }
-    }
+    private Task<ContentDialogResult?> TryShowAsync(ContentDialog dialog) =>
+        _closed ? Task.FromResult<ContentDialogResult?>(null) : SettingsDialog.TryShowAsync(dialog, XamlRoot);
 
     /// <summary>
     /// Saves a row's screen recording as an ordinary video. From there it is a saved video like
@@ -273,22 +254,27 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
             PrimaryButtonText = "Purge",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        // Not shown, or not answered with Purge: nothing is deleted.
+        if (await TryShowAsync(dialog) != ContentDialogResult.Primary)
         {
-            var result = ViewModel.PurgeTempFiles();
-            if (result.SkippedFileCount > 0)
+            return;
+        }
+
+        var result = ViewModel.PurgeTempFiles();
+        if (result.SkippedFileCount > 0)
+        {
+            var kept = $"{result.RemovedFileCount} temporary file(s) were removed. {result.SkippedFileCount} active or unavailable file(s) were kept.";
+            var skippedDialog = new ContentDialog
             {
-                var skippedDialog = new ContentDialog
-                {
-                    Title = "Some temporary files are still in use",
-                    Content = $"{result.RemovedFileCount} temporary file(s) were removed. {result.SkippedFileCount} active or unavailable file(s) were kept.",
-                    CloseButtonText = "OK",
-                    XamlRoot = XamlRoot,
-                };
-                await skippedDialog.ShowAsync();
+                Title = "Some temporary files are still in use",
+                Content = kept,
+                CloseButtonText = "OK",
+            };
+            if (await TryShowAsync(skippedDialog) is null)
+            {
+                App.ShowMessageNotification($"Some temporary files are still in use. {kept}");
             }
         }
     }
@@ -302,10 +288,9 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
             PrimaryButtonText = "Reset",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await TryShowAsync(dialog) == ContentDialogResult.Primary)
         {
             ViewModel.ResetAllSettings();
         }

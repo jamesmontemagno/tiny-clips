@@ -23,6 +23,7 @@ public sealed partial class AboutSettingsSection : UserControl
     private Uri? _detailedIssueUri;
     private Uri? _latestReleaseUri;
     private string _appVersion = "1.0.0";
+    private bool _isShowingNotices;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -52,21 +53,33 @@ public sealed partial class AboutSettingsSection : UserControl
     /// <summary>Shows the notices in a dialog: the app can always read its own files, which another app may not.</summary>
     private async void OnShowThirdPartyNoticesClicked(object sender, RoutedEventArgs e)
     {
-        string notices;
-        try
+        // A second press while the file is being read would ask for a second dialog.
+        if (_isShowingNotices)
         {
-            notices = await System.IO.File.ReadAllTextAsync(ThirdPartyNoticesPath);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Reading the third-party notices failed: {ex}");
-            notices = $"The notices could not be read: {ex.Message}";
+            return;
         }
 
-        var dialog = new ContentDialog
+        _isShowingNotices = true;
+        try
         {
-            Title = "Third-party notices",
-            Content = new ScrollViewer
+            string notices;
+            try
+            {
+                notices = await System.IO.File.ReadAllTextAsync(ThirdPartyNoticesPath);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Reading the third-party notices failed: {ex}");
+                notices = $"The notices could not be read: {ex.Message}";
+            }
+
+            // The section may have left the window while the file was read.
+            if (XamlRoot is not { } xamlRoot)
+            {
+                return;
+            }
+
+            var text = new ScrollViewer
             {
                 MaxHeight = 420,
 
@@ -78,12 +91,28 @@ public sealed partial class AboutSettingsSection : UserControl
                     TextWrapping = TextWrapping.Wrap,
                     IsTextSelectionEnabled = true,
                 },
-            },
-            CloseButtonText = "Close",
-            XamlRoot = XamlRoot,
-        };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName((ScrollViewer)dialog.Content, "Third-party notices");
-        await dialog.ShowAsync();
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(text, "Third-party notices");
+            var dialog = new ContentDialog
+            {
+                Title = "Third-party notices",
+                Content = text,
+                CloseButtonText = "Close",
+            };
+
+            // Another dialog of Settings may have opened while the file was read. The notices
+            // are then not shown, and the button is there to be pressed again.
+            await SettingsDialog.TryShowAsync(dialog, xamlRoot);
+        }
+        catch (Exception ex)
+        {
+            // An async void handler: an exception that got out would end the app.
+            Debug.WriteLine($"Showing the third-party notices failed: {ex}");
+        }
+        finally
+        {
+            _isShowingNotices = false;
+        }
     }
 
     private void UpdateAboutInfo()
