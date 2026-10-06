@@ -28,9 +28,15 @@ public sealed partial class StudioEditorSession
     /// Starts a new scene at the playhead, a copy of the current one that is entered by moving.
     /// At its first instant a scene still looks like the one before, so a paused playhead then
     /// moves to where the new scene has been entered, which shows what is changed in it next.
+    /// The inspector shows the Scene panel, also for a split that is refused: the panel says why.
     /// </summary>
     public StudioSceneEditResult SplitSceneAtPlayhead()
     {
+        if (IsEditable)
+        {
+            ShowInspectorPanel(StudioInspectorPanel.Scene);
+        }
+
         var time = Playhead;
         var result = EditScene(model => model.SplitScene(time));
         if (result.Changed && !IsPlaying && Model?.GetSceneLookTime(result.Index) is { } look)
@@ -99,7 +105,10 @@ public sealed partial class StudioEditorSession
     /// </summary>
     public bool ShowPreviousScene() => ShowScene(CurrentSceneIndex - 1);
 
-    /// <summary>Moves the playhead to where a scene has been entered. False when there is no such scene.</summary>
+    /// <summary>
+    /// Moves the playhead to where a scene has been entered, and shows the Scene panel of the
+    /// inspector. False, with nothing changed, when there is no such scene.
+    /// </summary>
     public bool ShowScene(int index)
     {
         if (!IsEditable || Model?.GetSceneLookTime(index) is not { } time)
@@ -108,6 +117,7 @@ public sealed partial class StudioEditorSession
         }
 
         Scrub(time);
+        ShowInspectorPanel(StudioInspectorPanel.Scene);
         return true;
     }
 

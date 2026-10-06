@@ -5,7 +5,7 @@ using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.ViewModels.Studio;
 
-// The values behind the zoom lane, the Zoom section of the inspector and the crop sliders. What an
+// The values behind the zoom lane, the Zoom panel of the inspector and the crop sliders. What an
 // edit does is decided in the session, and what is said about it in StudioEditorText.
 public sealed partial class StudioViewModel
 {
@@ -106,8 +106,13 @@ public sealed partial class StudioViewModel
 
     public bool HasZoomSelectionDetail => HasSelectedZoom;
 
-    /// <summary>True when there are zooms and none is selected: the section then says how to select one.</summary>
+    /// <summary>True when there are zooms and none is selected: the panel then says how to select one.</summary>
     public bool IsZoomHintVisible => Zooms.Count > 0 && !HasSelectedZoom;
+
+    /// <summary>True for an open recording without zooms: the panel then says how to add the first one.</summary>
+    public bool IsZoomEmptyHintVisible => IsReady && Zooms.Count == 0;
+
+    public string ZoomEmptyHint => "Press Z or Add zoom to zoom in at the playhead.";
 
     // Suggestions
 
@@ -157,7 +162,7 @@ public sealed partial class StudioViewModel
     }
 
     /// <summary>
-    /// Whether "The pointer" can be chosen. A zoom that already follows the pointer keeps the
+    /// Whether "Follow pointer" can be chosen. A zoom that already follows the pointer keeps the
     /// choice, so that it can be seen and changed back.
     /// </summary>
     public bool CanZoomFollowPointer =>
@@ -167,10 +172,10 @@ public sealed partial class StudioViewModel
 
     public string PointerExplanation => StudioEditorText.NoPointerExplanation;
 
-    /// <summary>Why "The pointer" cannot be chosen, for a screen reader. Empty when it can.</summary>
+    /// <summary>Why "Follow pointer" cannot be chosen, for a screen reader. Empty when it can.</summary>
     public string ZoomFollowPointerHelpText => _session.HasPointerPositions ? string.Empty : StudioEditorText.NoPointerExplanation;
 
-    /// <summary>The focus pad and its two sliders show for a zoom that looks at a point.</summary>
+    /// <summary>The focus pad and its two sliders show for a zoom whose focus is a fixed point.</summary>
     public bool AreZoomFocusControlsVisible => SelectedZoom is { Focus.Mode: StudioZoomFocusMode.Point };
 
     /// <summary>What the focus pad shows for the selected zoom, or null without one.</summary>
@@ -303,6 +308,35 @@ public sealed partial class StudioViewModel
 
     public bool CanResetCameraCrop => !CameraCrop.IsEmpty;
 
+    // The crop groups. The four sliders of a crop are behind a header that opens and closes
+    // them: open while the picture is cropped, until the header is pressed, and from then on as
+    // the header left it.
+
+    /// <summary>What a closed group says in its header, and to a screen reader, while its picture is cropped.</summary>
+    public string CroppedText => "Cropped";
+
+    public bool IsScreenCropOpen => _session.IsScreenCropOpen;
+
+    public bool IsScreenCroppedNoteVisible => !IsScreenCropOpen && CanResetScreenCrop;
+
+    public string ScreenCropHelpText => IsScreenCroppedNoteVisible ? CroppedText : string.Empty;
+
+    public string ScreenCropHeaderToolTip => GetCropHeaderToolTip(IsScreenCropOpen);
+
+    public bool IsCameraCropOpen => _session.IsCameraCropOpen;
+
+    public bool IsCameraCroppedNoteVisible => !IsCameraCropOpen && CanResetCameraCrop;
+
+    public string CameraCropHelpText => IsCameraCroppedNoteVisible ? CroppedText : string.Empty;
+
+    public string CameraCropHeaderToolTip => GetCropHeaderToolTip(IsCameraCropOpen);
+
+    /// <summary>Opens or closes the Crop group of the Screen panel, as a press on its header does.</summary>
+    public void SetScreenCropOpen(bool isOpen) => _session.SetScreenCropOpen(isOpen);
+
+    /// <summary>Opens or closes the Crop group of the Camera panel, as a press on its header does.</summary>
+    public void SetCameraCropOpen(bool isOpen) => _session.SetCameraCropOpen(isOpen);
+
     // Commands
 
     /// <summary>Selects a zoom, or none. The playhead stays.</summary>
@@ -315,7 +349,7 @@ public sealed partial class StudioViewModel
 
     public bool SelectNextZoom() => _session.SelectNextZoom();
 
-    /// <summary>The Previous button of the Zoom section. The zoom it lands on is read out.</summary>
+    /// <summary>The Previous button of the Zoom panel. The zoom it lands on is read out.</summary>
     public void ShowPreviousZoom()
     {
         if (SelectPreviousZoom())
@@ -324,7 +358,7 @@ public sealed partial class StudioViewModel
         }
     }
 
-    /// <summary>The Next button of the Zoom section. The zoom it lands on is read out.</summary>
+    /// <summary>The Next button of the Zoom panel. The zoom it lands on is read out.</summary>
     public void ShowNextZoom()
     {
         if (SelectNextZoom())
@@ -486,6 +520,8 @@ public sealed partial class StudioViewModel
     // is heard.
     private void AnnounceZoomTime(string text) =>
         Announce(text, "StudioZoomTime", StudioAnnouncementKind.Information);
+
+    private static string GetCropHeaderToolTip(bool isOpen) => isOpen ? "Hide the crop controls" : "Show the crop controls";
 
     private void SetScreenCrop(StudioCropEdge edge, double value, [CallerMemberName] string? propertyName = null)
     {

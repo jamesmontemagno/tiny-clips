@@ -82,7 +82,7 @@
                 x:Name="AddCutButton"
                 Grid.Column="6"
                 AutomationProperties.AutomationId="StudioAddCutButton"
-                AutomationProperties.Name="Cut at playhead"
+                AutomationProperties.Name="Add cut"
                 Click="{x:Bind ViewModel.AddCutAtPlayhead}"
                 Content="Cut"
                 IsEnabled="{x:Bind ViewModel.CanAddCutAtPlayhead, Mode=OneWay}"

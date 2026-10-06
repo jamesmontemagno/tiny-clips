@@ -28,6 +28,9 @@ public sealed partial class StudioSliderRow : UserControl
     public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(
         nameof(Title), typeof(string), typeof(StudioSliderRow), new PropertyMetadata(string.Empty, OnTitleChanged));
 
+    public static readonly DependencyProperty AccessibleNameProperty = DependencyProperty.Register(
+        nameof(AccessibleName), typeof(string), typeof(StudioSliderRow), new PropertyMetadata(string.Empty, OnTitleChanged));
+
     public static readonly DependencyProperty ValueTextProperty = DependencyProperty.Register(
         nameof(ValueText), typeof(string), typeof(StudioSliderRow), new PropertyMetadata(string.Empty, OnValueTextChanged));
 
@@ -60,11 +63,21 @@ public sealed partial class StudioSliderRow : UserControl
     /// <summary>Raised when a pointer drag on the slider ends.</summary>
     public event EventHandler? GestureCompleted;
 
-    /// <summary>The name shown above the slider, and its accessible name.</summary>
+    /// <summary>The name shown above the slider, and its accessible name unless <see cref="AccessibleName"/> is set.</summary>
     public string Title
     {
         get => (string)GetValue(TitleProperty);
         set => SetValue(TitleProperty, value);
+    }
+
+    /// <summary>
+    /// What a screen reader calls the slider, where the name above it leans on a heading over
+    /// it: "Left" under Crop is "Screen crop left". Empty for a slider that is called by its title.
+    /// </summary>
+    public string AccessibleName
+    {
+        get => (string)GetValue(AccessibleNameProperty);
+        set => SetValue(AccessibleNameProperty, value);
     }
 
     /// <summary>The value as text, such as "6%", shown next to the name and read by screen readers.</summary>
@@ -113,7 +126,7 @@ public sealed partial class StudioSliderRow : UserControl
     {
         var row = (StudioSliderRow)sender;
         row.TitleLabel.Text = row.Title;
-        AutomationProperties.SetName(row.ValueSlider, row.Title);
+        AutomationProperties.SetName(row.ValueSlider, row.AccessibleName.Length > 0 ? row.AccessibleName : row.Title);
     }
 
     private static void OnValueTextChanged(DependencyObject sender, DependencyPropertyChangedEventArgs e)

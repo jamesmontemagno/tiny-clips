@@ -41,7 +41,8 @@ public sealed partial class StudioEditorSession
 
     /// <summary>
     /// Selects a cut, or none with null or a place that has no cut. The playhead stays. A selected
-    /// zoom or speed change is let go when a cut is selected.
+    /// zoom or speed change is let go when a cut is selected, and the inspector shows the Cut
+    /// panel, also for the cut that was selected already.
     /// </summary>
     public void SelectCut(int? index)
     {
@@ -57,6 +58,11 @@ public sealed partial class StudioEditorSession
         if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
+        }
+
+        if (_selectedCutIndex is not null)
+        {
+            ShowInspectorPanel(StudioInspectorPanel.Cut);
         }
     }
 

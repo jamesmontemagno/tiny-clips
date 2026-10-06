@@ -251,11 +251,15 @@
                     Severity="Error"
                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}" />
 
-                <!--  Preview and inspector  -->
+                <!--
+                    Preview and inspector. The inspector is its panel, as wide as the inspector
+                    was before it had a rail, and the rail, 88 wide. At a large text size the rail
+                    takes what its labels need more from the panel.
+                -->
                 <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="320" />
+                        <ColumnDefinition Width="408" />
                     </Grid.ColumnDefinitions>
 
                     <Border Grid.Column="0" Padding="16">

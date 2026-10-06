@@ -43,7 +43,8 @@ public sealed partial class StudioEditorSession
 
     /// <summary>
     /// Selects a speed change, or none with null or a place that has no speed change. The playhead
-    /// stays. A selected zoom or cut is let go when a speed change is selected.
+    /// stays. A selected zoom or cut is let go when a speed change is selected, and the inspector
+    /// shows the Speed panel, also for the speed change that was selected already.
     /// </summary>
     public void SelectSpeed(int? index)
     {
@@ -59,6 +60,11 @@ public sealed partial class StudioEditorSession
         if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
+        }
+
+        if (_selectedSpeedIndex is not null)
+        {
+            ShowInspectorPanel(StudioInspectorPanel.Speed);
         }
     }
 

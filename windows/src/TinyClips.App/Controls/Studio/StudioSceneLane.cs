@@ -1,4 +1,5 @@
 using TinyClips.App.ViewModels.Studio;
+using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.Controls.Studio;
 
@@ -64,9 +65,22 @@ public sealed partial class StudioSceneLane : StudioLane
 
     /// <summary>
     /// A press near the line between two scenes takes hold of where the later one starts.
-    /// Anywhere else it takes hold of nothing, and moves the playhead as every press does.
+    /// Anywhere else it takes hold of nothing, and moves the playhead as every press does. A
+    /// press on a scene's block, or on the line between two, shows the Scene panel of the
+    /// inspector, as taking hold of a zoom, a cut or a speed change shows theirs.
     /// </summary>
     private protected override StudioLanePress TakeHold(double x)
+    {
+        var press = TakeHoldOfLine(x);
+        if (press.Index is not null || FindBlockAt(x) is not null)
+        {
+            ViewModel.ShowInspectorPanel(StudioInspectorPanel.Scene);
+        }
+
+        return press;
+    }
+
+    private StudioLanePress TakeHoldOfLine(double x)
     {
         var count = ItemCount;
         for (var index = 1; index < count; index++)

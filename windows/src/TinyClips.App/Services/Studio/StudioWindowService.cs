@@ -78,7 +78,7 @@ public sealed class StudioWindowService
     /// <summary>
     /// Whether people can be found in a camera picture, which is what blurring or removing the
     /// camera's background takes. It is asked once for each editor, when its window is opened,
-    /// and the editor offers the Background choice of its Camera section only when the answer
+    /// and the editor offers the Camera background choice of its Camera panel only when the answer
     /// is yes. The app's answer is whether the model that finds people is next to it.
     /// </summary>
     public Func<bool> CanFindPeople { get; set; } = static () => StudioPersonFinders.IsAvailable;

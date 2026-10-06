@@ -17,7 +17,8 @@ namespace TinyClips.App.ViewModels.Studio;
 /// Every value is read from the session when it is asked for, so there is no second copy to keep
 /// in step. A change to the project refreshes every binding; the playhead and export progress,
 /// which change many times a second, refresh only what depends on them, and so do selecting
-/// another zoom, cut or speed change and the playhead coming into another scene.
+/// another zoom, cut or speed change, the playhead coming into another scene, and the inspector
+/// showing another panel.
 /// </remarks>
 public sealed partial class StudioViewModel : ObservableObject
 {
@@ -43,6 +44,21 @@ public sealed partial class StudioViewModel : ObservableObject
     [
         nameof(ExportProgressPercent),
         nameof(ExportPercentText),
+    ];
+
+    // What changes when the inspector shows another panel, or one of its crop groups is opened
+    // or closed, and the project stays as it is.
+    private static readonly string[] InspectorPropertyNames =
+    [
+        nameof(InspectorPanel),
+        nameof(IsScreenCropOpen),
+        nameof(IsScreenCroppedNoteVisible),
+        nameof(ScreenCropHelpText),
+        nameof(ScreenCropHeaderToolTip),
+        nameof(IsCameraCropOpen),
+        nameof(IsCameraCroppedNoteVisible),
+        nameof(CameraCropHelpText),
+        nameof(CameraCropHeaderToolTip),
     ];
 
     private static readonly string[] ScreenRecordingPropertyNames =
@@ -524,6 +540,11 @@ public sealed partial class StudioViewModel : ObservableObject
             if (e.Includes(StudioEditorChanges.ScreenRecording))
             {
                 Raise(ScreenRecordingPropertyNames);
+            }
+
+            if (e.Includes(StudioEditorChanges.Inspector))
+            {
+                Raise(InspectorPropertyNames);
             }
         }
 

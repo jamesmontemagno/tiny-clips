@@ -5,12 +5,30 @@ using TinyClips.Core.Studio.Editing;
 namespace TinyClips.App.ViewModels.Studio;
 
 // The values behind the inspector. A setter hands the new value to the session, which clamps it
-// and records the undo step; the getter then reports what the project holds.
+// and records the undo step; the getter then reports what the project holds. Which panel of
+// the inspector is on show is the session's to say as well.
 public sealed partial class StudioViewModel
 {
     private const string DefaultLookSavedText = "Saved. New Studio recordings will start with this look.";
 
     private StudioEditableState? _defaultLookState;
+
+    // The rail and its panels
+
+    /// <summary>
+    /// The inspector panel on show. The rail chooses it, and so does taking hold of something
+    /// a panel edits: a zoom, a cut, a speed change, a scene, or the camera in the preview.
+    /// </summary>
+    public StudioInspectorPanel InspectorPanel => _session.InspectorPanel;
+
+    /// <summary>
+    /// Shows an inspector panel, or the nearest one this recording has. It is what the rail
+    /// does. Not an edit: Undo leaves it.
+    /// </summary>
+    public void ShowInspectorPanel(StudioInspectorPanel panel) => _session.ShowInspectorPanel(panel);
+
+    /// <summary>The Show scene button of the Camera panel, for a layout that hides the camera.</summary>
+    public void ShowScenePanel() => ShowInspectorPanel(StudioInspectorPanel.Scene);
 
     // Layout
 
@@ -111,6 +129,18 @@ public sealed partial class StudioViewModel
     public bool AreSideBySideControlsVisible => HasCamera && Layout == StudioLayout.SideBySide;
 
     public bool AreCameraStyleControlsVisible => HasCamera && Layout != StudioLayout.Screen;
+
+    /// <summary>
+    /// Where the camera is belongs to the scene: its size and place as a bubble, or its side
+    /// and size next to the screen. A camera that fills the video has nothing to place.
+    /// </summary>
+    public bool IsCameraPlacementVisible => AreBubbleControlsVisible || AreSideBySideControlsVisible;
+
+    /// <summary>
+    /// Placement is the scene's and the rest is the whole video's. Said once there is more
+    /// than one scene for it to matter in.
+    /// </summary>
+    public bool IsCameraPlacementNoteVisible => IsCameraPlacementVisible && Scenes.Count > 1;
 
     public int CameraShapeIndex
     {
@@ -238,7 +268,7 @@ public sealed partial class StudioViewModel
 
     /// <summary>
     /// True while the background is removed, which takes the camera's border and its shadow with
-    /// it: the section then says so, next to the two sliders that have nothing to show.
+    /// it: the panel then says so, next to the two sliders that have nothing to show.
     /// </summary>
     public bool IsCameraCutoutRemovedNoteVisible => CanFindPeople && Camera.Cutout == StudioCameraCutout.Remove;
 
@@ -259,7 +289,7 @@ public sealed partial class StudioViewModel
 
     public string CameraShadowText => StudioEditorText.GetPercentText(CameraShadow);
 
-    // Extras
+    // Click highlights in the Screen panel, the badge in Project, and Mute in Audio
 
     public bool AreClickRingsEnabled
     {

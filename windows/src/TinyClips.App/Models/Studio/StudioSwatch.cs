@@ -13,7 +13,7 @@ namespace TinyClips.App.Models.Studio;
 /// </summary>
 public sealed class StudioSwatch
 {
-    /// <summary>The background a new project starts with, and the one "Show a background" brings back.</summary>
+    /// <summary>The background a new project starts with, and the one "Show background" brings back.</summary>
     public const string DefaultPresetId = "ocean";
 
     private StudioSwatch(BackgroundPreset preset)

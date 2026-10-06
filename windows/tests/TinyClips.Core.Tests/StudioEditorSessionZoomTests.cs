@@ -23,7 +23,7 @@ public sealed class StudioEditorSessionZoomTests : StudioEditorSessionTestBase
 
         Assert.Equal(1, session.SelectedZoomIndex);
         Assert.Equal(5, session.SelectedZoom!.Start, Precision);
-        Assert.Equal(new[] { StudioEditorChanges.Selection }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
         Assert.False(session.HasUnsavedEdits);
         Assert.False(session.CanUndo);
     }
@@ -88,7 +88,7 @@ public sealed class StudioEditorSessionZoomTests : StudioEditorSessionTestBase
         Assert.True(session.SelectNextZoom());
         Assert.Equal(1, session.SelectedZoomIndex);
         Assert.Equal(6, session.Playhead, Precision);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Playback }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector, StudioEditorChanges.Playback }, Changes);
 
         Assert.True(session.SelectNextZoom());
         Assert.Equal(2, session.SelectedZoomIndex);
@@ -157,7 +157,7 @@ public sealed class StudioEditorSessionZoomTests : StudioEditorSessionTestBase
         Assert.True(session.SelectAndShowZoom(2));
         Assert.Equal(2, session.SelectedZoomIndex);
         Assert.Equal(8.5, session.Playhead, Precision);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Playback }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector, StudioEditorChanges.Playback }, Changes);
 
         Assert.True(session.SelectAndShowZoom(0));
         Assert.Equal(0, session.SelectedZoomIndex);
@@ -212,7 +212,7 @@ public sealed class StudioEditorSessionZoomTests : StudioEditorSessionTestBase
         // the zoom has finished moving in.
         Assert.Equal(2.5, session.Playhead, Precision);
         Assert.Equal(new[] { "UpdateProject", "Pause", "Seek" }, Preview.Calls);
-        Assert.Equal(new[] { Edited | StudioEditorChanges.Selection, StudioEditorChanges.Playback }, Changes);
+        Assert.Equal(new[] { Edited | StudioEditorChanges.Selection, StudioEditorChanges.Inspector, StudioEditorChanges.Playback }, Changes);
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public sealed class StudioEditorSessionZoomTests : StudioEditorSessionTestBase
         Assert.Equal(1, session.SelectedZoomIndex);
         Assert.Equal(6.75, session.Playhead, Precision);
         Assert.Empty(Preview.Calls);
-        Assert.Equal(new[] { StudioEditorChanges.Selection }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
         Assert.False(session.HasUnsavedEdits);
     }
 

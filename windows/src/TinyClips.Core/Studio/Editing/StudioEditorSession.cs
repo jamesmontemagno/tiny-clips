@@ -329,6 +329,7 @@ public sealed partial class StudioEditorSession
 
         // The contract has no separate mute call: muting is part of the project the preview draws.
         preview.UpdateProject(model.Project);
+        _inspectorPanel = StudioInspectorPanels.GetInitial(model.HasCamera);
         State = StudioEditorLoadState.Ready;
         Seek(model.TrimStart);
         RaiseChanged(StudioEditorChanges.All);
@@ -459,9 +460,19 @@ public sealed partial class StudioEditorSession
     public void SetCameraBubbleOffsetY(double y) =>
         EditCurrentScene(model => model.SetCameraBubbleOffsets(model.CurrentScene.Bubble.OffsetX, y));
 
-    /// <summary>Moves the bubble so its top-left corner is at a point in canvas pixels.</summary>
-    public void MoveBubbleTopLeft(double x, double y, double canvasWidth, double canvasHeight) =>
+    /// <summary>
+    /// Moves the bubble so its top-left corner is at a point in canvas pixels. This is what a
+    /// drag of the camera in the preview does, so the inspector shows the Camera panel.
+    /// </summary>
+    public void MoveBubbleTopLeft(double x, double y, double canvasWidth, double canvasHeight)
+    {
+        if (IsEditable)
+        {
+            ShowInspectorPanel(StudioInspectorPanel.Camera);
+        }
+
         EditCurrentScene(model => model.MoveBubbleTopLeft(x, y, canvasWidth, canvasHeight));
+    }
 
     public void SetCameraMirror(bool isMirrored) => Edit(model => model.SetCameraMirror(isMirrored));
 
@@ -512,7 +523,8 @@ public sealed partial class StudioEditorSession
 
     /// <summary>
     /// Selects a zoom, or none with null or a place that has no zoom. The playhead stays. A
-    /// selected cut or speed change is let go when a zoom is selected.
+    /// selected cut or speed change is let go when a zoom is selected, and the inspector shows
+    /// the Zoom panel, also for the zoom that was selected already.
     /// </summary>
     public void SelectZoom(int? index)
     {
@@ -528,6 +540,11 @@ public sealed partial class StudioEditorSession
         if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
+        }
+
+        if (_selectedZoomIndex is not null)
+        {
+            ShowInspectorPanel(StudioInspectorPanel.Zoom);
         }
     }
 
@@ -627,10 +644,19 @@ public sealed partial class StudioEditorSession
 
     /// <summary>
     /// Replaces the suggested zooms with new ones worked out from the recording's clicks, as one
-    /// undo step. Zooms the user made or changed stay. Returns whether anything changed.
+    /// undo step, and shows the Zoom panel. Zooms the user made or changed stay. Returns whether
+    /// anything changed. A recording without clicks has nothing to suggest from, and then no
+    /// panel is shown either.
     /// </summary>
-    public bool ApplyZoomSuggestions() =>
-        Edit(model => model.ApplyZoomSuggestions(StudioZoomSuggestions.Suggest(model.Project, _events)), false);
+    public bool ApplyZoomSuggestions()
+    {
+        if (IsEditable && HasClicks)
+        {
+            ShowInspectorPanel(StudioInspectorPanel.Zoom);
+        }
+
+        return Edit(model => model.ApplyZoomSuggestions(StudioZoomSuggestions.Suggest(model.Project, _events)), false);
+    }
 
     /// <summary>Removes the suggested zooms, as one undo step. Returns whether there were any.</summary>
     public bool RemoveZoomSuggestions() =>
@@ -820,6 +846,7 @@ public sealed partial class StudioEditorSession
                 RaiseChanged(selectionChange);
             }
 
+            ShowPanelOf(selection);
             return;
         }
 
@@ -832,6 +859,7 @@ public sealed partial class StudioEditorSession
         }
 
         RaiseChanged(StudioEditorChanges.Project | StudioEditorChanges.Playback | selectionChange);
+        ShowPanelOf(selection);
     }
 
     // An edit that also has something to say about what it did.

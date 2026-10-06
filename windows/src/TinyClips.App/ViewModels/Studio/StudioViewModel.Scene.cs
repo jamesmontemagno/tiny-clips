@@ -4,7 +4,7 @@ using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.ViewModels.Studio;
 
-// The values behind the scene lane and the Scene section of the inspector. A scene is not
+// The values behind the scene lane and the Scene panel of the inspector. A scene is not
 // selected: the current scene is the one the playhead is in, and the editor says when that is
 // another one. What an edit does is decided in the session, and what is said about it in
 // StudioEditorText.
@@ -15,7 +15,7 @@ public sealed partial class StudioViewModel
     private const string SplitSceneHint = "Start a new scene at the playhead (S)";
 
     // What changes when the playhead comes into another scene and the project stays as it is: the
-    // Scene section, and the layout and camera controls, which show and change the current scene.
+    // Scene panel, and the layout and camera controls, which show and change the current scene.
     private static readonly string[] ScenePropertyNames =
     [
         nameof(CurrentSceneIndex),
@@ -39,6 +39,8 @@ public sealed partial class StudioViewModel
         nameof(IsCameraCornerRadiusVisible),
         nameof(AreSideBySideControlsVisible),
         nameof(AreCameraStyleControlsVisible),
+        nameof(IsCameraPlacementVisible),
+        nameof(IsCameraPlacementNoteVisible),
         nameof(CameraBubbleSize),
         nameof(CameraBubbleSizeText),
         nameof(CameraAnchorIndex),
@@ -193,7 +195,7 @@ public sealed partial class StudioViewModel
     /// <summary>Moves the playhead to where a scene has been entered.</summary>
     public bool ShowScene(int index) => _session.ShowScene(index);
 
-    /// <summary>The Previous button of the Scene section. The scene it lands on is read out.</summary>
+    /// <summary>The Previous button of the Scene panel. The scene it lands on is read out.</summary>
     public void StepToPreviousScene()
     {
         if (ShowPreviousScene())
@@ -202,7 +204,7 @@ public sealed partial class StudioViewModel
         }
     }
 
-    /// <summary>The Next button of the Scene section. The scene it lands on is read out.</summary>
+    /// <summary>The Next button of the Scene panel. The scene it lands on is read out.</summary>
     public void StepToNextScene()
     {
         if (ShowNextScene())

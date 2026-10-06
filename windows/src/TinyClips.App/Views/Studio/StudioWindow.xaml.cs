@@ -28,10 +28,13 @@ namespace TinyClips.App.Views.Studio;
 /// </summary>
 public sealed partial class StudioWindow : Window
 {
+    // The inspector takes 408 of the width, of which 88 are its rail, and the preview has what
+    // is left: 772 as the window opens.
     private const int DefaultWidthDip = 1180;
     private const int DefaultHeightDip = 760;
 
-    // Below this the header's controls and the 320 wide inspector crowd the preview out.
+    // Below this the header's controls and the inspector crowd the preview out; the preview has
+    // 572 then. A display that is 1024 effective pixels wide still holds the window.
     private const int MinimumWidthDip = 980;
     private const int MinimumHeightDip = 640;
 

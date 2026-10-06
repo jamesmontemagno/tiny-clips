@@ -91,7 +91,10 @@ public enum StudioEditorChanges
     /// <summary>Whether the screen recording is being saved as a video of its own, and what came of that.</summary>
     ScreenRecording = 64,
 
-    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording,
+    /// <summary>Which panel of the inspector is on show, and whether a crop group of it is open.</summary>
+    Inspector = 128,
+
+    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector,
 }
 
 public sealed class StudioEditorChangedEventArgs(StudioEditorChanges changes) : EventArgs

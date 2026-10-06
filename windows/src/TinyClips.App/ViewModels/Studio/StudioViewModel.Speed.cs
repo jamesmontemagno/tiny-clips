@@ -4,7 +4,7 @@ using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.ViewModels.Studio;
 
-// The values behind the speed lane and the Speed section of the inspector. A speed change is
+// The values behind the speed lane and the Speed panel of the inspector. A speed change is
 // selected in place of a zoom or a cut, never with one. What an edit does is decided in the
 // session, and what is said about it in StudioEditorText.
 public sealed partial class StudioViewModel
@@ -89,10 +89,15 @@ public sealed partial class StudioViewModel
 
     public bool HasSpeedSelectionDetail => HasSelectedSpeed;
 
-    /// <summary>True when there are speed changes and none is selected: the section then says how to select one.</summary>
+    /// <summary>True when there are speed changes and none is selected: the panel then says how to select one.</summary>
     public bool IsSpeedHintVisible => SpeedChanges.Count > 0 && !HasSelectedSpeed;
 
     public string SpeedHint => StudioEditorText.SelectSpeedHint;
+
+    /// <summary>True for an open recording without speed changes: the panel then says how to add the first one.</summary>
+    public bool IsSpeedEmptyHintVisible => IsReady && SpeedChanges.Count == 0;
+
+    public string SpeedEmptyHint => "Press R or Add speed change to play two seconds twice as fast from the playhead.";
 
     // The selected speed change
 
@@ -156,7 +161,7 @@ public sealed partial class StudioViewModel
     public string SpeedLengthText =>
         SelectedSpeed is { } speed ? StudioEditorText.GetSpeedLengthText(speed) : string.Empty;
 
-    /// <summary>What the section says of the sound of a stretch at another speed.</summary>
+    /// <summary>What the panel says of the sound of a stretch at another speed.</summary>
     public string SpeedSilentNote => StudioEditorText.SpeedSilentNote;
 
     // Commands
@@ -171,7 +176,7 @@ public sealed partial class StudioViewModel
 
     public bool SelectNextSpeed() => _session.SelectNextSpeed();
 
-    /// <summary>The Previous button of the Speed section. The speed change it lands on is read out.</summary>
+    /// <summary>The Previous button of the Speed panel. The speed change it lands on is read out.</summary>
     public void ShowPreviousSpeed()
     {
         if (SelectPreviousSpeed())
@@ -180,7 +185,7 @@ public sealed partial class StudioViewModel
         }
     }
 
-    /// <summary>The Next button of the Speed section. The speed change it lands on is read out.</summary>
+    /// <summary>The Next button of the Speed panel. The speed change it lands on is read out.</summary>
     public void ShowNextSpeed()
     {
         if (SelectNextSpeed())

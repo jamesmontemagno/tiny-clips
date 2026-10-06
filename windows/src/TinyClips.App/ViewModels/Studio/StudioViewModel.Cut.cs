@@ -4,7 +4,7 @@ using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.ViewModels.Studio;
 
-// The values behind the cut lane, the gaps in the trim bar and the Cut section of the inspector.
+// The values behind the cut lane, the gaps in the trim bar and the Cut panel of the inspector.
 // A cut is selected in place of a zoom or a speed change, never with one. What an edit does is
 // decided in the session, and what is said about it in StudioEditorText.
 public sealed partial class StudioViewModel
@@ -90,10 +90,15 @@ public sealed partial class StudioViewModel
 
     public bool HasCutSelectionDetail => HasSelectedCut;
 
-    /// <summary>True when there are cuts and none is selected: the section then says how to select one.</summary>
+    /// <summary>True when there are cuts and none is selected: the panel then says how to select one.</summary>
     public bool IsCutHintVisible => Cuts.Count > 0 && !HasSelectedCut;
 
     public string CutHint => StudioEditorText.SelectCutHint;
+
+    /// <summary>True for an open recording without cuts: the panel then says how to add the first one.</summary>
+    public bool IsCutEmptyHintVisible => IsReady && Cuts.Count == 0;
+
+    public string CutEmptyHint => "Press X or Add cut to cut a second out of the video at the playhead.";
 
     // The selected cut
 
@@ -123,7 +128,7 @@ public sealed partial class StudioViewModel
 
     public bool SelectNextCut() => _session.SelectNextCut();
 
-    /// <summary>The Previous button of the Cut section. The cut it lands on is read out.</summary>
+    /// <summary>The Previous button of the Cut panel. The cut it lands on is read out.</summary>
     public void ShowPreviousCut()
     {
         if (SelectPreviousCut())
@@ -132,7 +137,7 @@ public sealed partial class StudioViewModel
         }
     }
 
-    /// <summary>The Next button of the Cut section. The cut it lands on is read out.</summary>
+    /// <summary>The Next button of the Cut panel. The cut it lands on is read out.</summary>
     public void ShowNextCut()
     {
         if (SelectNextCut())
