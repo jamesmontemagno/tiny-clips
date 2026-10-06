@@ -9,7 +9,7 @@ using Windows.System;
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 13. Cuts: the lane between the zoom lane and the trim bar, Cut, the keys X and Delete, and the
-// Cut section of the inspector. The lane under a pointer, what a press does to the selection, the
+// Cut panel of the inspector. The lane under a pointer, what a press does to the selection, the
 // gaps in the trim bar and a trim that is refused are in CutLane.cs; playing over a cut and an
 // export with cuts and scenes are in CutPlaying.cs.
 internal sealed partial class WindowChecks
@@ -61,7 +61,7 @@ internal sealed partial class WindowChecks
             : $"the lane is {lane} and should be {CutLaneFor(cuts, selected)}; the editor holds {held} and should hold {Describe(cuts)}; the selected cut is {(chosen is { } index ? (index + 1).ToString(CultureInfo.InvariantCulture) : "none")}";
     }
 
-    /// <summary>What is wrong with what the Cut section shows, read through UI Automation, or null.</summary>
+    /// <summary>What is wrong with what the Cut panel shows, read through UI Automation, or null.</summary>
     /// <param name="range">The selected cut's times, or null when none is selected.</param>
     private static string? CutSectionShows(Editor editor, string position, string? range, string? start = null, string? end = null, string? length = null)
     {
@@ -82,7 +82,7 @@ internal sealed partial class WindowChecks
     }
 
     // ---------------------------------------------------------------------------------------
-    // Adding cuts, the lane, the section and the keys
+    // Adding cuts, the lane, the panel and the keys
     // ---------------------------------------------------------------------------------------
 
     private void AddingCuts()
@@ -106,10 +106,11 @@ internal sealed partial class WindowChecks
             $"{list} with {LaneItems(editor, CutLane).Count} item(s), described as \"{list?.HelpText}\"; the text: \"{text?.Name}\"; patterns({list?.Patterns})");
         var section = CutSectionShows(editor, "No cuts yet", range: null);
         _report.Check(
-            "without cuts the Cut section says so, has nothing to step to and no cut's controls, and offers Cut at playhead; Cut in the transport row has the same name for a screen reader",
+            "without cuts the Cut panel says so, has nothing to step to and no cut's controls, says how to add the first one, and offers Add cut; Cut in the transport row has the same name for a screen reader",
             section is null && Find(editor, "StudioPreviousCutButton") is { IsEnabled: false, Name: "Previous cut" } && Find(editor, "StudioNextCutButton") is { IsEnabled: false, Name: "Next cut" }
-                && Find(editor, "StudioCutSectionAddButton") is { IsEnabled: true, Name: "Cut at playhead" } && Find(editor, "StudioAddCutButton") is { IsEnabled: true, Name: "Cut at playhead" } && Absent(editor, "StudioCutHint", 0.3),
-            section ?? $"\"No cuts yet\"; {Find(editor, "StudioCutSectionAddButton")}, {Find(editor, "StudioAddCutButton")}");
+                && Find(editor, "StudioCutSectionAddButton") is { IsEnabled: true, Name: "Add cut" } && Find(editor, "StudioAddCutButton") is { IsEnabled: true, Name: "Add cut" } && Absent(editor, "StudioCutHint", 0.3)
+                && NameOf(editor, "StudioCutEmptyHint", 0.5) == CutEmptyHint,
+            section ?? $"\"No cuts yet\"; {Find(editor, "StudioCutSectionAddButton")}, {Find(editor, "StudioAddCutButton")}; the hint: \"{NameOf(editor, "StudioCutEmptyHint", 0)}\"");
         var timeBefore = TimeText(editor);
 
         // X, at 2.0 s.
@@ -134,8 +135,8 @@ internal sealed partial class WindowChecks
             $"\"{timeBefore}\" before the cut, \"{time}\" after it");
         section = CutSectionShows(editor, "Cut 1 of 1", "2.0 to 3.0 seconds", "Start 2.0 seconds", "End 3.0 seconds", "1.0 seconds long");
         _report.Check(
-            "the Cut section shows the new cut: which it is and its times, its start, its end, how long it is, and Delete cut",
-            section is null && Absent(editor, "StudioCutHint", 0.3),
+            "the Cut panel shows the new cut: which it is and its times, its start, its end, how long it is, and Delete cut; the hint for a recording without cuts is gone",
+            section is null && Absent(editor, "StudioCutHint", 0.3) && Absent(editor, "StudioCutEmptyHint", 0.3),
             section ?? "\"Cut 1 of 1\", \"2.0 to 3.0 seconds\", \"Start 2.0 seconds\", \"End 3.0 seconds\", \"1.0 seconds long\"");
 
         // X again, where the cut now is.
@@ -160,7 +161,7 @@ internal sealed partial class WindowChecks
         _report.Check(
             "where less than the shortest cut fits, both Cut buttons are disabled, and what X runs adds nothing and tells a screen reader that there is no room",
             canCut == false && canCutInSection == false && noRoomKey == StudioShortcutAction.AddCut && noRoom.Said && same is null,
-            $"with the playhead at {Seconds(Playhead(editor))} s: Cut enabled {canCut}, in the Cut section {canCutInSection}; sent: {noRoom.Heard}; {same ?? "the lane: " + LaneText(editor, CutLane)}");
+            $"with the playhead at {Seconds(Playhead(editor))} s: Cut enabled {canCut}, in the Cut panel {canCutInSection}; sent: {noRoom.Heard}; {same ?? "the lane: " + LaneText(editor, CutLane)}");
 
         // The two buttons.
         Timeline.Mark("13: the two Cut buttons");
@@ -178,7 +179,7 @@ internal sealed partial class WindowChecks
         var third = CutsAre(editor, three, 2);
         section = CutSectionShows(editor, "Cut 3 of 3", "11.5 to 12.0 seconds", "Start 11.5 seconds", "End 12.0 seconds", "0.5 seconds long");
         _report.Check(
-            "Cut in the transport row and Cut at playhead in the Cut section each start a cut at the playhead, select it, leave the playhead where it is and say so; a cut that reaches the end of the recording stops there, and the section says which cut is selected, when it is and how long",
+            "Cut in the transport row and Add cut in the Cut panel each start a cut at the playhead, select it, leave the playhead where it is and say so; a cut that reaches the end of the recording stops there, and the panel says which cut is selected, when it is and how long",
             enabledAgain == true && pressed && second is null && saidSecond.Said && headSecond == 6 && pressedInSection && third is null && section is null && Playhead(editor) == 11.5
                 && time != TimeText(editor) && TimeText(editor) == StudioEditorText.GetTimeText(9.5, 9.5),
             second ?? third ?? section ?? $"the lane: {LaneText(editor, CutLane)}; sent: {saidSecond.Heard}; the time reads \"{TimeText(editor)}\"");
@@ -274,7 +275,7 @@ internal sealed partial class WindowChecks
         var section = CutSectionShows(editor, "3 cuts", range: null);
         var hint = NameOf(editor, "StudioCutHint", 1);
         _report.Check(
-            "each cut's block is a list item with an automation id that can be selected and pressed: selecting it leaves the playhead where it is, pressing it also moves the playhead to where the cut starts, and taking it out of the selection leaves none selected; the Cut section then says how many cuts there are and how to select one",
+            "each cut's block is a list item with an automation id that can be selected and pressed: selecting it leaves the playhead where it is, pressing it also moves the playhead to where the cut starts, and taking it out of the selection leaves none selected; the Cut panel then says how many cuts there are and how to select one",
             items.Count == 3 && patterns.Length == 1 && patterns[0] == "Invoke,SelectionItem" && ids.SequenceEqual(["StudioCut_0", "StudioCut_1", "StudioCut_2"]) && items.All(item => !item.IsKeyboardFocusable && item.Children().Count == 0)
                 && selected && afterSelect.Item1 == 2 && Same(afterSelect.Item2, head)
                 && invoked && afterInvoke.Item1 == 1 && Same(afterInvoke.Item2, cuts[1].Start)
@@ -329,7 +330,7 @@ internal sealed partial class WindowChecks
             $"the focus was on: {string.Join(", ", focus.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}");
     }
 
-    /// <summary>The Start and End rows of the Cut section, for the second cut, which runs from 6.0 to 7.0 s.</summary>
+    /// <summary>The Start and End rows of the Cut panel, for the second cut, which runs from 6.0 to 7.0 s.</summary>
     private void CutStartAndEndButtons(Editor editor, UiaEvents heard, StudioTimeRange[] cuts)
     {
         Timeline.Mark("13: the start and the end of a cut");
@@ -353,7 +354,7 @@ internal sealed partial class WindowChecks
             steps.Add($"{what}: {Seconds(cut.Start)} to {Seconds(cut.End)} s, playhead {Seconds(head)} s");
             if (!pressed || !Same(cut.Start, wantedStart) || !Same(cut.End, wantedEnd) || !Same(head, headWanted) || !said.Said || shown != sentence || SelectedCutOf(editor) != 1)
             {
-                wrong.Add($"{what}: pressed {pressed}, the cut is {Seconds(cut.Start)} to {Seconds(cut.End)} s (wanted {Seconds(wantedStart)} to {Seconds(wantedEnd)}), playhead {Seconds(head)} s (wanted {Seconds(headWanted)}), the section reads \"{shown}\", sent: {said.Heard}");
+                wrong.Add($"{what}: pressed {pressed}, the cut is {Seconds(cut.Start)} to {Seconds(cut.End)} s (wanted {Seconds(wantedStart)} to {Seconds(wantedEnd)}), playhead {Seconds(head)} s (wanted {Seconds(headWanted)}), the panel reads \"{shown}\", sent: {said.Heard}");
             }
         }
 
@@ -381,7 +382,7 @@ internal sealed partial class WindowChecks
             "the six buttons of Start and End are named for what they do, move that end of the selected cut by 0.1 s or to the playhead, and say the time they leave it at; the playhead follows a step and stays for At playhead; a cut stays a tenth of a second long, and its end stops where the next cut starts",
             wrong.Count == 0 && names.SequenceEqual(["Start 0.1 seconds earlier", "Start 0.1 seconds later", "Start at playhead", "End 0.1 seconds earlier", "End 0.1 seconds later", "End at playhead"])
                 && length == "0.5 seconds long" && range == "6.5 to 7.0 seconds" && lane == $"{CutName(2, 3)} | *{CutName(6.5, 11.5)} | {CutName(11.5, 12)}" && time == StudioEditorText.GetTimeText(5.5, 5.5),
-            wrong.Count == 0 ? $"{string.Join("; ", steps)}; with the cut from 6.5 to 7.0 s the section said \"{range}\", \"{length}\"; the lane: {lane}; the time reads \"{time}\"" : string.Join(" | ", wrong));
+            wrong.Count == 0 ? $"{string.Join("; ", steps)}; with the cut from 6.5 to 7.0 s the panel said \"{range}\", \"{length}\"; the lane: {lane}; the time reads \"{time}\"" : string.Join(" | ", wrong));
 
         // Eight of the nine presses changed the cut. Eight Undo bring it back, still selected.
         for (var undo = 0; undo < 8; undo++)
@@ -413,9 +414,9 @@ internal sealed partial class WindowChecks
         var cutHint = NameOf(editor, "StudioCutHint", 1);
         var zoomShown = Until(() => Find(editor, "StudioZoomScaleSlider", 0.5), slider => slider is not null, 1) is not null;
         _report.Check(
-            "adding a zoom selects it and lets go of the selected cut: the cut lane marks none, and the Cut section shows no cut and says how to select one, while the Zoom section shows the zoom",
+            "adding a zoom selects it and lets go of the selected cut: the cut lane marks none, and the Cut panel shows no cut and says how to select one, while the Zoom panel shows the zoom",
             zoomLane == "*" + zoomName && cutsThen is null && cutSection is null && cutHint == StudioEditorText.SelectCutHint && zoomShown && SelectedZoomOf(editor) == 0,
-            cutsThen ?? cutSection ?? $"zooms: {zoomLane}; cuts: {LaneText(editor, CutLane)}; the Cut section's hint: \"{cutHint}\"");
+            cutsThen ?? cutSection ?? $"zooms: {zoomLane}; cuts: {LaneText(editor, CutLane)}; the Cut panel's hint: \"{cutHint}\"");
 
         // Selecting a cut lets go of the zoom.
         var selected = Find(editor, "StudioCut_0")?.Select() ?? false;
@@ -425,10 +426,10 @@ internal sealed partial class WindowChecks
         var zoomGone = Absent(editor, "StudioZoomScaleSlider") && Absent(editor, "StudioDeleteZoomButton", 0.3);
         var position = NameOf(editor, "StudioZoomPositionText");
         _report.Check(
-            "selecting a cut lets go of the selected zoom: the zoom lane marks none, and the Zoom section shows no zoom, says how many there are and how to select one, while the Cut section shows the cut",
+            "selecting a cut lets go of the selected zoom: the zoom lane marks none, and the Zoom panel shows no zoom, says how many there are and how to select one, while the Cut panel shows the cut",
             selected && cutsNow is null && zoomLaneNow == zoomName && zoomGone && position == "1 zoom" && zoomHint.StartsWith("Select a zoom", StringComparison.Ordinal) && SelectedZoomOf(editor) is null
                 && CutSectionShows(editor, "Cut 1 of 3", "2.0 to 3.0 seconds", "Start 2.0 seconds", "End 3.0 seconds", "1.0 seconds long") is null,
-            cutsNow ?? $"zooms: {zoomLaneNow}, \"{position}\", the Zoom section's hint: \"{zoomHint}\", its controls gone: {zoomGone}; cuts: {LaneText(editor, CutLane)}");
+            cutsNow ?? $"zooms: {zoomLaneNow}, \"{position}\", the Zoom panel's hint: \"{zoomHint}\", its controls gone: {zoomGone}; cuts: {LaneText(editor, CutLane)}");
 
         // Back to the zoom, by its item: the cut is let go again. Then the zoom is deleted, so that the cuts are what is left.
         Find(editor, "StudioZoom_0")?.Select();
@@ -459,7 +460,7 @@ internal sealed partial class WindowChecks
         var section = CutSectionShows(editor, "2 cuts", range: null);
         var timeAfter = TimeText(editor);
         _report.Check(
-            "what Delete runs removes the selected cut, which puts its stretch back into the video: none is selected, the playhead stays, the video is a second longer, and a screen reader is told; with nothing selected the key is left alone",
+            "what Delete runs removes the selected cut, which puts the part it removed back in the video: none is selected, the playhead stays, the video is a second longer, and a screen reader is told; with nothing selected the key is left alone",
             delete == StudioShortcutAction.RemoveSelectedCut && afterKey is null && deleted.Said && deleteAgain == StudioShortcutAction.None && Playhead(editor) == 5 && section is null
                 && timeBefore == StudioEditorText.GetTimeText(4, 9.5) && timeAfter == StudioEditorText.GetTimeText(4, 10.5),
             afterKey ?? section ?? $"Delete ran {delete}, then {deleteAgain}; the lane: {LaneText(editor, CutLane)}; sent: {deleted.Heard}; the time read \"{timeBefore}\" and reads \"{timeAfter}\"");
@@ -489,7 +490,7 @@ internal sealed partial class WindowChecks
     }
 
     /// <summary>
-    /// What a screen reader is given of the timeline and the Cut section with the second of
+    /// What a screen reader is given of the timeline and the Cut panel with the second of
     /// three cuts selected, and the order of the tab stops there.
     /// </summary>
     private void CutSectionForAScreenReader(Editor editor)
@@ -502,9 +503,9 @@ internal sealed partial class WindowChecks
         // A recording without a camera has ten sliders, and a cut adds none.
         (string Id, string Name)[] names =
         [
-            ("StudioAddCutButton", "Cut at playhead"), (CutLane, "Cuts"), ("StudioCut_0", CutName(2, 3)), ("StudioCut_1", CutName(6, 7)), ("StudioCut_2", CutName(11.5, 12)),
+            ("StudioAddCutButton", "Add cut"), (CutLane, "Cuts"), ("StudioCut_0", CutName(2, 3)), ("StudioCut_1", CutName(6, 7)), ("StudioCut_2", CutName(11.5, 12)),
             ("StudioPreviousCutButton", "Previous cut"), ("StudioCutPositionText", "Cut 2 of 3"), ("StudioCutRangeText", "6.0 to 7.0 seconds"), ("StudioNextCutButton", "Next cut"),
-            ("StudioCutSectionAddButton", "Cut at playhead"),
+            ("StudioCutSectionAddButton", "Add cut"),
             ("StudioCutStartText", "Start 6.0 seconds"), ("StudioCutStartEarlierButton", "Start 0.1 seconds earlier"), ("StudioCutStartLaterButton", "Start 0.1 seconds later"), ("StudioCutStartAtPlayheadButton", "Start at playhead"),
             ("StudioCutEndText", "End 7.0 seconds"), ("StudioCutEndEarlierButton", "End 0.1 seconds earlier"), ("StudioCutEndLaterButton", "End 0.1 seconds later"), ("StudioCutEndAtPlayheadButton", "End at playhead"),
             ("StudioCutLengthText", "1.0 seconds long"), ("StudioDeleteCutButton", "Delete cut"),
@@ -515,13 +516,13 @@ internal sealed partial class WindowChecks
         var delete = Find(editor, "StudioDeleteCutButton");
         var tip = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioDeleteCutButton") is { } button ? ToolTipService.GetToolTip(button) as string : null);
         _report.Check(
-            "Delete cut says that the stretch is put back into the video: as its description for a screen reader, and in its tooltip, which also names its key",
-            delete?.HelpText == "Puts the stretch back into the video." && tip == "Delete this cut, which puts the stretch back into the video (Delete)",
+            "Delete cut says that the part it removed is put back in the video: as its description for a screen reader, and in its tooltip, which also names its key",
+            delete?.HelpText == "Puts the part it removed back in the video." && tip == "Delete this cut and put the part it removed back in the video (Delete)",
             $"{delete}, described as \"{delete?.HelpText}\"; the tooltip: \"{tip}\"");
 
-        // The stops, in order: the Cut section from top to bottom, after the Zoom section and
-        // before the Speed section and the extras; and the timeline of a recording without a
-        // camera, which has no Split and no scene lane.
+        // The stops, in order: the Cut panel from top to bottom, after the Zoom panel and
+        // before the Speed panel and Mute, which is the Audio panel's; and the timeline of a
+        // recording without a camera, which has no Split and no scene lane.
         var order = TabStops(editor);
         var path = Path.Combine(_output, "tab-order-cuts.txt");
         File.WriteAllLines(path, order);
@@ -538,16 +539,16 @@ internal sealed partial class WindowChecks
         var at = order.IndexOf(section[0]);
         var sectionTogether = at >= 0 && order.Skip(at).Take(section.Length).SequenceEqual(section);
         var afterZoom = order.IndexOf("StudioZoomSectionAddButton") is >= 0 and var zoom && zoom < at;
-        var beforeExtras = order.IndexOf("StudioClickRingsCheckBox") > at;
+        var beforeMute = order.IndexOf("StudioMuteCheckBox") > at;
         var row = order.IndexOf(timeline[0]);
         var timelineTogether = row >= 0 && order.Skip(row).Take(timeline.Length).SequenceEqual(timeline);
         var blocks = order.Where(id => id.StartsWith("StudioCut_", StringComparison.Ordinal)).ToArray();
         _report.Check(
-            "the keyboard focus, moved from stop to stop, goes through the Cut section from Previous cut to Delete cut with nothing between them, after the Zoom section and before the extras; the timeline of a recording without a camera is the transport row, the zoom lane, the cut lane, the speed lane and the trim bar; the cut lane is one stop, and no single cut is one",
-            sectionTogether && afterZoom && beforeExtras && timelineTogether && blocks.Length == 0,
-            sectionTogether && afterZoom && beforeExtras && timelineTogether && blocks.Length == 0
+            "the keyboard focus, moved from stop to stop with each panel on show in turn, goes through the Cut panel from Previous cut to Delete cut with nothing between them, after the Zoom panel and before Mute; the timeline of a recording without a camera is the transport row, the zoom lane, the cut lane, the speed lane and the trim bar; the cut lane is one stop, and no single cut is one",
+            sectionTogether && afterZoom && beforeMute && timelineTogether && blocks.Length == 0,
+            sectionTogether && afterZoom && beforeMute && timelineTogether && blocks.Length == 0
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"
-                : $"{(sectionTogether ? string.Empty : "the Cut section's stops are not one after the other; ")}{(afterZoom ? string.Empty : "not after the Zoom section; ")}{(beforeExtras ? string.Empty : "not before the extras; ")}{(timelineTogether ? string.Empty : "the timeline's stops are not one after the other; ")}{(blocks.Length == 0 ? string.Empty : "also stops: " + string.Join(", ", blocks) + "; ")}the order: {string.Join(", ", order)}");
+                : $"{(sectionTogether ? string.Empty : "the Cut panel's stops are not one after the other; ")}{(afterZoom ? string.Empty : "not after the Zoom panel; ")}{(beforeMute ? string.Empty : "not before Mute; ")}{(timelineTogether ? string.Empty : "the timeline's stops are not one after the other; ")}{(blocks.Length == 0 ? string.Empty : "also stops: " + string.Join(", ", blocks) + "; ")}the order: {string.Join(", ", order)}");
         Find(editor, "StudioCut_1")?.RemoveFromSelection();
         Until(() => SelectedCutOf(editor), index => index is null, 1);
     }

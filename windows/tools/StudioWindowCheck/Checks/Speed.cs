@@ -10,7 +10,7 @@ using Windows.System;
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 14. Speed changes: the lane between the cut lane and the trim bar, Speed, the keys R and
-// Delete, and the Speed section of the inspector. The lane under a pointer, what a speed change
+// Delete, and the Speed panel of the inspector. The lane under a pointer, what a speed change
 // looks like, what a press does to the selection, the trim bar and a trim that is refused are in
 // SpeedLane.cs; playing over a speed change and an export with speed changes are in
 // SpeedPlaying.cs.
@@ -77,7 +77,7 @@ internal sealed partial class WindowChecks
             : $"the lane is {lane} and should be {SpeedLaneFor(speeds, selected)}; the editor holds {held} and should hold {Describe(speeds)}; the selected speed change is {(chosen is { } index ? (index + 1).ToString(CultureInfo.InvariantCulture) : "none")}";
     }
 
-    /// <summary>Which of the six rates of the Speed section are chosen, as their places among them. One at most should be.</summary>
+    /// <summary>Which of the six rates of the Speed panel are chosen, as their places among them. One at most should be.</summary>
     private static int[] ChosenRates(Editor editor) =>
         [.. Enumerable.Range(0, RateTexts.Length).Where(index => editor.Root.Find($"StudioSpeedRate_{index}")?.IsSelected == true)];
 
@@ -89,7 +89,7 @@ internal sealed partial class WindowChecks
         return chosen.SequenceEqual(expected) ? null : $"of the six rates, {(chosen.Length == 0 ? "none is chosen" : "chosen: " + string.Join(", ", chosen.Select(index => RateTexts[index])))}";
     }
 
-    /// <summary>What is wrong with what the Speed section shows, read through UI Automation, or null.</summary>
+    /// <summary>What is wrong with what the Speed panel shows, read through UI Automation, or null.</summary>
     /// <param name="range">The selected speed change's times, or null when none is selected.</param>
     /// <param name="rate">The place among the six rates of the one that should be chosen, -1 for none of them, or null not to look.</param>
     private static string? SpeedSectionShows(Editor editor, string position, string? range, string? start = null, string? end = null, string? length = null, int? rate = null)
@@ -121,7 +121,7 @@ internal sealed partial class WindowChecks
     }
 
     // ---------------------------------------------------------------------------------------
-    // Adding speed changes, the lane, the section and the keys
+    // Adding speed changes, the lane, the panel and the keys
     // ---------------------------------------------------------------------------------------
 
     private void AddingSpeedChanges()
@@ -147,11 +147,12 @@ internal sealed partial class WindowChecks
         var row = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioAddSpeedButton") is { } button ? (Text: button.Content as string, Tip: ToolTipService.GetToolTip(button) as string) : default);
         var inSection = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioSpeedSectionAddButton") is { } button ? ToolTipService.GetToolTip(button) as string : null);
         _report.Check(
-            "without speed changes the Speed section says so, has nothing to step to and no speed change's controls, and offers Change speed at playhead; Speed in the transport row is called Add speed change by a screen reader, and both say in their tooltips what they do, with the key",
+            "without speed changes the Speed panel says so, has nothing to step to and no speed change's controls, says how to add the first one, and offers Add speed change; Speed in the transport row has the same name for a screen reader, and both say in their tooltips what they do, with the key",
             section is null && Find(editor, "StudioPreviousSpeedButton") is { IsEnabled: false, Name: "Previous speed change" } && Find(editor, "StudioNextSpeedButton") is { IsEnabled: false, Name: "Next speed change" }
-                && Find(editor, "StudioSpeedSectionAddButton") is { IsEnabled: true, Name: "Change speed at playhead" } && Find(editor, "StudioAddSpeedButton") is { IsEnabled: true, Name: "Add speed change", ControlType: ControlTypeNames.Button }
-                && row.Text == "Speed" && row.Tip == AddSpeedTip && inSection == AddSpeedTip && Absent(editor, "StudioSpeedHint", 0.3),
-            section ?? $"\"No speed changes yet\"; {Find(editor, "StudioSpeedSectionAddButton")}, {Find(editor, "StudioAddSpeedButton")} showing \"{row.Text}\"; the tooltips: \"{row.Tip}\" and \"{inSection}\"");
+                && Find(editor, "StudioSpeedSectionAddButton") is { IsEnabled: true, Name: "Add speed change" } && Find(editor, "StudioAddSpeedButton") is { IsEnabled: true, Name: "Add speed change", ControlType: ControlTypeNames.Button }
+                && row.Text == "Speed" && row.Tip == AddSpeedTip && inSection == AddSpeedTip && Absent(editor, "StudioSpeedHint", 0.3)
+                && NameOf(editor, "StudioSpeedEmptyHint", 0.5) == SpeedEmptyHint,
+            section ?? $"\"No speed changes yet\"; {Find(editor, "StudioSpeedSectionAddButton")}, {Find(editor, "StudioAddSpeedButton")} showing \"{row.Text}\"; the tooltips: \"{row.Tip}\" and \"{inSection}\"; the hint: \"{NameOf(editor, "StudioSpeedEmptyHint", 0)}\"");
         var timeBefore = TimeText(editor);
 
         // R, at 2.0 s.
@@ -177,7 +178,7 @@ internal sealed partial class WindowChecks
             $"\"{timeBefore}\" before the speed change, \"{time}\" after it");
         section = SpeedSectionShows(editor, "Speed change 1 of 1", "2.0 to 4.0 seconds", "Start 2.0 seconds", "End 4.0 seconds", "2.0 seconds, plays in 1.0 seconds", rate: 3);
         _report.Check(
-            "the Speed section shows the new speed change: which it is and its times, its rate chosen among the six, its start, its end, how much of the recording it covers and how long that plays, that it plays without sound, and Delete speed change",
+            "the Speed panel shows the new speed change: which it is and its times, its rate chosen among the six, its start, its end, how much of the recording it covers and how long that plays, that it plays without sound, and Delete speed change",
             section is null && Absent(editor, "StudioSpeedHint", 0.3) && StudioEditorText.SpeedSilentNote == "A stretch at another speed plays without sound.",
             section ?? "\"Speed change 1 of 1\", \"2.0 to 4.0 seconds\", 2× chosen, \"Start 2.0 seconds\", \"End 4.0 seconds\", \"2.0 seconds, plays in 1.0 seconds\", \"" + StudioEditorText.SpeedSilentNote + "\"");
 
@@ -205,7 +206,7 @@ internal sealed partial class WindowChecks
         _report.Check(
             "where less than the shortest speed change fits, both buttons are disabled, and what R runs adds nothing and tells a screen reader that there is no room",
             canAdd == false && canAddInSection == false && noRoomKey == StudioShortcutAction.AddSpeed && noRoom.Said && same is null,
-            $"with the playhead at {Seconds(Playhead(editor))} s: Speed enabled {canAdd}, in the Speed section {canAddInSection}; sent: {noRoom.Heard}; {same ?? "the lane: " + LaneText(editor, SpeedLane)}");
+            $"with the playhead at {Seconds(Playhead(editor))} s: Speed enabled {canAdd}, in the Speed panel {canAddInSection}; sent: {noRoom.Heard}; {same ?? "the lane: " + LaneText(editor, SpeedLane)}");
 
         // The two buttons.
         Timeline.Mark("14: the two buttons that change the speed");
@@ -225,7 +226,7 @@ internal sealed partial class WindowChecks
 
         // 2 + 1 + 2 + 1 + 3 seconds of video come before 11.0 s, and half a second after it.
         _report.Check(
-            "Speed in the transport row and Change speed at playhead in the Speed section each start a speed change at the playhead, select it, leave the playhead where it is and say so; one that reaches the end of the recording stops there, and the section says which one is selected, when it is and how long it plays",
+            "Speed in the transport row and Add speed change in the Speed panel each start a speed change at the playhead, select it, leave the playhead where it is and say so; one that reaches the end of the recording stops there, and the panel says which one is selected, when it is and how long it plays",
             enabledAgain == true && pressed && second is null && saidSecond.Said && headSecond == 6 && pressedInSection && third is null && section is null && Playhead(editor) == 11
                 && TimeText(editor) == StudioEditorText.GetTimeText(9, 9.5),
             second ?? third ?? section ?? $"the lane: {LaneText(editor, SpeedLane)}; sent: {saidSecond.Heard}; the time reads \"{TimeText(editor)}\"");
@@ -323,7 +324,7 @@ internal sealed partial class WindowChecks
         var section = SpeedSectionShows(editor, "3 speed changes", range: null);
         var hint = NameOf(editor, "StudioSpeedHint", 1);
         _report.Check(
-            "each speed change's block is a list item with an automation id that can be selected and pressed: selecting it leaves the playhead where it is, pressing it also moves the playhead to where the speed change starts, and taking it out of the selection leaves none selected; the Speed section then says how many speed changes there are and how to select one",
+            "each speed change's block is a list item with an automation id that can be selected and pressed: selecting it leaves the playhead where it is, pressing it also moves the playhead to where the speed change starts, and taking it out of the selection leaves none selected; the Speed panel then says how many speed changes there are and how to select one",
             items.Count == 3 && patterns.Length == 1 && patterns[0] == "Invoke,SelectionItem" && ids.SequenceEqual(["StudioSpeed_0", "StudioSpeed_1", "StudioSpeed_2"]) && items.All(item => !item.IsKeyboardFocusable && item.Children().Count == 0)
                 && classes.SequenceEqual(["StudioSpeedBlock"]) && Find(editor, SpeedLane)?.ClassName == "StudioSpeedLane"
                 && selected && afterSelect.Item1 == 2 && Same(afterSelect.Item2, head)
@@ -379,7 +380,7 @@ internal sealed partial class WindowChecks
             $"the focus was on: {string.Join(", ", focus.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}");
     }
 
-    /// <summary>The choice of rate in the Speed section, for the second speed change, which runs from 6.0 to 8.0 s at twice the speed.</summary>
+    /// <summary>The choice of rate in the Speed panel, for the second speed change, which runs from 6.0 to 8.0 s at twice the speed.</summary>
     private void ChoosingARate(Editor editor, UiaEvents heard, StudioSpeedRange[] speeds)
     {
         Timeline.Mark("14: the rate of a speed change");
@@ -393,11 +394,11 @@ internal sealed partial class WindowChecks
         _report.Check(
             "the rate is a choice called Speed of the editor's six rates, slowest first: each shows its rate, such as 2×, is named in words for a screen reader, such as \"Twice the speed\", and can be selected; the one the speed change plays at is the chosen one",
             group is { Name: "Speed", IsEnabled: true } && choices.All(choice => choice is { ControlType: ControlTypeNames.RadioButton, IsEnabled: true } && choice.Patterns.Contains("SelectionItem", StringComparison.Ordinal))
-                && choices.Select(choice => choice?.Name).SequenceEqual(RateNames) && shown.SequenceEqual(RateTexts) && chosenFirst is null && tip == "How fast this stretch plays"
+                && choices.Select(choice => choice?.Name).SequenceEqual(RateNames) && shown.SequenceEqual(RateTexts) && chosenFirst is null && tip == "How fast this part of the video plays"
                 && StudioEditorModel.SpeedRates.Select(StudioEditorText.GetSpeedRateText).SequenceEqual(RateTexts) && StudioEditorModel.SpeedRates.Select(StudioEditorText.GetSpeedRateName).SequenceEqual(RateNames),
             $"{group}, its tooltip \"{tip}\"; shown: {string.Join(", ", shown)}; named: {string.Join(", ", choices.Select(choice => $"\"{choice?.Name}\""))}; {chosenFirst ?? "2× is the chosen one"}");
 
-        // Half speed, then four times the speed: the block, the section, the length of the video and what is read out.
+        // Half speed, then four times the speed: the block, the panel, the length of the video and what is read out.
         var steps = new List<string>();
         var wrong = new List<string>();
         void Choose(int place, double rate, string length, string time)
@@ -414,7 +415,7 @@ internal sealed partial class WindowChecks
             steps.Add($"{RateTexts[place]}: {LaneText(editor, SpeedLane)}, \"{length}\", time \"{read}\"");
             if (!selected || held is not null || !said.Said || section is not null || read != time || !Same(head, headBefore))
             {
-                wrong.Add($"{RateTexts[place]}: selected {selected}; {held ?? "the lane and the editor hold it"}; sent: {said.Heard} (wanted \"{RateNames[place]}\"); {section ?? "the section shows it"}; the time reads \"{read}\" (wanted \"{time}\"); playhead {Seconds(head)} s ({Seconds(headBefore)} s before)");
+                wrong.Add($"{RateTexts[place]}: selected {selected}; {held ?? "the lane and the editor hold it"}; sent: {said.Heard} (wanted \"{RateNames[place]}\"); {section ?? "the panel shows it"}; the time reads \"{read}\" (wanted \"{time}\"); playhead {Seconds(head)} s ({Seconds(headBefore)} s before)");
             }
         }
 
@@ -426,7 +427,7 @@ internal sealed partial class WindowChecks
         Choose(4, 4, "2.0 seconds, plays in 0.5 seconds", StudioEditorText.GetTimeText(5, 9));
         var faster = SpeedMarks(editor, 1);
         _report.Check(
-            "choosing another rate changes how fast the selected speed change plays and nothing else of it: its block and the section show the new rate and how long the stretch now plays, the video's length follows, the playhead stays, and a screen reader is told the new rate by its name",
+            "choosing another rate changes how fast the selected speed change plays and nothing else of it: its block and the panel show the new rate and how long that part now plays, the video's length follows, the playhead stays, and a screen reader is told the new rate by its name",
             wrong.Count == 0,
             wrong.Count == 0 ? string.Join("; ", steps) : string.Join(" | ", wrong));
         _report.Check(
@@ -463,7 +464,7 @@ internal sealed partial class WindowChecks
         return (faster, slower, rate);
     });
 
-    /// <summary>The Start and End rows of the Speed section, for the second speed change, which runs from 6.0 to 8.0 s.</summary>
+    /// <summary>The Start and End rows of the Speed panel, for the second speed change, which runs from 6.0 to 8.0 s.</summary>
     private void SpeedStartAndEndButtons(Editor editor, UiaEvents heard, StudioSpeedRange[] speeds)
     {
         Timeline.Mark("14: the start and the end of a speed change");
@@ -487,7 +488,7 @@ internal sealed partial class WindowChecks
             steps.Add($"{what}: {Seconds(speed.Start)} to {Seconds(speed.End)} s, playhead {Seconds(head)} s");
             if (!pressed || !Same(speed.Start, wantedStart) || !Same(speed.End, wantedEnd) || speed.Rate != 2 || !Same(head, headWanted) || !said.Said || shown != sentence || SelectedSpeedOf(editor) != 1)
             {
-                wrong.Add($"{what}: pressed {pressed}, the speed change is {Describe(speed)} (wanted {Seconds(wantedStart)} to {Seconds(wantedEnd)}), playhead {Seconds(head)} s (wanted {Seconds(headWanted)}), the section reads \"{shown}\", sent: {said.Heard}");
+                wrong.Add($"{what}: pressed {pressed}, the speed change is {Describe(speed)} (wanted {Seconds(wantedStart)} to {Seconds(wantedEnd)}), playhead {Seconds(head)} s (wanted {Seconds(headWanted)}), the panel reads \"{shown}\", sent: {said.Heard}");
             }
         }
 
@@ -518,7 +519,7 @@ internal sealed partial class WindowChecks
             "the six buttons of Start and End are named for what they do, move that end of the selected speed change by 0.1 s or to the playhead, and say the time they leave it at; the playhead follows a step and stays for At playhead; a speed change keeps its rate, covers at least a tenth of a second, and its end stops where the next one starts",
             wrong.Count == 0 && names.SequenceEqual(["Start 0.1 seconds earlier", "Start 0.1 seconds later", "Start at playhead", "End 0.1 seconds earlier", "End 0.1 seconds later", "End at playhead"])
                 && length == "1.0 seconds, plays in 0.5 seconds" && range == "7.0 to 8.0 seconds" && lane == $"{SpeedName(speeds[0])} | *{SpeedName(Speed(7, 11))} | {SpeedName(speeds[2])}" && time == "0:04.2 / 0:08.5",
-            wrong.Count == 0 ? $"{string.Join("; ", steps)}; with the speed change from 7.0 to 8.0 s the section said \"{range}\", \"{length}\"; the lane: {lane}; the time reads \"{time}\"" : string.Join(" | ", wrong));
+            wrong.Count == 0 ? $"{string.Join("; ", steps)}; with the speed change from 7.0 to 8.0 s the panel said \"{range}\", \"{length}\"; the lane: {lane}; the time reads \"{time}\"" : string.Join(" | ", wrong));
 
         // Eight of the nine presses changed the speed change. Eight Undo bring it back, still selected.
         for (var undo = 0; undo < 8; undo++)
@@ -551,10 +552,10 @@ internal sealed partial class WindowChecks
         var speedHint = NameOf(editor, "StudioSpeedHint", 1);
         var zoomShown = Until(() => Find(editor, "StudioZoomScaleSlider", 0.5), slider => slider is not null, 1) is not null;
         _report.Check(
-            "adding a zoom selects it and lets go of the selected speed change: the speed lane marks none, and the Speed section shows no speed change and says how to select one, while the Zoom section shows the zoom",
+            "adding a zoom selects it and lets go of the selected speed change: the speed lane marks none, and the Speed panel shows no speed change and says how to select one, while the Zoom panel shows the zoom",
             before == "zoom none, cut none, speed change 2" && zoomLane == "*" + ZoomName && speedsThen is null && speedSection is null && speedHint == StudioEditorText.SelectSpeedHint && zoomShown
                 && OfThreeSelected(editor) == "zoom 1, cut none, speed change none",
-            speedsThen ?? speedSection ?? $"before: {before}; then: {OfThreeSelected(editor)}; zooms: {zoomLane}; speed changes: {LaneText(editor, SpeedLane)}; the Speed section's hint: \"{speedHint}\"");
+            speedsThen ?? speedSection ?? $"before: {before}; then: {OfThreeSelected(editor)}; zooms: {zoomLane}; speed changes: {LaneText(editor, SpeedLane)}; the Speed panel's hint: \"{speedHint}\"");
 
         // X starts a cut and selects it, which lets go of the zoom. Selecting a speed change then lets go of the cut.
         SetSlider(editor, "StudioPlayhead", 9.0);
@@ -573,7 +574,7 @@ internal sealed partial class WindowChecks
         var zoomGone = Absent(editor, "StudioZoomScaleSlider") && Absent(editor, "StudioDeleteZoomButton", 0.3);
         var speedShown = SpeedSectionShows(editor, "Speed change 1 of 3", "2.0 to 4.0 seconds", "Start 2.0 seconds", "End 4.0 seconds", "2.0 seconds, plays in 1.0 seconds", rate: 3);
         _report.Check(
-            "starting a cut selects it and lets go of the zoom; selecting a speed change then lets go of the cut: the zoom lane and the cut lane mark none, the Zoom section and the Cut section show none and say how many there are, and the Speed section shows the speed change",
+            "starting a cut selects it and lets go of the zoom; selecting a speed change then lets go of the cut: the zoom lane and the cut lane mark none, the Zoom panel and the Cut panel show none and say how many there are, and the Speed panel shows the speed change",
             cutAdded is null && afterCut == "zoom none, cut 1, speed change none" && zoomLaneThen == ZoomName && selected && speedsNow is null && cutsNow is null && afterSpeed == "zoom none, cut none, speed change 1"
                 && cutSection is null && cutHint == StudioEditorText.SelectCutHint && zoomPosition == "1 zoom" && zoomGone && speedShown is null,
             cutAdded ?? speedsNow ?? cutsNow ?? cutSection ?? speedShown ?? $"after X: {afterCut}; after selecting the first speed change: {afterSpeed}; zooms: {LaneText(editor)}, \"{zoomPosition}\", a zoom's controls gone: {zoomGone}; cuts: {LaneText(editor, CutLane)}, the hint: \"{cutHint}\"");
@@ -612,7 +613,7 @@ internal sealed partial class WindowChecks
         var section = SpeedSectionShows(editor, "2 speed changes", range: null);
         var timeAfter = TimeText(editor);
         _report.Check(
-            "what Delete runs removes the selected speed change, so that its stretch plays at the recording's own speed again: none is selected, the playhead stays, the video is a second longer, and a screen reader is told; with nothing selected the key is left alone",
+            "what Delete runs removes the selected speed change, so that this part plays at normal speed again: none is selected, the playhead stays, the video is a second longer, and a screen reader is told; with nothing selected the key is left alone",
             delete == StudioShortcutAction.RemoveSelectedSpeed && afterKey is null && deleted.Said && StudioEditorText.SpeedDeletedMessage == "Speed change deleted." && deleteAgain == StudioShortcutAction.None && Playhead(editor) == 5 && section is null
                 && timeBefore == StudioEditorText.GetTimeText(4, 9.5) && timeAfter == StudioEditorText.GetTimeText(4, 10.5),
             afterKey ?? section ?? $"Delete ran {delete}, then {deleteAgain}; the lane: {LaneText(editor, SpeedLane)}; sent: {deleted.Heard}; the time read \"{timeBefore}\" and reads \"{timeAfter}\"");
@@ -720,7 +721,7 @@ internal sealed partial class WindowChecks
     }
 
     /// <summary>
-    /// What a screen reader is given of the timeline and the Speed section with the second of
+    /// What a screen reader is given of the timeline and the Speed panel with the second of
     /// three speed changes selected, and the order of the tab stops there.
     /// </summary>
     private void SpeedSectionForAScreenReader(Editor editor)
@@ -735,7 +736,7 @@ internal sealed partial class WindowChecks
         [
             ("StudioAddSpeedButton", "Add speed change"), (SpeedLane, "Speed changes"), ("StudioSpeed_0", "Speed 2×, 2.0 to 4.0 seconds"), ("StudioSpeed_1", "Speed 2×, 6.0 to 8.0 seconds"), ("StudioSpeed_2", "Speed 2×, 11.0 to 12.0 seconds"),
             ("StudioPreviousSpeedButton", "Previous speed change"), ("StudioSpeedPositionText", "Speed change 2 of 3"), ("StudioSpeedRangeText", "6.0 to 8.0 seconds"), ("StudioNextSpeedButton", "Next speed change"),
-            ("StudioSpeedSectionAddButton", "Change speed at playhead"), ("StudioSpeedRateChoice", "Speed"),
+            ("StudioSpeedSectionAddButton", "Add speed change"), ("StudioSpeedRateChoice", "Speed"),
             .. RateNames.Select((name, index) => ($"StudioSpeedRate_{index}", name)),
             ("StudioSpeedStartText", "Start 6.0 seconds"), ("StudioSpeedStartEarlierButton", "Start 0.1 seconds earlier"), ("StudioSpeedStartLaterButton", "Start 0.1 seconds later"), ("StudioSpeedStartAtPlayheadButton", "Start at playhead"),
             ("StudioSpeedEndText", "End 8.0 seconds"), ("StudioSpeedEndEarlierButton", "End 0.1 seconds earlier"), ("StudioSpeedEndLaterButton", "End 0.1 seconds later"), ("StudioSpeedEndAtPlayheadButton", "End at playhead"),
@@ -747,13 +748,13 @@ internal sealed partial class WindowChecks
         var delete = Find(editor, "StudioDeleteSpeedButton");
         var tip = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioDeleteSpeedButton") is { } button ? ToolTipService.GetToolTip(button) as string : null);
         _report.Check(
-            "Delete speed change says that the stretch plays at the recording's own speed again: as its description for a screen reader, and in its tooltip, which also names its key",
-            delete?.HelpText == "The stretch then plays at the recording's own speed again." && tip == "Delete this speed change, so its stretch plays at the recording's own speed again (Delete)",
+            "Delete speed change says that this part then plays at normal speed again: as its description for a screen reader, and in its tooltip, which also names its key",
+            delete?.HelpText == "This part then plays at normal speed again." && tip == "Delete this speed change, so this part plays at normal speed again (Delete)",
             $"{delete}, described as \"{delete?.HelpText}\"; the tooltip: \"{tip}\"");
 
-        // The stops, in order: the Speed section from top to bottom, after the Cut section and
-        // before the extras; and the timeline of a recording without a camera, which has no
-        // Split and no scene lane.
+        // The stops, in order: the Speed panel from top to bottom, after the Cut panel and
+        // before Mute, which is the Audio panel's; and the timeline of a recording without a
+        // camera, which has no Split and no scene lane.
         var order = TabStops(editor);
         var path = Path.Combine(_output, "tab-order-speed.txt");
         File.WriteAllLines(path, order);
@@ -770,16 +771,16 @@ internal sealed partial class WindowChecks
         var at = order.IndexOf(section[0]);
         var sectionTogether = at >= 0 && order.Skip(at).Take(section.Length).SequenceEqual(section);
         var afterCut = order.IndexOf("StudioCutSectionAddButton") is >= 0 and var cut && cut < at;
-        var beforeExtras = order.IndexOf("StudioClickRingsCheckBox") > at;
+        var beforeMute = order.IndexOf("StudioMuteCheckBox") > at;
         var row = order.IndexOf(timeline[0]);
         var timelineTogether = row >= 0 && order.Skip(row).Take(timeline.Length).SequenceEqual(timeline);
         var blocks = order.Where(id => id.StartsWith("StudioSpeed_", StringComparison.Ordinal) || id.StartsWith("StudioSpeedRate_", StringComparison.Ordinal)).ToArray();
         _report.Check(
-            "the keyboard focus, moved from stop to stop, goes through the Speed section from Previous speed change to Delete speed change with nothing between them, the choice of rate one stop among them, after the Cut section and before the extras; the timeline of a recording without a camera is the transport row with Speed after Cut, then the zoom lane, the cut lane, the speed lane and the trim bar; the speed lane is one stop, and no single speed change is one",
-            sectionTogether && afterCut && beforeExtras && timelineTogether && blocks.Length == 0,
-            sectionTogether && afterCut && beforeExtras && timelineTogether && blocks.Length == 0
+            "the keyboard focus, moved from stop to stop with each panel on show in turn, goes through the Speed panel from Previous speed change to Delete speed change with nothing between them, the choice of rate one stop among them, after the Cut panel and before Mute; the timeline of a recording without a camera is the transport row with Speed after Cut, then the zoom lane, the cut lane, the speed lane and the trim bar; the speed lane is one stop, and no single speed change is one",
+            sectionTogether && afterCut && beforeMute && timelineTogether && blocks.Length == 0,
+            sectionTogether && afterCut && beforeMute && timelineTogether && blocks.Length == 0
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"
-                : $"{(sectionTogether ? string.Empty : "the Speed section's stops are not one after the other; ")}{(afterCut ? string.Empty : "not after the Cut section; ")}{(beforeExtras ? string.Empty : "not before the extras; ")}{(timelineTogether ? string.Empty : "the timeline's stops are not one after the other; ")}{(blocks.Length == 0 ? string.Empty : "also stops: " + string.Join(", ", blocks) + "; ")}the order: {string.Join(", ", order)}");
+                : $"{(sectionTogether ? string.Empty : "the Speed panel's stops are not one after the other; ")}{(afterCut ? string.Empty : "not after the Cut panel; ")}{(beforeMute ? string.Empty : "not before Mute; ")}{(timelineTogether ? string.Empty : "the timeline's stops are not one after the other; ")}{(blocks.Length == 0 ? string.Empty : "also stops: " + string.Join(", ", blocks) + "; ")}the order: {string.Join(", ", order)}");
         Find(editor, "StudioSpeed_1")?.RemoveFromSelection();
         Until(() => SelectedSpeedOf(editor), index => index is null, 1);
     }

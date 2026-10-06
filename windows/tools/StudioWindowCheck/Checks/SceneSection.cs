@@ -12,7 +12,7 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 12, continued. What the controls of the Scene section do, each through UI Automation: a third
+// 12, continued. What the controls of the Scene panel do, each through UI Automation: a third
 // scene and how it is entered, how long a move takes, the start of a scene, stepping from scene
 // to scene, where the keyboard focus goes when a button switches itself off, the order of the
 // tab stops, and Undo and Redo. They all work on the window SplittingScenes opened, one after
@@ -27,8 +27,8 @@ internal sealed partial class WindowChecks
     }));
 
     /// <summary>
-    /// A third scene, split off with the button of the transport row, made camera only in the
-    /// Layout section, and entered by a cut: the picture changes from one frame to the next.
+    /// A third scene, split off with the button of the transport row, made camera only under
+    /// Layout in the Scene panel, and entered by a cut: the picture changes from one frame to the next.
     /// </summary>
     private void ThirdSceneEnteredByACut(Editor editor, UiaEvents heard)
     {
@@ -47,14 +47,14 @@ internal sealed partial class WindowChecks
             pressed && held == Describe(editor.Expected.Scenes) && lane == SceneLaneWanted(editor, 2) && said.Said && Same(head, 8.35),
             $"the editor holds {held}; the lane: {lane}; sent: {said.Heard}; playhead {Seconds(head)} s");
 
-        // Camera only, chosen in the Layout section, which shows and changes the scene the playhead is in.
-        Timeline.Mark("12: the Layout section changes the current scene");
+        // Camera only, chosen under Layout in the Scene panel, which shows and changes the scene the playhead is in.
+        Timeline.Mark("12: Layout changes the current scene");
         var chosen = Find(editor, "StudioLayoutCamera")?.Select() ?? false;
         Expect(editor, p => WithSceneAt(p, 2, scene => scene with { Layout = StudioLayout.Camera }));
         held = ScenesWhenAs(editor);
         lane = WaitForLane(editor, SceneLaneWanted(editor, 2), 2, SceneLane);
         _report.Check(
-            "Camera chosen in the Layout section changes the third scene, which the playhead is in, and neither of the other two",
+            "Camera chosen under Layout changes the third scene, which the playhead is in, and neither of the other two",
             chosen && held == Describe(editor.Expected.Scenes) && lane.EndsWith("*Scene 3 of 3, Camera only, 8.0 to 12.0 seconds", StringComparison.Ordinal),
             $"the editor holds {held}; the lane: {lane}");
 
@@ -68,8 +68,8 @@ internal sealed partial class WindowChecks
             _report.Note(string.Create(CultureInfo.InvariantCulture, $"at that frame the format has the screen at {screen?.Opacity ?? double.NaN:0.00} of its strength, where the second scene had it; a layer that fades is not read"));
         }
 
-        // Entered by: a cut.
-        Timeline.Mark("12: Entered by");
+        // Transition: Instant, which is a cut.
+        Timeline.Mark("12: Transition");
         var entry = Find(editor, "StudioSceneEntryChoice");
         var names = (Cut: NameOf(editor, "StudioSceneEntryCut"), Move: NameOf(editor, "StudioSceneEntryMove"));
         var cut = Find(editor, "StudioSceneEntryCut")?.Select() ?? false;
@@ -77,9 +77,9 @@ internal sealed partial class WindowChecks
         held = ScenesWhenAs(editor);
         var section = SceneSectionShows(editor, "Scene 3 of 3", "8.0 to 12.0 seconds", canGoBack: true, canGoOn: false, start: "8.0 seconds", isMoving: false, moveTakes: null, canDelete: true);
         _report.Check(
-            "Entered by offers \"A cut\" and \"Moving\"; choosing \"A cut\" makes the scene one that is cut to and keeps how long its move took, and the slider for the move goes",
-            entry is { Name: "Entered by" } && names == ("A cut", "Moving") && cut && held == Describe(editor.Expected.Scenes) && section is null,
-            $"{entry}: \"{names.Cut}\", \"{names.Move}\"; the editor holds {held}; {section ?? "the section shows a scene that is cut to, without a Move takes slider"}");
+            "Transition offers \"Instant\" and \"Animated\"; choosing \"Instant\" makes the scene one that is cut to and keeps how long its move took, and the Duration slider goes",
+            entry is { Name: "Transition" } && names == ("Instant", "Animated") && cut && held == Describe(editor.Expected.Scenes) && section is null,
+            $"{entry}: \"{names.Cut}\", \"{names.Move}\"; the editor holds {held}; {section ?? "the panel shows a scene that is cut to, without a Duration slider"}");
 
         // On both sides of the line: the last frame of the second scene, and the first of the third.
         SetSlider(editor, "StudioPlayhead", MiddleOf(239));
@@ -105,15 +105,15 @@ internal sealed partial class WindowChecks
         var again = Find(editor, "StudioSceneEntryCut")?.Select() ?? false;
         held = ScenesWhenAs(editor);
         _report.Check(
-            "choosing \"Moving\" brings the slider back with the 0.35 seconds the scene had, and \"A cut\" takes it away again",
+            "choosing \"Animated\" brings the slider back with the 0.35 seconds the scene had, and \"Instant\" takes it away again",
             moving && back is null && kind is { Kind: StudioTransitionKind.Morph, Duration: 0.35 } && again && held == Describe(editor.Expected.Scenes) && Absent(editor, "StudioSceneMoveSlider"),
-            $"{back ?? "Moving, 0.35 seconds"}; the scene was {kind.Kind} {F(kind.Duration)}; the editor holds {held}");
+            $"{back ?? "Animated, 0.35 seconds"}; the scene was {kind.Kind} {F(kind.Duration)}; the editor holds {held}");
     }
 
     /// <summary>How long the move into the second scene takes: the slider, the picture inside a longer move, and one drag as one undo step.</summary>
     private void MoveTakes(Editor editor)
     {
-        Timeline.Mark("12: Move takes");
+        Timeline.Mark("12: the transition's duration");
         SetSlider(editor, "StudioPlayhead", 6.0);
         WaitForLane(editor, SceneLaneWanted(editor, 1), 2, SceneLane);
         var shorter = editor.Expected;
@@ -122,7 +122,7 @@ internal sealed partial class WindowChecks
         var held = ScenesWhenAs(editor);
         var slider = Slider(editor, "StudioSceneMoveSlider", 1.0, "1.00 seconds");
         _report.Check(
-            "Move takes set to one second: the second scene's move lasts that long, and the slider says \"1.00 seconds\"",
+            "Duration set to one second: the second scene's move lasts that long, and the slider says \"1.00 seconds\"",
             set && held == Describe(editor.Expected.Scenes) && slider is null,
             $"the editor holds {held}; {slider ?? "the slider is at 1, \"1.00 seconds\""}");
 
@@ -149,22 +149,22 @@ internal sealed partial class WindowChecks
         var afterUndo = Until(() => SliderValue(editor, "StudioSceneMoveSlider"), value => Same(value, 1.0), 2);
         held = ScenesWhenAs(editor);
         _report.Check(
-            "Move takes moved in three steps inside one gesture is one undo step",
+            "Duration moved in three steps inside one gesture is one undo step",
             dragged && Same(afterDrag, 0.6) && Same(afterUndo, 1.0) && held == Describe(editor.Expected.Scenes),
             $"{F(afterDrag)} after the three steps, {F(afterUndo)} after one Undo; the editor holds {held}");
 
-        // The scene is four seconds long, so its move is as long as asked, and the section has nothing to add.
+        // The scene is four seconds long, so its move is as long as asked, and the panel has nothing to add.
         var limited = editor.Root.Find("StudioSceneMoveLimitedNote")?.Name;
         var reset = SetSlider(editor, "StudioSceneMoveSlider", 0.35);
         Expect(editor, p => WithSceneAt(p, 1, scene => scene with { Transition = scene.Transition with { Duration = 0.35 } }));
         held = ScenesWhenAs(editor);
         _report.Check(
-            "set back to 0.35 seconds the slider says \"0.35 seconds\"; in a scene longer than its move the section says nothing about the move being shorter",
+            "set back to 0.35 seconds the slider says \"0.35 seconds\"; in a scene longer than its move the panel says nothing about the move being shorter",
             reset && held == Describe(editor.Expected.Scenes) && Slider(editor, "StudioSceneMoveSlider", 0.35, "0.35 seconds") is null && limited is null,
             $"the editor holds {held}; the note about a shorter move: {(limited is null ? "none" : $"\"{limited}\"")}");
     }
 
-    /// <summary>The Start row of the Scene section: 0.1 s earlier and later, at the playhead, what is said, and where the start stops.</summary>
+    /// <summary>The Start row of the Scene panel: 0.1 s earlier and later, at the playhead, what is said, and where the start stops.</summary>
     private void SceneStartButtons(Editor editor, UiaEvents heard)
     {
         Timeline.Mark("12: the start of a scene");
@@ -187,7 +187,7 @@ internal sealed partial class WindowChecks
             steps.Add($"{what}: the scene starts at {Seconds(start)} s, playhead {Seconds(head)} s");
             if (!pressed || !Same(start, wantedStart) || !Same(head, headWanted) || !said.Said || shown != sentence || CurrentSceneOf(editor) != 1)
             {
-                wrong.Add($"{what}: pressed {pressed}, the scene starts at {Seconds(start)} s (wanted {Seconds(wantedStart)}), playhead {Seconds(head)} s (wanted {Seconds(headWanted)}), the section reads \"{shown}\", sent: {said.Heard}, the playhead is in scene {CurrentSceneOf(editor) + 1}");
+                wrong.Add($"{what}: pressed {pressed}, the scene starts at {Seconds(start)} s (wanted {Seconds(wantedStart)}), playhead {Seconds(head)} s (wanted {Seconds(headWanted)}), the panel reads \"{shown}\", sent: {said.Heard}, the playhead is in scene {CurrentSceneOf(editor) + 1}");
             }
         }
 
@@ -209,7 +209,7 @@ internal sealed partial class WindowChecks
                 && lane == "Scene 1 of 3, Screen with camera bubble, 0.0 to 7.7 seconds | *Scene 2 of 3, Side by side, 7.7 to 8.0 seconds | Scene 3 of 3, Camera only, 8.0 to 12.0 seconds",
             wrong.Count == 0 ? $"{string.Join("; ", steps)}; the buttons: {string.Join(", ", buttons.Select(name => $"\"{name}\""))}; the lane: {lane}" : string.Join(" | ", wrong));
         _report.Check(
-            "in a scene of 0.3 seconds that is to be entered by a move of 0.35, the section says how long the move really is",
+            "in a scene of 0.3 seconds that is to be entered by a move of 0.35, the panel says how long the move really is",
             limited == "The scene is shorter than that, so the move takes 0.30 seconds.",
             $"\"{limited}\"");
 
@@ -284,7 +284,7 @@ internal sealed partial class WindowChecks
         Timeline.Mark("12: Split, where it switches itself off");
         var before = Describe(ScenesOf(editor));
 
-        // The section's button. The new scene starts at 11.5 s and the playhead goes on to 11.85 s, 0.15 s before the end.
+        // The panel's button. The new scene starts at 11.5 s and the playhead goes on to 11.85 s, 0.15 s before the end.
         SetSlider(editor, "StudioPlayhead", 11.5);
         Until(() => Find(editor, "StudioSceneSectionSplitButton", 0.5)?.IsEnabled, enabled => enabled == true, 2);
         var onSection = FocusOn(editor, "StudioSceneSectionSplitButton");
@@ -312,10 +312,10 @@ internal sealed partial class WindowChecks
         Until(() => ScenesOf(editor).Length, count => count == 3, 1.5);
         var restored = Describe(ScenesOf(editor));
         _report.Check(
-            "Split pressed half a second before the end of the recording makes a scene that cannot be split again, so the button is switched off by what it did: the section's button then hands the keyboard focus to Previous scene and says why it is off, and the transport row's hands it to the next button of the row that works",
+            "Split pressed half a second before the end of the recording makes a scene that cannot be split again, so the button is switched off by what it did: the panel's button then hands the keyboard focus to Previous scene and says why it is off, and the transport row's hands it to the next button of the row that works",
             onSection == "StudioSceneSectionSplitButton" && pressedSection && four == 4 && sectionOff == false && afterSection == "StudioPreviousSceneButton" && note == StudioEditorText.SceneTooShortToSplitExplanation && Same(headAfter, 11.85)
                 && onRow == "StudioSplitSceneButton" && pressedRow && fourAgain == 4 && rowOff == false && afterRow == firstEnabled && restored == before && restored == Describe(editor.Expected.Scenes),
-            $"the section's button: {four} scenes, playhead {Seconds(headAfter)} s, enabled {sectionOff}, the focus went from \"{onSection}\" to \"{afterSection}\", the note: \"{note}\"; "
+            $"the panel's button: {four} scenes, playhead {Seconds(headAfter)} s, enabled {sectionOff}, the focus went from \"{onSection}\" to \"{afterSection}\", the note: \"{note}\"; "
                 + $"the row's button: {fourAgain} scenes, enabled {rowOff}, the focus went from \"{onRow}\" to \"{afterRow}\" (the first that works: {firstEnabled}); after the two Undo the editor holds {restored}");
 
         // Where no zoom and no cut fits, and a speed change does. A cut of the last eighth of a
@@ -384,59 +384,19 @@ internal sealed partial class WindowChecks
     /// <summary>
     /// The stops of the Tab key in order, read by asking the window to move the keyboard focus
     /// to the next stop, over and over, and noting where it lands. No key is pressed, and the
-    /// window does not have the keyboard: the request for it is refused like every other.
+    /// window does not have the keyboard: the request for it is refused like every other. The
+    /// inspector shows one panel at a time, so the window is walked with each panel on show in
+    /// turn, and the walks are put together: the stops up to the rail, the rail, the stops of
+    /// each panel in the order of the rail, and the stops after the inspector.
     /// </summary>
     /// <remarks>
     /// A group of radio buttons is one stop, and is listed by the group's own id. Which of its
     /// buttons the Tab key lands on is the group's doing, which sends a focus that comes by the
     /// keyboard on to the chosen button. A focus that is moved from here is not from the
-    /// keyboard and stays on the group's first button, so that is not seen.
+    /// keyboard and stays on the group's first button, so that is not seen. The rail is one
+    /// stop too, listed by its own id, and the header of a crop group by the group's.
     /// </remarks>
-    private List<string> TabStops(Editor editor) => OnUi(() =>
-    {
-        var stops = new List<string>();
-        var seen = new List<DependencyObject>();
-        if (editor.Window.Content is not FrameworkElement { XamlRoot: { } root } content)
-        {
-            return stops;
-        }
-
-        var before = FocusManager.GetFocusedElement(root) as UIElement;
-        var options = new FindNextElementOptions { SearchRoot = content };
-        (FocusManager.FindFirstFocusableElement(content) as UIElement)?.Focus(FocusState.Keyboard);
-        for (var step = 0; step < 200; step++)
-        {
-            // Round once: the first stop comes again after the last.
-            if (FocusManager.GetFocusedElement(root) is not DependencyObject focused || seen.Exists(element => ReferenceEquals(element, focused)))
-            {
-                break;
-            }
-
-            seen.Add(focused);
-            var named = focused;
-            if (focused is RadioButton)
-            {
-                for (var parent = VisualTreeHelper.GetParent(focused); parent is not null; parent = VisualTreeHelper.GetParent(parent))
-                {
-                    if (parent is RadioButtons group)
-                    {
-                        named = group;
-                        break;
-                    }
-                }
-            }
-
-            var id = AutomationProperties.GetAutomationId(named);
-            stops.Add(id.Length > 0 ? id : (focused as FrameworkElement)?.Name is { Length: > 0 } own ? own : focused.GetType().Name);
-            if (!FocusManager.TryMoveFocus(FocusNavigationDirection.Next, options))
-            {
-                break;
-            }
-        }
-
-        before?.Focus(FocusState.Programmatic);
-        return stops;
-    });
+    private List<string> TabStops(Editor editor) => OnUi(() => StopsWithEachPanel(editor));
 
     /// <summary>Null when each of the given elements is in a tree, under the name given for it. Otherwise which are not.</summary>
     private static string? Named(List<(int Depth, UiaElement Element)> tree, (string Id, string Name)[] wanted)
@@ -449,7 +409,7 @@ internal sealed partial class WindowChecks
 
     /// <summary>
     /// What a screen reader is given of a window with three scenes, with the playhead in the
-    /// second, which is side by side and entered by moving; and the order of the tab stops.
+    /// second, which is side by side and whose transition is animated; and the order of the tab stops.
     /// </summary>
     private void TimelineTabOrder(Editor editor)
     {
@@ -457,16 +417,16 @@ internal sealed partial class WindowChecks
         SetSlider(editor, "StudioPlayhead", 6.0);
         WaitForLane(editor, SceneLaneWanted(editor, 1), 2, SceneLane);
 
-        // The seventeen sliders of the side-by-side layout, and Move takes.
+        // The seventeen sliders of the side-by-side layout, and the transition's Duration.
         (string Id, string Name)[] names =
         [
             ("StudioSplitSceneButton", "Split scene"), (SceneLane, "Scenes"), ("StudioScene_0", SceneName(editor, 0)), ("StudioScene_1", SceneName(editor, 1)), ("StudioScene_2", SceneName(editor, 2)),
             ("StudioPreviousSceneButton", "Previous scene"), ("StudioScenePositionText", "Scene 2 of 3"), ("StudioSceneRangeText", "4.0 to 8.0 seconds"), ("StudioNextSceneButton", "Next scene"),
-            ("StudioSceneSectionSplitButton", "Split at playhead"), ("StudioSceneStartText", "Scene start 4.0 seconds"),
+            ("StudioSceneSectionSplitButton", "Split scene"), ("StudioSceneStartText", "Scene start 4.0 seconds"),
             ("StudioSceneStartEarlierButton", "Scene start 0.1 seconds earlier"), ("StudioSceneStartLaterButton", "Scene start 0.1 seconds later"), ("StudioSceneStartAtPlayheadButton", "Start scene at playhead"),
-            ("StudioSceneEntryChoice", "Entered by"), ("StudioSceneEntryCut", "A cut"), ("StudioSceneEntryMove", "Moving"), ("StudioSceneMoveSlider", "Move takes"), ("StudioDeleteSceneButton", "Delete scene"),
+            ("StudioSceneEntryChoice", "Transition"), ("StudioSceneEntryCut", "Instant"), ("StudioSceneEntryMove", "Animated"), ("StudioSceneMoveSlider", "Transition duration"), ("StudioDeleteSceneButton", "Delete scene"),
         ];
-        AuditState(editor, "the editor with three scenes, in one that is entered by moving", "tree-scenes.txt", 18, tree => Named(tree, names));
+        AuditState(editor, "the editor with three scenes, in one whose transition is animated", "tree-scenes.txt", 18, tree => Named(tree, names));
         var delete = Find(editor, "StudioDeleteSceneButton");
         _report.Check(
             "Delete scene tells a screen reader what becomes of the scene's time",
@@ -476,14 +436,18 @@ internal sealed partial class WindowChecks
         var path = Path.Combine(_output, "tab-order-scenes.txt");
         File.WriteAllLines(path, order);
 
-        // The Scene section from top to bottom, then Layout; later the three buttons that add a
-        // zoom, a cut and a speed change in their sections; and the timeline: its row from left
-        // to right, then the four lanes from top to bottom, each one stop, and the trim bar.
+        // The rail, which is one stop and comes before the panels. Then the Scene panel from
+        // top to bottom: the two buttons that step, Layout, Split scene, Transition and its
+        // Duration, the three Start buttons, and Delete scene. Then the first stops of the
+        // panels after it, in the order of the rail: Show background, Click highlights, the
+        // three buttons that add a zoom, a cut and a speed change, and Mute. And the timeline:
+        // its row from left to right, then the four lanes from top to bottom, each one stop,
+        // and the trim bar.
         string[] wanted =
         [
-            "StudioPreviousSceneButton", "StudioNextSceneButton", "StudioSceneSectionSplitButton",
-            "StudioSceneStartEarlierButton", "StudioSceneStartLaterButton", "StudioSceneStartAtPlayheadButton", "StudioSceneEntryChoice", "StudioSceneMoveSlider", "StudioDeleteSceneButton",
-            "StudioLayoutChoice", "StudioShowBackgroundCheckBox", "StudioZoomSectionAddButton", "StudioCutSectionAddButton", "StudioSpeedSectionAddButton", "StudioClickRingsCheckBox",
+            InspectorRailId, "StudioPreviousSceneButton", "StudioNextSceneButton", "StudioLayoutChoice", "StudioSceneSectionSplitButton", "StudioSceneEntryChoice", "StudioSceneMoveSlider",
+            "StudioSceneStartEarlierButton", "StudioSceneStartLaterButton", "StudioSceneStartAtPlayheadButton", "StudioDeleteSceneButton",
+            "StudioShowBackgroundCheckBox", "StudioClickRingsCheckBox", "StudioZoomSectionAddButton", "StudioCutSectionAddButton", "StudioSpeedSectionAddButton", "StudioMuteCheckBox",
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
             SceneLane, ZoomLane, CutLane, SpeedLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
@@ -494,16 +458,18 @@ internal sealed partial class WindowChecks
         // The timeline's stops come one right after the other, with nothing between them.
         var row = order.IndexOf("StudioPlayPauseButton");
         var together = row >= 0 && order.Skip(row).Take(16).SequenceEqual(wanted[^16..]);
-        var blocks = order.Where(id => id.StartsWith("StudioScene_", StringComparison.Ordinal) || id.StartsWith("StudioCut_", StringComparison.Ordinal) || id.StartsWith("StudioZoom_", StringComparison.Ordinal) || id.StartsWith("StudioSpeed_", StringComparison.Ordinal)).ToArray();
+        var blocks = order.Where(id => id.StartsWith("StudioScene_", StringComparison.Ordinal) || id.StartsWith("StudioCut_", StringComparison.Ordinal) || id.StartsWith("StudioZoom_", StringComparison.Ordinal) || id.StartsWith("StudioSpeed_", StringComparison.Ordinal)
+            || id.StartsWith(InspectorRailId + "_", StringComparison.Ordinal)).ToArray();
+        var rails = order.Count(id => id == InspectorRailId);
         _report.Check(
-            "the keyboard focus, moved from stop to stop, goes through the Scene section from top to bottom and on to Layout, and through the timeline as the transport row from Play to End here, then the scene lane, the zoom lane, the cut lane, the speed lane and the trim bar, with nothing between them; each lane is one stop, and no single scene, zoom, cut or speed change is one",
-            missing.Length == 0 && !outOfOrder && together && blocks.Length == 0,
-            missing.Length == 0 && !outOfOrder && together && blocks.Length == 0
+            "the keyboard focus, moved from stop to stop with each panel on show in turn, comes to the rail, which is one stop, before any panel; goes through the Scene panel from top to bottom: Previous and Next scene, Layout, Split scene, Transition, Duration, the three Start buttons and Delete scene; on through the other panels in the order of the rail; and through the timeline as the transport row from Play to End here, then the scene lane, the zoom lane, the cut lane, the speed lane and the trim bar, with nothing between them; each lane is one stop, and no single scene, zoom, cut, speed change or item of the rail is one",
+            missing.Length == 0 && !outOfOrder && together && blocks.Length == 0 && rails == 1,
+            missing.Length == 0 && !outOfOrder && together && blocks.Length == 0 && rails == 1
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"
-                : $"{(missing.Length == 0 ? string.Empty : "not reached: " + string.Join(", ", missing) + "; ")}{(outOfOrder ? "out of order; " : string.Empty)}{(together ? string.Empty : "the timeline's stops are not one after the other; ")}{(blocks.Length == 0 ? string.Empty : "also stops: " + string.Join(", ", blocks) + "; ")}the order: {string.Join(", ", order)}");
+                : $"{(missing.Length == 0 ? string.Empty : "not reached: " + string.Join(", ", missing) + "; ")}{(outOfOrder ? "out of order; " : string.Empty)}{(together ? string.Empty : "the timeline's stops are not one after the other; ")}{(blocks.Length == 0 ? string.Empty : "also stops: " + string.Join(", ", blocks) + "; ")}{(rails == 1 ? string.Empty : $"the rail is a stop {rails} times; ")}the order: {string.Join(", ", order)}");
     }
 
-    /// <summary>Undo and Redo across a split, a layout, a start, a way of entering and a delete: the lane and the section follow.</summary>
+    /// <summary>Undo and Redo across a split, a layout, a start, a transition and a delete: the lane and the panel follow.</summary>
     private void UndoAndRedoOfScenes(Editor editor)
     {
         Timeline.Mark("12: undo and redo of scenes");
@@ -538,7 +504,7 @@ internal sealed partial class WindowChecks
         var earlier = plain with { Start = 9.9 };
         Expect("start", [.. three, earlier], 3);
 
-        // Entered by a cut.
+        // Its transition: Instant, which is a cut.
         Find(editor, "StudioSceneEntryCut")?.Select();
         var cutTo = earlier with { Transition = earlier.Transition with { Kind = StudioTransitionKind.Cut } };
         Expect("entered by a cut", [.. three, cutTo], 3);
@@ -574,11 +540,11 @@ internal sealed partial class WindowChecks
         Invoke(editor, "StudioRedoButton");
         Expect("Redo of the delete", three, 2);
         _report.Check(
-            "Undo and Redo across a split, a layout, a start, a way of entering and a delete: the lane shows the scenes of each step and marks the scene the playhead is in, which changes when a scene's start moves past the playhead; S still splits while Ctrl+Z undoes",
+            "Undo and Redo across a split, a layout, a start, a transition and a delete: the lane shows the scenes of each step and marks the scene the playhead is in, which changes when a scene's start moves past the playhead; S still splits while Ctrl+Z undoes",
             wrong.Count == 0,
             wrong.Count == 0 ? string.Join("; ", steps) : string.Join(" | ", wrong));
         _report.Check(
-            "the Scene section follows each of those steps: after the delete is undone it shows the fourth scene cut to, after the cut is undone it shows it moving for 0.35 seconds, and once the start is back it shows the third scene",
+            "the Scene panel follows each of those steps: after the delete is undone it shows the fourth scene cut to, after the cut is undone it shows it moving for 0.35 seconds, and once the start is back it shows the third scene",
             afterUndo is null && moving is null && inThird is null,
             $"{afterUndo ?? "the fourth scene, cut to"}; {moving ?? "the fourth scene, moving"}; {inThird ?? "the third scene"}");
     }

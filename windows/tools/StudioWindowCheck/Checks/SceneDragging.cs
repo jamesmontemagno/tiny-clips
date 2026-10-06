@@ -671,7 +671,7 @@ internal sealed partial class WindowChecks
                 + $"after one Redo the camera is back where the drag left it: {redone == Describe(whole)}; two more Undo left the window as it was before all of it: {unmuted}");
     }
 
-    /// <summary>Camera share and Move takes, in a scene that is side by side and entered by moving.</summary>
+    /// <summary>Camera size and the transition's Duration, in a scene that is side by side and whose transition is animated.</summary>
     private void DragsInASideBySideScene()
     {
         Timeline.Mark("12: drags while the preview plays, in a side-by-side scene");
@@ -698,7 +698,7 @@ internal sealed partial class WindowChecks
         DragStops(
             editor,
             engine,
-            "Camera share dragged while the preview plays in a side-by-side scene: the first step stops it, and that scene alone has the new share, on the side it had",
+            "Camera size dragged while the preview plays in a side-by-side scene: the first step stops it, and that scene alone has the new share, on the side it had",
             7.0,
             7.4,
             (before, after) => Same(after.Split.CameraFraction, 0.5) && after.Split.CameraSide == before.Split.CameraSide ? null : $"its camera has {F(after.Split.CameraFraction)} of the canvas on the {after.Split.CameraSide} side, and should have 0.5 on the {before.Split.CameraSide} side",
@@ -708,7 +708,7 @@ internal sealed partial class WindowChecks
         DragStops(
             editor,
             engine,
-            "Move takes dragged while the preview plays: the first step stops it, and the move into the scene of that frame alone takes the new time",
+            "Duration dragged while the preview plays: the first step stops it, and the move into the scene of that frame alone takes the new time",
             7.0,
             7.4,
             (before, after) => Same(after.Transition.Duration, 0.8) && after.Transition.Kind == before.Transition.Kind ? null : $"the move into it takes {F(after.Transition.Duration)} s and should take 0.8 s",

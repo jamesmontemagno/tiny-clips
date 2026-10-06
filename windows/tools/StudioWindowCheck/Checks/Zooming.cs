@@ -15,7 +15,7 @@ using Windows.System;
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 10. Zooms: the lane above the trim bar, Add zoom, the keys Z and Delete, and what the preview
-// shows for a zoom. What the Zoom section of the inspector does is in ZoomSection.cs, and a zoom
+// shows for a zoom. What the Zoom panel of the inspector does is in ZoomSection.cs, and a zoom
 // that moves while the preview plays in ZoomPlaying.cs.
 internal sealed partial class WindowChecks
 {
@@ -317,7 +317,7 @@ internal sealed partial class WindowChecks
                 $"{outside} of the {around.Sum(box => box.Width * box.Height)} pixels around the card differ from the picture before the zoom, and {inside} of the {card.Width * card.Height} inside it");
         }
 
-        ZoomSectionShows(editor, "the Zoom section shows the new zoom", "Zoom 1 of 1", "2.0 to 5.0 seconds", 2, "2×", PointerFirst, "Start 2.0 seconds", "End 5.0 seconds", 0.5, 0.5);
+        ZoomSectionShows(editor, "the Zoom panel shows the new zoom", "Zoom 1 of 1", "2.0 to 5.0 seconds", 2, "2×", PointerFirst, "Start 2.0 seconds", "End 5.0 seconds", 0.5, 0.5);
 
         // Z again, where the zoom now is.
         Timeline.Mark("10: Z where a zoom is, and where none fits");
@@ -339,7 +339,7 @@ internal sealed partial class WindowChecks
         _report.Check(
             "where less than the shortest zoom fits, both Add zoom buttons are disabled, and what Z runs adds nothing and tells a screen reader that there is no room",
             canAdd == false && canAddInSection == false && noRoomKey == StudioShortcutAction.AddZoom && noRoom.Said && ZoomsOf(editor).Length == 1 && LaneText(editor) == "*" + FirstName,
-            $"with the playhead at {Seconds(Playhead(editor))} s: Add zoom enabled {canAdd}, in the Zoom section {canAddInSection}; sent: {noRoom.Heard}; the lane: {LaneText(editor)}");
+            $"with the playhead at {Seconds(Playhead(editor))} s: Add zoom enabled {canAdd}, in the Zoom panel {canAddInSection}; sent: {noRoom.Heard}; the lane: {LaneText(editor)}");
 
         // The two buttons, where the pointer rests at the second place.
         Timeline.Mark("10: the two Add zoom buttons");
@@ -357,14 +357,14 @@ internal sealed partial class WindowChecks
         var laneAfterThird = WaitForLane(editor, $"{FirstName} | {SecondName} | *{ThirdName}");
         zooms = ZoomsOf(editor);
         _report.Check(
-            "Add zoom in the transport row and Add zoom in the Zoom section each add a zoom at the playhead and select it; one that reaches the end of the recording stops there",
+            "Add zoom in the transport row and Add zoom in the Zoom panel each add a zoom at the playhead and select it; one that reaches the end of the recording stops there",
             enabledAgain == true && pressed && pressedInSection && laneAfterSecond == $"{FirstName} | *{SecondName}" && laneAfterThird == $"{FirstName} | {SecondName} | *{ThirdName}"
                 && zooms.Length == 3 && Same(zooms[1].Start, secondStart) && Same(zooms[1].End, secondStart + 3) && Same(zooms[1].Focus.X, PointerSecond.X) && Same(zooms[1].Focus.Y, PointerSecond.Y)
                 && Same(zooms[2].Start, thirdStart) && zooms[2].End == RecordingLength && Same(secondHead, secondStart + 0.5) && Same(Playhead(editor), thirdStart + 0.5),
             $"the lane after the first button: {laneAfterSecond}; after the second: {laneAfterThird}; the editor holds {string.Join(", ", zooms.Select(Describe))}; playhead {Seconds(Playhead(editor))} s");
         var position = NameOf(editor, "StudioZoomPositionText");
         var range = NameOf(editor, "StudioZoomRangeText");
-        _report.Check("the Zoom section says which zoom is selected and when it is", position == "Zoom 3 of 3" && range == "10.0 to 12.0 seconds", $"\"{position}\", \"{range}\"");
+        _report.Check("the Zoom panel says which zoom is selected and when it is", position == "Zoom 3 of 3" && range == "10.0 to 12.0 seconds", $"\"{position}\", \"{range}\"");
 
         LaneIsLinedUp(editor, zooms);
         var heardPerEvent = LaneKeys(editor, heard, zooms);
@@ -388,7 +388,7 @@ internal sealed partial class WindowChecks
             $"Delete ran {delete}, then {deleteAgain}; the lane: {laneAfterDelete}; sent: {deleted.Heard}; playhead {Seconds(Playhead(editor))} s, {Seconds(headBeforeDelete)} s before");
         var hint = NameOf(editor, "StudioZoomHint", 1);
         _report.Check(
-            "with zooms and none selected the Zoom section says how many there are and how to select one, and shows no control of a zoom",
+            "with zooms and none selected the Zoom panel says how many there are and how to select one, and shows no control of a zoom",
             NameOf(editor, "StudioZoomPositionText") == "2 zooms" && hint.StartsWith("Select a zoom", StringComparison.Ordinal) && Gone(editor, "StudioZoomScaleSlider", 1) && Gone(editor, "StudioDeleteZoomButton", 1) && Gone(editor, "StudioZoomRangeText", 1),
             $"\"{NameOf(editor, "StudioZoomPositionText")}\", \"{hint}\"");
 
@@ -419,7 +419,7 @@ internal sealed partial class WindowChecks
         CloseQuietly(editor);
     }
 
-    /// <summary>A recording without zooms: what the lane, the buttons and the Zoom section say, and the picture the zoom checks start from.</summary>
+    /// <summary>A recording without zooms: what the lane, the buttons and the Zoom panel say, and the picture the zoom checks start from.</summary>
     private void EmptyLane(Editor editor, PartSight? before, int frame)
     {
         var list = Find(editor, "StudioZoomLane");
@@ -434,14 +434,15 @@ internal sealed partial class WindowChecks
         var suggest = Find(editor, "StudioSuggestZoomsButton");
         var note = NameOf(editor, "StudioNoClicksNote", 1);
         _report.Check(
-            "without zooms the Zoom section says so, has nothing to step to, and offers Add zoom; a recording without clicks has Suggest zooms disabled, with the reason next to it and as the button's description",
+            "without zooms the Zoom panel says so, has nothing to step to, says how to add the first one, and offers Add zoom; a recording without clicks has Suggest zooms disabled, with the reason next to it and as the button's description",
             NameOf(editor, "StudioZoomPositionText") == "No zooms yet"
                 && Find(editor, "StudioPreviousZoomButton") is { IsEnabled: false, Name: "Previous zoom" } && Find(editor, "StudioNextZoomButton") is { IsEnabled: false, Name: "Next zoom" }
                 && Find(editor, "StudioAddZoomButton") is { IsEnabled: true, Name: "Add zoom" } && Find(editor, "StudioZoomSectionAddButton") is { IsEnabled: true, Name: "Add zoom" }
                 && suggest is { IsEnabled: false, Name: "Suggest zooms" } && suggest.HelpText == StudioEditorText.NoClicksExplanation && note == StudioEditorText.NoClicksExplanation
-                && Gone(editor, "StudioZoomScaleSlider", 0.5) && Gone(editor, "StudioDeleteZoomButton", 0.5) && Gone(editor, "StudioRemoveSuggestionsButton", 0.5) && Gone(editor, "StudioZoomHint", 0.5),
+                && Gone(editor, "StudioZoomScaleSlider", 0.5) && Gone(editor, "StudioDeleteZoomButton", 0.5) && Gone(editor, "StudioRemoveSuggestionsButton", 0.5) && Gone(editor, "StudioZoomHint", 0.5)
+                && NameOf(editor, "StudioZoomEmptyHint", 0.5) == ZoomEmptyHint,
             $"\"{NameOf(editor, "StudioZoomPositionText")}\"; Previous enabled {Find(editor, "StudioPreviousZoomButton")?.IsEnabled}, Next enabled {Find(editor, "StudioNextZoomButton")?.IsEnabled}; "
-                + $"Suggest zooms enabled {suggest?.IsEnabled}, described as \"{suggest?.HelpText}\"; the note: \"{note}\"");
+                + $"Suggest zooms enabled {suggest?.IsEnabled}, described as \"{suggest?.HelpText}\"; the note: \"{note}\"; the hint: \"{NameOf(editor, "StudioZoomEmptyHint", 0)}\"");
 
         var wrong = before is null ? "no screenshot" : Judge(before.Reading, frame);
         _report.Check(
@@ -454,7 +455,7 @@ internal sealed partial class WindowChecks
         }
     }
 
-    /// <summary>What the Zoom section shows for the selected zoom, read through UI Automation.</summary>
+    /// <summary>What the Zoom panel shows for the selected zoom, read through UI Automation.</summary>
     private bool ZoomSectionShows(Editor editor, string name, string position, string range, double scale, string scaleText, (double X, double Y) focus, string start, string end, double easeIn, double easeOut)
     {
         string?[] problems =
@@ -635,7 +636,7 @@ internal sealed partial class WindowChecks
                 + $"pressed: zoom {afterInvoke.Item1 + 1} at {Seconds(afterInvoke.Item2)} s; taken out: {(afterRemove.Item1 is null ? "none selected" : "still selected")}, \"{position}\"");
     }
 
-    /// <summary>Previous and Next in the Zoom section.</summary>
+    /// <summary>Previous and Next in the Zoom panel.</summary>
     private void PreviousAndNext(Editor editor, StudioZoom[] zooms)
     {
         Timeline.Mark("10: Previous and Next");

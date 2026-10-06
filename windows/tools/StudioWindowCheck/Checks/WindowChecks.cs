@@ -104,6 +104,7 @@ internal sealed partial class WindowChecks
                 Inspector();
                 CameraBackground();
                 KeepingTheProject();
+                InspectorRail();
             });
             Group("trim", "4. Trimming", Trimming);
             Group("export", "5. Exporting with the real exporter", Exporting);
@@ -456,6 +457,10 @@ internal sealed partial class WindowChecks
             ?? throw new InvalidOperationException($"The window service opened no Studio window for {label}.");
         var handle = OnUi(() => WindowNative.GetWindowHandle(window));
         var editor = new Editor(label, folder, window, handle, _uia.FromWindow(handle), new WindowCamera(handle));
+
+        // The inspector shows one panel at a time. Whatever is looked for in this window by its
+        // automation id has the panel that holds it shown first. See InspectorPanels.cs.
+        editor.Root.BeforeFind = automationId => ShowWhatHolds(editor, automationId);
         OnUi(() => editor.Watch(InspectorOf(window), window.ViewModel));
         _editors.Add(editor);
         return editor;

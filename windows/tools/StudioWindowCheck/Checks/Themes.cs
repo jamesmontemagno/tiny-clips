@@ -11,7 +11,7 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 9. Light and dark: pictures of the whole window in each theme, with a project open: as it
-// opens, with a zoom selected on the lane, with the Zoom section of the inspector in view, and
+// opens, with a zoom selected on the lane, with the Zoom panel of the inspector in view, and
 // with the question on closing. The pictures are saved for a person to look at; the checks only
 // make sure each is what its name says.
 internal sealed partial class WindowChecks
@@ -124,8 +124,8 @@ internal sealed partial class WindowChecks
     }
 
     /// <summary>
-    /// Two more pictures of a window whose project has three zooms: the whole window with the
-    /// middle zoom selected on the lane, and the inspector scrolled to its Zoom section.
+    /// More pictures of a window whose project has three zooms: the whole window with the
+    /// middle zoom selected on the lane, and the inspector's Zoom panel.
     /// </summary>
     private void ZoomPictures(Editor editor, string name, bool isLight, int frame, List<string> saved)
     {
@@ -183,10 +183,10 @@ internal sealed partial class WindowChecks
             selected && lane == wanted && inLane && told && sight.Shown == Both(editor, frame),
             $"the lane: {lane}; blocks at {string.Join(", ", blocks.Select(block => $"{block.Left} to {block.Right}"))} in a lane from {laneBox.X} to {laneBox.X + laneBox.Width}; fills {string.Join(" ", blocks.Select(block => block.Fill))}; pixels of writing {string.Join(" ", blocks.Select(block => block.Written))}; {sight.Shown}; saved as {Path.GetFileName(path)}");
 
-        // The Zoom section, with the first zoom selected: it looks at a point, so the focus pad
-        // and its two sliders are there. The section is higher than the inspector, so it is
-        // pictured twice: from its heading down, and from its end up.
-        Timeline.Mark($"9: the Zoom section, {name}");
+        // The Zoom panel, with the first zoom selected: it looks at a point, so the focus pad
+        // and its two sliders are there. The panel is higher than the inspector, so it is
+        // pictured three times: from its top down, from the focus pad, and from its end up.
+        Timeline.Mark($"9: the Zoom panel, {name}");
         var first = LaneItems(editor) is { Count: 3 } again && again[0].Select();
         var laneThen = WaitForLane(editor, $"*{names[0]} | {names[1]} | {names[2]}");
         var fromHeading = PictureOfZoomSection(editor, section => section.Top - 8, "StudioZoomScaleSlider", Path.Combine(_output, $"zoom-section-{name}.png"), saved);
@@ -194,14 +194,14 @@ internal sealed partial class WindowChecks
         var fromEnd = fromPad is null ? null : PictureOfZoomSection(editor, section => section.Bottom - section.Viewport + 16, "StudioDeleteZoomButton", Path.Combine(_output, $"zoom-section-{name}-3.png"), saved);
         if (fromHeading is not { } top || fromPad is not { } middle || fromEnd is not { } end)
         {
-            _report.Check($"the Zoom section in the {name} theme can be pictured", false, "the inspector's scroll viewer, its Zoom section or the focus pad was not found, or there was no screenshot");
+            _report.Check($"the Zoom panel in the {name} theme can be pictured", false, "the inspector's scroll viewer, its Zoom panel or the focus pad was not found, or there was no screenshot");
         }
         else
         {
             static string Short(string[] ids) => ids.Length == 0 ? "none" : string.Join(", ", ids.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)));
             var inNone = top.Outside.Intersect(middle.Outside).Intersect(end.Outside).ToArray();
             _report.Check(
-                $"the Zoom section in the {name} theme with a zoom selected: three pictures show the inspector, which is {(isLight ? "light" : "dark")}, from the section's heading, from the focus pad and from the section's end, and every control of the section, the focus pad among them, is whole in one of them",
+                $"the Zoom panel in the {name} theme with a zoom selected: three pictures show the inspector, which is {(isLight ? "light" : "dark")}, from the panel's top, from the focus pad and from the panel's end, and every control of the panel, the focus pad among them, is whole in one of them",
                 first && top.Position == "Zoom 1 of 3" && inNone.Length == 0 && top.HeadingAtTop && !middle.Outside.Contains("StudioZoomFocusPad")
                     && new[] { top.Surface, middle.Surface, end.Surface }.All(surface => isLight ? Luma(surface) > 170 : Luma(surface) < 90),
                 $"the lane: {laneThen}; \"{top.Position}\"; the inspector shows {R(top.Viewport)} of the window, its surface is {top.Surface}, {middle.Surface} and {end.Surface}; "
@@ -213,16 +213,16 @@ internal sealed partial class WindowChecks
         ScrollInspector(editor, _ => 0);
     }
 
-    /// <summary>What a picture of the inspector's Zoom section shows.</summary>
-    /// <param name="Outside">The controls of the section that are not whole inside the inspector's viewport.</param>
+    /// <summary>What a picture of the inspector's Zoom panel shows.</summary>
+    /// <param name="Outside">The controls of the panel that are not whole inside the inspector's viewport.</param>
     /// <param name="Surface">The colour of the inspector's own surface, in the margin left of a control.</param>
     private sealed record SectionPicture(string[] Outside, Rgb Surface, string Position, StudioFrameRect Viewport, bool HeadingAtTop);
 
     /// <summary>
-    /// Scrolls the inspector to a place in its Zoom section and saves a picture of the window.
+    /// Scrolls the inspector to a place in its Zoom panel and saves a picture of the window.
     /// Null without a picture.
     /// </summary>
-    /// <param name="surfaceBeside">A control of the section that is in the picture: the inspector's surface is read in the margin left of it.</param>
+    /// <param name="surfaceBeside">A control of the panel that is in the picture: the inspector's surface is read in the margin left of it.</param>
     private SectionPicture? PictureOfZoomSection(Editor editor, Func<(double Top, double Bottom, double Viewport, double Pad), double> offset, string surfaceBeside, string path, List<string> saved)
     {
         string[] all =
@@ -265,19 +265,19 @@ internal sealed partial class WindowChecks
             return Within(x - shot.ScreenX, y - shot.ScreenY, width, height);
         }
 
-        // The inspector's own surface, in the margin left of the section's controls.
+        // The inspector's own surface, in the margin left of the panel's controls.
         var surface = editor.Root.Find(surfaceBeside) is { } anchor
             ? shot.Color(anchor.Bounds.X - shot.ScreenX - (8 * editor.Scale), anchor.Bounds.Y - shot.ScreenY + (anchor.Bounds.Height / 2.0), 2)
             : new Rgb(-1, -1, -1);
 
-        // The heading is a few pixels under the top of the inspector's viewport when the section was scrolled to it.
+        // The panel's first row is a few pixels under the top of the inspector's viewport when the panel was scrolled to its top.
         var headingAtTop = editor.Root.Find("StudioPreviousZoomButton") is { } stepper && stepper.Bounds.Y - shot.ScreenY - box.Y is > 0 and < 110 * 1.5;
         return new SectionPicture([.. all.Where(id => !Inside(id))], surface, NameOf(editor, "StudioZoomPositionText", 0.5), box, headingAtTop);
     }
     /// <summary>
-    /// Scrolls the inspector, without an animation, to an offset worked out from where its Zoom
-    /// section is. Returns the scroll viewer's rectangle in the window's content, or null when
-    /// either was not found.
+    /// Shows the inspector's Zoom panel and scrolls it, without an animation, to an offset
+    /// worked out from where the panel and its focus pad are. Returns the scroll viewer's
+    /// rectangle in the window's content, or null when either was not found.
     /// </summary>
     private Windows.Foundation.Rect? ScrollInspector(Editor editor, Func<(double Top, double Bottom, double Viewport, double Pad), double> offset) => OnUi<Windows.Foundation.Rect?>(() =>
     {
@@ -290,7 +290,7 @@ internal sealed partial class WindowChecks
         ScrollViewer? scroller = null;
         for (DependencyObject? at = button; at is not null && scroller is null; at = VisualTreeHelper.GetParent(at))
         {
-            if (at is FrameworkElement { Name: "ZoomSection" } found)
+            if (at is FrameworkElement { Name: "ZoomPanel" } found)
             {
                 section = found;
             }
@@ -305,7 +305,7 @@ internal sealed partial class WindowChecks
 
         var top = section.TransformToVisual(content).TransformPoint(default).Y;
 
-        // Where the focus pad starts, when it is shown: the section's own start otherwise.
+        // Where the focus pad starts, when it is shown: the panel's own start otherwise.
         var pad = Descendant<TinyClips.App.Controls.Studio.StudioFocusPad>(section, "StudioZoomFocusPad") is { ActualHeight: > 0 } shown
             ? shown.TransformToVisual(content).TransformPoint(default).Y
             : top;

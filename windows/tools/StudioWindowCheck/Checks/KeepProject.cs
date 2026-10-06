@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 using TinyClips.Tools.StudioPreviewCheck.Media;
 using TinyClips.Tools.StudioWindowCheck.Automation;
 using TinyClips.Tools.StudioWindowCheck.Capture;
@@ -11,7 +12,7 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 3, continued. Keep this project: the check box of the inspector's Project section. A kept
+// 3, continued. Keep this project: the check box of the inspector's Project panel. A kept
 // project is never removed by storage cleanup. It is not part of the video and not an edit: it
 // is written into the project file the moment it is switched, Undo leaves it alone, and it does
 // not have to wait for an export to end.
@@ -58,20 +59,27 @@ internal sealed partial class WindowChecks
         var box = Find(editor, KeepBox);
         var inFile = KeptInFile(folder);
         var tip = OnUi(() => Descendant<CheckBox>(editor.Window.Content, KeepBox) is { } element ? ToolTipService.GetToolTip(element) as string : null);
+
+        // What a screen reader walks with the Project panel on show: the panel's name, then
+        // Tiny Clips badge under Export, the check box under Storage, and Save as default look.
+        ShowPanel(editor, StudioInspectorPanel.Project);
         var walked = Content(editor).Select(entry => entry.Element).ToList();
-        var (mute, keep, look) = (walked.FindIndex(e => e.Id == "StudioMuteCheckBox"), walked.FindIndex(e => e.Id == KeepBox), walked.FindIndex(e => e.Id == "StudioSaveDefaultLookButton"));
-        var heading = mute < 0 ? -1 : walked.FindIndex(mute, e => e.ControlType == ControlTypeNames.Text && e.Name == "Project");
+        var title = walked.Find(e => e.Id == InspectorTitleId)?.Name;
+        var (badge, keep, look) = (walked.FindIndex(e => e.Id == "StudioBrandingCheckBox"), walked.FindIndex(e => e.Id == KeepBox), walked.FindIndex(e => e.Id == "StudioSaveDefaultLookButton"));
+        var heading = badge < 0 ? -1 : walked.FindIndex(badge, e => e.ControlType == ControlTypeNames.Text && e.Name == "Storage");
+
+        // The Tab key, with each panel on show in turn: Mute is the Audio panel's one stop, and Project is the panel after it.
         var order = TabStops(editor);
         File.WriteAllLines(Path.Combine(_output, "tab-order-project.txt"), order);
-        var (muteStop, keepStop, lookStop) = (order.IndexOf("StudioMuteCheckBox"), order.IndexOf(KeepBox), order.IndexOf("StudioSaveDefaultLookButton"));
+        var (muteStop, badgeStop, keepStop, lookStop) = (order.IndexOf("StudioMuteCheckBox"), order.IndexOf("StudioBrandingCheckBox"), order.IndexOf(KeepBox), order.IndexOf("StudioSaveDefaultLookButton"));
         _report.Check(
-            "Keep this project is a check box under a heading Project, after the extras and before Save as default look, both in what a screen reader walks and in the order of the Tab key; it is off for a project whose file says it is not kept, and it says what keeping means",
+            "Keep this project is a check box of the Project panel, under a heading Storage, after Tiny Clips badge and before Save as default look, both in what a screen reader walks and in the order of the Tab key, where the Project panel comes after Mute; it is off for a project whose file says it is not kept, and it says what keeping means",
             box is { ControlType: ControlTypeNames.CheckBox, Name: "Keep this project", IsEnabled: true, IsKeyboardFocusable: true, IsToggledOn: false } && box.HelpText == KeepHelp && tip == KeepTip
-                && inFile == false && mute >= 0 && mute < heading && heading < keep && keep < look
-                && muteStop >= 0 && keepStop == muteStop + 1 && lookStop == keepStop + 1,
+                && inFile == false && title == "Project" && badge >= 0 && badge < heading && heading < keep && keep < look
+                && muteStop >= 0 && badgeStop == muteStop + 1 && keepStop == badgeStop + 1 && lookStop == keepStop + 1,
             $"{box}, {OnOff(box?.IsToggledOn)}, enabled {box?.IsEnabled}, can take the focus {box?.IsKeyboardFocusable}; described as \"{box?.HelpText}\"; its tooltip: \"{tip}\"; the file says {KeptText(inFile)}; "
-                + $"of the {walked.Count} elements a screen reader walks, Mute audio is number {mute}, the heading Project {heading}, the check box {keep} and Save as default look {look}; "
-                + $"of the {order.Count} stops of the Tab key, Mute audio is number {muteStop}, the check box {keepStop} and Save as default look {lookStop} (saved as tab-order-project.txt)");
+                + $"the panel is called \"{title}\"; of the {walked.Count} elements a screen reader walks, Tiny Clips badge is number {badge}, the heading Storage {heading}, the check box {keep} and Save as default look {look}; "
+                + $"of the {order.Count} stops of the Tab key, Mute is number {muteStop}, Tiny Clips badge {badgeStop}, the check box {keepStop} and Save as default look {lookStop} (saved as tab-order-project.txt)");
 
         // An edit first, and its save, so that there is something to undo and nothing waiting to be written.
         Timeline.Mark("3: Keep this project, switched on");
@@ -214,8 +222,8 @@ internal sealed partial class WindowChecks
     }
 
     /// <summary>
-    /// Scrolls the inspector to its end, without an animation. Returns the scroll viewer's
-    /// rectangle in the window's content, or null when it was not found.
+    /// Shows the Project panel and scrolls it to its end, without an animation. Returns the
+    /// scroll viewer's rectangle in the window's content, or null when it was not found.
     /// </summary>
     private Windows.Foundation.Rect? ScrollInspectorToEnd(Editor editor) => OnUi<Windows.Foundation.Rect?>(() =>
     {
@@ -236,13 +244,13 @@ internal sealed partial class WindowChecks
     });
 
     /// <summary>
-    /// A picture of the end of the inspector, for a person to look at: the extras, the Project
-    /// section with Keep this project, and Save as default look.
+    /// A picture of the Project panel, for a person to look at: Tiny Clips badge, Keep this
+    /// project, and Save as default look.
     /// </summary>
     private void ProjectSectionPicture(Editor editor, string name, bool isLight, List<string> saved)
     {
-        Timeline.Mark($"9: the Project section, {name}");
-        var check = $"the Project section in the {name} theme: a picture shows the end of the inspector, which is {(isLight ? "light" : "dark")}, with Keep this project whole in it between Mute audio and Save as default look";
+        Timeline.Mark($"9: the Project panel, {name}");
+        var check = $"the Project panel in the {name} theme: a picture shows the inspector, which is {(isLight ? "light" : "dark")}, with Keep this project whole in it between Tiny Clips badge and Save as default look";
         var viewport = ScrollInspectorToEnd(editor);
         Thread.Sleep(500);
         if (viewport is not { } view || editor.Camera.Take() is not { } shot)
@@ -255,7 +263,7 @@ internal sealed partial class WindowChecks
         shot.Save(path);
         saved.Add(path);
         var box = InShot(editor, shot, view);
-        string[] ids = ["StudioMuteCheckBox", KeepBox, "StudioSaveDefaultLookButton"];
+        string[] ids = ["StudioBrandingCheckBox", KeepBox, "StudioSaveDefaultLookButton"];
         var places = ids.Select(id => editor.Root.Find(id) is { IsOffscreen: false } found ? found.Bounds : default).ToArray();
         var outside = ids.Where((_, index) => places[index] is not { Width: > 0, Height: > 0 } at
             || at.X - shot.ScreenX < box.X - 1 || at.Y - shot.ScreenY < box.Y - 1
@@ -268,7 +276,7 @@ internal sealed partial class WindowChecks
         _report.Check(
             check,
             keep is { Name: "Keep this project" } && outside.Length == 0 && inOrder && (isLight ? Luma(surface) > 170 : Luma(surface) < 90),
-            $"the inspector shows {R(box)} of the window, and its surface is {surface}; {(outside.Length == 0 ? "Mute audio, Keep this project and Save as default look are whole in it" : "not whole in it: " + string.Join(", ", outside))}, "
+            $"the inspector shows {R(box)} of the window, and its surface is {surface}; {(outside.Length == 0 ? "Tiny Clips badge, Keep this project and Save as default look are whole in it" : "not whole in it: " + string.Join(", ", outside))}, "
                 + $"from top to bottom: {inOrder}; saved as {Path.GetFileName(path)}");
         ScrollInspector(editor, _ => 0);
     }

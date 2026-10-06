@@ -80,12 +80,14 @@ internal sealed partial class WindowChecks
         return (problems, tree.Count, sliders, panes);
     }
 
-    /// <summary>Audits the window as it is now, saves the tree next to the report, and records one check.</summary>
+    /// <summary>
+    /// Audits the window in the state it is in now, with each panel of its inspector on show in
+    /// turn and both crop groups open, saves the trees next to the report, and records one check.
+    /// See <see cref="ReadEveryPanel"/>.
+    /// </summary>
     private void AuditState(Editor editor, string state, string fileName, int slidersWanted, Func<List<(int Depth, UiaElement Element)>, string?>? also = null)
     {
-        var tree = Content(editor);
-        SaveTree(fileName, tree);
-        var (problems, elements, sliders, panes) = Audit(tree);
+        var (tree, problems, elements, sliders, panes, saved) = ReadEveryPanel(editor, fileName);
         var extra = also?.Invoke(tree);
         if (extra is not null)
         {
@@ -100,7 +102,7 @@ internal sealed partial class WindowChecks
         _report.Check(
             $"{state}: every control has a name, every control a person operates has an automation id, and every slider reports its value inside its range, its step and its value as text",
             elements > 0 && problems.Count == 0,
-            problems.Count == 0 ? $"{elements} elements, {sliders} sliders; {panes} pane(s) without a name, none of which can take the focus; tree saved as {fileName}" : string.Join("; ", problems));
+            problems.Count == 0 ? $"{elements} elements, {sliders} sliders; {panes} pane(s) without a name, none of which can take the focus; saved as {saved}" : string.Join("; ", problems));
     }
 
     private void Accessibility()
@@ -135,7 +137,7 @@ internal sealed partial class WindowChecks
 
         // The editor with the bubble layout: padding, two sliders for the screen and four for its
         // crop, three for the camera's place, two for its style and four for its crop, and the
-        // three of the trim bar. No zoom is selected, so the Zoom section shows none of its own.
+        // three of the trim bar. No zoom is selected, so the Zoom panel shows none of its own.
         AuditState(editor, "the editor, bubble layout", "tree-editor.txt", 19);
 
         // The canvas: one image.

@@ -333,13 +333,13 @@ internal sealed partial class WindowChecks
         var zoomControlsGone = Absent(editor, "StudioZoomScaleSlider") && Absent(editor, "StudioDeleteZoomButton", 0.3);
         _report.Check(
             "with a cut selected, a press on the empty part of the zoom lane selects nothing: it lets go of the cut, although the press is on the other lane; and the other way round, with a zoom selected, a press on the empty part of the cut lane lets go of the zoom. "
-                + "Each press moves the playhead to the time that was pressed; afterwards neither lane marks an item, and the Cut section and the Zoom section show none",
+                + "Each press moves the playhead to the time that was pressed; afterwards neither lane marks an item, and the Cut panel and the Zoom panel show none",
             cutSelected && cutMarked == CutLaneFor(cuts, 1) && beforeZoomLane == "cut 2, zoom none" && afterZoomLane.Item1 == Nothing && Same(afterZoomLane.Item2, 9.5, 0.01)
                 && lanesAfterZoomLane == (CutLaneFor(cuts, null), ZoomLaneFor(null)) && cutSection is null
                 && zoomSelected && zoomMarked == ZoomLaneFor(0) && beforeCutLane == "cut none, zoom 1" && afterCutLane.Item1 == Nothing && Same(afterCutLane.Item2, 5.0, 0.01)
                 && lanesAfterCutLane == (CutLaneFor(cuts, null), ZoomLaneFor(null)) && zoomPosition == "2 zooms" && zoomControlsGone,
-            $"selected: {beforeZoomLane}; the zoom lane pressed at 9.5 s, above that cut: {afterZoomLane.Item1}, playhead {Seconds(afterZoomLane.Item2)} s, the cut lane: {lanesAfterZoomLane.Item1}, the Cut section: {cutSection ?? "\"2 cuts\" and no cut's controls"}. "
-                + $"Selected: {beforeCutLane}; the cut lane pressed at 5.0 s, below that zoom: {afterCutLane.Item1}, playhead {Seconds(afterCutLane.Item2)} s, the zoom lane: {lanesAfterCutLane.Item2}, the Zoom section: \"{zoomPosition}\", a zoom's controls gone: {zoomControlsGone}");
+            $"selected: {beforeZoomLane}; the zoom lane pressed at 9.5 s, above that cut: {afterZoomLane.Item1}, playhead {Seconds(afterZoomLane.Item2)} s, the cut lane: {lanesAfterZoomLane.Item1}, the Cut panel: {cutSection ?? "\"2 cuts\" and no cut's controls"}. "
+                + $"Selected: {beforeCutLane}; the cut lane pressed at 5.0 s, below that zoom: {afterCutLane.Item1}, playhead {Seconds(afterCutLane.Item2)} s, the zoom lane: {lanesAfterCutLane.Item2}, the Zoom panel: \"{zoomPosition}\", a zoom's controls gone: {zoomControlsGone}");
 
         // What a press on a handle of the trim bar and its release ask of the editor: a gesture,
         // and in it the time the handle is at. The editor answers by showing the picture there.
@@ -634,7 +634,7 @@ internal sealed partial class WindowChecks
         Until(() => CutsOf(editor).Length, count => count == 2, 1.5);
         var cutUndone = KeptPartsAre(KeptParts(editor)?.Kept, [(1, 2), (3, 6), (7.5, 11)], within);
 
-        // A cut's end moved in the Cut section, to the playhead at 3.25 s: the gap follows.
+        // A cut's end moved in the Cut panel, to the playhead at 3.25 s: the gap follows.
         Find(editor, "StudioCut_0")?.Select();
         Until(() => SelectedCutOf(editor), index => index == 0, 1);
         SetSlider(editor, "StudioPlayhead", 3.25);

@@ -390,7 +390,7 @@ internal sealed partial class WindowChecks
             $"the lane: {afterButton}; sent: {buttonSaid.Heard}; the focus was on \"{onDelete}\" and is on \"{focusAfter}\"");
 
         // In the first of two scenes: its time goes to the second, which then starts with the
-        // recording. One scene is left, the button goes, and the focus goes to Split at playhead.
+        // recording. One scene is left, the button goes, and the focus goes to Split scene.
         SetSlider(editor, "StudioPlayhead", 1.0);
         WaitForLane(editor, SceneLaneFor(two, 0), 2, SceneLane);
         mark = heard.Mark();
@@ -402,7 +402,7 @@ internal sealed partial class WindowChecks
         var focusOnSplit = Until(() => FocusedId(editor), id => id == "StudioSceneSectionSplitButton", 1.5);
         var note = NameOf(editor, "StudioOneSceneNote", 1);
         _report.Check(
-            "deleting the first scene hands its time to the second, which then starts with the recording; with one scene left Delete scene is gone, the section says what scenes are for, and the keyboard focus is on Split at playhead",
+            "deleting the first scene hands its time to the second, which then starts with the recording; with one scene left Delete scene is gone, the panel says what scenes are for, and the keyboard focus is on Split scene",
             pressedAgain && afterFirst == "*Scene 1 of 1, Side by side, 0.0 to 12.0 seconds" && Describe(ScenesOf(editor)) == Describe(one) && firstSaid.Said && gone && focusOnSplit == "StudioSceneSectionSplitButton" && note == StudioEditorText.OneSceneExplanation,
             $"the lane: {afterFirst}; the editor holds {Describe(ScenesOf(editor))}; sent: {firstSaid.Heard}; Delete scene gone: {gone}; the focus is on \"{focusOnSplit}\"; the note: \"{note}\"");
 

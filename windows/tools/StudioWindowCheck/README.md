@@ -100,8 +100,8 @@ Groups: `open transport inspector trim export close windows accessibility themes
   the lane, the middle one selected. One zoom follows the pointer and one is a suggestion, so
   both marks a block can carry are in the picture.
 - `out\zoom-section-light.png`, `-2.png`, `-3.png`, and the same for `dark`: the inspector
-  scrolled to its Zoom section with a zoom selected. The section is higher than the inspector, so
-  there are three: from its heading, from the focus pad, and from its end.
+  with its Zoom panel on show and a zoom selected. The panel is higher than the inspector, so
+  there are three: from its top, from the focus pad, and from its end.
 - `out\zoom-preview.png`: the window right after Z added a zoom, with the preview zoomed.
   `out\zoom-moving-in.png`: a screenshot taken while the preview played through a zoom moving in.
 - `out\window-timeline-light.png`, `-light-smallest.png`, and the same for `dark`: the whole
@@ -118,9 +118,8 @@ Groups: `open transport inspector trim export close windows accessibility themes
   four speed changes, two long ones with their rate written on them and two short ones with
   their mark alone, a faster and a slower one of each, over a zoom and a cut of the same
   length; and the same with the first speed change selected.
-- `out\project-section-light.png`, `-dark.png`: the window with the inspector scrolled to its
-  end, where the extras, the Project section with Keep this project, and Save as default look
-  are.
+- `out\project-section-light.png`, `-dark.png`: the window with the inspector's Project panel
+  on show, where Tiny Clips badge, Keep this project and Save as default look are.
   `out\cannot-be-shown-light.png`, `-dark.png`: the window of a project whose file cannot be
   read, with the button that saves its screen recording.
 - `out\failed-<name>.png`, and for most of them `out\failed-<name>.txt`, only when a check
@@ -138,8 +137,12 @@ Groups: `open transport inspector trim export close windows accessibility themes
 - `out\tab-order.txt`, `out\tab-order-scenes.txt`, `out\tab-order-cuts.txt`,
   `out\tab-order-speed.txt`, `out\tab-order-project.txt`, `out\tab-order-cannot-be-shown.txt`:
   the tab stops of the window with a zoom selected, with three scenes, with a cut selected,
-  with a speed change selected, of the inspector through its Project section, and of the
-  window of a project that cannot be shown, in the order the focus moves through them.
+  with a speed change selected, of the inspector through its Project panel, and of the
+  window of a project that cannot be shown, in the order the focus moves through them. The
+  inspector shows one panel at a time, so each of these lists is put together from a walk
+  with each panel on show: see "The inspector as a rail with one panel on show".
+- `out\tree-<state>-<panel>.txt`: where the window's UI Automation tree is saved for a state
+  of an editor, there is one file for each panel of the inspector, for the same reason.
 - `out\open-failure-<time>-<n>.txt`, only when a window could not open its project: what the
   preview failed with, each exception with its error code, and what the preview engines wrote
   to their trace in the eight seconds before. The window itself shows one sentence, and the
@@ -375,11 +378,11 @@ Someone may be working on the machine while the tool runs, so:
   zooms, cuts and speed changes, at both sizes: the ten items of the transport row are on one
   row in their order, the four lanes and the trim bar are one above the other and equally wide,
   all of it whole inside the window, and the canvas is at least 400 × 225. For the Project
-  section: Mute audio, Keep this project and Save as default look are whole in the picture,
+  panel: Tiny Clips badge, Keep this project and Save as default look are whole in the picture,
   one under the other. For a project that cannot be shown: the button is whole in the picture,
   under the message, and enabled.
 - `zoom`: the lane above the trim bar, Add zoom, what Z and Delete run, the lane's keys, its
-  blocks as list items, Previous and Next, the Zoom section with every control of the selected
+  blocks as list items, Previous and Next, the Zoom panel with every control of the selected
   zoom, the focus pad, the Start and End buttons, presses and drags on the lane, a zoom that
   follows the pointer, a zoom that moves in while the preview plays, suggested zooms, and undo and
   redo across an add, a move and a delete. Wherever a zoom changes the picture, the picture is
@@ -390,7 +393,7 @@ Someone may be working on the machine while the tool runs, so:
 - `scene`: a recording without a camera, which has no scene controls; one scene; Split by S and
   by both buttons, where it is refused and why; a layout for each scene; everything that follows
   the playhead into another scene; the picture on both sides of a line and frame by frame
-  inside a move; a scene that is cut to; Move takes; the three Start buttons; Previous and Next;
+  inside a move; a scene that is cut to; the transition's Duration; the three Start buttons; Previous and Next;
   the lane's keys, its blocks as list items, presses and drags on it; what the scene the
   playhead is in looks like, in both themes; Delete with the focus on the lane and Delete scene;
   a scene that is come into while the preview plays, with what that costs the UI thread; the
@@ -548,7 +551,7 @@ frame it shows (`Checks\ScenePlaying.cs`, `Checks\CutPlaying.cs`).
   question is answered on the UI thread and takes it some tens of milliseconds. It follows the
   playhead through the view model's own notification instead.
 - **What a change of scene costs.** When the playhead comes into another scene, everything that
-  shows the current scene is refreshed: the lane's selected item, the Scene section, Layout, the
+  shows the current scene is refreshed: the lane's selected item, the Scene panel, Layout, the
   camera's controls and the handle in the preview. The check records what the view model
   reports, and has another thread ask the UI thread a question every millisecond. The current
   scene has to be reported once, nothing may ask for everything to be refreshed, the four lanes
@@ -612,9 +615,9 @@ tried.
 
 What the group checks, in `Checks\Speed.cs`, `SpeedLane.cs` and `SpeedPlaying.cs`:
 
-- **Adding.** The empty lane; R, Speed in the transport row and Change speed at playhead in the
-  section; where a speed change already is, and where the shortest does not fit; what is read
-  out; the block's name; the section for the selected one; and the time, which counts the video
+- **Adding.** The empty lane; R, Speed in the transport row and Add speed change in the
+  Speed panel; where a speed change already is, and where the shortest does not fit; what is read
+  out; the block's name; the panel for the selected one; and the time, which counts the video
   and so gets shorter for a faster stretch.
 - **The lane.** That it is on the trim bar's time scale; its keys; its blocks as list items;
   presses and drags, by what the lane's pointer handlers call: a press on a block and on the
@@ -713,7 +716,7 @@ in. How a drag is made without a pointer is in "What stands in for a person".
 
 - **A drag stops the preview.** In a recording with three scenes, each with its camera at a
   place and of a size of its own: the camera's handle, the Size slider and the horizontal
-  offset; in one with side-by-side scenes: Camera share and Move takes. Each time the editor
+  offset; in one with side-by-side scenes: Camera size and the transition's Duration. Each time the editor
   has to be paused right after the first change, on the frame the picture then stays on (read
   from the frame strips, not from the edges: the frame is not the check's to choose); the
   scene of that frame, and no other, has to have changed as the drag asked; and one Undo has
@@ -742,8 +745,9 @@ in. How a drag is made without a pointer is in "What stands in for a person".
 In `Checks\KeepProject.cs`, in the `inspector` group. The check box is read through UI
 Automation and the project file is read by the tool itself, as JSON, not through the store.
 
-- Its name, state, description and tooltip; its place after Mute audio under a heading Project
-  and before Save as default look, in what a screen reader walks and among the tab stops.
+- Its name, state, description and tooltip; its place in the Project panel, under a heading
+  Storage, after Tiny Clips badge and before Save as default look, in what a screen reader
+  walks and among the tab stops, where the Project panel comes after Mute.
 - Switching it writes `keepSources` into the file within 0.4 s, which is before the editor's
   own save of an edit would (0.6 s after the edit), and leaves Undo and Redo as they were. One
   Undo afterwards takes back the edit before it, and neither it nor the Redo changes the check
@@ -1079,6 +1083,156 @@ Not covered: where the focus is after a copy that failed in a window that is sti
 check of a recording that cannot be written reads the status and the button, not the focus);
 what the app does with the error (it shows a notification, which is not in the tool); and
 the app exiting during a copy.
+
+### The inspector as a rail with one panel on show
+
+In `Checks\InspectorPanels.cs` and `Checks\InspectorRail.cs`, and in most other files of the
+checks. Written on 6 October 2026, in quiet mode, without a check tool, and to be read like
+the rest of this section: it compiles, the rules behind it pass their unit tests
+(`StudioInspectorPanelTests`, `StudioEditorSessionInspectorTests`), and not one check below
+has run, neither the 25 new ones nor the older ones as they are now. If nothing ends a part
+early, a full run has 553 checks where it had 528, all 25 more in `inspector`.
+
+The inspector no longer shows everything in one scroll. A rail down its outer edge has an
+item for each panel (Scene, Background, Screen, Camera, Zoom, Cut, Speed, Audio, Project; a
+recording without a camera has no Scene and no Camera), and the panel of the chosen item is
+on show under its name. The other panels are collapsed: their controls are not in the window,
+neither for the Tab key nor for a screen reader. Taking hold of something a panel edits shows
+that panel by itself. The four crop sliders of the screen and of the camera are in a group
+called Crop, which is closed while nothing is cropped. Many names changed with it (see
+`windows\docs\studio-inspector-rail.md`).
+
+**The one step that keeps the older checks as they were.** Every check asks for a control by
+its automation id. `InspectorPanels.cs` has the one table of which panel holds which control
+and which of them are inside a crop group (`Places`, 133 ids, and three prefixes for what the
+inspector makes in code), and one step, `ShowWhatHolds`: it shows the panel that holds the
+control, the way the rail does, through the editor, and opens the crop group the control is
+in, the way a press on its header does. The step runs before every way the tool has of
+finding a control of a window: `UiaElement.Find` and `FindRaw` on the window's element
+(through `BeforeFind`, set when the tool opens a window), `Descendant`, which looks in the
+window's own tree, and `FocusOn`. It does nothing for a control that is not the inspector's,
+for a panel the recording does not have, and before the project is open. After it changed
+something through UI Automation, it gives the tree up to 0.8 s to have the control.
+`FindAsItIs` and `FindRawAsItIs` look without the step: the new checks use them, because
+what the window shows by itself is what they are about.
+
+What that step does to a check, to keep in mind when one fails:
+
+- A control that is looked for is brought on show. A check that expects a control to be gone
+  still means what it meant: the control's own panel is on show and does not have it.
+- A crop group that is opened this way counts as opened by its header, and stays open from
+  then on, with or without a crop. The older crop checks therefore see the sliders
+  throughout, as they did. What a group does by itself is in the new checks.
+- When the panel changes while the keyboard focus is inside the panel that goes away, or in
+  the rail, the window puts the focus on the rail's item for the new panel. That is the
+  window's rule, and it also applies when the tool is what changed the panel. Every older
+  check that reads the focus was read for it: between putting the focus on a control and
+  reading where it went, each of them looks only for controls of the same panel, or of none.
+- Showing a panel puts its scroll back at the top.
+
+**Two readings go through every panel.** `AuditState` reads the window with each panel on
+show in turn and both crop groups open (`ReadEveryPanel`), so that every control a person
+can bring up is read. Each reading is saved (`tree-<state>-<panel>.txt`), what is wrong in
+any of them is reported once, and the sliders are counted once each, so the numbers of
+sliders the checks expect are the ones they expected before: 19, 17, 10, 15 and 18. The
+panel that was on show is shown again afterwards, the focus is put back if it was taken
+along, and the crop groups are left as they were found. `TabStops` walks the window with
+each panel on show in turn and puts the walks together (`StopsWithEachPanel`): the stops up
+to the rail, the rail, each panel's stops in the order of the rail, and what every walk ends
+with alike, which is what comes after the inspector. The rail is listed by its own id, and
+the header of a crop group by the group's. `TabStopsAsItIs` is one walk of the window as it
+is. A window that shows no inspector, as one whose project cannot be opened, is read and
+walked as it is.
+
+**Older checks that judge something else than they did.**
+
+- Names. Add cut (the Cut panel's button and Cut in the transport row), Add speed change,
+  Split scene, Transition with Instant and Animated, Transition duration, Zoom level, Focus
+  with Fixed point and Follow pointer, Zoom-in time and Zoom-out time, Camera background,
+  Screen crop left and its seven fellows, and the description and the tooltip of Delete cut
+  and of Delete speed change, and the tooltip of the choice of speeds. In `Cuts.cs`,
+  `Speed.cs`, `Scenes.cs`, `SceneSection.cs`, `ZoomSection.cs`, `Cropping.cs` and
+  `CameraBackground.cs`.
+- The order of the tab stops. With three scenes (`SceneSection.cs`): the rail once and
+  before any panel; the Scene panel as Previous and Next scene, Layout, Split scene,
+  Transition, Duration, the three Start buttons, Delete scene; then Show background, Click
+  highlights, the three buttons that add, and Mute; and no item of the rail a stop of its
+  own. With a zoom selected (`ZoomSection.cs`): Click highlights and the Crop group's header
+  come after the screen's shadow and before the crop sliders, and Mute after Delete zoom.
+  With a cut and with a speed change selected: the panel comes before Mute, where it came
+  before Click rings.
+- Keep this project (`KeepProject.cs`): its place is the Project panel, under a heading
+  Storage, after Tiny Clips badge and before Save as default look, and in the order of the
+  Tab key after Mute and Tiny Clips badge. The picture of it shows Tiny Clips badge above it,
+  where it showed Mute audio.
+- A recording without zooms, without cuts and without speed changes: the Zoom, the Cut and
+  the Speed panel also have to say how to add the first one (`StudioZoomEmptyHint`,
+  `StudioCutEmptyHint`, `StudioSpeedEmptyHint`), and once there is a cut that sentence has to
+  be gone.
+- The pictures of the Zoom panel (`Themes.cs`) find the panel by its new name. The window's
+  two sizes are what they were, 1180 × 760 and 980 × 640 (`TimelinePictures.cs`), and the
+  inspector is 88 wider in both, so the preview's column is 772 and 572 wide where it was
+  860 and 660. The check of those pictures asks for a canvas at least 400 wide and 225 high.
+- Playing into a scene (`ScenePlaying.cs`) puts the Scene panel on show before it plays,
+  because it reads that panel while the preview plays and measures the UI thread's time.
+
+**New, 25 checks, all in `inspector`** (`Checks\InspectorRail.cs`):
+
+- *The rail of a recording with a camera* (7). It opens on Scene; the rail is a list called
+  Inspector panels with nine items in their order, each a list item with the panel's name,
+  what the panel holds as its description and an automation id, one of them selected. The
+  list is the framework's, with one selection that goes with the focus and one stop for the
+  Tab key. Each item, selected through UI Automation, shows its panel: the name over the
+  inspector and the one selected item. With each panel on show, no control of another panel
+  is in what a screen reader walks or in everything UI Automation knows of the window, and
+  one that the panel always has is there; the Tab key comes to the rail once and goes on
+  from it to that panel's first control, and no control of another panel and no single item
+  of the rail is a stop. A screen reader is told each newly selected item by the list's own
+  events, and no sentence. Taking the selection off the chosen item chooses nothing else.
+- *What shows a panel* (5): the four buttons of the transport row that add something; what
+  Z, X, R and S run where they add nothing; a zoom, a cut, a speed change and a scene
+  selected on its lane through UI Automation, also when it is selected already; what Home,
+  End, Left and Right run on a lane; and, by what the pointer handlers call, the camera
+  dragged in the preview, a press on a scene's block, and Show scene, the button the Camera
+  panel has where the scene hides the camera. Before each act another panel is put on show.
+- *Where the keyboard focus goes* (5): from a slider of the panel that goes away to the
+  rail's item for the new panel, with the act's own sentence read out and no other; from the
+  rail to the rail's new item; not at all from Play; from Show scene, which is in the panel
+  that goes away, to the rail's Scene item; and a focus that is put on an item of the rail
+  that is not the chosen one lands on the chosen one and changes no panel.
+- *What leaves the panel alone* (1): Undo and Redo and what Ctrl+Z and Ctrl+Y run, what the
+  keys 1 to 4 run, playing into a zoom, the playhead moved into a zoom, a cut, a speed change
+  and another scene, a press on an empty part of three lanes, an item taken out of the
+  selection, the focus put on a lane, and the selected zoom deleted. The Project panel, which
+  nothing in the table shows, has to stay through each.
+- *A recording without a camera* (3): it opens on Background with seven items; asked for
+  Camera it shows Screen and asked for Scene it shows Background, and so does what S runs;
+  through all seven panels there is no control of the Scene or of the Camera panel.
+- *The crop groups by themselves* (4), in a project that comes with a cropped screen: the
+  screen's group is open and the camera's closed; Reset crop, pressed with the focus on it in
+  a group whose header was never pressed, closes the group and the focus goes to its header,
+  and Undo opens it again; collapsed over a crop the group says Cropped, as its description
+  and as a word in its header; the camera's group opens when it is expanded, its sliders say
+  that the crop is the camera's, and collapsed without a crop it does not say Cropped.
+
+What these checks can show, and what they cannot. The rail's Up, Down, Home and End are the
+framework's list's own keys. The tool presses no keys, and unlike the lanes the rail has no
+key handler of the app's to call, so that those four keys choose a panel is not checked: only
+that the list is set up the way that makes them do it, and that selecting an item does.
+Whether a press of Down selects is for a person to try. The focus is XAML's own, in a window
+that never has the keyboard, as in every check of where the focus goes. No screen reader
+runs: that the selected item and the panel's name are what one says after a jump is for a
+person to hear. Nothing judges what the rail looks like: that the chosen item is marked in
+light, in dark and in high contrast, the two lines between its groups, its labels at a
+larger text size (the rail is 88 wide and is meant to grow with its longest label, which
+is "Background", so that none is cut; the panel then has that much less), and the rail
+scrolling in a window too low for nine items. That the panel's
+name is a heading is not read, because the tool does not read heading levels. A group that
+opens or closes moves for a third of a second, which nothing looks at.
+
+Not covered: the rail in a window at its smallest size; a panel shown by a jump while the
+rail is scrolled; the Tab key from the last control of a panel to the timeline (the walks
+show it, and no check names it); and Settings, which this tool does not open.
 
 ## Three checks on a smaller preview
 

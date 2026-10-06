@@ -331,7 +331,7 @@ internal sealed partial class WindowChecks
             selections.All(ok => ok) && lost.Count == 0 && kept.Count == 5 && marked.Item1 == SpeedLaneFor(speeds, null) && marked.Item2 is null
                 && !lanes.Item1.Contains('*') && !lanes.Item2.Contains('*') && lanes.Item3 == SpeedLaneFor(speeds, 0) && !CanUndo(),
             lost.Count == 0
-                ? $"{string.Join("; ", kept)}; after the first press the speed lane was {marked.Item1} and the Speed section {marked.Item2 ?? "said \"2 speed changes\" and showed none"}; at the end the speed lane: {lanes.Item3}; Undo enabled {CanUndo()}"
+                ? $"{string.Join("; ", kept)}; after the first press the speed lane was {marked.Item1} and the Speed panel {marked.Item2 ?? "said \"2 speed changes\" and showed none"}; at the end the speed lane: {lanes.Item3}; Undo enabled {CanUndo()}"
                 : $"not as wanted: {string.Join("; ", lost)}");
 
         // What leaves the selection alone, with the first speed change selected.

@@ -94,8 +94,26 @@ internal sealed class UiaElement
         }
     }
 
+    /// <summary>
+    /// Runs before <see cref="Find"/> and <see cref="FindRaw"/> look, with the automation id
+    /// that is looked for. The checks set it on the element of a Studio window: the inspector
+    /// shows one panel at a time, and a control of another panel is not in the tree, so the
+    /// panel that holds the control is shown first.
+    /// </summary>
+    internal Action<string>? BeforeFind { get; set; }
+
     /// <summary>The first descendant in the control view with this automation id, or null.</summary>
     public UiaElement? Find(string automationId)
+    {
+        BeforeFind?.Invoke(automationId);
+        return FindAsItIs(automationId);
+    }
+
+    /// <summary>
+    /// As <see cref="Find"/>, in the tree as it is now: nothing is shown first. For a check of
+    /// what the window shows by itself.
+    /// </summary>
+    public UiaElement? FindAsItIs(string automationId)
     {
         try
         {
@@ -153,6 +171,13 @@ internal sealed class UiaElement
     /// <summary>The first descendant in the raw view with this automation id, for elements kept out of the control view.</summary>
     public UiaElement? FindRaw(string automationId, int depth = 40)
     {
+        BeforeFind?.Invoke(automationId);
+        return FindRawAsItIs(automationId, depth);
+    }
+
+    /// <summary>As <see cref="FindRaw"/>, in the tree as it is now: nothing is shown first.</summary>
+    public UiaElement? FindRawAsItIs(string automationId, int depth = 40)
+    {
         foreach (var child in Children(raw: true))
         {
             if (child.Id == automationId)
@@ -160,7 +185,7 @@ internal sealed class UiaElement
                 return child;
             }
 
-            if (depth > 0 && child.FindRaw(automationId, depth - 1) is { } found)
+            if (depth > 0 && child.FindRawAsItIs(automationId, depth - 1) is { } found)
             {
                 return found;
             }

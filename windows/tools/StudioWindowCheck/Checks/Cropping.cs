@@ -9,6 +9,10 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 11. Crops: the four crop sliders of the screen and of the camera, and Reset crop. What a crop
 // leaves is read from the picture the way a zoom is: from where the edges of the test clips are.
+// The sliders are in the Crop group of the Screen panel and of the Camera panel, which is closed
+// while nothing is cropped. Looking for a slider opens its group, as a press on its header does,
+// and the group then stays open, so these checks see the sliders throughout. What a group does
+// by itself is in the checks of the inspector's rail (InspectorRail.cs).
 internal sealed partial class WindowChecks
 {
     private void Cropping()
@@ -72,8 +76,8 @@ internal sealed partial class WindowChecks
         var names = ids.Select(id => Find(editor, id)).Select(slider => slider?.Range is { Value: 0, Minimum: 0 } range && Same(range.Maximum, 0.95) && Same(range.SmallChange, 0.01) ? $"{slider.Name} {slider.ValueText}" : $"{slider?.Name}: not from 0 to 0.95, at 0, in steps of 0.01").ToArray();
         var reset = Find(editor, "StudioScreenCropResetButton");
         _report.Check(
-            "the Screen section has four crop sliders, from 0 to 95% in steps of 1%, and Reset crop, which is disabled while nothing is cut off",
-            names.SequenceEqual(["Crop left 0%", "Crop top 0%", "Crop right 0%", "Crop bottom 0%"]) && reset is { IsEnabled: false, Name: "Reset crop" },
+            "the Crop group of the Screen panel has four sliders, which say that the crop is the screen's, from 0 to 95% in steps of 1%, and Reset crop, which is disabled while nothing is cut off",
+            names.SequenceEqual(["Screen crop left 0%", "Screen crop top 0%", "Screen crop right 0%", "Screen crop bottom 0%"]) && reset is { IsEnabled: false, Name: "Reset crop" },
             $"{string.Join(", ", names)}; {reset} enabled {reset?.IsEnabled}");
 
         // One edge after the other. The canvas takes the shape of what is left of the screen, and
@@ -164,7 +168,7 @@ internal sealed partial class WindowChecks
         ShowsPart(editor, "after Reset crop the preview shows the whole screen again", ScreenPart.Whole, Frame, "no crop");
         var focusAfterReset = Until(() => FocusedId(editor), id => id == "StudioScreenCropLeftSlider", 1.5);
         _report.Check(
-            "after Reset crop, which is switched off once nothing is cut off, the keyboard focus is on Crop left, the first of the four sliders",
+            "after Reset crop, which is switched off once nothing is cut off, the keyboard focus is on Left, the first of the four sliders, in a group whose header was pressed and that so stays open",
             resetFocus == "StudioScreenCropResetButton" && focusAfterReset == "StudioScreenCropLeftSlider",
             $"the focus was on \"{resetFocus}\" and is on \"{focusAfterReset}\"");
 
@@ -267,8 +271,8 @@ internal sealed partial class WindowChecks
         var names = ids.Select(id => Find(editor, id)).Select(slider => slider?.Range is { Value: 0, Minimum: 0 } range && Same(range.Maximum, 0.95) && Same(range.SmallChange, 0.01) ? $"{slider.Name} {slider.ValueText}" : $"{slider?.Name}: not from 0 to 0.95, at 0, in steps of 0.01").ToArray();
         var reset = Find(editor, "StudioCameraCropResetButton");
         _report.Check(
-            "the Camera section has four crop sliders, from 0 to 95% in steps of 1%, and Reset crop, which is disabled while nothing is cut off",
-            names.SequenceEqual(["Crop left 0%", "Crop top 0%", "Crop right 0%", "Crop bottom 0%"]) && reset is { IsEnabled: false, Name: "Reset crop" },
+            "the Crop group of the Camera panel has four sliders, which say that the crop is the camera's, from 0 to 95% in steps of 1%, and Reset crop, which is disabled while nothing is cut off",
+            names.SequenceEqual(["Camera crop left 0%", "Camera crop top 0%", "Camera crop right 0%", "Camera crop bottom 0%"]) && reset is { IsEnabled: false, Name: "Reset crop" },
             $"{string.Join(", ", names)}; {reset} enabled {reset?.IsEnabled}");
         ShowsCameraPart(editor, "before any crop the camera layout shows the camera's picture, as much of it as fills the content area", null, Frame, cameraFrame);
 
@@ -300,7 +304,7 @@ internal sealed partial class WindowChecks
         var values = ids.Select(id => Until(() => SliderValue(editor, id), value => value == 0, 1)).ToArray();
         var resetAfter = Until(() => Find(editor, "StudioCameraCropResetButton", 0.5)?.IsEnabled, enabled => enabled == false, 1);
         _report.Check(
-            "Reset crop in the Camera section takes the camera's crop away, puts its four sliders at 0, is disabled again, and leaves the keyboard focus on the camera's Crop left",
+            "Reset crop in the Camera panel takes the camera's crop away, puts its four sliders at 0, is disabled again, and leaves the keyboard focus on the camera's Left slider",
             resetPressed && CameraCropOf(editor) is null && values.All(value => value == 0) && resetAfter == false && resetFocus == "StudioCameraCropResetButton" && Until(() => FocusedId(editor), id => id == "StudioCameraCropLeftSlider", 1.5) == "StudioCameraCropLeftSlider",
             $"the crop is {Describe(CameraCropOf(editor))}; the sliders: {string.Join(", ", values.Select(value => F(value)))}; Reset crop enabled {resetAfter}; the focus was on \"{resetFocus}\" and is on \"{FocusedId(editor)}\"");
         ShowsCameraPart(editor, "after Reset crop the preview shows the camera's picture without a crop again", null, Frame, cameraFrame);

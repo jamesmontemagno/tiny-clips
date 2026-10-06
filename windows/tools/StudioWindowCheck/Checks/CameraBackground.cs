@@ -5,7 +5,7 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 3, continued. The camera's background: a choice in the Camera section to keep, blur or remove
+// 3, continued. The camera's background: a choice in the Camera panel to keep, blur or remove
 // what is behind the people in the camera picture. The window offers it only where people can
 // be found in a picture at all, which the app asks once for each editor it opens.
 internal sealed partial class WindowChecks
@@ -19,7 +19,7 @@ internal sealed partial class WindowChecks
     private static readonly string[] CutoutIds = ["StudioCameraCutout_None", "StudioCameraCutout_Blur", "StudioCameraCutout_Remove"];
 
     /// <summary>
-    /// The Background choice of the Camera section. Whether people can be found is the tool's
+    /// The Camera background choice of the Camera panel. Whether people can be found is the tool's
     /// to say here: the app's answer is whether a model file is next to it, and none is next
     /// to the tool. Nothing finds people in the tool either way, so a camera's picture is the
     /// same whatever is chosen, and no picture is read: what a blurred or a removed background
@@ -37,7 +37,7 @@ internal sealed partial class WindowChecks
             var there = all.Where(id => plain.Root.Find(id) is not null).ToArray();
             var can = OnUi(() => plain.Window.ViewModel.CanFindPeople);
             _report.Check(
-                "where people cannot be found in a camera picture, as in the app today, the Camera section has no Background choice; Mirror, which the choice would come after, is there",
+                "where people cannot be found in a camera picture, as in the app today, the Camera panel has no Camera background choice; Mirror, which the choice would come after, is there",
                 mirror is { IsEnabled: true } && there.Length == 0 && !can,
                 $"{mirror}; {(there.Length == 0 ? "none of the choice's elements is there" : "there: " + string.Join(", ", there))}; the editor was told that people can be found: {can}");
             CloseQuietly(plain);
@@ -49,13 +49,13 @@ internal sealed partial class WindowChecks
         _services.PeopleCanBeFound = true;
         try
         {
-            // A recording without a camera has no Camera section, and so no Background choice.
+            // A recording without a camera has no Camera panel, and so no Camera background choice.
             if (OpenReady(NewScreenProject("Camera background, no camera"), "camera background, no camera") is { } bare)
             {
                 var there = all.Where(id => bare.Root.Find(id) is not null).ToArray();
                 var can = OnUi(() => bare.Window.ViewModel.CanFindPeople);
                 _report.Check(
-                    "a recording without a camera has no Background choice, although people can be found: it has no Camera section",
+                    "a recording without a camera has no Camera background choice, although people can be found: it has no Camera panel",
                     can && there.Length == 0 && bare.Root.Find("StudioNoCameraNote") is not null,
                     $"the editor was told that people can be found: {can}; {(there.Length == 0 ? "none of the choice's elements is there" : "there: " + string.Join(", ", there))}");
                 CloseQuietly(bare);
@@ -98,8 +98,8 @@ internal sealed partial class WindowChecks
         var at = order.IndexOf("StudioCameraCutoutChoice");
         var between = at > 0 && at + 1 < order.Count && order[at - 1] == "StudioCameraMirrorCheckBox" && order[at + 1] == "StudioCameraBorderSlider";
         _report.Check(
-            "where people can be found, the Camera section has a choice called Background between Mirror and Border: Keep, Blur and Remove, each a radio button a screen reader reads by that name, one tab stop together; Keep is the chosen one for a new recording; Remove says before it is chosen that the camera then has no border and no shadow, and the choice's tooltip says what each does",
-            group is { Name: "Background", IsEnabled: true } && choices.All(choice => choice is { ControlType: ControlTypeNames.RadioButton, IsEnabled: true } && choice.Patterns.Contains("SelectionItem", StringComparison.Ordinal))
+            "where people can be found, the Camera panel has a choice called Camera background between Mirror and Border: Keep, Blur and Remove, each a radio button a screen reader reads by that name, one tab stop together; Keep is the chosen one for a new recording; Remove says before it is chosen that the camera then has no border and no shadow, and the choice's tooltip says what each does",
+            group is { Name: "Camera background", IsEnabled: true } && choices.All(choice => choice is { ControlType: ControlTypeNames.RadioButton, IsEnabled: true } && choice.Patterns.Contains("SelectionItem", StringComparison.Ordinal))
                 && choices.Select(choice => choice?.Name).SequenceEqual(["Keep", "Blur", "Remove"]) && Enum.GetValues<StudioCameraCutout>().Select(StudioEditorModel.GetCutoutName).SequenceEqual(["Keep", "Blur", "Remove"])
                 && kept is null && choices[2]?.HelpText == CutoutRemovedText && choices[0]?.HelpText.Length == 0 && choices[1]?.HelpText.Length == 0 && tip == CutoutTip && between && OnUi(() => editor.Window.ViewModel.CanFindPeople),
             kept ?? $"{group}; choices: {string.Join(", ", choices.Select(choice => choice?.ToString() ?? "missing"))}; Remove is described as \"{choices[2]?.HelpText}\"; the tooltip: \"{tip}\"; "
@@ -145,7 +145,7 @@ internal sealed partial class WindowChecks
         var look = Until(() => _services.Settings.StudioDefaultLook, now => now?.Camera.Cutout == StudioCameraCutout.Remove, 1.5);
         _services.Settings.StudioDefaultLook = lookBefore;
         _report.Check(
-            "the Background choice is hidden with the camera's other styling in the layout that shows the screen only, and is back, as it was left, in a layout with the camera; the editor saves it with the project, and Save as default look takes it into the look",
+            "the Camera background choice is hidden with the camera's other styling in the layout that shows the screen only, and is back, as it was left, in a layout with the camera; the editor saves it with the project, and Save as default look takes it into the look",
             hidden.Length == 0 && back is null && saved == StudioCameraCutout.Remove && pressed && look?.Camera.Cutout == StudioCameraCutout.Remove,
             back ?? $"in the screen-only layout: {(hidden.Length == 0 ? "the choice is gone" : "still there: " + string.Join(", ", hidden))}; the project file holds {saved}; the saved look holds {look?.Camera.Cutout.ToString() ?? "no look"}");
         CloseQuietly(editor);

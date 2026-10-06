@@ -10,7 +10,7 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 10, continued. The Zoom section of the inspector, the focus pad, drags on the lane, a zoom that
+// 10, continued. The Zoom panel of the inspector, the focus pad, drags on the lane, a zoom that
 // follows the pointer, and suggested zooms.
 internal sealed partial class WindowChecks
 {
@@ -30,13 +30,13 @@ internal sealed partial class WindowChecks
     ];
 
     // ---------------------------------------------------------------------------------------
-    // The Zoom section
+    // The Zoom panel
     // ---------------------------------------------------------------------------------------
 
     private void ZoomSection()
     {
-        Timeline.Mark("10: the Zoom section");
-        var folder = NewEventsProject("Zoom section", PointerSamples(), clicks: [], p => p with { Zooms = ThreeZooms() });
+        Timeline.Mark("10: the Zoom panel");
+        var folder = NewEventsProject("Zoom panel", PointerSamples(), clicks: [], p => p with { Zooms = ThreeZooms() });
         if (OpenReady(folder, "zoom section") is not { } editor)
         {
             return;
@@ -54,14 +54,14 @@ internal sealed partial class WindowChecks
             opened == FirstZoomName + others && pressed && selected == "*" + FirstZoomName + others && Same(head, MiddleOf(Shown)),
             $"opened: {opened}; pressed: {selected}; playhead {Seconds(head)} s (frame {FrameOf(head)})");
         ShowsPart(editor, "pressing a zoom on the lane shows it: the preview is zoomed on the part that zoom holds", HeldAtFirst, Shown, "scale 2 around (0.30, 0.28) is the part from 0.05 across and 0.03 down, half the screen each way");
-        ZoomSectionShows(editor, "the Zoom section shows the zoom that was pressed", "Zoom 1 of 3", "2.0 to 5.0 seconds", 2, "2×", PointerFirst, "Start 2.0 seconds", "End 5.0 seconds", 0.5, 0.5);
+        ZoomSectionShows(editor, "the Zoom panel shows the zoom that was pressed", "Zoom 1 of 3", "2.0 to 5.0 seconds", 2, "2×", PointerFirst, "Start 2.0 seconds", "End 5.0 seconds", 0.5, 0.5);
 
         // With a zoom selected: padding, two sliders for the screen and four for its crop, five for the zoom, and the three of the trim bar.
         AuditState(editor, "the editor with a zoom selected", "tree-zoom.txt", 15, tree =>
             tree.Any(entry => entry.Element.Id == "StudioZoomFocusPad") ? "the focus pad is in what a screen reader walks"
             : !PadShows(editor) ? "the focus pad is not shown"
             : Find(editor, "StudioZoomFocusXSlider", 0.5) is not { Name: "Horizontal" } || Find(editor, "StudioZoomFocusYSlider", 0.5) is not { Name: "Vertical" } ? "the two sliders that stand for the focus pad are not called Horizontal and Vertical"
-            : Find(editor, "StudioZoomFocusChoice", 0.5) is not { Name: "Looks at" } ? $"the choice of what the zoom looks at is called \"{Find(editor, "StudioZoomFocusChoice", 0)?.Name}\""
+            : Find(editor, "StudioZoomFocusChoice", 0.5) is not { Name: "Focus" } ? $"the choice of what the zoom looks at is called \"{Find(editor, "StudioZoomFocusChoice", 0)?.Name}\""
             : null);
         _report.Note($"the focus pad is shown, and is not among what a screen reader walks; among everything UI Automation knows of the window it is {(editor.Root.FindRaw("StudioZoomFocusPad") is null ? "not there either" : "there, marked as not for reading")}");
 
@@ -71,28 +71,29 @@ internal sealed partial class WindowChecks
             ("StudioAddZoomButton", "Add zoom"), ("StudioZoomLane", "Zooms"), ("StudioZoom_0", FirstZoomName),
             ("StudioPreviousZoomButton", "Previous zoom"), ("StudioZoomPositionText", "Zoom 1 of 3"), ("StudioZoomRangeText", "2.0 to 5.0 seconds"), ("StudioNextZoomButton", "Next zoom"),
             ("StudioZoomSectionAddButton", "Add zoom"), ("StudioSuggestZoomsButton", "Suggest zooms"),
-            ("StudioZoomScaleSlider", "Scale"), ("StudioZoomFocusChoice", "Looks at"), ("StudioZoomFocusPoint", "A point"), ("StudioZoomFocusPointer", "The pointer"),
+            ("StudioZoomScaleSlider", "Zoom level"), ("StudioZoomFocusChoice", "Focus"), ("StudioZoomFocusPoint", "Fixed point"), ("StudioZoomFocusPointer", "Follow pointer"),
             ("StudioZoomFocusXSlider", "Horizontal"), ("StudioZoomFocusYSlider", "Vertical"),
             ("StudioZoomStartText", "Start 2.0 seconds"), ("StudioZoomStartEarlierButton", "Start 0.1 seconds earlier"), ("StudioZoomStartLaterButton", "Start 0.1 seconds later"), ("StudioZoomStartAtPlayheadButton", "Start at playhead"),
             ("StudioZoomEndText", "End 5.0 seconds"), ("StudioZoomEndEarlierButton", "End 0.1 seconds earlier"), ("StudioZoomEndLaterButton", "End 0.1 seconds later"), ("StudioZoomEndAtPlayheadButton", "End at playhead"),
-            ("StudioZoomEaseInSlider", "Ease in"), ("StudioZoomEaseOutSlider", "Ease out"), ("StudioDeleteZoomButton", "Delete zoom"),
-            ("StudioScreenCropLeftSlider", "Crop left"), ("StudioScreenCropTopSlider", "Crop top"), ("StudioScreenCropRightSlider", "Crop right"), ("StudioScreenCropBottomSlider", "Crop bottom"), ("StudioScreenCropResetButton", "Reset crop"),
+            ("StudioZoomEaseInSlider", "Zoom-in time"), ("StudioZoomEaseOutSlider", "Zoom-out time"), ("StudioDeleteZoomButton", "Delete zoom"),
+            ("StudioScreenCropGroup", "Screen crop"),
+            ("StudioScreenCropLeftSlider", "Screen crop left"), ("StudioScreenCropTopSlider", "Screen crop top"), ("StudioScreenCropRightSlider", "Screen crop right"), ("StudioScreenCropBottomSlider", "Screen crop bottom"), ("StudioScreenCropResetButton", "Reset crop"),
         ];
         var miscalled = called.Select(control => (control.Id, control.Name, Is: editor.Root.Find(control.Id)?.Name)).Where(control => control.Is != control.Name).ToArray();
         _report.Check(
-            "each of the new controls is called what it is: the lane and its items, both Add zoom buttons, and every control of the Zoom section and of the screen's crop",
+            "each of the new controls is called what it is: the lane and its items, both Add zoom buttons, every control of the Zoom panel, and the Screen panel's Crop group with its four sliders, which say whose crop they are",
             miscalled.Length == 0,
             miscalled.Length == 0
                 ? string.Join(", ", called.Select(control => $"\"{control.Name}\"").Distinct())
                 : string.Join("; ", miscalled.Select(control => $"{control.Id} is called \"{control.Is ?? "(not found)"}\" and should be \"{control.Name}\"")));
         TabOrder(editor);
 
-        // Scale. The part the zoom holds would start before the screen, and is pushed back inside.
+        // Zoom level. The part the zoom holds would start before the screen, and is pushed back inside.
         Timeline.Mark("10: scale and focus");
         var scaleSet = SetSlider(editor, "StudioZoomScaleSlider", 1.6);
         var afterScale = WaitForLane(editor, "*Zoom 1.6×, 2.0 to 5.0 seconds" + others);
         _report.Check(
-            "Scale set to 1.6: the zoom holds it, the slider and the lane say 1.6×",
+            "Zoom level set to 1.6: the zoom holds it, the slider and the lane say 1.6×",
             scaleSet && ZoomsOf(editor)[0].Scale == 1.6 && Slider(editor, "StudioZoomScaleSlider", 1.6, "1.6×") is null && afterScale == "*Zoom 1.6×, 2.0 to 5.0 seconds" + others,
             $"the zoom: {Describe(ZoomsOf(editor)[0])}; the slider: {Slider(editor, "StudioZoomScaleSlider", 1.6, "1.6×") ?? "1.6, \"1.6×\""}; the lane: {afterScale}");
         ShowsPart(editor, "at scale 1.6 the preview shows five eighths of the screen each way, pushed back inside the screen where it would start before it", new ScreenPart(0, 0, 0.625, 0.625), Shown, "1 / 1.6 = 0.625 of the screen; around (0.30, 0.28) it would start at −0.0125 and −0.0325, so it starts at 0 and 0");
@@ -134,7 +135,7 @@ internal sealed partial class WindowChecks
         var easeInSet = SetSlider(editor, "StudioZoomEaseInSlider", 1);
         Until(() => ZoomsOf(editor)[0].EaseIn, value => value == 1, 1);
         _report.Check(
-            "Ease in set to 1 second: the zoom holds it and the slider says so",
+            "Zoom-in time set to 1 second: the zoom holds it and the slider says so",
             easeInSet && ZoomsOf(editor)[0].EaseIn == 1 && Slider(editor, "StudioZoomEaseInSlider", 1, "1.0 seconds") is null && LaneText(editor) == "*" + FirstZoomName + others,
             $"the zoom: {Describe(ZoomsOf(editor)[0])}; the slider: {Slider(editor, "StudioZoomEaseInSlider", 1, "1.0 seconds") ?? "1, \"1.0 seconds\""}");
         ShowsPart(
@@ -152,7 +153,7 @@ internal sealed partial class WindowChecks
         var u = 0.5 / (1 * 3 / 3.5);
         var eased = u * u * (3 - (2 * u));
         _report.Check(
-            "Ease out set to 2.5 seconds: the zoom holds it and the slider says so",
+            "Zoom-out time set to 2.5 seconds: the zoom holds it and the slider says so",
             easeOutSet && ZoomsOf(editor)[0].EaseOut == 2.5 && Slider(editor, "StudioZoomEaseOutSlider", 2.5, "2.5 seconds") is null,
             $"the zoom: {Describe(ZoomsOf(editor)[0])}; the slider: {Slider(editor, "StudioZoomEaseOutSlider", 2.5, "2.5 seconds") ?? "2.5, \"2.5 seconds\""}");
         ShowsPart(
@@ -256,7 +257,7 @@ internal sealed partial class WindowChecks
         ];
         var misnamed = buttons.Where(button => Find(editor, button.Id, 0.5)?.Name != button.Name).Select(button => $"{button.Id} is called \"{Find(editor, button.Id, 0)?.Name}\"").ToArray();
         _report.Check(
-            "the Start and End buttons move the zoom's start and end a tenth of a second, or to the playhead; the block on the lane, its name and the two times in the section follow, a screen reader is told the new time, the playhead stays, and an end set too close to the start stops 0.3 s after it",
+            "the Start and End buttons move the zoom's start and end a tenth of a second, or to the playhead; the block on the lane, its name and the two times in the panel follow, a screen reader is told the new time, the playhead stays, and an end set too close to the start stops 0.3 s after it",
             wrong.Count == 0 && misnamed.Length == 0,
             wrong.Count == 0 && misnamed.Length == 0 ? string.Join("; ", steps) : string.Join("; ", wrong.Concat(misnamed)));
     }
@@ -352,11 +353,15 @@ internal sealed partial class WindowChecks
 
     /// <summary>
     /// The order the keyboard focus moves in with a zoom selected: see <see cref="TabStops"/>
-    /// for how it is read. "Looks at" is a group of radio buttons, which is one stop.
+    /// for how it is read. "Focus" is a group of radio buttons, which is one stop, and so is
+    /// the header of the Screen panel's Crop group, whose sliders are stops while it is open.
     /// </summary>
     private void TabOrder(Editor editor)
     {
         Timeline.Mark("10: the order of the tab stops");
+
+        // The Crop group is closed while nothing is cropped. Looking for one of its sliders opens it.
+        Find(editor, "StudioScreenCropLeftSlider");
         var order = TabStops(editor);
         var path = Path.Combine(_output, "tab-order.txt");
         File.WriteAllLines(path, order);
@@ -364,10 +369,10 @@ internal sealed partial class WindowChecks
         // The stops this pass added, in the order they should come in, among the ones around them.
         string[] wanted =
         [
-            "StudioScreenShadowSlider", "StudioScreenCropLeftSlider", "StudioScreenCropTopSlider", "StudioScreenCropRightSlider", "StudioScreenCropBottomSlider",
+            "StudioScreenShadowSlider", "StudioClickRingsCheckBox", "StudioScreenCropGroup", "StudioScreenCropLeftSlider", "StudioScreenCropTopSlider", "StudioScreenCropRightSlider", "StudioScreenCropBottomSlider",
             "StudioNextZoomButton", "StudioZoomSectionAddButton", "StudioZoomScaleSlider", "StudioZoomFocusChoice", "StudioZoomFocusXSlider", "StudioZoomFocusYSlider",
             "StudioZoomStartEarlierButton", "StudioZoomStartLaterButton", "StudioZoomStartAtPlayheadButton", "StudioZoomEndEarlierButton", "StudioZoomEndLaterButton", "StudioZoomEndAtPlayheadButton",
-            "StudioZoomEaseInSlider", "StudioZoomEaseOutSlider", "StudioDeleteZoomButton", "StudioClickRingsCheckBox",
+            "StudioZoomEaseInSlider", "StudioZoomEaseOutSlider", "StudioDeleteZoomButton", "StudioMuteCheckBox",
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioStartHereButton", "StudioEndHereButton", "StudioZoomLane", "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         var places = wanted.Select(id => order.IndexOf(id)).ToArray();
@@ -375,7 +380,7 @@ internal sealed partial class WindowChecks
         var outOfOrder = places.Where(place => place >= 0).ToArray() is var found && !found.SequenceEqual(found.Order());
         var unexpected = order.Where(id => id is "StudioZoomFocusPad" or "StudioZoom_0" or "StudioZoom_1" or "StudioZoom_2").ToArray();
         _report.Check(
-            "the keyboard focus, moved from stop to stop, reaches the crop sliders after the screen's shadow, every control of the Zoom section in the order they are shown, Add zoom before Start here, and the lane as one stop between End here and the trim bar; the focus pad and the single zooms are not stops",
+            "the keyboard focus, moved from stop to stop with each panel on show in turn, reaches Click highlights, the Crop group's header and its four sliders after the screen's shadow, then every control of the Zoom panel in the order they are shown, then Mute; in the timeline Add zoom comes before Start here, and the lane is one stop between End here and the trim bar; the focus pad and the single zooms are not stops",
             missing.Length == 0 && !outOfOrder && unexpected.Length == 0,
             missing.Length == 0 && !outOfOrder && unexpected.Length == 0
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"
@@ -579,11 +584,11 @@ internal sealed partial class WindowChecks
         var lane = WaitForLane(editor, "*" + PointerName);
         var zoom = ZoomsOf(editor)[0];
         _report.Check(
-            "The pointer can be chosen in a recording that has pointer positions: the zoom then follows the pointer, the lane says so, the point it looked at is kept, and the focus pad and its two sliders go",
-            pointer is { IsEnabled: true, Name: "The pointer" } && chosen && zoom.Focus.Mode == StudioZoomFocusMode.Cursor && zoom.Focus.X == 0.5 && zoom.Focus.Y == 0.5 && lane == "*" + PointerName
+            "Follow pointer can be chosen in a recording that has pointer positions: the zoom then follows the pointer, the lane says so, the point it looked at is kept, and the focus pad and its two sliders go",
+            pointer is { IsEnabled: true, Name: "Follow pointer" } && chosen && zoom.Focus.Mode == StudioZoomFocusMode.Cursor && zoom.Focus.X == 0.5 && zoom.Focus.Y == 0.5 && lane == "*" + PointerName
                 && Selected(editor, "StudioZoomFocusPointer") is null && Gone(editor, "StudioZoomFocusXSlider", 1) && Gone(editor, "StudioZoomFocusYSlider", 1)
                 && !PadShows(editor) && Gone(editor, "StudioNoPointerNote", 0.5),
-            $"the zoom: {Describe(zoom)}; the lane: {lane}; The pointer selected: {Find(editor, "StudioZoomFocusPointer", 0)?.IsSelected}");
+            $"the zoom: {Describe(zoom)}; the lane: {lane}; Follow pointer selected: {Find(editor, "StudioZoomFocusPointer", 0)?.IsSelected}");
 
         // The pointer's mean place over the second around a frame's middle. A preview that left
         // the pointer out would show the middle half in all three. One that drew a line from the
@@ -609,7 +614,7 @@ internal sealed partial class WindowChecks
         var back = Find(editor, "StudioZoomFocusPoint")?.Select() ?? false;
         var laneBack = WaitForLane(editor, "*" + PointName);
         _report.Check(
-            "A point chosen again: the zoom looks at the point it kept, and the focus pad and its sliders are back",
+            "Fixed point chosen again: the zoom looks at the point it kept, and the focus pad and its sliders are back",
             back && laneBack == "*" + PointName && ZoomsOf(editor)[0].Focus is { Mode: StudioZoomFocusMode.Point, X: 0.5, Y: 0.5 }
                 && Slider(editor, "StudioZoomFocusXSlider", 0.5, "50%") is null && PadShows(editor),
             $"the zoom: {Describe(ZoomsOf(editor)[0])}; the lane: {laneBack}; the focus pad shown: {PadShows(editor)}");
@@ -656,10 +661,10 @@ internal sealed partial class WindowChecks
         var pointer = Find(editor, "StudioZoomFocusPointer");
         var note = NameOf(editor, "StudioNoPointerNote", 1);
         _report.Check(
-            "in a recording without pointer positions The pointer cannot be chosen, and the reason is next to it and is the choice's description",
-            pointer is { IsEnabled: false, Name: "The pointer" } && pointer.HelpText == StudioEditorText.NoPointerExplanation && note == StudioEditorText.NoPointerExplanation
+            "in a recording without pointer positions Follow pointer cannot be chosen, and the reason is next to it and is the choice's description",
+            pointer is { IsEnabled: false, Name: "Follow pointer" } && pointer.HelpText == StudioEditorText.NoPointerExplanation && note == StudioEditorText.NoPointerExplanation
                 && Find(editor, "StudioZoomFocusPoint") is { IsEnabled: true, IsSelected: true },
-            $"The pointer enabled {pointer?.IsEnabled}, described as \"{pointer?.HelpText}\"; the note: \"{note}\"");
+            $"Follow pointer enabled {pointer?.IsEnabled}, described as \"{pointer?.HelpText}\"; the note: \"{note}\"");
 
         // Suggest zooms.
         var suggest = Find(editor, "StudioSuggestZoomsButton");
@@ -696,7 +701,7 @@ internal sealed partial class WindowChecks
         const string Changed = "Zoom 3×, 1.4 to 3.4 seconds";
         var changed = WaitForLane(editor, $"*{Changed} | {SecondSuggestion} | {Own} | {ThirdSuggestion}");
         _report.Check(
-            "a suggestion says that it is one, on the lane and in the Zoom section, until it is changed",
+            "a suggestion says that it is one, on the lane and in the Zoom panel, until it is changed",
             range == "1.4 to 3.4 seconds, suggested" && changed == $"*{Changed} | {SecondSuggestion} | {Own} | {ThirdSuggestion}" && ZoomsOf(editor)[0].Origin == StudioZoomOrigin.Manual && NameOf(editor, "StudioZoomRangeText") == "1.4 to 3.4 seconds",
             $"before: \"{range}\"; after its scale was set to 3: {changed}, \"{NameOf(editor, "StudioZoomRangeText")}\"");
 

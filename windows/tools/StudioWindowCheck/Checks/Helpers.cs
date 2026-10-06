@@ -105,8 +105,11 @@ internal sealed partial class WindowChecks
     /// </summary>
     private string FocusOn(Editor editor, string automationId)
     {
+        // A panel that has only just been shown is laid out before one of its controls is given the focus.
+        ShowWhatHolds(editor, automationId);
         OnUi(() =>
         {
+            editor.Window.Content?.UpdateLayout();
             Descendant<Microsoft.UI.Xaml.Controls.Control>(editor.Window.Content, automationId)?.Focus(FocusState.Keyboard);
         });
         return FocusedId(editor);
@@ -182,8 +185,18 @@ internal sealed partial class WindowChecks
     // The window's own elements, read on the UI thread
     // ---------------------------------------------------------------------------------------
 
-    /// <summary>The element with an automation id among what a window shows. UI thread.</summary>
+    /// <summary>
+    /// The element with an automation id among what a window shows. A control of the inspector
+    /// has its panel shown first, and the window laid out, so that it can be used at once. UI thread.
+    /// </summary>
     private static T? Descendant<T>(DependencyObject? root, string automationId)
+        where T : FrameworkElement
+    {
+        ShowWhatHolds(root, automationId, layoutNow: true);
+        return DescendantIn<T>(root, automationId);
+    }
+
+    private static T? DescendantIn<T>(DependencyObject? root, string automationId)
         where T : FrameworkElement
     {
         if (root is null)
@@ -199,7 +212,7 @@ internal sealed partial class WindowChecks
         var count = VisualTreeHelper.GetChildrenCount(root);
         for (var index = 0; index < count; index++)
         {
-            if (Descendant<T>(VisualTreeHelper.GetChild(root, index), automationId) is { } found)
+            if (DescendantIn<T>(VisualTreeHelper.GetChild(root, index), automationId) is { } found)
             {
                 return found;
             }

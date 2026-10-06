@@ -280,7 +280,7 @@ internal sealed partial class WindowChecks
         var solid = editor.Expected.Canvas.Background;
         Edit(
             editor,
-            "Show a background, off",
+            "Show background, off",
             () => Find(editor, "StudioShowBackgroundCheckBox")?.Toggle() ?? false,
             p => p with { Canvas = p.Canvas with { Background = p.Canvas.Background with { Style = StudioBackgroundStyle.None } } },
             (_, after) => Corners(after).All(c => Near(c, Black, 6)) ? null : $"corners {CornerText(after)}, and the canvas should be black",
@@ -289,7 +289,7 @@ internal sealed partial class WindowChecks
         // On again brings the default background, not the one that was there.
         Edit(
             editor,
-            "Show a background, on again",
+            "Show background, on again",
             () => Find(editor, "StudioShowBackgroundCheckBox")?.Toggle() ?? false,
             p => p with { Canvas = p.Canvas with { Background = new StudioBackground() } },
             (_, after) => Near(Corners(after)[0], new Rgb(38, 135, 232)) && Near(Corners(after)[3], new Rgb(46, 224, 191)) ? null : $"top left {Corners(after)[0]}, bottom right {Corners(after)[3]}, and the default background runs from (38,135,232) to (46,224,191)",
@@ -881,7 +881,8 @@ internal sealed partial class WindowChecks
             () => Find(editor, "StudioBrandingCheckBox", 0.5)?.IsToggledOn == true ? null : "the check box is off");
 
         // These two change nothing in a picture without clicks and without sound: the check boxes follow Undo and Redo.
-        Timeline.Mark("3: click rings and mute");
+        // Click highlights is in the Screen panel and Mute in the Audio panel.
+        Timeline.Mark("3: click highlights and mute");
         var wrong = new List<string>();
         foreach (var id in new[] { "StudioClickRingsCheckBox", "StudioMuteCheckBox" })
         {
@@ -898,7 +899,7 @@ internal sealed partial class WindowChecks
         }
 
         Expect(editor, p => p with { Overlays = p.Overlays with { Clicks = p.Overlays.Clicks with { Enabled = true } }, Audio = p.Audio with { Muted = true } });
-        _report.Check("Click rings and Mute audio switch on, and follow Undo and Redo", wrong.Count == 0, wrong.Count == 0 ? null : string.Join("; ", wrong));
+        _report.Check("Click highlights and Mute switch on, and follow Undo and Redo", wrong.Count == 0, wrong.Count == 0 ? null : string.Join("; ", wrong));
     }
 
     private void Gestures(Editor editor)

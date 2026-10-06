@@ -9,8 +9,8 @@ using Windows.System;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 12. Scenes: the lane above the zoom lane, Split, the keys S and Delete, the Scene section of
-// the inspector, and what the preview shows for a scene. What the Scene section's controls do is
+// 12. Scenes: the lane above the zoom lane, Split, the keys S and Delete, the Scene panel of
+// the inspector, and what the preview shows for a scene. What the Scene panel's controls do is
 // in SceneSection.cs, the lane under a pointer and Delete in SceneLane.cs, a scene that is come
 // into while the preview plays in ScenePlaying.cs, and something dragged while it plays, with the
 // keys that wait for a drag to end, in SceneDragging.cs.
@@ -94,11 +94,11 @@ internal sealed partial class WindowChecks
         Until(() => editor.Root.Find(automationId) is null, gone => gone, seconds);
 
     /// <summary>
-    /// What is wrong with what the Scene section shows, read through UI Automation, or null.
+    /// What is wrong with what the Scene panel shows, read through UI Automation, or null.
     /// </summary>
-    /// <param name="start">The scene's start as the section words it, or null for the first scene, which has none to show.</param>
-    /// <param name="isMoving">Whether "Moving" is chosen, or null for the first scene.</param>
-    /// <param name="moveTakes">How long the move takes, or null where there is no slider for it.</param>
+    /// <param name="start">The scene's start as the panel words it, or null for the first scene, which has none to show.</param>
+    /// <param name="isMoving">Whether "Animated" is chosen as the transition, or null for the first scene.</param>
+    /// <param name="moveTakes">How long the transition takes, or null where there is no slider for it.</param>
     private static string? SceneSectionShows(Editor editor, string position, string range, bool canGoBack, bool canGoOn, string? start, bool? isMoving, double? moveTakes, bool canDelete)
     {
         var positionRead = Until(() => NameOf(editor, "StudioScenePositionText", 0.5), text => text == position, 1.5);
@@ -113,13 +113,13 @@ internal sealed partial class WindowChecks
                 : Until(() => NameOf(editor, "StudioSceneStartText", 0.5), text => text == $"Scene start {start}", 1) == $"Scene start {start}" ? null : $"Start reads \"{NameOf(editor, "StudioSceneStartText", 0)}\"",
             isMoving switch
             {
-                null => Absent(editor, "StudioSceneEntryChoice") ? null : "there is an Entered by choice",
+                null => Absent(editor, "StudioSceneEntryChoice") ? null : "there is a Transition choice",
                 true => Selected(editor, "StudioSceneEntryMove") ?? Selected(editor, "StudioSceneEntryCut", wanted: false),
                 false => Selected(editor, "StudioSceneEntryCut") ?? Selected(editor, "StudioSceneEntryMove", wanted: false),
             },
             moveTakes is { } seconds
                 ? Slider(editor, "StudioSceneMoveSlider", seconds, string.Create(CultureInfo.InvariantCulture, $"{seconds:0.00} seconds"))
-                : Absent(editor, "StudioSceneMoveSlider") ? null : "there is a Move takes slider",
+                : Absent(editor, "StudioSceneMoveSlider") ? null : "there is a Duration slider",
             canDelete
                 ? Find(editor, "StudioDeleteSceneButton", 0.5) is { IsEnabled: true, Name: "Delete scene" } ? null : "there is no Delete scene button"
                 : Absent(editor, "StudioDeleteSceneButton") ? null : "there is a Delete scene button",
@@ -154,7 +154,7 @@ internal sealed partial class WindowChecks
         var held = ScenesOf(editor);
         var canUndo = Find(editor, "StudioUndoButton", 0.5)?.IsEnabled;
         _report.Check(
-            "a recording without a camera has no scene lane, no Scene section and no Split button, and everything else of the timeline and the inspector; what S runs changes nothing and tells a screen reader that there is no camera to arrange differently",
+            "a recording without a camera has no scene lane, no Scene panel and no Split button, and everything else of the timeline and the inspector; what S runs changes nothing and tells a screen reader that there is no camera to arrange differently",
             there.Length == 0 && missing.Length == 0 && key == StudioShortcutAction.SplitScene && said.Said && held.Length == 1 && canUndo == false,
             $"{(there.Length == 0 ? "none of the scene controls is there" : "there: " + string.Join(", ", there))}; {(missing.Length == 0 ? "the zoom, cut and speed controls are" : "missing: " + string.Join(", ", missing))}; S ran {key}; sent: {said.Heard}; the editor holds {held.Length} scene(s); Undo enabled {canUndo}");
         CloseQuietly(editor);
@@ -176,7 +176,7 @@ internal sealed partial class WindowChecks
         string TimeFor(double playhead) => StudioEditorText.GetTimeText(playhead - CameraOffset, RecordingLength - CameraOffset);
         LookForLayout(editor, FrameOf(CameraOffset), 5);
 
-        // One scene: a list of one item, which is the selected one, and a section that says so.
+        // One scene: a list of one item, which is the selected one, and a panel that says so.
         const string OnlyName = "Scene 1 of 1, Screen with camera bubble, 0.0 to 12.0 seconds";
         var list = Find(editor, SceneLane);
         var item = Find(editor, "StudioScene_0");
@@ -190,7 +190,7 @@ internal sealed partial class WindowChecks
         var oneScene = NameOf(editor, "StudioOneSceneNote", 1);
         var section = SceneSectionShows(editor, "Scene 1 of 1", "0.0 to 12.0 seconds", canGoBack: false, canGoOn: false, start: null, isMoving: null, moveTakes: null, canDelete: false);
         _report.Check(
-            "with one scene the Scene section says which scene the playhead is in and when it is, has nothing to step to, says what scenes are for, and shows no start, no way of entering and no Delete scene",
+            "with one scene the Scene panel says which scene the playhead is in and when it is, has nothing to step to, says what scenes are for, and shows no start, no transition and no Delete scene",
             section is null && oneScene == StudioEditorText.OneSceneExplanation && Absent(editor, "StudioFirstSceneNote", 0.2)
                 && Find(editor, "StudioPreviousSceneButton") is { Name: "Previous scene" } && Find(editor, "StudioNextSceneButton") is { Name: "Next scene" },
             section ?? $"\"Scene 1 of 1\", \"0.0 to 12.0 seconds\"; the note: \"{oneScene}\"");
@@ -203,10 +203,10 @@ internal sealed partial class WindowChecks
         var refusedKey = Key(editor, StudioShortcutKey.S);
         var refused = Said(heard, mark, StudioEditorText.SceneTooShortToSplitExplanation);
         _report.Check(
-            "less than 0.3 s into the scene, Split in the transport row and Split at playhead in the section are disabled, with the reason next to the section's button and as the description of both; what S runs there changes nothing and tells a screen reader the reason",
+            "less than 0.3 s into the scene, Split in the transport row and Split scene in the panel are disabled, with the reason next to the panel's button and as the description of both; what S runs there changes nothing and tells a screen reader the reason",
             FrameOf(Playhead(editor)) == FrameOf(CameraOffset)
                 && tooEarly.Row is { IsEnabled: false, Name: "Split scene" } && tooEarly.Row.HelpText == StudioEditorText.SceneTooShortToSplitExplanation
-                && tooEarly.Section is { IsEnabled: false, Name: "Split at playhead" } && tooEarly.Section.HelpText == StudioEditorText.SceneTooShortToSplitExplanation
+                && tooEarly.Section is { IsEnabled: false, Name: "Split scene" } && tooEarly.Section.HelpText == StudioEditorText.SceneTooShortToSplitExplanation
                 && tooEarly.Note == StudioEditorText.SceneTooShortToSplitExplanation
                 && refusedKey == StudioShortcutAction.SplitScene && refused.Said && ScenesOf(editor).Length == 1,
             $"playhead {Seconds(Playhead(editor))} s; {tooEarly.Row} enabled {tooEarly.Row?.IsEnabled}, described as \"{tooEarly.Row?.HelpText}\"; {tooEarly.Section} enabled {tooEarly.Section?.IsEnabled}, described as \"{tooEarly.Section?.HelpText}\"; the note: \"{tooEarly.Note}\"; S ran {refusedKey}; sent: {refused.Heard}");
@@ -245,10 +245,10 @@ internal sealed partial class WindowChecks
         section = SceneSectionShows(editor, "Scene 2 of 2", "4.0 to 12.0 seconds", canGoBack: true, canGoOn: false, start: "4.0 seconds", isMoving: true, moveTakes: 0.35, canDelete: true);
         var move = Find(editor, "StudioSceneMoveSlider", 0.5);
         _report.Check(
-            "the Scene section shows the new scene: which it is and its times, its start, that it is entered by moving, how long the move takes on a slider from 0.1 to 2 seconds in steps of 0.05, and Delete scene; the notes for one scene and for the first scene are gone",
+            "the Scene panel shows the new scene: which it is and its times, its start, that its transition is animated, how long that takes on a slider called Transition duration, from 0.1 to 2 seconds in steps of 0.05, and Delete scene; the notes for one scene and for the first scene are gone",
             section is null && Absent(editor, "StudioOneSceneNote", 0.5) && Absent(editor, "StudioFirstSceneNote", 0.2)
-                && move is { Name: "Move takes" } && move.Range is { } range && Same(range.Minimum, 0.1) && range.Maximum == 2 && Same(range.SmallChange, 0.05),
-            section ?? $"\"Scene 2 of 2\", \"4.0 to 12.0 seconds\", \"Scene start 4.0 seconds\", Moving, {move} \"{move?.ValueText}\" in {F(move?.Range?.Minimum ?? double.NaN)} to {F(move?.Range?.Maximum ?? double.NaN)} by {F(move?.Range?.SmallChange ?? double.NaN)}");
+                && move is { Name: "Transition duration" } && move.Range is { } range && Same(range.Minimum, 0.1) && range.Maximum == 2 && Same(range.SmallChange, 0.05),
+            section ?? $"\"Scene 2 of 2\", \"4.0 to 12.0 seconds\", \"Scene start 4.0 seconds\", Animated, {move} \"{move?.ValueText}\" in {F(move?.Range?.Minimum ?? double.NaN)} to {F(move?.Range?.Maximum ?? double.NaN)} by {F(move?.Range?.SmallChange ?? double.NaN)}");
 
         // The new scene is a copy, so the picture is as it was: the bubble layout, at the frame the playhead is on.
         ShowsLayout(editor, "a scene that has just been split off looks like the scene it came from: the preview shows the playhead's frame in the bubble layout", FrameOf(head));
@@ -296,7 +296,7 @@ internal sealed partial class WindowChecks
     /// <summary>
     /// Moving the playhead from one scene into another changes nothing in the project, and
     /// everything that shows the current scene has to follow: the lane's selected item, the
-    /// Scene section, the layout that is chosen, the camera's controls, and the handle on the
+    /// Scene panel, the layout that is chosen, the camera's controls, and the handle on the
     /// camera in the preview.
     /// </summary>
     private void InspectorFollowsTheScene(Editor editor)
@@ -327,21 +327,21 @@ internal sealed partial class WindowChecks
         var bubble = first.Sight?.Reading.CameraLayer;
         var handleOff = first.Handle is { } handle && bubble is { } camera ? EdgeDistance(handle, camera) : double.NaN;
         _report.Check(
-            "with the playhead in the first scene the lane marks the first scene, the Scene section shows it and says that the first scene has nothing to move from, Layout shows Bubble, the camera has its bubble controls, and the handle in the preview lies over the camera",
+            "with the playhead in the first scene the lane marks the first scene, the Scene panel shows it and says that the first scene has nothing to move from, Layout shows Bubble, the camera has its bubble controls, and the handle in the preview lies over the camera",
             first.Lane == SceneLaneWanted(editor, 0) && first.Section is null && first.Layout is null && first.Size && !first.Share && firstNote == StudioEditorText.FirstSceneExplanation
                 && first.Preview == "Screen with camera bubble, camera bottom right" && handleOff <= 2 && first.Sight is not null && JudgeLayout(first.Sight.Reading) is null,
-            $"the lane: {first.Lane}; {first.Section ?? "the section shows the first scene"}; {first.Layout ?? "Bubble is chosen"}; Size slider {first.Size}, Camera share slider {first.Share}; the note: \"{firstNote}\"; the preview is described as \"{first.Preview}\"; "
+            $"the lane: {first.Lane}; {first.Section ?? "the panel shows the first scene"}; {first.Layout ?? "Bubble is chosen"}; Size slider {first.Size}, Camera size slider of side by side {first.Share}; the note: \"{firstNote}\"; the preview is described as \"{first.Preview}\"; "
                 + $"the handle is {(first.Handle is { } h ? R(h) : "hidden")} and the camera {(bubble is { } b ? R(b) : "nowhere")}; {(first.Sight is null ? "no screenshot" : JudgeLayout(first.Sight.Reading) ?? "the picture is the bubble layout")}");
         _report.Check(
-            "with the playhead in the second scene all of that shows the second scene: the lane marks it, the section shows its start and its move, Layout shows Side by side, the camera has its side-by-side controls, and the preview has no handle",
+            "with the playhead in the second scene all of that shows the second scene: the lane marks it, the panel shows its start and its move, Layout shows Side by side, the camera has its side-by-side controls, and the preview has no handle",
             second.Lane == SceneLaneWanted(editor, 1) && second.Section is null && second.Layout is null && !second.Size && second.Share && secondNote.Length == 0
                 && second.Preview == "Side by side" && second.Handle is null && second.Sight is not null && JudgeLayout(second.Sight.Reading) is null,
-            $"the lane: {second.Lane}; {second.Section ?? "the section shows the second scene"}; {second.Layout ?? "Side by side is chosen"}; Size slider {second.Size}, Camera share slider {second.Share}; the first-scene note: \"{secondNote}\"; "
+            $"the lane: {second.Lane}; {second.Section ?? "the panel shows the second scene"}; {second.Layout ?? "Side by side is chosen"}; Size slider {second.Size}, Camera size slider of side by side {second.Share}; the first-scene note: \"{secondNote}\"; "
                 + $"the preview is described as \"{second.Preview}\"; the handle is {(second.Handle is { } h2 ? R(h2) : "hidden")}; {(second.Sight is null ? "no screenshot" : JudgeLayout(second.Sight.Reading) ?? "the picture is side by side")}");
         _report.Check(
             "going back shows the first scene again, and none of it changed the project: the scenes are as they were and nothing was added to what can be undone",
             again.Lane == first.Lane && again.Section is null && again.Layout is null && again.Size && !again.Share && held == Describe(editor.Expected.Scenes) && Find(editor, "StudioUndoButton", 0.5)?.IsEnabled == undoBefore,
-            $"the lane: {again.Lane}; {again.Section ?? "the section shows the first scene"}; {again.Layout ?? "Bubble is chosen"}; the editor holds {held}");
+            $"the lane: {again.Lane}; {again.Section ?? "the panel shows the first scene"}; {again.Layout ?? "Bubble is chosen"}; the editor holds {held}");
     }
 
     /// <summary>

@@ -440,6 +440,10 @@ internal sealed partial class WindowChecks
         var notes = new List<(string Explanation, bool IsShown)>(64);
         var viewModel = OnUi(() => editor.Window.ViewModel);
 
+        // The Scene panel is read while this plays. It is brought on show beforehand: a panel
+        // that had to be shown in the middle would take the UI thread's time, which is measured here.
+        ShowPanel(editor, StudioInspectorPanel.Scene);
+
         // Where the playhead is, for this thread to follow without asking the window: a question
         // through UI Automation is answered on the UI thread, and takes it tens of milliseconds
         // of the very time that is measured here.
@@ -606,7 +610,7 @@ internal sealed partial class WindowChecks
 
         // What the window showed of the second scene while it was still playing.
         _report.Check(
-            "while it still plays, the window shows the scene the playhead has come into: the lane marks the second scene, the Scene section names it, and Layout shows Side by side",
+            "while it still plays, the window shows the scene the playhead has come into: the lane marks the second scene, the Scene panel names it, and Layout shows Side by side",
             whilePlaying is { } seen && seen.Lane == SceneLaneWanted(editor, 1) && seen.Position == "Scene 2 of 2" && seen.Layout is null,
             whilePlaying is { } shown ? $"the lane: {shown.Lane}; \"{shown.Position}\"; {shown.Layout ?? "Side by side is chosen"}" : "the playhead did not get that far");
 
