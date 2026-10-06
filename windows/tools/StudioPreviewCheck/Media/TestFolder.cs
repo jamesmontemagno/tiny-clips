@@ -20,6 +20,12 @@ internal sealed class TestFolder : IDisposable
     /// <summary>Every folder of this run is made under here, so one delete at the end leaves nothing behind.</summary>
     public static string Root { get; } = Path.Combine(Path.GetTempPath(), $"TinyClipsStudioPreviewCheck-{Environment.ProcessId}");
 
+    /// <summary>
+    /// Made to every project of the run after the change its check asks for: null but for a
+    /// run that looks at all the checks with something about the project changed (<c>--people</c>).
+    /// </summary>
+    public static Func<StudioProject, StudioProject>? EditEvery { get; set; }
+
     public StudioProject Project { get; }
 
     public StudioEvents Events { get; }
@@ -70,8 +76,8 @@ internal sealed class TestFolder : IDisposable
             Name = "Preview check",
             Sources = new StudioSources
             {
-                Screen = new StudioScreenSource { Width = screen.Width, Height = screen.Height, FrameRate = screen.Fps, Duration = screen.Seconds },
-                Camera = camera is null ? null : new StudioCameraSource { Width = camera.Width, Height = camera.Height, Duration = camera.Seconds, StartOffset = cameraOffset },
+                Screen = new StudioScreenSource { Width = screen.Width, Height = screen.Height, FrameRate = screen.Fps, Duration = screen.DurationSeconds },
+                Camera = camera is null ? null : new StudioCameraSource { Width = camera.Width, Height = camera.Height, Duration = camera.DurationSeconds, StartOffset = cameraOffset },
                 Events = StudioProjectStore.EventsFileName,
             },
 
@@ -82,6 +88,11 @@ internal sealed class TestFolder : IDisposable
         if (edit is not null)
         {
             project = edit(project);
+        }
+
+        if (EditEvery is { } every)
+        {
+            project = every(project);
         }
 
         var events = new StudioEvents { Capture = new StudioCaptureInfo { Width = screen.Width, Height = screen.Height, Scale = 1 } };

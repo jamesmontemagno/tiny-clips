@@ -172,6 +172,78 @@ public sealed class StudioPreviewFrameNamerTests
     }
 
     [Fact]
+    public void ACollectionThatBeginsAsAHandOverGivesItsThreadBack_IsTakenForOneAtTheDoorOfTheNext()
+    {
+        var player = new Player();
+        player.Start(restingFrame: 99, at: 0);
+
+        // The hand-over of frame 100 is over at 23 ms, as far as the namer is told. The collector
+        // strikes in that instant and keeps the thread for 60 ms: the player has it back at 83,
+        // with frame 101 due since 51 and frame 102 due at 85, and hands the next one over at 85.
+        player.HandOver(at: 20, name: 100);
+        player.Collect(60);
+        var next = player.HandOver(at: 85, name: 102, into: 0.3);
+
+        // The namer cannot tell this from a collection that kept this hand-over at the door:
+        // it calls the frame 101. Whether a player then hands over 101 or 102 is for a real
+        // player to say (StudioPreviewCheck --investigate exits).
+        Assert.Equal(StudioPreviewFrameKnowledge.Known, next.Named.Knowledge);
+        Assert.Equal(101, next.Named.Frame);
+        Assert.Equal("kept by the collector", next.Named.Rule);
+        Assert.True(next.Named.Inferred);
+    }
+
+    [Fact]
+    public void WithTheIdleGapAskedFor_ACollectionThatLeftThePlayerNoLook_GivesNoNumber()
+    {
+        var player = new Player(Settings with { CollectorRuleNeedsIdleGap = true });
+        player.Start(restingFrame: 99, at: 0);
+        player.HandOver(at: 20, name: 100);
+        player.Collect(60);
+
+        // 62 ms after the hand-over before, 60 of them the collector's: 2 ms are not a look.
+        var next = player.HandOver(at: 85, name: 102, into: 0.3);
+
+        Assert.Equal(StudioPreviewFrameKnowledge.Unknown, next.Named.Knowledge);
+        Assert.Equal(102, next.Named.Frame);
+        Assert.Equal("no number", next.Named.Rule);
+    }
+
+    [Fact]
+    public void WithTheIdleGapAskedFor_AFrameKeptAtTheDoorAfterALook_IsStillTheOneThatWasNext()
+    {
+        var player = new Player(Settings with { CollectorRuleNeedsIdleGap = true });
+        player.Start(restingFrame: 99, at: 0);
+        player.HandOver(at: 20, name: 100);
+        player.Collect(60);
+
+        // 87 ms after the hand-over before, 60 of them the collector's: the player had its
+        // thread for 27 ms of that, time enough to look and find nothing due.
+        var kept = player.HandOver(at: 110, name: 102, into: 20);
+
+        Assert.Equal(StudioPreviewFrameKnowledge.Known, kept.Named.Knowledge);
+        Assert.Equal(101, kept.Named.Frame);
+        Assert.Equal("kept by the collector", kept.Named.Rule);
+    }
+
+    [Theory]
+    [InlineData(84, true)]
+    [InlineData(94, true)]
+    [InlineData(95, false)]
+    public void WithTheIdleGapAskedFor_TheLineIsOneLookAndItsMargin(long at, bool withoutNumber)
+    {
+        var player = new Player(Settings with { CollectorRuleNeedsIdleGap = true });
+        player.Start(restingFrame: 99, at: 0);
+        player.HandOver(at: 20, name: 100);
+        player.Collect(60);
+
+        // The hand-over before was over at 23 ms. 12 ms that are not the collector's make a look.
+        var next = player.HandOver(at: at, name: 102, into: 5);
+
+        Assert.Equal(withoutNumber, next.Named.Knowledge == StudioPreviewFrameKnowledge.Unknown);
+    }
+
+    [Fact]
     public void AFrameKeptAtTheDoorByTheCollector_HasNoNumber_WhenTheHandOverBeforeLeftThePlayerBehind()
     {
         var player = new Player();

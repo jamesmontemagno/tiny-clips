@@ -1,3 +1,5 @@
+using TinyClips.Core.Studio.Rendering;
+
 namespace TinyClips.Core.Studio.Preview;
 
 /// <summary>Switches for the unit tests and the check tool. The app runs with the defaults.</summary>
@@ -79,6 +81,52 @@ internal sealed record StudioPreviewOptions
     public StudioPreviewNamingSettings Naming { get; init; } = new();
 
     /// <summary>
+    /// Reads when each frame of each clip begins from its file's index while the preview opens
+    /// (<see cref="StudioPreviewFrameTimes"/>), and counts in frames of the file: a frame handed
+    /// over is the one whose time the position has reached, the next frame is the next one of
+    /// the file, and the timeline frame it is shown under is the one the export shows it in.
+    /// For a recording, whose frames sit some milliseconds into their slots and leave a slot
+    /// empty where the recorder missed a tick. A file whose index cannot be read that way is
+    /// played as before. Off, every clip is taken to have one frame at the start of every slot
+    /// of its frame rate, which is so for the check tool's clips and not for a recording.
+    /// <para>
+    /// Off for now: it has been unit tested and no player has played with it yet. The checks
+    /// that will say whether it is to be the way the app runs are listed in
+    /// windows\docs\studio-preview.md.
+    /// </para>
+    /// </summary>
+    public bool FrameTimesFromFile { get; init; }
+
+    /// <summary>
+    /// Tells the renderer which picture each frame it is given is
+    /// (<see cref="StudioGpuVideoFrame.Stamp"/>): the count of pictures that have been put into
+    /// the clip's textures, which changes exactly when the picture does and is never 0. The
+    /// renderer then finds the people in a camera picture whose background is blurred or
+    /// removed once for each picture, however often the scene is drawn again. Off, every frame
+    /// is given with stamp 0, which says nothing: the renderer looks at the camera picture
+    /// afresh at every draw, as it always has, also at every redraw of a paused preview.
+    /// <para>
+    /// Off for now. The app ships the model that finds people, so this decides what the
+    /// preview of such a camera shows, and nothing has run with it yet: a stamp that stayed
+    /// while the picture changed would show the camera picture the renderer made when it last
+    /// looked, which is an old frame. <c>StudioPreviewCheck --only people</c> switches it on
+    /// and decides, with the faults made against it; <c>--people</c> switches it on for the
+    /// other groups. Where it stands is in windows\docs\studio-preview.md.
+    /// </para>
+    /// </summary>
+    public bool StampPictures { get; init; }
+
+    /// <summary>
+    /// Makes what finds the people in a camera picture for the engine's renderer, in place of
+    /// the finder that runs the app's model (<see cref="StudioPersonFinders.CreateDefault"/>).
+    /// For the checks of a camera whose background is blurred or removed: a stand-in that
+    /// counts how often it is asked and takes the time it is told to. The renderer asks for it
+    /// when it first has such a camera picture to draw; the engine makes a renderer when it
+    /// opens and another after a lost device.
+    /// </summary>
+    public Func<IStudioPersonFinder?>? PersonFinderFactory { get; init; }
+
+    /// <summary>
     /// Called by the render thread before it draws a scene, with the device lock held; the thread
     /// then sleeps for the time returned, still holding the lock. It stands for a draw that takes
     /// long, which keeps the players waiting with their frames. For the checks of that.
@@ -92,6 +140,15 @@ internal sealed record StudioPreviewOptions
     /// still hands over the frame it had coming. For the checks of that.
     /// </summary>
     public Func<TimeSpan>? StopDelay { get; init; }
+
+    /// <summary>
+    /// Called by a thread inside <c>Pause()</c>, once it has stopped the clock and waited for the
+    /// render thread, and before it shuts the picture to the frames of the playback it ended;
+    /// the thread then sleeps for the time returned. It stands for a thread that is kept from
+    /// going on just there, while <c>Play()</c> comes from another thread and the render thread
+    /// starts the clock again. For the check of that.
+    /// </summary>
+    public Func<TimeSpan>? PauseDelay { get; init; }
 
     /// <summary>
     /// Notes when the clock stopped only once the clock has been told and the thread has got on,
@@ -271,6 +328,18 @@ internal sealed record StudioPreviewDiagnostics
 
     /// <summary>The frame each player delivered last.</summary>
     public long[] ShownFrames { get; init; } = [];
+
+    /// <summary>The timeline frame the screen's picture is shown under, or -1: the frame the scene is drawn for.</summary>
+    public long ShownTimelineFrame { get; init; }
+
+    /// <summary>
+    /// What each clip's frame numbers count, per clip: "the grid" with the reason, or what the
+    /// file's index said about its frames (<see cref="StudioPreviewOptions.FrameTimesFromFile"/>).
+    /// </summary>
+    public string[] FrameTimes { get; init; } = [];
+
+    /// <summary>Whether each clip's frame numbers count frames of its file. False on the grid.</summary>
+    public bool[] CountsFileFrames { get; init; } = [];
 
     /// <summary>The shared clock's state and position, read from the controller.</summary>
     public string ClockState { get; init; } = string.Empty;

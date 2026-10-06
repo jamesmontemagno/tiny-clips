@@ -11,6 +11,8 @@ namespace TinyClips.Tools.StudioPreviewCheck.Checks;
 
 /// <summary>One frame a player handed over: what the engine took it for, and which frame its pixels show.</summary>
 /// <param name="Truth">The frame number read from the strip in the copy, or <see cref="FrameCode.Unreadable"/>.</param>
+/// <param name="TimelineFrame">For the screen: the frame of the timeline a frame of that number is shown under, which is the number itself unless the engine counts in frames of the file. -1 for the camera.</param>
+/// <param name="EarlierTimelineFrame">The same for <paramref name="EarlierFrame"/>.</param>
 internal readonly record struct ProbedFrame(
     int Clip,
     long Serial,
@@ -29,7 +31,9 @@ internal readonly record struct ProbedFrame(
     string? Rule,
     long EarlierSerial,
     long EarlierFrame,
-    int Truth)
+    int Truth,
+    long TimelineFrame = -1,
+    long EarlierTimelineFrame = -1)
 {
     public double CopyMilliseconds => Stopwatch.GetElapsedTime(CopyBeganAt, CopiedAt).TotalMilliseconds;
 }
@@ -369,7 +373,7 @@ internal sealed class TruthProbe : IDisposable
                 var truth = FrameCode.Decode(_pixels, _slotWidth, _slotHeight, spec, map.Offset(-bounds.X, -bounds.Y));
                 frames.Add(new ProbedFrame(
                     h.Clip, h.Serial, h.Kind, h.StartedAt, h.PositionTicks, h.IntoMilliseconds, h.CopyBeganAt, h.CopiedAt, h.PositionAfterTicks,
-                    h.CollectorBefore, h.CollectorAfter, h.NameByPosition, h.Knowledge, h.Frame, h.Rule, h.EarlierSerial, h.EarlierFrame, truth));
+                    h.CollectorBefore, h.CollectorAfter, h.NameByPosition, h.Knowledge, h.Frame, h.Rule, h.EarlierSerial, h.EarlierFrame, truth, h.TimelineFrame, h.EarlierTimelineFrame));
                 _kept[index] = default;
             }
 

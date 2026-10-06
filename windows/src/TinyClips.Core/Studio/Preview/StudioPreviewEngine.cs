@@ -72,9 +72,12 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private readonly bool _forceMuted;
     private readonly bool _zeroVolume;
     private readonly bool _softwareDevice;
+    private readonly Func<IStudioPersonFinder?>? _personFinderFactory;
+    private readonly bool _stampPictures;
     private readonly StudioPreviewNamingSettings _naming;
     private readonly Func<TimeSpan>? _renderDelay;
     private readonly Func<TimeSpan>? _stopDelay;
+    private readonly Func<TimeSpan>? _pauseDelay;
     private readonly bool _stopNotedLate;
     private readonly TypedEventHandler<MediaTimelineController, object> _endedHandler;
     private readonly TypedEventHandler<MediaTimelineController, MediaTimelineControllerFailedEventArgs> _controllerFailedHandler;
@@ -115,6 +118,7 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
     private volatile bool _firstFramesHeld;
     private long _firstFramesReleasedAt;
     private readonly int _openAttempt;
+    private readonly string[] _frameTimesNotes;
     private readonly bool _failsAfterFirstFrames;
     private readonly bool _stopsDecodingBeforeFirstFrames;
     private volatile bool _aPlayerStoppedDecoding;
@@ -142,12 +146,16 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         string screenPath,
         string? cameraPath,
         double cameraFrameRate,
+        StudioPreviewFrameTimes? screenTimes,
+        StudioPreviewFrameTimes? cameraTimes,
+        string[] frameTimesNotes,
         StudioPreviewOptions options,
         StudioGraphicsDevice graphics,
         StudioSceneRenderer renderer,
         int openAttempt)
     {
         _openAttempt = openAttempt;
+        _frameTimesNotes = frameTimesNotes;
         _simulatedDeviceLosses = openAttempt <= options.DevicesLostWhileOpening ? 1 : 0;
         _failsAfterFirstFrames = openAttempt <= options.PlayersFailedWhileOpening;
         _stopsDecodingBeforeFirstFrames = openAttempt <= options.PlayersStopDecodingWhileOpening;
@@ -158,9 +166,12 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         _forceMuted = options.ForceMuted;
         _zeroVolume = options.ForceMuted || options.ZeroVolume;
         _softwareDevice = options.SoftwareDevice;
+        _personFinderFactory = options.PersonFinderFactory;
+        _stampPictures = options.StampPictures;
         _naming = options.Naming;
         _renderDelay = options.RenderDelay;
         _stopDelay = options.StopDelay;
+        _pauseDelay = options.PauseDelay;
         _stopNotedLate = options.StopNotedLate;
         _trustsFirstFrames = options.TrustFirstFrames;
         _looksAtFirstFrames = graphics.IsSoftware && !options.TrustFirstFrames;
@@ -172,14 +183,29 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
 
         var screenSource = project.Sources.Screen;
         var frameRate = StudioPreviewTimeMath.NormalizeFrameRate(screenSource.FrameRate);
+        // Where a file's frame times were read, its frames are counted as the file has them.
+        // Otherwise each clip is taken to have a frame at the start of every slot of its rate.
         var tracks = new List<StudioPreviewClipTiming>
         {
-            new(frameRate, StudioPreviewTimeMath.FrameCount(screenSource.Duration, frameRate), 0),
+            screenTimes is null
+                ? new StudioPreviewClipTiming(frameRate, StudioPreviewTimeMath.FrameCount(screenSource.Duration, frameRate), 0)
+                : StudioPreviewClipTiming.WithTimes(screenTimes, frameRate, 0),
         };
         if (project.Sources.Camera is { } cameraSource && cameraPath is not null)
         {
-            var cameraRate = StudioPreviewTimeMath.NormalizeFrameRate(cameraFrameRate);
-            tracks.Add(new StudioPreviewClipTiming(cameraRate, StudioPreviewTimeMath.FrameCount(cameraSource.Duration, cameraRate), cameraSource.StartOffset, cameraSource.Duration));
+            if (cameraTimes is null)
+            {
+                var cameraRate = StudioPreviewTimeMath.NormalizeFrameRate(cameraFrameRate);
+                tracks.Add(new StudioPreviewClipTiming(cameraRate, StudioPreviewTimeMath.FrameCount(cameraSource.Duration, cameraRate), cameraSource.StartOffset, cameraSource.Duration));
+            }
+            else
+            {
+                // The rate its frames usually come at, which is not the rate the probe reads
+                // from the file: that one is frames by length, and a camera that stalled or
+                // gave half its frames in low light has fewer than its length would hold.
+                var usual = StudioPreviewTimeMath.TicksPerSecond / (double)cameraTimes.TypicalSpacing;
+                tracks.Add(StudioPreviewClipTiming.WithTimes(cameraTimes, usual, cameraSource.StartOffset, cameraSource.Duration));
+            }
         }
 
         _timeline = new StudioPreviewTimeline(screenSource.Duration, frameRate, tracks);
@@ -315,6 +341,21 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             }
         }
 
+        // The files' own frame times, where they are asked for and can be read. Read once: a
+        // second attempt to open plays the same files.
+        StudioPreviewFrameTimes? screenTimes = null;
+        StudioPreviewFrameTimes? cameraTimes = null;
+        var frameTimesNotes = new string[cameraPath is null ? 1 : 2];
+        Array.Fill(frameTimesNotes, "the grid: the file's frame times were not asked for");
+        if (options.FrameTimesFromFile)
+        {
+            screenTimes = ReadFrameTimes(screenPath, "screen", options, out frameTimesNotes[0]);
+            if (cameraPath is not null)
+            {
+                cameraTimes = ReadFrameTimes(cameraPath, "camera", options, out frameTimesNotes[1]);
+            }
+        }
+
         for (var attempt = 1; ; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -326,14 +367,14 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
                 try
                 {
                     graphics = CreateDevice(options.SoftwareDevice);
-                    renderer = CreateRenderer(graphics);
+                    renderer = CreateRenderer(graphics, options.PersonFinderFactory);
                 }
                 catch (Exception ex)
                 {
                     throw new InvalidOperationException("The preview needs a graphics device, and none could be created.", ex);
                 }
 
-                engine = new StudioPreviewEngine(project, events, paths.ProjectDirectory, screenPath, cameraPath, cameraFrameRate, options, graphics, renderer, attempt);
+                engine = new StudioPreviewEngine(project, events, paths.ProjectDirectory, screenPath, cameraPath, cameraFrameRate, screenTimes, cameraTimes, frameTimesNotes, options, graphics, renderer, attempt);
                 engine.Start(cancellationToken);
                 return engine;
             }
@@ -374,6 +415,22 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// A clip's frame times from its file's index, or null when they cannot be read from it:
+    /// the clip is then played on the grid, as every clip is where the times are not asked for.
+    /// </summary>
+    private static StudioPreviewFrameTimes? ReadFrameTimes(string path, string name, StudioPreviewOptions options, out string note)
+    {
+        var times = StudioPreviewFrameTimes.TryRead(path, out var problem);
+        note = times is null
+            ? $"the grid: {problem ?? "the file's index was not read"}"
+            : string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"the file's: {times.Count} frames, the first at {times.Start(0) / 10000.0:0.0###} ms, the last at {times.Start(times.Count - 1) / 10000.0:0.0###} ms, usually {times.TypicalSpacing / 10000.0:0.0###} ms apart");
+        options.Trace?.Invoke($"          frame numbers of the {name}: {note}");
+        return times;
     }
 
     /// <summary>Whether each player has handed over at least one frame, which shows that its file can be decoded.</summary>
@@ -486,6 +543,11 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             // one is on the picture and in the position.
             WaitForDeliveries(PauseDeliveryWaitMilliseconds);
             WaitForPass(PausePassWaitMilliseconds);
+            if (_pauseDelay is { } delay && delay() is { Ticks: > 0 } wait)
+            {
+                // What the checks make of a thread that is kept from going on just here.
+                Thread.Sleep(wait);
+            }
 
             // That is so when nothing holds the process up. When something does, a frame can
             // still be on its way: from here on it is left out, so that what the caller reads

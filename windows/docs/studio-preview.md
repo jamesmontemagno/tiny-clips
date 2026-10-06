@@ -9,7 +9,7 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
 | --- | --- |
 | `StudioPreviewEngine` (Core, `Studio/Preview`) | The `IStudioPreview`. One frame-server `MediaPlayer` per clip on one `MediaTimelineController`; each copies its frames into a texture; a render thread draws the scene with `StudioSceneRenderer` on the engine's own `StudioGraphicsDevice`, always under that device's `Gate`. |
 | `StudioPreviewFactory` | The `IStudioPreviewFactory`. What `OpenAsync` returns is the engine, which a surface needs. |
-| `StudioPreviewSeekPolicy`, `StudioPreviewFrameNamer`, `StudioPreviewStillness`, `StudioPreviewPosition`, `StudioPreviewTimeline`, `StudioPreviewCopyTargets`, `StudioPreviewProof`, `StudioPreviewOpenFailure`, `StudioPreviewFiles` | Pure and unit tested: when the clock is moved and started, and which frame a player hands over while it runs (each class comment lists its rules and what was measured for them), over which frames the scene comes out the same whichever of them the picture is, which frame is reported as the position, frame arithmetic, the size of the textures the players copy into, when the pictures of players that came from another graphics adapter are believed, which failures of an open are worth a second attempt, and which files a closing preview waits for. |
+| `StudioPreviewSeekPolicy`, `StudioPreviewFrameNamer`, `StudioPreviewStillness`, `StudioPreviewPosition`, `StudioPreviewTimeline`, `StudioPreviewCopyTargets`, `StudioPreviewProof`, `StudioPreviewOpenFailure`, `StudioPreviewFiles`, `StudioPreviewFrameTimes` | Pure and unit tested: when the clock is moved and started, and which frame a player hands over while it runs (each class comment lists its rules and what was measured for them), over which frames the scene comes out the same whichever of them the picture is, which frame is reported as the position, frame arithmetic, the size of the textures the players copy into, when the pictures of players that came from another graphics adapter are believed, which failures of an open are worth a second attempt, which files a closing preview waits for, and when each frame of a file begins, read from the file's index (switched off: see *Counting in frames of the file*). |
 | `IStudioPreviewSurface`, `StudioPreviewPanel` (App, `Controls/Studio`) | What the engine draws into: it asks for a texture and its pixel size, draws, and tells the surface to present. The panel is a `SwapChainPanel` with a composition swap chain on the engine's device, sized in physical pixels. |
 
 ## What it does
@@ -40,12 +40,25 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
 - `UpdateProject` swaps the project and asks for a redraw; calls are coalesced. Sources and
   `Edits` are ignored: the caller applies the trim. The camera is hidden outside its own time
   range. The screen clip plays its sound unless `project.Audio.Muted`; the camera never does.
+- A camera whose background is blurred or removed (`camera.cutout`) has its people found by the
+  renderer, with the model the app ships. The engine gives the renderer every frame without
+  saying which picture it is (`StudioGpuVideoFrame.Stamp` is 0), so the people are looked for
+  afresh at every draw: also at every redraw of a paused preview, which is every move of a
+  slider. The engine can say which picture a frame is, with the count of pictures that have been
+  put into the clip's textures, which changes exactly when the picture does and is never 0; the
+  renderer then looks at a picture once (`StudioPreviewOptions.StampPictures`). **That is
+  switched off.** It was written on 5 October, nothing has run with it, and a stamp that stayed
+  while the picture changed would show an old camera frame. `StudioPreviewCheck --only people`
+  switches it on and decides, with the faults made against it.
+- Everything plays at the recording's own speed. `SetPlaybackRate` is not built: see *Other
+  speeds* below.
 - A lost graphics device is rebuilt once, at the same position. If that fails, or a player stops
   decoding, `Failed` is raised, once. Without graphics hardware the device is WARP. After a
   rebuild the scene is drawn again when every clip that is part of it has its picture back. A
   camera outside its own time range is not waited for: its player is parked and hands nothing
-  over, and the scene has no use for it there. (Read from the code and mended on 5 October;
-  the check for it has not been run yet.)
+  over, and the scene has no use for it there. (Read from the code and mended on 5 October.
+  The check for it was first run that evening, with the mend in, and passed. It has not been
+  run without the mend, which is the only thing that would show that it catches the fault.)
 - A preview that fails while it opens is opened once more, 750 ms later, when what went wrong
   may pass: a graphics device was lost, a player failed after every player had handed over a
   frame, which shows that the files can be decoded, or a player said before that that it could
@@ -62,8 +75,9 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
   given up and `Play` comes before the render thread has looked, the render thread finds a
   clock that `Pause` stopped and playing wanted, and starts over from the frame shown. (Until
   5 October it found nothing changed, and the preview stood still with `IsPlaying` true until
-  the next pause or seek. Read from the code and mended; the check for it has not been run
-  yet.)
+  the next pause or seek. Read from the code and mended. The check for it was first run that
+  evening, with the mend in, and passed. It has not been run without the mend, which is the
+  only thing that would show that it catches the fault.)
 - `PositionChanged` is raised when `Position` changes (at a `Seek` that asks for another frame,
   for each frame played, at the end) and once more when a seek has landed, after its picture was
   drawn. While playing, `Position` never goes back, and it moves only to a frame the engine can
@@ -116,17 +130,18 @@ Unit tests: `StudioPreview*Tests` in `TinyClips.Core.Tests`.
 
 ## Measured
 
-Six full runs of 299 checks each on the engine as it is, on an AMD Radeon 860M, 16 logical
-processors, 150 % scale, with other check tools and builds taking their turns on the PC;
-1920x1080 screen and 1280x720 camera at 30 fps. **Every clip has one frame exactly at the start
-of every thirtieth of a second, which a recording made by the app has not:** see *A recording's
-own frame times* below before relying on any number here for a real recording. The runs were
-made before this engine was merged with the editor window's scene and cut controls; on the
-merged code it has been compiled and unit tested. What is said of opens by project, of the first
-picture and of opens on WARP beyond a full run's own is from the loops of opens made when the
-way a preview opens was changed: see *Players and graphics adapters*. Pauses and scenes while
-the process is held up are under *Which frame a texture holds*, cuts and scene changes in the
-last section.
+Six full runs of 299 checks each, on an AMD Radeon 860M, 16 logical processors, 150 % scale,
+with other check tools and builds taking their turns on the PC; 1920x1080 screen and 1280x720
+camera at 30 fps. **Every clip has one frame exactly at the start of every thirtieth of a
+second, which a recording made by the app has not:** see *A recording's own frame times* below
+before relying on any number here for a real recording. The six runs were made in the engine's
+own copy, before it was merged with the editor window's scene and cut controls, and the numbers
+here are theirs. On the merged code there has been one full run, on 5 October at commit
+`c81a8ea`: all of its 305 checks passed, and of the 146 previews it opened none needed a second
+attempt. What is said of opens by project, of the first picture and of opens on WARP beyond a
+full run's own is from the loops of opens made when the way a preview opens was changed: see
+*Players and graphics adapters*. Pauses and scenes while the process is held up are under
+*Which frame a texture holds*, cuts and scene changes in the last section.
 
 | | |
 | --- | --- |
@@ -519,8 +534,108 @@ its slot's number, while a pause, a seek and the export show the frame before it
 because they look at the middle of the slot: that is older than these rules.
 
 The model is in `StudioPreviewFrameNamerRecordingTests`. Its tests of what should hold and
-does not are skipped, each with its reason. They are to be made to pass, or shown wrong with a
-real player, before the preview is relied on for recordings.
+does not are skipped, each with its reason: they describe the engine as the app runs it. They
+are to be made to pass, or shown wrong with a real player, before the preview is relied on for
+recordings. What follows makes them pass by the model; no player has played with it yet.
+
+### Counting in frames of the file: built, switched off, not played yet
+
+`StudioPreviewOptions.FrameTimesFromFile` makes the engine read, while it opens, when each
+frame of each clip begins: from the file's index, without decoding anything
+(`StudioPreviewFrameTimes`). It then counts in frames of the file:
+
+- A frame handed over is the frame whose time the player's position has reached, and the next
+  frame is the next one of the file. A slot the recorder left empty is no skipped number, and
+  where a frame sits in its slot does not matter to its number.
+- The frame of the timeline it is shown under, which is what `Position` reports and what the
+  scene is laid out for, is the first one whose middle the frame has begun by. That is the
+  frame the export shows it in, and the frame a pause or a seek rests on with that picture: a
+  frame plays under the number it rests under.
+- A seek knows which frame of the file a frame of the timeline shows. A frame of the timeline
+  that has no frame of its own shows the one before it: no picture is owed for it, it is
+  reached at once, and the scene is drawn again for it, since its layout may be another. One
+  frame forward steps a player only where that shows the next frame of the file, and a detour
+  goes to a frame of the timeline that shows another frame of the file.
+- The camera's frame rate, which its rules go by, is the rate its frames usually come at. Frames
+  by length, which is what the probe reads, is wrong for a camera that stalled or gave half its
+  frames in low light.
+- A file whose index it cannot read, or whose times it cannot be sure of (an index in
+  fragments, an edit list in more than one part or at another speed, two frames at one time),
+  is played on the grid as before. The engine's diagnostics say which (`FrameTimes`).
+
+By the model above every frame then has its number at once, wherever it sits in its slot and
+with or without an empty slot, and plays under the number a pause shows it under
+(`StudioPreviewFrameNamerRecordingTests`, the theories that begin `WithTheFilesFrameTimes`).
+Given frame times that are on the grid, every answer is the grid's
+(`StudioPreviewRecordingTimesTests`), and the seek policy's own tests run unchanged.
+
+**It is off, and the app runs as before.** It was written on 5 October while no check tool
+could be run, and it rests on three things only a run can say:
+
+1. That the times in the index are the times a player goes by. `StudioPreviewCheck
+   --investigate recordings --scenario files` holds the engine's reading against what Media
+   Foundation's reader hands out, for every clip.
+2. Whether the time of a recording's first frame survives in its file. Read from the recorder's
+   code, a recording that was not paused has no frame in its first slot and its frames a couple
+   of milliseconds into theirs: the pacer is started a moment after the timeline's zero and
+   ticks first one interval later. If the file keeps that, the first frame begins after the
+   middle of the first slot, and what a paused player shows before any frame has begun decides
+   whether the preview of a recording opens on a picture. The export shows the first frame there.
+3. What a player hands over for a position inside the frame it shows already, which is every
+   seek to a slot that has no frame of its own.
+
+What remains, with the times or without:
+
+- **A frame the export shows in no frame.** Where a frame begins after one middle and the next
+  begins before the next middle, the export shows the first of the two not at all, and the
+  frame before it twice. The preview plays every frame of the file, that one under the number
+  of the frame after it, and a pause on it rests on the frame after it. It takes frames that
+  sit around the middle of their slot: by the recorder's code, a recording that was paused at
+  an unlucky moment.
+- **A stretch without frames.** `Position` follows the frames the screen hands over. Through a
+  stretch without one it stands on the frame before the stretch while the sound runs on, and
+  a pause in it rests there, so that playing on plays the stretch again. For a slot or two
+  that is nothing. For a file with seconds between two frames it is not right. The mend would
+  be to let the clock move the scene and the position through such a stretch, which the frame
+  times make possible and which is not built.
+- **The last frame of a recording** begins after the middle of the timeline's last frame when
+  the frames sit late in their slots, and is then in no frame of the export.
+
+The checks are written and have not run: `StudioPreviewCheck --only recordings`, and
+`--investigate recordings --scenario files`, `players` and `table` (the tool's README). They
+are to be run with and without `--frame-times file`, and a full run with it, before the switch
+is turned on.
+
+### Other speeds: not built
+
+The engine has no `SetPlaybackRate` of its own yet: a project's speed changes are played at the
+recording's own speed, and the editor's session calls into the contract's empty body. The way
+to another speed is the clock's own rate (`MediaTimelineController.ClockRate`), which the spike
+measured at a half and at twice the speed, set before the clock was started. Setting it is the
+small part. What tells the frames of playback apart takes the clock to run at 1, read from the
+code:
+
+- The rule for a hand-over the garbage collector kept waiting (rule 3) allows a gap of one
+  frame's length, taken as time on the wall clock. At another speed a frame lasts that divided
+  by the rate.
+- "On time" (rule 5, and what ends the doubt after an inference) is 13 ms into a frame, which
+  is time of the recording: the position moves that far in 13 ms divided by the rate. From
+  about 2.5 times the speed on, at 30 frames a second, it is longer than a frame and tells
+  nothing; and a player that looks every hundredth of a second then has a frame due at every
+  look, so that a look that went by without one is no longer something to conclude from.
+- A player looks for a frame a hundred times a second (measured at the recording's own speed),
+  so from about 3.3 times the speed on it cannot hand over every frame of a recording at 30 a
+  second. The rules that number a frame need it to be the next one, so nearly every frame would
+  be without a number, `Position` would stand still for half a second, and after that every
+  frame would be shown under its position's number and called unsure. A position read a moment
+  after the player looked names the frame after the one handed over whenever a frame began in
+  between, which at eight times the speed is no longer rare.
+
+So playing at 4 and at 8 needs a rule the engine does not have, and that rule needs to be
+measured first. `StudioPreviewCheck --investigate rates` sets the clock's rate from outside
+(`StudioPreviewEngine.SetClockRateForExperiment`, for that experiment only) and says, for each
+rate, what the players hand over and what the rules for a clock at 1 make of it. It was written
+on 5 October while no check tool could be run, and has not run.
 
 ## Cuts, scene changes and zooms, through the editor's session
 

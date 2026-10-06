@@ -205,7 +205,7 @@ public sealed partial class StudioPreviewEngine
                     drawn = true;
                     if (_trace is not null)
                     {
-                        Note($"drew the scene of frame {_policy.ShownFrame(0)}");
+                        Note($"drew the scene of frame {_policy.ShownTimelineFrame}");
                     }
                 }
                 else
@@ -261,7 +261,7 @@ public sealed partial class StudioPreviewEngine
     // Device lock held.
     private void UpdateCopyTargets(StudioGraphicsDevice graphics, StudioProject project, double surfaceWidth, double surfaceHeight)
     {
-        var time = _timeline.FrameMiddle(Math.Max(0, _policy.ShownFrame(0)));
+        var time = _timeline.FrameMiddle(Math.Max(0, _policy.ShownTimelineFrame));
         var layout = StudioLayoutResolver.Resolve(project, time, surfaceWidth, surfaceHeight);
         foreach (var clip in _clips)
         {
@@ -398,6 +398,7 @@ public sealed partial class StudioPreviewEngine
             // A frame with a number is later than any that was shown without one.
             clip.ShowsLive = false;
             clip.PictureCount++;
+            clip.DrawStamp = clip.PictureCount;
             return true;
         }
     }
@@ -446,6 +447,7 @@ public sealed partial class StudioPreviewEngine
             clip.LiveSerial = serial;
             clip.ShowsLive = true;
             clip.PictureCount++;
+            clip.LiveStamp = clip.PictureCount;
             return true;
         }
     }
@@ -461,6 +463,9 @@ public sealed partial class StudioPreviewEngine
         {
             (clip.DrawTexture, clip.LiveTexture) = (clip.LiveTexture, clip.DrawTexture);
             (clip.DrawSize, clip.LiveSize) = (clip.LiveSize, clip.DrawSize);
+
+            // Each frame keeps its stamp with its texture: the renderer has looked at this one already.
+            (clip.DrawStamp, clip.LiveStamp) = (clip.LiveStamp, clip.DrawStamp);
             clip.ShowsLive = false;
 
             // The copy that was put aside for this is not needed.
@@ -483,7 +488,7 @@ public sealed partial class StudioPreviewEngine
     /// nobody knows which, can be drawn. Render thread only.
     /// </summary>
     private bool SceneIsTheSameUpTo(long latest) =>
-        StudioPreviewStillness.SameLayout(_renderProject, _events, _timeline.FrameRate, _policy.ShownFrame(0), latest, _drawnWidth, _drawnHeight);
+        StudioPreviewStillness.SameLayout(_renderProject, _events, _timeline.FrameRate, _policy.ShownTimelineFrame, latest, _drawnWidth, _drawnHeight);
 
     /// <summary>A frame that waits to be taken into the picture is not going to be. Render thread only; takes the device lock.</summary>
     private void StopWaiting(StudioPreviewClip clip, long serial)
@@ -675,8 +680,8 @@ public sealed partial class StudioPreviewEngine
     /// </summary>
     private void DrawScene(StudioProject project, ID3D11Texture2D target, int width, int height)
     {
-        // The middle of the frame the screen shows: the instant the exporter samples for that frame.
-        var sourceTime = _timeline.FrameMiddle(Math.Max(0, _policy.ShownFrame(0)));
+        // The middle of the frame the screen is shown under: the instant the exporter samples for that frame.
+        var sourceTime = _timeline.FrameMiddle(Math.Max(0, _policy.ShownTimelineFrame));
         var request = new StudioRenderRequest(
             project,
             _events,
@@ -690,10 +695,18 @@ public sealed partial class StudioPreviewEngine
         _renderer.Render(in request);
     }
 
-    /// <summary>What a clip is drawn from, for the renderer: its picture, or the later frame that is shown without a number.</summary>
-    private static StudioGpuVideoFrame? Source(StudioPreviewClip clip) =>
-        clip.ShowsLive && clip.LiveTexture is { } live ? new StudioGpuVideoFrame(live, 0, clip.LiveSize.Width, clip.LiveSize.Height)
-        : clip.DrawTexture is { } texture ? new StudioGpuVideoFrame(texture, 0, clip.DrawSize.Width, clip.DrawSize.Height)
+    /// <summary>
+    /// What a clip is drawn from, for the renderer: its picture, or the later frame that is shown
+    /// without a number. With <see cref="StudioPreviewOptions.StampPictures"/> each carries the
+    /// stamp of the frame in it, so that the renderer does work on a frame once however often
+    /// the scene is drawn again: finding the people in a camera picture, above all, while a
+    /// paused preview is redrawn for every move of a slider. Without it, which is how the app
+    /// runs, the stamp is 0 whatever the clip has counted: the frame says nothing about which
+    /// picture it is, and the renderer looks at it afresh at every draw.
+    /// </summary>
+    private StudioGpuVideoFrame? Source(StudioPreviewClip clip) =>
+        clip.ShowsLive && clip.LiveTexture is { } live ? new StudioGpuVideoFrame(live, 0, clip.LiveSize.Width, clip.LiveSize.Height) { Stamp = _stampPictures ? clip.LiveStamp : 0 }
+        : clip.DrawTexture is { } texture ? new StudioGpuVideoFrame(texture, 0, clip.DrawSize.Width, clip.DrawSize.Height) { Stamp = _stampPictures ? clip.DrawStamp : 0 }
         : null;
 
     // The renderer keeps a wrapper per source texture, by address. Drop them before a texture goes.
@@ -726,12 +739,13 @@ public sealed partial class StudioPreviewEngine
     }
 
     // The renderer draws through the device's immediate context, so it is created, called and
-    // disposed under the device's lock.
-    private static StudioSceneRenderer CreateRenderer(StudioGraphicsDevice graphics)
+    // disposed under the device's lock. Without a factory it finds the people in a camera
+    // picture with the model that is next to the app, which the app ships.
+    private static StudioSceneRenderer CreateRenderer(StudioGraphicsDevice graphics, Func<IStudioPersonFinder?>? personFinderFactory)
     {
         lock (graphics.Gate)
         {
-            return new StudioSceneRenderer(graphics.Device);
+            return new StudioSceneRenderer(graphics.Device, personFinderFactory);
         }
     }
 
@@ -829,7 +843,7 @@ public sealed partial class StudioPreviewEngine
                 try
                 {
                     created = CreateDevice(_softwareDevice);
-                    _renderer = CreateRenderer(created);
+                    _renderer = CreateRenderer(created, _personFinderFactory);
                     _rendererDisposed = false;
                     Volatile.Write(ref _graphics, created);
                 }
@@ -903,7 +917,7 @@ public sealed partial class StudioPreviewEngine
     /// </summary>
     private bool APictureIsMissing()
     {
-        var frame = Math.Max(0, _policy.ShownFrame(0));
+        var frame = Math.Max(0, _policy.ShownTimelineFrame);
         foreach (var clip in _clips)
         {
             if (clip.HasDeliveredFrame && clip.DrawTexture is null && _timeline.IsShown(clip.Index, frame))
@@ -991,6 +1005,40 @@ public sealed partial class StudioPreviewEngine
     /// </summary>
     internal Action<StudioPreviewHandOver>? AfterCopy { get; set; }
 
+    /// <summary>
+    /// Called by a player's own thread at the very end of a hand-over of playback: after the
+    /// clip's namer has been told that the hand-over is over, and with the device lock let go.
+    /// It is given the clip and which copy it was. What keeps the thread in here keeps it from
+    /// the player while the namer takes the player to have it back. For the experiment that
+    /// looks at what a garbage collection does that begins just then.
+    /// </summary>
+    internal Action<int, long>? AfterExit { get; set; }
+
+    /// <summary>
+    /// Sets the rate of the clock every player follows, for the experiment that looks at what
+    /// the players hand over at another speed (<c>StudioPreviewCheck --investigate rates</c>).
+    /// Nothing else in the engine knows of the rate: the rules that tell the frames of
+    /// playback apart take the clock to run at 1, and the sound is left as it is. This is not
+    /// <see cref="IStudioPreview.SetPlaybackRate"/>, which the engine does not have yet.
+    /// </summary>
+    internal void SetClockRateForExperiment(double rate)
+    {
+        lock (_transportLock)
+        {
+            if (_closing)
+            {
+                return;
+            }
+
+            _controller.ClockRate = rate;
+        }
+
+        if (_trace is not null)
+        {
+            Note(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"clock rate {rate:0.###}, set for an experiment"));
+        }
+    }
+
     /// <summary>The device the engine draws with. Take its <c>Gate</c> around any use of its context.</summary>
     internal StudioGraphicsDevice GraphicsDevice => Volatile.Read(ref _graphics);
 
@@ -1065,6 +1113,36 @@ public sealed partial class StudioPreviewEngine
     {
         Interlocked.Add(ref _simulatedDeviceLosses, Math.Max(1, times));
         WakeEngine();
+    }
+
+    /// <summary>
+    /// The texture a clip's scene is drawn from and the size of the picture in it, or null
+    /// before the clip's first frame: for a check that reads a few pixels of it for every scene
+    /// drawn. To be called only from <see cref="AfterRender"/>, which runs on the render thread
+    /// with the device lock held, so that it is the texture the scene was just drawn from. The
+    /// texture is the engine's: it is not to be kept.
+    /// </summary>
+    internal ID3D11Texture2D? PictureDrawnFrom(int clipIndex, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+        if (clipIndex < 0 || clipIndex >= _clips.Length)
+        {
+            return null;
+        }
+
+        var clip = _clips[clipIndex];
+        var live = clip.ShowsLive && clip.LiveTexture is not null;
+        var texture = live ? clip.LiveTexture : clip.DrawTexture;
+        if (texture is null)
+        {
+            return null;
+        }
+
+        var size = live ? clip.LiveSize : clip.DrawSize;
+        width = size.Width;
+        height = size.Height;
+        return texture;
     }
 
     /// <summary>
@@ -1216,6 +1294,9 @@ public sealed partial class StudioPreviewEngine
             DeviceRebuilds = _deviceRebuilds,
             SettledFrame = _policy.SettledFrame,
             ShownFrames = shown,
+            ShownTimelineFrame = _policy.ShownTimelineFrame,
+            FrameTimes = [.. _frameTimesNotes],
+            CountsFileFrames = [.. _clips.Select(clip => clip.Timing.Times is not null)],
             ClockState = clockState,
             ClockSeconds = clockSeconds,
             PlayerSeconds = playerSeconds,

@@ -480,6 +480,7 @@ internal sealed partial class HeadlessChecks
         Close(session);
 
         PauseThenPlayWhileTheRenderThreadIsHeld();
+        PauseOnOneThreadWhilePlayComesFromAnother();
     }
 
     /// <summary>
@@ -559,6 +560,91 @@ internal sealed partial class HeadlessChecks
             $"Pause() then Play() at once, with the render thread held in a draw for {F(hold.TotalMilliseconds, "0")} ms ({times} times): playback goes on",
             wrong.Count == 0 && unheard > 0,
             wrong.Count == 0 ? $"the render thread was still held when Play() came in {unheard} of {times}; the Pause() call took {pauseCall.Summary()}" : $"{wrong.Count} wrong; first: {string.Join(" | ", wrong.Take(3))}");
+        _report.Check("no failure was reported", session.Events.FailedEvents == 0, string.Join("; ", session.Events.Failures()));
+        Close(session);
+    }
+
+    /// <summary>
+    /// Pause() on one thread and Play() from another while the first is still inside Pause():
+    /// it has stopped the clock, and is kept from going on. The render thread hears of both
+    /// calls and starts the clock again. When the pausing thread gets on, it must not shut the
+    /// picture to the frames of the playback that has begun since: that would leave the clock
+    /// running and every frame left out until the next pause. Playback has to go on.
+    /// </summary>
+    private void PauseOnOneThreadWhilePlayComesFromAnother()
+    {
+        const int times = 6;
+
+        // Long enough for the render thread to hear of the stop and of Play(), bring the
+        // players to rest and start the clock again while the pausing thread is still held.
+        var hold = TimeSpan.FromMilliseconds(900);
+        var armed = 0;
+        using var held = new ManualResetEventSlim(false);
+        var options = Muted with
+        {
+            PauseDelay = () =>
+            {
+                if (Interlocked.Exchange(ref armed, 0) == 0)
+                {
+                    return TimeSpan.Zero;
+                }
+
+                held.Set();
+                return hold;
+            },
+        };
+
+        var session = OpenSession(TestMedia.Camera, options: options);
+        var wrong = new List<string>();
+        var restarted = 0;
+        var playedMeanwhile = new Samples();
+        for (var cycle = 0; cycle < times; cycle++)
+        {
+            session.SeekTo(30 + (cycle * 20));
+            session.Engine.Play();
+            Thread.Sleep(400);
+            held.Reset();
+            Interlocked.Exchange(ref armed, 1);
+            var pausing = new Thread(session.Engine.Pause) { IsBackground = true, Name = "StudioPreviewCheck.Pausing" };
+            pausing.Start();
+            if (!held.Wait(TimeSpan.FromSeconds(2)))
+            {
+                Interlocked.Exchange(ref armed, 0);
+                wrong.Add($"cycle {cycle}: Pause() had not stopped the clock and waited for the render thread within two seconds");
+                pausing.Join(TimeSpan.FromSeconds(5));
+                session.Engine.Pause();
+                session.WaitForIdle();
+                continue;
+            }
+
+            // The other thread is inside Pause() now, with the clock stopped, and sleeps there.
+            var stoppedOn = session.PositionFrame;
+            session.Engine.Play();
+            var joined = pausing.Join(hold + TimeSpan.FromSeconds(5));
+            var atReturn = session.PositionFrame;
+
+            // Whether the clock was running again when the pausing thread got on: only then
+            // was there a playback for it to shut the picture to.
+            restarted += atReturn > stoppedOn ? 1 : 0;
+            playedMeanwhile.Add(atReturn - stoppedOn);
+            session.Recorder.Drain();
+            Thread.Sleep(1000);
+            var playing = session.Engine.IsPlaying;
+            var movedOn = session.PositionFrame;
+            var scenes = session.Recorder.Drain().Count(c => c.Screen != FrameCode.Unreadable);
+            session.Engine.Pause();
+            var idle = session.WaitForIdle();
+            var shown = session.ReadShown();
+            if (!joined || !playing || movedOn < atReturn + 20 || scenes < 16 || !idle || shown.Screen != session.PositionFrame || shown.Camera != session.ExpectedCamera(shown.Screen))
+            {
+                wrong.Add($"cycle {cycle}: the clock was stopped on frame {stoppedOn}; Pause() returned {(joined ? "with" : "not at all, with")} Position on frame {atReturn}; a second later: IsPlaying {playing}, Position frame {movedOn}, {scenes} scenes drawn in that second; after the last pause: idle {idle}, picture {shown}, Position frame {session.PositionFrame}{Dump(session, "pause-play-threads")}");
+            }
+        }
+
+        _report.Check(
+            $"Pause() on one thread, kept inside it for {F(hold.TotalMilliseconds, "0")} ms, and Play() from another thread meanwhile ({times} times): playback goes on",
+            wrong.Count == 0 && restarted > 0,
+            wrong.Count == 0 ? $"the clock was running again when Pause() got on in {restarted} of {times}; frames played by then: {playedMeanwhile.Summary("frames")}" : $"{wrong.Count} wrong; first: {string.Join(" | ", wrong.Take(3))}");
         _report.Check("no failure was reported", session.Events.FailedEvents == 0, string.Join("; ", session.Events.Failures()));
         Close(session);
     }

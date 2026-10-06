@@ -93,6 +93,13 @@ internal static class StudioPreviewHandOverKinds
 /// <param name="Rule">Which rule gave the number, or why there is none.</param>
 /// <param name="EarlierSerial">The copy before this one, when this hand-over gave it its number; otherwise 0.</param>
 /// <param name="EarlierFrame">The number that copy got.</param>
+/// <param name="TimelineFrame">
+/// For the screen, the timeline frame a frame of that number plays under: the number itself on
+/// the grid, and the frame of the timeline it belongs to where the clip counts in frames of
+/// its file. For an answer it says where such a frame would play, not where the clock was put.
+/// -1 for the camera.
+/// </param>
+/// <param name="EarlierTimelineFrame">The same for <paramref name="EarlierFrame"/>.</param>
 internal readonly record struct StudioPreviewHandOver(
     int Clip,
     long Serial,
@@ -113,7 +120,9 @@ internal readonly record struct StudioPreviewHandOver(
     long Frame,
     string? Rule,
     long EarlierSerial,
-    long EarlierFrame);
+    long EarlierFrame,
+    long TimelineFrame,
+    long EarlierTimelineFrame);
 
 /// <summary>
 /// Whether a picture can be drawn without knowing which frame it is: it can when the scene comes

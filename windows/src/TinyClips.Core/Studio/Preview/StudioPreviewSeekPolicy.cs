@@ -257,6 +257,11 @@ internal sealed class StudioPreviewSeekPolicy
     private long _settled = -1;
     private bool _settledConfirmed;
 
+    // The timeline frame the screen's picture is shown under. On the grid it is the frame the
+    // screen's player delivered last. Where the screen counts in frames of its file it is the
+    // frame of the timeline that frame belongs to, or the frame the players were brought to.
+    private long _screenFrame = -1;
+
     // Where the clock is, in timeline seconds, and whether that is exactly the middle of a frame.
     private double _clockSeconds;
     private bool _clockExact;
@@ -387,6 +392,17 @@ internal sealed class StudioPreviewSeekPolicy
     public long ShownFrame(int track) => _shown[track];
 
     /// <summary>
+    /// The timeline frame the screen's picture is shown under, or -1 before its first: the frame
+    /// the scene is drawn for and, while playing, the position. On the grid it is
+    /// <see cref="ShownFrame"/> of the screen. Where the screen counts in frames of its file
+    /// (<see cref="StudioPreviewTimeline.ScreenHasTimes"/>) it is the timeline frame the players
+    /// were brought to, which can show the frame an earlier one shows, and for a frame of
+    /// playback the timeline frame that frame belongs to
+    /// (<see cref="StudioPreviewTimeline.TimelineFrameOfScreen"/>).
+    /// </summary>
+    public long ShownTimelineFrame => _screenFrame;
+
+    /// <summary>
     /// A track's texture no longer holds its frame (it was recreated and could not be refilled).
     /// The next request makes the player deliver again, even one for the frame it rests on.
     /// </summary>
@@ -395,6 +411,10 @@ internal sealed class StudioPreviewSeekPolicy
         _shown[track] = -1;
         _unsure[track] = false;
         _settledConfirmed = false;
+        if (track == 0)
+        {
+            _screenFrame = -1;
+        }
     }
 
     /// <summary>Asks for a timeline frame. Nothing moves until <see cref="Pump"/>.</summary>
@@ -507,10 +527,21 @@ internal sealed class StudioPreviewSeekPolicy
             // the player had before, on or next to a frame boundary where rounding decides.
             _shown[track] = _stepFrom[track] + 1;
             _arrived[track] = true;
+            if (track == 0)
+            {
+                _screenFrame = _timeline.ScreenHasTimes ? _operationFrame : _shown[0];
+            }
+
             return;
         }
 
         _shown[track] = playerFrame;
+        if (track == 0)
+        {
+            // Whatever it turns out to answer: the timeline frame this frame belongs to.
+            _screenFrame = _timeline.TimelineFrameOfScreen(playerFrame);
+        }
+
         if (answersOperation)
         {
             _lastAnswerAt = Math.Max(_lastAnswerAt, startedAt);
@@ -520,6 +551,13 @@ internal sealed class StudioPreviewSeekPolicy
         var target = _operation != Operation.None ? _operationFrame : _settled;
         if (target < 0 || playerFrame == _timeline.PlayerFrame(track, target))
         {
+            if (track == 0 && target >= 0 && _timeline.ScreenHasTimes)
+            {
+                // The frame the players were brought to. It can show the frame an earlier one
+                // shows, where the file has no frame of its own for it.
+                _screenFrame = target;
+            }
+
             if (answersOperation && _firstAfterPlaying && _arrived[track])
             {
                 SecondAnswers++;
@@ -670,7 +708,7 @@ internal sealed class StudioPreviewSeekPolicy
                 if (_requested < 0)
                 {
                     // The frame the screen shows, from the last frame it delivered.
-                    _requested = StudioPreviewTimeMath.ClampFrame(_shown[0], _timeline.FrameCount);
+                    _requested = StudioPreviewTimeMath.ClampFrame(_screenFrame, _timeline.FrameCount);
                     _requestedAt = now;
                     _requestIsSnap = true;
                 }
@@ -729,7 +767,7 @@ internal sealed class StudioPreviewSeekPolicy
         _clockRan = true;
 
         // Somewhere inside the frame the screen shows.
-        _clockSeconds = _timeline.FrameMiddle(StudioPreviewTimeMath.ClampFrame(_shown[0], _timeline.FrameCount));
+        _clockSeconds = _timeline.FrameMiddle(StudioPreviewTimeMath.ClampFrame(_screenFrame, _timeline.FrameCount));
         _clockExact = false;
         _settling = true;
         var now = _clock();
@@ -1338,6 +1376,13 @@ internal sealed class StudioPreviewSeekPolicy
     {
         _settled = _target;
         _settledConfirmed = confirmed;
+        if (_timeline.ScreenHasTimes)
+        {
+            // The scene is the one of the frame the players were brought to, also where the
+            // screen had its picture already and delivered nothing. A screen that never
+            // delivered shows what it shows.
+            _screenFrame = confirmed ? _target : _timeline.TimelineFrameOfScreen(_shown[0]);
+        }
         _landings.Add(new StudioPreviewLanding(_target, confirmed, _chainKind, _chainRequestedAt, now, _repairs));
         _target = -1;
         HoldPicture = false;

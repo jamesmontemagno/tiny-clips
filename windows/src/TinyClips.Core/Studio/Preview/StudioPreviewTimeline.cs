@@ -55,23 +55,71 @@ internal static class StudioPreviewTimeMath
 internal readonly record struct StudioPreviewClipTiming(double FrameRate, long FrameCount, double StartOffset, double Duration = double.PositiveInfinity)
 {
     /// <summary>
+    /// When each frame of the clip begins, where the file's index was read
+    /// (<see cref="WithTimes"/>). Null for a clip whose frames are taken to sit on the grid of
+    /// <see cref="FrameRate"/>, one at the start of every slot.
+    /// <para>
+    /// It decides what a frame's number is. On the grid it is the slot. With the times it is
+    /// the frame's place in the file, counted from 0: the frame after a slot the recorder left
+    /// empty is then simply the next one, and where a frame sits in its slot does not matter.
+    /// Everything here answers in the one or the other, and
+    /// <see cref="StudioPreviewTimeline.TimelineFrameOfScreen"/> says which frame of the timeline
+    /// a frame of the screen's file belongs to.
+    /// </para>
+    /// </summary>
+    public StudioPreviewFrameTimes? Times { get; init; }
+
+    /// <summary>The timing of a clip whose frame times are known. <paramref name="frameRate"/> is the rate its frames usually come at.</summary>
+    public static StudioPreviewClipTiming WithTimes(StudioPreviewFrameTimes times, double frameRate, double startOffset, double duration = double.PositiveInfinity) =>
+        new(frameRate, times.Count, startOffset, duration) { Times = times };
+
+    // The boundary tolerance in a player's units: a thousandth of a usual frame.
+    private long ToleranceTicks => (long)Math.Round(StudioPreviewTimeMath.BoundaryTolerance * StudioPreviewTimeMath.TicksPerSecond / FrameRate);
+
+    /// <summary>
     /// The frame the clip's player shows when the timeline clock is at
     /// <paramref name="timelineSeconds"/>. Outside the clip's range the player parks on its first
     /// or last frame, so the result is clamped.
     /// </summary>
     public long FrameAtTimeline(double timelineSeconds) =>
-        StudioPreviewTimeMath.ClampFrame(StudioPreviewTimeMath.FrameAt(timelineSeconds - StartOffset, FrameRate), FrameCount);
+        Times is null
+            ? StudioPreviewTimeMath.ClampFrame(StudioPreviewTimeMath.FrameAt(timelineSeconds - StartOffset, FrameRate), FrameCount)
+            : FrameAtPlayerTicks(StudioPreviewTimeMath.ToTicks(timelineSeconds - StartOffset));
 
-    /// <summary>The frame that contains a position reported by the clip's own player.</summary>
+    /// <summary>
+    /// The frame a position reported by the clip's own player shows: the one that contains it,
+    /// or, where the frame times are known, the last frame that has begun by then and the first
+    /// while none has, which is the export's rule.
+    /// </summary>
     public long FrameAtPlayerTicks(long positionTicks) =>
-        StudioPreviewTimeMath.ClampFrame(StudioPreviewTimeMath.FrameAt(StudioPreviewTimeMath.ToSeconds(positionTicks), FrameRate), FrameCount);
+        Times is { } times
+            ? StudioPreviewTimeMath.ClampFrame(times.FrameAt(positionTicks, ToleranceTicks), FrameCount)
+            : StudioPreviewTimeMath.ClampFrame(StudioPreviewTimeMath.FrameAt(StudioPreviewTimeMath.ToSeconds(positionTicks), FrameRate), FrameCount);
 
     /// <summary>
     /// The same, not clamped to the clip, and how far into that frame the position is. It is what
-    /// the frames of playback are told apart by, where one frame more or less matters.
+    /// the frames of playback are told apart by, where one frame more or less matters. Where the
+    /// frame times are known it is -1 while no frame has begun, and a position after the last
+    /// frame's end counts on in frames of the usual length, as on the grid.
     /// </summary>
     public long NameAtPlayerTicks(long positionTicks, out double intoMilliseconds)
     {
+        if (Times is { } times)
+        {
+            var reached = positionTicks + ToleranceTicks;
+            if (reached >= times.End)
+            {
+                var beyond = (reached - times.End) * FrameRate / StudioPreviewTimeMath.TicksPerSecond;
+                var whole = (long)Math.Floor(beyond);
+                intoMilliseconds = (beyond - whole) * 1000.0 / FrameRate;
+                return times.Count + whole;
+            }
+
+            var shown = times.FrameAt(positionTicks, ToleranceTicks);
+            intoMilliseconds = shown < 0 ? 0 : (reached - times.Start(shown)) / (StudioPreviewTimeMath.TicksPerSecond / 1000.0);
+            return shown;
+        }
+
         var frames = (StudioPreviewTimeMath.ToSeconds(positionTicks) * FrameRate) + StudioPreviewTimeMath.BoundaryTolerance;
         var frame = (long)Math.Floor(frames);
         intoMilliseconds = (frames - frame) * 1000.0 / FrameRate;
@@ -166,6 +214,47 @@ internal sealed class StudioPreviewTimeline
     public long PlayerFrame(int track, long timelineFrame) =>
         _tracks[track].FrameAtPlayerTicks(MiddleTicks(timelineFrame) - StudioPreviewTimeMath.ToTicks(_tracks[track].StartOffset));
 
+    /// <summary>The screen's frames are counted in frames of its file (<see cref="StudioPreviewClipTiming.Times"/>), not in frames of the timeline.</summary>
+    public bool ScreenHasTimes => _tracks[0].Times is not null;
+
+    /// <summary>
+    /// The timeline frame a frame of the screen clip plays under. On the grid the screen's
+    /// frames are the timeline's. Where the screen's frame times are known it is the first
+    /// timeline frame that shows it by the export's rule: the first whose middle the frame has
+    /// begun by. A pause or a seek puts the clock in that middle, so a frame plays under the
+    /// number it rests under, wherever it sits in its slot.
+    /// <para>
+    /// Two frames of the file can come to the same timeline frame, when the second begins
+    /// before the middle the first is waiting for: the export shows only the second there, and
+    /// the first in no frame at all. While playing both are shown, under that one number.
+    /// </para>
+    /// </summary>
+    /// <param name="screenFrame">A frame of the screen clip; a negative number, which stands for none, comes back as it is.</param>
+    public long TimelineFrameOfScreen(long screenFrame)
+    {
+        var track = _tracks[0];
+        if (track.Times is not { } times || screenFrame < 0)
+        {
+            return screenFrame;
+        }
+
+        // The same question PlayerFrame asks, the other way round: so the two cannot disagree.
+        var offset = StudioPreviewTimeMath.ToTicks(track.StartOffset);
+        var frame = Math.Min(screenFrame, times.Count - 1);
+        var slot = Math.Clamp((long)Math.Floor(((times.Start(frame) + offset) * FrameRate / StudioPreviewTimeMath.TicksPerSecond) - 0.5), 0, LastFrame);
+        while (slot > 0 && track.FrameAtPlayerTicks(MiddleTicks(slot - 1) - offset) >= frame)
+        {
+            slot--;
+        }
+
+        while (slot < LastFrame && track.FrameAtPlayerTicks(MiddleTicks(slot) - offset) < frame)
+        {
+            slot++;
+        }
+
+        return slot;
+    }
+
     /// <summary>
     /// Whether a track is part of the picture of <paramref name="timelineFrame"/>. The screen always
     /// is. A camera outside its own time range is not drawn, whatever frame its player is parked on.
@@ -181,6 +270,11 @@ internal sealed class StudioPreviewTimeline
     {
         var timing = _tracks[track];
         var own = timelineSeconds - timing.StartOffset;
+        if (timing.Times is { } times)
+        {
+            return own >= 0 && StudioPreviewTimeMath.ToTicks(own) < times.End;
+        }
+
         return own >= 0 && own < timing.FrameCount / timing.FrameRate;
     }
 
@@ -191,6 +285,11 @@ internal sealed class StudioPreviewTimeline
     public bool IsPlayerAtEnd(int track, double timelineSeconds)
     {
         var timing = _tracks[track];
+        if (timing.Times is { } times)
+        {
+            return StudioPreviewTimeMath.ToTicks(timelineSeconds - timing.StartOffset) >= times.Start(times.Count - 1);
+        }
+
         return timelineSeconds - timing.StartOffset >= (timing.FrameCount - 1) / timing.FrameRate;
     }
 

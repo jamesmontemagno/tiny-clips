@@ -73,6 +73,18 @@
     <Compile Include="..\..\src\TinyClips.App\Controls\Studio\StudioPreviewPanelInterop.cs" Link="Panel\StudioPreviewPanelInterop.cs" />
   </ItemGroup>
 
+  <!--
+    StudioRenderCheck's clip writer and the clips it makes, as that tool compiles them: the clip
+    with dropped frames the exporter is checked with (TestClips.GappyScreen) is played here too.
+    Its types stay in their own namespace; nothing here imports it without an alias.
+  -->
+  <ItemGroup>
+    <Compile Include="..\StudioRenderCheck\Media.cs" Link="RenderCheck\Media.cs" />
+    <Compile Include="..\StudioRenderCheck\Pattern.cs" Link="RenderCheck\Pattern.cs" />
+    <Compile Include="..\StudioRenderCheck\Tones.cs" Link="RenderCheck\Tones.cs" />
+    <Compile Include="..\StudioRenderCheck\Harness.cs" Link="RenderCheck\Harness.cs" />
+  </ItemGroup>
+
   <!-- Generated media and reports never belong in the compilation. -->
   <ItemGroup>
     <Compile Remove="out\**" />

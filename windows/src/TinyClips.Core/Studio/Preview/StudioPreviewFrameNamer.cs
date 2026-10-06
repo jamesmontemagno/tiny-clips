@@ -66,6 +66,18 @@ internal sealed record StudioPreviewNamingSettings
     /// </summary>
     public bool FetchEveryRestingFrame { get; init; }
 
+    /// <summary>
+    /// Lets the rule for a hand-over the garbage collector kept waiting (rule 3) speak only when
+    /// the time since the hand-over before it that the collector does not account for is at
+    /// least <see cref="IdleGapMilliseconds"/>: when the player had its thread back for a look
+    /// before the collector struck. Without it, a collection that begins in the instant a
+    /// hand-over gives its thread back, after the namer was told that the hand-over is over, is
+    /// taken for one that kept the next hand-over waiting at the door. In truth it kept the
+    /// player's thread, and the player may be behind when it has it back. Off: it is here so
+    /// that what it mends and what it costs, in frames that then have no number, can be measured.
+    /// </summary>
+    public bool CollectorRuleNeedsIdleGap { get; init; }
+
     internal double Milliseconds(long ticks) => ticks * 1000.0 / TicksPerSecond;
 }
 
@@ -428,7 +440,8 @@ internal sealed class StudioPreviewFrameNamer
                 && name > next
                 && _collectorMilliseconds > 0
                 && _earlierNameAfter == _floor
-                && _gapMilliseconds < _frameMilliseconds + _collectorMilliseconds + _settings.CollectorSlackMilliseconds)
+                && _gapMilliseconds < _frameMilliseconds + _collectorMilliseconds + _settings.CollectorSlackMilliseconds
+                && (!_settings.CollectorRuleNeedsIdleGap || _gapMilliseconds - _collectorMilliseconds >= _settings.IdleGapMilliseconds))
             {
                 // Rule 3. The player had its thread back while the frame before was still the
                 // one due, so it was not behind when this one came due.

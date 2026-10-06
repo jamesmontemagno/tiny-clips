@@ -10,7 +10,7 @@ namespace TinyClips.Tools.StudioPreviewCheck;
 
 internal static class Program
 {
-    private static readonly string[] HeadlessGroups = ["open", "seek", "step", "seekplay", "position", "editor", "play", "pause", "stalls", "zoom", "cuts", "scenes", "end", "update", "camera", "mute", "surface", "dispose", "device", "software"];
+    private static readonly string[] HeadlessGroups = ["open", "seek", "step", "seekplay", "position", "editor", "play", "pause", "stalls", "zoom", "cuts", "scenes", "end", "update", "camera", "mute", "surface", "dispose", "device", "software", "recordings", "people"];
     private static readonly string[] WindowGroups = ["window-exact", "window-playback", "window-resize", "window-scale", "window-blocked", "window-reload", "window-engines", "window-devicelost"];
 
     // STA because the window checks start XAML on this thread. Everything else runs on a thread of
@@ -32,10 +32,16 @@ internal static class Program
         try
         {
             options = CheckOptions.Parse(args);
-            if (options.Unknown("quick", "only", "skip", "no-window", "no-headless", "out", "help", "trust-first-frames", "investigate", "count", "seconds", "device", "camera", "scenario", "alternate", "keep-first-frames", "stalls", "stall-ms", "no-pauses", "snap", "fps", "discard-late", "believe-positions", "fetch-every-rest", "no-quiet-rule", "stop-noted-late", "judge-limits", "trace-lines", "keep-traces", "from", "stall-gap", "until", "lead") is { Length: > 0 } unknown)
+            if (options.Unknown("quick", "only", "skip", "no-window", "no-headless", "out", "help", "trust-first-frames", "investigate", "count", "seconds", "device", "camera", "scenario", "alternate", "keep-first-frames", "stalls", "stall-ms", "no-pauses", "snap", "fps", "discard-late", "believe-positions", "fetch-every-rest", "no-quiet-rule", "stop-noted-late", "judge-limits", "trace-lines", "keep-traces", "from", "stall-gap", "until", "lead", "guard-rule-3", "clip", "frame-times", "people") is { Length: > 0 } unknown)
             {
                 throw new ArgumentException($"Unknown option --{unknown[0]}.");
             }
+
+            // Says so when it names neither way of counting a clip's frames.
+            FrameTimes.FromFile(options);
+
+            // Says so when it does not name one or two times.
+            StandInFinders.FromOptions(options);
 
             if (!options.Flag("investigate"))
             {
@@ -93,6 +99,21 @@ internal static class Program
             if (options.Flag("stop-noted-late") && !options.Flag("investigate"))
             {
                 report.Line("--stop-noted-late: every preview without a window notes when its clock stopped only once the clock has been told and the thread has got on, as the engine did before. A frame a player hands over in between is then taken for a frame of playback. The pause checks with the stopping thread held up (--stalls afterstop) are expected to fail.");
+            }
+
+            if (options.Flag("guard-rule-3") && !options.Flag("investigate"))
+            {
+                report.Line("--guard-rule-3: in every preview without a window, the rule that takes a hand-over the garbage collector kept waiting for the frame next in line (rule 3) speaks only when the player had its thread back for a look before the collector struck. The engine does not do this by itself: the run shows what it would cost, in frames that then have no number (stalls, zoom and scenes with --stalls collector).");
+            }
+
+            if (FrameTimes.FromFile(options))
+            {
+                report.Line("--frame-times file: every preview without a window reads each clip's frame times from its file's index and counts in frames of the file. The engine does not do this by itself yet. On the usual clips, whose frames are on the grid, every check has to come out as without it; on clips with a recording's frame times (--only recordings, --investigate recordings) it is what is being looked at.");
+            }
+
+            if (StandInFinders.FromOptions(options) is { } people)
+            {
+                report.Line($"--people: every project of the run has its camera's background removed, and every preview without a window is given a stand-in for the model that finds the people: it calls the whole frame a person, takes {people.EachMilliseconds.ToString("0.#", CultureInfo.InvariantCulture)} ms for every camera picture it looks at, with the processor busy, and {people.FirstMilliseconds.ToString("0", CultureInfo.InvariantCulture)} ms to be made, which happens inside the draw that first shows the camera. The frames the renderer is given say which picture they are (StudioPreviewOptions.StampPictures), so that a picture is looked at once: the engine does not do that by itself yet, and looks at every draw. The run shows what a finder's time does to everything else. Checks that time a draw or an open are expected to notice.");
             }
 
             if (options.Flag("judge-limits") && !options.Flag("investigate"))
@@ -210,7 +231,7 @@ internal static class Program
         Console.WriteLine(
             """
             StudioPreviewCheck [--quick] [--only a,b] [--skip a,b] [--no-window] [--no-headless] [--out <folder>]
-            StudioPreviewCheck --investigate opens|cycles|decoding|players|names|reopens|starts|waits|tails [...]
+            StudioPreviewCheck --investigate opens|cycles|decoding|players|names|reopens|starts|waits|tails|exits|recordings|rates [...]
 
               --quick         fewer repetitions (a smoke run; the numbers in the docs come from a full run)
               --only a,b      run only these groups of checks
@@ -236,6 +257,17 @@ internal static class Program
                               garbage collector kept waiting, of which a check may show one, or one
                               in 20,000, and one given while the whole process was stopped in the
                               middle of the frame's hand-over. The checks count both apart otherwise
+              --guard-rule-3  let the rule for a hand-over the garbage collector kept waiting speak
+                              only when the player had its thread back for a look first, which the
+                              engine does not do by itself, to see what that costs
+              --frame-times file|grid
+                              file: read each clip's frame times from its file's index and count
+                              in frames of the file, which the engine does not do by itself yet.
+                              grid (the default): every clip has a frame at the start of every slot
+              --people N[,M]  remove the camera's background in every project, and give every
+                              preview a stand-in for the model that finds the people: N ms for
+                              every camera picture, M ms to be made (the model being loaded),
+                              to see what a finder's time does to the other checks
               --stalls a,b    what holds the process up in the groups stalls, zoom, cuts and end:
                               none, collector, draw, stopped, busy, loaded, gpu, afterstop, all
                               (default: the first four in turn, and afterstop as well in stalls;
@@ -266,9 +298,15 @@ internal static class Program
                 starts     [--count N] [--stall-ms N] [--until N]
                 waits      [--count N] [--stall-ms N]
                 tails      [--count N] [--stall-ms N] [--lead N]
+                exits      [--count N] [--stall-ms N] [--lead N] [--guard-rule-3]
+                recordings [--scenario files|players|table] [--clip name,name] [--stalls a,b] [--count N]
+                           [--frame-times file] [--believe-positions]
+                rates      [--seconds N] [--count N]
 
             Groups without a window: open seek step seekplay position editor play pause stalls zoom cuts scenes
                                      end update camera mute surface dispose device software
+                                     and, only when named with --only: recordings [--clip name,name],
+                                     people [--stalls a,b] [--count N]
             Groups with a window:    window-exact window-playback window-resize window-scale window-blocked
                                      window-reload window-engines window-devicelost
 

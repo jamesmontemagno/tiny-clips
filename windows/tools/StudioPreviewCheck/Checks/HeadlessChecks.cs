@@ -23,6 +23,7 @@ internal sealed partial class HeadlessChecks
     private readonly string _output;
     private readonly string _failuresDirectory;
     private readonly StudioPreviewFactory _factory;
+    private readonly StandInFinders? _peopleOfTheRun;
     private readonly Random _random = new(20261003);
     private readonly Samples _openTimes = new();
     private readonly Samples _disposeTimes = new();
@@ -40,14 +41,31 @@ internal sealed partial class HeadlessChecks
         _failuresDirectory = Path.Combine(outputDirectory, "failures", report.Stamp);
         _quick = options.Flag("quick");
         Session.TraceLines = Math.Max(100, options.Number("trace-lines", 600));
-        Muted = new StudioPreviewOptions
+        var muted = new StudioPreviewOptions
         {
             ForceMuted = true,
             TrustFirstFrames = options.Flag("trust-first-frames"),
-            Naming = new StudioPreviewNamingSettings { BelievePositions = options.Flag("believe-positions"), FetchEveryRestingFrame = options.Flag("fetch-every-rest") },
+            Naming = new StudioPreviewNamingSettings
+            {
+                BelievePositions = options.Flag("believe-positions"),
+                FetchEveryRestingFrame = options.Flag("fetch-every-rest"),
+                CollectorRuleNeedsIdleGap = options.Flag("guard-rule-3"),
+            },
             Seek = new StudioPreviewSeekSettings { HoldFirstChangeAfterPlaying = !options.Flag("no-quiet-rule") },
             StopNotedLate = options.Flag("stop-noted-late"),
+            FrameTimesFromFile = FrameTimes.FromFile(options),
         };
+        _peopleOfTheRun = StandInFinders.FromOptions(options);
+        if (_peopleOfTheRun is not null)
+        {
+            // Every project of the run has its camera's background removed, and every preview
+            // a stand-in for the model that finds the people, which takes its time. The frames
+            // say which picture they are, which the engine does not have them do by itself yet.
+            muted = muted with { PersonFinderFactory = _peopleOfTheRun.Make, StampPictures = true };
+            TestFolder.EditEvery = WithCutout(StudioCameraCutout.Remove);
+        }
+
+        Muted = muted;
         _factory = new StudioPreviewFactory(Muted);
     }
 
@@ -58,7 +76,17 @@ internal sealed partial class HeadlessChecks
     /// frame of playback for the one its position names, as the engine did before; with
     /// <c>--no-quiet-rule</c>, without holding the picture during the first position change after
     /// the clock ran; with <c>--stop-noted-late</c>, noting when the clock stopped only after it
-    /// has, as the engine did before. Each is there to see which checks notice.
+    /// has, as the engine did before. Each is there to see which checks notice. With
+    /// <c>--guard-rule-3</c>, the namer's rule 3 asks for an idle look, which the engine does
+    /// not do by itself: that one is there to see what it would cost. With
+    /// <c>--frame-times file</c>, each clip's frame times are read from its file and the engine
+    /// counts in frames of the file, which it does not do by itself yet either: on the usual
+    /// clips, whose frames are on the grid, every check has to come out as without it. With
+    /// <c>--people</c>, every project has its camera's background removed and every preview
+    /// a stand-in for the model that finds the people, which takes the time the option names,
+    /// and the frames the renderer is given say which picture they are, which the engine does
+    /// not have them do by itself yet either: that one is there to see what a finder's time
+    /// does to everything else.
     /// </summary>
     private StudioPreviewOptions Muted { get; }
 
@@ -109,6 +137,24 @@ internal sealed partial class HeadlessChecks
         Group("dispose", Dispose);
         Group("device", DeviceLoss);
         Group("software", SoftwareDevice);
+        if (_options.Names("only").Contains("recordings", StringComparer.OrdinalIgnoreCase))
+        {
+            // Only when it is asked for by name: these clips are written by the app's own
+            // writers when they are missing, and the checks have not been run yet.
+            Group("recordings", Recordings);
+        }
+
+        if (_options.Names("only").Contains("people", StringComparer.OrdinalIgnoreCase))
+        {
+            // Only when it is asked for by name, for the same reason: not run yet.
+            Group("people", People);
+        }
+
+        if (_peopleOfTheRun is { } people)
+        {
+            _report.Section("The stand-ins for the model that finds the people (--people)");
+            _report.Note($"over the whole run: {people.Describe()}; each look took {F(people.EachMilliseconds)} ms and each finder {F(people.FirstMilliseconds, "0")} ms to make");
+        }
 
         _report.Section("Open and close times over the whole run");
         _report.Note($"open (factory call to engine returned): {_openTimes.Summary()}");

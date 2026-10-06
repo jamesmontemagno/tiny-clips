@@ -13,6 +13,10 @@ How the preview works and what a caller has to observe is in `windows\docs\studi
 - ffmpeg and ffprobe on `PATH`, to generate the test clips on the first run (about 16 MB, kept
   in `out\media`; delete the folder to make them again).
 - A graphics adapter with a hardware H.264 decoder. The window checks need a desktop session.
+- For the clips with a recording's frame times (`--investigate recordings`): an H.264 encoder
+  that Media Foundation can use, which is what the app records with. Those clips are written by
+  the app's own writers and need no ffmpeg; ffprobe is used to read them a third way when it
+  is there.
 
 ## Build and run
 
@@ -40,6 +44,9 @@ one did not, after printing one `FAILED:` line for each; 2 is a usage error.
 | `--no-quiet-rule` | do not hold the picture during the first position change after playing: how often the pause checks then see a frame nobody asked for |
 | `--stop-noted-late` | note when the clock stopped only once it has stopped and the thread has got on, as the engine did before. A frame a player hands over in between then passes for a frame of playback. With `--stalls busy+afterstop` the pause checks are then expected to fail: it shows that they notice |
 | `--judge-limits` | judge every frame that was given a number its pixels do not show: also the two kinds the engine says it cannot rule out, which the checks otherwise count apart (see *Holding the process up*). With this switch the checks made while the process is held up fail now and then |
+| `--guard-rule-3` | let the rule that takes a hand-over the garbage collector kept waiting for the frame next in line (rule 3) speak only when the player had its thread back for a look before the collector struck (`StudioPreviewNamingSettings.CollectorRuleNeedsIdleGap`). The engine does not do this by itself. It is here to measure what it would cost, in frames that then have no number: `--only stalls,zoom,scenes --stalls collector`, with and without it |
+| `--frame-times file` | read each clip's frame times from its file's index when a preview opens, and count in frames of the file (`StudioPreviewOptions.FrameTimesFromFile`): a frame handed over is the one whose time the position has reached, and the frame of the timeline it is shown under is the one the export shows it in. The engine does not do this by itself yet. On the usual clips, whose frames are on the grid, every check has to come out as without it; on the clips with a recording's frame times it is what `--only recordings` and `--investigate recordings` look at. `grid` is the default |
+| `--people N[,M]` | remove the camera's background in every project of the run (`camera.cutout`), and give every preview without a window a stand-in for the model that finds the people: it calls the whole frame a person, takes N ms for every camera picture it looks at, with the processor busy, and M ms to be made, inside the draw that first shows the camera, as a model that is loaded there would. The frames the renderer is given say which picture they are for the run (`StudioPreviewOptions.StampPictures`), which the engine does not have them do by itself yet. It is here to see what a finder's time does to everything else: `--only open,seek,step,play,pause,stalls,zoom --no-window --people 5,500`. Checks that time a draw or an open are expected to notice; see *A camera without its background* |
 | `--stalls a,b` | what holds the process up in the groups `stalls`, `zoom`, `cuts` and `end`: `none`, `collector`, `draw`, `stopped`, `busy`, `loaded`, `gpu`, `afterstop`, `all`, or several joined with `+`; see *Holding the process up* |
 | `--stall-ms N`, `--stall-gap N` | about how long one hold-up lasts (60); in `zoom`, the shortest time between two collections (150), the longest being three times that |
 | `--count N` | in `stalls`, pauses for each kind of hold-up; in `zoom`, plays; in `cuts`, crossings; in `end`, plays into the end for each kind of hold-up |
@@ -50,7 +57,8 @@ one did not, after printing one `FAILED:` line for each; 2 is a usage error.
 Groups without a window: `open seek step seekplay position editor play pause stalls zoom cuts
 scenes end update camera mute surface dispose device software`. Groups with one: `window-exact
 window-playback window-resize window-scale window-blocked window-reload window-engines
-window-devicelost`.
+window-devicelost`. Two more groups run only when they are named with `--only`: `recordings`
+(see *The app's own recordings* below) and `people` (see *A camera without its background*).
 
 `stalls` and `zoom` at the size the numbers in the docs come from take far longer than a full
 run gives them: `--only stalls --stalls collector --count 550` is about eight minutes. The kinds
@@ -72,7 +80,7 @@ none. Everything is muted, and no window is opened.
 | `--investigate decoding` | Opens one preview and plays it twice for `--seconds N` (12), with and without a surface: the adapters with the identifiers the system's GPU counters use, the graphics and media modules the open loaded, the memory the process holds on the first adapter, and the processor time of playing. It prints its process id and the `Get-Counter` line that shows from outside which adapter's engines the process keeps busy. `--device software` or `hardware` |
 | `--investigate players` | `MediaPlayer`s set up as the engine sets them up, without the engine. `--device software`, `hardware` or `both` (the default); `--count N` repetitions (4); `--scenario` one of: `first-copy` (what each copy leaves in the texture, over the first copy and five position changes), `second-device` (a player that has settled on one device is given a texture on a second device of the same kind), `while-opening` (one player's first frame is copied while the other is still opening), `both-ready` (both have a first frame before either is copied), `settle` (the clock is moved at various times after the first copy), `before-source` (a player is given a texture before it has a frame), `reopen` (a player that has moved is given its source again) |
 
-Five more came with the question which frame a player hands over while it plays:
+Six more came with the question which frame a player hands over while it plays:
 
 | | |
 | --- | --- |
@@ -80,7 +88,106 @@ Five more came with the question which frame a player hands over while it plays:
 | `--investigate starts` | The whole process is stopped once, for 0.7 to 1.3 times `--stall-ms` (100), at a moment between 2 ms before `Play()` and `--until N` ms (60) after it, `--count N` times (240), and every frame handed over afterwards is read back. A play in which a frame shows a later frame than its position named, or was given a wrong number, is printed with its hand-overs and the engine's trace. |
 | `--investigate waits` | A hand-over is kept waiting for the graphics device for `--stall-ms` (100) and a little more, by the other clip's hand-over: `--count N` times (60) with the process running, and as often with it stopped from outside meanwhile. It says how many of the waiting hand-overs held the frame their position had named when they set out. |
 | `--investigate tails` | A full garbage collection of about `--stall-ms` (60) is begun up to `--lead N` spins (600, some 40 millionths of a second) after the copy of a hand-over, `--count N` times (300), and the hand-over after it is read back: whether rule 3 took it for the frame next in line, and whether it was. It asks whether a collection that catches a hand-over's thread on its way out is what makes rule 3 wrong; in 300 it was not wrong once. |
+| `--investigate exits` | The other half of `tails`. The engine tells a clip's namer that a hand-over is over while its thread is still inside the player's callback. Here the player's own thread begins a full collection of about `--stall-ms` (60) right there, after the namer was told (`StudioPreviewEngine.AfterExit`), `--count N` times (300), so that every collection keeps the player's thread while the namer takes it for something that kept the next hand-over at the door. As often, for comparison, another thread begins the collection `--lead N` ms (15) after the hand-over ended, when the player has had its thread back for a look: the case rule 3 was made for. It says which frame the hand-over after each collection held, what the engine took it for, and how many of the ones rule 3 numbered came with less than a look's time that was not the collector's, which is what `--guard-rule-3` would say nothing about. **Written on 5 October while no check tool could be run: it has never run.** |
 | `--investigate reopens` | Previews opened in the circumstances in which two editors in a row once did not open: `--scenario after-close` (each 0 to 20 ms after the one before was closed, which was at rest, playing, in the middle of a seek or just paused), `while-closing`, `two-alive`, `two-playing`, `pile` (more and more open at once, up to `--count`), and `undecodable` (files that cannot be decoded: how long until `OpenAsync` says so, what it says, the error code underneath and how many attempts it made; what a file that opens with part of its pictures missing does when it is sent there; and a player that says it cannot decode what it opened, which no file brought about and is simulated, at both attempts and at the first only). Every preview has a surface attached. `--count N` opens. |
+
+One is for the piece of work after this one, playing a project's speed changes at their speed:
+
+| | |
+| --- | --- |
+| `--investigate rates` | What the players do when the clock they follow runs at another speed, before the engine is taught to play at one (`IStudioPreview.SetPlaybackRate`, which it does not have yet). The clock's rate is set from outside, through a door that is there for this experiment only (`StudioPreviewEngine.SetClockRateForExperiment`); nothing in the engine knows of it, so what the engine makes of the frames is what its rules for a clock at 1 make of them. At 1, 0.25, 0.5, 1.5, 2, 4 and 8, played `--count N` times (2) from frame 30 for `--seconds N` (3) at most: how fast the recording really went, how many frames a player handed over a second and how many it left out, how far past a frame's own time the position was that came with it, what the engine took each frame for and how often that was right, where the camera was beside the screen, and what `Pause()` left. Then the rate changed three times in one play, with how long after each call the frames came at the new pace, and playing into the end at 8. **Written on 5 October while no check tool could be run: it has never run.** |
+
+### The app's own recordings
+
+One is about the app's own recordings. Every clip the checks play is made by ffmpeg, with one
+frame exactly at the start of every thirtieth of a second. A recording is not like that: the
+recorder stamps a screen frame with the clock a moment after its pacer's tick, a tick it misses
+leaves its slot without a frame, and a camera's frames carry the camera's own times.
+`Media\RecordedMedia.cs` writes clips with such frame times through the app's own writers, each
+frame with its place in the file in its strip, into `out\media\recorded`:
+
+| Clip | Written by | Its frames |
+| --- | --- | --- |
+| `screen-into04`, `-into12`, `-into20`, `-into28` | the screen recorder's encoder (`MfSinkWriterEncoder` created and fed as `VideoRecordingService` does on its usual path: textures from the encoder's own allocator, each with its time, and sound from zero in 20 ms pieces) | one in every slot, that many milliseconds into it and up to 2 ms more at random |
+| the same with `-single` | the same | a slot left empty about once a second |
+| the same with `-runs` | the same | two slots in a row left empty, then three, in turn, about every two seconds |
+| `screen-shift` | the same | 4 ms into the slot, 22 ms after a third of the clip, 4 ms again after two thirds: as a recording that was paused twice |
+| `screen-middle` | the same | 15.5 to 17.5 ms into the slot: around its middle, which is where the export looks. A frame that begins after one middle, followed by one that begins before the next, is in no frame of the export at all, and the frame before it is in two |
+| `screen-as-recorded` | the same | no frame in the first slot, then one in every slot 2 to 3.5 ms into it: what the recorder's pacer makes of a recording that was not paused, as read from its code (`FramePacer` ticks first one interval after it starts, which is a moment after the timeline's zero) |
+| `screen-gaps` | the same | the frame times of StudioRenderCheck's clip with dropped frames |
+| `rendercheck-gaps` | StudioRenderCheck's own clip writer, whose source files are compiled into this tool | that clip itself (`TestClips.GappyScreen`), 1280x720, with that tool's picture |
+| `screen60-into02`, `-into08`, each also with `-single` | the screen recorder's encoder | 60 frames a second |
+| `camera-stalls` | `StudioCameraRecorder` itself, given frames as the webcam service delivers them | a thirtieth of a second apart give or take 2 ms, with three stalls of a third of a second |
+| `camera-15` | the same | 15 frames a second on a track that is written as 30 |
+
+| | |
+| --- | --- |
+| `--investigate recordings --scenario files` | Makes the clips that are missing and says of each what the file is: what its index says (`Media\Mp4Index.cs` reads the boxes: time units, edit list, the table of sample lengths; nothing is decoded), what Media Foundation's reader hands out as each frame's time, which is what a player and the exporter go by, what the engine's own reading of the index gives (`StudioPreviewFrameTimes`, which is what it counts by with `--frame-times file`) and whether that is what Media Foundation hands out, what the app's probe reads as its length and frame rate, and, when ffprobe is on `PATH`, what ffprobe reads. Each is held against the times the frames were written with: whether the first frame's time survives, and whether every frame has the time it was given. Without `--clip`, the usual clips are asked the same at the end: with `--frame-times file` the engine reads their index too. `--clip a,b` for some of the recorded ones. |
+| `--investigate recordings --scenario players` | Opens each clip in the engine and says what a player makes of it: which frame the preview rests on in the first slots, around the first slot without a frame and in the last ones, beside the frame the export has there (the last that began at or before the middle of the slot); what one frame forward at a time does across a slot without a frame; and, playing from the first slot, the position the player reports with each frame it hands over, how far after the frame's own time that is, what the engine takes the frame for, and which slot it shows it under. A camera clip is opened with the usual screen clip. |
+| `--investigate recordings --scenario table` | The same clips in numbers, one line a clip and a kind of hold-up (`--stalls`, by default `none`, `collector` and `draw`), and the lines as a file `out\recordings-table-<stamp>-<file or grid>-<rules or positions>.csv`. While playing and pausing `--count N` times (10): how many frames had their number at once, from the frame after them, never, the longest stretch without, how many were called unsure, how many were shown under a slot the export does not have them in, how many frames were fetched anew at rest; what `Position` and the picture were when `Pause()` returned and at rest; paused seeks to the first slots, the last one and the slots around those that show what the slot before shows; one slot at a time across such a slot and back; and a zoom that moves while the clip plays, with rests inside the move. Run it four ways for the four tables: with and without `--frame-times file`, with and without `--believe-positions`. |
+
+What is right in all three is the export's rule: a frame of the timeline (a slot) shows the last
+frame of the file that began at or before its middle, and the first one while none has. A frame's
+number in these clips' pixels is its place in the file, so the truth of a picture is read from
+the strip and then looked up in the file's frame times (`Media\SlotMath.cs`). A frame the export
+has in no slot is counted apart, and taken to be right under the slot the export has the frame
+after it in.
+
+`--only recordings` is the same measurement with nothing holding the process up, judged, for
+twelve of the clips or the ones named with `--clip`: every frame numbered at once, none shown
+under a slot the export does not have it in, `Position` and the picture as the export has them
+when `Pause()` returns and at rest, the paused seeks, the moves of one slot, and the scenes of the
+zoom. It goes by `--frame-times` like every group. Counting on the grid, which is what the engine
+does by itself, the checks on clips whose frames sit late in their slot or leave a slot empty are
+expected to fail: that run is the group's control. The group is left out of a full run until it
+has been run and what it holds is known.
+
+**All of this was written on 5 October while no check tool could be run: no scenario and no
+check of the group has run, and no clip has been written.** What the engine does with such clips
+is therefore not known yet. The frame namer's unit tests have a model of a player on such a file
+(`StudioPreviewFrameNamerRecordingTests`), and the engine's arithmetic for a file's own frame
+times is unit tested (`StudioPreviewFrameTimesTests`, `StudioPreviewRecordingTimesTests`).
+
+### A camera without its background
+
+A camera's background can be blurred or removed (`camera.cutout`), and the app ships the model
+that finds the people. The renderer looks for them in every camera picture it is given, which
+takes the model some milliseconds, and keeps what it made of a picture for as long as it is
+given the same picture again. Which picture it is, a frame says with a stamp
+(`StudioGpuVideoFrame.Stamp`); a stamp of 0 says nothing, and the people are then looked for at
+every draw: also at every redraw of a paused preview, which is every move of a slider.
+
+**The engine gives every frame with stamp 0, as it always has.** It can give each frame the
+count of pictures the clip has had put into its textures, which changes exactly when the picture
+does and is never 0, and it does so only when it is asked to (`StudioPreviewOptions.StampPictures`,
+off by default). That is off because a stamp that stayed while the picture changed would show an
+old camera frame in the app, and nothing has run that would show it.
+
+`--only people` switches the stamps on and holds the engine to them, with a stand-in for the
+model (`StudioPreviewOptions.PersonFinderFactory`, `Checks\StandInFinders.cs`) that counts how
+often it is asked and calls the whole frame a person, so that the camera is drawn whole and its
+frame number can be read as ever:
+
+- first with the stamps off, as the engine runs by itself: redrawn ten times while paused, the
+  people are looked for at every one of the draws. That is the control for what follows, and
+  what the app does today;
+- where the camera is no part of the picture, nobody is looked for;
+- paused where it shows, the people were looked for and the scene shows the right camera frame;
+- redrawn ten times while paused, they are looked for no more;
+- after a seek and after a step of one frame, the new picture is looked at and is the one drawn;
+- playing (`--count N` plays of 2.5 s, 4 by default), with nothing in the way and with the
+  garbage collector (`--stalls`): every scene shows the camera frame that the texture it was
+  drawn from holds (both are read, for every scene, in the same draw), the people are looked for
+  no less often than the camera's picture changed and no more often than scenes were drawn, and
+  the camera stays with the screen;
+- paused after playing, the scene shows the frame `Position` names;
+- after a lost device the new renderer gets a finder of its own and the old one's is disposed;
+- every finder is disposed when the preview is closed.
+
+**The group and `--people` were written on 5 October while no check tool could be run: neither
+has run.** The group is left out of a full run until it has, and the stamps stay off in the
+engine until the group and the faults made against it (a stamp of 0, one stamp for every
+picture, the stamp of the wrong texture) have run.
 
 ## What it leaves behind
 
@@ -195,8 +302,17 @@ with them and said in the check of the scenes.
 - The `pause` group ends with `Pause()` and `Play()` called one after the other while the render
   thread is kept in one draw for 1.1 s, which is longer than `Pause()` waits for it. The render
   thread then finds playing wanted, as when it last looked, and a clock that `Pause()` has
-  stopped; playback has to go on. **Written on 5 October for a fault found by reading the
-  engine, while no check tool could be run: this check has never run.**
+  stopped; playback has to go on. Written on 5 October for a fault found by reading the engine.
+  It was first run that evening, with the fix in, and passed (`--only device,pause`: 23 of 23).
+  **It has not been run without the fix, which is the only thing that would show that it
+  catches the fault.**
+- After that, `Pause()` is called on one thread and kept inside it for 0.9 s once it has
+  stopped the clock (`StudioPreviewOptions.PauseDelay`), and `Play()` comes from another thread
+  meanwhile. The render thread starts the clock again; when the pausing thread gets on it must
+  not shut the picture to the playback that has begun. A second later the position has to have
+  moved on by twenty frames and scenes have to be drawn. **Written on 5 October for another
+  fault found by the same reading (`Pause()` shut the picture outside the lock under which
+  playback is started again), while no check tool could be run: this check has never run.**
 - The `stalls` group (`HeadlessChecks.HeldUp.cs`) pauses a playing preview again and again
   while the process is held up, and reads at the moment `Pause()` has returned what a caller
   reads: `Position`, and the frame each clip's picture holds. It reads them again when the
@@ -255,8 +371,10 @@ with them and said in the check of the scenes.
   loses the device where the camera is no part of the picture: paused before its first frame,
   and playing after its last. The camera's player is parked there and hands nothing over, so
   the scene has to be drawn without waiting for its picture; and the camera has to show its
-  last frame when it is next asked for on it. **Written on 5 October for a fault found by
-  reading the engine, while no check tool could be run: these checks have never run.**
+  last frame when it is next asked for on it. Written on 5 October for a fault found by reading
+  the engine. They were first run that evening, with the fix in, and passed
+  (`--only device,pause`: 23 of 23). **They have not been run without the fix, which is the
+  only thing that would show that they catch the fault.**
 - The `dispose` group also closes a preview while this tool holds one of its recordings open, as
   another program that plays the video does. A recording in the project folder is waited for
   (5 s, after which the engine says that it gave up): that is the control. A screen recording

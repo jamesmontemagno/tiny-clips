@@ -129,6 +129,20 @@ internal sealed class StudioPreviewClip
     /// <summary>How often what the scene is drawn from has changed. Render thread only.</summary>
     public long PictureCount { get; set; }
 
+    /// <summary>
+    /// Names the frame in <see cref="DrawTexture"/> for the renderer
+    /// (<see cref="Rendering.StudioGpuVideoFrame.Stamp"/>): the value <see cref="PictureCount"/>
+    /// had when the frame was put there. Every frame put into either picture gets a count of
+    /// its own, so a texture never has two frames under one stamp, and no stamp of a texture
+    /// that holds a frame is 0. It is counted always and given to the renderer only when the
+    /// engine is asked to (<see cref="StudioPreviewOptions.StampPictures"/>). As the pictures
+    /// are: the render thread, or a thread that keeps it out of its round.
+    /// </summary>
+    public long DrawStamp { get; set; }
+
+    /// <summary>The same for the frame in <see cref="LiveTexture"/>.</summary>
+    public long LiveStamp { get; set; }
+
     /// <summary>The value of <see cref="PictureCount"/> when the scene was last drawn. Render thread only.</summary>
     public long DrawnPictureCount { get; set; } = -1;
 

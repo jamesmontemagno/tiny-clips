@@ -23,7 +23,18 @@ internal sealed record ClipSpec(
     /// <summary>Frames per second. Every clip the checks use has <see cref="TestMedia.Fps"/>; one made for an experiment may have another.</summary>
     public int Fps { get; init; } = TestMedia.Fps;
 
-    public int FrameCount => Seconds * Fps;
+    /// <summary>
+    /// The clip's length in seconds as its file says it, for a clip written by the app's own
+    /// writers (<see cref="RecordedMedia"/>), which does not last a whole number of seconds.
+    /// Null for the clips ffmpeg makes.
+    /// </summary>
+    public double? Duration { get; init; }
+
+    /// <summary>What a project is told the clip lasts.</summary>
+    public double DurationSeconds => Duration ?? Seconds;
+
+    /// <summary>The frames of a timeline that has this clip for its screen recording, counted as the engine and the exporter count them.</summary>
+    public int FrameCount => Duration is { } duration ? Math.Max(1, (int)Math.Floor((duration * Fps) + 1e-9)) : Seconds * Fps;
 
     public int CodeWidth => TestMedia.CodeBits * CodeCell;
 
@@ -195,7 +206,7 @@ internal static class TestMedia
     }
 
     /// <summary>Runs ffmpeg or ffprobe from PATH and returns what it printed. Throws with its error text when it fails.</summary>
-    private static string Run(string tool, IEnumerable<string> arguments)
+    internal static string Run(string tool, IEnumerable<string> arguments)
     {
         var info = new ProcessStartInfo(tool)
         {

@@ -69,6 +69,9 @@ public sealed partial class StudioPreviewEngine
     private StudioProject _renderProject;
     private bool _appliedProjectMuted;
     private int _landingCount;
+
+    // The timeline frame the scene was last looked at for. Render thread only.
+    private long _sceneFrame = -1;
     private int _landingsAnnounced;
     private long _framesAfterPause;
     private volatile int _appliedProjectSerial;
@@ -124,6 +127,7 @@ public sealed partial class StudioPreviewEngine
             var collectorPause = GC.GetTotalPauseDuration().TotalMilliseconds;
             Signal earlier = default;
             Signal frame = default;
+            long exited = 0;
             var graphics = Volatile.Read(ref _graphics);
             lock (graphics.Gate)
             {
@@ -162,7 +166,13 @@ public sealed partial class StudioPreviewEngine
                         Stopwatch.GetTimestamp(),
                         clip.Timing.NameAtPlayerTicks(clip.Session.Position.Ticks, out _),
                         GC.GetTotalPauseDuration().TotalMilliseconds);
+                    exited = clip.CopySerial;
                 }
+            }
+
+            if (exited != 0 && AfterExit is { } afterExit)
+            {
+                afterExit(clip.Index, exited);
             }
         }
         catch (Exception ex)
@@ -295,7 +305,9 @@ public sealed partial class StudioPreviewEngine
                 clip.Timing.ClampFrame(named.Frame),
                 playback ? named.Rule : null,
                 earlier.Kind == SignalKind.Frame ? earlier.Serial : 0,
-                earlier.Kind == SignalKind.Frame ? earlier.Frame : -1));
+                earlier.Kind == SignalKind.Frame ? earlier.Frame : -1,
+                clip.Index == 0 ? _timeline.TimelineFrameOfScreen(clip.Timing.ClampFrame(named.Frame)) : -1,
+                clip.Index == 0 && earlier.Kind == SignalKind.Frame ? _timeline.TimelineFrameOfScreen(earlier.Frame) : -1));
         }
 
         return playback;
@@ -442,6 +454,21 @@ public sealed partial class StudioPreviewEngine
                 }
 
                 _landings.Clear();
+
+                // The scene is the one of the timeline frame the screen is shown under. Where
+                // the screen counts in frames of its file, that frame can change without a new
+                // picture: the players were brought to a frame of the timeline that shows the
+                // frame the one before it shows. The scene is then drawn again, for its layout
+                // may be another. On the grid a new frame always comes with a new picture.
+                var sceneFrame = _policy.ShownTimelineFrame;
+                if (sceneFrame != _sceneFrame)
+                {
+                    _sceneFrame = sceneFrame;
+                    if (_timeline.ScreenHasTimes)
+                    {
+                        _redraw = true;
+                    }
+                }
 
                 // Draw before telling anyone, so that a handler finds the picture its position names.
                 Render();
@@ -594,8 +621,8 @@ public sealed partial class StudioPreviewEngine
         _policy.OnFrame(signal.Clip, ofPlayback ? signal.Frame : clip.Timing.FrameAtPlayerTicks(signal.PositionTicks), signal.Timestamp, signal.Unsure || signal.Inferred);
         if (signal.Clip == 0 && playback)
         {
-            // The screen clip's frames are the timeline's.
-            _position.Played(_policy.ShownFrame(0), signal.Timestamp);
+            // The screen clip's frames are the timeline's, or each belongs to one of them.
+            _position.Played(_policy.ShownTimelineFrame, signal.Timestamp);
         }
     }
 
@@ -612,7 +639,7 @@ public sealed partial class StudioPreviewEngine
         _framesWithoutNumber[signal.Clip]++;
 
         // Only while the clock runs: once it has stopped, what is shown has to have a number.
-        if (_playbackShut || !_policy.IsPlaying || (signal.Clip == 0 && !SceneIsTheSameUpTo(signal.Frame)))
+        if (_playbackShut || !_policy.IsPlaying || (signal.Clip == 0 && !SceneIsTheSameUpTo(_timeline.TimelineFrameOfScreen(signal.Frame))))
         {
             if (_trace is not null)
             {

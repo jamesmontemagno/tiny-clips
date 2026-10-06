@@ -137,7 +137,13 @@ internal static class StripEdges
 /// <param name="Camera">The camera clip's frame, or <see cref="FrameCode.Unreadable"/>.</param>
 /// <param name="CameraFit">The camera strip's edges against the layout of the screen's frame.</param>
 /// <param name="CameraExpected">Whether the layout of the screen's frame shows a camera.</param>
-internal readonly record struct SceneFit(long At, int Screen, EdgeFit ScreenFit, int? FitsFrame, int Camera, EdgeFit CameraFit, bool CameraExpected);
+/// <param name="Slot">
+/// The frame of the timeline whose layout the screen's edges fit, or -1 when they fit none of
+/// those around the picture's. On the usual clips it is <paramref name="Screen"/> for a scene
+/// that is right; for a clip whose frames are not one to a slot it is what the scene is judged
+/// by (<see cref="MovingLayout.SlotsOfFrame"/>).
+/// </param>
+internal readonly record struct SceneFit(long At, int Screen, EdgeFit ScreenFit, int? FitsFrame, int Camera, EdgeFit CameraFit, bool CameraExpected, int Slot = -1);
 
 /// <summary>
 /// Reads a scene of a project whose layout moves: which frame the screen shows, from its strip,
@@ -155,6 +161,20 @@ internal sealed class MovingLayout(StudioProject project, ClipSpec screen, ClipS
     /// </summary>
     public const double Tolerance = 1.0;
 
+    // A frame before a long gap is shown by many slots. This many of them are looked at.
+    private const int MostSlotsOfAFrame = 90;
+
+    /// <summary>The frames a second of the timeline the layout is worked out for.</summary>
+    public double Fps { get; init; } = TestMedia.Fps;
+
+    /// <summary>
+    /// For a screen clip whose frames are not one to a slot, as a recording's are not: the
+    /// frames of the timeline in which a frame of the file is right, the first and the last.
+    /// The strip then holds the frame's place in the file, and a scene is read against the
+    /// layouts of those timeline frames. Not set, a frame's number is its timeline frame's.
+    /// </summary>
+    public Func<int, (int First, int Last)>? SlotsOfFrame { get; init; }
+
     public int Width => width;
 
     public int Height => height;
@@ -164,7 +184,7 @@ internal sealed class MovingLayout(StudioProject project, ClipSpec screen, ClipS
     public ClipSpec? Camera => camera;
 
     public StudioResolvedFrame Resolve(int frame) =>
-        StudioLayoutResolver.Resolve(project, TestFolder.TimeOf(frame, 0.5), width, height);
+        StudioLayoutResolver.Resolve(project, (frame + 0.5) / Fps, width, height);
 
     /// <summary>Where the layout of a frame puts the screen clip's pixels, or null when it shows no screen.</summary>
     public ClipMap? ScreenMap(int frame) =>
@@ -199,9 +219,13 @@ internal sealed class MovingLayout(StudioProject project, ClipSpec screen, ClipS
         var r = screenRegion;
 
         // Which frame the picture is: the strip, looked for where each of the frames around the
-        // last one would put it. It counts when it reads the same from where its own frame puts it.
+        // last one would put it. It counts when it reads the same from where its own frame puts
+        // it. For a clip whose frames are not one to a slot, a strip that reads at all counts,
+        // and is looked for further on: after a gap the next frame is many slots later.
         var frame = FrameCode.Unreadable;
-        for (var candidate = Math.Max(0, last - 3); candidate <= last + 24 && frame == FrameCode.Unreadable; candidate++)
+        var readAt = last;
+        var reach = SlotsOfFrame is null ? 24 : 150;
+        for (var candidate = Math.Max(0, last - 3); candidate <= last + reach && frame == FrameCode.Unreadable; candidate++)
         {
             if (ScreenMap(candidate) is not { } map)
             {
@@ -210,10 +234,11 @@ internal sealed class MovingLayout(StudioProject project, ClipSpec screen, ClipS
 
             var read = FrameCode.Decode(screenPixels, r.Width, r.Height, screen, map.Offset(-r.X, -r.Y));
             if (read != FrameCode.Unreadable
-                && ScreenMap(read) is { } own
-                && FrameCode.Decode(screenPixels, r.Width, r.Height, screen, own.Offset(-r.X, -r.Y)) == read)
+                && (SlotsOfFrame is not null
+                    || (ScreenMap(read) is { } own && FrameCode.Decode(screenPixels, r.Width, r.Height, screen, own.Offset(-r.X, -r.Y)) == read)))
             {
                 frame = read;
+                readAt = candidate;
             }
         }
 
@@ -222,16 +247,48 @@ internal sealed class MovingLayout(StudioProject project, ClipSpec screen, ClipS
             return new SceneFit(at, frame, default, null, FrameCode.Unreadable, default, false);
         }
 
-        last = frame;
-        var screenFit = StripEdges.Measure(screenPixels, r.Width, r.Height, screen, ScreenMap(frame)!.Value.Offset(-r.X, -r.Y), frame);
+        // The timeline frames the picture is right in: its own on the grid.
+        var (first, final) = SlotsOfFrame is { } slotsOf ? slotsOf(frame) : (frame, frame);
+        final = Math.Min(final, first + MostSlotsOfAFrame);
+        last = SlotsOfFrame is null ? frame : readAt;
+
+        // The layout of which of them the edges fit, or come nearest to.
+        var slot = -1;
+        EdgeFit screenFit = default;
+        for (var candidate = first; candidate <= final; candidate++)
+        {
+            if (ScreenMap(candidate) is not { } map)
+            {
+                continue;
+            }
+
+            var fit = StripEdges.Measure(screenPixels, r.Width, r.Height, screen, map.Offset(-r.X, -r.Y), frame);
+            if (slot < 0 || fit.Worst < screenFit.Worst)
+            {
+                screenFit = fit;
+                slot = candidate;
+            }
+
+            if (fit.Within(Tolerance))
+            {
+                break;
+            }
+        }
+
+        if (slot < 0)
+        {
+            // None of those layouts shows a screen.
+            return new SceneFit(at, frame, default, null, FrameCode.Unreadable, default, false);
+        }
+
         int? fitsFrame = null;
         if (!screenFit.Within(Tolerance))
         {
             // The layout of which of the frames around it do the edges fit?
             var best = double.MaxValue;
-            for (var other = Math.Max(0, frame - 8); other <= frame + 8; other++)
+            for (var other = Math.Max(0, first - 8); other <= final + 8; other++)
             {
-                if (other == frame || ScreenMap(other) is not { } map)
+                if ((other >= first && other <= final) || ScreenMap(other) is not { } map)
                 {
                     continue;
                 }
@@ -249,7 +306,8 @@ internal sealed class MovingLayout(StudioProject project, ClipSpec screen, ClipS
         // masters, so its frame may be the one before or after the frame that goes with the screen's.
         var cameraFrame = FrameCode.Unreadable;
         EdgeFit cameraFit = default;
-        var cameraMap = CameraMap(frame);
+        var fits = screenFit.Within(Tolerance) ? slot : fitsFrame ?? -1;
+        var cameraMap = CameraMap(fits >= 0 && SlotsOfFrame is not null ? fits : slot);
         if (cameraMap is { } placed && camera is not null && cameraPixels.Length > 0)
         {
             var c = cameraRegion;
@@ -261,7 +319,7 @@ internal sealed class MovingLayout(StudioProject project, ClipSpec screen, ClipS
             }
         }
 
-        return new SceneFit(at, frame, screenFit, fitsFrame, cameraFrame, cameraFit, cameraMap is not null);
+        return new SceneFit(at, frame, screenFit, fitsFrame, cameraFrame, cameraFit, cameraMap is not null, fits);
     }
 
     /// <summary>Reads a whole picture of the scene, as a surface gives it.</summary>
