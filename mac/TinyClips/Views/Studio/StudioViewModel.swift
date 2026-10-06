@@ -213,14 +213,21 @@ final class StudioViewModel: ObservableObject {
         screenRecordingStatus = nil
         let id = projectID
         Task { [weak self] in
-            let status: String
             do {
+                // A saved video is announced the way every saved video is, window or no window.
                 let url = try await StudioMaintenance.saveScreenRecording(projectID: id)
-                status = "Saved as \(url.lastPathComponent)."
+                self?.screenRecordingStatus = "Saved as \(url.lastPathComponent)."
             } catch {
-                status = "The screen recording could not be saved: \(error.localizedDescription)"
+                let message = "The screen recording could not be saved: \(error.localizedDescription)"
+                if let self, !self.isTornDown {
+                    self.screenRecordingStatus = message
+                    AccessibilityAnnouncementService.shared.announce(message, priority: .high)
+                } else {
+                    // The window closed while the recording was being copied, and the line
+                    // that would have said this went with it.
+                    SaveService.shared.showError(message)
+                }
             }
-            self?.screenRecordingStatus = status
             self?.isSavingScreenRecording = false
         }
     }
@@ -239,6 +246,8 @@ final class StudioViewModel: ObservableObject {
             let saved = try store.setKeepSources(id: projectID, keepSources: keepSources)
             editor?.refreshBookkeeping(from: saved)
         } catch {
+            // Nothing changed, so nothing would redraw the checkbox, which has already turned.
+            objectWillChange.send()
             SaveService.shared.showError("Studio could not change whether this project is kept: \(error.localizedDescription)")
         }
     }
@@ -1209,6 +1218,8 @@ final class StudioViewModel: ObservableObject {
                     time: 0
                 )
                 let saved = try projectStore.recordExport(id: project.id, path: url.path)
+                // The project has a video now and is no draft any more, wherever it is listed.
+                NotificationCenter.default.post(name: .studioProjectsDidChange, object: nil)
                 guard let self else { return }
                 self.editor?.refreshBookkeeping(from: saved)
                 self.editor?.markExported(rendered)

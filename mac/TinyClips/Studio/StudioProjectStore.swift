@@ -927,6 +927,13 @@ enum StudioScreenRecording {
         let stagedURL = folderURL.appendingPathComponent(".studio-copy.\(UUID().uuidString.lowercased()).tmp")
         do {
             try fileManager.copyItem(at: sourceURL, to: stagedURL)
+            // A copy keeps the dates of what it was copied from. The Clips Manager sorts by
+            // the day a file was made and archives the old ones, and this video is made now.
+            let savedAt = Date()
+            try? fileManager.setAttributes(
+                [.creationDate: savedAt, .modificationDate: savedAt],
+                ofItemAtPath: stagedURL.path
+            )
             for attempt in 1...attempts {
                 do {
                     // A move never replaces: it fails where a file already has the name.

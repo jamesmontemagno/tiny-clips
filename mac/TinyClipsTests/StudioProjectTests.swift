@@ -1008,6 +1008,36 @@ final class StudioProjectTests: XCTestCase {
         )
     }
 
+    func testASavedScreenRecordingIsDatedWhenItWasSaved() throws {
+        let store = StudioProjectStore(
+            rootURL: directoryURL.appendingPathComponent("Projects", isDirectory: true),
+            now: { self.fixedDate }
+        )
+        let paths = try store.beginRecording()
+        _ = try store.completeRecording(id: paths.id, request: creationRequest(camera: nil))
+        try Data(count: 2_000).write(to: paths.screenURL)
+        // Recorded long ago: a copy carries these dates with it.
+        let recordedAt = Date(timeIntervalSince1970: 1_000_000)
+        try FileManager.default.setAttributes(
+            [.creationDate: recordedAt, .modificationDate: recordedAt],
+            ofItemAtPath: paths.screenURL.path
+        )
+        let outputURL = directoryURL.appendingPathComponent("Videos", isDirectory: true).appendingPathComponent("Clip.mp4")
+
+        let before = Date()
+        let saved = try StudioScreenRecording.save(store: store, id: paths.id) { outputURL }
+
+        // The Clips Manager goes by the day a file was made, to sort and to archive.
+        let values = try saved.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+        let created = try XCTUnwrap(values.creationDate)
+        let modified = try XCTUnwrap(values.contentModificationDate)
+        XCTAssertGreaterThan(created.timeIntervalSince(before), -5)
+        XCTAssertGreaterThan(modified.timeIntervalSince(before), -5)
+        // The recording in the project is as old as it was.
+        let source = try paths.screenURL.resourceValues(forKeys: [.contentModificationDateKey])
+        XCTAssertEqual(source.contentModificationDate, recordedAt)
+    }
+
     func testSavingAScreenRecordingSaysSoWhenThereIsNone() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         _ = try store.completeRecording(id: validID, request: creationRequest(camera: nil))

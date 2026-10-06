@@ -4,6 +4,12 @@ import SwiftUI
 
 // MARK: - Registry
 
+extension Notification.Name {
+    /// Posted on the main thread when a Studio editor has opened, and again when it has closed.
+    /// Between the two it may have exported its project, or deleted it.
+    static let studioProjectsDidChange = Notification.Name("TinyClipsStudioProjectsDidChange")
+}
+
 /// Opens Studio editor windows, one per project, and knows which projects are open.
 @MainActor
 final class StudioWindowRegistry {
@@ -46,7 +52,13 @@ final class StudioWindowRegistry {
     /// `onClose` runs once after that window has closed.
     func open(projectID: String, onClose: (@MainActor () -> Void)? = nil) {
         guard CaptureSettings.shared.studioPreviewEnabled else {
-            SaveService.shared.showNotice("Recording saved as a Tiny Clips Studio project.")
+            // Straight after a recording the project has just been saved. From anywhere else
+            // someone asked to open one, from a menu that was built while Studio was still on.
+            SaveService.shared.showNotice(
+                onClose != nil
+                    ? "Recording saved as a Tiny Clips Studio project."
+                    : "Tiny Clips Studio is turned off. Turn it on in Settings to open this project."
+            )
             onClose?()
             return
         }
@@ -64,6 +76,7 @@ final class StudioWindowRegistry {
             windows[projectID] = window
             // An editor window gets a Dock icon and the menu bar, as the screenshot editor does.
             TinyClipsActivationPolicy.applyCurrent()
+            NotificationCenter.default.post(name: .studioProjectsDidChange, object: nil)
         }
         if let onClose {
             closeHandlers[projectID] = onClose
@@ -86,7 +99,14 @@ final class StudioWindowRegistry {
         DispatchQueue.main.async {
             _ = closed
             TinyClipsActivationPolicy.applyCurrent()
-            StudioMaintenance.cleanUp()
+            // The list in Settings hears now that the project is closed, and once more when a
+            // cleanup that this starts has removed what it removes.
+            NotificationCenter.default.post(name: .studioProjectsDidChange, object: nil)
+            StudioMaintenance.cleanUp { removed in
+                if let removed, removed > 0 {
+                    NotificationCenter.default.post(name: .studioProjectsDidChange, object: nil)
+                }
+            }
             closeHandler?()
         }
     }

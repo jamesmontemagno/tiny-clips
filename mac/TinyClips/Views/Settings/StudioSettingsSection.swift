@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Settings for Tiny Clips Studio: the switch that turns it on while it is in preview, how long
@@ -9,8 +10,12 @@ struct StudioSettingsSection: View {
     @State private var unreadableProjects: [StudioUnreadableProject] = []
     @State private var isCleaningUp = false
     @State private var cleanUpResult: String?
-    @State private var draftPendingDelete: DraftRow?
     @State private var savingRecordingIDs: Set<String> = []
+    @State private var savedRecordingNote: String?
+
+    /// The projects that are open in an editor, as of the last reload. Kept here because the
+    /// registry that knows them tells nobody when they change.
+    @State private var openProjectIDs: Set<String> = []
 
     /// One row of the drafts list: a recording that only its project holds.
     private struct DraftRow: Identifiable {
@@ -24,6 +29,21 @@ struct StudioSettingsSection: View {
         let note: String?
         let canOpen: Bool
         let canSaveRecording: Bool
+
+        /// What VoiceOver calls the row in the names of its buttons. Two recordings can have one
+        /// name, and every project that cannot be read has the same one, so the date is in it.
+        var spokenName: String { "\(name), \(detail)" }
+    }
+
+    /// Why a project whose video was exported is listed with the drafts again. On the App Store
+    /// build the app sees only the folders it was given, so a video in a folder that is no
+    /// longer the chosen one looks the same as one that is gone.
+    private static var exportMissingNote: String {
+        #if APPSTORE
+        return "Its exported video is not where it was saved, or is in a folder Tiny Clips can no longer open."
+        #else
+        return "Its exported video is no longer where it was saved."
+        #endif
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -35,8 +55,7 @@ struct StudioSettingsSection: View {
 
     var body: some View {
         Section("Tiny Clips Studio") {
-            // The task and the dialog hang off this one row so each exists once, whether
-            // Studio is on or off.
+            // The task hangs off this one row so it exists once, whether Studio is on or off.
             Toggle("Tiny Clips Studio (Preview)", isOn: $settings.studioPreviewEnabled)
                 .help("Turns on Tiny Clips Studio, an editor for video recordings that is still being built.")
                 .task {
@@ -45,16 +64,10 @@ struct StudioSettingsSection: View {
                 .onChange(of: settings.studioPreviewEnabled) { _, _ in
                     reload()
                 }
-                .confirmationDialog(
-                    "Delete this draft?",
-                    isPresented: isConfirmingDelete,
-                    presenting: draftPendingDelete
-                ) { draft in
-                    Button("Delete", role: .destructive) {
-                        delete(draft)
-                    }
-                } message: { draft in
-                    Text("\"\(draft.name)\" and its recordings will be removed. This cannot be undone.")
+                // An editor opened or closed. While it was open it may have exported its
+                // project, or deleted it, and nothing else tells this list.
+                .onReceive(NotificationCenter.default.publisher(for: .studioProjectsDidChange)) { _ in
+                    reload()
                 }
 
             Text("Studio is an editor for video recordings. A recording made for Studio keeps the screen, the camera, and the clicks apart, so you can arrange them over a background, zoom, cut, and change the layout before you export. It is a preview: parts of it are unfinished.")
@@ -113,12 +126,18 @@ struct StudioSettingsSection: View {
                 ForEach(draftRows) { row in
                     draftRow(row)
                 }
+
+                if let savedRecordingNote {
+                    Text(savedRecordingNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
 
     private func draftRow(_ row: DraftRow) -> some View {
-        let isOpen = StudioWindowRegistry.shared.openProjectIDs.contains(row.id)
+        let isOpen = openProjectIDs.contains(row.id)
         let isSaving = savingRecordingIDs.contains(row.id)
 
         return HStack(spacing: 8) {
@@ -147,7 +166,7 @@ struct StudioSettingsSection: View {
                     Image(systemName: "square.and.arrow.down")
                 }
                 .disabled(isSaving)
-                .accessibilityLabel("Save the screen recording of \(row.name)")
+                .accessibilityLabel("Save the screen recording of \(row.spokenName)")
                 .help("Save this project's screen recording to your videos folder as an ordinary video. The project is kept as it is.")
             }
 
@@ -155,14 +174,14 @@ struct StudioSettingsSection: View {
                 Button("Open") {
                     StudioWindowRegistry.shared.open(projectID: row.id)
                 }
-                .accessibilityLabel("Open \(row.name) in Studio")
+                .accessibilityLabel("Open \(row.spokenName) in Studio")
             }
 
             Button("Delete…", role: .destructive) {
-                draftPendingDelete = row
+                confirmDelete(row)
             }
             .disabled(isOpen)
-            .accessibilityLabel("Delete \(row.name)")
+            .accessibilityLabel("Delete \(row.spokenName)")
             .help(isOpen ? "Close this draft in Studio before deleting it." : "Delete this draft and its recordings.")
         }
     }
@@ -181,7 +200,7 @@ struct StudioSettingsSection: View {
                     id: project.id,
                     name: displayName(project),
                     detail: detailText(createdAt: project.createdAt, bytes: project.sizeOnDisk),
-                    note: project.exportMissing ? "Its exported video is no longer where it was saved." : nil,
+                    note: project.exportMissing ? Self.exportMissingNote : nil,
                     canOpen: true,
                     canSaveRecording: project.sourceExists
                 )
@@ -233,16 +252,6 @@ struct StudioSettingsSection: View {
         }
     }
 
-    private var isConfirmingDelete: Binding<Bool> {
-        Binding(
-            get: { draftPendingDelete != nil },
-            set: { isPresented in
-                if !isPresented {
-                    draftPendingDelete = nil
-                }
-            }
-        )
-    }
 
     private func displayName(_ project: StudioProjectSummary) -> String {
         let name = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -260,6 +269,7 @@ struct StudioSettingsSection: View {
     // MARK: - Actions
 
     private func reload() {
+        openProjectIDs = StudioWindowRegistry.shared.openProjectIDs
         // On the App Store build this is what opens a save folder the user chose. The list
         // says whether each exported video is still where it was saved, and could not see into
         // that folder otherwise.
@@ -282,15 +292,22 @@ struct StudioSettingsSection: View {
         cleanUpResult = nil
         StudioMaintenance.cleanUp { removed in
             isCleaningUp = false
+            let result: String?
             switch removed {
             case .none:
-                cleanUpResult = nil
+                result = nil
             case .some(0):
-                cleanUpResult = "Nothing to remove."
+                result = "Nothing to remove."
             case .some(1):
-                cleanUpResult = "Removed 1 project."
+                result = "Removed 1 project."
             case .some(let count):
-                cleanUpResult = "Removed \(count) projects."
+                result = "Removed \(count) projects."
+            }
+            cleanUpResult = result
+            if let result {
+                // The line appears beside a button that already has the focus, where VoiceOver
+                // would not come by it.
+                AccessibilityAnnouncementService.shared.announce(result, priority: .medium)
             }
             reload()
         }
@@ -302,18 +319,46 @@ struct StudioSettingsSection: View {
         let id = row.id
         Task {
             do {
-                // The saved video is announced the way every saved video is.
-                _ = try await StudioMaintenance.saveScreenRecording(projectID: id)
+                // The saved video is announced the way every saved video is. With the settings
+                // as they come that shows nothing on the screen, so it is said here as well.
+                let url = try await StudioMaintenance.saveScreenRecording(projectID: id)
+                savedRecordingNote = "Saved as \(url.lastPathComponent)."
             } catch {
+                savedRecordingNote = nil
                 SaveService.shared.showError("The screen recording could not be saved: \(error.localizedDescription)")
             }
             savingRecordingIDs.remove(id)
         }
     }
 
+    /// Asks before a draft is deleted. An alert of the app's own and not a dialog hung on a row
+    /// of this form, so that it does not depend on which rows are on the screen.
+    private func confirmDelete(_ row: DraftRow) {
+        guard !isOpenInStudio(row) else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete this draft?"
+        alert.informativeText = "\"\(row.name)\" and its recordings will be removed. This cannot be undone."
+        let deleteButton = alert.addButton(withTitle: "Delete")
+        deleteButton.hasDestructiveAction = true
+        // An alert's first button answers Return. This one must not: it cannot be undone.
+        deleteButton.keyEquivalent = ""
+        // Esc, by its title.
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        delete(row)
+    }
+
+    /// Says so when a draft is open in an editor, where it cannot be deleted from here.
+    private func isOpenInStudio(_ row: DraftRow) -> Bool {
+        guard StudioWindowRegistry.shared.openProjectIDs.contains(row.id) else { return false }
+        SaveService.shared.showError("\"\(row.name)\" is open in Studio. Close it there before deleting it.")
+        return true
+    }
+
     private func delete(_ draft: DraftRow) {
-        draftPendingDelete = nil
-        guard !StudioWindowRegistry.shared.openProjectIDs.contains(draft.id) else { return }
+        guard !isOpenInStudio(draft) else { return }
         do {
             try StudioProjectStore.shared.delete(id: draft.id)
         } catch {
