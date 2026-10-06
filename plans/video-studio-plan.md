@@ -51,7 +51,7 @@ Two more, asked the same way late that evening:
 | Question | Decision |
 |---|---|
 | The fix for the recording that a failed start deleted: on this branch only, or on `main` as well | A small pull request of its own against `main`. It is #418, merged on 6 October |
-| Esc in the Studio window, since #417 made it close the other editors | Esc closes Studio the way its close button does, behind the same setting. On Windows; being written |
+| Esc in the Studio window, since #417 made it close the other editors | Esc closes Studio the way its close button does, behind the same setting. That was missing on Windows only: the Mac's Studio window has closed on Esc since 3 October, built then as a decision made while building, and the question did not say so. Built on Windows on 6 October; see "The evening of 5 October" |
 
 ## Where the code is today
 
@@ -604,6 +604,16 @@ The mends add three places an ordinary recording passes through: the path that i
 
 With all of it, 1,844 Core tests pass and 3 are skipped, the 50 tests of the Settings view model pass, and both flavours of the app and the four tools build without warnings.
 
+**Esc closes the Studio window on Windows.** Written on 6 October by the author of the window check, from the owner's answer and the Mac's window.
+
+- **The rule** is in Core with the other keys (`StudioShortcuts`). Each press takes the first of these that applies: with Ctrl, Shift or Alt it does nothing; while an export runs it stops the export, and that is all; a key that is held does nothing more; in text being edited, while a drop-down list is open, and in the middle of a drag it does nothing; otherwise it asks the window to close. One unit test goes through every state an Esc press can arrive in, 1,024 of them, against that order written out again, and 10 faults put into the rule one at a time each failed the tests that had been named for them beforehand.
+- **The words** are beside the other editors' (`EditorEscape`): "Close Studio?", that the edits are saved with the project and that it can be opened again from the Clips Library, and where the confirmation is switched off.
+- **The window has one path for "the user asks to close"**, which the close button and Esc both take, so that Esc cannot close what the close button would have asked about. A recording that was never exported gets the question it gets from the close button, once, whatever the setting says. A project that is open and was exported gets "Close Studio?" while the setting is on, and closes at once while it is off. A window that cannot show its project, or is still opening it, closes at once. That is the Mac's rule.
+- **The window's part is compiled and has never run.** 20 checks are written for it in the window check, 18 of Esc and 2 of the close button while a question is open, with 21 faults; a full run of that tool now has 517 checks when no part ends early. The tool hands the window the key the way its key handler does. The key itself has never been pressed in the window, by a tool or by a person.
+- Read in the close path on the way, and left: when an export ends, the window asks for the keyboard focus without looking whether a question is open, which the "An export is still running" question can be; and a held Esc opens the question and is then taken by the question for Cancel, so the question comes and goes once. Both are on the hands-on checklist.
+
+After it, 1,856 Core tests pass and 3 are skipped, and both flavours of the app and the four tools build without warnings.
+
 ### Decisions made while building
 
 - **A failed project save keeps the recording.** If the project cannot be saved when a Studio recording stops, the screen track is kept as an ordinary video.
@@ -623,7 +633,8 @@ With all of it, 1,844 Core tests pass and 3 are skipped, the 50 tests of the Set
 - **Windows without graphics hardware.** Exports on the software adapter sample linearly, which measured 43 to 58 frames per second against 16 to 21 for the high-quality sampler.
 - **Keyboard focus on Windows.** The editor puts the focus on Play when a project has opened, on Cancel while an export runs, and on Export when it ends, but only while its window is the active one. Otherwise it waits until the user comes back to the window, because asking for the focus brings a window to the front. A click that brings the window back decides the focus itself.
 - **The window check tool uses one package the app does not**, `Interop.UIAutomationClient`, to read the window as a screen reader does. The tool is not in the solution and is not shipped.
-- **Windows keys and closing.** Esc stops a running export and does nothing otherwise, because the Windows trimmer does not close on Esc either. Closing a project that was never exported asks Export, Keep as draft, or Cancel; Delete is a separate button in the dialog and never the default.
+- **Windows keys and closing.** Esc stops a running export. Until 6 October it did nothing otherwise, because the Windows trimmer did not close on Esc either; since #417 it does, and so does Studio (see the next point). Closing a project that was never exported asks Export, Keep as draft, or Cancel; Delete is a separate button in the dialog and never the default.
+- **What the owner's sentence about Esc left open, on Windows.** "Esc closes Studio the way its close button does, behind the same setting" was read to match the Mac's window wherever the two can match. The question about a recording that was never exported is the confirmation, and the setting does not take it away. "Close Studio?" is asked only of a project that is open and has been exported. A window that cannot show its project, or is still opening it, closes at once. Esc with Ctrl, Shift or Alt does nothing, and neither does a key that is held down, so that the Esc that stopped an export does not go on to close the window. A drop-down list keeps the key only while it is open: after a choice made with the mouse the focus stays on the drop-down, and Esc must not be dead there. Esc lets go of no selection first. And one thing changed for the close button as well: while any question is open it waits for the answer. Until then it closed the window from under the "An export is still running" question when the export had ended behind it, which nobody has seen happen.
 - **Background swatches** are each platform's own screenshot editor presets. The Windows list has `slate`, which the Mac's does not. A project stores a preset's colors with its id and is drawn from the colors.
 - **What a zoom is.** A zoom changes which part of the screen its card shows. The card, the camera, and the canvas stay where they are, so a zoom never changes the size of the exported video. Zooms do not overlap; one that starts on the number another ends on is chained to it, and the picture moves from the first place to the second without opening out in between.
 - **Following the pointer** means looking at the pointer's mean position over the second around each frame. That is a pure function of the time, so the preview and the export agree, and a seek shows the same picture as playing to that time.
@@ -777,7 +788,7 @@ What is left is work that waits for the PC or for a Mac, not for an answer:
 
 - **The regular Windows recorder's CPU path** gets its own pull request once a real recording on that path has confirmed the fault. See "Found in the regular Windows recorder", which also has two faults found by reading it and left alone: click rings drawn late, and quitting while a recording is being finished.
 - **Windows volumes** are a follow-up: two sound tracks in a Studio recording, made with the owner at the PC. See "Volumes".
-- **Esc in the Studio window** is being written.
+- **Esc in the Studio window** is built on Windows, and no key has been pressed in that window yet.
 - **Every control written on 5 October has been compiled and never run, and the Tiny Clips app has never been started with this code.** See "The decisions of 5 October, built", "The app around the editor: read, never run" and "The evening of 5 October".
 
 One thing for the owner of the App Store account, which the visible switch does not settle by itself. Guideline 2.3.1(a), as it read on 5 October 2026: "Don't include any hidden, dormant, or undocumented features in your app; your app's functionality should be clear to end users and App Review. All new features, functionality, and product changes must be described with specificity in the Notes for Review section of App Store Connect (generic descriptions will be rejected) and accessible for review." The switch makes Studio visible and reachable for review. The notes for review still have to say what it is.
@@ -812,6 +823,7 @@ First with the switch off, against the released build, since this is what every 
 14. Repeat a short recording with the GPU recording pipeline off, with HEVC, and at 60 fps.
 15. Dark theme, High Contrast, Narrator, and moving the window to a display with another scale.
 16. The direct build as well as the Store flavor.
+17. Esc (never pressed, in a window no key has been pressed in). With a project that was exported: Esc, then Enter, should close it; Esc, then Esc or Cancel, should leave it, with the focus back where it was. Hold Esc down: the question should come and go once, and the window stay. Shift+Esc should do nothing. Choose a canvas shape from its drop-down with the mouse and press Esc right after, while the focus is still on the drop-down: the question should come. With the drop-down open, Esc should close the list and no more. While the question is open, press the title bar's X: nothing should happen until the question is answered. With a recording that was never exported, Esc should ask Export, Keep as draft or Delete, also with **Confirm before closing editors with Esc** switched off in Settings › General, and should ask only that. During an export, Esc should stop it; keep the key held until well after the export is gone, and the window should stay. With the confirmation switched off, Esc should close an exported project at once. In a window that cannot show its project (step 12), Esc should close it without a question. Press Esc right as a window opens. And press the X during a short export and leave the "An export is still running" question open until the export has ended behind it: the X, pressed again, should then do nothing. Watch whether the keyboard focus has left the question by then, and whether Space plays the preview behind it.
 
 **macOS**
 
