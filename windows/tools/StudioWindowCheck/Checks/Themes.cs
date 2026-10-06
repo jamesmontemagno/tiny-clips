@@ -85,7 +85,9 @@ internal sealed partial class WindowChecks
             $"requested theme {requested}; surfaces {string.Join(" ", surfaces)}; the recording's name is {F(Math.Abs(text), "0")} levels {(text < 0 ? "darker" : "lighter")} than what is behind it; {sight.Shown}; saved as {Path.GetFileName(windowPath)} ({sight.Shot.Width}x{sight.Shot.Height})");
 
         ZoomPictures(editor, name, isLight, Frame, saved);
+        ProjectSectionPicture(editor, name, isLight, saved);
         TimelinePictures(name, isLight, saved);
+        CannotBeShownPicture(name, isLight, saved);
 
         // The question on closing, once it has finished opening.
         Timeline.Mark($"9: the question on closing, {name}");

@@ -6,8 +6,8 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 1. Opening: a project with screen and camera, a project with a screen only, and a project
-// whose recording is gone.
+// 1. Opening: a project with screen and camera, a project with a screen only, a project whose
+// recording is gone, and, in CannotBeShown.cs, a project whose file cannot be read.
 internal sealed partial class WindowChecks
 {
     private void Opening()
@@ -15,6 +15,7 @@ internal sealed partial class WindowChecks
         OpenWithCamera();
         OpenScreenOnly();
         OpenWithoutItsRecording();
+        OpenWhatCannotBeShown();
     }
 
     private void OpenWithCamera()

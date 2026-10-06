@@ -131,6 +131,11 @@ internal sealed partial class WindowChecks
             isRedone ? null : $"after Redo {(redone is null || after is null ? "there was no screenshot" : $"the picture shows {redone.Shown}, and {Compare(after.Shot, before.Shot, redone.Shot, box)}")}",
         ];
         var detail = string.Join("; ", problems.Where(problem => problem is not null));
+        if (detail.Length > 0)
+        {
+            detail += Kept(before.Shot, $"inspector-{Slug(name)}-before") + Kept(after?.Shot, $"inspector-{Slug(name)}-after");
+        }
+
         return _report.Check(
             $"{name}: the picture changes as it should, Undo takes it back and Redo brings it again",
             detail.Length == 0,
@@ -358,7 +363,7 @@ internal sealed partial class WindowChecks
             () => Slider(editor, "StudioPaddingSlider", 0.2, "20%"));
     }
 
-    /// <summary>The four layouts. Returns the picture without the camera, which the camera checks compare against.</summary>
+    /// <summary>The four layouts. Returns the picture without the camera; the camera's checks take it again (<see cref="WithoutTheCamera"/>) and compare against that.</summary>
     private Sight? Layouts(Editor editor)
     {
         // The camera's frame number must not read any more where the layout before had the camera.
@@ -454,12 +459,170 @@ internal sealed partial class WindowChecks
         }));
     }
 
-    private void CameraStyle(Editor editor, Sight? under)
+    /// <summary>
+    /// The three points of <see cref="Coverage"/> in numbers, for a check that did not hold:
+    /// where each is in the screenshot, what is there with the camera, and what without.
+    /// </summary>
+    private static string CoverageNumbers(Sight sight, Sight under, StudioProject project)
     {
-        if (under is null)
+        if (Layers(sight.Canvas, project).Camera is not { } camera)
+        {
+            return "no camera";
+        }
+
+        var side = Math.Min(camera.Rect.Width, camera.Rect.Height);
+
+        // Along the diagonal from the corner, pixel by pixel: where the picture is not what it is without the camera.
+        var differing = new List<string>();
+        var reach = (int)Math.Ceiling(0.2 * side);
+        var from = -1;
+        for (var step = 0; step <= reach + 1; step++)
+        {
+            var differs = step <= reach
+                && sight.Shot.Color(camera.Rect.X + step, camera.Rect.Y + step, 0).Distance(under.Shot.Color(camera.Rect.X + step, camera.Rect.Y + step, 0)) > 20;
+            if (differs && from < 0)
+            {
+                from = step;
+            }
+            else if (!differs && from >= 0)
+            {
+                differing.Add(from == step - 1 ? F(from) : $"{F(from)} to {F(step - 1)}");
+                from = -1;
+            }
+        }
+
+        return $"the camera is in {R(camera.Rect)} with corners of {F(camera.CornerRadius, "0.#")} px; " + string.Join("; ", new[] { 0.02, 0.05, 0.10 }.Select(k =>
+        {
+            var (x, y) = (camera.Rect.X + (k * side), camera.Rect.Y + (k * side));
+            return $"{F(k * 100, "0")} % in, at ({F(x, "0.#")},{F(y, "0.#")}): {sight.Shot.Color(x, y)} with the camera and {under.Shot.Color(x, y)} without";
+        })) + $"; along the diagonal from the corner, of the first {reach} pixels these are not what they are without the camera: {(differing.Count == 0 ? "none" : string.Join(", ", differing))}";
+    }
+
+    /// <summary>
+    /// A second picture without the camera, taken just before the camera's checks. Null when it
+    /// could not be taken.
+    /// <para>
+    /// On a canvas of 1082 × 609 the check of a fully round camera read the middle one of its
+    /// three points as covered where nothing covers it ("010"), in every run of 5 October 2026.
+    /// What follows is what was worked out for it while no check could be run. It is a
+    /// prediction, and this picture is how a run tests it.
+    /// </para>
+    /// <para>
+    /// The preview draws a clip from a copy of its frame, and how large that copy is depends on
+    /// what the window showed before: a copy is kept while it is large enough and less than twice
+    /// too large, and the camera layout, which hides the screen recording, makes its copy small
+    /// (StudioPreviewCopyTargets). So the picture taken at the layout Screen further up was drawn
+    /// from another copy than the pictures with the camera that follow, and two copies of one
+    /// frame are not the same pixels where the recording has fine detail. Two of the three points
+    /// near the corner of a wide camera lie on the noisy checker of the test picture, which is
+    /// nothing but fine detail. The layouts Screen and Bubble put the screen recording into the
+    /// same rectangle, so going from one to the other and back keeps the copy: this picture and
+    /// the ones that follow should have the same pixels wherever the camera is not.
+    /// </para>
+    /// <para>
+    /// How far that goes: with the test picture worked out from its definition and the layer on
+    /// whole pixels, as the renderer puts it, the two copies of that evening (960 × 540 and
+    /// 680 × 382) differ at the three points by 0, by 4 to 10 and by 4 to 21, depending on how
+    /// a frame is scaled into its copy, where a point counts as covered above 20. That reads
+    /// "000", or "001", and not "010". It reads "010" only when the copies are sampled a fifth
+    /// of a copy pixel or more away from where that arithmetic has them, and then in fewer than
+    /// one combination in five of those tried. So the copies may not be it, and then something
+    /// is at the middle point in the picture with the camera: the note after the corner checks
+    /// tells the two apart.
+    /// </para>
+    /// <para>
+    /// How the earlier picture differs from this one is written into the report, and after the
+    /// corner checks what each of them reads against either (<see cref="CameraStyle"/>). Which of
+    /// the two the checks go by is <see cref="AsPrepared"/>: the earlier one, as in the runs
+    /// that failed, unless the tool is told otherwise.
+    /// </para>
+    /// </summary>
+    private Sight? WithoutTheCamera(Editor editor, Sight early)
+    {
+        Timeline.Mark("3: the picture without the camera, taken again");
+        var with = LookFor(editor, s => s.Shown == Both(editor, InspectorFrame), 3);
+
+        // Gone from the picture: the camera's frame number no longer reads where the camera was.
+        bool CameraLeft(Sight sight) =>
+            with?.View.CameraMap is not { } old
+            || FrameCode.Decode(sight.Shot.Bgra, sight.Shot.Width, sight.Shot.Height, editor.Folder.Camera!, old) != with.Shown.Camera;
+
+        Key(editor, StudioShortcutKey.Digit1);
+        Expect(editor, p => WithScene(p, s => s with { Layout = StudioLayout.Screen }));
+        var alone = Both(editor, InspectorFrame);
+        var again = LookFor(editor, s => s.Shown == alone && CameraLeft(s), 3);
+        Key(editor, StudioShortcutKey.Digit2);
+        Expect(editor, p => WithScene(p, s => s with { Layout = StudioLayout.Bubble }));
+        var together = Both(editor, InspectorFrame);
+        var back = LookFor(editor, s => s.Shown == together, 3);
+        if (with is null || again is null || again.Shown != alone || !CameraLeft(again) || back is null || back.Shown != together)
+        {
+            _report.Note(
+                "a second picture without the camera could not be taken just before the camera's checks "
+                + $"(with the screen alone the picture showed {again?.Shown} and should have shown {alone}{(again is not null && !CameraLeft(again) ? ", and the camera was still in it" : string.Empty)}; with the camera again {back?.Shown}, and {together}): "
+                + "the checks go by the one from the layout Screen further up, which may have been drawn from a copy of another size");
+            return null;
+        }
+
+        // A wide camera: the rectangle and the rounded rectangle have the shape of the camera's video.
+        var wide = editor.Expected with { Camera = editor.Expected.Camera with { Shape = StudioCameraShape.RoundedRectangle } };
+        var differs = "the two could not be compared, the canvas is not where it was";
+        var kept = string.Empty;
+        if (early.Canvas == again.Canvas
+            && early.Shot.Width == again.Shot.Width
+            && early.Shot.Height == again.Shot.Height
+            && Layers(again.Canvas, wide) is ({ } screen, { } camera))
+        {
+            var side = Math.Min(camera.Rect.Width, camera.Rect.Height);
+            var distances = new[] { 0.02, 0.05, 0.10 }
+                .Select(k => early.Shot.Color(camera.Rect.X + (k * side), camera.Rect.Y + (k * side)).Distance(again.Shot.Color(camera.Rect.X + (k * side), camera.Rect.Y + (k * side))))
+                .ToArray();
+            int differing = 0, area = 0;
+            for (var y = (int)Math.Ceiling(screen.Y); y < (int)Math.Floor(screen.Y + screen.Height); y++)
+            {
+                for (var x = (int)Math.Ceiling(screen.X); x < (int)Math.Floor(screen.X + screen.Width); x++)
+                {
+                    area++;
+                    if (early.Shot.Color(x, y, 0).Distance(again.Shot.Color(x, y, 0)) > 20)
+                    {
+                        differing++;
+                    }
+                }
+            }
+
+            differs = $"by {string.Join(", ", distances.Select(d => F(d, "0")))} at the three points near the corner of a wide camera, which is in {R(camera.Rect)} (a point counts as covered above 20), "
+                + $"and by more than 20 in {differing} of the {area} pixels of the screen recording";
+            if (distances.Any(d => d > 20))
+            {
+                kept = Kept(early.Shot, "inspector-without-the-camera-before-the-layouts") + Kept(again.Shot, "inspector-without-the-camera-before-the-camera-checks");
+            }
+        }
+
+        _report.Note(
+            "a second picture without the camera was taken just before the camera's checks, with the layout Screen and back (what the keys 1 and 2 run), which should leave the preview's copy of the frame as it is; "
+            + $"the picture taken at the layout Screen before the other layouts were shown differs from it {differs}{kept}");
+        return again;
+    }
+
+    private void CameraStyle(Editor editor, Sight? early)
+    {
+        if (early is null)
         {
             _report.Check("the camera's controls can be checked", false, "there is no picture without the camera to compare against");
             return;
+        }
+
+        // The checks go by the picture taken further up, as they did in the runs that failed.
+        // Told to (--as-prepared), they go by the second one.
+        var again = WithoutTheCamera(editor, early);
+        var under = AsPrepared && again is not null ? again : early;
+
+        // What each corner check reads against either picture, for a note after them.
+        var read = new List<(string Name, string Early, string Again)>();
+        void Read(string name, Sight sight)
+        {
+            read.RemoveAll(entry => entry.Name == name);
+            read.Add((name, Coverage(sight, early, editor.Expected), again is null ? "not taken" : Coverage(sight, again, editor.Expected)));
         }
 
         var shadowed = editor.Expected;
@@ -483,6 +646,11 @@ internal sealed partial class WindowChecks
             () => Slider(editor, "StudioCameraShadowSlider", 0, "0%"));
 
         var circle = Look(editor);
+        if (circle is not null)
+        {
+            Read("the circle", circle);
+        }
+
         _report.Check(
             "the camera starts as a circle: it covers none of the three points near the corner of its rectangle",
             circle is not null && Coverage(circle, under, editor.Expected) == "000",
@@ -494,24 +662,41 @@ internal sealed partial class WindowChecks
             (StudioCameraShape.Squircle, "Squircle", "001"),
             (StudioCameraShape.RoundedRectangle, "Rounded rectangle", "011"),
         ];
+        var cornersHeld = true;
         foreach (var (shape, name, signature) in shapes)
         {
-            Edit(
+            cornersHeld &= Edit(
                 editor,
                 $"the camera's shape {name}",
                 () => SetCombo(editor, "StudioCameraShapeComboBox", (int)shape),
                 p => p with { Camera = p.Camera with { Shape = shape } },
-                (_, after) => Coverage(after, under, editor.Expected) == signature ? null : $"of the three points near the corner the camera covers {Coverage(after, under, editor.Expected)}, and this shape covers {signature}",
+                (_, after) =>
+                {
+                    Read(name, after);
+                    return Coverage(after, under, editor.Expected) == signature ? null : $"of the three points near the corner the camera covers {Coverage(after, under, editor.Expected)}, and this shape covers {signature} ({CoverageNumbers(after, under, editor.Expected)})";
+                },
                 () => ComboShows(editor, "StudioCameraShapeComboBox", name));
         }
 
-        Edit(
+        cornersHeld &= Edit(
             editor,
             "the rounded rectangle's corner radius to fully round",
             () => SetSlider(editor, "StudioCameraCornerRadiusSlider", 0.5),
             p => p with { Camera = p.Camera with { CornerRadius = 0.5 } },
-            (_, after) => Coverage(after, under, editor.Expected) == "000" ? null : $"of the three points near the corner the camera covers {Coverage(after, under, editor.Expected)}, and fully round corners cover none",
+            (_, after) =>
+            {
+                Read("fully round", after);
+                return Coverage(after, under, editor.Expected) == "000" ? null : $"of the three points near the corner the camera covers {Coverage(after, under, editor.Expected)}, and fully round corners cover none ({CoverageNumbers(after, under, editor.Expected)})";
+            },
             () => Slider(editor, "StudioCameraCornerRadiusSlider", 0.5, "100%"));
+        _report.Note(
+            "the three points near the camera's corner, read against the picture without the camera that was taken at the layout Screen further up, and against the second one, taken right before these checks: "
+            + string.Join("; ", read.Select(entry => $"{entry.Name} {entry.Early} and {entry.Again}"))
+            + $". Wanted: the circle 000, Rectangle 111, Squircle 001, Rounded rectangle 011, fully round 000. The checks went by the {(ReferenceEquals(under, early) ? "first" : "second")} picture{(AsPrepared ? ", as --as-prepared asks" : "; with --as-prepared they go by the second")}");
+        if (!cornersHeld)
+        {
+            _report.Note($"what the three points near the camera's corner are compared with is the picture without the camera{Kept(under.Shot, "inspector-without-the-camera")}");
+        }
 
         // The camera's frame number reads where the layout now has the camera, and no longer where it was.
         string? Moved(Sight before, Sight after)

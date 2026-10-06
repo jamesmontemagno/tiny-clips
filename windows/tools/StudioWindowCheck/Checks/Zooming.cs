@@ -174,6 +174,22 @@ internal sealed partial class WindowChecks
         return new PartSight(shot, canvas, card, ReadPart(shot, TestMedia.Screen, ScreenLandmarks(frame), card, want, mirror: false, CardInset(canvas, project)));
     }
 
+    /// <summary>
+    /// Keeps the picture of a part that a check did not hold on, with every line that was read
+    /// across an edge in it. Returns what to add to the check's detail.
+    /// </summary>
+    private string KeptPart(Editor editor, PartSight? sight, ScreenPart want, int frame, string name)
+    {
+        if (sight is null)
+        {
+            return string.Empty;
+        }
+
+        var trace = new List<string> { $"{name}: frame {frame}, canvas {sight.Canvas} in a screenshot of {sight.Shot.Width}x{sight.Shot.Height}" };
+        ReadPart(sight.Shot, TestMedia.Screen, ScreenLandmarks(frame), sight.Card, want, mirror: false, CardInset(sight.Canvas, editor.Expected), trace: trace);
+        return Kept(sight.Shot, name, trace);
+    }
+
     /// <summary>Looks until the card shows the wanted part of the wanted frame, or the time is up. The last look is returned either way.</summary>
     private PartSight? LookForPart(Editor editor, ScreenPart want, int frame, double seconds = 3) =>
         Until(() => LookAtPart(editor, want, frame), sight => sight is not null && Judge(sight.Reading, frame) is null, seconds, 30);
@@ -199,7 +215,7 @@ internal sealed partial class WindowChecks
             wrong is null,
             wrong is null
                 ? $"{byHand}; in a card of {R(sight!.Card)}: {sight.Reading}; the edges fit the part {fitted?.ToString() ?? "(too few to tell)"}"
-                : $"{byHand}; {wrong}{(fitted is { } part ? $"; the edges that were found fit the part {part}" : string.Empty)}");
+                : $"{byHand}; {wrong}{(fitted is { } part ? $"; the edges that were found fit the part {part}" : string.Empty)}{KeptPart(editor, sight, want, frame, Slug(name))}");
         return wrong is null ? sight : null;
     }
 

@@ -225,7 +225,12 @@ internal sealed partial class WindowChecks
     /// For a layer that does not fill its rectangle, or that another layer lies over: whether a
     /// point of the picture shows this layer. Only what is read where it does counts.
     /// </param>
-    private static PartReading ReadPart(Shot shot, ClipSpec clip, IEnumerable<Landmark> landmarks, StudioFrameRect layer, ScreenPart want, bool mirror, double inset, Func<double, double, bool>? shown = null)
+    /// <param name="trace">
+    /// Null, or where to write down every line that was read: where it is in the picture, and
+    /// what it found or why it found nothing. For a check that did not hold, which then says
+    /// why an edge was not found and not only that it was not.
+    /// </param>
+    private static PartReading ReadPart(Shot shot, ClipSpec clip, IEnumerable<Landmark> landmarks, StudioFrameRect layer, ScreenPart want, bool mirror, double inset, Func<double, double, bool>? shown = null, List<string>? trace = null)
     {
         var map = ClipMap.ForLayer(clip, layer, want.Rect, mirror);
         var scale = Math.Min(Math.Abs(map.ScaleX), map.ScaleY);
@@ -243,6 +248,7 @@ internal sealed partial class WindowChecks
         var (stripRight, stripBottom) = map.Apply(clip.CodeX + clip.CodeWidth, clip.CodeY + clip.CodeHeight);
         var stripIsInside = Inside((stripLeft + stripRight) / 2, (stripTop + stripBottom) / 2, Math.Abs(stripRight - stripLeft) / 2, (stripBottom - stripTop) / 2);
         var strip = stripIsInside ? FrameCode.Decode(shot.Bgra, shot.Width, shot.Height, clip, map) : FrameCode.Unreadable;
+        trace?.Add(string.Create(CultureInfo.InvariantCulture, $"{clip.Label} in {R(layer)}, showing {want}: {scale:0.0000} pixels of the picture to one of the clip, colours mixed up to {blur:0.00} px from an edge; the frame strip {(stripIsInside ? $"reads {strip}" : "is not in that part")}"));
 
         var edges = new List<EdgeReading>();
         var missing = new List<string>();
@@ -252,6 +258,7 @@ internal sealed partial class WindowChecks
             var half = Math.Min(6, (int)(landmark.Flat * scale) - 4);
             if (half < 2)
             {
+                trace?.Add($"  {landmark.Name}: not read, there is too little flat colour beside it at this size");
                 continue;
             }
 
@@ -259,11 +266,13 @@ internal sealed partial class WindowChecks
             var lines = 0;
             var expected = double.NaN;
             var found = new List<double>();
+            var read = trace is null ? null : new List<string>();
             foreach (var across in landmark.Across)
             {
                 var (x, y) = landmark.IsUpright ? map.Apply(landmark.At, across) : map.Apply(across, landmark.At);
                 if (!Inside(x, y, landmark.IsUpright ? reach : 2, landmark.IsUpright ? 2 : reach))
                 {
+                    read?.Add(string.Create(CultureInfo.InvariantCulture, $"    {(landmark.IsUpright ? "row" : "column")} {across:0} of the clip, at ({x:0.00}, {y:0.00}): not in the part of the layer that shows"));
                     continue;
                 }
 
@@ -272,11 +281,13 @@ internal sealed partial class WindowChecks
 
                 // A mirrored layer shows the colour after an upright edge on its left.
                 var swap = landmark.IsUpright && mirror;
-                var at = FindEdge(shot, x, y, landmark.IsUpright, half, blur, swap ? landmark.After : landmark.Before, swap ? landmark.Before : landmark.After);
+                var at = FindEdge(shot, x, y, landmark.IsUpright, half, blur, swap ? landmark.After : landmark.Before, swap ? landmark.Before : landmark.After, out var why);
                 if (!double.IsNaN(at))
                 {
                     found.Add(at);
                 }
+
+                read?.Add(string.Create(CultureInfo.InvariantCulture, $"    {(landmark.IsUpright ? "row" : "column")} {across:0} of the clip, at ({x:0.00}, {y:0.00}): {(double.IsNaN(at) ? "nothing, " + why : $"the edge {at - expected:+0.00;-0.00} px from its place")}"));
             }
 
             // The edge is read along every line that crosses it inside the picture, and is where
@@ -286,17 +297,23 @@ internal sealed partial class WindowChecks
             // checked like that, and is left out.
             if (lines < 2)
             {
+                trace?.Add($"  {landmark.Name}: left out, {(lines == 0 ? "no line" : "only one line")} crosses it inside the picture");
+                trace?.AddRange(read!);
                 continue;
             }
 
             if (Agreed(found, lines) is { } where)
             {
                 edges.Add(new EdgeReading(landmark.Name, landmark.IsUpright, expected, where));
+                trace?.Add(string.Create(CultureInfo.InvariantCulture, $"  {landmark.Name}: {where - expected:+0.00;-0.00} px from its place, by {found.Count} of {lines} lines of {2 * half} pixels"));
             }
             else
             {
                 missing.Add(landmark.Name);
+                trace?.Add($"  {landmark.Name}: NOT FOUND, {found.Count} of {lines} lines of {2 * half} pixels read an edge{(found.Count >= 2 ? " and they do not agree" : string.Empty)}");
             }
+
+            trace?.AddRange(read!);
         }
 
         return new PartReading(want, layer, strip, stripIsInside, edges, missing, scale);
@@ -332,9 +349,11 @@ internal sealed partial class WindowChecks
     /// side's way to the other, while the brightness changes exactly at the edge.
     /// </remarks>
     /// <param name="blur">How far from the edge the colours may be a mixture, in pixels.</param>
-    private static double FindEdge(Shot shot, double x, double y, bool alongX, int half, double blur, Rgb? before, Rgb? after)
+    /// <param name="miss">When no edge is found: why not.</param>
+    private static double FindEdge(Shot shot, double x, double y, bool alongX, int half, double blur, Rgb? before, Rgb? after, out EdgeMiss miss)
     {
         const double Flatness = 14;
+        miss = default;
         var start = (int)Math.Floor(alongX ? x : y) - half;
         var count = 2 * half;
         var cross = (int)Math.Floor(alongX ? y : x);
@@ -362,16 +381,35 @@ internal sealed partial class WindowChecks
 
         // Two pixels on each side of the line, a pixel clear of it, have to be flat.
         var (a1, a2, b1, b2) = (At(start - 3), At(start - 2), At(start + count + 1), At(start + count + 2));
-        if (a1.R < 0 || a2.R < 0 || b1.R < 0 || b2.R < 0 || a1.Distance(a2) > Flatness || b1.Distance(b2) > Flatness)
+        if (a1.R < 0 || a2.R < 0 || b1.R < 0 || b2.R < 0)
         {
+            miss = new EdgeMiss(EdgeMissKind.LeavesThePicture, default, default, default, 0);
+            return double.NaN;
+        }
+
+        if (a1.Distance(a2) > Flatness)
+        {
+            miss = new EdgeMiss(EdgeMissKind.NotFlatBefore, default, a1, a2, 0);
+            return double.NaN;
+        }
+
+        if (b1.Distance(b2) > Flatness)
+        {
+            miss = new EdgeMiss(EdgeMissKind.NotFlatAfter, default, b1, b2, 0);
             return double.NaN;
         }
 
         var first = new Rgb((a1.R + a2.R) / 2, (a1.G + a2.G) / 2, (a1.B + a2.B) / 2);
         var second = new Rgb((b1.R + b2.R) / 2, (b1.G + b2.G) / 2, (b1.B + b2.B) / 2);
-        if ((before is { } wantFirst && first.Distance(wantFirst) > LandmarkColorTolerance)
-            || (after is { } wantSecond && second.Distance(wantSecond) > LandmarkColorTolerance))
+        if (before is { } wantFirst && first.Distance(wantFirst) > LandmarkColorTolerance)
         {
+            miss = new EdgeMiss(EdgeMissKind.WrongColourBefore, first, wantFirst, default, 0);
+            return double.NaN;
+        }
+
+        if (after is { } wantSecond && second.Distance(wantSecond) > LandmarkColorTolerance)
+        {
+            miss = new EdgeMiss(EdgeMissKind.WrongColourAfter, second, wantSecond, default, 0);
             return double.NaN;
         }
 
@@ -384,6 +422,7 @@ internal sealed partial class WindowChecks
         var byBrightness = Math.Abs(brighter) >= 40;
         if (!byBrightness && apart < 40 * 40)
         {
+            miss = new EdgeMiss(EdgeMissKind.TooAlike, default, first, second, 0);
             return double.NaN;
         }
 
@@ -418,6 +457,7 @@ internal sealed partial class WindowChecks
                 : (((color.R - first.R) * dr) + ((color.G - first.G) * dg) + ((color.B - first.B) * db)) / apart;
             if (along < -0.25 || along > 1.25 || !Between(color))
             {
+                miss = new EdgeMiss(EdgeMissKind.NotBetween, color, first, second, index - half);
                 return double.NaN;
             }
 
@@ -435,6 +475,7 @@ internal sealed partial class WindowChecks
             if ((middle < edge - blur && line[index].Distance(first) > LandmarkColorTolerance)
                 || (middle > edge + blur && line[index].Distance(second) > LandmarkColorTolerance))
             {
+                miss = new EdgeMiss(EdgeMissKind.NeitherColour, line[index], first, second, index - half);
                 return double.NaN;
             }
 
@@ -442,11 +483,48 @@ internal sealed partial class WindowChecks
                 && ((middle < edge - spread && Math.Abs(Brightness(line[index]) - Brightness(first)) > 0.2 * Math.Abs(brighter))
                     || (middle > edge + spread && Math.Abs(Brightness(line[index]) - Brightness(second)) > 0.2 * Math.Abs(brighter))))
             {
+                miss = new EdgeMiss(EdgeMissKind.NeitherBrightness, line[index], first, second, index - half);
                 return double.NaN;
             }
         }
 
         return edge;
+    }
+
+    private enum EdgeMissKind
+    {
+        None,
+        LeavesThePicture,
+        NotFlatBefore,
+        NotFlatAfter,
+        WrongColourBefore,
+        WrongColourAfter,
+        TooAlike,
+        NotBetween,
+        NeitherColour,
+        NeitherBrightness,
+    }
+
+    /// <summary>Why a line across an edge found no edge. Made without work for the garbage collector, and put into words only when a check asks.</summary>
+    /// <param name="Seen">The colour that was not expected, where one was.</param>
+    /// <param name="First">The colour before the line, or the first of two that are compared.</param>
+    /// <param name="Second">The colour after the line, or the second of the two.</param>
+    /// <param name="Pixel">Which pixel of the line, counted from its middle: -1 is the last before it, 0 the first after it.</param>
+    private readonly record struct EdgeMiss(EdgeMissKind Kind, Rgb Seen, Rgb First, Rgb Second, int Pixel)
+    {
+        public override string ToString() => Kind switch
+        {
+            EdgeMissKind.LeavesThePicture => "the line leaves the picture",
+            EdgeMissKind.NotFlatBefore => $"the two pixels before the line are not one flat colour: {First} and {Second}",
+            EdgeMissKind.NotFlatAfter => $"the two pixels after the line are not one flat colour: {First} and {Second}",
+            EdgeMissKind.WrongColourBefore => $"before the line there is {Seen}, and the clip has {First} there",
+            EdgeMissKind.WrongColourAfter => $"after the line there is {Seen}, and the clip has {First} there",
+            EdgeMissKind.TooAlike => $"the colours before and after the line are too alike: {First} and {Second}",
+            EdgeMissKind.NotBetween => $"pixel {Pixel:+0;-0} of the line is {Seen}, which is not on the way from {First} to {Second}",
+            EdgeMissKind.NeitherColour => $"pixel {Pixel:+0;-0} of the line, further from the edge than a mixture reaches, is {Seen}, which is neither {First} nor {Second}",
+            EdgeMissKind.NeitherBrightness => $"pixel {Pixel:+0;-0} of the line, away from the edge, is {Seen}, which is as bright as neither {First} nor {Second}",
+            _ => "an edge",
+        };
     }
 
     /// <summary>

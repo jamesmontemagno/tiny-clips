@@ -21,9 +21,14 @@ internal static class Program
         try
         {
             options = CheckOptions.Parse(args);
-            if (options.Unknown("only", "skip", "out", "media", "held-up", "memory", "help") is { Length: > 0 } unknown)
+            if (options.Unknown("only", "skip", "out", "media", "held-up", "late-drags", "as-prepared", "memory", "help") is { Length: > 0 } unknown)
             {
                 throw new ArgumentException($"Unknown option --{unknown[0]}.");
+            }
+
+            if (!int.TryParse(options.Text("late-drags", "20"), NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            {
+                throw new ArgumentException("--late-drags takes a whole number.");
             }
 
             foreach (var name in options.Names("only").Concat(options.Names("skip")))
@@ -126,7 +131,7 @@ internal static class Program
     {
         Console.WriteLine(
             $"""
-            StudioWindowCheck [--only a,b] [--skip a,b] [--out <folder>] [--media <folder>] [--held-up] [--memory]
+            StudioWindowCheck [--only a,b] [--skip a,b] [--out <folder>] [--media <folder>] [--held-up] [--late-drags <n>] [--as-prepared] [--memory]
 
               --only a,b        run only these groups of checks
               --skip a,b        leave these groups out
@@ -136,7 +141,15 @@ internal static class Program
               --held-up         in the zoom group, play through a zoom that moves in a second time
                                 while the tool makes the garbage collector stop every thread of the
                                 process a few times, as happens to an app on a busy PC
-              --memory          run none of the groups: open and close windows in several ways, and
+              --late-drags <n>  in the scene group, how often a drag is begun in the last frame of a
+                                scene while the preview plays (default: 20)
+              --as-prepared     judge three picture checks the way that was prepared for them while
+                                no check could be run: the camera's corner against a second picture
+                                without the camera; the picture a play-through starts from right but
+                                for one or two edges; and playing into a scene from frame 81, not 75.
+                                Without it all three judge as before and say what the prepared way
+                                would read: see the README
+              --memory           run none of the groups: open and close windows in several ways, and
                                 say which are still in memory afterwards
 
             Groups: {string.Join(' ', WindowChecks.Groups)}

@@ -11,8 +11,9 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 12. Scenes: the lane above the zoom lane, Split, the keys S and Delete, the Scene section of
 // the inspector, and what the preview shows for a scene. What the Scene section's controls do is
-// in SceneSection.cs, the lane under a pointer and Delete in SceneLane.cs, and a scene that is
-// come into while the preview plays in ScenePlaying.cs.
+// in SceneSection.cs, the lane under a pointer and Delete in SceneLane.cs, a scene that is come
+// into while the preview plays in ScenePlaying.cs, and something dragged while it plays, with the
+// keys that wait for a drag to end, in SceneDragging.cs.
 internal sealed partial class WindowChecks
 {
     private const string SplitHint = "Start a new scene at the playhead (S)";
@@ -34,6 +35,7 @@ internal sealed partial class WindowChecks
         DeletingScenes();
         SceneComesWhilePlaying();
         BubbleHandleFollowsTheScene();
+        DragsWhileThePreviewPlays();
         if (_layoutErrors.Count > 0)
         {
             _report.Note($"over the {_layoutErrors.Count} pictures of a paused preview that were read for a scene's layout, the edge furthest from where the format puts it was {F(_layoutErrors.Max(), "0.00")} px from there, and on average the furthest edge of a picture {F(_layoutErrors.Average(), "0.00")} px");

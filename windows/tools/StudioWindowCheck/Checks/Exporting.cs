@@ -9,12 +9,14 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 5. Exporting with the real exporter: the overlay, cancelling, and what a finished export holds.
+// An export whose name is taken while it runs is in ExportName.cs.
 internal sealed partial class WindowChecks
 {
     private void Exporting()
     {
         ExportCancelled();
         ExportFinished();
+        ExportWhoseNameIsTaken();
     }
 
     private string[] ExportFiles() =>

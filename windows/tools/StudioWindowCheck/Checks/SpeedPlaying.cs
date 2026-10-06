@@ -131,11 +131,11 @@ internal sealed partial class WindowChecks
         // Playing into the faster stretch and out of it.
         Timeline.Mark("14: playing through a speed change");
         SetSlider(editor, "StudioPlayhead", MiddleOf(From));
-        var rest = LookForLayout(editor, From, 5);
+        var rest = RestsOn(editor, From, "playing through a speed change", "speed-rest", out var notAtRest);
         var engine = EngineOf(editor);
-        if (rest is null || JudgeLayout(rest.Reading) is not null || engine is null)
+        if (rest is null || notAtRest is not null || engine is null)
         {
-            _report.Check("the preview rests on the frame the playing starts from", false, rest is null ? "no screenshot" : engine is null ? "the window's preview is not the preview engine, or one the tool watches" : JudgeLayout(rest.Reading));
+            _report.Check("the preview rests on the frame the playing starts from", false, notAtRest ?? "the window's preview is not the preview engine, or one the tool watches");
             CloseQuietly(editor);
             return;
         }

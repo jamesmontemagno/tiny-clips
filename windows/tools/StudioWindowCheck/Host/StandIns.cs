@@ -56,13 +56,39 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
     /// </summary>
     internal sealed class TempClipStorage(string directory) : IClipStorageService
     {
+        private readonly object _gate = new();
+        private readonly List<string> _given = [];
         private int _serial;
         private string? _nextPath;
+        private byte[]? _takeNext;
+        private Action? _whenAsked;
 
         public string Directory { get; } = directory;
 
         /// <summary>Makes the next export write to this path instead, once: for an export that has to fail.</summary>
         public void SendNextTo(string path) => Volatile.Write(ref _nextPath, path);
+
+        /// <summary>Every path that was given out for a video, in the order they were asked for.</summary>
+        public string[] Given()
+        {
+            lock (_gate)
+            {
+                return [.. _given];
+            }
+        }
+
+        /// <summary>
+        /// Makes the next name that is given out a taken one, once: a file with these bytes is
+        /// written under it before the name is handed back, as when something else was saved
+        /// under it while the file that asked for the name was still being made. Null to take none.
+        /// </summary>
+        public void TakeNextName(byte[]? content) => Volatile.Write(ref _takeNext, content);
+
+        /// <summary>
+        /// Something to do, once, in the middle of the next request for a name: on the thread
+        /// that asks, before the name is handed back. Null to do nothing.
+        /// </summary>
+        public void WhenNextAsked(Action? act) => Volatile.Write(ref _whenAsked, act);
 
         public string FileExtensionFor(CaptureType type) => type switch
         {
@@ -83,7 +109,19 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
             System.IO.Directory.CreateDirectory(Directory);
             var extension = string.IsNullOrWhiteSpace(fileExtension) ? FileExtensionFor(type) : fileExtension.Trim('.');
             var serial = Interlocked.Increment(ref _serial);
-            return Path.Combine(Directory, $"StudioWindowCheck export {serial}{(string.IsNullOrWhiteSpace(stemSuffix) ? string.Empty : " " + stemSuffix.Trim())}.{extension}");
+            var path = Path.Combine(Directory, $"StudioWindowCheck export {serial}{(string.IsNullOrWhiteSpace(stemSuffix) ? string.Empty : " " + stemSuffix.Trim())}.{extension}");
+            lock (_gate)
+            {
+                _given.Add(path);
+            }
+
+            if (Interlocked.Exchange(ref _takeNext, null) is { } content)
+            {
+                File.WriteAllBytes(path, content);
+            }
+
+            Interlocked.Exchange(ref _whenAsked, null)?.Invoke();
+            return path;
         }
     }
 
@@ -148,10 +186,11 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
     }
 
     /// <summary>
-    /// The real project store on the tool's temp folder, with three additions: it refuses a root
-    /// outside the temp folder, it counts how often a delete was tried and how often it failed, and
-    /// it never lets a cleanup throw. The app's cleanup service writes a cleanup that threw to the
-    /// app's crash log, and this tool must never write there.
+    /// The real project store on the tool's temp folder, with four additions: it refuses a root
+    /// outside the temp folder, it counts how often a delete was tried and how often it failed, it
+    /// never lets a cleanup throw, and it can be told to refuse to write, as a disk that is full
+    /// or a folder that may not be written does. The app's cleanup service writes a cleanup that
+    /// threw to the app's crash log, and this tool must never write there.
     /// </summary>
     internal sealed class GuardedStore : IStudioProjectStore
     {
@@ -162,6 +201,10 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
         private int _deletes;
         private int _failedDeletes;
         private int _cleanups;
+        private int _refusedKeeps;
+        private int _refusedSaves;
+        private string? _refuseNextKeep;
+        private (string ProjectId, string Message)? _refuseSaves;
 
         public GuardedStore(string rootDirectory)
         {
@@ -184,6 +227,24 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
         public string RootDirectory => _inner.RootDirectory;
 
+        /// <summary>How often a request to keep a project, or to let go of it, was refused because a check asked for that.</summary>
+        public int RefusedKeeps => Volatile.Read(ref _refusedKeeps);
+
+        /// <summary>How often a save was refused because a check asked for that.</summary>
+        public int RefusedSaves => Volatile.Read(ref _refusedSaves);
+
+        /// <summary>Refuses the next request to keep a project or to let go of it, once, with this to say for itself. Null to refuse none.</summary>
+        public void RefuseNextKeep(string? message) => Volatile.Write(ref _refuseNextKeep, message);
+
+        /// <summary>Refuses every save of one project from now on, with this to say for itself. Null to save again.</summary>
+        public void RefuseSaves(string? projectId, string message = "")
+        {
+            lock (_gate)
+            {
+                _refuseSaves = projectId is null ? null : (projectId, message);
+            }
+        }
+
         /// <summary>The ids of the projects a cleanup deleted, and what a cleanup threw. Both should stay empty.</summary>
         public (string[] Deleted, string[] Failures) CleanupOutcome()
         {
@@ -205,7 +266,22 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
         public StudioProject Load(string projectId) => _inner.Load(projectId);
 
-        public StudioProject Save(StudioProject project) => _inner.Save(project);
+        public StudioProject Save(StudioProject project)
+        {
+            (string ProjectId, string Message)? refuse;
+            lock (_gate)
+            {
+                refuse = _refuseSaves;
+            }
+
+            if (refuse is { } refused && refused.ProjectId == project.Id)
+            {
+                Interlocked.Increment(ref _refusedSaves);
+                throw new IOException(refused.Message);
+            }
+
+            return _inner.Save(project);
+        }
 
         public void Delete(string projectId)
         {
@@ -223,7 +299,16 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
         public StudioProject MarkOpened(string projectId) => _inner.MarkOpened(projectId);
 
-        public StudioProject SetKeepSources(string projectId, bool keepSources) => _inner.SetKeepSources(projectId, keepSources);
+        public StudioProject SetKeepSources(string projectId, bool keepSources)
+        {
+            if (Interlocked.Exchange(ref _refuseNextKeep, null) is { } message)
+            {
+                Interlocked.Increment(ref _refusedKeeps);
+                throw new IOException(message);
+            }
+
+            return _inner.SetKeepSources(projectId, keepSources);
+        }
 
         public IReadOnlyList<StudioProjectSummary> ListSummaries() => _inner.ListSummaries();
 

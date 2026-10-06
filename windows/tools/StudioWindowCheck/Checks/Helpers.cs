@@ -286,6 +286,61 @@ internal sealed partial class WindowChecks
         return count;
     }
 
+    /// <summary>A check's name as part of a file name: its first words, in small letters, with hyphens between them.</summary>
+    private static string Slug(string name)
+    {
+        var slug = new System.Text.StringBuilder();
+        foreach (var letter in name)
+        {
+            if (slug.Length >= 60)
+            {
+                break;
+            }
+
+            if (char.IsAsciiLetterOrDigit(letter))
+            {
+                slug.Append(char.ToLowerInvariant(letter));
+            }
+            else if (slug.Length > 0 && slug[^1] != '-')
+            {
+                slug.Append('-');
+            }
+        }
+
+        return slug.ToString().Trim('-');
+    }
+
+    /// <summary>
+    /// Keeps a picture that a check did not hold on, in the out folder, so that a person can
+    /// look at what the check saw. The name is the check's, the same in every run, so a later
+    /// run replaces the picture. Returns what to add to the check's detail.
+    /// </summary>
+    /// <param name="notes">Lines to keep beside the picture, in a text file of the same name.</param>
+    private string Kept(Shot? shot, string name, IReadOnlyList<string>? notes = null)
+    {
+        if (shot is null)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var file = $"failed-{name}.png";
+            shot.Save(Path.Combine(_output, file));
+            if (notes is not null)
+            {
+                File.WriteAllLines(Path.Combine(_output, $"failed-{name}.txt"), notes);
+                return $"; the picture is kept as {file}, and what was read in it line by line as failed-{name}.txt";
+            }
+
+            return $"; the picture is kept as {file}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"; the picture could not be kept ({ex.Message})";
+        }
+    }
+
     private static string R(StudioFrameRect rect) => string.Create(CultureInfo.InvariantCulture, $"{rect.Width:0.#}x{rect.Height:0.#} at ({rect.X:0.#},{rect.Y:0.#})");
 
     private static double EdgeDistance(StudioFrameRect a, StudioFrameRect b) => Math.Max(

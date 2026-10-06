@@ -135,7 +135,7 @@ internal sealed partial class WindowChecks
         var engine = EngineOf(editor);
         if (rest is null || Judge(rest.Reading, From) is not null || engine is null)
         {
-            _report.Check(when + "the preview rests on the frame the playing starts from", false, rest is null ? "no screenshot" : engine is null ? "the window's preview is not the preview engine" : Judge(rest.Reading, From));
+            _report.Check(when + "the preview rests on the frame the playing starts from", false, rest is null ? "no screenshot" : engine is null ? "the window's preview is not the preview engine" : Judge(rest.Reading, From) + KeptPart(editor, rest, ScreenPart.Whole, From, "zoom-rest"));
             CloseQuietly(editor);
             return;
         }

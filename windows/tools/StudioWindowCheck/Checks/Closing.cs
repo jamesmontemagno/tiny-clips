@@ -8,7 +8,8 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 6. Closing: the question a project that was never exported asks, what each answer does, and a
-// project that was exported.
+// project that was exported. A window that closes while its edits cannot be saved is in
+// ClosingUnsaved.cs.
 internal sealed partial class WindowChecks
 {
     // The window asks one question at a time, and passes over its close button until the last
@@ -19,6 +20,7 @@ internal sealed partial class WindowChecks
     {
         DraftQuestion();
         ExportAnswer();
+        ClosingWhenTheSaveFails();
     }
 
     /// <summary>Cancel, Keep as draft, the draft opened again, and Delete.</summary>

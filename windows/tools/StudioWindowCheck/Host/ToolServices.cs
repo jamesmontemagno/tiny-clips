@@ -68,6 +68,7 @@ internal sealed class ToolServices
             CanFindPeople = () => PeopleCanBeFound,
         };
         Windows.Exported += (_, e) => Exports.Enqueue(e);
+        Windows.ScreenRecordingSaved += (_, e) => ScreenRecordingsSaved.Enqueue(e);
         Windows.ErrorReported += (_, e) =>
         {
             lock (_gate)
@@ -110,12 +111,27 @@ internal sealed class ToolServices
     /// <summary>Every export the window service reported as finished.</summary>
     public ConcurrentQueue<StudioExportedEventArgs> Exports { get; } = new();
 
+    /// <summary>Every screen recording the window service reported as saved from a project that could not be shown.</summary>
+    public ConcurrentQueue<StudioExportedEventArgs> ScreenRecordingsSaved { get; } = new();
+
     /// <summary>What the window service reported after the window that would have shown it was gone.</summary>
     public string[] Errors()
     {
         lock (_gate)
         {
             return [.. _errors];
+        }
+    }
+
+    /// <summary>
+    /// Takes one report out of <see cref="Errors"/>: one that a check brought about on purpose
+    /// and has looked at, so that what is left at the end of the run is what nobody asked for.
+    /// </summary>
+    public bool Forget(string error)
+    {
+        lock (_gate)
+        {
+            return _errors.Remove(error);
         }
     }
 

@@ -283,17 +283,111 @@ internal sealed partial class WindowChecks
         return (wrong, seen.Count == 0 ? string.Empty : $"at {edgesOff.Count} frame(s) an edge reads further off than it may, paused as well as playing, which is what moves in the test clip lying against it: {string.Join("; ", seen)}");
     }
 
+    /// <summary>
+    /// Looks until the preview rests on the frame a play-through starts from, in the layout of
+    /// that frame, or five seconds are up. Returns the last look, and what is wrong with it, or
+    /// null when nothing is.
+    /// <para>
+    /// At some frames what moves in the test clip lies against a landmark (see
+    /// <see cref="LookAgainPaused"/>). Frame 90 of the screen recording is one: on a screen of
+    /// 1019 × 573 the top of the lime patch reads 0.85 px from its place, paused and playing
+    /// alike, which the play-through into a scene reported in every run while the window with
+    /// a camera had a screen of that size. Since the speed lane made the preview smaller, the
+    /// window without a camera has it, and playing over a cut starts at that frame: the check
+    /// that the preview rests there failed in every run of the evening of 5 October 2026.
+    /// </para>
+    /// <para>
+    /// Such a picture is not at rest here, as it was not in those runs: what is wrong then says
+    /// that the picture is in its layout but for those edges. With <c>--as-prepared</c> it is at
+    /// rest, and a note says which edges were off and by how much. That was prepared while no
+    /// check could be run, and is not the tool's way until a run has shown what is at the
+    /// edge. The reasoning for it: a play-through holds its own picture of such a frame against
+    /// the paused one, so the paused one cannot be asked for more than the play-through's rule
+    /// allows, and a layer that is in the wrong place has all its edges off, not one or two.
+    /// </para>
+    /// </summary>
+    /// <param name="playing">What the play-through is, for the note.</param>
+    /// <param name="keptAs">The name under which the picture is kept when it is not at rest.</param>
+    private LayoutSight? RestsOn(Editor editor, int frame, string playing, string keptAs, out string? wrong)
+    {
+        static bool ButForEdges(LayoutReading reading) => JudgeLayout(reading) is not null && EdgesOff(reading) is { Count: > 0 and <= 2 };
+        var prepared = AsPrepared;
+        var sight = Until(
+            () => LookAtLayout(editor, frame),
+            found => found is not null && (JudgeLayout(found.Reading) is null || (prepared && ButForEdges(found.Reading))),
+            5,
+            30);
+        if (sight is null)
+        {
+            wrong = "no screenshot";
+            return null;
+        }
+
+        var judged = JudgeLayout(sight.Reading);
+        if (judged is null)
+        {
+            wrong = null;
+            return sight;
+        }
+
+        if (!ButForEdges(sight.Reading) || EdgesOff(sight.Reading) is not { } off)
+        {
+            wrong = judged + KeptLayout(editor, sight, keptAs);
+            return sight;
+        }
+
+        var edges = string.Join(", ", off.Select(found => string.Create(
+            CultureInfo.InvariantCulture,
+            $"{found.Edge.Name} of the {(found.IsCamera ? "camera" : "screen")} {found.Edge.Found - found.Edge.Expected:+0.00;-0.00} px")));
+        if (prepared)
+        {
+            _report.Note(
+                $"{playing}: the picture the playing starts from, frame {frame}, is in its layout but for {edges}, further off than an edge may be, paused. "
+                + $"With --as-prepared that is taken as what moves in the test clip lying against it, as at the frames of a play-through that are looked at again paused; read as {sight.Reading}");
+            wrong = null;
+            return sight;
+        }
+
+        wrong = $"{judged}. But for {edges} the picture is in its layout: that is what a play-through looks at again paused in the pictures it draws, and what --as-prepared lets pass here"
+            + KeptLayout(editor, sight, keptAs);
+        return sight;
+    }
+
     private void SceneComesWhilePlaying()
     {
         Timeline.Mark("12: a scene that is come into while the preview plays");
 
         // The second scene starts at 4.0 s, side by side, and is entered by moving for 0.35 s:
-        // the frames 120 to 129 have their instants inside the move. Playing starts at frame 75.
-        const int From = 75;
-        const int PlainFirst = 80;
+        // the frames 120 to 129 have their instants inside the move.
         const int MovingFirst = 120;
         const int MovingLast = 129;
         const int Last = 165;
+
+        // Playing starts at frame 75, and the layout of what is drawn is read from five frames
+        // after the start.
+        //
+        // At frame 75 the camera shows its frame 69. Worked out from the test picture's
+        // definition, and not seen: in that frame its slanted band runs through the gap
+        // between the camera's red and lime patch and over the top of the lime patch, on two
+        // of the three lines that are read across the red patch's right edge, the lime patch's
+        // left edge and the lime patch's top. Since the speed lane made the preview smaller,
+        // the camera is 244 pixels across and not 260, and in every run of the evening of
+        // 5 October 2026 those three edges were not found at this frame, which leaves too few
+        // upright edges. The band is on lines of the camera's patches while the screen shows
+        // its frames 62 to 80, and on lines of the screen's own patches from 82 to 92. At
+        // frame 81 it is past the one and not yet on the other: of the lines read across a
+        // patch's edge it still touches one, of the three across the top of the camera's red
+        // patch.
+        //
+        // So with --as-prepared the playing starts at frame 81. That moves a frame, which is
+        // not this tool's way until a run has shown what is at frame 75: without the option
+        // the check is as it was, and when it fails a note says what frame 81 reads.
+        const int PreparedFrom = 81;
+        var from = AsPrepared ? PreparedFrom : 75;
+        var plainFirst = from + 5;
+
+        // Two thirds of the pictures before the move have to be there: 20 of the frames 80 to 109.
+        var plainWanted = 2 * (MovingFirst - 10 - plainFirst) / 3;
         var folder = NewCameraProject("A scene that is come into", p =>
         {
             p = ForScenePictures(p);
@@ -305,21 +399,40 @@ internal sealed partial class WindowChecks
         }
 
         var project = editor.Expected;
-        SetSlider(editor, "StudioPlayhead", MiddleOf(From));
-        var rest = LookForLayout(editor, From, 5);
+        SetSlider(editor, "StudioPlayhead", MiddleOf(from));
+        var rest = RestsOn(editor, from, "playing into a scene", "scene-rest", out var notAtRest);
         var engine = EngineOf(editor);
-        if (rest is null || JudgeLayout(rest.Reading) is not null || engine is null)
+        if (rest is null || notAtRest is not null || engine is null)
         {
-            _report.Check("the preview rests on the frame the playing starts from, in the first scene's layout", false, rest is null ? "no screenshot" : engine is null ? "the window's preview is not the preview engine" : JudgeLayout(rest.Reading));
+            _report.Check("the preview rests on the frame the playing starts from, in the first scene's layout", false, notAtRest ?? "the window's preview is not the preview engine");
+            if (!AsPrepared && engine is not null)
+            {
+                // What the prepared way would start from.
+                SetSlider(editor, "StudioPlayhead", MiddleOf(PreparedFrom));
+                var other = Until(() => LookAtLayout(editor, PreparedFrom), found => found is not null && JudgeLayout(found.Reading) is null, 3, 30);
+                _report.Note(
+                    $"with --as-prepared playing into a scene starts at frame {PreparedFrom}, where the slanted band of the test picture should be past the camera's patches and not yet on the screen's. Paused there, the picture "
+                    + (other is null
+                        ? "could not be taken"
+                        : JudgeLayout(other.Reading) is { } judged
+                            ? $"is not in the first scene's layout either: {judged}{KeptLayout(editor, other, "scene-rest-prepared")}"
+                            : $"is in the first scene's layout: {other.Reading}"));
+            }
+
             CloseQuietly(editor);
             return;
+        }
+
+        if (AsPrepared)
+        {
+            _report.Note($"--as-prepared: playing into a scene starts at frame {from} and not at 75, and the layout of what is drawn is read from frame {plainFirst} and not from 80; at least {plainWanted} pictures of the frames {plainFirst} to {MovingFirst - 11} are asked for and not 20 of the frames 80 to 109");
         }
 
         // Every picture the engine draws, through the hook it has for its check tools.
         var scenes = new List<SceneReading>();
         var edgesOff = new Dictionary<int, LayoutReading>();
         var cameraNextTo = new List<(int Frame, int Later)>();
-        var lastScene = From;
+        var lastScene = from;
         using var recorder = new SceneRecorder((shot, at) => scenes.Add(ReadDrawnScene(shot, editor.Folder, project, at, ref lastScene, edgesOff, cameraNextTo: cameraNextTo)));
 
         // What the view model raises, and what the window says of the split while it plays. Read on the UI thread, where both happen.
@@ -330,7 +443,7 @@ internal sealed partial class WindowChecks
         // Where the playhead is, for this thread to follow without asking the window: a question
         // through UI Automation is answered on the UI thread, and takes it tens of milliseconds
         // of the very time that is measured here.
-        double[] playhead = [MiddleOf(From)];
+        double[] playhead = [MiddleOf(from)];
         PropertyChangedEventHandler onRaised = (_, e) =>
         {
             var name = e.PropertyName ?? string.Empty;
@@ -440,9 +553,9 @@ internal sealed partial class WindowChecks
 
         // What each of those pictures shows.
         var moving = scenes.Where(scene => scene.Frame is >= MovingFirst and <= MovingLast).ToList();
-        var plain = scenes.Where(scene => scene.Frame is >= PlainFirst and < MovingFirst - 10).ToList();
+        var plain = scenes.Where(scene => scene.Frame >= plainFirst && scene.Frame < MovingFirst - 10).ToList();
         var after = scenes.Where(scene => scene.Frame is > MovingLast and <= Last - 5).ToList();
-        var counted = scenes.SkipWhile(scene => scene.Frame < PlainFirst).TakeWhile(scene => scene.Frame <= Last - 5).ToList();
+        var counted = scenes.SkipWhile(scene => scene.Frame < plainFirst).TakeWhile(scene => scene.Frame <= Last - 5).ToList();
         var unreadable = counted.Count(scene => scene.Frame == FrameCode.Unreadable);
         var readable = counted.Where(scene => scene.Frame != FrameCode.Unreadable).ToList();
         var backwards = readable.Zip(readable.Skip(1), (a, b) => b.Frame < a.Frame).Count(wentBack => wentBack);
@@ -453,7 +566,7 @@ internal sealed partial class WindowChecks
         double WorstOf(List<SceneReading> read) => read.Where(scene => !double.IsNaN(scene.Worst) && !edgesOff.ContainsKey(scene.Frame)).Select(scene => scene.Worst).DefaultIfEmpty(double.NaN).Max();
         _report.Check(
             "while the preview plays into the second scene, every picture it draws shows the layout the format gives for the frame it shows: the bubble layout up to the line, the layers on their way during the move, and side by side after it",
-            recorder.Failure is null && recorder.Unread == 0 && moving.Count >= 6 && plain.Count >= 20 && after.Count >= 20 && wrong.Count == 0 && unreadable == 0 && backwards == 0,
+            recorder.Failure is null && recorder.Unread == 0 && moving.Count >= 6 && plain.Count >= plainWanted && after.Count >= 20 && wrong.Count == 0 && unreadable == 0 && backwards == 0,
             (wrong.Count == 0 ? string.Empty : $"{wrong.Count} of {counted.Count} pictures are wrong: {string.Join(" | ", wrong.Take(4))}. ")
                 + string.Create(CultureInfo.InvariantCulture, $"{moving.Count} pictures of the {MovingLast - MovingFirst + 1} frames of the move, the edge furthest from its place {WorstOf(moving):0.00} px from it; {plain.Count} pictures before it, the furthest {WorstOf(plain):0.00} px; {after.Count} after it, the furthest {WorstOf(after):0.00} px; ")
                 + $"{unreadable} pictures did not read, {backwards} went back to an earlier frame; {scenes.Count} pictures were drawn in all"
@@ -474,22 +587,22 @@ internal sealed partial class WindowChecks
         // the frame after the one that was on screen when Play was pressed: what the preview
         // does with that one is in the note below, and is not a frame of the playing.
         var around = PaceOf(scenes, 105, 134);
-        var before = PaceOf(scenes, From + 1, 104);
+        var before = PaceOf(scenes, from + 1, 104);
         _report.Check(
             "playing into another scene drops and delays no more frames than playing inside one, allowing two",
             around.Dropped <= before.Dropped + 2 && around.Late <= before.Late + 2 && moving.Count >= 6,
-            string.Create(CultureInfo.InvariantCulture, $"of the 30 frames around the line, 105 to 134, {around.Dropped} were never drawn{around.Which} and {around.Late} came more than a frame's time late, the longest wait between two frames {around.LongestMs:0} ms; of the {104 - From} before them, {From + 1} to 104, {before.Dropped}{before.Which} and {before.Late}, the longest wait {before.LongestMs:0} ms; ")
+            string.Create(CultureInfo.InvariantCulture, $"of the 30 frames around the line, 105 to 134, {around.Dropped} were never drawn{around.Which} and {around.Late} came more than a frame's time late, the longest wait between two frames {around.LongestMs:0} ms; of the {104 - from} before them, {from + 1} to 104, {before.Dropped}{before.Which} and {before.Late}, the longest wait {before.LongestMs:0} ms; ")
                 + $"during the {F(played, "0.0")} s of playing the engine drew {diagnosticsAfter.FramesDrawn - diagnosticsBefore.FramesDrawn} pictures and discarded {diagnosticsAfter.LateFramesDiscarded - diagnosticsBefore.LateFramesDiscarded} late frames, "
                 + string.Create(CultureInfo.InvariantCulture, $"and the tool's garbage collector ran {collected.Runs} time(s) and held every thread for {collected.Ms:0} ms in all"));
 
         // How the playing started. Reported, not judged: the layout of the first pictures is
-        // not read (see PlainFirst), and nothing else looks at them.
+        // not read (see plainFirst), and nothing else looks at them.
         var drawn = scenes.Where(scene => scene.Frame != FrameCode.Unreadable).ToList();
-        var leftOut = Enumerable.Range(From + 1, PlainFirst - From - 1).Where(frame => drawn.All(scene => scene.Frame != frame)).ToArray();
+        var leftOut = Enumerable.Range(from + 1, plainFirst - from - 1).Where(frame => drawn.All(scene => scene.Frame != frame)).ToArray();
         _report.Note(drawn.Count == 0
-            ? $"playing was started with frame {From} on screen, and no picture that could be read was drawn after it"
-            : string.Create(CultureInfo.InvariantCulture, $"playing was started with frame {From} on screen: the first picture the preview drew after the tool pressed Play showed frame {drawn[0].Frame}, {Stopwatch.GetElapsedTime(pressed, drawn[0].At).TotalMilliseconds:0} ms after the press; frame {From} was drawn {drawn.Count(scene => scene.Frame == From)} more time(s); ")
-                + $"of the frames {From + 1} to {PlainFirst - 1}, {(leftOut.Length == 0 ? "each was drawn" : string.Join(", ", leftOut) + " was never drawn")}");
+            ? $"playing was started with frame {from} on screen, and no picture that could be read was drawn after it"
+            : string.Create(CultureInfo.InvariantCulture, $"playing was started with frame {from} on screen: the first picture the preview drew after the tool pressed Play showed frame {drawn[0].Frame}, {Stopwatch.GetElapsedTime(pressed, drawn[0].At).TotalMilliseconds:0} ms after the press; frame {from} was drawn {drawn.Count(scene => scene.Frame == from)} more time(s); ")
+                + $"of the frames {from + 1} to {plainFirst - 1}, {(leftOut.Length == 0 ? "each was drawn" : string.Join(", ", leftOut) + " was never drawn")}");
 
         // What the window showed of the second scene while it was still playing.
         _report.Check(

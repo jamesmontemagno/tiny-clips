@@ -96,7 +96,8 @@ internal sealed partial class WindowChecks
     /// Null to hold the camera against the frame that goes with the screen's. Another frame of
     /// the camera recording to read the camera as showing that one.
     /// </param>
-    private static LayoutReading ReadLayout(Shot shot, Box canvas, TestFolder folder, StudioProject project, int frame, int? laidOutAs = null, int? cameraShows = null)
+    /// <param name="trace">Null, or where to write down every line that was read and what it found: see <see cref="ReadPart"/>.</param>
+    private static LayoutReading ReadLayout(Shot shot, Box canvas, TestFolder folder, StudioProject project, int frame, int? laidOutAs = null, int? cameraShows = null, List<string>? trace = null)
     {
         // The instant a frame stands for is its middle (section 6.5 of the project format).
         var resolved = StudioLayoutResolver.Resolve(project, MiddleOf(laidOutAs ?? frame), canvas.Width, canvas.Height);
@@ -114,7 +115,7 @@ internal sealed partial class WindowChecks
             screenLayer = layer;
             if (s.Opacity >= 0.999)
             {
-                screen = ReadPart(shot, folder.Screen, ScreenLandmarks(frame), layer, Part(s.Source), mirror: false, inset: 2, ShownIn(layer, s.CornerRadius, 2, cameraLayer));
+                screen = ReadPart(shot, folder.Screen, ScreenLandmarks(frame), layer, Part(s.Source), mirror: false, inset: 2, ShownIn(layer, s.CornerRadius, 2, cameraLayer), trace);
             }
         }
 
@@ -122,7 +123,7 @@ internal sealed partial class WindowChecks
         if (resolved.Camera is { Opacity: >= 0.999 } c && cameraLayer is { } cameraAt && folder.Camera is { } clip && cameraFrame != FrameCode.Unreadable)
         {
             var radius = c.Shape == StudioCameraShape.Rectangle ? 0 : c.CornerRadius;
-            camera = ReadPart(shot, clip, CameraLandmarks(cameraFrame), cameraAt, Part(c.Source), c.Mirror, inset: c.BorderWidth + 2, ShownIn(cameraAt, radius, c.BorderWidth + 2));
+            camera = ReadPart(shot, clip, CameraLandmarks(cameraFrame), cameraAt, Part(c.Source), c.Mirror, inset: c.BorderWidth + 2, ShownIn(cameraAt, radius, c.BorderWidth + 2), trace);
         }
 
         return new LayoutReading(frame, cameraFrame, resolved, screenLayer, screen, cameraLayer, camera);
@@ -160,6 +161,23 @@ internal sealed partial class WindowChecks
         return new LayoutSight(shot, canvas, ReadLayout(shot, canvas, editor.Folder, project ?? editor.Expected, frame));
     }
 
+    /// <summary>
+    /// Keeps the picture of a layout that a check did not hold on: the screenshot, and beside
+    /// it every line that was read across an edge with what it found. Returns what to add to
+    /// the check's detail.
+    /// </summary>
+    private string KeptLayout(Editor editor, LayoutSight? sight, string name, StudioProject? project = null)
+    {
+        if (sight is null)
+        {
+            return string.Empty;
+        }
+
+        var trace = new List<string> { $"{name}: frame {sight.Reading.Frame}, canvas {sight.Canvas} in a screenshot of {sight.Shot.Width}x{sight.Shot.Height}" };
+        ReadLayout(sight.Shot, sight.Canvas, editor.Folder, project ?? editor.Expected, sight.Reading.Frame, trace: trace);
+        return Kept(sight.Shot, name, trace);
+    }
+
     /// <summary>Looks until the picture shows the layout of a frame, or the time is up. The last look is returned either way.</summary>
     private LayoutSight? LookForLayout(Editor editor, int frame, double seconds = 3, StudioProject? project = null) =>
         Until(() => LookAtLayout(editor, frame, project), sight => sight is not null && JudgeLayout(sight.Reading) is null, seconds, 30);
@@ -177,7 +195,7 @@ internal sealed partial class WindowChecks
             _layoutErrors.Add(sight.Reading.Worst);
         }
 
-        _report.Check(name, wrong is null, wrong is null ? $"frame {frame}: {sight!.Reading}" : $"frame {frame}: {wrong}; read as {sight?.Reading}");
+        _report.Check(name, wrong is null, wrong is null ? $"frame {frame}: {sight!.Reading}" : $"frame {frame}: {wrong}; read as {sight?.Reading}{KeptLayout(editor, sight, Slug(name), project)}");
         return wrong is null ? sight : null;
     }
 

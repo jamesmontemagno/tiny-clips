@@ -24,10 +24,18 @@ Every result is read back by the tool itself, in one of these ways:
 - what an editor asks its preview to play at, and when, written down on its way to the preview
   engine: see "Speed changes".
 
-**Not run yet.** The `speed` group, the checks of the camera's Background choice in `inspector`,
-and what changed with them in `scene`, `cut` and `themes` were written while no check tool
-could be run on the machine. They compile, and that is all that is known of them: see "Speed
-changes" for what that leaves open.
+**Last run on 5 October 2026, before what is named below was written.** In three full runs of
+that evening 451 of 454 checks passed, and the same three failed in each: see "Three checks on
+a smaller preview". The `speed` group, which had been written while no check tool could be
+run, ran for the first time that evening and passed all 76 of its checks.
+
+**Not run yet.** Written after those runs, again while no check tool could be run: what is
+dragged while the preview plays (`scene`), Keep this project (`inspector`), a project that
+cannot be shown (`open`), a save that fails as a window closes (`close`), an export whose name
+is taken (`export`), their four pictures (`themes`), what is kept of a picture check that
+fails, and what was prepared for the three failures, which the tool does only when it is told
+to (`--as-prepared`). They compile, and that is all that is known of them: see "Written on
+5 October 2026 and not run" and "Three checks on a smaller preview".
 
 ## Needs
 
@@ -45,8 +53,10 @@ dotnet build windows\tools\StudioWindowCheck\StudioWindowCheck.csproj -c Debug -
 windows\tools\StudioWindowCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioWindowCheck.exe
 ```
 
-A full run took about three minutes before the `speed` group was added, and has not been timed
-since. It exits with 0 when every check passed and with 1 when one did not, after printing one
+A full run took about four minutes and fifty seconds in each of three runs on 5 October
+2026, with 454 checks, before the checks of that evening were added; the `speed` group alone
+took 65 s.
+It exits with 0 when every check passed and with 1 when one did not, after printing one
 `FAILED:` line for each; 2 is a usage error.
 
 | Option | |
@@ -56,6 +66,8 @@ since. It exits with 0 when every check passed and with 1 when one did not, afte
 | `--out <folder>` | where reports, trees and pictures go (default `out` next to the project) |
 | `--media <folder>` | where the test clips are, or are generated (default `..\StudioPreviewCheck\out\media` when it has them, otherwise `media` in the out folder) |
 | `--held-up` | in the `zoom` group, play through a zoom that moves in a second time while the tool holds its own process up: see "A frame that comes late" |
+| `--late-drags <n>` | in the `scene` group, how often a drag is begun in the last frame of a scene (default 20, at least 2): see "Something dragged while the preview plays" |
+| `--as-prepared` | judge the three checks that failed on 5 October 2026 the way that was prepared for each while no check tool could be run. Without it they judge as they did when they failed, and the report says what the prepared way would have read: see "Three checks on a smaller preview" |
 | `--memory` | run none of the groups: open and close windows with one thing done to each, and say which are still in memory afterwards: see "A closed window that stays in memory" |
 
 Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut speed`.
@@ -92,15 +104,28 @@ Groups: `open transport inspector trim export close windows accessibility themes
   four speed changes, two long ones with their rate written on them and two short ones with
   their mark alone, a faster and a slower one of each, over a zoom and a cut of the same
   length; and the same with the first speed change selected.
+- `out\project-section-light.png`, `-dark.png`: the window with the inspector scrolled to its
+  end, where the extras, the Project section with Keep this project, and Save as default look
+  are.
+  `out\cannot-be-shown-light.png`, `-dark.png`: the window of a project whose file cannot be
+  read, with the button that saves its screen recording.
+- `out\failed-<name>.png`, and for most of them `out\failed-<name>.txt`, only when a check
+  that reads a picture did not hold: the screenshot the check read, and beside it every line
+  that was read across an edge with what it found there, or the numbers of the points that
+  were compared. The failed check says the name. A run does not remove the ones of the run
+  before it.
 - `out\tree-*.txt`: the UI Automation tree of the window in each state the `accessibility` group
   reads: opening, the editor in three layouts, exporting, the question on closing, a recording
   without a camera, and a project that cannot be opened; from the `zoom` group, with a zoom
   selected and with suggested zooms; from the `scene` group, with three scenes; from the `cut`
-  group, with a cut selected; and from the `speed` group, with a speed change selected.
+  group, with a cut selected; from the `speed` group, with a speed change selected; and from
+  the `open` group, of a project that cannot be shown and offers its recording
+  (`tree-cannot-be-shown.txt`).
 - `out\tab-order.txt`, `out\tab-order-scenes.txt`, `out\tab-order-cuts.txt`,
-  `out\tab-order-speed.txt`: the tab stops of the window with a zoom selected, with three
-  scenes, with a cut selected, and with a speed change selected, in the order the focus moves
-  through them.
+  `out\tab-order-speed.txt`, `out\tab-order-project.txt`, `out\tab-order-cannot-be-shown.txt`:
+  the tab stops of the window with a zoom selected, with three scenes, with a cut selected,
+  with a speed change selected, of the inspector through its Project section, and of the
+  window of a project that cannot be shown, in the order the focus moves through them.
 - `out\open-failure-<time>-<n>.txt`, only when a window could not open its project: what the
   preview failed with, each exception with its error code, and what the preview engines wrote
   to their trace in the eight seconds before. The window itself shows one sentence, and the
@@ -151,14 +176,24 @@ Someone may be working on the machine while the tool runs, so:
   - `MemorySettings`: the app's settings, in memory. They start with the Studio preview switch on,
     because the cleanup that follows a closed window runs only then.
   - `TempClipStorage`: exported videos go to `exports` in the temp folder, not to the Videos
-    folder.
+    folder. It writes down every name it gives out. A check can have the next name it gives
+    out taken, by a file it writes under that name before handing it back, and can have
+    something done in the middle of the next request for a name: both stand for a file that
+    something else saves while a video is being made.
   - `NoRecorder`: the cleanup service asks whether a Studio recording is running. None ever is.
   - `GuardedStore`: the real `StudioProjectStore`, which refuses a root outside the temp folder,
     counts delete attempts, and never lets a cleanup throw (the app's cleanup service writes a
-    cleanup that threw to the crash log).
+    cleanup that threw to the crash log). A check can have it refuse the next request to keep
+    a project, once, and every save of one project until told otherwise, each with an
+    `IOException` and a sentence of the check's, as a disk that is full does.
 - `Host\ToolServices.cs` builds `StudioWindowService` the way the app does, with those five, and
   replaces `ActivateWindow`: a window is shown once, without activation; a second request for the
-  same window, which in the app brings it to the front, is counted.
+  same window, which in the app brings it to the front, is counted. What the window service
+  hands the app is written down: every export it reports as finished, every screen recording
+  it reports as saved from a project that cannot be shown, and every error it reports for a
+  window that is closing (`ErrorReported`), as the kind of the error and its sentence. In the
+  app the first two finish the clip as any saved video is, and the third is shown as a
+  notification; none of that is in the tool.
 - **Whether people can be found in a camera picture** is the tool's to say
   (`ToolServices.PeopleCanBeFound`). The app answers that for each editor it opens by whether
   the model that finds people is next to it (`StudioPersonFinders.IsAvailable`). No such file is
@@ -212,6 +247,17 @@ Someone may be working on the machine while the tool runs, so:
   and the gesture that a press on a handle begins and its release ends is begun and ended on
   the view model. The bar's own pointer handlers are never run. Which element a real pointer
   lands on, and that the element keeps the pointer while it is down, is not checked.
+- **A drag while the preview plays** is made the same way. The view model is told that a
+  gesture begins, as the overlay's handle and a slider's row tell it when a pointer takes hold
+  (`BeginGesture`); the values are then set a frame's time or two apart, the camera's place by
+  `MoveBubbleTopLeft`, which the handle calls for every move, and a slider's through the
+  property its slider is bound to; and the gesture is ended. Right before the first change the
+  tool keeps the UI thread busy for 70 ms, as it is on a busy PC: the preview has shown two
+  frames more by then than the editor has heard of. A drag in the last frame of a scene is
+  begun on the UI thread right after the view model reports the playhead in that frame, in
+  every other try after 40 ms of the same. A zoom is held on its lane, for the keys that wait
+  while something is dragged, by `PressAt` and `DragTo`. That the first move of a real pointer
+  on a slider's thumb or on the handle reaches the view model as a gesture is not checked.
 - **The focus is moved inside the window only.** The window never has the keyboard. Where the
   focus goes is read from XAML's own focus manager: the order of the tab stops by asking it to
   move the focus to the next stop over and over, and where the focus lands after a button
@@ -235,7 +281,8 @@ Someone may be working on the machine while the tool runs, so:
   window.
 - `open`: a project with screen and camera, with a screen only, and with its recording missing.
   The camera's place is also found from pixels alone, as what changes in the picture when the
-  camera is hidden, and compared with the overlay's handle.
+  camera is hidden, and compared with the overlay's handle. Then a project whose file cannot
+  be read (`Checks\CannotBeShown.cs`): see "A project that cannot be shown".
 - `transport`: Play, Pause, the frame steps and the playhead as a slider, the end of the kept
   range, and Play again from there.
 - `inspector`: every control. For each edit the picture has to show the edit, Undo has to give
@@ -244,6 +291,11 @@ Someone may be working on the machine while the tool runs, so:
   is between one and two times the size needed, so the same frame in the same place can be scaled
   from another size than last time, which shows along its edges. A picture counts as given back
   when at most a fifth of the pixels the edit changed, and a twentieth of the others, differ.
+  The camera's shapes are told apart by three points near the corner of the camera's rectangle,
+  which a shape covers or leaves to the picture without the camera. That picture is the one
+  taken at the layout Screen. A second one is taken right before the camera's checks, a note
+  says what each corner check reads against either, and the checks go by the second one only
+  with `--as-prepared`: see "Three checks on a smaller preview".
   Then the camera's Background choice (`Checks\CameraBackground.cs`): that it is not there
   where people cannot be found, nor in a recording without a camera; that Keep, Blur and Remove
   are radio buttons by those names between Mirror and Border, one tab stop together; that Blur
@@ -251,17 +303,21 @@ Someone may be working on the machine while the tool runs, so:
   removed; and that the choice goes and comes with the camera's other styling, is saved with
   the project, and is part of a saved look. No picture is read for it: what a blurred or a
   removed background looks like is the renderer's, and `StudioRenderCheck` checks it.
+  Then Keep this project (`Checks\KeepProject.cs`): see the section of that name.
 - `trim`: the two handles and the playhead as sliders, a step as a screen reader takes it, the
   limits, Start here and End here, and where the handles are drawn.
 - `export`: the overlay, Cancel, what Esc runs, the window's close button while an export runs
   (on a square canvas, which takes longer and leaves time to answer), and a finished export of a
   trimmed range. The file is read with ffprobe and decoded with ffmpeg: every frame has to show
   the screen and camera frames of the trimmed range where the layout puts them, and one frame is
-  compared with the preview's picture of it at a grid of points.
+  compared with the preview's picture of it at a grid of points. Then an export whose name is
+  taken by another file while it runs (`Checks\ExportName.cs`): see "An export whose name is
+  taken".
 - `close`: the question on a project that was never exported and each of its four answers, the
   draft opened again, and an exported project. After an answer the tool waits 0.7 s before it
   presses the close button again: the window asks one question at a time, and passes over its
-  close button until the last question has finished closing.
+  close button until the last question has finished closing. Then a save that fails
+  (`Checks\ClosingUnsaved.cs`): see "A save that fails as a window closes".
 - `windows`: two projects in two windows, a project opened twice, and, as the last thing of a
   run, the app exiting with two editors open (after which the window service opens nothing).
 - `accessibility`: every element in the window's content has a name, every control a person
@@ -271,7 +327,10 @@ Someone may be working on the machine while the tool runs, so:
 - `themes`: the pictures, and that each is what its name says. For the window with scenes,
   zooms, cuts and speed changes, at both sizes: the ten items of the transport row are on one
   row in their order, the four lanes and the trim bar are one above the other and equally wide,
-  all of it whole inside the window, and the canvas is at least 400 × 225.
+  all of it whole inside the window, and the canvas is at least 400 × 225. For the Project
+  section: Mute audio, Keep this project and Save as default look are whole in the picture,
+  one under the other. For a project that cannot be shown: the button is whole in the picture,
+  under the message, and enabled.
 - `zoom`: the lane above the trim bar, Add zoom, what Z and Delete run, the lane's keys, its
   blocks as list items, Previous and Next, the Zoom section with every control of the selected
   zoom, the focus pad, the Start and End buttons, presses and drags on the lane, a zoom that
@@ -288,7 +347,9 @@ Someone may be working on the machine while the tool runs, so:
   the lane's keys, its blocks as list items, presses and drags on it; what the scene the
   playhead is in looks like, in both themes; Delete with the focus on the lane and Delete scene;
   a scene that is come into while the preview plays, with what that costs the UI thread; the
-  handle on the camera, which is the current scene's; names, tab order, and undo and redo.
+  handle on the camera, which is the current scene's; names, tab order, and undo and redo; and
+  what is dragged while the preview plays (`Checks\SceneDragging.cs`): see "Something dragged
+  while the preview plays".
 - `cut`: the empty lane; Cut by X and by both buttons, where a cut is already and where none
   fits; the lane's keys and its blocks as list items; Previous and Next; the six buttons of
   Start and End; that a zoom or a cut is selected and never both; Delete and Delete cut; undo
@@ -379,7 +440,13 @@ from the camera's later start.
   check of a play-through therefore looks again at every frame of which the drawn picture was
   right but for one or two edges, with the preview paused on that frame, and passes it when the
   paused picture has the same edges as far off, to a quarter of a pixel. A layer that was drawn
-  in the wrong place has all its edges off, and differs from the paused picture.
+  in the wrong place has all its edges off, and differs from the paused picture. The picture a
+  play-through starts from is such a paused picture, and it is judged as any picture at rest
+  is, with no edge let off: playing over a cut starts at frame 90, and since the window
+  without a camera has a screen of 1019 × 573, the size at which that frame reads so, that
+  check fails. What is wrong then says that the picture is in its layout but for that edge.
+  With `--as-prepared` such a picture passes, and a note says which edge and by how much (see
+  "Three checks on a smaller preview").
 - Frames of an exported video may be half a pixel further off, 1.25 px: they have been through
   an encoder once more than the preview's picture. The furthest edge in the 75 frames of the
   export that is decoded was 1.13 px from its place.
@@ -486,24 +553,17 @@ window's doing:
 
 ## Speed changes
 
-**None of this has been run.** The group was written, and the checks around it changed, while
-the machine was not to be used for anything but compiling. So of every sentence in this section
-that says what a check does, read: what it is written to do. What is known is that the tool
-compiles without a warning. What is not known:
+The group was written, and the checks around it changed, while the machine was not to be used
+for anything but compiling. It ran for the first time on 5 October 2026 in the evening: all 76
+of its checks passed, in a run of the group alone, which took 65 s, and in three full runs. So
+the numbers its checks expect, which were worked out by hand from the editor's rules and the
+test clips and are written out in a comment at each check, and the limits of the checks that
+read pixels, which were set from the brushes and the sizes in the XAML and not from a
+picture, fit the window as it is. What is still not known is whether each check can fail:
+twenty-four faults are ready in a script (see "Faults that were tried") and none has been
+tried.
 
-- whether each check passes on the window as it is. Every number a check expects was worked out
-  by hand, from the editor's rules and the test clips, and is written out in a comment at the
-  check; none has been seen on a screen or in a report. A check that fails on its first run is
-  as likely to be wrong itself as to have found something;
-- whether the limits of the checks that read pixels fit what the window draws: how round an end
-  has to be, how flat a fill, how many pixels make a mark, how far a tinted pixel of the trim
-  bar is from the bar's own colour. They were set from the brushes and the sizes in the XAML,
-  not from a picture;
-- how long the group takes, and so how long a full run takes;
-- whether a check can fail. Twenty-four faults are ready in a script (see "Faults that were
-  tried") and none has been tried.
-
-What the group is written to check, in `Checks\Speed.cs`, `SpeedLane.cs` and `SpeedPlaying.cs`:
+What the group checks, in `Checks\Speed.cs`, `SpeedLane.cs` and `SpeedPlaying.cs`:
 
 - **Adding.** The empty lane; R, Speed in the transport row and Change speed at playhead in the
   section; where a speed change already is, and where the shortest does not fit; what is read
@@ -585,16 +645,346 @@ rate inside it and at the recording's own after it, each within a fifth. Nothing
 change. The checks of the pictures drawn on the way, of the playhead and of the time shown hold
 for an engine that plays the rate as for one that does not.
 
+## Written on 5 October 2026 and not run
+
+What follows was written in the evening of 5 October 2026, while the machine was not to be
+used for check tools. It compiles without a warning. Of every sentence in this section that
+says what a check does, read: what it is written to do. Every value a check expects was
+worked out from the editor's code and is written out at the check; none has been seen in a
+report. A check that fails on its first run is as likely to be wrong itself as to have found
+something. Twenty-six faults for these checks are ready in a script and none has been tried:
+see "Faults that were tried". If nothing ends a part early, the `scene` group has 13 checks
+more, `open` 8, `inspector` 6, `themes` 4, `close` 3 and `export` 1.
+
+### Something dragged while the preview plays
+
+In `Checks\SceneDragging.cs`, in the `scene` group. A drag is many changes to the scene the
+playhead is in, and while the recording plays the playhead may come into the next scene before
+the drag is over. So the editor stops the preview at the first change of a drag, when the
+recording has more than one scene, and the whole drag stays in the scene the picture stopped
+in. How a drag is made without a pointer is in "What stands in for a person".
+
+- **A drag stops the preview.** In a recording with three scenes, each with its camera at a
+  place and of a size of its own: the camera's handle, the Size slider and the horizontal
+  offset; in one with side-by-side scenes: Camera share and Move takes. Each time the editor
+  has to be paused right after the first change, on the frame the picture then stays on (read
+  from the frame strips, not from the edges: the frame is not the check's to choose); the
+  scene of that frame, and no other, has to have changed as the drag asked; and one Undo has
+  to take the whole drag back.
+- **What does not stop it.** The same two moves of the camera without a gesture around them,
+  which are two undo steps; Padding in a gesture, which is the whole recording's and no
+  scene's; and a drag of the camera in a recording with one scene. The preview has to play on
+  through each and after it.
+- **A drag that begins in the last frame of a scene.** Stopping the preview puts the playhead
+  on the frame the picture stays on, which can be the first frame of the next scene. The scene
+  that changes then has to be that one, with the new horizontal offset and its own vertical
+  one. Twenty tries (`--late-drags` for more), every other one with the UI thread held up for
+  40 ms first. A note says in how many the stop landed in the next scene; if it is none, the
+  case was not met and the check has shown less than its name says.
+- **Undo in the middle of a drag** takes back what the drag did so far, in the editor and in
+  the picture, leaves the edit that was made before the drag, and leaves the drag open; what
+  the drag does after it is one undo step. Undo is pressed by its button. The window offers
+  that button in the middle of a drag only when there was something to undo before the drag:
+  a note says what the button did with nothing to undo from before.
+- **The keys wait.** While a zoom is held on its lane, what Delete, S, 1, Ctrl+Z and Ctrl+E
+  run has to be nothing, and what Space and Right run has to play, pause and step. Once the
+  pointer lets go, each of the five has to act again.
+
+### Keep this project
+
+In `Checks\KeepProject.cs`, in the `inspector` group. The check box is read through UI
+Automation and the project file is read by the tool itself, as JSON, not through the store.
+
+- Its name, state, description and tooltip; its place after Mute audio under a heading Project
+  and before Save as default look, in what a screen reader walks and among the tab stops.
+- Switching it writes `keepSources` into the file within 0.4 s, which is before the editor's
+  own save of an edit would (0.6 s after the edit), and leaves Undo and Redo as they were. One
+  Undo afterwards takes back the edit before it, and neither it nor the Redo changes the check
+  box or what the file says once each has been saved.
+- During an export. The window disables the whole editor under the export overlay, and the
+  check box with it, so the check switches it through the check box when that is enabled and
+  otherwise through the property the check box is bound to, and a note says which. The file
+  has to say so at once, the export has to end, and the project has to list its video and
+  still be as it was switched.
+- Closed and opened again, the check box is as it was left.
+- When the store refuses, the check box has to go back to what the file says, the message bar
+  has to say why, nothing may be reported to the app, and the next switch has to work.
+
+### A project that cannot be shown
+
+In `Checks\CannotBeShown.cs`, in the `open` group. The project file is made one that this
+version cannot read by setting its `schemaVersion` to 99; nothing else in the folder is
+touched, and every check holds the folder against what it was before the window opened, file
+by file, by length, time and hash.
+
+- The window says why, and has a button Save the screen recording that is enabled, described,
+  and the next tab stop after the message; nothing of the editor is there. Its tree is audited
+  like the other states.
+- The button puts a copy of `screen.mp4`, byte for byte, where the tool's storage says videos
+  go, under the name it gave; the status says "Saved as" and that name and is read out; the
+  window service reports it once, and not as an export.
+- A second request made in the middle of the save, from where the save asks for its name,
+  has to be over at once and ask for no name; the button is disabled meanwhile and the status
+  says that the recording is being saved.
+- With the name taken by another file by the time the copy is complete, the copy gets the
+  next name and the other file is as it was.
+- Where the recording cannot be written, the status says that it could not be saved and why,
+  is read out, nothing is left behind, nothing is reported, and the button works again.
+- The close button closes the window without a question.
+- Without a recording in the folder the button is not there, neither for a screen reader nor
+  among the tab stops.
+
+Not covered: five names taken one after the other, after which the app gives up with an
+error.
+
+### A save that fails as a window closes
+
+In `Checks\ClosingUnsaved.cs`, in the `close` group. The tool's store refuses every save of
+the project with a sentence of the check's.
+
+- An edit and the close in one turn of the UI thread, as when the app exits right after an
+  edit: the window has to close without a question, and the window service has to report the
+  failed save once (`ErrorReported`), in the words the message bar would have had. A note says
+  what a screen reader was sent from the closing window and what message its editor held; the
+  bindings of the message bar are still alive while the window lets go of its project, so
+  the bar may open unseen. That is not judged.
+- The order a person meets it in: the edit fails to save while the window is open, which the
+  window says in its message bar and does not report to the app; then the window is closed
+  and kept as a draft, and the save it tries once more is reported once.
+
+### An export whose name is taken
+
+In `Checks\ExportName.cs`, in the `export` group, with the real exporter. The export is
+promised a name that no file has; once its progress has reached 3 % the tool writes another
+file under that name. The video then has to be whole under the next name (read with ffprobe:
+its codec, size, rate and number of frames), the other file has to be as it was, the project
+has to link to the name the video got, and the app has to be told once, of that name.
+
+## Three checks on a smaller preview
+
+With the speed lane under it, the preview is smaller than it was: the canvas of a window with
+a camera went from 1157 × 651 to 1082 × 609 pixels, and the screen of a window without a
+camera from 1071 × 603 to 1019 × 573. In every one of the four runs made on that code, in the
+evening of 5 October 2026, the same three checks failed.
+
+**Nothing in this section was seen in a picture taken at the moment of a check.** No check
+tool could be run when it was written. It says what each of the three checks reads and
+where, what the test clips have at those places by their definition, and what a run should
+therefore show. Each of those is a prediction, to be held against the first run, which leaves
+what is needed for it: `failed-*.png` and `failed-*.txt` (see "What it leaves behind") and
+the notes named below.
+
+**The three checks judge as they did when they failed.** What was prepared for each is done
+only with `--as-prepared`. Without it the report says what the prepared way would have read,
+so that one run shows both.
+
+### How the pictures were worked out
+
+The test clips are ffmpeg's `testsrc2` with the frame strip, the patches and a label drawn
+over it (`..\StudioPreviewCheck\Media\TestMedia.cs`). So a frame can be drawn from ffmpeg's
+source for that picture (`vsrc_testsrc.c`, `test2_fill_picture`): the bars; a slanted band,
+16 rows high, that goes down through the picture in two seconds and up again in two; a
+checker of noise at the bottom right, in cells of 16 pixels that are alternately plain and
+noisy, the noise different in every frame and the same whenever that frame is shown; a small
+square that bounces. From such a frame a copy was made of the size the preview makes
+(`StudioPreviewCopyTargets`), the layer was drawn from the copy on whole pixels with linear
+sampling (`StudioSceneRenderer`), and this tool's reader, written out again line for line,
+read the result. Not in it: what the encoder did to the recording, and how the player scales
+a frame into its copy, for which several ways were tried.
+
+How far that can be trusted was measured against the runs of that day. They printed ten
+readings in full. Nine of them the worked-out picture has edge for edge, which were found and
+which were not; the tenth, frame 69 of the camera, but for one edge or two, depending on how
+the copy is made. Of how far an edge is off where the band lies on it, it is right within
+0.2 px at one frame (frame 90: 1.0 px for 0.85) and wrong by 0.65 px at another (frame 142:
+0.3 px for 0.97). Of two pictures that passed, of which the runs printed nothing, it has one
+passing and one failing. So it says which lines the band disturbs, and not by how much.
+Pictures those runs saved were held against it as well: the band within two pixels of the
+clip at 27 places in five frames, the square within two in three frames, and in
+`window-light.png`, of the 289 cells of the checker that the camera is clear of, 287 plain or
+noisy as the rule says.
+
+### 1. The corner of a fully round camera, in `inspector`
+
+**What the check reads.** Three points, 2 %, 5 % and 10 % of the camera's short side in from
+the top left corner of its rectangle, along the diagonal. A point counts as covered when the
+mean of 3 × 3 pixels there differs by more than 20, in one of its three colours, from the
+picture without the camera. Fully round corners cover none of the three, and the check read
+"010".
+
+**Where, at the present size.** From the layout: the camera is 433.1 × 243.6 at (724.7, 513.1)
+of the screenshot, and its corners have a radius of 121.8. The points are at (729.5, 518.0),
+(736.8, 525.3) and (749.0, 537.5), which is 44, 33 and 16 pixels outside the arc. The screen
+recording is drawn in 650 × 365 at (310, 288), about a third of its size, so the three blocks
+of 3 × 3 pixels show columns 1235 to 1244 and rows 678 to 687 of the recording, 1255 to 1264
+and 698 to 707, and 1294 to 1303 and 734 to 743.
+
+**What is there.** From the code, the app draws nothing there but the screen recording: the
+camera has no border, its shadow is at 0 by then, and the outline of its handle shows only
+under a pointer and would cross the first point, not the second. From ffmpeg's source, the
+recording has its checker of noise there, at frame 90. The first block is inside a plain
+cell, blue. The second is in the bottom right corner of a plain cell and reaches a fifth of a
+pixel of the recording into the noisy cells to its right and under it. The third lies across
+the corner where two noisy and two plain cells meet. The band and the square are far from
+all three in that frame.
+
+**What can differ between two pictures of that.** From the code: the preview draws a recording
+from a copy of its frame, and `StudioPreviewCopyTargets` keeps a copy while it is large
+enough and less than twice too large. The picture without the camera was taken at the layout
+Screen, from the copy the window opened with, 960 × 540. The check then goes through the
+layout Camera, which hides the screen recording and makes its copy 86 × 48; back in the
+bubble layout the copy is made for what is needed then, 680 × 382. So the pictures with the
+camera were drawn from another copy of the same frame than the picture they are compared
+with. In the morning the two copies were 1358 × 764 and 960 × 540.
+
+**Worked out.** From one copy the three points do not differ at all. From the two copies of
+the evening they differ by 0 or 1 at the first point, by 4 to 10 at the second and by 4 to 21
+at the third, over six ways of scaling a frame into its copy; from the two of the morning by
+0, by 3 to 5 and by 2 to 4. That reads "000", or "001", and not "010". It reads "010" in some
+cases when the two copies are sampled a fifth of a copy pixel or more away from where this
+arithmetic has them, which the edges the runs read do not rule out: in 4 of 625 combinations
+within a fifth of a copy pixel, in 58 within three tenths. In the saved picture the plain
+cells are as plain as worked out, so it is not the encoder.
+
+**So this one is not explained.** The copies are the one thing found that differs between the
+two pictures at those points, and not at the first; and in the arithmetic they do not differ
+by enough. Either they differ by more than was worked out, or something is at the middle
+point in the picture with the camera, which would be the app's.
+
+**What a run should show.** Two notes in the `inspector` group. The first says how the picture
+taken at the layout Screen differs from a second picture without the camera, taken right
+before the camera's checks by going to the layout Screen and back, which keeps the copy:
+"differs from it by *a*, *b*, *c* at the three points … and by more than 20 in *n* of the …
+pixels of the screen recording". The second says what each corner check reads against either
+picture: "… fully round 010 and …".
+
+- *a* should be 0 or 1, and *n* some thousands of the 236,520. If *n* is next to nothing,
+  both pictures came from one copy, and the above is wrong from the start.
+- If *b* is over 20 and the fully round camera reads "000" against the second picture, it was
+  the copies, and the check was wrong to compare across them.
+- If *b* is under 20, as worked out, the fully round camera reads "010" against the second
+  picture as well. Then something is drawn at the middle point. The failed check prints the
+  three colours with and without the camera and which pixels along the diagonal differ, and
+  keeps the pictures before and after the edit and the one without the camera.
+
+**Prepared, with `--as-prepared`:** the corner checks go by the second picture. The points,
+the 20 and the frame are as they were.
+
+### 2. The picture that playing into a scene starts from, in `scene`
+
+**What the check reads.** Paused at frame 75, both layers against the first scene's layout:
+every edge of the test picture that the layer shows, on three lines or more across it, each
+line 12 pixels long and three wide, with two flat pixels before and after it. An edge is
+found when at least two of its lines, and more than half of them, agree. The check failed on
+the camera: too few upright edges, which are asked to span a fifth of the layer.
+
+**Where, at the present size.** The camera is 244 × 244 at (914, 513), mirrored, showing the
+middle 720 columns of its clip at 0.339 pixels to one of the clip, from a copy of 454 × 256.
+It was 260 × 260, from a copy of 640 × 360. It shows its frame 69. Its four patches are 64
+pixels of the clip wide and high and 32 apart, which is 21.7 and 10.8 pixels of the picture.
+A line across the side of a patch reaches 9 pixels to each side, so it has 1.8 pixels to
+spare before the next patch, where colours are taken to mix up to 1.7 pixels from an edge;
+at 260 × 260 it had 2.6. The sides of the patches are read on rows 456, 472 and 488 of the
+clip, their tops on three columns each.
+
+**What is there.** From ffmpeg's source, in frame 69 of the camera's clip the band covers rows
+454 to 469 at the red patch's right side and 446 to 461 at the lime patch's left side. So it
+runs through the gap between the two, on the line of row 456 and against the line of row
+472, and leaves the line of row 488 clear. Above the lime patch it covers the four and the
+eight rows just over the patch's top on the second and the third of the three columns read
+there. Of the three lines of each, the band is therefore on two of the red patch's right
+side, of the lime patch's left side and of the lime patch's top: the three edges that were
+not found. The other two that were not found never are at these sizes: left of the red patch
+the bar changes 20 pixels of the clip from the patch, and right of the gray patch the checker
+of noise begins. The upright edges that are left span 128 pixels of the clip, which is 43 of
+the layer's 244, and 49 are asked for.
+
+**Worked out.** At 244 × 244 the lime patch's top is not found, and its left side is not found
+with one way of making the copy and found with the other. The red patch's right side is
+found, 0.7 px off, from two lines that are 1.2 px apart, where the run did not find it: two
+lines agree while they are up to 1.5 px apart, so the run's two were further apart than
+that, or one of them read nothing. At 260 × 260 both sides at the gap are found and the
+picture passes, as it did in the morning.
+
+**What a run should show.** In `failed-scene-rest.txt`: for the red patch's right edge, nothing
+on row 456 (a pixel that is not on the way from the band's colour, about (240, 0, 78), to
+red), on row 472 nothing or an edge more than a pixel from its place, and on row 488 an edge
+within 0.3 px; for the lime patch's left edge nothing on rows 456 and 472 and an edge on row
+488; for the lime patch's top an edge on column 560 and nothing on columns 576 and 592. And
+a note: paused at frame 81, the picture is in the first scene's layout.
+
+**Prepared, with `--as-prepared`:** playing into a scene starts at frame 81 and not at 75,
+what is drawn is judged from frame 86 and not from 80, and 16 pictures of the frames 86 to
+109 are asked for where it is 20 of the frames 80 to 109. By the band's rule it is on lines
+of the camera's patches while the screen shows its frames 62 to 80 and on lines of the
+screen's own patches from 82 to 92; at 81 it touches one, of the three across the top of the
+camera's red patch. That moves a frame, which is why it is not done unasked. Nothing in the
+reader was changed for it.
+
+### 3. The picture that playing over a cut starts from, in `cut`
+
+**What the check reads.** As above, paused at frame 90, the screen recording alone. An edge
+was 0.85 px from its place, the lime patch's top, where 0.75 px is allowed.
+
+**Where, at the present size.** The screen is 1019 × 573 at (126, 205), 0.531 pixels to one of
+the clip, from a copy of 1358 × 764. The top of the lime patch, row 450 of the clip, is read
+on columns 296, 304 and 312, at (283.1, 443.8), (287.3, 443.8) and (291.6, 443.8) of the
+screenshot.
+
+**What is there.** From ffmpeg's source, in frame 90 the band's top row is 450 at column 296,
+446 at column 304 and 444 at column 312, and its colour there is (0, 255, 115), green with
+some blue, over a lime patch. On the first column it begins where the patch does; on the
+second it puts green four rows above the patch's top, which is two pixels of the picture;
+on the third, six rows. It can be seen in `window-light.png` of those runs, which shows
+frame 90. And it is known from the runs: playing into a scene reported, in each of the three
+full runs of that morning, "frame 90: the lime patch's top of the screen -0.85 px while
+playing and -0.85 px paused", with the screen in 1019 × 573, which was the size the window
+with a camera had then.
+
+**Worked out.** The same edges found and not found as in the run. The first column reads the
+edge 0.3 to 0.45 px above its place, the second 1.7 px above it, and the third nothing; the
+two that read are taken to agree, and the edge is put half way between them, 1.0 px above
+its place, where the run had 0.85. The top of the blue patch is not found, as in the run:
+the band's lower edge is where two of its three lines take their flat colour from. At
+1071 × 603 the worked-out picture fails the same way, and the run of the morning passed: the
+two lines are 1.3 to 1.4 px apart there, and at 1.5 they no longer agree.
+
+**What a run should show.** The check fails as before, and adds that but for the lime patch's
+top the picture is in its layout. In `failed-cut-rest.txt`: the lime patch's top by 2 of 3
+lines, the one on column 296 within half a pixel of its place and the one on column 304 more
+than a pixel above it, and nothing on column 312, with a pixel that is neither red nor
+green; the blue patch's top not found, with two lines whose two pixels before the line are
+not one flat colour.
+
+**Prepared, with `--as-prepared`:** the picture a play-through starts from may be right but for
+one or two edges, as a picture drawn during a play-through may be when the paused picture
+reads the same, and a note says which edges and by how much. The 0.75 px and the frame are
+as they were.
+
+**What may be better, and was not written.** Two lines across an edge agree when each is
+within 0.75 px of the middle between them, which lets them be 1.5 px apart; of three lines,
+two have to be within 0.75 px of the middle one. If two lines had to be within 0.75 px of
+each other, the top of the lime patch would not be found at frame 90, which a reading may
+have of up to a third of its edges, and nothing would be let off. In the worked-out pictures
+that makes frame 90 pass at both sizes, has frame 69 of the camera read exactly as the run
+printed it with one of the two ways of making the copy, 20 edges and the same five not
+found, and leaves no picture of either play-through right but for an edge. It changes what
+is read in every picture of every group, so it is for after a run.
 ## Faults that were tried
 
-**For speed changes, the Background choice and the trim bar, none was tried.** Twenty-four are
-written down in `faults-speed.ps1`, which is with the report of that work and not in the
-repository, each with the group to run and the check that is expected to catch it; the script
-says for each whether its place in the code is still there, and refuses to do more while the
-machine is not to be used for check tools. One of them, the transport row handing the focus
-past Speed when Split switches itself off, would have failed nothing as the checks stood, so
-the `scene` group got a check for it: a place where neither a zoom nor a cut fits and a speed
-change does. Whether that check, or any of the others, catches its fault has not been seen.
+**For speed changes, the Background choice and the trim bar, and for what was written on
+5 October 2026, none was tried.** Fifty are written down in `faults-evening.ps1`, which is with
+the report of that work and not in the repository: the twenty-four for speed changes, the
+Background choice and the trim bar, and twenty-six more, six for what is dragged while the
+preview plays and the keys that wait, seven for Keep this project, eight for a project that
+cannot be shown, two for a save that fails as a window closes, and three for an export whose
+name is taken. Each names the group to run and the check that is expected to catch it; the
+script says for each whether its place in the code is still there, which it is for all fifty,
+and refuses to do more while the machine is not to be used for check tools. One of the
+twenty-four, the transport row handing the focus past Speed when Split switches itself off,
+would have failed nothing as the checks stood, so the `scene` group got a check for it: a
+place where neither a zoom nor a cut fits and a speed change does. Whether that check, or any
+of the others, catches its fault has not been seen.
 
 For scenes and cuts, thirty-seven faults were put into a copy of the tree, one at a time, each
 built and run against the group it belongs to:

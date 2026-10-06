@@ -55,6 +55,17 @@ internal sealed partial class WindowChecks
         _finished = finished;
     }
 
+    /// <summary>
+    /// Whether three picture checks judge the way that was prepared for them on 5 October 2026,
+    /// while no check could be run (<c>--as-prepared</c>): the corner of the camera is held
+    /// against a picture without the camera taken right before; the picture a play-through
+    /// starts from may be right but for one or two edges; and playing into a scene starts at
+    /// frame 81 and not at 75. Without the option all three judge as they did when they failed,
+    /// and say in the report what the prepared way would have read. See "Three checks on a
+    /// smaller preview" in the README.
+    /// </summary>
+    private bool AsPrepared => _options.Flag("as-prepared");
+
     /// <summary>Starts the checks on their own thread. When they are done, <c>finished</c> runs on the UI thread.</summary>
     public void Start()
     {
@@ -74,6 +85,10 @@ internal sealed partial class WindowChecks
         {
             _uia = new Uia();
             _report.Line($"foreground window at the start: \"{Native.TitleOf(Native.Foreground())}\"");
+            if (AsPrepared)
+            {
+                _report.Line("--as-prepared: the corner of the camera is held against a second picture without the camera, the picture a play-through starts from may be right but for one or two edges, and playing into a scene starts at frame 81.");
+            }
             if (_options.Flag("memory"))
             {
                 // Asked for with --memory: this and nothing else.
@@ -88,6 +103,7 @@ internal sealed partial class WindowChecks
             {
                 Inspector();
                 CameraBackground();
+                KeepingTheProject();
             });
             Group("trim", "4. Trimming", Trimming);
             Group("export", "5. Exporting with the real exporter", Exporting);

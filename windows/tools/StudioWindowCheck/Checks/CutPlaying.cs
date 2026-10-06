@@ -63,11 +63,11 @@ internal sealed partial class WindowChecks
         // Playing over it.
         Timeline.Mark("13: playing over a cut");
         SetSlider(editor, "StudioPlayhead", MiddleOf(From));
-        var rest = LookForLayout(editor, From, 5);
+        var rest = RestsOn(editor, From, "playing over a cut", "cut-rest", out var notAtRest);
         var engine = EngineOf(editor);
-        if (rest is null || JudgeLayout(rest.Reading) is not null || engine is null)
+        if (rest is null || notAtRest is not null || engine is null)
         {
-            _report.Check("the preview rests on the frame the playing starts from", false, rest is null ? "no screenshot" : engine is null ? "the window's preview is not the preview engine" : JudgeLayout(rest.Reading));
+            _report.Check("the preview rests on the frame the playing starts from", false, notAtRest ?? "the window's preview is not the preview engine");
             CloseQuietly(editor);
             return;
         }
