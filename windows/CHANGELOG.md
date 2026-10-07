@@ -101,10 +101,12 @@ own `CHANGELOG.md` at the repository root.
     choose a panel. Selecting or adding a zoom, a cut, or a speed change, splitting or going to
     a scene, and dragging the camera in the preview show that panel by themselves; undo, redo,
     the layout keys, playing, and scrubbing leave the panel alone. When the panel that had the
-    keyboard focus goes away, the focus is on the rail's item for the new panel, and when a
-    key takes away the control that had it, as **Delete** does with the selected zoom's, the
-    focus is on the rail's item for the panel on show. A panel without a zoom, a cut, or a
-    speed change says how to add the first one.
+    keyboard focus goes away, the focus is on the rail's item for the new panel. When a key
+    takes away the control that had it, as **Delete** does with the selected zoom's, the focus
+    stays in the inspector: on the next control of the panel, or on the rail's item for the
+    panel on show when the panel has none after it. **Space** plays and pauses from the rail's
+    chosen item, as it does from a slider. A panel without a zoom, a cut, or a speed change
+    says how to add the first one.
   - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
     for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
     layer. The live preview does not play a speed change at its speed yet: it shows the stretch

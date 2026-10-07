@@ -206,7 +206,8 @@ With the switch on:
   The inspector shows one panel at a time, chosen on the rail down its outer edge: **Scene**,
   **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**, **Audio**, and
   **Project** (no Scene and no Camera without a camera). The rail is one stop for `Tab`, and
-  `Up`/`Down`/`Home`/`End` choose a panel. Selecting or adding a zoom, a cut, or a speed change,
+  `Up`/`Down`/`Home`/`End` choose a panel; `Space` plays and pauses from its chosen item as it
+  does from a slider. Selecting or adding a zoom, a cut, or a speed change,
   splitting or going to a scene, and dragging the camera in the preview show that panel by
   themselves; undo, redo, the layout keys, playing, and scrubbing leave the panel alone. The
   crop sliders of the screen and of the camera are in a **Crop** group that is closed while
