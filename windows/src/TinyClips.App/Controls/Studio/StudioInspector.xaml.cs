@@ -316,9 +316,14 @@ public sealed partial class StudioInspector : UserControl
     /// change the panel. It is sent to the chosen item. A press on an item is a choice, and the
     /// arrow keys move inside the rail: both are left alone.
     /// </summary>
+    /// <remarks>
+    /// A press is known by how the focus comes, with the pointer, and not by the device that
+    /// was used last: that one is whatever the window saw last, also for a focus that the
+    /// window or a screen reader moves by itself.
+    /// </remarks>
     private void OnRailGettingFocus(UIElement sender, GettingFocusEventArgs args)
     {
-        if (args.InputDevice is FocusInputDeviceKind.Mouse or FocusInputDeviceKind.Touch or FocusInputDeviceKind.Pen
+        if (args.FocusState == FocusState.Pointer
             || (args.OldFocusedElement is { } old && IsInside(old, RailList)))
         {
             return;
@@ -356,6 +361,65 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
+    // After a key
+
+    /// <summary>
+    /// What has the keyboard focus, when that is a control of the panel on show, and null
+    /// otherwise. The window asks before it runs what a key means, and hands the answer to
+    /// <see cref="KeepFocusAfterKey"/> when the key has done its work.
+    /// </summary>
+    internal DependencyObject? AsPanelControl(object? focused) =>
+        focused is DependencyObject element && IsInside(element, PanelHost) ? element : null;
+
+    /// <summary>
+    /// What a key did may have taken away the control that had the keyboard focus: Delete takes
+    /// the selected zoom's controls with the zoom, Undo and Redo may do the same, and a layout
+    /// key hides what the camera has in another layout. The focus has then gone to whatever
+    /// comes next in the window, which is past the inspector. It is put on the rail's item for
+    /// the panel on show, where it also goes when a whole panel goes away.
+    /// </summary>
+    /// <remarks>
+    /// A control that is still there has kept the focus, or the key gave the focus away on
+    /// purpose: both are left alone. So is a focus that went on to another control of the
+    /// inspector, which is the next one of the same panel.
+    /// </remarks>
+    internal void KeepFocusAfterKey(DependencyObject? held)
+    {
+        if (held is null || CanHaveFocus(held) || XamlRoot is not { } root)
+        {
+            return;
+        }
+
+        if (FocusManager.GetFocusedElement(root) is DependencyObject focused
+            && !ReferenceEquals(focused, held)
+            && IsInside(focused, this))
+        {
+            return;
+        }
+
+        FocusOnRail(ViewModel.InspectorPanel, FocusState.Keyboard);
+    }
+
+    /// <summary>Whether a control of a panel is still shown and switched on, with everything around it up to this control.</summary>
+    private bool CanHaveFocus(DependencyObject element)
+    {
+        for (var at = element; at is not null; at = VisualTreeHelper.GetParent(at))
+        {
+            if (at is UIElement { Visibility: Visibility.Collapsed } or Control { IsEnabled: false })
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(at, this))
+            {
+                return true;
+            }
+        }
+
+        // No longer under this control at all.
+        return false;
+    }
+
     private static bool IsInside(DependencyObject element, DependencyObject ancestor)
     {
         for (var at = element; at is not null; at = VisualTreeHelper.GetParent(at))
@@ -379,9 +443,11 @@ public sealed partial class StudioInspector : UserControl
     }
 
     /// <summary>
-    /// A group that follows its crop closes when the crop is reset or undone, which can be with
-    /// the keyboard focus on one of its sliders or on Reset crop. The focus then goes to the
-    /// group's header, before the group closes.
+    /// A group that still follows its crop closes when the crop goes, which can be with the
+    /// keyboard focus on one of its sliders: a screen reader can press Reset crop without
+    /// putting the focus on it. The focus then goes to the group's header, before the group
+    /// closes. Where Reset crop had the focus itself it has lost it by then, because it was
+    /// switched off first: its own handler puts the focus on the header.
     /// </summary>
     private void SyncCropGroup(Expander group, UIElement controls, bool isOpen)
     {
@@ -561,17 +627,26 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
-    // Reset crop switches itself off. In a group that stays open the focus goes to the first of
-    // its sliders. A group that was open only because of the crop closes with it, and the focus
-    // has gone to its header by then.
+    // Reset crop switches itself off. In a group that stays open, as one does whose header was
+    // pressed or in which a slider was moved, the focus goes to the first of its sliders. A
+    // group that was open only because of the crop closes with it, and the focus goes to its
+    // header. The button is switched off before the group closes, so the focus has left it for
+    // whatever comes next in the window by the time either is done here.
 
     private void OnResetScreenCropClick(object sender, RoutedEventArgs e)
     {
         var focus = StudioFocus.StateOf(sender);
         ViewModel.ResetScreenCrop();
-        if (!ViewModel.CanResetScreenCrop && focus != FocusState.Unfocused && ViewModel.IsScreenCropOpen)
+        if (!ViewModel.CanResetScreenCrop && focus != FocusState.Unfocused)
         {
-            ScreenCropLeftRow.FocusSlider(focus);
+            if (ViewModel.IsScreenCropOpen)
+            {
+                ScreenCropLeftRow.FocusSlider(focus);
+            }
+            else
+            {
+                FocusHeader(ScreenCropGroup, focus);
+            }
         }
     }
 
@@ -579,9 +654,25 @@ public sealed partial class StudioInspector : UserControl
     {
         var focus = StudioFocus.StateOf(sender);
         ViewModel.ResetCameraCrop();
-        if (!ViewModel.CanResetCameraCrop && focus != FocusState.Unfocused && ViewModel.IsCameraCropOpen)
+        if (!ViewModel.CanResetCameraCrop && focus != FocusState.Unfocused)
         {
-            CameraCropLeftRow.FocusSlider(focus);
+            if (ViewModel.IsCameraCropOpen)
+            {
+                CameraCropLeftRow.FocusSlider(focus);
+            }
+            else
+            {
+                FocusHeader(CameraCropGroup, focus);
+            }
+        }
+    }
+
+    /// <summary>Puts the keyboard focus on the header of a crop group, which is the first thing in it that takes the focus.</summary>
+    private static void FocusHeader(Expander group, FocusState state)
+    {
+        if (FocusManager.FindFirstFocusableElement(group) is Control header)
+        {
+            header.Focus(state);
         }
     }
 

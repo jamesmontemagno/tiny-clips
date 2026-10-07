@@ -309,8 +309,9 @@ public sealed partial class StudioViewModel
     public bool CanResetCameraCrop => !CameraCrop.IsEmpty;
 
     // The crop groups. The four sliders of a crop are behind a header that opens and closes
-    // them: open while the picture is cropped, until the header is pressed, and from then on as
-    // the header left it.
+    // them: open while the picture is cropped, until the header is pressed or one of the
+    // sliders moves an edge. From then on a group is as the header left it, and one in which
+    // a slider was moved stays open.
 
     /// <summary>What a closed group says in its header, and to a screen reader, while its picture is cropped.</summary>
     public string CroppedText => "Cropped";

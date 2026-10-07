@@ -41,6 +41,7 @@ public sealed partial class StudioWindow : Window
     private readonly IStudioPreviewViewFactory _previewViews;
     private readonly ICaptureSettings _settings;
     private readonly WindowChromeController _chromeController;
+    private readonly StudioInspector _inspector;
     private readonly StudioTimeline _timeline;
     private readonly Action<StudioWindow, Task> _onClosed;
     private FrameworkElement? _previewView;
@@ -79,7 +80,8 @@ public sealed partial class StudioWindow : Window
             CanvasChoice.Items.Add(StudioEditorModel.GetAspectName(aspect));
         }
 
-        InspectorHost.Child = new StudioInspector(viewModel);
+        _inspector = new StudioInspector(viewModel);
+        InspectorHost.Child = _inspector;
         _timeline = new StudioTimeline(viewModel);
         TimelineHost.Child = _timeline;
         CanvasHost.Children.Add(new StudioPreviewOverlay(viewModel));
@@ -461,7 +463,14 @@ public sealed partial class StudioWindow : Window
 
         if (action != StudioShortcutAction.None)
         {
+            // What the key does may take away the control of the inspector that has the focus.
+            // An export has the focus put where it belongs by itself.
+            var held = _inspector.AsPanelControl(focused);
             ViewModel.Run(action);
+            if (!ViewModel.IsExporting)
+            {
+                _inspector.KeepFocusAfterKey(held);
+            }
         }
 
         return action;
