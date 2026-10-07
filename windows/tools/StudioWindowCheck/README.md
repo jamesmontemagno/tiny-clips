@@ -1090,8 +1090,10 @@ In `Checks\InspectorPanels.cs` and `Checks\InspectorRail.cs`, and in most other 
 checks. Written on 6 October 2026, in quiet mode, without a check tool, and to be read like
 the rest of this section: it compiles, the rules behind it pass their unit tests
 (`StudioInspectorPanelTests`, `StudioEditorSessionInspectorTests`), and not one check below
-has run, neither the 25 new ones nor the older ones as they are now. If nothing ends a part
-early, a full run has 553 checks where it had 528, all 25 more in `inspector`.
+has run, neither the 28 new ones nor the older ones as they are now. If nothing ends a part
+early, a full run has 556 checks where it had 528, all 28 more in `inspector`. Three of the
+28 came later the same day, with what a reading of the code found: see "After a review" at
+the end of this section.
 
 The inspector no longer shows everything in one scroll. A rail down its outer edge has an
 item for each panel (Scene, Background, Screen, Camera, Zoom, Cut, Speed, Audio, Project; a
@@ -1176,7 +1178,7 @@ walked as it is.
 - Playing into a scene (`ScenePlaying.cs`) puts the Scene panel on show before it plays,
   because it reads that panel while the preview plays and measures the UI thread's time.
 
-**New, 25 checks, all in `inspector`** (`Checks\InspectorRail.cs`):
+**New, 28 checks, all in `inspector`** (`Checks\InspectorRail.cs`):
 
 - *The rail of a recording with a camera* (7). It opens on Scene; the rail is a list called
   Inspector panels with nine items in their order, each a list item with the panel's name,
@@ -1195,11 +1197,14 @@ walked as it is.
   End, Left and Right run on a lane; and, by what the pointer handlers call, the camera
   dragged in the preview, a press on a scene's block, and Show scene, the button the Camera
   panel has where the scene hides the camera. Before each act another panel is put on show.
-- *Where the keyboard focus goes* (5): from a slider of the panel that goes away to the
+- *Where the keyboard focus goes* (7): from a slider of the panel that goes away to the
   rail's item for the new panel, with the act's own sentence read out and no other; from the
   rail to the rail's new item; not at all from Play; from Show scene, which is in the panel
-  that goes away, to the rail's Scene item; and a focus that is put on an item of the rail
-  that is not the chosen one lands on the chosen one and changes no panel.
+  that goes away, to the rail's Scene item; from a slider of the selected zoom to the rail's
+  Cut item when Add cut is pressed through UI Automation, where a cut is selected and where
+  one is added; from a slider of the selected zoom to the rail's Zoom item when what Delete
+  runs has deleted the zoom; and a focus that is put on an item of the rail that is not the
+  chosen one lands on the chosen one and changes no panel.
 - *What leaves the panel alone* (1): Undo and Redo and what Ctrl+Z and Ctrl+Y run, what the
   keys 1 to 4 run, playing into a zoom, the playhead moved into a zoom, a cut, a speed change
   and another scene, a press on an empty part of three lanes, an item taken out of the
@@ -1208,12 +1213,15 @@ walked as it is.
 - *A recording without a camera* (3): it opens on Background with seven items; asked for
   Camera it shows Screen and asked for Scene it shows Background, and so does what S runs;
   through all seven panels there is no control of the Scene or of the Camera panel.
-- *The crop groups by themselves* (4), in a project that comes with a cropped screen: the
-  screen's group is open and the camera's closed; Reset crop, pressed with the focus on it in
-  a group whose header was never pressed, closes the group and the focus goes to its header,
-  and Undo opens it again; collapsed over a crop the group says Cropped, as its description
-  and as a word in its header; the camera's group opens when it is expanded, its sliders say
-  that the crop is the camera's, and collapsed without a crop it does not say Cropped.
+- *The crop groups by themselves* (5), in a project that comes with a cropped screen: the
+  screen's group is open and the camera's closed, and each is a button with a name that can
+  be expanded and collapsed, which is what the framework's expander tells UI Automation it
+  is; Reset crop, pressed with the focus on it in a group whose header was never pressed,
+  closes the group and the focus goes to its header, and Undo opens it again; a slider that
+  brings the last edge back to nothing leaves the group open with the focus on that slider;
+  collapsed over a crop the group says Cropped, as its description and as a word in its
+  header; the camera's group opens when it is expanded, its sliders say that the crop is the
+  camera's, and collapsed without a crop it does not say Cropped.
 
 What these checks can show, and what they cannot. The rail's Up, Down, Home and End are the
 framework's list's own keys. The tool presses no keys, and unlike the lanes the rail has no
@@ -1233,6 +1241,30 @@ opens or closes moves for a third of a second, which nothing looks at.
 Not covered: the rail in a window at its smallest size; a panel shown by a jump while the
 rail is scrolled; the Tab key from the last control of a panel to the timeline (the walks
 show it, and no check names it); and Settings, which this tool does not open.
+
+**After a review.** The code of the rail was read through by a second reader on the evening
+of 6 October, still without a window. What that changed here, none of it run:
+
+- The first check of the crop groups asked for a group. The framework's expander tells UI
+  Automation that it is a button (`ExpanderAutomationPeer`), so the check as it was written
+  could only fail. It asks for a button now.
+- Three checks are new, one for each fault the reading found in the app. *Add cut through UI
+  Automation, with the focus on a slider of the selected zoom*: the editor used to say the
+  edit before the panel, the zoom's controls went away under the focus, and the focus was on
+  Play before the inspector looked for it. *What Delete runs, with the focus on a slider of
+  the selected zoom*: no panel changes, so nothing moved the focus, and it went to Play too.
+  The window now looks after a key whether the control that had the focus is still there.
+  *A crop slider that brings the last edge back to nothing*: the group followed its crop and
+  closed under the slider.
+- The check that Reset crop leaves the focus on the group's header was right and the app
+  was not: the button is switched off before its group closes, so the focus had left it.
+- The check that the focus alone chooses no panel put the focus on an item of the rail as
+  the keyboard does. The app told a press from that by the device the window had seen last,
+  which under this tool is wherever the pointer happens to be. It goes by how the focus
+  comes now, so the check no longer depends on the pointer.
+- What a key does to the focus is checked through the window's own method for a key, as
+  everywhere here. A check that puts the focus on a control of a panel and then runs a key
+  now also runs the window's look after the key.
 
 ## Three checks on a smaller preview
 
