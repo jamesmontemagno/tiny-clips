@@ -1090,10 +1090,10 @@ In `Checks\InspectorPanels.cs` and `Checks\InspectorRail.cs`, and in most other 
 checks. Written on 6 October 2026, in quiet mode, without a check tool, and to be read like
 the rest of this section: it compiles, the rules behind it pass their unit tests
 (`StudioInspectorPanelTests`, `StudioEditorSessionInspectorTests`), and not one check below
-has run, neither the 28 new ones nor the older ones as they are now. If nothing ends a part
-early, a full run has 556 checks where it had 528, all 28 more in `inspector`. Three of the
-28 came later the same day, with what a reading of the code found: see "After a review" at
-the end of this section.
+has run, neither the 31 new ones nor the older ones as they are now. If nothing ends a part
+early, a full run has 559 checks where it had 528, all 31 more in `inspector`. Six of the
+31 came later the same day, with what two readings of the code found: see "After a review"
+and "After a second reading" at the end of this section.
 
 The inspector no longer shows everything in one scroll. A rail down its outer edge has an
 item for each panel (Scene, Background, Screen, Camera, Zoom, Cut, Speed, Audio, Project; a
@@ -1178,7 +1178,7 @@ walked as it is.
 - Playing into a scene (`ScenePlaying.cs`) puts the Scene panel on show before it plays,
   because it reads that panel while the preview plays and measures the UI thread's time.
 
-**New, 28 checks, all in `inspector`** (`Checks\InspectorRail.cs`):
+**New, 31 checks, all in `inspector`** (`Checks\InspectorRail.cs`):
 
 - *The rail of a recording with a camera* (7). It opens on Scene; the rail is a list called
   Inspector panels with nine items in their order, each a list item with the panel's name,
@@ -1197,14 +1197,16 @@ walked as it is.
   End, Left and Right run on a lane; and, by what the pointer handlers call, the camera
   dragged in the preview, a press on a scene's block, and Show scene, the button the Camera
   panel has where the scene hides the camera. Before each act another panel is put on show.
-- *Where the keyboard focus goes* (7): from a slider of the panel that goes away to the
+- *Where the keyboard focus goes* (8): from a slider of the panel that goes away to the
   rail's item for the new panel, with the act's own sentence read out and no other; from the
   rail to the rail's new item; not at all from Play; from Show scene, which is in the panel
   that goes away, to the rail's Scene item; from a slider of the selected zoom to the rail's
   Cut item when Add cut is pressed through UI Automation, where a cut is selected and where
   one is added; from a slider of the selected zoom to the rail's Zoom item when what Delete
-  runs has deleted the zoom; and a focus that is put on an item of the rail that is not the
-  chosen one lands on the chosen one and changes no panel.
+  runs has deleted the zoom; Space, handed to the window the way a key on its way down is,
+  plays and pauses with the focus on the rail's chosen item, and is left to the control with
+  Ctrl, as a held key, on another item of the rail and on Play; and a focus that is put on an
+  item of the rail that is not the chosen one lands on the chosen one and changes no panel.
 - *What leaves the panel alone* (1): Undo and Redo and what Ctrl+Z and Ctrl+Y run, what the
   keys 1 to 4 run, playing into a zoom, the playhead moved into a zoom, a cut, a speed change
   and another scene, a press on an empty part of three lanes, an item taken out of the
@@ -1213,21 +1215,28 @@ walked as it is.
 - *A recording without a camera* (3): it opens on Background with seven items; asked for
   Camera it shows Screen and asked for Scene it shows Background, and so does what S runs;
   through all seven panels there is no control of the Scene or of the Camera panel.
-- *The crop groups by themselves* (5), in a project that comes with a cropped screen: the
+- *The crop groups by themselves* (7), in a project that comes with a cropped screen: the
   screen's group is open and the camera's closed, and each is a button with a name that can
   be expanded and collapsed, which is what the framework's expander tells UI Automation it
   is; Reset crop, pressed with the focus on it in a group whose header was never pressed,
   closes the group and the focus goes to its header, and Undo opens it again; a slider that
   brings the last edge back to nothing leaves the group open with the focus on that slider;
-  collapsed over a crop the group says Cropped, as its description and as a word in its
-  header; the camera's group opens when it is expanded, its sliders say that the crop is the
-  camera's, and collapsed without a crop it does not say Cropped.
+  an edge moved while a zoom is selected leaves the Screen panel on show and the zoom as it
+  was, and one Undo takes the edge back and can be redone; Undo and Redo of the selected
+  zoom's level, with the Screen panel on show, leave it on show; collapsed over a crop, with
+  the focus on one of its sliders, the group says Cropped, as its description and as a word
+  in its header, and the focus is on its header; the camera's group opens when it is
+  expanded, its sliders say that the crop is the camera's, and collapsed without a crop it
+  does not say Cropped.
 
 What these checks can show, and what they cannot. The rail's Up, Down, Home and End are the
 framework's list's own keys. The tool presses no keys, and unlike the lanes the rail has no
 key handler of the app's to call, so that those four keys choose a panel is not checked: only
 that the list is set up the way that makes them do it, and that selecting an item does.
-Whether a press of Down selects is for a person to try. The focus is XAML's own, in a window
+Whether a press of Down selects is for a person to try. Space is not pressed either: the
+check of Space on the rail runs what the window's handler for a key on its way down runs,
+and that the key comes to that handler before the list has it is read from the framework's
+source and from nothing else. The focus is XAML's own, in a window
 that never has the keyboard, as in every check of where the focus goes. No screen reader
 runs: that the selected item and the panel's name are what one says after a jump is for a
 person to hear. Nothing judges what the rail looks like: that the chosen item is marked in
@@ -1265,6 +1274,28 @@ of 6 October, still without a window. What that changed here, none of it run:
 - What a key does to the focus is checked through the window's own method for a key, as
   everywhere here. A check that puts the focus on a control of a panel and then runs a key
   now also runs the window's look after the key.
+
+**After a second reading.** Those mends were read through in their turn, the same evening.
+The reader found no fault in them, and one in what they stand on, older than they are and as
+old as the rail:
+
+- With a zoom selected, the window's sliders hand back to the editor what they have just
+  been told to show, and the editor took that for an edit of the zoom. Moving an edge of the
+  crop then showed the Zoom panel under the crop slider, and so did an Undo that changed the
+  zoom. Where a zoom looks inside a crop is worked out from the crop, and handed back it was
+  written into the zoom with its last digit changed: a second undo step, and no Redo after
+  an Undo. No check moved a crop edge with a zoom selected. Two do now: *an edge moved while
+  a zoom is selected*, and *Undo and Redo of the selected zoom's level with another panel on
+  show*. The window no longer passes on a value that is the one on show, and the editor no
+  longer shows a panel for an edit that changed nothing; the second is unit tested, the
+  first is in the window and has these two checks.
+- The check of a group collapsed over a crop collapses it through UI Automation. It did
+  that with the focus on one of the group's sliders, where the check before it had left it,
+  and nothing read where the focus went: to Play. The group now sends such a focus to its
+  header whoever closes it, and the check puts the focus on a slider itself and reads it.
+- One check is for a decision and not for a fault. The focus is sent to the rail whenever
+  its panel or its control goes away, and on the rail Space was the list's, which did
+  nothing with it. Space on the rail's chosen item now plays.
 
 ## Three checks on a smaller preview
 

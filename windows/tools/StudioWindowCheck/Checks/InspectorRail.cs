@@ -438,6 +438,39 @@ internal sealed partial class WindowChecks
             onSliderForDelete == "StudioZoomScaleSlider" && deleteRan == StudioShortcutAction.RemoveSelectedZoom && zoomsLeft == zooms - 1 && IsShown(stillZoom, "Zoom") && afterDelete == $"{InspectorRailId}_Zoom" && zoomsBack == zooms,
             $"the focus was on \"{onSliderForDelete}\" and is on \"{afterDelete}\"; the key ran {deleteRan}; {zoomsLeft} of {zooms} zooms were left; {PanelWords(stillZoom)}; after what Ctrl+Z runs there are {zoomsBack}");
 
+        // Space, with the focus on the rail's chosen item, where the check above has left it.
+        // A list keeps Space for itself, and on the item that is chosen already has nothing to
+        // do with it, so the window takes the key first there and plays. What runs here is
+        // what the window's handler for a key on its way down runs. The key itself is not
+        // pressed: that it comes to that handler before it comes to the list is not shown here.
+        var onChosen = FocusedId(editor);
+        var withControl = OnUi(() => editor.Window.RunSpaceOnRail(isControlDown: true, isShiftDown: false, isAltDown: false, isRepeat: false));
+        var whileHeld = OnUi(() => editor.Window.RunSpaceOnRail(isControlDown: false, isShiftDown: false, isAltDown: false, isRepeat: true));
+        var firstSpace = OnUi(() => editor.Window.RunSpaceOnRail(isControlDown: false, isShiftDown: false, isAltDown: false, isRepeat: false));
+        var playing = Until(() => NameOf(editor, "StudioPlayPauseButton", 0.5), name => name == "Pause", 2);
+        var secondSpace = OnUi(() => editor.Window.RunSpaceOnRail(isControlDown: false, isShiftDown: false, isAltDown: false, isRepeat: false));
+        var paused = Until(() => NameOf(editor, "StudioPlayPauseButton", 0.5), name => name == "Play", 2);
+
+        // On an item of the rail that is not the chosen one, which Ctrl and an arrow key reach,
+        // Space is the list's and chooses it. And on Play it is the button's.
+        OnUi(() =>
+        {
+            Descendant<ListViewItem>(editor.Window.Content, $"{InspectorRailId}_Cut")?.Focus(FocusState.Keyboard);
+        });
+        Thread.Sleep(200);
+        var onAnother = FocusedId(editor);
+        var chosenStill = PanelShown(editor);
+        var onAnotherRan = OnUi(() => editor.Window.RunSpaceOnRail(isControlDown: false, isShiftDown: false, isAltDown: false, isRepeat: false));
+        var onPlayAgain = FocusOn(editor, "StudioPlayPauseButton");
+        var onPlayRan = OnUi(() => editor.Window.RunSpaceOnRail(isControlDown: false, isShiftDown: false, isAltDown: false, isRepeat: false));
+        _report.Check(
+            "Space, handed to the window as a key on its way down is, plays and then pauses while the keyboard focus is on the rail's chosen item, where the list would keep the key and do nothing with it; with Ctrl, as a key that is being held, on an item of the rail that is not the chosen one, and on Play, it is left to the control that has the focus",
+            onChosen == $"{InspectorRailId}_Zoom" && withControl == StudioShortcutAction.None && whileHeld == StudioShortcutAction.None
+                && firstSpace == StudioShortcutAction.TogglePlayback && playing == "Pause" && secondSpace == StudioShortcutAction.TogglePlayback && paused == "Play"
+                && onAnother == $"{InspectorRailId}_Cut" && IsShown(chosenStill, "Zoom") && onAnotherRan == StudioShortcutAction.None
+                && onPlayAgain == "StudioPlayPauseButton" && onPlayRan == StudioShortcutAction.None,
+            $"with the focus on \"{onChosen}\": with Ctrl {withControl}, held {whileHeld}, the first Space {firstSpace} and the button says \"{playing}\", the second {secondSpace} and it says \"{paused}\"; with the focus on \"{onAnother}\" while {PanelWords(chosenStill)}: {onAnotherRan}; with the focus on \"{onPlayAgain}\": {onPlayRan}");
+
         // The focus alone never chooses: put on an item of the rail that is not the chosen one, it goes to the chosen one.
         ShowPanel(editor, StudioInspectorPanel.Project);
         FocusOn(editor, "StudioPlayPauseButton");
@@ -602,6 +635,9 @@ internal sealed partial class WindowChecks
     /// of its sliders moves an edge. From then on a group is as the header left it, and one
     /// that a slider was moved in stays open. A header is pressed here through UI Automation,
     /// which expands and collapses the group as a screen reader does. The screen comes cropped.
+    /// Two checks in the middle are about what the window's sliders hand back to the editor
+    /// while a zoom is selected: they are here because a crop is what moves a zoom's sliders
+    /// from outside their panel.
     /// </summary>
     /// <remarks>
     /// A group is the framework's expander, which tells UI Automation that it is a button
@@ -671,8 +707,68 @@ internal sealed partial class WindowChecks
             onLeft == "StudioScreenCropLeftSlider" && movedBack && uncropped && staysOpen == true && slidersStay == 4 && stillOnLeft == "StudioScreenCropLeftSlider" && croppedAgain,
             $"the slider was set: {movedBack}; nothing is cropped: {uncropped}; the group is expanded: {staysOpen}, with {slidersStay} sliders; the focus was on \"{onLeft}\" and is on \"{stillOnLeft}\"; after Undo the screen is cropped again: {croppedAgain}");
 
-        // The header, pressed over a crop: the group closes and says that there is a crop inside it.
+        // A zoom is selected, and something else is edited: an edge of the crop, in the Screen
+        // panel. The window's sliders are bound both ways. The selected zoom's sliders, in
+        // their panel that is not on show, are told where the zoom now looks inside the new
+        // crop, and hand that back. Taken for an edit of the zoom, that showed the Zoom panel
+        // under the crop slider and wrote the zoom's point back with its last digit changed,
+        // which made a second undo step and, inside an Undo, took Redo away.
+        SetSlider(editor, "StudioPlayhead", 2.0);
+        var addedZoom = Key(editor, StudioShortcutKey.Z);
+        PanelShown(editor, "Zoom", 1.5);
+        var zoomsThen = ZoomsOf(editor);
+        var selectedThen = SelectedZoomOf(editor);
+        ShowPanel(editor, StudioInspectorPanel.Screen);
+        var onTop = FocusOn(editor, "StudioScreenCropTopSlider");
+        var movedTop = SetSlider(editor, "StudioScreenCropTopSlider", 0.2);
+        var topThen = Until(() => OnUi(() => editor.Window.ViewModel.ScreenCropTop), top => Same(top, 0.2), 1.5);
+        Thread.Sleep(400);
+        var afterTheMove = PanelShown(editor);
+        var slidersThere = There(screenIds);
+        var stillOnTop = FocusedId(editor);
+        var sameZooms = ZoomsOf(editor).SequenceEqual(zoomsThen);
+        Invoke(editor, "StudioUndoButton");
+        var topBack = Until(() => OnUi(() => editor.Window.ViewModel.ScreenCropTop), top => Same(top, 0), 1.5);
+        Thread.Sleep(300);
+        var afterTheUndo = PanelShown(editor);
+        var redoIsThere = Find(editor, "StudioRedoButton", 0.5)?.IsEnabled;
+        var sameZoomsStill = ZoomsOf(editor).SequenceEqual(zoomsThen);
+        _report.Check(
+            "an edge of the screen's crop, moved with its slider while a zoom is selected, leaves the Screen panel on show with its sliders there and the keyboard focus on the one that was moved, and leaves the zoom as it was; Undo takes the edge back, leaves the panel and the zoom, and can be redone: what the selected zoom's sliders hand back when they are told where the zoom looks in the new crop is no edit of the zoom",
+            addedZoom == StudioShortcutAction.AddZoom && zoomsThen.Length == 1 && selectedThen == 0
+                && onTop == "StudioScreenCropTopSlider" && movedTop && Same(topThen, 0.2) && IsShown(afterTheMove, "Screen") && slidersThere == 4 && stillOnTop == "StudioScreenCropTopSlider" && sameZooms
+                && Same(topBack, 0) && IsShown(afterTheUndo, "Screen") && redoIsThere == true && sameZoomsStill,
+            $"what Z ran: {addedZoom}, {zoomsThen.Length} zoom(s), selected: {selectedThen}; the top edge is at {F(topThen, "0.00")}: {PanelWords(afterTheMove)}, {slidersThere} sliders, the focus was on \"{onTop}\" and is on \"{stillOnTop}\", the zoom is as it was: {sameZooms}; after Undo the edge is at {F(topBack, "0.00")}: {PanelWords(afterTheUndo)}, Redo can be pressed: {redoIsThere}, the zoom is as it was: {sameZoomsStill}");
+
+        // Undo of a change to the selected zoom itself, while another panel is on show: the
+        // zoom's sliders are told the level it is back at, and hand it back. Redo the same.
+        var levelBefore = ZoomsOf(editor)[0].Scale;
+        var level = Same(levelBefore, 3.0) ? 2.0 : 3.0;
+        var setLevel = SetSlider(editor, "StudioZoomScaleSlider", level);
+        var levelThen = Until(() => ZoomsOf(editor)[0].Scale, scale => Same(scale, level), 1.5);
+        ShowPanel(editor, StudioInspectorPanel.Screen);
+        Invoke(editor, "StudioUndoButton");
+        var levelBack = Until(() => ZoomsOf(editor)[0].Scale, scale => Same(scale, levelBefore), 1.5);
+        Thread.Sleep(300);
+        var afterLevelUndo = PanelShown(editor);
+        var redoOfLevel = Find(editor, "StudioRedoButton", 0.5)?.IsEnabled;
+        Invoke(editor, "StudioRedoButton");
+        var levelAgain = Until(() => ZoomsOf(editor)[0].Scale, scale => Same(scale, level), 1.5);
+        Thread.Sleep(300);
+        var afterLevelRedo = PanelShown(editor);
+        Invoke(editor, "StudioUndoButton");
+        Until(() => ZoomsOf(editor)[0].Scale, scale => Same(scale, levelBefore), 1.5);
+        _report.Check(
+            "Undo and Redo of a change to the selected zoom's level, pressed while the Screen panel is on show, take the level back and forth and leave the Screen panel on show: undo and redo show no panel, also when what they change is the selected zoom",
+            setLevel && Same(levelThen, level) && Same(levelBack, levelBefore) && IsShown(afterLevelUndo, "Screen") && redoOfLevel == true && Same(levelAgain, level) && IsShown(afterLevelRedo, "Screen"),
+            $"the level was {F(levelBefore, "0.00")} and was set to {F(levelThen, "0.00")}; after Undo it is {F(levelBack, "0.00")}: {PanelWords(afterLevelUndo)}, Redo can be pressed: {redoOfLevel}; after Redo it is {F(levelAgain, "0.00")}: {PanelWords(afterLevelRedo)}");
+
+        // The header, pressed over a crop: the group closes and says that there is a crop inside
+        // it. It is closed here as a screen reader closes it, without going to its header, and
+        // with the keyboard focus on one of its sliders: the focus goes to the header.
+        var onSliderInside = FocusOn(editor, "StudioScreenCropLeftSlider");
         var collapsed = CropGroupOf("StudioScreenCropGroup")?.Collapse() ?? false;
+        var toTheHeader = Until(() => FocusedStop(editor), stop => stop == "StudioScreenCropGroup", 1.5);
         var hidden = Until(() => There(screenIds), count => count == 0, 2);
         var saysCropped = Until(() => CropGroupOf("StudioScreenCropGroup")?.HelpText, text => text == "Cropped", 1.5);
         var word = editor.Root.FindRawAsItIs("StudioScreenCroppedText")?.Name;
@@ -681,9 +777,9 @@ internal sealed partial class WindowChecks
         var shownAgain = Until(() => There(screenIds), count => count == 4, 2);
         var saysNothing = Until(() => CropGroupOf("StudioScreenCropGroup")?.HelpText, text => text is { Length: 0 }, 1.5);
         _report.Check(
-            "collapsed over a crop, the Screen panel's Crop group hides its sliders and says Cropped, as its description for a screen reader and as a word in its header; expanded again it shows them and says nothing more",
-            collapsed && hidden == 0 && saysCropped == "Cropped" && word == "Cropped" && heldClosed && expandedAgain && shownAgain == 4 && saysNothing is { Length: 0 },
-            $"collapsed: {collapsed}, {hidden} sliders, described as \"{saysCropped}\", the word in the header: \"{word}\", the editor holds it closed: {heldClosed}; expanded: {expandedAgain}, {shownAgain} sliders, described as \"{saysNothing}\"");
+            "collapsed over a crop, the Screen panel's Crop group hides its sliders and says Cropped, as its description for a screen reader and as a word in its header, and a keyboard focus that was on one of its sliders is on its header, and not on whatever comes after the group; expanded again it shows them and says nothing more",
+            onSliderInside == "StudioScreenCropLeftSlider" && collapsed && toTheHeader == "StudioScreenCropGroup" && hidden == 0 && saysCropped == "Cropped" && word == "Cropped" && heldClosed && expandedAgain && shownAgain == 4 && saysNothing is { Length: 0 },
+            $"collapsed: {collapsed}, the focus was on \"{onSliderInside}\" and is on the header of \"{toTheHeader}\", {hidden} sliders, described as \"{saysCropped}\", the word in the header: \"{word}\", the editor holds it closed: {heldClosed}; expanded: {expandedAgain}, {shownAgain} sliders, described as \"{saysNothing}\"");
 
         // The camera's group, which is closed: its header opens it, and from then on it stays open without a crop.
         ShowPanel(editor, StudioInspectorPanel.Camera);
