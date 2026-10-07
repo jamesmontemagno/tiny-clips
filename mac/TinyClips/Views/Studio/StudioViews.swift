@@ -312,7 +312,8 @@ private struct StudioInspectorView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Whether each Crop group is open. Until its header is pressed, one is open when it has a crop.
+    /// Whether each Crop group is open. Until its header is pressed or one of its sliders is
+    /// moved, one is open when it has a crop.
     @State private var isScreenCropOpen: Bool?
     @State private var isCameraCropOpen: Bool?
 
@@ -760,10 +761,19 @@ private struct StudioInspectorView: View {
             .help(open ? "Hide the crop controls" : "Show the crop controls")
 
             if open {
-                cropSlider("Left", name: name, edge: .left, value: insets.left, set: set)
-                cropSlider("Top", name: name, edge: .top, value: insets.top, set: set)
-                cropSlider("Right", name: name, edge: .right, value: insets.right, set: set)
-                cropSlider("Bottom", name: name, edge: .bottom, value: insets.bottom, set: set)
+                // A group that a slider has moved an edge in stays open until its header closes
+                // it. Open only because it came with a crop, it would close under the pointer
+                // as the last edge is dragged back to 0.
+                let keepOpenAndSet: (StudioCropEdge, Double) -> Void = { edge, value in
+                    if isOpen.wrappedValue == nil {
+                        isOpen.wrappedValue = true
+                    }
+                    set(edge, value)
+                }
+                cropSlider("Left", name: name, edge: .left, value: insets.left, set: keepOpenAndSet)
+                cropSlider("Top", name: name, edge: .top, value: insets.top, set: keepOpenAndSet)
+                cropSlider("Right", name: name, edge: .right, value: insets.right, set: keepOpenAndSet)
+                cropSlider("Bottom", name: name, edge: .bottom, value: insets.bottom, set: keepOpenAndSet)
                 Button("Reset Crop") {
                     reset()
                 }
