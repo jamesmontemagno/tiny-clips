@@ -119,10 +119,11 @@ realization, edits/imports/reset, reopening, and late results after closure.
 
 They compile the Tiny Clips Studio editor's view model as well, over real projects in a temp
 folder, and bind stand-ins for the window's controls to it. Which values a control is bound to
-both ways is read from `StudioInspector.xaml` and `StudioWindow.xaml` when the tests run, so a
-new two-way binding is tested without being added. A control that is bound both ways hands
-back what it has just been told to show. The tests hold that none of that is an edit (opening
-a project, selecting, playing, Undo), and that what a control is asked for by the user is one
+both ways is read from the markup of the Studio window and its controls when the tests run.
+A new two-way binding that is written as today's are is tested without being added, and one
+written another way fails a test that says so. A control that is bound both ways hands back
+what it has just been told to show. The tests hold that none of that is an edit (opening a
+project, selecting, playing, Undo), and that what a control is asked for by the user is one
 edit and one undo step. They say nothing of focus, the rail, or anything else that is in the
 window itself.
 
