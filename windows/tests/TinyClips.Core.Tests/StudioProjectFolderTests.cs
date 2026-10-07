@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using TinyClips.Core.Models;
+using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Tests;
@@ -514,4 +516,68 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
         Assert.Empty(StudioProjectSummary.Recent(summaries, excludingId: null, limit: 0));
         Assert.Empty(StudioProjectSummary.Recent([], excludingId: "current", limit: 5));
     }
+
+    // Recent captures
+
+    [Fact]
+    public void TheMenuListsProjectsThatHoldTheOnlyCopyOfARecordingThatCanBeOpened()
+    {
+        StudioProjectSummary[] summaries =
+        [
+            MenuSummary("draft"),
+            MenuSummary("exported", isDraft: false),
+            MenuSummary("lost-its-export", isDraft: false, exportMissing: true),
+            MenuSummary("no-recording", sourceExists: false),
+            MenuSummary("flat", isFlat: true),
+        ];
+
+        Assert.Equal(["draft", "lost-its-export"], StudioProjectSummary.MenuDrafts(summaries).Select(summary => summary.Id));
+    }
+
+    [Fact]
+    public void AProjectWasLastUsedWhenItWasOpenedOrFailingThatRecorded()
+    {
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(100), MenuSummary("a", created: 100, opened: 0).LastUsedAt);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(250), MenuSummary("b", created: 100, opened: 250).LastUsedAt);
+    }
+
+    [Fact]
+    public void RecentCapturesAndProjectsAreMixedByDateNewestFirst()
+    {
+        static RecentCapture Capture(string name, long at) =>
+            new($"/tmp/{name}", CaptureType.Video, DateTimeOffset.FromUnixTimeSeconds(at));
+
+        RecentCapture[] captures = [Capture("c3", at: 300), Capture("c2", at: 200), Capture("c1", at: 100)];
+        StudioProjectSummary[] drafts = [MenuSummary("d-new", created: 250), MenuSummary("d-tied", created: 200), MenuSummary("d-old", created: 50)];
+
+        var merged = RecentMenuEntry.Merged(captures, drafts, limit: 5);
+
+        Assert.Equal(
+            ["capture:/tmp/c3", "studio:d-new", "capture:/tmp/c2", "studio:d-tied", "capture:/tmp/c1"],
+            merged.Select(entry => entry.Id));
+        Assert.Equal(["capture:/tmp/c3", "studio:d-new"], RecentMenuEntry.Merged(captures, drafts, limit: 2).Select(entry => entry.Id));
+        Assert.Equal(["studio:d-new", "studio:d-tied", "studio:d-old"], RecentMenuEntry.Merged([], drafts, limit: 5).Select(entry => entry.Id));
+        Assert.Equal(3, RecentMenuEntry.Merged(captures, [], limit: 5).Count);
+        Assert.Empty(RecentMenuEntry.Merged(captures, drafts, limit: 0));
+    }
+
+    private static StudioProjectSummary MenuSummary(
+        string id,
+        long created = 0,
+        long opened = 0,
+        bool isDraft = true,
+        bool isFlat = false,
+        bool sourceExists = true,
+        bool exportMissing = false) =>
+        new(
+            id,
+            id,
+            DateTimeOffset.FromUnixTimeSeconds(created),
+            DateTimeOffset.FromUnixTimeSeconds(opened),
+            isDraft,
+            isFlat,
+            KeepSources: false,
+            SizeBytes: 0,
+            ExportMissing: exportMissing,
+            SourceExists: sourceExists);
 }

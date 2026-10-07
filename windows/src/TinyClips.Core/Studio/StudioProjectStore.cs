@@ -1012,6 +1012,26 @@ public sealed record StudioProjectSummary(
     public bool IsRemovableByCleanup =>
         !IsDraft && !ExportMissing && !KeepSources && !IsFlat && LastOpenedAt != DateTimeOffset.UnixEpoch;
 
+    /// <summary>When the project was last worked on: when it was last open, or failing that recorded.</summary>
+    public DateTimeOffset LastUsedAt => CreatedAt > LastOpenedAt ? CreatedAt : LastOpenedAt;
+
+    /// <summary>
+    /// Whether the project holds the only copy of its recording: nothing was exported from it,
+    /// or what was exported is gone. The Settings list calls both drafts.
+    /// </summary>
+    public bool IsDraftOrLostItsExport => (IsDraft || ExportMissing) && !IsFlat;
+
+    /// <summary>
+    /// The projects the tray menu lists beside the saved captures: those that hold the only
+    /// copy of a recording that is still there to open. A project with an exported video is in
+    /// that menu already, as the video, which opens its project.
+    /// </summary>
+    public static IReadOnlyList<StudioProjectSummary> MenuDrafts(IEnumerable<StudioProjectSummary> summaries)
+    {
+        ArgumentNullException.ThrowIfNull(summaries);
+        return summaries.Where(static summary => summary.IsDraftOrLostItsExport && summary.SourceExists).ToArray();
+    }
+
     /// <summary>
     /// The projects an Open recent menu lists: those that still have their recording, the one
     /// opened last first, without the project the menu belongs to. Projects opened at the same

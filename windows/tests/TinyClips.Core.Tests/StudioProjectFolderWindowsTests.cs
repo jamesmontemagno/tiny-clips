@@ -2,6 +2,8 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json.Nodes;
+using TinyClips.Core.Models;
+using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Tests;
@@ -792,6 +794,98 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
         var summaries = Store.ListSummaries();
         Assert.False(summaries.Single(summary => summary.Id == id).SourceExists);
         Assert.False(summaries.Single(summary => summary.Id == flat.Id).SourceExists);
+    }
+
+    // The tray menu's recent captures
+
+    [Fact]
+    public void TheTrayMenuListsNoProjectWhileStudioIsSwitchedOff_AndTheOnesWorkedOnLastWhileItIsOn()
+    {
+        var noon = new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
+        StudioProjectSummary Project(string id, int created, int? opened = null, bool isDraft = true, bool isFlat = false, bool sourceExists = true, bool exportMissing = false) =>
+            new(
+                id,
+                id,
+                noon.AddMinutes(created),
+                opened is { } minutes ? noon.AddMinutes(minutes) : DateTimeOffset.UnixEpoch,
+                isDraft,
+                isFlat,
+                KeepSources: false,
+                SizeBytes: 0,
+                ExportMissing: exportMissing,
+                SourceExists: sourceExists);
+
+        RecentCapture[] captures =
+        [
+            new("C:\\Videos\\new.mp4", CaptureType.Video, noon.AddMinutes(50)),
+            new("C:\\Pictures\\old.png", CaptureType.Screenshot, noon.AddMinutes(10)),
+        ];
+        StudioProjectSummary[] projects =
+        [
+            Project("recorded-earlier", created: 20),
+            Project("exported", created: 60, isDraft: false),
+            Project("opened-since", created: 0, opened: 40),
+            Project("flat", created: 70, isFlat: true),
+            Project("recording-gone", created: 80, sourceExists: false),
+            Project("lost-its-export", created: 30, isDraft: false, exportMissing: true),
+        ];
+
+        Assert.Equal(
+            ["capture:C:\\Videos\\new.mp4", "studio:opened-since", "studio:lost-its-export", "studio:recorded-earlier", "capture:C:\\Pictures\\old.png"],
+            RecentMenuEntry.ForMenu(captures, projects, studioEnabled: true, limit: 5).Select(entry => entry.Id));
+        Assert.Equal(
+            ["capture:C:\\Videos\\new.mp4", "studio:opened-since"],
+            RecentMenuEntry.ForMenu(captures, projects, studioEnabled: true, limit: 2).Select(entry => entry.Id));
+        Assert.Equal(
+            ["capture:C:\\Videos\\new.mp4", "capture:C:\\Pictures\\old.png"],
+            RecentMenuEntry.ForMenu(captures, projects, studioEnabled: false, limit: 5).Select(entry => entry.Id));
+    }
+
+    [Fact]
+    public void ACaptureSavedInLocalTimeAndAProjectInUniversalTime_AreMixedByTheInstant()
+    {
+        // The recent captures are kept with the local time and its offset, a project's times
+        // are universal: half past twelve at two hours ahead is before eleven universal.
+        var capture = new RecentCapture("C:\\Videos\\clip.mp4", CaptureType.Video, new DateTimeOffset(2026, 10, 7, 12, 30, 0, TimeSpan.FromHours(2)));
+        var draft = new StudioProjectSummary(
+            "draft",
+            "draft",
+            new DateTimeOffset(2026, 10, 7, 11, 0, 0, TimeSpan.Zero),
+            DateTimeOffset.UnixEpoch,
+            IsDraft: true,
+            IsFlat: false,
+            KeepSources: false,
+            SizeBytes: 0);
+
+        var merged = RecentMenuEntry.Merged([capture], [draft], limit: 5);
+
+        Assert.Equal(["studio:draft", "capture:C:\\Videos\\clip.mp4"], merged.Select(entry => entry.Id));
+        Assert.Same(draft, merged[0].StudioDraft);
+        Assert.Null(merged[0].Capture);
+        Assert.Same(capture, merged[1].Capture);
+        Assert.Equal(capture.CapturedAt, merged[1].Date);
+    }
+
+    [Fact]
+    public void AFolderAProjectWasSavedToIsNoProject_SoItIsNeverInTheMenu_AndOneOpenedFromItIs()
+    {
+        var id = MakeProject(camera: false);
+        var folder = Path.Combine(Outside, "A Copy");
+
+        Save(id, folder);
+
+        Assert.Equal([id], Store.ListSummaries().Select(summary => summary.Id));
+
+        var opened = Open(folder);
+
+        Assert.Equal(
+            new[] { id, opened.Id }.Order(),
+            StudioProjectSummary.MenuDrafts(Store.ListSummaries()).Select(draft => draft.Id).Order());
+
+        // One whose recording is gone has nothing to open, and is not listed.
+        File.Delete(Store.GetPaths(id).ScreenPath);
+
+        Assert.Equal([opened.Id], StudioProjectSummary.MenuDrafts(Store.ListSummaries()).Select(draft => draft.Id));
     }
 
     private static void MakeLinkOrSkip(string path, string target)
