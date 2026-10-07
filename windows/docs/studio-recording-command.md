@@ -1,7 +1,11 @@
 # Studio: a command of its own to start a Studio recording (Windows handoff)
 
-**Status:** built on macOS on 7 October 2026. Not started on Windows. Nothing under
-`windows/src`, `windows/tests`, or `windows/tools` was changed for it.
+**Status:** built on macOS on 7 October 2026, and on Windows the same day from this brief
+(#431). On Windows it is compiled and unit tested and has never been run: nobody has opened the
+tray menu with the command in it, pressed it, or seen the label in the recording setup panel.
+What to try by hand is step 20 of the Windows hands-on checklist in
+[`plans/video-studio-plan.md`](../../plans/video-studio-plan.md). "What Windows has now" below
+says where each part is.
 
 ## Why
 
@@ -59,6 +63,24 @@ and that video then does what the trimmer switch says.
 7. `windows/README.md` ("While the switch is on, **After recording** decides…"),
    `windows/CHANGELOG.md`, and `studio-settings-page.md`, whose Recording section depends on
    this.
+
+## What Windows has now
+
+| What | Where |
+|---|---|
+| **Studio recording**, a button under Screenshot, Video, and GIF in the tray menu, built only while Studio is switched on. The menu is built anew each time it opens, so the button follows the switch while the app runs. It is disabled while a recording runs | `App.xaml.cs`: `BuildTrayPopupContent`, `StartStudioRecordingAsync`, `UpdateRecordingState` |
+| The flag, and the whole decision of whether a recording is one for Studio. `Begin` takes the command the recording was asked for with: Studio recording sets the flag if Studio is on, Record video and its hotkey clear it, and a capture picker that comes back by itself leaves it. `IsForStudio` and `CreateOptions` ask `StudioPreviewEnabled` when the recording is set up, and `OptionsAtStart` asks again where it starts, after the countdown and for a restart | `TinyClips.Core/Capture/StudioRecordingIntent.cs`, tested in `StudioRecordingIntentTests` |
+| Where the app tells it: `BeginCaptureAsync` calls `Begin` once the capture flow really begins, so a command that is ignored because a capture is being set up changes nothing | `App.xaml.cs`: `BeginCaptureAsync`, `ToggleVideoAsync`, `ReopenPickerAfterCaptureAsync`, `RestartActiveRecordingAsync` |
+| The recording setup panel has no toggle and decides nothing. For a Studio recording it shows a label, "Studio", read as "Studio recording", which is not a control, and Record's help text says the editor opens afterwards | `Views/RecordingSetupWindow.xaml`, `.xaml.cs`: `StudioRecordingLabel` |
+| `VideoAfterRecording`, `OpensTrimmerAfterVideoRecording`, and `IsStudioRecordingEnabled` are gone, and the Video page of Settings is the file `main` has: **Open trimmer after recording** alone | `TinyClips.Core/Services/CaptureSettings.cs`, `Controls/Settings/VideoSettingsSection.xaml`, `ViewModels/SettingsViewModel.Studio.cs` |
+
+A stored `videoAfterRecording` stays in the app's local settings and is read by nothing. It is
+not migrated: someone who chose Save or Open trimmer under After recording while Studio was on
+has the trimmer switch as it was before that choice, because the choice left the switch alone
+until Studio was switched off.
+
+Where Windows differs from the Mac: the tray menu is a panel of buttons and not a list, so
+"under Record Video" became a wide button under the row of Screenshot, Video, and GIF.
 
 ## How the Mac was checked
 

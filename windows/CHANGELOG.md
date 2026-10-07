@@ -58,11 +58,11 @@ own `CHANGELOG.md` at the repository root.
     counts the video as it will be exported, so a faster stretch makes it shorter and a slower
     one longer.
   - To try it, switch on **Tiny Clips Studio (Preview)** in Settings › General. Then choose
-    **Open in Studio (Preview)** under **After recording** in Settings › Video, or switch on
-    **Record for Studio** in the recording setup panel. Switching it off again hides Studio and
-    deletes nothing. A recording then does what **After recording** was left on, Save or Open
-    trimmer; left on Open in Studio, **Open trimmer after recording** is as you had it before
-    Studio was switched on. Projects are
+    **Studio recording** in the tray menu, which is there while Studio is switched on. The
+    recording setup panel says **Studio** for such a recording. **Record video**, from the
+    tray menu or with its hotkey, always makes an ordinary recording, and **Open trimmer after
+    recording** in Settings › Video decides what that one does, as before. Studio recording
+    has no hotkey yet. Switching Studio off again hides it and deletes nothing. Projects are
     stored with the app, so uninstalling Tiny Clips or resetting it in Windows Settings deletes
     them; exported videos stay.
   - **Camera background.** **Camera background** in the Camera panel keeps the camera picture as

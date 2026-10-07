@@ -53,7 +53,8 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   auto-refresh, archive-old-clips). Metadata is stored in `clip-metadata.json` in the app's local
   data folder; the files themselves are never modified.
 - **Global hotkeys** — Screenshot `Ctrl+Shift+5`, Video `Ctrl+Shift+6`, GIF `Ctrl+Shift+7`,
-  Stop recording `Ctrl+Shift+S`.
+  Stop recording `Ctrl+Shift+S`. The Video hotkey always makes an ordinary recording; Studio
+  recording has no hotkey.
 - **Launch at login** — optionally start TinyClips when you sign in to Windows.
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
 - **System-tray** Fluent menu (rounded/acrylic), light/dark/system theming, full **Settings** window.
@@ -170,7 +171,8 @@ dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:Platform
 
 The app launches **tray-only** (no window). Left- or right-click the tray icon for the Fluent
 menu: **Screenshot**, **Capture Region**, **Record Video**, **Record GIF**, **Settings**,
-**Guide**, **Exit**. Capture items first show the **Region / Screen / Window** picker.
+**Guide**, **Exit**, and, while Tiny Clips Studio is switched on, **Studio recording** under the
+three capture buttons. Capture items first show the **Region / Screen / Window** picker.
 Video/GIF captures then show a setup panel before countdown and recording. Recording items toggle
 to **Stop Recording** (also `Ctrl+Shift+S`) while active, and a floating recording indicator shows
 the elapsed time. Global hotkeys work app-wide.
@@ -200,16 +202,20 @@ Studio is off until you switch it on: **Settings › General › Tiny Clips Stud
 the switch off nothing else of Studio is shown, and a recording is made as it always was.
 Switching it off again deletes nothing: the projects stay where they are, are not cleaned up while
 it is off, and the line under the switch says how many there are and how much room they take.
-While the switch is on, **After recording** decides what a recording does, and **Open trimmer
-after recording** is left as it was. When the switch goes off, the trimmer setting takes over
-what **After recording** was left on, Save or Open trimmer. Left on **Open in Studio (Preview)**,
-the trimmer setting is what it was before Studio was switched on.
+The switch leaves **Open trimmer after recording** in Settings › Video alone: it says what it
+said before, and decides what an ordinary recording does with Studio on or off.
 
 With the switch on:
 
-- **Settings › Video** offers **Open in Studio (Preview)** under **After recording**, and the
-  recording setup panel has **Record for Studio**. A Studio recording is saved as a project (a
-  clean screen track, a camera track, and click and cursor data) and opens in the editor.
+- **The tray menu** has **Studio recording**, under Screenshot, Video, and GIF. It starts a
+  video recording that is saved as a project (a clean screen track, a camera track, and click
+  and cursor data) and opens in the editor when it ends. The recording setup panel says
+  **Studio** for such a recording, and nothing for any other. **Record video**, from the tray
+  menu or with its hotkey, is always an ordinary recording, and Studio recording has no hotkey
+  yet. A capture picker that comes back after a Studio recording is for another one, until a
+  recording is asked for again. If Studio is switched off before the recording starts, it is
+  made as an ordinary recording. A Studio recording that cannot be saved as a project is kept
+  as an ordinary video, which then opens the trimmer or is saved, as the trimmer switch says.
 - **The editor** has a live preview, an inspector, a scene lane, a zoom lane, a cut lane, and a
   speed lane above a trim bar, undo and redo, and Export. A recording without a camera has no
   scenes.
