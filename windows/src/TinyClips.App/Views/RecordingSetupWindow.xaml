@@ -53,25 +53,30 @@
                         Glyph="&#xE962;" />
                 </ToggleButton>
 
-                <!--  Video only, and only while the Studio preview is switched on.  -->
-                <ToggleButton
-                    x:Name="RecordForStudioToggle"
-                    Width="34"
-                    Height="34"
-                    MinWidth="0"
-                    Padding="0"
-                    AutomationProperties.AutomationId="SetupRecordForStudioButton"
-                    AutomationProperties.HelpText="Keeps the screen and camera as separate tracks in an editable Tiny Clips Studio project."
-                    AutomationProperties.Name="Record for Studio"
-                    Checked="OnRecordForStudioToggled"
-                    Unchecked="OnRecordForStudioToggled"
-                    ToolTipService.ToolTip="Record for Studio"
+                <!--
+                    Shown for a recording that was started with Studio recording. It is not a
+                    control: it says which of the two tray commands this recording came from.
+                -->
+                <StackPanel
+                    x:Name="StudioRecordingLabel"
+                    Margin="4,0"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    ToolTipService.ToolTip="A Studio recording: the screen and camera are kept as separate layers, and Tiny Clips Studio opens when recording ends."
                     Visibility="Collapsed">
                     <FontIcon
+                        AutomationProperties.AccessibilityView="Raw"
                         FontFamily="Segoe Fluent Icons"
                         FontSize="16"
                         Glyph="&#xE81E;" />
-                </ToggleButton>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="SetupStudioRecordingLabel"
+                        AutomationProperties.Name="Studio recording"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="Studio" />
+                </StackPanel>
 
                 <Rectangle
                     Width="1"

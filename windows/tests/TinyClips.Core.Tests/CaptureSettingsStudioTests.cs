@@ -9,142 +9,15 @@ public sealed class CaptureSettingsStudioTests
     private const long BytesPerGigabyte = 1024L * 1024 * 1024;
 
     [Fact]
-    public void Defaults_FollowTheTrimmerToggleAndKeepStudioOff()
+    public void Defaults_KeepStudioOff()
     {
-        var settings = Create(out var service);
+        var settings = Create(out _);
 
-        Assert.Equal(VideoAfterRecording.Trimmer, settings.VideoAfterRecording);
         Assert.False(settings.StudioPreviewEnabled);
-        Assert.False(settings.IsStudioRecordingEnabled);
+        Assert.True(settings.ShowTrimmer);
         Assert.Equal(30, settings.StudioSourceRetentionDays);
         Assert.Equal(10, settings.StudioStorageCapGigabytes);
         Assert.Null(settings.StudioDefaultLook);
-
-        // Reading never stores a choice, so the trimmer toggle keeps deciding until one is made.
-        Assert.Equal("unset", service.Get("videoAfterRecording", "unset"));
-    }
-
-    [Theory]
-    [InlineData(true, VideoAfterRecording.Trimmer)]
-    [InlineData(false, VideoAfterRecording.Save)]
-    public void VideoAfterRecording_IsDerivedFromShowTrimmerUntilAChoiceIsStored(bool showTrimmer, VideoAfterRecording expected)
-    {
-        var settings = Create(out var service);
-        service.Set("showTrimmer", showTrimmer);
-
-        Assert.Equal(expected, settings.VideoAfterRecording);
-
-        settings.ShowTrimmer = !showTrimmer;
-
-        Assert.Equal(
-            showTrimmer ? VideoAfterRecording.Save : VideoAfterRecording.Trimmer,
-            settings.VideoAfterRecording);
-        Assert.Equal("unset", service.Get("videoAfterRecording", "unset"));
-    }
-
-    [Theory]
-    [InlineData(VideoAfterRecording.Save, "save", false)]
-    [InlineData(VideoAfterRecording.Trimmer, "trimmer", true)]
-    public void VideoAfterRecording_SaveAndTrimmerRoundTripAndWriteShowTrimmer(VideoAfterRecording value, string stored, bool showTrimmer)
-    {
-        var settings = Create(out var service);
-        service.Set("showTrimmer", !showTrimmer);
-
-        settings.VideoAfterRecording = value;
-
-        Assert.Equal(value, settings.VideoAfterRecording);
-        Assert.Equal(stored, service.Get("videoAfterRecording", string.Empty));
-        Assert.Equal(showTrimmer, settings.ShowTrimmer);
-        Assert.Equal(showTrimmer, service.Get("showTrimmer", !showTrimmer));
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void VideoAfterRecording_StudioRoundTripsAndLeavesShowTrimmerAsItWas(bool showTrimmer)
-    {
-        var settings = Create(out var service);
-        service.Set("showTrimmer", showTrimmer);
-
-        settings.VideoAfterRecording = VideoAfterRecording.Studio;
-
-        Assert.Equal(VideoAfterRecording.Studio, settings.VideoAfterRecording);
-        Assert.Equal("studio", service.Get("videoAfterRecording", string.Empty));
-        Assert.Equal(showTrimmer, settings.ShowTrimmer);
-        Assert.Equal(showTrimmer, service.Get("showTrimmer", !showTrimmer));
-    }
-
-    [Theory]
-    [InlineData("save", VideoAfterRecording.Save)]
-    [InlineData("studio", VideoAfterRecording.Studio)]
-    [InlineData("STUDIO", VideoAfterRecording.Studio)]
-    public void VideoAfterRecording_StoredChoiceWinsOverShowTrimmer(string stored, VideoAfterRecording expected)
-    {
-        var settings = Create(out var service);
-        service.Set("showTrimmer", true);
-        service.Set("videoAfterRecording", stored);
-
-        Assert.Equal(expected, settings.VideoAfterRecording);
-    }
-
-    [Theory]
-    [InlineData("later")]
-    [InlineData("")]
-    [InlineData("  ")]
-    [InlineData("3")]
-    public void VideoAfterRecording_UnknownStoredValueBehavesAsNeverWritten(string stored)
-    {
-        var settings = Create(out var service);
-        service.Set("videoAfterRecording", stored);
-
-        service.Set("showTrimmer", true);
-        Assert.Equal(VideoAfterRecording.Trimmer, settings.VideoAfterRecording);
-
-        service.Set("showTrimmer", false);
-        Assert.Equal(VideoAfterRecording.Save, settings.VideoAfterRecording);
-    }
-
-    [Fact]
-    public void VideoAfterRecording_StoredValueOfAnotherTypeBehavesAsNeverWritten()
-    {
-        var settings = Create(out var service);
-        service.Set("videoAfterRecording", 2);
-        service.Set("showTrimmer", false);
-
-        Assert.Equal(VideoAfterRecording.Save, settings.VideoAfterRecording);
-    }
-
-    [Fact]
-    public void ShowTrimmer_KeepsAStoredSaveOrTrimmerInStep()
-    {
-        var settings = Create(out var service);
-        settings.VideoAfterRecording = VideoAfterRecording.Save;
-
-        settings.ShowTrimmer = true;
-        Assert.Equal(VideoAfterRecording.Trimmer, settings.VideoAfterRecording);
-        Assert.Equal("trimmer", service.Get("videoAfterRecording", string.Empty));
-
-        settings.ShowTrimmer = false;
-        Assert.Equal(VideoAfterRecording.Save, settings.VideoAfterRecording);
-        Assert.Equal("save", service.Get("videoAfterRecording", string.Empty));
-    }
-
-    [Fact]
-    public void ShowTrimmer_LeavesAStoredStudioChoice()
-    {
-        var settings = Create(out var service);
-        settings.VideoAfterRecording = VideoAfterRecording.Studio;
-
-        // The toggle is what Settings shows while Studio is switched off. Using it there does
-        // not undo the choice of Studio, which is there again when Studio is switched back on.
-        settings.ShowTrimmer = false;
-        Assert.Equal(VideoAfterRecording.Studio, settings.VideoAfterRecording);
-        Assert.False(settings.ShowTrimmer);
-
-        settings.ShowTrimmer = true;
-        Assert.Equal(VideoAfterRecording.Studio, settings.VideoAfterRecording);
-        Assert.Equal("studio", service.Get("videoAfterRecording", string.Empty));
-        Assert.True(settings.ShowTrimmer);
     }
 
     [Fact]
@@ -163,168 +36,56 @@ public sealed class CaptureSettingsStudioTests
     }
 
     [Theory]
-    [InlineData(false, VideoAfterRecording.Save, false)]
-    [InlineData(false, VideoAfterRecording.Trimmer, false)]
-    [InlineData(false, VideoAfterRecording.Studio, false)]
-    [InlineData(true, VideoAfterRecording.Save, false)]
-    [InlineData(true, VideoAfterRecording.Trimmer, false)]
-    [InlineData(true, VideoAfterRecording.Studio, true)]
-    public void IsStudioRecordingEnabled_NeedsThePreviewSwitchAndTheStudioChoice(bool preview, VideoAfterRecording choice, bool expected)
-    {
-        var settings = Create(out _);
-        settings.StudioPreviewEnabled = preview;
-        settings.VideoAfterRecording = choice;
-
-        Assert.Equal(expected, settings.IsStudioRecordingEnabled);
-    }
-
-    [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void TryingStudioAndSwitchingItOff_PutsTheTrimmerBackToWhatItWas(bool trimmerBefore)
-    {
-        var settings = Create(out _);
-        settings.ShowTrimmer = trimmerBefore;
-        Assert.Equal(trimmerBefore, settings.OpensTrimmerAfterVideoRecording);
-
-        // Studio is tried: switched on, and chosen. No trimmer opens after a recording then.
-        settings.StudioPreviewEnabled = true;
-        settings.VideoAfterRecording = VideoAfterRecording.Studio;
-        Assert.True(settings.IsStudioRecordingEnabled);
-        Assert.False(settings.OpensTrimmerAfterVideoRecording);
-
-        // Switched off again: a recording is made as it was before.
-        settings.StudioPreviewEnabled = false;
-        Assert.False(settings.IsStudioRecordingEnabled);
-        Assert.Equal(trimmerBefore, settings.ShowTrimmer);
-        Assert.Equal(trimmerBefore, settings.OpensTrimmerAfterVideoRecording);
-
-        // And on once more: Studio is still the choice.
-        settings.StudioPreviewEnabled = true;
-        Assert.True(settings.IsStudioRecordingEnabled);
-        Assert.False(settings.OpensTrimmerAfterVideoRecording);
-    }
-
-    [Theory]
-    [InlineData(false, VideoAfterRecording.Save, false)]
-    [InlineData(false, VideoAfterRecording.Trimmer, true)]
-    [InlineData(true, VideoAfterRecording.Save, false)]
-    [InlineData(true, VideoAfterRecording.Trimmer, true)]
-    public void OpensTrimmerAfterVideoRecording_FollowsAChoiceOfSaveOrTrimmer(bool preview, VideoAfterRecording choice, bool expected)
-    {
-        var settings = Create(out _);
-        settings.StudioPreviewEnabled = preview;
-
-        settings.VideoAfterRecording = choice;
-
-        Assert.Equal(expected, settings.OpensTrimmerAfterVideoRecording);
-    }
-
-    [Fact]
-    public void OpensTrimmerAfterVideoRecording_FollowsTheToggleUntilAChoiceIsStored()
-    {
-        var settings = Create(out _);
-
-        Assert.True(settings.OpensTrimmerAfterVideoRecording);
-
-        settings.ShowTrimmer = false;
-
-        Assert.False(settings.OpensTrimmerAfterVideoRecording);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void OpensTrimmerAfterVideoRecording_WithStudioOnAndNoChoiceStored_FollowsTheToggle(bool showTrimmer)
+    public void SwitchingStudioOnOrOff_LeavesTheTrimmerSwitchAsItIs(bool showTrimmer)
     {
         var settings = Create(out var service);
         settings.ShowTrimmer = showTrimmer;
 
         settings.StudioPreviewEnabled = true;
+        Assert.Equal(showTrimmer, settings.ShowTrimmer);
 
-        Assert.Equal(showTrimmer, settings.OpensTrimmerAfterVideoRecording);
-        Assert.Equal("unset", service.Get("videoAfterRecording", "unset"));
-    }
-
-    [Theory]
-    [InlineData(VideoAfterRecording.Save, true)]
-    [InlineData(VideoAfterRecording.Trimmer, false)]
-    public void VideoAfterRecording_WhileStudioIsOn_SaveAndTrimmerDecideAndLeaveTheToggle(VideoAfterRecording choice, bool toggleBefore)
-    {
-        var settings = Create(out var service);
-        settings.ShowTrimmer = toggleBefore;
-        settings.StudioPreviewEnabled = true;
-
-        settings.VideoAfterRecording = choice;
-
-        Assert.Equal(choice, settings.VideoAfterRecording);
-        Assert.Equal(choice == VideoAfterRecording.Trimmer, settings.OpensTrimmerAfterVideoRecording);
-        Assert.Equal(toggleBefore, settings.ShowTrimmer);
-        Assert.Equal(toggleBefore, service.Get("showTrimmer", !toggleBefore));
-    }
-
-    [Theory]
-    [InlineData(false, VideoAfterRecording.Trimmer)]
-    [InlineData(true, VideoAfterRecording.Save)]
-    public void SwitchingStudioOff_WithStudioLeftAsTheChoice_PutsTheTrimmerBackToWhatItWasBeforeStudio(bool toggleBefore, VideoAfterRecording passed)
-    {
-        var settings = Create(out _);
-        settings.ShowTrimmer = toggleBefore;
-        settings.StudioPreviewEnabled = true;
-
-        // The list in Settings takes each press of an arrow key as a choice, so the way from
-        // Save to Studio passes Open trimmer, and the way back passes it again.
-        settings.VideoAfterRecording = passed;
-        settings.VideoAfterRecording = VideoAfterRecording.Studio;
-        Assert.False(settings.OpensTrimmerAfterVideoRecording);
+        // The switch is what decides while Studio is on as well, and it is used.
+        settings.ShowTrimmer = !showTrimmer;
+        Assert.Equal(!showTrimmer, settings.ShowTrimmer);
 
         settings.StudioPreviewEnabled = false;
-
-        Assert.Equal(toggleBefore, settings.ShowTrimmer);
-        Assert.Equal(toggleBefore, settings.OpensTrimmerAfterVideoRecording);
-
-        // Studio is still the choice when it is switched on again.
-        settings.StudioPreviewEnabled = true;
-        Assert.True(settings.IsStudioRecordingEnabled);
+        Assert.Equal(!showTrimmer, settings.ShowTrimmer);
+        Assert.Equal(!showTrimmer, service.Get("showTrimmer", showTrimmer));
     }
 
+    /// <summary>
+    /// Until 7 October there was an After recording choice, stored as "videoAfterRecording",
+    /// with Open in Studio as one of three. A value that is still stored is left where it is
+    /// and read by nothing: the trimmer switch says what it says, whatever was chosen there.
+    /// </summary>
     [Theory]
-    [InlineData(true, VideoAfterRecording.Save)]
-    [InlineData(false, VideoAfterRecording.Trimmer)]
-    [InlineData(true, VideoAfterRecording.Trimmer)]
-    [InlineData(false, VideoAfterRecording.Save)]
-    public void SwitchingStudioOff_WithSaveOrTrimmerLeftAsTheChoice_TheToggleTakesItOver(bool toggleBefore, VideoAfterRecording left)
+    [InlineData("studio", true)]
+    [InlineData("studio", false)]
+    [InlineData("save", true)]
+    [InlineData("trimmer", false)]
+    public void AnAfterRecordingChoiceStoredByAnEarlierBuild_IsReadByNothing_AndIsLeftWhereItIs(string stored, bool showTrimmer)
     {
         var settings = Create(out var service);
-        settings.ShowTrimmer = toggleBefore;
+        service.Set("videoAfterRecording", stored);
+        service.Set("showTrimmer", showTrimmer);
+
+        Assert.Equal(showTrimmer, settings.ShowTrimmer);
+
         settings.StudioPreviewEnabled = true;
-        settings.VideoAfterRecording = left;
+        Assert.Equal(showTrimmer, settings.ShowTrimmer);
 
         settings.StudioPreviewEnabled = false;
+        Assert.Equal(showTrimmer, settings.ShowTrimmer);
 
-        var trimmer = left == VideoAfterRecording.Trimmer;
-        Assert.Equal(trimmer, settings.ShowTrimmer);
-        Assert.Equal(trimmer, service.Get("showTrimmer", !trimmer));
-        Assert.Equal(left, settings.VideoAfterRecording);
-        Assert.Equal(trimmer, settings.OpensTrimmerAfterVideoRecording);
+        settings.ShowTrimmer = !showTrimmer;
+        Assert.Equal(!showTrimmer, settings.ShowTrimmer);
+        Assert.Equal(stored, service.Get("videoAfterRecording", string.Empty));
 
-        // The toggle is on screen again, and keeps the choice in step from here on.
-        settings.ShowTrimmer = !trimmer;
-        Assert.Equal(trimmer ? VideoAfterRecording.Save : VideoAfterRecording.Trimmer, settings.VideoAfterRecording);
-        Assert.Equal(!trimmer, settings.OpensTrimmerAfterVideoRecording);
-    }
-
-    [Fact]
-    public void SwitchingStudioOff_WhenItIsOffAlready_WritesNothingToTheToggle()
-    {
-        var settings = Create(out var service);
-        service.Set("videoAfterRecording", "trimmer");
-        service.Set("showTrimmer", false);
-
-        settings.StudioPreviewEnabled = false;
-
-        // Only the switch from on to off is the moment the toggle takes the choice over.
-        Assert.False(service.Get("showTrimmer", true));
+        settings.ResetToDefaults();
+        Assert.True(settings.ShowTrimmer);
+        Assert.Equal(stored, service.Get("videoAfterRecording", string.Empty));
     }
 
     [Theory]
@@ -586,19 +347,16 @@ public sealed class CaptureSettingsStudioTests
     public void ResetToDefaults_RestoresStudioDefaults()
     {
         var settings = Create(out var service);
-        settings.VideoAfterRecording = VideoAfterRecording.Studio;
+        settings.ShowTrimmer = false;
         settings.StudioPreviewEnabled = true;
         settings.StudioSourceRetentionDays = 90;
         settings.StudioStorageCapGigabytes = 250;
         settings.StudioDefaultLook = new StudioLook(new StudioCanvas { Padding = 0.2 }, new StudioScreenStyle(), new StudioCameraStyle());
-        Assert.True(settings.IsStudioRecordingEnabled);
 
         settings.ResetToDefaults();
 
-        Assert.Equal(VideoAfterRecording.Trimmer, settings.VideoAfterRecording);
         Assert.True(settings.ShowTrimmer);
         Assert.False(settings.StudioPreviewEnabled);
-        Assert.False(settings.IsStudioRecordingEnabled);
         Assert.Equal(30, settings.StudioSourceRetentionDays);
         Assert.Equal(10, settings.StudioStorageCapGigabytes);
         Assert.Null(settings.StudioDefaultLook);

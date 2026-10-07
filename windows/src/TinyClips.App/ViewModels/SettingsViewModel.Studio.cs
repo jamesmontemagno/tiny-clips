@@ -14,8 +14,8 @@ using TinyClips.Core.Studio;
 namespace TinyClips.App;
 
 /// <summary>
-/// The part of the Settings view model that is about Tiny Clips Studio: its switch, the After
-/// recording choice, the storage rules, and the recordings that only a Studio project holds.
+/// The part of the Settings view model that is about Tiny Clips Studio: its switch, the
+/// storage rules, and the recordings that only a Studio project holds.
 /// </summary>
 /// <remarks>
 /// It is in a file of its own so that <c>SettingsViewModel.cs</c> compiles without it, and
@@ -82,7 +82,6 @@ public sealed partial class SettingsViewModel
     // is on.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StudioPreviewVisibility))]
-    [NotifyPropertyChangedFor(nameof(ShowTrimmerToggleVisibility))]
     [NotifyPropertyChangedFor(nameof(StudioDraftsVisibility))]
     [NotifyPropertyChangedFor(nameof(StudioKeptNoteVisibility))]
     private bool _isStudioPreviewEnabled;
@@ -102,15 +101,6 @@ public sealed partial class SettingsViewModel
     public Microsoft.UI.Xaml.Visibility StudioKeptNoteVisibility => !IsStudioPreviewEnabled && StudioKeptNote.Length > 0
         ? Microsoft.UI.Xaml.Visibility.Visible
         : Microsoft.UI.Xaml.Visibility.Collapsed;
-
-    /// <summary>The trimmer toggle shows until the After recording choice takes its place.</summary>
-    public Microsoft.UI.Xaml.Visibility ShowTrimmerToggleVisibility => IsStudioPreviewEnabled
-        ? Microsoft.UI.Xaml.Visibility.Collapsed
-        : Microsoft.UI.Xaml.Visibility.Visible;
-
-    /// <summary>0 = Save, 1 = Open trimmer, 2 = Open in Studio.</summary>
-    [ObservableProperty]
-    private int _videoAfterRecordingIndex = 1;
 
     [ObservableProperty]
     private double _studioSourceRetentionDays = CaptureSettings.DefaultStudioSourceRetentionDays;
@@ -407,15 +397,8 @@ public sealed partial class SettingsViewModel
         _ => $"{summary.ProjectCount:N0} Studio projects are kept and use {FormatFileSize(summary.TotalBytes)}. They are not cleaned up while Studio is off. Switch Studio on to open or delete them.",
     };
 
-    private static int ToAfterRecordingIndex(VideoAfterRecording choice) => choice switch
-    {
-        VideoAfterRecording.Save => 0,
-        VideoAfterRecording.Studio => 2,
-        _ => 1,
-    };
-
     // Called while the other file restores a section's saved values, or all of them. The switch
-    // and the storage rules are in General; the After recording choice is in Video.
+    // and the storage rules are in General.
     partial void RestoreStudioSettings(SettingsSectionKind? kind)
     {
         if (kind is null or SettingsSectionKind.General)
@@ -423,11 +406,6 @@ public sealed partial class SettingsViewModel
             IsStudioPreviewEnabled = _settings.StudioPreviewEnabled;
             StudioSourceRetentionDays = _settings.StudioSourceRetentionDays;
             StudioStorageCapGigabytes = _settings.StudioStorageCapGigabytes;
-        }
-
-        if (kind is null or SettingsSectionKind.Video)
-        {
-            VideoAfterRecordingIndex = ToAfterRecordingIndex(_settings.VideoAfterRecording);
         }
     }
 
@@ -445,43 +423,11 @@ public sealed partial class SettingsViewModel
         if (!IsPersistenceSuppressed(SettingsSectionKind.General))
         {
             _settings.StudioPreviewEnabled = value;
-
-            // The trimmer switch and the After recording choice stand in for each other: one is
-            // shown while Studio is off, the other while it is on. Switching Studio off has
-            // just brought the saved switch in step with the choice that was left (the settings
-            // do that), and each of the two now shows what is saved.
-            var wasLoading = _loading;
-            _loading = true;
-            try
-            {
-                ShowTrimmer = _settings.ShowTrimmer;
-                VideoAfterRecordingIndex = ToAfterRecordingIndex(_settings.VideoAfterRecording);
-            }
-            finally
-            {
-                _loading = wasLoading;
-            }
         }
 
         // The numbers, the drafts, and the line that says what is kept while Studio is off.
         RefreshStudioProjectsIfShown();
     }
-
-    partial void OnVideoAfterRecordingIndexChanged(int value) => PersistStudio(SettingsSectionKind.Video, () =>
-    {
-        // A ComboBox reports -1 while it has no selection.
-        if (value is < 0 or > 2)
-        {
-            return;
-        }
-
-        _settings.VideoAfterRecording = value switch
-        {
-            0 => VideoAfterRecording.Save,
-            2 => VideoAfterRecording.Studio,
-            _ => VideoAfterRecording.Trimmer,
-        };
-    });
 
     partial void OnStudioSourceRetentionDaysChanged(double value)
     {

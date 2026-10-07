@@ -24,8 +24,7 @@ public sealed record RecordingSetupResult(
     WebcamSizePreset WebcamSizePreset,
     WebcamCornerPosition WebcamCornerPosition,
     double? WebcamCornerRadius,
-    bool ShowMouseClicks,
-    bool RecordForStudio = false);
+    bool ShowMouseClicks);
 
 /// <summary>
 /// Pre-recording setup panel shown after target selection and before countdown.
@@ -59,8 +58,7 @@ public sealed partial class RecordingSetupWindow : Window
     private RecordingSetupResult? _pendingResult;
     private bool _suppressEvents;
     private bool _showMouseClicks;
-    private readonly bool _isStudioAvailable;
-    private bool _recordForStudio;
+    private readonly bool _isStudioRecording;
     private bool _microphonePermissionPending;
     private bool _webcamPermissionPending;
 
@@ -71,7 +69,8 @@ public sealed partial class RecordingSetupWindow : Window
         ICaptureSettings settings,
         IAudioDeviceService audioDevices,
         IWebcamDeviceEnumerator webcamDevices,
-        IMediaDevicePermissionService mediaPermissions)
+        IMediaDevicePermissionService mediaPermissions,
+        bool isStudioRecording)
     {
         InitializeComponent();
 
@@ -80,8 +79,7 @@ public sealed partial class RecordingSetupWindow : Window
         _webcamDevices = webcamDevices;
         _mediaPermissions = mediaPermissions;
         _showMouseClicks = settings.ShouldShowMouseClickVisuals(captureType);
-        _isStudioAvailable = captureType == CaptureType.Video && settings.StudioPreviewEnabled;
-        _recordForStudio = _isStudioAvailable && settings.IsStudioRecordingEnabled;
+        _isStudioRecording = captureType == CaptureType.Video && isStudioRecording;
 
         AudioDevices.MicrophoneToggleRequested += OnMicrophoneToggleRequested;
         WebcamOptions.WebcamToggleRequested += OnWebcamToggleRequested;
@@ -103,12 +101,15 @@ public sealed partial class RecordingSetupWindow : Window
         _dragger = new FloatingWindowDragger(AppWindow);
         ConfigureForCaptureType();
         UpdateMouseClicksVisual();
-        UpdateRecordForStudioVisual();
         UpdateStartButtonEnabled();
 
         Closed += OnClosed;
     }
 
+    /// <param name="isStudioRecording">
+    /// The recording was started with Studio recording and opens in Tiny Clips Studio. The
+    /// caller decides that; this panel only says so.
+    /// </param>
     public static Task<RecordingSetupResult?> RunAsync(
         CaptureType captureType,
         ICaptureSettings settings,
@@ -116,14 +117,16 @@ public sealed partial class RecordingSetupWindow : Window
         IWebcamDeviceEnumerator webcamDevices,
         IMediaDevicePermissionService mediaPermissions,
         MonitorInfo? monitor,
-        PixelRect? regionInVirtualDesktop)
+        PixelRect? regionInVirtualDesktop,
+        bool isStudioRecording = false)
     {
         var window = new RecordingSetupWindow(
             captureType,
             settings,
             audioDevices,
             webcamDevices,
-            mediaPermissions);
+            mediaPermissions,
+            isStudioRecording);
         window.ShowNear(monitor, regionInVirtualDesktop);
         CaptureFlowTrace.Mark("setup: panel shown");
         if (captureType == CaptureType.Video)
@@ -140,7 +143,14 @@ public sealed partial class RecordingSetupWindow : Window
         var isVideo = _captureType != CaptureType.Gif;
         AudioDevices.SetVisibleForVideo(isVideo);
         WebcamOptions.SetVisibleForVideo(isVideo);
-        RecordForStudioToggle.Visibility = _isStudioAvailable ? Visibility.Visible : Visibility.Collapsed;
+        if (_isStudioRecording)
+        {
+            // An ordinary recording shows nothing of this.
+            StudioRecordingLabel.Visibility = Visibility.Visible;
+
+            // Read after the Record button's name, which changes with the devices being ready.
+            AutomationProperties.SetHelpText(StartButton, "Starts a Studio recording. Tiny Clips Studio opens when it ends.");
+        }
     }
 
     private async Task LoadMicrophonesAsync()
@@ -346,17 +356,6 @@ public sealed partial class RecordingSetupWindow : Window
         UpdateMouseClicksVisual();
     }
 
-    private void OnRecordForStudioToggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressEvents)
-        {
-            return;
-        }
-
-        _recordForStudio = RecordForStudioToggle.IsChecked == true;
-        UpdateRecordForStudioVisual();
-    }
-
     private void OnSelectionReadinessChanged(object? sender, EventArgs e) => UpdateStartButtonEnabled();
 
     private void OnPreviewSourceChanged(object? sender, EventArgs e) => _ = RefreshSetupPreviewAsync();
@@ -461,7 +460,11 @@ public sealed partial class RecordingSetupWindow : Window
 
         if (isReady)
         {
-            ToolTipService.SetToolTip(StartButton, "Start recording (Enter)");
+            ToolTipService.SetToolTip(
+                StartButton,
+                _isStudioRecording
+                    ? "Start recording (Enter). Tiny Clips Studio opens when it ends."
+                    : "Start recording (Enter)");
             AutomationProperties.SetName(StartButton, "Start recording");
         }
         else
@@ -491,8 +494,7 @@ public sealed partial class RecordingSetupWindow : Window
             WebcamOptions.WebcamSizePreset,
             WebcamOptions.WebcamCornerPosition,
             WebcamOptions.WebcamCornerRadiusOrNull,
-            _showMouseClicks,
-            _isStudioAvailable && _recordForStudio));
+            _showMouseClicks));
     }
 
     private void OnCancel(object sender, RoutedEventArgs e) => Complete(null);
@@ -591,23 +593,6 @@ public sealed partial class RecordingSetupWindow : Window
         var state = _showMouseClicks ? "On" : "Off";
         ToolTipService.SetToolTip(MouseClicksToggle, $"Mouse click visuals: {state}");
         AutomationProperties.SetName(MouseClicksToggle, $"Mouse click visuals {state}");
-    }
-
-    private void UpdateRecordForStudioVisual()
-    {
-        _suppressEvents = true;
-        try
-        {
-            RecordForStudioToggle.IsChecked = _recordForStudio;
-        }
-        finally
-        {
-            _suppressEvents = false;
-        }
-
-        var state = _recordForStudio ? "On" : "Off";
-        ToolTipService.SetToolTip(RecordForStudioToggle, $"Record for Studio: {state}");
-        AutomationProperties.SetName(RecordForStudioToggle, $"Record for Studio {state}");
     }
 
     // Drag-anywhere support: interactive controls mark pointer events handled; dragging

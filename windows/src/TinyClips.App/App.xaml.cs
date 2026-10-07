@@ -50,6 +50,7 @@ public partial class App : Application
     private const string GlyphBug = "\uEBE8";
     private const string GlyphSettings = "\uE713";
     private const string GlyphExit = "\uE7E8";
+    private const string GlyphStudio = "\uE81E";
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
@@ -85,16 +86,24 @@ public partial class App : Application
     private VideoRecordingOptions _activeVideoRecordingOptions = VideoRecordingOptions.Default;
     private bool _activeRecordingWasPickerInitiated;
 
+    // Whether the video recording being set up was asked for with Studio recording. Kept from
+    // one recording to the next, so that a capture picker that comes back by itself is for the
+    // kind of recording that was asked for last.
+    private StudioRecordingIntent? _studioRecordingIntent;
+
     // Whether the recording that completed last was started from the capture picker. A Studio
     // recording reports its project in a second callback, queued right after the first one.
     private bool _completedRecordingWasPickerInitiated;
     private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
+    private Button? _studioRecordingButton;
     private TrayPopupWindow? _trayPopup;
     private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
     private const double TrayPopupWidth = 344;
     private const double TrayPopupHeight = 242;
+    // What the Studio recording command adds to the popup's height: its button and the gap above it.
+    private const double TrayPopupStudioRowHeight = 44;
     private const double TrayPopupFooterHeight = 48;
     private const double TrayPopupFooterButtonSize = 32;
     // Shell_NotifyIcon(NIM_ADD) fails while Explorer's taskbar is not yet up (fresh sign-in,
@@ -521,9 +530,12 @@ public partial class App : Application
             return;
         }
 
+        // Built anew each time it is shown, so the Studio recording command comes and goes
+        // with the Studio switch in Settings while the app runs.
         _trayPopup.Content = BuildTrayPopupContent(Services.GetRequiredService<IHotKeyService>());
         UpdateRecordingState();
-        _trayPopup.ShowNearCursor(TrayPopupWidth, TrayPopupHeight);
+        var height = TrayPopupHeight + (_studioRecordingButton is null ? 0 : TrayPopupStudioRowHeight);
+        _trayPopup.ShowNearCursor(TrayPopupWidth, height);
     }
 
     // PowerToys-style "quick access" popup: capture actions on a layered acrylic content
@@ -579,6 +591,24 @@ public partial class App : Application
         tiles.Children.Add(_gifTile.Button);
 
         content.Children.Add(tiles);
+
+        // Only while Studio is switched on. Video above is always an ordinary recording; this
+        // is the one way to record for Studio. It has no hotkey.
+        _studioRecordingButton = null;
+        if (Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            _studioRecordingButton = CreateQuickAccessButton(
+                "Studio recording",
+                GlyphStudio,
+                new AsyncRelayCommand(StartStudioRecordingAsync),
+                Dismiss);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_studioRecordingButton, "TrayStudioRecordingButton");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+                _studioRecordingButton,
+                "Starts a video recording that opens in Tiny Clips Studio, with the screen and camera kept as separate layers.");
+            ToolTipService.SetToolTip(_studioRecordingButton, "Record a video that opens in Tiny Clips Studio");
+            content.Children.Add(_studioRecordingButton);
+        }
 
         var quickAccess = new Grid { ColumnSpacing = 6 };
         quickAccess.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -911,14 +941,26 @@ public partial class App : Application
     /// Shows the capture picker bar (Region / Screen / Window + countdown), resolves the
     /// chosen target, runs the countdown, then performs the capture or starts recording.
     /// </summary>
+    /// <param name="videoCommand">
+    /// What a video recording was asked for with, which decides whether it is one for Studio.
+    /// Null for a screenshot or a GIF.
+    /// </param>
     private async Task BeginCaptureAsync(
         CaptureType type,
         CapturePickerMode? forcedMode = null,
-        bool abortIfRecording = false)
+        bool abortIfRecording = false,
+        VideoRecordingCommand? videoCommand = null)
     {
         if (_captureFlowCts is not null || _scrollingPanel is not null)
         {
             return;
+        }
+
+        // After the check above: a command that is ignored because a capture is being set up
+        // must not change which kind of recording that one is.
+        if (type == CaptureType.Video && videoCommand is { } command)
+        {
+            StudioRecording.Begin(command);
         }
 
         var captureFlowCts = new CancellationTokenSource();
@@ -989,7 +1031,9 @@ public partial class App : Application
             var videoOptions = VideoRecordingOptions.Default;
             if (type is CaptureType.Video or CaptureType.Gif)
             {
-                recordingSetup = await ShowRecordingSetupAsync(type, selection, settings);
+                // Asked here, when the recording is set up, and again before it starts.
+                var isStudioRecording = type == CaptureType.Video && StudioRecording.IsForStudio;
+                recordingSetup = await ShowRecordingSetupAsync(type, selection, settings, isStudioRecording);
                 CaptureFlowTrace.Mark($"setup: {(recordingSetup is null ? "cancelled" : "confirmed")}");
                 if (recordingSetup is null)
                 {
@@ -1001,7 +1045,7 @@ public partial class App : Application
 
                 // The pre-warm below and the start after the countdown get this same value: the
                 // recorder only reuses a prepared pipeline for a start with matching options.
-                videoOptions = BuildVideoRecordingOptions(type, recordingSetup, settings);
+                videoOptions = BuildVideoRecordingOptions(type);
 
                 // Pre-warm the whole recording pipeline (capture session, encoder, webcam, audio)
                 // while the countdown runs so the recording starts the instant it hits zero.
@@ -1077,6 +1121,10 @@ public partial class App : Application
 
                 case CaptureType.Video:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
+
+                    // Studio may have been switched off since the recording was set up. The
+                    // recorder then builds its pipeline again, for an ordinary recording.
+                    videoOptions = StudioRecording.OptionsAtStart(videoOptions);
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection with { Backdrop = null };
                     _activeRecordingType = CaptureType.Video;
@@ -1203,26 +1251,20 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Decides whether a video recording is one for Studio: by the command it was asked for
+    /// with, and only while Studio is switched on. The recording setup panel has no say in it.
+    /// </summary>
+    private StudioRecordingIntent StudioRecording =>
+        _studioRecordingIntent ??= new StudioRecordingIntent(Services.GetRequiredService<ICaptureSettings>());
+
+    /// <summary>
     /// The per-recording options for a video. Anything other than a recording made for Studio gets
     /// <see cref="VideoRecordingOptions.Default"/>, which is the ordinary recording path.
     /// </summary>
-    private static VideoRecordingOptions BuildVideoRecordingOptions(
-        CaptureType type,
-        RecordingSetupResult setup,
-        ICaptureSettings settings)
-    {
-        if (type != CaptureType.Video || !setup.RecordForStudio || !settings.StudioPreviewEnabled)
-        {
-            return VideoRecordingOptions.Default;
-        }
-
-        return new VideoRecordingOptions
-        {
-            RecordForStudio = true,
-            AppVersion = AppVersionInfo.GetCurrentVersionText(),
-            Look = settings.StudioDefaultLook,
-        };
-    }
+    private VideoRecordingOptions BuildVideoRecordingOptions(CaptureType type) =>
+        type == CaptureType.Video
+            ? StudioRecording.CreateOptions(AppVersionInfo.GetCurrentVersionText())
+            : VideoRecordingOptions.Default;
 
     /// <summary>
     /// Waits for a background pre-warm to settle. Failures are swallowed here: StartAsync will
@@ -1595,7 +1637,11 @@ public partial class App : Application
         }
     }
 
-    private async Task<RecordingSetupResult?> ShowRecordingSetupAsync(CaptureType type, TargetSelection selection, ICaptureSettings settings)
+    private async Task<RecordingSetupResult?> ShowRecordingSetupAsync(
+        CaptureType type,
+        TargetSelection selection,
+        ICaptureSettings settings,
+        bool isStudioRecording)
     {
         PixelRect? region = null;
         if (selection.Region is { } selectedRegion)
@@ -1620,7 +1666,8 @@ public partial class App : Application
                     webcamDevices,
                     mediaPermissions,
                     monitor,
-                    region);
+                    region,
+                    isStudioRecording);
             }
             finally
             {
@@ -1639,7 +1686,8 @@ public partial class App : Application
             setupWebcamDevices,
             setupMediaPermissions,
             setupMonitor,
-            region);
+            region,
+            isStudioRecording);
     }
 
     private static void ApplyRecordingSetup(CaptureType type, RecordingSetupResult setup, ICaptureSettings settings)
@@ -1795,7 +1843,13 @@ public partial class App : Application
 
     private readonly record struct TargetSelection(CaptureTarget Target, PixelRect? Region, MonitorInfo? Monitor, CapturedFrame? Backdrop = null);
 
-    private async Task ToggleVideoAsync()
+    private Task ToggleVideoAsync() => ToggleVideoAsync(VideoRecordingCommand.RecordVideo);
+
+    /// <summary>
+    /// Record video, from the tray menu or from its global hotkey: stops the video recording
+    /// that is running, or sets up a new one, which is always an ordinary recording.
+    /// </summary>
+    private async Task ToggleVideoAsync(VideoRecordingCommand command)
     {
         var video = Services.GetRequiredService<IVideoRecordingService>();
         var gif = Services.GetRequiredService<IGifRecordingService>();
@@ -1813,11 +1867,34 @@ public partial class App : Application
                 return;
             }
 
-            await BeginCaptureAsync(CaptureType.Video);
+            await BeginCaptureAsync(CaptureType.Video, videoCommand: command);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Video recording toggle failed: {ex}");
+            UpdateRecordingState();
+        }
+    }
+
+    /// <summary>
+    /// Studio recording, from the tray menu: sets up a video recording that keeps the screen and
+    /// the camera as separate layers and opens in Tiny Clips Studio. It only starts one: a
+    /// recording that is running is stopped with the Video or GIF command, or its hotkey.
+    /// </summary>
+    private async Task StartStudioRecordingAsync()
+    {
+        try
+        {
+            if (IsAnyRecordingActive())
+            {
+                return;
+            }
+
+            await BeginCaptureAsync(CaptureType.Video, videoCommand: VideoRecordingCommand.StudioRecording);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio recording could not be started: {ex}");
             UpdateRecordingState();
         }
     }
@@ -1984,15 +2061,16 @@ public partial class App : Application
             {
                 // A recording made for Studio comes back with a path only when no project
                 // could be made of it: what is kept is the screen recording, as an ordinary
-                // video, without the camera. Nothing else says so. No editor opens, and with
-                // Studio chosen for after a recording, neither does the trimmer.
+                // video, without the camera. Nothing else says so. No editor opens, and the
+                // video goes the way any video does below: to the trimmer, or to the save
+                // folder, as the trimmer switch says.
                 ShowMessageNotification(StudioFallbackNotice(path));
             }
 
             Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
-            var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.OpensTrimmerAfterVideoRecording;
+            var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.ShowTrimmer;
             if (showTrimmer)
             {
                 OpenTrimmer(path, type, pickerInitiated: wasPickerInitiated);
@@ -2287,7 +2365,9 @@ public partial class App : Application
             {
                 var settings = Services.GetRequiredService<ICaptureSettings>();
                 AcquireDisplaySleepAssertionIfEnabled();
-                // A restart records the same kind of video again, so a Studio recording stays one.
+                // A restart records the same kind of video again, so a Studio recording stays
+                // one, unless Studio has been switched off since it started.
+                _activeVideoRecordingOptions = StudioRecording.OptionsAtStart(_activeVideoRecordingOptions);
                 await Services.GetRequiredService<IVideoRecordingService>()
                     .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes, _activeVideoRecordingOptions);
             }
@@ -2805,6 +2885,11 @@ public partial class App : Application
             ToolTipService.SetToolTip(_gifTile.Button, string.IsNullOrEmpty(accel) ? label : $"{label} ({accel})");
             _gifTile.Button.IsEnabled = !video.IsRecording;
         }
+
+        if (_studioRecordingButton is not null)
+        {
+            _studioRecordingButton.IsEnabled = !video.IsRecording && !gif.IsRecording;
+        }
     }
 
     // Register app notifications only when a toast is actually needed. That keeps packaged
@@ -3224,7 +3309,7 @@ public partial class App : Application
                 $"Record video ({videoBinding.DisplayString})",
                 videoBinding.ModifiersValue,
                 videoBinding.VirtualKey,
-                () => _ = ToggleVideoAsync());
+                () => _ = ToggleVideoAsync(VideoRecordingCommand.RecordVideoHotKey));
 
             var gifBinding = hotKeys.GetBinding(HotKeyAction.RecordGif);
             manager.Add(
@@ -3625,7 +3710,11 @@ public partial class App : Application
             return;
         }
 
-        await BeginCaptureAsync(type, abortIfRecording: true);
+        // Nobody asked for this one: a video is of the kind that was asked for last.
+        await BeginCaptureAsync(
+            type,
+            abortIfRecording: true,
+            videoCommand: type == CaptureType.Video ? VideoRecordingCommand.PickerReturned : null);
     }
 
     private static bool IsAnyRecordingActive()

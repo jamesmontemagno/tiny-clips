@@ -13,9 +13,9 @@ using TinyClips.Core.Studio;
 namespace TinyClips.App.Tests;
 
 /// <summary>
-/// Tiny Clips Studio's part of the Settings view model: the switch, the After recording choice,
-/// the storage rules, and the list of recordings that only a project holds. The projects are
-/// real ones, in a store on a temp folder.
+/// Tiny Clips Studio's part of the Settings view model: the switch, the storage rules, and the
+/// list of recordings that only a project holds. The projects are real ones, in a store on a
+/// temp folder.
 /// </summary>
 public sealed class SettingsViewModelStudioTests : IDisposable
 {
@@ -70,14 +70,12 @@ public sealed class SettingsViewModelStudioTests : IDisposable
 
         Assert.False(vm.IsStudioPreviewEnabled);
         Assert.Equal(Visibility.Collapsed, vm.StudioPreviewVisibility);
-        Assert.Equal(Visibility.Visible, vm.ShowTrimmerToggleVisibility);
         Assert.Equal(Visibility.Collapsed, vm.StudioDraftsVisibility);
 
         vm.IsStudioPreviewEnabled = true;
 
         Assert.True(_settings.StudioPreviewEnabled);
         Assert.Equal(Visibility.Visible, vm.StudioPreviewVisibility);
-        Assert.Equal(Visibility.Collapsed, vm.ShowTrimmerToggleVisibility);
 
         vm.IsStudioPreviewEnabled = false;
 
@@ -139,128 +137,53 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Show(vm, SettingsSectionKind.Gif);
         Show(vm, SettingsSectionKind.Screenshot);
 
-        Assert.DoesNotContain("videoAfterRecording", _saved.Reads);
         Assert.All(inGeneral, key => Assert.DoesNotContain(key, _saved.Reads));
 
+        // The Video page has nothing of Studio on it: its trimmer switch is the one it always had.
         Show(vm, SettingsSectionKind.Video);
 
-        Assert.Contains("videoAfterRecording", _saved.Reads);
+        Assert.Contains("showTrimmer", _saved.Reads);
         Assert.All(inGeneral, key => Assert.DoesNotContain(key, _saved.Reads));
 
         _saved.Reads.Clear();
         Show(vm, SettingsSectionKind.General);
 
         Assert.All(inGeneral, key => Assert.Contains(key, _saved.Reads));
+
+        // The After recording choice of earlier builds is read by no page.
         Assert.DoesNotContain("videoAfterRecording", _saved.Reads);
 
         // Nothing was different from what is saved, so nothing is said to have changed.
         Assert.DoesNotContain(nameof(SettingsViewModel.IsStudioPreviewEnabled), changed);
-        Assert.DoesNotContain(nameof(SettingsViewModel.VideoAfterRecordingIndex), changed);
+        Assert.DoesNotContain(nameof(SettingsViewModel.ShowTrimmer), changed);
     }
 
-    // ---- After recording, which stands in for the trimmer switch while Studio is on
+    // ---- The trimmer switch of the Video page, which Studio leaves alone
 
-    [Fact]
-    public void AfterRecording_IsSavedOnlyWhileStudioIsOn()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SwitchingStudioOnOrOff_LeavesTheTrimmerSwitch_WhichIsSavedEitherWay(bool showTrimmer)
     {
+        _settings.ShowTrimmer = showTrimmer;
         var vm = CreateViewModel();
         Show(vm, SettingsSectionKind.General);
         Show(vm, SettingsSectionKind.Video);
-        Assert.Equal(1, vm.VideoAfterRecordingIndex);
-
-        // The choice is hidden while Studio is off, so nothing it is bound to may be saved.
-        vm.VideoAfterRecordingIndex = 2;
-        Assert.Equal(VideoAfterRecording.Trimmer, _settings.VideoAfterRecording);
+        Assert.Equal(showTrimmer, vm.ShowTrimmer);
 
         vm.IsStudioPreviewEnabled = true;
-        Assert.Equal(1, vm.VideoAfterRecordingIndex);
 
-        vm.VideoAfterRecordingIndex = 2;
-        Assert.Equal(VideoAfterRecording.Studio, _settings.VideoAfterRecording);
-        Assert.True(_settings.IsStudioRecordingEnabled);
+        Assert.Equal(showTrimmer, vm.ShowTrimmer);
+        Assert.Equal(showTrimmer, _settings.ShowTrimmer);
 
-        // Studio is chosen apart from the trimmer. The switch keeps what it said, and no
-        // trimmer opens.
-        Assert.True(_settings.ShowTrimmer);
-        Assert.False(_settings.OpensTrimmerAfterVideoRecording);
+        // The switch is on the Video page while Studio is on as well, and is saved from there.
+        vm.ShowTrimmer = !showTrimmer;
+        Assert.Equal(!showTrimmer, _settings.ShowTrimmer);
 
-        // A ComboBox reports -1 while it has no selection.
-        vm.VideoAfterRecordingIndex = -1;
-        Assert.Equal(VideoAfterRecording.Studio, _settings.VideoAfterRecording);
-
-        // Save and Open trimmer decide while Studio is on, and leave the switch as it was too.
-        vm.VideoAfterRecordingIndex = 0;
-        Assert.Equal(VideoAfterRecording.Save, _settings.VideoAfterRecording);
-        Assert.True(_settings.ShowTrimmer);
-        Assert.False(_settings.OpensTrimmerAfterVideoRecording);
-
-        vm.VideoAfterRecordingIndex = 1;
-        Assert.Equal(VideoAfterRecording.Trimmer, _settings.VideoAfterRecording);
-        Assert.True(_settings.OpensTrimmerAfterVideoRecording);
-    }
-
-    [Fact]
-    public void GoingToStudioWithTheArrowKeys_PassesOpenTrimmer_AndLeavesTheTrimmerSwitchAsItWas()
-    {
-        _settings.ShowTrimmer = false;
-        var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
-        Show(vm, SettingsSectionKind.Video);
-        vm.IsStudioPreviewEnabled = true;
-        Assert.Equal(0, vm.VideoAfterRecordingIndex);
-
-        // A closed list takes each press of the Down key as a choice: Save, Open trimmer, Studio.
-        vm.VideoAfterRecordingIndex = 1;
-        Assert.True(_settings.OpensTrimmerAfterVideoRecording);
-        vm.VideoAfterRecordingIndex = 2;
-        Assert.True(_settings.IsStudioRecordingEnabled);
-
-        // Open trimmer was passed, not chosen, so it is not what a recording does afterwards.
         vm.IsStudioPreviewEnabled = false;
 
-        Assert.False(vm.ShowTrimmer);
-        Assert.False(_settings.ShowTrimmer);
-        Assert.False(_settings.OpensTrimmerAfterVideoRecording);
-    }
-
-    [Fact]
-    public void SwitchingStudioOnOrOff_PutsTheHiddenOneOfTheTwoInStepWithWhatIsSaved()
-    {
-        _settings.StudioPreviewEnabled = true;
-        _settings.VideoAfterRecording = VideoAfterRecording.Studio;
-        var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
-        Show(vm, SettingsSectionKind.Video);
-        Assert.Equal(2, vm.VideoAfterRecordingIndex);
-
-        // Off: the trimmer switch is what is on screen. It says what it said before Studio was
-        // chosen, which is what a recording does again, and it is used.
-        vm.IsStudioPreviewEnabled = false;
-        Assert.True(vm.ShowTrimmer);
-        Assert.True(_settings.OpensTrimmerAfterVideoRecording);
-        vm.ShowTrimmer = false;
-        Assert.False(_settings.ShowTrimmer);
-        Assert.False(_settings.OpensTrimmerAfterVideoRecording);
-
-        // On again: Studio is still the choice, and showing it saves nothing.
-        var writes = _saved.Writes;
-        vm.IsStudioPreviewEnabled = true;
-        Assert.Equal(2, vm.VideoAfterRecordingIndex);
-        Assert.Equal(writes + 1, _saved.Writes);
-        Assert.Equal(VideoAfterRecording.Studio, _settings.VideoAfterRecording);
-
-        // A choice of Open trimmer or Save is the trimmer switch by another name, so each of
-        // the two shows what the other was set to. From the choice to the switch:
-        vm.VideoAfterRecordingIndex = 1;
-        vm.IsStudioPreviewEnabled = false;
-        Assert.True(vm.ShowTrimmer);
-        Assert.True(_settings.ShowTrimmer);
-
-        // And from the switch to the choice.
-        vm.ShowTrimmer = false;
-        vm.IsStudioPreviewEnabled = true;
-        Assert.Equal(0, vm.VideoAfterRecordingIndex);
-        Assert.Equal(VideoAfterRecording.Save, _settings.VideoAfterRecording);
+        Assert.Equal(!showTrimmer, vm.ShowTrimmer);
+        Assert.Equal(!showTrimmer, _settings.ShowTrimmer);
     }
 
     // ---- The storage rules

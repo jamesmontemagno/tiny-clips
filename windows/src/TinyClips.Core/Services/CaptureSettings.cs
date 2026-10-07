@@ -5,7 +5,6 @@ namespace TinyClips.Core.Services;
 
 public sealed class CaptureSettings : ICaptureSettings
 {
-    private const string VideoAfterRecordingKey = "videoAfterRecording";
     private const string StudioDefaultLookKey = "studioDefaultLook";
 
     private readonly ISettingsService _settings;
@@ -289,70 +288,14 @@ public sealed class CaptureSettings : ICaptureSettings
     public bool ShowTrimmer
     {
         get => _settings.Get("showTrimmer", true);
-        set
-        {
-            _settings.Set("showTrimmer", value);
-
-            // A stored choice of Save or Trimmer wins over this toggle when read, so it is kept
-            // in step. A stored choice of Studio is left: it stands apart from the trimmer, and
-            // this toggle is what applies whenever Studio is not used.
-            var stored = ParseVideoAfterRecording(_settings.Get(VideoAfterRecordingKey, string.Empty));
-            if (stored is VideoAfterRecording.Save or VideoAfterRecording.Trimmer
-                && (stored == VideoAfterRecording.Trimmer) != value)
-            {
-                _settings.Set(
-                    VideoAfterRecordingKey,
-                    ToPersistedVideoAfterRecording(value ? VideoAfterRecording.Trimmer : VideoAfterRecording.Save));
-            }
-        }
+        set => _settings.Set("showTrimmer", value);
     }
-
-    public VideoAfterRecording VideoAfterRecording
-    {
-        get => ParseVideoAfterRecording(_settings.Get(VideoAfterRecordingKey, string.Empty))
-            ?? (ShowTrimmer ? VideoAfterRecording.Trimmer : VideoAfterRecording.Save);
-        set
-        {
-            _settings.Set(VideoAfterRecordingKey, ToPersistedVideoAfterRecording(value));
-
-            // While Studio is switched on the choice is what decides, and the trimmer toggle is
-            // left as it was before. The list the choice is made in takes each press of an arrow
-            // key as a choice, so going from Save to Studio passes Open trimmer on the way, and
-            // that must not be what a recording does once Studio is switched off again. The
-            // toggle is brought in step when Studio is switched off, from the choice left then.
-            if (value != VideoAfterRecording.Studio && !StudioPreviewEnabled)
-            {
-                _settings.Set("showTrimmer", value == VideoAfterRecording.Trimmer);
-            }
-        }
-    }
-
-    public bool OpensTrimmerAfterVideoRecording =>
-        StudioPreviewEnabled ? VideoAfterRecording == VideoAfterRecording.Trimmer : ShowTrimmer;
 
     public bool StudioPreviewEnabled
     {
         get => _settings.Get("studioPreviewEnabled", false);
-        set
-        {
-            // Switched off: the trimmer toggle is what decides from here on. It takes over the
-            // choice that was left, Save or Open trimmer. With Studio left as the choice it
-            // keeps what it said before Studio was switched on. Written before the switch, so
-            // that an app that ends between the two never has Studio off and the toggle stale.
-            if (!value
-                && StudioPreviewEnabled
-                && ParseVideoAfterRecording(_settings.Get(VideoAfterRecordingKey, string.Empty)) is { } stored
-                && stored != VideoAfterRecording.Studio
-                && ShowTrimmer != (stored == VideoAfterRecording.Trimmer))
-            {
-                _settings.Set("showTrimmer", stored == VideoAfterRecording.Trimmer);
-            }
-
-            _settings.Set("studioPreviewEnabled", value);
-        }
+        set => _settings.Set("studioPreviewEnabled", value);
     }
-
-    public bool IsStudioRecordingEnabled => StudioPreviewEnabled && VideoAfterRecording == VideoAfterRecording.Studio;
 
     public const int DefaultStudioSourceRetentionDays = 30;
     public const int MinStudioSourceRetentionDays = 0;
@@ -919,7 +862,6 @@ public sealed class CaptureSettings : ICaptureSettings
         GifMouseClickOpacity = 0.85;
         GifMouseClickDuration = 0.45;
         ShowTrimmer = true;
-        VideoAfterRecording = VideoAfterRecording.Trimmer;
         StudioPreviewEnabled = false;
         StudioSourceRetentionDays = DefaultStudioSourceRetentionDays;
         StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
@@ -1036,23 +978,6 @@ public sealed class CaptureSettings : ICaptureSettings
             "circle" => WebcamShape.Circle,
             _ => WebcamShape.Circle,
         };
-
-    // Null for a value that was never written or that this build does not know.
-    private static VideoAfterRecording? ParseVideoAfterRecording(string value) =>
-        (value ?? string.Empty).ToLowerInvariant() switch
-        {
-            "save" => VideoAfterRecording.Save,
-            "trimmer" => VideoAfterRecording.Trimmer,
-            "studio" => VideoAfterRecording.Studio,
-            _ => null,
-        };
-
-    private static string ToPersistedVideoAfterRecording(VideoAfterRecording value) => value switch
-    {
-        VideoAfterRecording.Trimmer => "trimmer",
-        VideoAfterRecording.Studio => "studio",
-        _ => "save",
-    };
 
 
     private static string ToPersistedWebcamShape(WebcamShape value) => value switch
