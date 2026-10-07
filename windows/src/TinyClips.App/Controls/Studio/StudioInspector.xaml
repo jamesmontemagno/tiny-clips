@@ -49,11 +49,6 @@
             <Setter Property="Fill" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
             <Setter Property="Visibility" Value="Collapsed" />
         </Style>
-        <!--  The four edges of a crop, behind a header that opens and closes them.  -->
-        <Style x:Key="StudioCropGroupStyle" BasedOn="{StaticResource DefaultExpanderStyle}" TargetType="Expander">
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        </Style>
         <!--  Nine swatches fill one row of a panel.  -->
         <Style x:Key="StudioSwatchGridStyle" TargetType="GridView">
             <Setter Property="Padding" Value="0" />
@@ -430,12 +425,13 @@
                         -->
                         <Expander
                             x:Name="ScreenCropGroup"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="StudioScreenCropGroup"
                             AutomationProperties.HelpText="{x:Bind ViewModel.ScreenCropHelpText, Mode=OneWay}"
                             AutomationProperties.Name="Screen crop"
                             Collapsed="OnScreenCropCollapsed"
-                            Expanding="OnScreenCropExpanding"
-                            Style="{StaticResource StudioCropGroupStyle}">
+                            Expanding="OnScreenCropExpanding">
                             <Expander.Header>
                                 <Grid
                                     ColumnSpacing="8"
@@ -676,12 +672,13 @@
                         <!--  How much of the camera picture is cut off each edge, as for the screen.  -->
                         <Expander
                             x:Name="CameraCropGroup"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="StudioCameraCropGroup"
                             AutomationProperties.HelpText="{x:Bind ViewModel.CameraCropHelpText, Mode=OneWay}"
                             AutomationProperties.Name="Camera crop"
                             Collapsed="OnCameraCropCollapsed"
                             Expanding="OnCameraCropExpanding"
-                            Style="{StaticResource StudioCropGroupStyle}"
                             Visibility="{x:Bind ViewModel.AreCameraStyleControlsVisible, Mode=OneWay}">
                             <Expander.Header>
                                 <Grid
