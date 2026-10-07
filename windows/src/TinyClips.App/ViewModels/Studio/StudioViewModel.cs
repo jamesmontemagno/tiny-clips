@@ -73,7 +73,9 @@ public sealed partial class StudioViewModel : ObservableObject
     private readonly StudioEditorSession _session;
     private readonly ICaptureSettings _settings;
     private readonly IClipStorageService _storage;
-    private readonly DispatcherQueue _dispatcher;
+
+    // Runs something on the UI thread, a moment later.
+    private readonly Action<Action> _post;
     private StudioEditorLoadState _lastState = StudioEditorLoadState.Loading;
     private string _errorMessage = string.Empty;
     private bool _isSaveErrorShown;
@@ -88,10 +90,36 @@ public sealed partial class StudioViewModel : ObservableObject
         IClipStorageService storage,
         DispatcherQueue dispatcher,
         bool canFindPeople)
+        : this(
+            projectId,
+            store,
+            previewFactory,
+            exporter,
+            settings,
+            storage,
+            action => dispatcher.TryEnqueue(() => action()),
+            canFindPeople)
+    {
+    }
+
+    /// <summary>
+    /// For whoever has its own way onto the UI thread and its own clock. The unit tests do: a
+    /// test has no dispatcher queue, and runs what was posted when it chooses to.
+    /// </summary>
+    internal StudioViewModel(
+        string projectId,
+        IStudioProjectStore store,
+        IStudioPreviewFactory previewFactory,
+        IStudioExportService exporter,
+        ICaptureSettings settings,
+        IClipStorageService storage,
+        Action<Action> post,
+        bool canFindPeople,
+        TimeProvider? timeProvider = null)
     {
         _settings = settings;
         _storage = storage;
-        _dispatcher = dispatcher;
+        _post = post;
         CanFindPeople = canFindPeople;
         _session = new StudioEditorSession(
             projectId,
@@ -99,7 +127,8 @@ public sealed partial class StudioViewModel : ObservableObject
             previewFactory,
             exporter,
             settings,
-            action => dispatcher.TryEnqueue(() => action()));
+            post,
+            timeProvider);
         _session.Changed += OnSessionChanged;
         _session.Exported += OnSessionExported;
         _session.ScreenRecordingSaved += OnSessionScreenRecordingSaved;
@@ -623,7 +652,7 @@ public sealed partial class StudioViewModel : ObservableObject
     {
         if (!EqualityComparer<T>.Default.Equals(requested, actual) && propertyName is not null)
         {
-            _dispatcher.TryEnqueue(() => OnPropertyChanged(propertyName));
+            _post(() => OnPropertyChanged(propertyName));
         }
     }
 }

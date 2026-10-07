@@ -565,7 +565,7 @@ public sealed partial class StudioViewModel
     {
         if (Math.Abs(requested - actual) > ValueTolerance && propertyName is not null)
         {
-            _dispatcher.TryEnqueue(() => OnPropertyChanged(propertyName));
+            _post(() => OnPropertyChanged(propertyName));
         }
     }
 
