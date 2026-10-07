@@ -949,6 +949,7 @@ Known limits to state up front:
 - Device frames around the screen card (browser, phone)
 - Annotations over time ranges, reusing the screenshot editor's arrows, text, emoji, and redaction
 - Captions from speech, silence removal, background music, intro and outro cards, keystroke display
+- Editing the sound apart from the picture: silencing or turning down a range, and later an added sound file. Proposed in [`studio-audio-editing.md`](studio-audio-editing.md), not decided
 - Blurred-screen and wallpaper backgrounds, named look presets
 - Export to GIF and social size presets
 - Using the Studio renderer for ordinary macOS recordings, replacing up to three encode passes with one
