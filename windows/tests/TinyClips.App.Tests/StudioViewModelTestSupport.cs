@@ -41,6 +41,9 @@ public abstract class StudioViewModelTestBase : IDisposable
     /// <summary>How often the editor saved the project.</summary>
     protected int Saves => ((CountingStore)_store).CallsTo(nameof(IStudioProjectStore.Save));
 
+    /// <summary>How often the editor wrote whether the project is kept, which it writes at once.</summary>
+    protected int KeepWrites => ((CountingStore)_store).CallsTo(nameof(IStudioProjectStore.SetKeepSources));
+
     /// <summary>The preview of the project that was opened last.</summary>
     protected StudioTestPreview Preview => _previews.Opened[^1];
 
@@ -78,9 +81,10 @@ public abstract class StudioViewModelTestBase : IDisposable
 
     /// <summary>
     /// Opens a project as the Studio window does: the view model is made, the window's controls
-    /// are bound to it while it still says it is loading, and then the project is read.
+    /// are bound to it while it still says it is loading, and then the project is read. A test
+    /// that opens a project which cannot be shown says so.
     /// </summary>
-    protected async Task<StudioViewModel> OpenAsync(string projectId, StudioBoundControls? controls = null)
+    protected async Task<StudioViewModel> OpenAsync(string projectId, StudioBoundControls? controls = null, bool expectReady = true)
     {
         var viewModel = new StudioViewModel(
             projectId,
@@ -99,7 +103,7 @@ public abstract class StudioViewModelTestBase : IDisposable
         Pump();
         await load.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Pump();
-        Assert.True(viewModel.IsReady, viewModel.UnavailableMessage);
+        Assert.True(viewModel.IsReady == expectReady, expectReady ? viewModel.UnavailableMessage : "the project opened");
         return viewModel;
     }
 
@@ -301,9 +305,12 @@ public sealed record StudioTwoWayBinding(string Property, string Control, string
 /// </summary>
 /// <remarks>
 /// <para>
-/// The bindings are read from the markup itself (<c>StudioInspector.xaml</c> and
-/// <c>StudioWindow.xaml</c>, which are in this assembly as text), so a value that is bound both
-/// ways tomorrow is in these tests without being added to them.
+/// The bindings are read from the markup itself: every .xaml file of the Studio window and of
+/// its controls is in this assembly as text. So a value that is bound both ways tomorrow, and
+/// written as today's are (<c>{x:Bind ViewModel.X, Mode=TwoWay}</c>), is in these tests without
+/// being added to them. One that is written another way fails the first test, which says what
+/// to teach the reader: another kind of binding, a path that is not a value of the view model,
+/// or a file that makes two-way the default.
 /// </para>
 /// <para>
 /// What this copies from a compiled binding (<c>x:Bind</c> with <c>Mode=TwoWay</c>): a control is
@@ -315,16 +322,25 @@ public sealed record StudioTwoWayBinding(string Property, string Control, string
 /// hand nothing back; here they do, which asks more of the view model and not less.
 /// </para>
 /// <para>
-/// What it leaves out: a slider row (<c>StudioSliderRow</c>) holds the value it is told as it is,
-/// also one outside its range. Its slider pulls such a value inside the range, and the row does
-/// not pass that on; only the user moving the slider writes to the row's value. A list holds
-/// any index it is told. Neither is checked here: both are read from the controls' code.
+/// What it leaves out, all of it read from the controls' code and the framework's and none of
+/// it checked here. A slider row (<c>StudioSliderRow</c>) holds the value it is told as it is,
+/// also one outside its range: its slider pulls such a value inside the range, and the row does
+/// not pass that on; only the user moving the slider writes to the row's value. A group of
+/// radio buttons holds any index it is told. A drop-down list does not: told an index it has no
+/// item for, it puts the old one back, or throws. No project asks that of one, because a choice
+/// that a project file does not spell as this version does is read as the default one.
 /// </para>
 /// <para>
-/// A control here takes a value it is shown also while it is handing one back. Whether the real
-/// ones do was not looked into, and the view model does not lean on it: where the editor did not
-/// take what a control asked for, the view model tells the control again a moment later. The
-/// tests of that ask where nothing else tells the control.
+/// A group of radio buttons that is clicked hands back one thing more than a stand-in does: no
+/// choice first, as the button that was chosen is unchecked, and then the choice. One test
+/// hands back that pair.
+/// </para>
+/// <para>
+/// A control here takes a value it is shown also while it is handing one back. A slider row
+/// does too. A group of radio buttons then takes the number and does not move its dot. The view
+/// model does not lean on either: where the editor did not take what a control asked for, the
+/// view model tells the control again a moment later, and the tests of that ask where nothing
+/// else tells the control.
 /// </para>
 /// </remarks>
 public sealed partial class StudioBoundControls
@@ -333,7 +349,8 @@ public sealed partial class StudioBoundControls
     // controls hand back again. That ends after a step or two, or the bindings never settle.
     private const int DeepestNesting = 40;
 
-    private static readonly string[] MarkupFiles = ["StudioInspector.xaml", "StudioWindow.xaml"];
+    // The markup files are in the assembly under this prefix, by the project file.
+    private const string MarkupPrefix = "StudioMarkup.";
 
     // By the binding itself and not by what it says: two controls of one kind may be bound to
     // one value, and each holds its own.
@@ -371,8 +388,21 @@ public sealed partial class StudioBoundControls
     /// <summary>What the controls handed back so far: the property and the value, in order.</summary>
     public List<(string Property, object? Value)> HandedBack { get; } = [];
 
+    /// <summary>The markup files that were read: every .xaml file of the Studio window and of its controls, by name.</summary>
+    public static IReadOnlyList<string> MarkupFiles { get; } =
+    [
+        .. typeof(StudioBoundControls).Assembly.GetManifestResourceNames()
+            .Where(name => name.StartsWith(MarkupPrefix, StringComparison.Ordinal))
+            .Select(name => name[MarkupPrefix.Length..])
+            .Order(StringComparer.Ordinal),
+    ];
+
     /// <summary>How many times <c>Mode=TwoWay</c> is written in the markup, whatever it is written in.</summary>
     public static int CountTwoWayInMarkup() => MarkupFiles.Sum(file => TwoWayMode().Count(ReadMarkupFile(file)));
+
+    /// <summary>The markup files that make a binding two-way without saying so on the binding, which the reader would miss.</summary>
+    public static IReadOnlyList<string> FilesWithADefaultBindMode() =>
+        [.. MarkupFiles.Where(file => ReadMarkupFile(file).Contains("DefaultBindMode", StringComparison.Ordinal))];
 
     /// <summary>Binds the controls, which shows each of them its value, as building the window does.</summary>
     public void Attach(StudioViewModel viewModel)
@@ -499,7 +529,7 @@ public sealed partial class StudioBoundControls
 
     private static string ReadMarkupFile(string name)
     {
-        using var stream = typeof(StudioBoundControls).Assembly.GetManifestResourceStream(name)
+        using var stream = typeof(StudioBoundControls).Assembly.GetManifestResourceStream(MarkupPrefix + name)
             ?? throw new InvalidOperationException($"{name} is not in the test assembly. The project file puts it there.");
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();

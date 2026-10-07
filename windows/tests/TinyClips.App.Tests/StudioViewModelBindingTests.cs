@@ -39,8 +39,16 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     {
         var bindings = _controls.Bindings;
 
-        // Nothing that says Mode=TwoWay is written in a way the reader of the markup misses.
+        // Every markup file of the Studio window and of its controls was read, and not these two only.
+        Assert.Contains("StudioInspector.xaml", StudioBoundControls.MarkupFiles);
+        Assert.Contains("StudioWindow.xaml", StudioBoundControls.MarkupFiles);
+        Assert.Contains("StudioTimeline.xaml", StudioBoundControls.MarkupFiles);
+        Assert.Contains("StudioSliderRow.xaml", StudioBoundControls.MarkupFiles);
+
+        // Nothing that says Mode=TwoWay is written in a way the reader of the markup misses, and
+        // no file makes a binding two-way without saying so.
         Assert.Equal(StudioBoundControls.CountTwoWayInMarkup(), bindings.Count);
+        Assert.Empty(StudioBoundControls.FilesWithADefaultBindMode());
 
         var names = bindings.Select(binding => binding.Property).ToArray();
         Assert.Contains(nameof(StudioViewModel.ZoomFocusX), names);
@@ -87,6 +95,54 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.Equal(0, Saves);
         await CloseAsync(viewModel);
         Assert.Equal(0, Saves);
+        Assert.Equal(0, KeepWrites);
+    }
+
+    [Fact]
+    public async Task AProjectThatCannotBeShown_TakesWhatTheControlsHandBack()
+    {
+        // The screen recording is gone. The window opens all the same, with its controls
+        // bound, and says that the project can't be opened.
+        var id = CreateEditedProject();
+        File.Delete(Projects.GetPaths(id).ScreenPath);
+
+        var viewModel = await OpenAsync(id, _controls, expectReady: false);
+        Assert.True(viewModel.IsUnavailable);
+        _controls.HandBackEverything();
+        Pump();
+
+        Assert.False(viewModel.HasError, viewModel.ErrorMessage);
+        Assert.False(viewModel.CanUndo);
+        Advance(LongerThanAutosave);
+        await CloseAsync(viewModel);
+        Assert.Equal(0, Saves);
+        Assert.Equal(0, KeepWrites);
+    }
+
+    [Fact]
+    public async Task AnEditorThatHasClosed_TakesWhatAControlStillWrites()
+    {
+        var id = CreateEditedProject();
+        var viewModel = await OpenAsync(id, _controls);
+        viewModel.SelectZoom(0);
+        await CloseAsync(viewModel);
+
+        // The window is going, and its controls with it. What one of them still writes, a
+        // value handed back or a slider that was being moved, is too late to be an edit.
+        _controls.HandBackEverything();
+        _controls.Move(nameof(StudioViewModel.CanvasPadding), 0.3);
+        _controls.Move(nameof(StudioViewModel.ZoomScale), 4d);
+        _controls.Move(nameof(StudioViewModel.KeepsProject), true);
+        Pump();
+        Advance(LongerThanAutosave);
+
+        Assert.False(viewModel.HasError, viewModel.ErrorMessage);
+        Assert.Equal(0, Saves);
+        Assert.Equal(0, KeepWrites);
+        var stored = Projects.Load(id);
+        Assert.Equal(0.06, stored.Canvas.Padding, Precision);
+        Assert.Equal(2, stored.Zooms[0].Scale, Precision);
+        Assert.False(stored.KeepSources);
     }
 
     [Fact]
@@ -192,6 +248,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
 
         Advance(LongerThanAutosave);
         Assert.Equal(0, Saves);
+        Assert.Equal(0, KeepWrites);
     }
 
     // ---- What was wrong on 6 October: a slider of the selected zoom handing its value back
@@ -285,9 +342,21 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
                 viewModel.Scrub(3.3);
                 viewModel.Run(StudioShortcutAction.AddZoom);
             }),
-            ("moving the new zoom's level", () => _controls.Move(nameof(StudioViewModel.ZoomScale), 4d)),
-            ("moving where the new zoom looks", () => _controls.Move(nameof(StudioViewModel.ZoomFocusX), 0.25)),
-            ("moving the top of the crop, with the zoom selected", () => _controls.Move(nameof(StudioViewModel.ScreenCropTop), 0.1)),
+            ("moving the new zoom's level", () =>
+            {
+                viewModel.SelectZoom(1);
+                _controls.Move(nameof(StudioViewModel.ZoomScale), 4d);
+            }),
+            ("moving where the new zoom looks", () =>
+            {
+                viewModel.SelectZoom(1);
+                _controls.Move(nameof(StudioViewModel.ZoomFocusX), 0.25);
+            }),
+            ("moving the top of the crop, with the zoom selected", () =>
+            {
+                viewModel.SelectZoom(1);
+                _controls.Move(nameof(StudioViewModel.ScreenCropTop), 0.1);
+            }),
             ("adding a cut with X", () =>
             {
                 viewModel.Scrub(6.8);
@@ -303,8 +372,16 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
                 viewModel.Scrub(2);
                 viewModel.Run(StudioShortcutAction.SplitScene);
             }),
-            ("the side by side layout with 3", () => viewModel.Run(StudioShortcutAction.ShowSideBySideLayout)),
-            ("moving the camera's share", () => _controls.Move(nameof(StudioViewModel.CameraShare), 0.5)),
+            ("the side by side layout with 3", () =>
+            {
+                viewModel.Scrub(2);
+                viewModel.Run(StudioShortcutAction.ShowSideBySideLayout);
+            }),
+            ("moving the camera's share", () =>
+            {
+                viewModel.Scrub(2);
+                _controls.Move(nameof(StudioViewModel.CameraShare), 0.5);
+            }),
             ("deleting the first zoom", () =>
             {
                 viewModel.SelectZoom(0);
@@ -314,18 +391,37 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
             ("resetting the crop", viewModel.ResetScreenCrop),
         ];
 
-        // Each is one change to the project, with every control handing back what it is then shown.
-        for (var done = 0; done < steps.Length; done++)
+        // Each is one change to the project, with every control handing back what it is then
+        // shown. And each is one step to undo: one step back gives the project as it was
+        // before, and one step forward the project as it was after.
+        var opened = LastProject();
+        foreach (var (what, step) in steps)
         {
-            steps[done].Do();
+            var before = LastProject();
+            var count = Preview.Updates.Count;
+            step();
             Pump();
             Assert.True(
-                Preview.Updates.Count == done + 1,
-                $"{steps[done].What}: the project was changed {Preview.Updates.Count - done} times. Handed back last: {string.Join(", ", _controls.HandedBack.TakeLast(4))}");
+                Preview.Updates.Count == count + 1,
+                $"{what}: the project was changed {Preview.Updates.Count - count} times. Handed back last: {string.Join(", ", _controls.HandedBack.TakeLast(4))}");
+            var after = LastProject();
+            Assert.False(SameContent(before, after), $"{what} changed nothing");
+
+            viewModel.Undo();
+            Pump();
+            Assert.True(
+                Preview.Updates.Count == count + 2 && SameContent(before, LastProject()),
+                $"{what}: one step back made {Preview.Updates.Count - count - 1} changes, and the project is {(SameContent(before, LastProject()) ? "as" : "not as")} it was before");
+            viewModel.Redo();
+            Pump();
+            Assert.True(
+                Preview.Updates.Count == count + 3 && SameContent(after, LastProject()),
+                $"{what}: one step forward made {Preview.Updates.Count - count - 2} changes, and the project is {(SameContent(after, LastProject()) ? "as" : "not as")} it was after");
             Assert.Empty(_controls.OutOfStep());
         }
 
-        // And one step to undo: as many steps back as things were done, and then there is none.
+        // As many steps back as things were done, and then there is none and the project is as it was opened.
+        var edited = LastProject();
         for (var undone = 0; undone < steps.Length; undone++)
         {
             Assert.True(viewModel.CanUndo, $"after {undone} of {steps.Length} steps back there is nothing left to undo");
@@ -334,8 +430,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         }
 
         Assert.False(viewModel.CanUndo, $"after {steps.Length} steps back there is still something to undo");
-        Assert.Equal(CropLeft, viewModel.ScreenCropLeft, Precision);
-        Assert.Equal(2, viewModel.Zooms.Count);
+        Assert.True(SameContent(opened, LastProject()), "after every step back the project is not as it was opened");
         Assert.True(viewModel.HasSuggestedZooms);
 
         // No step back took a step forward away.
@@ -347,7 +442,8 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         }
 
         Assert.False(viewModel.CanRedo);
-        Assert.Equal(3 * steps.Length, Preview.Updates.Count);
+        Assert.True(SameContent(edited, LastProject()), "after every step forward the project is not as it was edited");
+        Assert.Equal(5 * steps.Length, Preview.Updates.Count);
         Assert.Empty(_controls.OutOfStep());
     }
 
@@ -493,6 +589,44 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     }
 
     [Fact]
+    public async Task AClickedRadioButton_HandsBackNoChoiceAndThenTheChoice_WhichIsOneEdit()
+    {
+        var viewModel = await OpenAsync(CreateEditedProject(), _controls);
+        var groups = _controls.Bindings.Where(binding => binding.Control == "RadioButtons").ToArray();
+        Assert.Equal(5, groups.Length);
+
+        foreach (var group in groups)
+        {
+            Select(viewModel, group.Property);
+            Pump();
+            var shown = (int)_controls.Shown(group)!;
+            var before = Preview.Updates.Count;
+            var taken = false;
+            for (var choice = 0; choice < 8 && !taken; choice++)
+            {
+                if (choice == shown)
+                {
+                    continue;
+                }
+
+                // The button that was chosen is unchecked first, and the group says so through
+                // its binding. Then the button that was clicked is checked.
+                _controls.Move(group, -1);
+                _controls.Move(group, choice);
+                Pump();
+                taken = Equals(_controls.Shown(group), choice);
+                Assert.True(
+                    Equals(_controls.Held(group), _controls.Shown(group)),
+                    $"{group} holds {_controls.Held(group)} after a click on {choice}, and the view model has {_controls.Shown(group)}");
+            }
+
+            Assert.True(taken, $"{group} shows {shown}, and no other choice was taken");
+            Assert.True(Preview.Updates.Count == before + 1, $"{group}: a click made {Preview.Updates.Count - before} edits");
+            Assert.Empty(_controls.OutOfStep());
+        }
+    }
+
+    [Fact]
     public async Task ACropEdgeAskedPastWhereItStops_IsPutBackOnItsSlider()
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
@@ -568,6 +702,13 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.False(viewModel.CanUndo, $"after {after} there is something to undo");
         Assert.False(viewModel.CanRedo, $"after {after} there is something to redo");
     }
+
+    /// <summary>The project as the editor last handed it to the preview.</summary>
+    private StudioProject LastProject() => Preview.Updates.Count > 0 ? Preview.Updates[^1] : Preview.OpenedWith!;
+
+    /// <summary>Whether two projects hold the same of everything that an edit can change.</summary>
+    private static bool SameContent(StudioProject one, StudioProject other) =>
+        StudioEditableState.From(one).ContentEquals(StudioEditableState.From(other));
 
     /// <summary>Selects what a control edits: the first zoom or the speed change, and for a scene's controls the second scene.</summary>
     private static void Select(StudioViewModel viewModel, string property)
