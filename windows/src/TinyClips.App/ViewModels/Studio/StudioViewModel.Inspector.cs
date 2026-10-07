@@ -44,7 +44,7 @@ public sealed partial class StudioViewModel
         get => (int)Layout;
         set
         {
-            if (value is >= 0 and <= (int)StudioLayout.Camera)
+            if (value is >= 0 and <= (int)StudioLayout.Camera && value != LayoutIndex)
             {
                 _session.SetLayout((StudioLayout)value);
             }
@@ -91,7 +91,13 @@ public sealed partial class StudioViewModel
     public double CanvasPadding
     {
         get => Project?.Canvas.Padding ?? 0;
-        set => _session.SetCanvasPadding(value);
+        set
+        {
+            if (IsRequest(value, CanvasPadding))
+            {
+                _session.SetCanvasPadding(value);
+            }
+        }
     }
 
     public string CanvasPaddingText => StudioEditorText.GetPercentText(CanvasPadding);
@@ -101,7 +107,13 @@ public sealed partial class StudioViewModel
     public double ScreenCornerRadius
     {
         get => Project?.Screen.CornerRadius ?? 0;
-        set => _session.SetScreenCornerRadius(value);
+        set
+        {
+            if (IsRequest(value, ScreenCornerRadius))
+            {
+                _session.SetScreenCornerRadius(value);
+            }
+        }
     }
 
     /// <summary>The radius is stored as a fraction of the short side, where 0.2 is fully round.</summary>
@@ -110,7 +122,13 @@ public sealed partial class StudioViewModel
     public double ScreenShadow
     {
         get => Project?.Screen.Shadow ?? 0;
-        set => _session.SetScreenShadow(value);
+        set
+        {
+            if (IsRequest(value, ScreenShadow))
+            {
+                _session.SetScreenShadow(value);
+            }
+        }
     }
 
     public string ScreenShadowText => StudioEditorText.GetPercentText(ScreenShadow);
@@ -147,7 +165,7 @@ public sealed partial class StudioViewModel
         get => (int)Camera.Shape;
         set
         {
-            if (value is >= 0 and <= (int)StudioCameraShape.Rectangle)
+            if (value is >= 0 and <= (int)StudioCameraShape.Rectangle && value != CameraShapeIndex)
             {
                 _session.SetCameraShape((StudioCameraShape)value);
             }
@@ -159,7 +177,13 @@ public sealed partial class StudioViewModel
     public double CameraCornerRadius
     {
         get => Camera.CornerRadius;
-        set => _session.SetCameraCornerRadius(value);
+        set
+        {
+            if (IsRequest(value, CameraCornerRadius))
+            {
+                _session.SetCameraCornerRadius(value);
+            }
+        }
     }
 
     /// <summary>The radius is stored as a fraction of the short side, where 0.5 is fully round.</summary>
@@ -168,7 +192,13 @@ public sealed partial class StudioViewModel
     public double CameraBubbleSize
     {
         get => Scene.Bubble.Size;
-        set => _session.SetCameraBubbleSize(value);
+        set
+        {
+            if (IsRequest(value, CameraBubbleSize))
+            {
+                _session.SetCameraBubbleSize(value);
+            }
+        }
     }
 
     public string CameraBubbleSizeText => StudioEditorText.GetPercentText(CameraBubbleSize);
@@ -194,7 +224,13 @@ public sealed partial class StudioViewModel
     public double CameraOffsetX
     {
         get => Scene.Bubble.OffsetX;
-        set => _session.SetCameraBubbleOffsetX(value);
+        set
+        {
+            if (IsRequest(value, CameraOffsetX))
+            {
+                _session.SetCameraBubbleOffsetX(value);
+            }
+        }
     }
 
     public string CameraOffsetXText => StudioEditorText.GetSignedPercentText(CameraOffsetX);
@@ -202,7 +238,13 @@ public sealed partial class StudioViewModel
     public double CameraOffsetY
     {
         get => Scene.Bubble.OffsetY;
-        set => _session.SetCameraBubbleOffsetY(value);
+        set
+        {
+            if (IsRequest(value, CameraOffsetY))
+            {
+                _session.SetCameraBubbleOffsetY(value);
+            }
+        }
     }
 
     public string CameraOffsetYText => StudioEditorText.GetSignedPercentText(CameraOffsetY);
@@ -212,7 +254,7 @@ public sealed partial class StudioViewModel
         get => (int)Scene.Split.CameraSide;
         set
         {
-            if (value is >= 0 and <= (int)StudioCameraSide.Trailing)
+            if (value is >= 0 and <= (int)StudioCameraSide.Trailing && value != CameraSideIndex)
             {
                 _session.SetSideBySide((StudioCameraSide)value, Scene.Split.CameraFraction);
             }
@@ -224,7 +266,13 @@ public sealed partial class StudioViewModel
     public double CameraShare
     {
         get => Scene.Split.CameraFraction;
-        set => _session.SetCameraShare(value);
+        set
+        {
+            if (IsRequest(value, CameraShare))
+            {
+                _session.SetCameraShare(value);
+            }
+        }
     }
 
     public string CameraShareText => StudioEditorText.GetPercentText(CameraShare);
@@ -234,7 +282,11 @@ public sealed partial class StudioViewModel
         get => Camera.Mirror;
         set
         {
-            _session.SetCameraMirror(value);
+            if (value != IsCameraMirrored)
+            {
+                _session.SetCameraMirror(value);
+            }
+
             ResyncIfDifferent(value, IsCameraMirrored);
         }
     }
@@ -275,7 +327,13 @@ public sealed partial class StudioViewModel
     public double CameraBorderWidth
     {
         get => Camera.BorderWidth;
-        set => _session.SetCameraBorderWidth(value);
+        set
+        {
+            if (IsRequest(value, CameraBorderWidth))
+            {
+                _session.SetCameraBorderWidth(value);
+            }
+        }
     }
 
     /// <summary>The border is stored as a fraction of the short side, where 0.02 is the widest.</summary>
@@ -284,7 +342,13 @@ public sealed partial class StudioViewModel
     public double CameraShadow
     {
         get => Camera.Shadow;
-        set => _session.SetCameraShadow(value);
+        set
+        {
+            if (IsRequest(value, CameraShadow))
+            {
+                _session.SetCameraShadow(value);
+            }
+        }
     }
 
     public string CameraShadowText => StudioEditorText.GetPercentText(CameraShadow);
@@ -296,7 +360,11 @@ public sealed partial class StudioViewModel
         get => Project?.Overlays.Clicks.Enabled ?? false;
         set
         {
-            _session.SetClickRingsEnabled(value);
+            if (value != AreClickRingsEnabled)
+            {
+                _session.SetClickRingsEnabled(value);
+            }
+
             ResyncIfDifferent(value, AreClickRingsEnabled);
         }
     }
@@ -306,7 +374,11 @@ public sealed partial class StudioViewModel
         get => Project?.Overlays.Branding ?? false;
         set
         {
-            _session.SetBrandingEnabled(value);
+            if (value != IsBrandingEnabled)
+            {
+                _session.SetBrandingEnabled(value);
+            }
+
             ResyncIfDifferent(value, IsBrandingEnabled);
         }
     }
@@ -316,7 +388,11 @@ public sealed partial class StudioViewModel
         get => Project?.Audio.Muted ?? false;
         set
         {
-            _session.SetMuted(value);
+            if (value != IsMuted)
+            {
+                _session.SetMuted(value);
+            }
+
             ResyncIfDifferent(value, IsMuted);
         }
     }

@@ -274,7 +274,7 @@ public sealed partial class StudioViewModel : ObservableObject
         get => (int)(Project?.Canvas.Aspect ?? StudioCanvasAspect.Auto);
         set
         {
-            if (value is >= 0 and <= (int)StudioCanvasAspect.Portrait9X16)
+            if (value is >= 0 and <= (int)StudioCanvasAspect.Portrait9X16 && value != CanvasAspectIndex)
             {
                 _session.SetCanvasAspect((StudioCanvasAspect)value);
             }
@@ -602,6 +602,17 @@ public sealed partial class StudioViewModel : ObservableObject
             OnPropertyChanged(name);
         }
     }
+
+    /// <summary>
+    /// Whether a value that a control hands over asks for anything. A control that is bound both
+    /// ways also hands back what it has just been told to show: every slider does when the
+    /// project changes under it, with its panel on show or not. That is no request. Passed on, it
+    /// would be taken for an edit of the selected zoom, which shows the Zoom panel, and a value
+    /// that is worked out from the project, as where a zoom looks inside a crop is, would be
+    /// written back in another form: an edit nobody made, in the middle of an Undo as well.
+    /// Every setter that a control is bound to passes on only a value that is not the one on show.
+    /// </summary>
+    private static bool IsRequest(double value, double shown) => !(Math.Abs(value - shown) <= ValueTolerance);
 
     /// <summary>
     /// A control keeps the value it was given even when the editor did not take it, for example an

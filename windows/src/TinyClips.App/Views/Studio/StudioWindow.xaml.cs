@@ -114,6 +114,7 @@ public sealed partial class StudioWindow : Window
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Activated += OnActivated;
         RootGrid.KeyDown += OnRootKeyDown;
+        RootGrid.PreviewKeyDown += OnRootPreviewKeyDown;
         AppWindow.Closing += OnAppWindowClosing;
         Closed += OnClosed;
 
@@ -419,6 +420,41 @@ public sealed partial class StudioWindow : Window
     }
 
     /// <summary>
+    /// Space, on its way down to the focused control, in the one place where that control has
+    /// no use for it: the chosen item of the inspector's rail. A list takes Space to select the
+    /// item that has the focus, which there is selected already, so the key would end with the
+    /// list and never come to <see cref="OnRootKeyDown"/>. The window sends the keyboard focus
+    /// to that item itself, when a panel or a control that had it goes away, and Space has to
+    /// play from there as it does from a slider. Every other key on the rail is left to the list.
+    /// </summary>
+    private void OnRootPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (_isPromptOpen || e.Key != VirtualKey.Space)
+        {
+            return;
+        }
+
+        if (RunSpaceOnRail(IsKeyDown(VirtualKey.Control), IsKeyDown(VirtualKey.Shift), e.KeyStatus.IsMenuKeyDown, e.KeyStatus.WasKeyDown) != StudioShortcutAction.None)
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Does what Space means in this window while the keyboard focus is on the rail's chosen
+    /// item, and returns what that was. <see cref="StudioShortcutAction.None"/> anywhere else,
+    /// and for a Space that means nothing here, such as one with Ctrl or one that is being
+    /// held: the key then goes on to the focused control.
+    /// </summary>
+    internal StudioShortcutAction RunSpaceOnRail(bool isControlDown, bool isShiftDown, bool isAltDown, bool isRepeat)
+    {
+        var focused = RootGrid.XamlRoot is { } root ? FocusManager.GetFocusedElement(root) : null;
+        return _inspector.IsChosenRailItem(focused)
+            ? RunShortcut(StudioShortcutKey.Space, isControlDown, isShiftDown, isAltDown, isRepeat)
+            : StudioShortcutAction.None;
+    }
+
+    /// <summary>
     /// Does what a key means in this window as it is now, and returns what that was:
     /// <see cref="StudioShortcutAction.None"/> for a key that is left alone.
     /// </summary>
@@ -721,6 +757,7 @@ public sealed partial class StudioWindow : Window
         ErrorBar.SizeChanged -= OnErrorBarSizeChanged;
         AppWindow.Closing -= OnAppWindowClosing;
         RootGrid.KeyDown -= OnRootKeyDown;
+        RootGrid.PreviewKeyDown -= OnRootPreviewKeyDown;
         ViewModel.StateChanged -= OnStateChanged;
         ViewModel.Announced -= OnAnnounced;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;

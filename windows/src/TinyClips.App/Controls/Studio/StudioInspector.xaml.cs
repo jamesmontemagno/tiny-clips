@@ -361,6 +361,18 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
+    /// <summary>
+    /// Whether an element is the rail's chosen item. The window asks when Space goes down: the
+    /// list takes Space to select the item that has the focus, which the chosen item is
+    /// already, so there the key would end with the list and do nothing. On another item of the
+    /// rail, which the focus reaches with Ctrl and an arrow key, Space is the list's and chooses.
+    /// </summary>
+    internal bool IsChosenRailItem(object? focused)
+    {
+        var index = RailList.SelectedIndex;
+        return index >= 0 && index < _railItems.Count && ReferenceEquals(focused, _railItems[index]);
+    }
+
     // After a key
 
     /// <summary>
@@ -456,28 +468,50 @@ public sealed partial class StudioInspector : UserControl
             return;
         }
 
-        if (!isOpen
-            && XamlRoot is { } root
-            && FocusManager.GetFocusedElement(root) is DependencyObject focused
-            && IsInside(focused, controls)
-            && FocusManager.FindFirstFocusableElement(group) is Control header)
+        if (!isOpen)
         {
-            header.Focus(focused is Control { FocusState: not FocusState.Unfocused } control ? control.FocusState : FocusState.Programmatic);
+            FocusHeaderFrom(controls, group);
         }
 
         group.IsExpanded = isOpen;
     }
 
+    /// <summary>
+    /// Sends a keyboard focus that is on one of a crop group's sliders, or on its Reset crop,
+    /// to the group's header. A group that closes takes those away, a sixth of a second after
+    /// it has said that it closes, and the focus would go with them to whatever comes next in
+    /// the window.
+    /// </summary>
+    private void FocusHeaderFrom(UIElement controls, Expander group)
+    {
+        if (XamlRoot is { } root
+            && FocusManager.GetFocusedElement(root) is DependencyObject focused
+            && IsInside(focused, controls))
+        {
+            FocusHeader(group, focused is Control { FocusState: not FocusState.Unfocused } control ? control.FocusState : FocusState.Programmatic);
+        }
+    }
+
     // A press on a group's header. The group tells the same when this control opens or closes
-    // it, which the editor knows already and takes as nothing new.
+    // it, which the editor knows already and takes as nothing new. A group can also be closed
+    // from outside while the keyboard focus is inside it, as a screen reader does that
+    // collapses it without going to its header: the focus is sent to the header then too.
 
     private void OnScreenCropExpanding(Expander sender, ExpanderExpandingEventArgs args) => ViewModel.SetScreenCropOpen(true);
 
-    private void OnScreenCropCollapsed(Expander sender, ExpanderCollapsedEventArgs args) => ViewModel.SetScreenCropOpen(false);
+    private void OnScreenCropCollapsed(Expander sender, ExpanderCollapsedEventArgs args)
+    {
+        FocusHeaderFrom(ScreenCropControls, ScreenCropGroup);
+        ViewModel.SetScreenCropOpen(false);
+    }
 
     private void OnCameraCropExpanding(Expander sender, ExpanderExpandingEventArgs args) => ViewModel.SetCameraCropOpen(true);
 
-    private void OnCameraCropCollapsed(Expander sender, ExpanderCollapsedEventArgs args) => ViewModel.SetCameraCropOpen(false);
+    private void OnCameraCropCollapsed(Expander sender, ExpanderCollapsedEventArgs args)
+    {
+        FocusHeaderFrom(CameraCropControls, CameraCropGroup);
+        ViewModel.SetCameraCropOpen(false);
+    }
 
     // A button that its own action switches off, or hides, would leave the keyboard focus to
     // whatever comes next in the window. Each of these moves it to where a person would go on

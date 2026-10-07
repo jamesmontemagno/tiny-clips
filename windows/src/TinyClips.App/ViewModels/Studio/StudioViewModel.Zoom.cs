@@ -137,7 +137,7 @@ public sealed partial class StudioViewModel
         get => Math.Clamp(SelectedZoom?.Scale ?? 1, 1, 5);
         set
         {
-            if (SelectedZoomIndex is { } index)
+            if (SelectedZoomIndex is { } index && IsRequest(value, ZoomScale))
             {
                 _session.SetZoomScale(index, value);
             }
@@ -185,7 +185,16 @@ public sealed partial class StudioViewModel
     public double ZoomFocusX
     {
         get => ZoomPad?.FocusX ?? 0.5;
-        set => SetZoomFocusOnPad(value, ZoomFocusY);
+        set
+        {
+            // The pad's place is worked out from the point the zoom stores and the crop, and
+            // working it back gives the point with the last digit changed. Handed back as it
+            // was shown, it must not reach the editor (see IsRequest).
+            if (IsRequest(value, ZoomFocusX))
+            {
+                SetZoomFocusOnPad(value, ZoomFocusY);
+            }
+        }
     }
 
     public string ZoomFocusXText => StudioEditorText.GetPercentText(ZoomFocusX);
@@ -193,7 +202,13 @@ public sealed partial class StudioViewModel
     public double ZoomFocusY
     {
         get => ZoomPad?.FocusY ?? 0.5;
-        set => SetZoomFocusOnPad(ZoomFocusX, value);
+        set
+        {
+            if (IsRequest(value, ZoomFocusY))
+            {
+                SetZoomFocusOnPad(ZoomFocusX, value);
+            }
+        }
     }
 
     public string ZoomFocusYText => StudioEditorText.GetPercentText(ZoomFocusY);
@@ -211,7 +226,7 @@ public sealed partial class StudioViewModel
         get => Math.Clamp(SelectedZoom?.EaseIn ?? 0, 0, 3);
         set
         {
-            if (SelectedZoomIndex is { } index)
+            if (SelectedZoomIndex is { } index && IsRequest(value, ZoomEaseIn))
             {
                 _session.SetZoomEaseIn(index, value);
             }
@@ -225,7 +240,7 @@ public sealed partial class StudioViewModel
         get => Math.Clamp(SelectedZoom?.EaseOut ?? 0, 0, 3);
         set
         {
-            if (SelectedZoomIndex is { } index)
+            if (SelectedZoomIndex is { } index && IsRequest(value, ZoomEaseOut))
             {
                 _session.SetZoomEaseOut(index, value);
             }
@@ -526,14 +541,20 @@ public sealed partial class StudioViewModel
 
     private void SetScreenCrop(StudioCropEdge edge, double value, [CallerMemberName] string? propertyName = null)
     {
-        _session.SetScreenCropInset(edge, value);
-        ResyncIfApart(value, ScreenCrop[edge], propertyName);
+        if (IsRequest(value, ScreenCrop[edge]))
+        {
+            _session.SetScreenCropInset(edge, value);
+            ResyncIfApart(value, ScreenCrop[edge], propertyName);
+        }
     }
 
     private void SetCameraCrop(StudioCropEdge edge, double value, [CallerMemberName] string? propertyName = null)
     {
-        _session.SetCameraCropInset(edge, value);
-        ResyncIfApart(value, CameraCrop[edge], propertyName);
+        if (IsRequest(value, CameraCrop[edge]))
+        {
+            _session.SetCameraCropInset(edge, value);
+            ResyncIfApart(value, CameraCrop[edge], propertyName);
+        }
     }
 
     /// <summary>

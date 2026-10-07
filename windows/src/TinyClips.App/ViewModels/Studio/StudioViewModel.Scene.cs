@@ -165,7 +165,13 @@ public sealed partial class StudioViewModel
             StudioEditorModel.MaximumSceneTransitionDuration);
         // The session reads which scene the playhead is in itself: a drag that begins while the
         // recording plays stops it first, and that can be a frame further on than this window knew.
-        set => _session.SetCurrentSceneTransitionDuration(value);
+        set
+        {
+            if (IsRequest(value, SceneMoveDuration))
+            {
+                _session.SetCurrentSceneTransitionDuration(value);
+            }
+        }
     }
 
     /// <summary>The move in hundredths of a second, which is how finely it is set: "0.35 seconds".</summary>
