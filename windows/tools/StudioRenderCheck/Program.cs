@@ -22,6 +22,12 @@ internal static class Program
             return PeopleChecks.Soak(soakModel);
         }
 
+        if (args is ["--export-project", var projectPath, var exportPath])
+        {
+            // Not a check: exports a project somebody made, as the app's exporter would.
+            return await ProjectExport.Run(projectPath, exportPath).ConfigureAwait(false);
+        }
+
         List<string>? only = null;
         var keep = false;
         string? root = null;
@@ -57,6 +63,8 @@ internal static class Program
                     Console.WriteLine("  --out   put them in this folder, and keep them");
                     Console.WriteLine("  --person-model  a segmentation model (ONNX) to find people with, for the one check that tries a real one");
                     Console.WriteLine("  --person-photo  a photograph with a person in it, for that check to draw");
+                    Console.WriteLine("StudioRenderCheck --export-project <project file or its folder> <output.mp4>");
+                    Console.WriteLine("  runs no check: exports that project with the app's exporter and says what came of it");
                     return args[index] is "--help" or "-h" or "/?" ? 0 : 2;
             }
         }

@@ -275,6 +275,10 @@ preview and window tools are not in the solution.
 # Renderer, exporter and camera recorder. No window; about four minutes.
 dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c Release -p:Platform=x64
 
+# The same tool, running no check: export a project of your own with the app's exporter.
+# Takes a project file, a .tinyclips file, or the folder that holds one, and only reads it.
+dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c Release -p:Platform=x64 -- --export-project <project> <output.mp4>
+
 # Live preview. Needs ffmpeg and ffprobe on PATH and a desktop session; about ten minutes.
 # Its window stays behind every other window. Options are in the tool's README.
 dotnet build windows/tools/StudioPreviewCheck/StudioPreviewCheck.csproj -c Debug -p:Platform=x64

@@ -118,6 +118,39 @@ recent captures.
 - **Recordings that are not `screen.mp4` and `camera.mp4`.** The names come from the project
   file. Follow them; do not assume them.
 
+### A folder saved on a Mac, exported on a PC (7 October)
+
+The owner brought the folder of his recording of that afternoon to the PC, with the video the
+Mac exported from it: 2880 × 1800, a camera that starts 1.4 s in, two scenes with a move
+between them, a cut, a stretch at twice the speed, a zoom that follows the pointer and one on
+a point. Windows cannot open a folder yet. What was tried is the half that exists: the project
+file was read by the Windows reader and exported by the Windows exporter, without the app, by
+`StudioRenderCheck --export-project` (written for this), and the result was held against the
+Mac's export frame by frame. The folder was only read.
+
+- **It reads and exports.** The Windows reader takes the Mac's `.tinyclips` file as it is. The
+  export is 2880 × 1800 and 264 frames; the Mac's is 265.
+- **The pictures agree where nothing moves.** Frame against frame the two are alike to 0.985 to
+  0.991 (SSIM, 1 being the same picture) in the stretches at rest: the same canvas, card, corners,
+  camera bubble, and side by side. Six pairs of frames were also looked at.
+- **On Windows the Mac's pictures are about two frames late.** The camera in the Windows export
+  is most like the Mac's two to three frames earlier, in both stretches measured. The Mac's
+  encoder stores frames out of their order (the file says so). With the camera encoded again
+  without that, the same pictures at the same times, the lag is none to
+  one frame. So the Windows reader takes such a file's pictures about two frames (70 ms) later
+  than the Mac does, against the sound and against every time in the project. Where in the
+  reader, whether the preview does the same, and whether a Windows recording ever has such
+  frames, was not looked for. Not mended.
+- **Where something moves the two differ more** (0.80 to 0.89): through the zoom that follows the
+  pointer, the move between the scenes, and where a zoom moves in or out. The two frames above
+  are part of that; whether there is more to it was not separated.
+- **Not tried:** opening the folder in the app, the preview, and a folder saved on Windows opened
+  on a Mac.
+- **Sound.** The export has one sound track, as section 7 now asks. Which of the Mac's two
+  tracks it holds was not gone into, at the owner's word. One reading was taken before that:
+  the computer's track of this recording is silent, and the Windows export is not, at about
+  the level of the microphone's track.
+
 ## How the Mac was checked
 
 - 20 tests of the store pass.
