@@ -87,8 +87,8 @@ public sealed partial class StudioProjectStore
             throw new DirectoryNotFoundException($"The folder {parent} does not exist.");
         }
 
-        // Filled beside where it will be, under a name of its own, and given its name once it
-        // is whole: no half of a project is ever to be seen under a project's name.
+        // Filled beside where it will be, under a name of its own, and put under its name once
+        // it is whole: no half of a project is ever to be seen under a project's name.
         var filling = Path.Combine(parent, $"{name}.saving-{ShortUniqueName()}");
         try
         {
@@ -98,21 +98,23 @@ public sealed partial class StudioProjectStore
             // it is allowed for.
             CopyFiles(directory, filling, names, FileShare.ReadWrite | FileShare.Delete, progress, cancellationToken);
 
-            // Written last: a folder with its .tinyclips file in it is a whole copy. The file
-            // has the name the folder will have.
-            using (var stream = new FileStream(Path.Combine(filling, name + StudioProjectFolder.ProjectFileExtension), FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            // Written last, and the last to be put in place: a folder with its .tinyclips file
+            // in it is a whole copy. The file has the name the folder will have.
+            var projectFile = name + StudioProjectFolder.ProjectFileExtension;
+            using (var stream = new FileStream(Path.Combine(filling, projectFile), FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (var writer = new StreamWriter(stream))
             {
                 writer.Write(json);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            PutInPlace(filling, target, replaceSavedProject);
+            PutInPlace(filling, [.. names, projectFile], target, replaceSavedProject);
         }
-        catch
+        finally
         {
+            // What is left of it: everything where the save did not finish, and where it did,
+            // the folder the files were moved out of.
             DeleteFolderQuietly(filling);
-            throw;
         }
     }
 
@@ -238,42 +240,98 @@ public sealed partial class StudioProjectStore
         }
     }
 
-    private static void PutInPlace(string filled, string target, bool replaceSavedProject)
+    /// <summary>
+    /// Puts a folder that was filled beside its place under its name: the name is taken with
+    /// an empty folder, and the files follow one by one, the project file last. A folder that
+    /// was just filled cannot be renamed while a virus scanner or the search index still looks
+    /// at a file in it, and each of its files can be.
+    /// </summary>
+    private static void PutInPlace(string filled, IReadOnlyList<string> names, string target, bool replaceSavedProject)
     {
-        if (!Directory.Exists(target) && !File.Exists(target))
-        {
-            Directory.Move(filled, target);
-            return;
-        }
-
-        // Asked again: copying took a while, and what is there now is what would be lost.
-        RefuseWhatMayNotBeReplaced(target, replaceSavedProject);
-
         // The one that is there steps aside, the new one takes its name, and only then does
         // the old one go. Where the new one cannot take the name, the old one gets it back.
-        var aside = $"{target}.replaced-{ShortUniqueName()}";
-        Directory.Move(target, aside);
+        string? aside = null;
+        if (Directory.Exists(target) || File.Exists(target))
+        {
+            // Asked again: copying took a while, and what is there now is what would be lost.
+            RefuseWhatMayNotBeReplaced(target, replaceSavedProject);
+            var steppedAside = $"{target}.replaced-{ShortUniqueName()}";
+            Insist(() => Directory.Move(target, steppedAside));
+            aside = steppedAside;
+        }
+
+        var taken = false;
         try
         {
-            Directory.Move(filled, target);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
+            // Renaming fails where something has the name by now, which making a folder does not.
+            var empty = $"{target}.placing-{ShortUniqueName()}";
+            Directory.CreateDirectory(empty);
             try
             {
-                Directory.Move(aside, target);
+                Insist(() => Directory.Move(empty, target));
+                taken = true;
             }
-            catch (Exception back) when (back is IOException or UnauthorizedAccessException)
+            catch
             {
-                throw new IOException(
-                    $"The project could not be saved, and the folder that was there is now called {Path.GetFileName(aside)}.",
-                    ex);
+                DeleteFolderQuietly(empty);
+                throw;
+            }
+
+            foreach (var name in names)
+            {
+                Insist(() => File.Move(Path.Combine(filled, name), Path.Combine(target, name)));
+            }
+        }
+        catch (Exception ex)
+        {
+            if (taken)
+            {
+                DeleteFolderQuietly(target);
+            }
+
+            if (aside is { } steppedAside)
+            {
+                try
+                {
+                    Insist(() => Directory.Move(steppedAside, target));
+                }
+                catch (Exception back) when (back is IOException or UnauthorizedAccessException)
+                {
+                    throw new IOException(
+                        $"The project could not be saved, and the folder that was there is now called {Path.GetFileName(steppedAside)}.",
+                        ex);
+                }
             }
 
             throw;
         }
 
-        DeleteFolderQuietly(aside);
+        if (aside is not null)
+        {
+            DeleteFolderQuietly(aside);
+        }
+    }
+
+    /// <summary>
+    /// Does what the system may refuse for a moment, a few times over the better part of a
+    /// second. A file that was just written is looked at by a virus scanner and by the search
+    /// index, and while they have it open it cannot always be renamed or removed.
+    /// </summary>
+    private static void Insist(Action action)
+    {
+        const int attempts = 6;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                action();
+                return;
+            }
+            catch (Exception ex) when (attempt < attempts && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(25 << (attempt - 1));
+            }
+        }
     }
 
     /// <summary>
@@ -326,37 +384,42 @@ public sealed partial class StudioProjectStore
     {
         try
         {
-            if (!Directory.Exists(folder))
-            {
-                return;
-            }
-
-            try
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                var everything = new EnumerationOptions
-                {
-                    RecurseSubdirectories = true,
-                    AttributesToSkip = FileAttributes.ReparsePoint,
-                    IgnoreInaccessible = true,
-                };
-                foreach (var entry in new DirectoryInfo(folder).EnumerateFileSystemInfos("*", everything).Append(new DirectoryInfo(folder)))
-                {
-                    if (entry.Attributes.HasFlag(FileAttributes.ReadOnly))
-                    {
-                        entry.Attributes &= ~FileAttributes.ReadOnly;
-                    }
-                }
-
-                Directory.Delete(folder, recursive: true);
-            }
+            Insist(() => DeleteFolder(folder));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Debug.WriteLine($"Studio could not remove {folder}: {ex.Message}");
+        }
+    }
+
+    private static void DeleteFolder(string folder)
+    {
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            var everything = new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                AttributesToSkip = FileAttributes.ReparsePoint,
+                IgnoreInaccessible = true,
+            };
+            foreach (var entry in new DirectoryInfo(folder).EnumerateFileSystemInfos("*", everything).Append(new DirectoryInfo(folder)))
+            {
+                if (entry.Attributes.HasFlag(FileAttributes.ReadOnly))
+                {
+                    entry.Attributes &= ~FileAttributes.ReadOnly;
+                }
+            }
+
+            Directory.Delete(folder, recursive: true);
         }
     }
 

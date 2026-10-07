@@ -643,6 +643,58 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
     }
 
     [Fact]
+    public void AFileThatIsStillBeingLookedAtWhenTheFolderIsPutInPlace_DoesNotStopTheSave()
+    {
+        var id = MakeProject(camera: true);
+        var folder = Path.Combine(Outside, "Scanned");
+
+        // What a virus scanner does with a file that was just written: it opens it, and lets
+        // anyone rename or delete it meanwhile. A folder with such a file in it cannot be renamed.
+        FileStream? looking = null;
+        var progress = new Told(value =>
+        {
+            if (value >= 1 && looking is null)
+            {
+                var filling = Assert.Single(Directory.EnumerateDirectories(Outside));
+                looking = new FileStream(Path.Combine(filling, "screen.mp4"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            }
+        });
+
+        try
+        {
+            Save(id, folder, progress: progress);
+
+            Assert.NotNull(looking);
+            Assert.Equal(["Scanned.tinyclips", "camera.mp4", "screen.mp4"], Names(folder));
+            Assert.Equal(["Scanned"], Names(Outside));
+        }
+        finally
+        {
+            looking?.Dispose();
+        }
+
+        Assert.Equal("Test", Open(folder).Name);
+    }
+
+    [Fact]
+    public void ASavedProjectThatIsInUse_IsNotReplaced_AndIsLeftAsItWas()
+    {
+        var first = MakeProject(camera: true);
+        var second = MakeProject(camera: false);
+        var folder = Path.Combine(Outside, "Playing");
+        Save(first, folder);
+
+        // A player has the recording open, and does not let it be renamed.
+        using (new FileStream(Path.Combine(folder, "screen.mp4"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.ThrowsAny<IOException>(() => Save(second, folder, replaceSavedProject: true));
+        }
+
+        Assert.Equal(["Playing.tinyclips", "camera.mp4", "screen.mp4"], Names(folder));
+        Assert.Equal(["Playing"], Names(Outside));
+    }
+
+    [Fact]
     public void AnOpenThatFailsHalfWay_LeavesNothingInTheStore()
     {
         var (folder, file) = SaveNewProject("Half Opened", camera: true);
