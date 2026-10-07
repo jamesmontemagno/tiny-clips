@@ -1027,6 +1027,82 @@ enum StudioTimelineMetrics {
     static let edgeInset: CGFloat = 12
 }
 
+/// The handles at the two ends of a block on the zoom, cut, or speed lane: what is dragged to
+/// change when the block starts or stops. A block with room has them inside its ends, faint
+/// until the pointer is over the block or the block is selected. A narrower block gets them
+/// outside its ends while it is selected. `StudioEditorModel.laneBlockPart` says what a press
+/// takes hold of; this draws the same places and shows the resize pointer over them. The Start
+/// and End rows of the inspector do the same without a pointer, so VoiceOver passes these by.
+struct StudioLaneBlockHandles: View {
+    let blockWidth: CGFloat
+    let height: CGFloat
+    /// What a handle outside the block is filled with: the block's own fill while selected.
+    let fill: Color
+    /// The color of what is written on the block.
+    let foreground: Color
+    let isSelected: Bool
+    let isHovering: Bool
+
+    private static let cornerRadius: CGFloat = 4
+
+    var body: some View {
+        let handle = CGFloat(StudioEditorModel.laneHandleWidth)
+        let outset = CGFloat(StudioEditorModel.laneHandleOutset(blockWidth: Double(blockWidth), isSelected: isSelected))
+
+        HStack(spacing: 0) {
+            if outset > 0 {
+                outsideHandle(width: handle, isStart: true)
+                Spacer(minLength: 0)
+                outsideHandle(width: handle, isStart: false)
+            } else if StudioEditorModel.laneBlockHasInsideHandles(blockWidth: Double(blockWidth)) {
+                insideHandle(width: handle, isStart: true)
+                Spacer(minLength: 0)
+                insideHandle(width: handle, isStart: false)
+            }
+        }
+        .frame(width: blockWidth + outset * 2, height: height)
+        .accessibilityHidden(true)
+    }
+
+    private func insideHandle(width: CGFloat, isStart: Bool) -> some View {
+        endShape(isStart: isStart)
+            .fill(foreground.opacity(isSelected || isHovering ? 0.16 : 0))
+            .overlay { grip(opacity: isSelected ? 0.95 : (isHovering ? 0.8 : 0.45)) }
+            .frame(width: width, height: height)
+            .contentShape(Rectangle())
+            .pointerStyle(.columnResize)
+            .help(isStart ? "Drag to change where this starts" : "Drag to change where this ends")
+    }
+
+    private func outsideHandle(width: CGFloat, isStart: Bool) -> some View {
+        endShape(isStart: isStart)
+            .fill(fill)
+            .overlay { grip(opacity: 0.95) }
+            .frame(width: width - 1, height: height)
+            .padding(isStart ? .trailing : .leading, 1)
+            .contentShape(Rectangle())
+            .pointerStyle(.columnResize)
+            .help(isStart ? "Drag to change where this starts" : "Drag to change where this ends")
+    }
+
+    private func grip(opacity: Double) -> some View {
+        Capsule()
+            .fill(foreground.opacity(opacity))
+            .frame(width: 2, height: max(4, height / 2))
+    }
+
+    /// Rounded on the side that is the block's own end.
+    private func endShape(isStart: Bool) -> UnevenRoundedRectangle {
+        let radius = Self.cornerRadius
+        return UnevenRoundedRectangle(
+            topLeadingRadius: isStart ? radius : 0,
+            bottomLeadingRadius: isStart ? radius : 0,
+            bottomTrailingRadius: isStart ? 0 : radius,
+            topTrailingRadius: isStart ? 0 : radius
+        )
+    }
+}
+
 private struct StudioTimelineView: View {
     @ObservedObject var viewModel: StudioViewModel
 

@@ -31,6 +31,16 @@ struct StudioEditorCanvasGeometry: Equatable, Sendable {
     }
 }
 
+// MARK: - Lane Blocks
+
+/// What a press on a block of the zoom, cut, or speed lane takes hold of: the whole block, to
+/// move it, or one of its ends, to change when it starts or stops.
+enum StudioLaneBlockPart: Equatable, Sendable {
+    case body
+    case start
+    case end
+}
+
 // MARK: - Editable State
 
 /// The parts of a project the editor changes. Undo, redo, and "changed since export" work on this
@@ -1611,6 +1621,40 @@ struct StudioEditorModel: Equatable, Sendable {
     }
 
     // MARK: - Geometry
+
+    /// How wide the handle at each end of a lane block is, in points.
+    static let laneHandleWidth = 8.0
+
+    /// The narrowest block with room for a handle inside each end and something to move it by
+    /// between them.
+    static let laneHandleMinimumBlockWidth = 28.0
+
+    /// Whether a block has its handles inside its ends.
+    static func laneBlockHasInsideHandles(blockWidth: Double) -> Bool {
+        blockWidth.isFinite && blockWidth >= laneHandleMinimumBlockWidth
+    }
+
+    /// How far a block's handles stand out past each of its ends. A block with room has them
+    /// inside. A narrower one gets them outside while it is selected, so a cut of one second in
+    /// a long recording can still be made longer by dragging.
+    static func laneHandleOutset(blockWidth: Double, isSelected: Bool) -> Double {
+        guard isSelected, !laneBlockHasInsideHandles(blockWidth: blockWidth) else { return 0 }
+        return laneHandleWidth
+    }
+
+    /// What a press at `x` takes hold of, with `x` measured from the block's left edge: below 0
+    /// and past `blockWidth` are the handles that stand outside a narrow selected block.
+    static func laneBlockPart(x: Double, blockWidth: Double, isSelected: Bool) -> StudioLaneBlockPart {
+        if laneBlockHasInsideHandles(blockWidth: blockWidth) {
+            if x <= laneHandleWidth { return .start }
+            if x >= blockWidth - laneHandleWidth { return .end }
+            return .body
+        }
+        guard laneHandleOutset(blockWidth: blockWidth, isSelected: isSelected) > 0 else { return .body }
+        if x < 0 { return .start }
+        if x > blockWidth { return .end }
+        return .body
+    }
 
     /// The canvas aspect-fitted and centered in a view.
     static func canvasGeometry(viewSize: CGSize, canvasSize: CGSize) -> StudioEditorCanvasGeometry {

@@ -11,16 +11,15 @@ struct StudioZoomLane: View {
     @ObservedObject var viewModel: StudioViewModel
     @State private var drag: ZoomDrag?
     @State private var isTrackDragging = false
+    @State private var hoveredIndex: Int?
 
     private static let space = "studioZoomLane"
 
     /// A press on a block, which becomes a drag once the pointer has moved.
     private struct ZoomDrag {
-        enum Part { case body, start, end }
-
         /// Where the zoom is in the list. An edit says where it is afterwards.
         var index: Int
-        var part: Part
+        var part: StudioLaneBlockPart
 
         /// The zoom's start and end when the press began. The drag is measured from these, so it
         /// does not add up rounding from one step to the next.
@@ -82,11 +81,35 @@ struct StudioZoomLane: View {
             let x1 = xPosition(for: zoom.end, usable: usable, duration: duration)
             let drawnWidth = max(10, x1 - x0)
             let x = blockOffset(center: (x0 + x1) / 2, width: drawnWidth, laneWidth: width)
-            block(index: index, zoom: zoom, width: drawnWidth, height: max(0, height - 4))
-                .offset(x: x, y: 2)
-                .gesture(
-                    blockGesture(index: index, zoom: zoom, x: x, width: drawnWidth, usable: usable, duration: duration)
+            let isSelected = viewModel.selectedZoomIndex == index
+            let blockHeight = max(0, height - 4)
+            // A narrow block that is selected has its handles outside its ends, and is that
+            // much wider to press.
+            let outset = CGFloat(StudioEditorModel.laneHandleOutset(blockWidth: Double(drawnWidth), isSelected: isSelected))
+            ZStack {
+                block(index: index, zoom: zoom, width: drawnWidth, height: blockHeight)
+                StudioLaneBlockHandles(
+                    blockWidth: drawnWidth,
+                    height: blockHeight,
+                    fill: Color.accentColor.opacity(0.85),
+                    foreground: isSelected ? Color.white : Color.primary,
+                    isSelected: isSelected,
+                    isHovering: hoveredIndex == index
                 )
+            }
+            .frame(width: drawnWidth + outset * 2, height: blockHeight)
+            .onHover { hovering in
+                if hovering {
+                    hoveredIndex = index
+                } else if hoveredIndex == index {
+                    hoveredIndex = nil
+                }
+            }
+            .offset(x: x - outset, y: 2)
+            .zIndex(isSelected ? 1 : 0)
+            .gesture(
+                blockGesture(index: index, zoom: zoom, x: x, width: drawnWidth, usable: usable, duration: duration)
+            )
         }
     }
 
@@ -120,7 +143,11 @@ struct StudioZoomLane: View {
                 .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
-            .help("Drag to move this zoom. Drag an end to change when it starts or stops.")
+            .help(
+                StudioEditorModel.laneBlockHasInsideHandles(blockWidth: Double(width)) || isSelected
+                    ? "Drag to move this zoom. Drag the handle at either end to change when it starts or stops."
+                    : "Drag to move this zoom. Select it to show the handles that change when it starts or stops."
+            )
             .accessibilityElement()
             .accessibilityLabel(StudioEditorModel.zoomAccessibilityText(zoom))
             .accessibilityValue(isSelected ? "Selected" : "Not selected")
@@ -141,8 +168,13 @@ struct StudioZoomLane: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
             .onChanged { value in
                 if drag == nil {
-                    let localX = value.startLocation.x - x
-                    let part = dragPart(localX: localX, width: width)
+                    // Read before the press selects the block: a narrow block has handles only
+                    // once it is selected.
+                    let part = StudioEditorModel.laneBlockPart(
+                        x: Double(value.startLocation.x - x),
+                        blockWidth: Double(width),
+                        isSelected: viewModel.selectedZoomIndex == index
+                    )
                     drag = ZoomDrag(index: index, part: part, start: zoom.start, end: zoom.end)
                     viewModel.selectZoom(index)
                     viewModel.scrub(to: time(at: value.location.x, usable: usable, duration: duration))
@@ -202,13 +234,6 @@ struct StudioZoomLane: View {
 
     private func blockOffset(center: CGFloat, width: CGFloat, laneWidth: CGFloat) -> CGFloat {
         min(max(center - width / 2, 0), max(0, laneWidth - width))
-    }
-
-    private func dragPart(localX: CGFloat, width: CGFloat) -> ZoomDrag.Part {
-        guard width >= 24 else { return .body }
-        if localX <= 6 { return .start }
-        if localX >= width - 6 { return .end }
-        return .body
     }
 }
 

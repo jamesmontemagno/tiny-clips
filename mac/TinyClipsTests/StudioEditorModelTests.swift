@@ -2751,6 +2751,55 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.speedRateName(.nan), "The recording's own speed")
     }
 
+    // MARK: - Lane Block Handles
+
+    func testAWideBlockIsTakenByAnEndWithinAHandlesWidthAndByItsBodyBetween() {
+        for isSelected in [false, true] {
+            XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 0, blockWidth: 100, isSelected: isSelected), .start)
+            XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 8, blockWidth: 100, isSelected: isSelected), .start)
+            XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 8.5, blockWidth: 100, isSelected: isSelected), .body)
+            XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 50, blockWidth: 100, isSelected: isSelected), .body)
+            XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 91.5, blockWidth: 100, isSelected: isSelected), .body)
+            XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 92, blockWidth: 100, isSelected: isSelected), .end)
+            XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 100, blockWidth: 100, isSelected: isSelected), .end)
+            XCTAssertEqual(StudioEditorModel.laneHandleOutset(blockWidth: 100, isSelected: isSelected), 0)
+        }
+    }
+
+    func testTheNarrowestBlockWithHandlesInsideStillHasABodyToMoveItBy() {
+        let width = StudioEditorModel.laneHandleMinimumBlockWidth
+        XCTAssertTrue(StudioEditorModel.laneBlockHasInsideHandles(blockWidth: width))
+        XCTAssertFalse(StudioEditorModel.laneBlockHasInsideHandles(blockWidth: width - 0.5))
+        XCTAssertEqual(StudioEditorModel.laneBlockPart(x: width / 2, blockWidth: width, isSelected: false), .body)
+        XCTAssertGreaterThan(width, StudioEditorModel.laneHandleWidth * 2)
+    }
+
+    func testANarrowBlockIsOnlyMovedUntilItIsSelected() {
+        for x in [-6.0, 0, 5, 10, 16] {
+            XCTAssertEqual(StudioEditorModel.laneBlockPart(x: x, blockWidth: 10, isSelected: false), .body)
+        }
+        XCTAssertEqual(StudioEditorModel.laneHandleOutset(blockWidth: 10, isSelected: false), 0)
+    }
+
+    func testANarrowSelectedBlockHasItsHandlesOutsideItsEnds() {
+        XCTAssertEqual(
+            StudioEditorModel.laneHandleOutset(blockWidth: 10, isSelected: true),
+            StudioEditorModel.laneHandleWidth
+        )
+        XCTAssertEqual(StudioEditorModel.laneBlockPart(x: -6, blockWidth: 10, isSelected: true), .start)
+        XCTAssertEqual(StudioEditorModel.laneBlockPart(x: -0.1, blockWidth: 10, isSelected: true), .start)
+        XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 0, blockWidth: 10, isSelected: true), .body)
+        XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 10, blockWidth: 10, isSelected: true), .body)
+        XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 10.1, blockWidth: 10, isSelected: true), .end)
+        XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 16, blockWidth: 10, isSelected: true), .end)
+    }
+
+    func testAWidthThatIsNotANumberHasNoHandles() {
+        XCTAssertFalse(StudioEditorModel.laneBlockHasInsideHandles(blockWidth: .nan))
+        XCTAssertFalse(StudioEditorModel.laneBlockHasInsideHandles(blockWidth: .infinity))
+        XCTAssertEqual(StudioEditorModel.laneBlockPart(x: 3, blockWidth: .nan, isSelected: false), .body)
+    }
+
     // MARK: - Sound
 
     func testEachSoundTrackPlaysAtTheVolumeOfWhatItHolds() {

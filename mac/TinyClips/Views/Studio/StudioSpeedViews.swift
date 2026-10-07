@@ -10,16 +10,15 @@ struct StudioSpeedLane: View {
     @ObservedObject var viewModel: StudioViewModel
     @State private var drag: SpeedDrag?
     @State private var isTrackDragging = false
+    @State private var hoveredIndex: Int?
 
     private static let space = "studioSpeedLane"
 
     /// A press on a block, which becomes a drag once the pointer has moved.
     private struct SpeedDrag {
-        enum Part { case body, start, end }
-
         /// Where the speed change is in the list. An edit says where it is afterwards.
         var index: Int
-        var part: Part
+        var part: StudioLaneBlockPart
 
         /// The speed change's start and end when the press began. The drag is measured from
         /// these, so it does not add up rounding from one step to the next.
@@ -81,11 +80,35 @@ struct StudioSpeedLane: View {
             let x1 = xPosition(for: speed.end, usable: usable, duration: duration)
             let drawnWidth = max(10, x1 - x0)
             let x = blockOffset(center: (x0 + x1) / 2, width: drawnWidth, laneWidth: width)
-            block(index: index, speed: speed, width: drawnWidth, height: max(0, height - 4))
-                .offset(x: x, y: 2)
-                .gesture(
-                    blockGesture(index: index, speed: speed, x: x, width: drawnWidth, usable: usable, duration: duration)
+            let isSelected = viewModel.selectedSpeedIndex == index
+            let blockHeight = max(0, height - 4)
+            // A narrow block that is selected has its handles outside its ends, and is that
+            // much wider to press.
+            let outset = CGFloat(StudioEditorModel.laneHandleOutset(blockWidth: Double(drawnWidth), isSelected: isSelected))
+            ZStack {
+                block(index: index, speed: speed, width: drawnWidth, height: blockHeight)
+                StudioLaneBlockHandles(
+                    blockWidth: drawnWidth,
+                    height: blockHeight,
+                    fill: Color.orange.opacity(0.9),
+                    foreground: isSelected ? Color.black : Color.primary,
+                    isSelected: isSelected,
+                    isHovering: hoveredIndex == index
                 )
+            }
+            .frame(width: drawnWidth + outset * 2, height: blockHeight)
+            .onHover { hovering in
+                if hovering {
+                    hoveredIndex = index
+                } else if hoveredIndex == index {
+                    hoveredIndex = nil
+                }
+            }
+            .offset(x: x - outset, y: 2)
+            .zIndex(isSelected ? 1 : 0)
+            .gesture(
+                blockGesture(index: index, speed: speed, x: x, width: drawnWidth, usable: usable, duration: duration)
+            )
         }
     }
 
@@ -116,7 +139,11 @@ struct StudioSpeedLane: View {
                 .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
-            .help("Drag to move this speed change. Drag an end to change where it starts or stops.")
+            .help(
+                StudioEditorModel.laneBlockHasInsideHandles(blockWidth: Double(width)) || isSelected
+                    ? "Drag to move this speed change. Drag the handle at either end to change where it starts or stops."
+                    : "Drag to move this speed change. Select it to show the handles that change where it starts or stops."
+            )
             .accessibilityElement()
             .accessibilityLabel(StudioEditorModel.speedAccessibilityText(speed))
             .accessibilityValue(isSelected ? "Selected" : "Not selected")
@@ -137,8 +164,13 @@ struct StudioSpeedLane: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
             .onChanged { value in
                 if drag == nil {
-                    let localX = value.startLocation.x - x
-                    let part = dragPart(localX: localX, width: width)
+                    // Read before the press selects the block: a narrow block has handles only
+                    // once it is selected.
+                    let part = StudioEditorModel.laneBlockPart(
+                        x: Double(value.startLocation.x - x),
+                        blockWidth: Double(width),
+                        isSelected: viewModel.selectedSpeedIndex == index
+                    )
                     drag = SpeedDrag(index: index, part: part, start: speed.start, end: speed.end)
                     viewModel.selectSpeed(index)
                     viewModel.scrub(to: time(at: value.location.x, usable: usable, duration: duration))
@@ -198,13 +230,6 @@ struct StudioSpeedLane: View {
 
     private func blockOffset(center: CGFloat, width: CGFloat, laneWidth: CGFloat) -> CGFloat {
         min(max(center - width / 2, 0), max(0, laneWidth - width))
-    }
-
-    private func dragPart(localX: CGFloat, width: CGFloat) -> SpeedDrag.Part {
-        guard width >= 24 else { return .body }
-        if localX <= 6 { return .start }
-        if localX >= width - 6 { return .end }
-        return .body
     }
 }
 
