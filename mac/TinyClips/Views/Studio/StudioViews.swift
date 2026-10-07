@@ -48,7 +48,7 @@ private struct StudioUnavailableView: View {
 
             // The way out: the recording itself, as an ordinary video.
             if viewModel.canSaveScreenRecording {
-                Button(viewModel.isSavingScreenRecording ? "Saving…" : "Save Screen Recording") {
+                Button(viewModel.isSavingScreenRecording ? "Saving…" : "Save Screen Recording", systemImage: StudioSymbol.saveRecording) {
                     viewModel.saveScreenRecording()
                 }
                 .disabled(viewModel.isSavingScreenRecording)
@@ -503,7 +503,7 @@ private struct StudioInspectorView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Show Scene") {
+            Button("Show Scene", systemImage: StudioSymbol.showScene) {
                 viewModel.showInspectorPanel(.scene)
             }
         case .bubble:
@@ -727,7 +727,7 @@ private struct StudioInspectorView: View {
             noteText("Saves a copy of the recordings with a .tinyclips file that opens them in Studio again, on this Mac or another.")
         }
         StudioInspectorSection(title: "New Recordings") {
-            Button("Save as Default Look") {
+            Button("Save as Default Look", systemImage: StudioSymbol.saveDefaultLook) {
                 viewModel.saveDefaultLook()
             }
             .help("New Studio recordings start with this canvas, background, screen, and camera styling")
@@ -849,7 +849,7 @@ private struct StudioInspectorView: View {
                 cropSlider("Top", name: name, edge: .top, value: insets.top, set: keepOpenAndSet)
                 cropSlider("Right", name: name, edge: .right, value: insets.right, set: keepOpenAndSet)
                 cropSlider("Bottom", name: name, edge: .bottom, value: insets.bottom, set: keepOpenAndSet)
-                Button("Reset Crop") {
+                Button("Reset Crop", systemImage: StudioSymbol.resetCrop) {
                     reset()
                 }
                 .disabled(insets.isEmpty)
@@ -1228,7 +1228,7 @@ private struct StudioTimelineView: View {
                 Spacer()
 
                 if viewModel.hasCamera {
-                    Button("Split") {
+                    Button("Split", systemImage: StudioSymbol.splitScene) {
                         viewModel.splitSceneAtPlayhead()
                     }
                     .disabled(!viewModel.canSplitSceneAtPlayhead)
@@ -1236,32 +1236,32 @@ private struct StudioTimelineView: View {
                     .accessibilityLabel("Split scene")
                 }
 
-                Button("Add Zoom") {
+                Button("Add Zoom", systemImage: StudioSymbol.addZoom) {
                     viewModel.addZoomAtPlayhead()
                 }
                 .disabled(!viewModel.canAddZoomAtPlayhead)
                 .help("Add a zoom at the playhead (Z)")
 
-                Button("Cut") {
+                Button("Cut", systemImage: StudioSymbol.addCut) {
                     viewModel.addCutAtPlayhead()
                 }
                 .disabled(!viewModel.canAddCutAtPlayhead)
                 .help("Cut a second out of the video at the playhead (X)")
                 .accessibilityLabel("Add cut")
 
-                Button("Speed") {
+                Button("Speed", systemImage: StudioSymbol.addSpeed) {
                     viewModel.addSpeedAtPlayhead()
                 }
                 .disabled(!viewModel.canAddSpeedAtPlayhead)
                 .help("Play two seconds of the video twice as fast from the playhead (R)")
                 .accessibilityLabel("Add speed change")
 
-                Button("Start Here") {
+                Button("Start Here", systemImage: StudioSymbol.trimStart) {
                     viewModel.setTrimStartAtPlayhead()
                 }
                 .help("Start the video at the playhead (I)")
 
-                Button("End Here") {
+                Button("End Here", systemImage: StudioSymbol.trimEnd) {
                     viewModel.setTrimEndAtPlayhead()
                 }
                 .help("End the video at the playhead (O)")

@@ -282,7 +282,7 @@ struct StudioSpeedInspectorSection: View {
     }
 
     private var addButton: some View {
-        Button("Add Speed Change") {
+        Button("Add Speed Change", systemImage: StudioSymbol.addSpeed) {
             viewModel.addSpeedAtPlayhead()
         }
         .disabled(!viewModel.canAddSpeedAtPlayhead)
@@ -333,7 +333,7 @@ struct StudioSpeedInspectorSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Delete Speed Change", role: .destructive) {
+            Button("Delete Speed Change", systemImage: StudioSymbol.delete, role: .destructive) {
                 viewModel.removeSelectedSpeed()
             }
             .help("Delete this speed change, so this part plays at normal speed again (Delete)")

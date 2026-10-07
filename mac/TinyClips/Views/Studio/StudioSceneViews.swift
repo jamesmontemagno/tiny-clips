@@ -274,7 +274,7 @@ struct StudioSceneInspectorSection: View {
     }
 
     private var splitButton: some View {
-        Button("Split Scene") {
+        Button("Split Scene", systemImage: StudioSymbol.splitScene) {
             viewModel.splitSceneAtPlayhead()
         }
         .disabled(!viewModel.canSplitSceneAtPlayhead)
@@ -356,7 +356,7 @@ struct StudioSceneInspectorSection: View {
     @ViewBuilder
     private var deleteButton: some View {
         if viewModel.scenes.count > 1 {
-            Button("Delete Scene", role: .destructive) {
+            Button("Delete Scene", systemImage: StudioSymbol.delete, role: .destructive) {
                 viewModel.removeCurrentScene()
             }
             .disabled(!viewModel.canRemoveCurrentScene)

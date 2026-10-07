@@ -89,3 +89,32 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         }
     }
 }
+
+/// The SF Symbols on the editor's buttons, by what the button does. A button that adds what a
+/// panel edits has that panel's symbol, so the rail, the timeline's buttons, and the panel's own
+/// button show one picture for one thing.
+enum StudioSymbol {
+    static let splitScene = "square.split.2x1"
+    static let addZoom = StudioInspectorPanel.zoom.symbolName
+    static let addCut = StudioInspectorPanel.cut.symbolName
+    static let addSpeed = StudioInspectorPanel.speed.symbolName
+    /// The same mark a suggested zoom has on its block.
+    static let suggestZooms = "sparkles"
+    static let removeSuggestions = "xmark.circle"
+    static let delete = "trash"
+    /// A line with an arrow up to it: where the video starts, and where it ends.
+    static let trimStart = "arrow.left.to.line"
+    static let trimEnd = "arrow.right.to.line"
+    static let resetCrop = "arrow.counterclockwise"
+    static let showScene = StudioInspectorPanel.scene.symbolName
+    static let saveDefaultLook = "paintpalette"
+    static let saveRecording = "square.and.arrow.down"
+
+    /// Every symbol the editor names, the rail's included.
+    static var all: [String] {
+        StudioInspectorPanel.allCases.map(\.symbolName) + [
+            splitScene, addZoom, addCut, addSpeed, suggestZooms, removeSuggestions, delete,
+            trimStart, trimEnd, resetCrop, showScene, saveDefaultLook, saveRecording,
+        ]
+    }
+}

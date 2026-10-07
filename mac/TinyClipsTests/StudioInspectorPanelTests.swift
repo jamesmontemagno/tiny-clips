@@ -48,6 +48,15 @@ final class StudioInspectorPanelTests: XCTestCase {
         }
     }
 
+    func testAButtonThatAddsWhatAPanelEditsHasThatPanelsSymbol() {
+        XCTAssertEqual(StudioSymbol.addZoom, StudioInspectorPanel.zoom.symbolName)
+        XCTAssertEqual(StudioSymbol.addCut, StudioInspectorPanel.cut.symbolName)
+        XCTAssertEqual(StudioSymbol.addSpeed, StudioInspectorPanel.speed.symbolName)
+        XCTAssertEqual(StudioSymbol.showScene, StudioInspectorPanel.scene.symbolName)
+        XCTAssertNotEqual(StudioSymbol.trimStart, StudioSymbol.trimEnd)
+        XCTAssertFalse(StudioSymbol.all.contains { $0.isEmpty })
+    }
+
     func testEveryPanelHasATitleASymbolAndASummaryOfItsOwn() {
         let panels = StudioInspectorPanel.allCases
         XCTAssertEqual(Set(panels.map(\.title)).count, panels.count)

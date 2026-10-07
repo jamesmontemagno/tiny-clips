@@ -285,7 +285,7 @@ struct StudioCutInspectorSection: View {
     }
 
     private var addButton: some View {
-        Button("Add Cut") {
+        Button("Add Cut", systemImage: StudioSymbol.addCut) {
             viewModel.addCutAtPlayhead()
         }
         .disabled(!viewModel.canAddCutAtPlayhead)
@@ -320,7 +320,7 @@ struct StudioCutInspectorSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Button("Delete Cut", role: .destructive) {
+            Button("Delete Cut", systemImage: StudioSymbol.delete, role: .destructive) {
                 viewModel.removeSelectedCut()
             }
             .help("Delete this cut and put the part it removed back in the video (Delete)")

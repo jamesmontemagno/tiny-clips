@@ -289,13 +289,13 @@ struct StudioZoomInspectorSection: View {
 
     private var actionRow: some View {
         HStack(spacing: 8) {
-            Button("Add Zoom") {
+            Button("Add Zoom", systemImage: StudioSymbol.addZoom) {
                 viewModel.addZoomAtPlayhead()
             }
             .disabled(!viewModel.canAddZoomAtPlayhead)
             .help("Add a zoom at the playhead (Z)")
 
-            Button("Suggest Zooms") {
+            Button("Suggest Zooms", systemImage: StudioSymbol.suggestZooms) {
                 viewModel.suggestZooms()
             }
             .disabled(!viewModel.canSuggestZooms)
@@ -316,7 +316,7 @@ struct StudioZoomInspectorSection: View {
     @ViewBuilder
     private var removeSuggestionsButton: some View {
         if viewModel.hasSuggestedZooms {
-            Button("Remove Suggestions") {
+            Button("Remove Suggestions", systemImage: StudioSymbol.removeSuggestions) {
                 viewModel.removeZoomSuggestions()
             }
         }
@@ -348,7 +348,7 @@ struct StudioZoomInspectorSection: View {
                 focusControls(index: index)
             }
             timingSection(zoom: zoom)
-            Button("Delete Zoom", role: .destructive) {
+            Button("Delete Zoom", systemImage: StudioSymbol.delete, role: .destructive) {
                 viewModel.removeSelectedZoom()
             }
             .help("Delete this zoom (Delete)")
