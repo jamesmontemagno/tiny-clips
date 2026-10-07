@@ -157,6 +157,109 @@ final class RecentCaptureStore: ObservableObject {
     }
 }
 
+// MARK: - Recent Captures Menu
+
+/// One line of the Recent Captures menu: a capture that was saved as a file, or a Studio
+/// project that holds a recording no file has yet.
+enum RecentMenuEntry: Identifiable {
+    case capture(RecentCaptureItem)
+    case studioDraft(StudioProjectSummary)
+
+    var id: String {
+        switch self {
+        case .capture(let item): return "capture:\(item.id)"
+        case .studioDraft(let project): return "studio:\(project.id)"
+        }
+    }
+
+    /// When it was saved, or when the project was last worked on.
+    var date: Date {
+        switch self {
+        case .capture(let item): return item.capturedAt
+        case .studioDraft(let project): return project.lastUsedAt
+        }
+    }
+
+    /// The menu's lines, the newest first. At the same instant a saved capture comes before a
+    /// project, and otherwise each kind keeps the order it came in.
+    static func merged(
+        captures: [RecentCaptureItem],
+        drafts: [StudioProjectSummary],
+        limit: Int
+    ) -> [RecentMenuEntry] {
+        let all = captures.map(RecentMenuEntry.capture) + drafts.map(RecentMenuEntry.studioDraft)
+        let sorted = all.enumerated().sorted { first, second in
+            if first.element.date != second.element.date {
+                return first.element.date > second.element.date
+            }
+            return first.offset < second.offset
+        }
+        return sorted.prefix(max(0, limit)).map(\.element)
+    }
+}
+
+/// The Studio projects the Recent Captures menu lists, and a small picture of each. Read again
+/// when an editor opens or closes, and when the menu is about to show.
+@MainActor
+final class StudioRecentDrafts: ObservableObject {
+    static let shared = StudioRecentDrafts()
+
+    @Published private(set) var drafts: [StudioProjectSummary] = []
+    @Published private(set) var thumbnails: [String: NSImage] = [:]
+
+    private var changes: AnyCancellable?
+    private var isLoading = false
+    private var needsReload = false
+
+    private init() {
+        changes = NotificationCenter.default.publisher(for: .studioProjectsDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.reload()
+            }
+        reload()
+    }
+
+    /// Reads the projects off the main thread: sizing each one reads the disk. With Studio
+    /// switched off there are none to show, as nothing else of Studio is shown then.
+    func reload() {
+        guard CaptureSettings.shared.studioPreviewEnabled, !TinyClipsRuntime.isRunningUnitTests else {
+            if !drafts.isEmpty { drafts = [] }
+            if !thumbnails.isEmpty { thumbnails = [:] }
+            return
+        }
+        guard !isLoading else {
+            needsReload = true
+            return
+        }
+        isLoading = true
+        let pictureLimit = RecentCaptureStore.menuDisplayLimit
+        Task { [weak self] in
+            let loaded: ([StudioProjectSummary], [String: NSImage]) = await Task.detached(priority: .utility) {
+                let store = StudioProjectStore.shared
+                let drafts = StudioProjectSummary.menuDrafts(from: (try? store.listSummaries()) ?? [])
+                    .sorted { $0.lastUsedAt > $1.lastUsedAt }
+                var pictures: [String: NSImage] = [:]
+                for draft in drafts.prefix(pictureLimit) {
+                    if let poster = try? store.paths(forID: draft.id).posterURL,
+                       let image = NSImage(contentsOf: poster) {
+                        pictures[draft.id] = image
+                    }
+                }
+                return (drafts, pictures)
+            }.value
+            guard let self else { return }
+            self.drafts = loaded.0
+            self.thumbnails = loaded.1
+            self.isLoading = false
+            if self.needsReload {
+                self.needsReload = false
+                self.reload()
+            }
+        }
+    }
+}
+
 @MainActor
 final class AccessibilityAnnouncementService {
     static let shared = AccessibilityAnnouncementService()

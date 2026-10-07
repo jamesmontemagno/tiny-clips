@@ -22,6 +22,7 @@ struct MenuBarContentView: View {
     @ObservedObject var sparkleController: SparkleController
     @ObservedObject private var settings = CaptureSettings.shared
     @ObservedObject private var recentCaptures = RecentCaptureStore.shared
+    @ObservedObject private var studioDrafts = StudioRecentDrafts.shared
     @Environment(\.openWindow) private var openWindow
 #if APPSTORE
     @Environment(\.requestReview) private var requestReview
@@ -82,23 +83,47 @@ struct MenuBarContentView: View {
 
         folderActions
 
-        if !recentCaptures.items.isEmpty {
+        let recentEntries = RecentMenuEntry.merged(
+            captures: Array(recentCaptures.items.prefix(RecentCaptureStore.menuDisplayLimit)),
+            drafts: studioDrafts.drafts,
+            limit: RecentCaptureStore.menuDisplayLimit
+        )
+        if !recentEntries.isEmpty {
             Menu {
-                ForEach(recentCaptures.items.prefix(RecentCaptureStore.menuDisplayLimit)) { item in
-                    Button {
-                        captureManager.openRecentCapture(item)
-                    } label: {
-                        if let thumbnail = recentCaptures.thumbnails[item.id] {
-                            Label {
-                                Text(recentCaptureTitle(item))
-                            } icon: {
-                                Image(nsImage: thumbnail)
+                ForEach(recentEntries) { entry in
+                    switch entry {
+                    case .capture(let item):
+                        Button {
+                            captureManager.openRecentCapture(item)
+                        } label: {
+                            if let thumbnail = recentCaptures.thumbnails[item.id] {
+                                Label {
+                                    Text(recentCaptureTitle(item))
+                                } icon: {
+                                    Image(nsImage: thumbnail)
+                                }
+                            } else {
+                                Label(recentCaptureTitle(item), systemImage: recentCaptureIcon(item.type))
                             }
-                        } else {
-                            Label(recentCaptureTitle(item), systemImage: recentCaptureIcon(item.type))
                         }
+                        .accessibilityHint("Opens this \(item.type.label.lowercased()) in its editor.")
+                    case .studioDraft(let project):
+                        // A recording that is still a Studio project and has no saved file yet.
+                        Button {
+                            StudioWindowRegistry.shared.open(projectID: project.id)
+                        } label: {
+                            if let thumbnail = studioDrafts.thumbnails[project.id] {
+                                Label {
+                                    Text(studioDraftTitle(project))
+                                } icon: {
+                                    Image(nsImage: thumbnail)
+                                }
+                            } else {
+                                Label(studioDraftTitle(project), systemImage: "square.stack.3d.up")
+                            }
+                        }
+                        .accessibilityHint("Opens this project in Tiny Clips Studio.")
                     }
-                    .accessibilityHint("Opens this \(item.type.label.lowercased()) in its editor.")
                 }
             } label: {
                 Label("Recent Captures", systemImage: "clock.arrow.circlepath")
@@ -183,6 +208,7 @@ struct MenuBarContentView: View {
         .keyboardShortcut("q", modifiers: .command)
         .onAppear {
             recentCaptures.pruneMissing()
+            studioDrafts.reload()
         }
     }
 
@@ -218,6 +244,12 @@ struct MenuBarContentView: View {
 
     private func recentCaptureTitle(_ item: RecentCaptureItem) -> String {
         "\(item.url.lastPathComponent) — \(item.type.label), \(item.capturedAt.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    private func studioDraftTitle(_ project: StudioProjectSummary) -> String {
+        let name = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shown = name.isEmpty ? "Untitled Recording" : name
+        return "\(shown) — Studio project, \(project.lastUsedAt.formatted(date: .abbreviated, time: .shortened))"
     }
 
     private func recentCaptureIcon(_ type: CaptureType) -> String {

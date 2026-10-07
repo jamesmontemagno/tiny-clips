@@ -215,6 +215,20 @@ struct StudioProjectSummary: Equatable, Sendable {
 
 /// A project folder whose `project.json` is there and cannot be read.
 extension StudioProjectSummary {
+    /// When the project was last worked on: when it was last open, or failing that recorded.
+    var lastUsedAt: Date { max(createdAt, lastOpenedAt) }
+
+    /// Whether the project holds the only copy of its recording: nothing was exported from it,
+    /// or what was exported is gone. The Settings list calls both drafts.
+    var isDraftOrLostItsExport: Bool { (isDraft || exportMissing) && !isFlat }
+
+    /// The projects the Recent Captures menu lists beside the saved captures: those that hold
+    /// the only copy of a recording that is still there to open. A project with an exported
+    /// video is in that menu already, as the video, which opens its project.
+    static func menuDrafts(from summaries: [StudioProjectSummary]) -> [StudioProjectSummary] {
+        summaries.filter { $0.isDraftOrLostItsExport && $0.sourceExists }
+    }
+
     /// The projects an Open Recent menu lists: those that still have their recording, the one
     /// opened last first, without the project the menu belongs to. Projects opened at the same
     /// instant are in the order of their ids, so the menu does not shuffle.

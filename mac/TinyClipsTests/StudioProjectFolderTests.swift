@@ -376,6 +376,67 @@ final class StudioProjectFolderTests: XCTestCase {
         XCTAssertTrue(StudioProjectSummary.recent(from: [], excluding: "current", limit: 5).isEmpty)
     }
 
+    // MARK: - Recent Captures
+
+    private func menuSummary(
+        _ id: String,
+        created: TimeInterval = 0,
+        opened: TimeInterval = 0,
+        isDraft: Bool = true,
+        isFlat: Bool = false,
+        sourceExists: Bool = true,
+        exportMissing: Bool = false
+    ) -> StudioProjectSummary {
+        StudioProjectSummary(
+            id: id,
+            name: id,
+            createdAt: Date(timeIntervalSince1970: created),
+            lastOpenedAt: Date(timeIntervalSince1970: opened),
+            isDraft: isDraft,
+            isFlat: isFlat,
+            keepSources: false,
+            sizeOnDisk: 0,
+            sourceExists: sourceExists,
+            exportMissing: exportMissing
+        )
+    }
+
+    func testTheMenuListsProjectsThatHoldTheOnlyCopyOfARecordingThatCanBeOpened() {
+        let summaries = [
+            menuSummary("draft"),
+            menuSummary("exported", isDraft: false),
+            menuSummary("lost-its-export", isDraft: false, exportMissing: true),
+            menuSummary("no-recording", sourceExists: false),
+            menuSummary("flat", isFlat: true),
+        ]
+
+        XCTAssertEqual(StudioProjectSummary.menuDrafts(from: summaries).map(\.id), ["draft", "lost-its-export"])
+    }
+
+    func testAProjectWasLastUsedWhenItWasOpenedOrFailingThatRecorded() {
+        XCTAssertEqual(menuSummary("a", created: 100, opened: 0).lastUsedAt, Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(menuSummary("b", created: 100, opened: 250).lastUsedAt, Date(timeIntervalSince1970: 250))
+    }
+
+    func testRecentCapturesAndProjectsAreMixedByDateNewestFirst() {
+        func capture(_ name: String, at time: TimeInterval) -> RecentCaptureItem {
+            RecentCaptureItem(path: "/tmp/\(name)", type: .video, capturedAt: Date(timeIntervalSince1970: time))
+        }
+        let captures = [capture("c3", at: 300), capture("c2", at: 200), capture("c1", at: 100)]
+        let drafts = [menuSummary("d-new", created: 250), menuSummary("d-tied", created: 200), menuSummary("d-old", created: 50)]
+
+        let merged = RecentMenuEntry.merged(captures: captures, drafts: drafts, limit: 5)
+
+        XCTAssertEqual(
+            merged.map(\.id),
+            ["capture:/tmp/c3", "studio:d-new", "capture:/tmp/c2", "studio:d-tied", "capture:/tmp/c1"]
+        )
+        XCTAssertEqual(RecentMenuEntry.merged(captures: captures, drafts: drafts, limit: 2).map(\.id), ["capture:/tmp/c3", "studio:d-new"])
+        XCTAssertEqual(RecentMenuEntry.merged(captures: [], drafts: drafts, limit: 5).map(\.id), ["studio:d-new", "studio:d-tied", "studio:d-old"])
+        XCTAssertEqual(RecentMenuEntry.merged(captures: captures, drafts: [], limit: 5).count, 3)
+        XCTAssertTrue(RecentMenuEntry.merged(captures: captures, drafts: drafts, limit: 0).isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func makeProject(camera: Bool, events: Bool = false, poster: Bool = false) throws -> String {

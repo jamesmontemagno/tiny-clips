@@ -238,7 +238,7 @@ struct StudioSettingsSection: View {
     /// read.
     private var draftRows: [DraftRow] {
         let drafts = studioProjects.projects
-            .filter { ($0.isDraft || $0.exportMissing) && !$0.isFlat }
+            .filter { $0.isDraftOrLostItsExport }
             .sorted { $0.createdAt > $1.createdAt }
             .map { project in
                 DraftRow(
