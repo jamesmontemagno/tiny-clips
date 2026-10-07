@@ -63,10 +63,10 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     // ---- The switch
 
     [Fact]
-    public void TheSwitch_IsOffUntilItIsSwitchedOn_AndIsSavedWithGeneral()
+    public void TheSwitch_IsOffUntilItIsSwitchedOn_AndIsSavedFromTheStudioPage()
     {
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
 
         Assert.False(vm.IsStudioPreviewEnabled);
         Assert.Equal(Visibility.Collapsed, vm.StudioPreviewVisibility);
@@ -88,13 +88,13 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     }
 
     [Fact]
-    public void WhatAControlWritesBackWhileGeneralIsFirstShown_IsNotSaved_AndIsPutBack()
+    public void WhatAControlWritesBackWhileTheStudioPageIsFirstShown_IsNotSaved_AndIsPutBack()
     {
         _settings.StudioSourceRetentionDays = 14;
         var vm = CreateViewModel();
         var writes = _saved.Writes;
 
-        var showing = vm.BeginSectionRealization(SettingsSectionKind.General);
+        var showing = vm.BeginSectionRealization(SettingsSectionKind.Studio);
         vm.IsStudioPreviewEnabled = true;
         vm.StudioSourceRetentionDays = 0;
         vm.StudioStorageCapGigabytes = 0;
@@ -109,11 +109,11 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     }
 
     [Fact]
-    public async Task TheSwitch_ReadsNoProject_UntilGeneralHasShownTheNumbers()
+    public async Task TheSwitch_ReadsNoProject_UntilTheStudioPageHasShownTheNumbers()
     {
         Record("First");
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
 
         vm.IsStudioPreviewEnabled = true;
         _tracker.MarkOpened("some-project");
@@ -126,29 +126,34 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     }
 
     [Fact]
-    public void ShowingASection_RestoresOnlyTheStudioValuesThatAreInIt()
+    public void ShowingAPage_RestoresTheStudioValuesOnlyOnTheStudioPage()
     {
-        string[] inGeneral = ["studioPreviewEnabled", "studioSourceRetentionDays", "studioStorageCapGigabytes"];
+        string[] onTheStudioPage = ["studioPreviewEnabled", "studioSourceRetentionDays", "studioStorageCapGigabytes"];
         var vm = CreateViewModel();
         _saved.Reads.Clear();
         var changed = new List<string?>();
         vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
+        // General, where they were until 7 October, among the others.
+        Show(vm, SettingsSectionKind.General);
         Show(vm, SettingsSectionKind.Gif);
         Show(vm, SettingsSectionKind.Screenshot);
 
-        Assert.All(inGeneral, key => Assert.DoesNotContain(key, _saved.Reads));
+        Assert.Contains("fileNameTemplate", _saved.Reads);
+        Assert.All(onTheStudioPage, key => Assert.DoesNotContain(key, _saved.Reads));
 
         // The Video page has nothing of Studio on it: its trimmer switch is the one it always had.
         Show(vm, SettingsSectionKind.Video);
 
         Assert.Contains("showTrimmer", _saved.Reads);
-        Assert.All(inGeneral, key => Assert.DoesNotContain(key, _saved.Reads));
+        Assert.All(onTheStudioPage, key => Assert.DoesNotContain(key, _saved.Reads));
 
         _saved.Reads.Clear();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
 
-        Assert.All(inGeneral, key => Assert.Contains(key, _saved.Reads));
+        Assert.All(onTheStudioPage, key => Assert.Contains(key, _saved.Reads));
+        Assert.DoesNotContain("fileNameTemplate", _saved.Reads);
+        Assert.DoesNotContain("showTrimmer", _saved.Reads);
 
         // The After recording choice of earlier builds is read by no page.
         Assert.DoesNotContain("videoAfterRecording", _saved.Reads);
@@ -156,6 +161,106 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         // Nothing was different from what is saved, so nothing is said to have changed.
         Assert.DoesNotContain(nameof(SettingsViewModel.IsStudioPreviewEnabled), changed);
         Assert.DoesNotContain(nameof(SettingsViewModel.ShowTrimmer), changed);
+    }
+
+    /// <summary>
+    /// The pages are made one at a time, each the first time it is chosen, and a page that is
+    /// being made keeps only its own values from being saved. So an edit on the Studio page is
+    /// saved while General is still being made, and what the Studio page's controls write back
+    /// while it is being made is not, although General has long been shown.
+    /// </summary>
+    [Fact]
+    public void TheStudioPage_GuardsItsOwnValues_AndNoOtherPageDoes()
+    {
+        var vm = CreateViewModel();
+        Show(vm, SettingsSectionKind.Studio);
+
+        var general = vm.BeginSectionRealization(SettingsSectionKind.General);
+        vm.IsStudioPreviewEnabled = true;
+        vm.StudioSourceRetentionDays = 7;
+        Assert.True(_settings.StudioPreviewEnabled);
+        Assert.Equal(7, _settings.StudioSourceRetentionDays);
+
+        // General's own values are the ones kept back meanwhile.
+        vm.FileNameTemplate = string.Empty;
+        vm.CompleteSectionRealization(general);
+        Assert.Equal("TinyClips {date} at {time}", vm.FileNameTemplate);
+        Assert.True(vm.IsStudioPreviewEnabled);
+        Assert.Equal(7, vm.StudioSourceRetentionDays);
+
+        // The other way round, in a window opened later: General is shown, the Studio page is being made.
+        var later = CreateViewModel();
+        Show(later, SettingsSectionKind.General);
+        var writes = _saved.Writes;
+        var studio = later.BeginSectionRealization(SettingsSectionKind.Studio);
+        later.StudioSourceRetentionDays = 0;
+        later.IsStudioPreviewEnabled = false;
+        Assert.Equal(writes, _saved.Writes);
+        later.CompleteSectionRealization(studio);
+
+        Assert.True(later.IsStudioPreviewEnabled);
+        Assert.Equal(7, later.StudioSourceRetentionDays);
+        Assert.True(_settings.StudioPreviewEnabled);
+
+        // Once it has been shown, the same writes are edits.
+        later.StudioSourceRetentionDays = 3;
+        Assert.Equal(3, _settings.StudioSourceRetentionDays);
+    }
+
+    /// <summary>
+    /// Every value a control of the Studio page is bound to both ways, read from the page's
+    /// markup. Such a control writes its own first value back while the page is being made, and
+    /// that must not be taken for an edit. A value bound that way and kept by another page, or
+    /// by none, would be saved by it.
+    /// </summary>
+    [Fact]
+    public void EveryValueTheStudioPageWritesBack_IsOneItGuardsWhileItIsFirstShown()
+    {
+        var bound = SettingsMarkup.TwoWayViewModelProperties("StudioSettingsSection.xaml");
+        Assert.Equal(
+            [nameof(SettingsViewModel.IsStudioPreviewEnabled), nameof(SettingsViewModel.StudioSourceRetentionDays), nameof(SettingsViewModel.StudioStorageCapGigabytes)],
+            bound);
+
+        _settings.StudioPreviewEnabled = true;
+        _settings.StudioSourceRetentionDays = 14;
+        _settings.StudioStorageCapGigabytes = 25;
+        foreach (var name in bound)
+        {
+            var vm = CreateViewModel();
+            var property = typeof(SettingsViewModel).GetProperty(name)!;
+            var saved = property.GetValue(vm);
+            var writes = _saved.Writes;
+
+            var showing = vm.BeginSectionRealization(SettingsSectionKind.Studio);
+            property.SetValue(vm, saved is bool ? false : (object)0.0);
+            Assert.Equal(writes, _saved.Writes);
+            vm.CompleteSectionRealization(showing);
+
+            Assert.Equal(saved, property.GetValue(vm));
+            Assert.Equal(writes, _saved.Writes);
+            vm.NotifyClosed();
+        }
+    }
+
+    [Fact]
+    public async Task ShowingEveryPage_ReadsNoProject_UntilTheStudioPageAsksForTheNumbers()
+    {
+        Record("First");
+        var vm = CreateViewModel();
+
+        foreach (var kind in Enum.GetValues<SettingsSectionKind>())
+        {
+            Show(vm, kind);
+        }
+
+        // A read would be started on another thread, so it is given the time to show up.
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+        Assert.Equal(0, _counted.CallsTo(nameof(IStudioProjectStore.ListSummaries)));
+
+        // The Studio page asks when it is made, and General, which is made when Settings opens, does not.
+        await vm.EnsureStudioStorageInitializedAsync();
+        Assert.Equal(1, _counted.CallsTo(nameof(IStudioProjectStore.ListSummaries)));
+        Assert.StartsWith("1 project, ", vm.StudioStorageDisplay);
     }
 
     // ---- The trimmer switch of the Video page, which Studio leaves alone
@@ -167,7 +272,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     {
         _settings.ShowTrimmer = showTrimmer;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         Show(vm, SettingsSectionKind.Video);
         Assert.Equal(showTrimmer, vm.ShowTrimmer);
 
@@ -192,7 +297,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     public void TheStorageRules_AreSavedWhileStudioIsOn_AndAnEmptiedBoxGetsItsValueBack()
     {
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         Assert.Equal(CaptureSettings.DefaultStudioSourceRetentionDays, vm.StudioSourceRetentionDays);
         Assert.Equal(CaptureSettings.DefaultStudioStorageCapGigabytes, vm.StudioStorageCapGigabytes);
 
@@ -230,7 +335,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         File.WriteAllText(_projects.GetPaths(broken).ProjectJsonPath, "{ this is not a project");
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
 
         await vm.EnsureStudioStorageInitializedAsync();
 
@@ -249,11 +354,11 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     }
 
     [Fact]
-    public async Task TheNumbers_AreReadOnce_HoweverOftenGeneralIsShown()
+    public async Task TheNumbers_AreReadOnce_HoweverOftenTheStudioPageIsShown()
     {
         Record("First");
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
 
         await vm.EnsureStudioStorageInitializedAsync();
         await vm.EnsureStudioStorageInitializedAsync();
@@ -267,7 +372,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     {
         Record("First");
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
 
         await vm.EnsureStudioStorageInitializedAsync();
 
@@ -293,7 +398,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     public async Task WhereStudioWasNeverUsed_ShowingTheSwitchMakesNoFolder_AndSaysNothing()
     {
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
 
         await vm.EnsureStudioStorageInitializedAsync();
 
@@ -310,7 +415,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         var first = Record("First");
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
         var row = Assert.Single(vm.StudioDrafts);
         Assert.True(row.CanDelete);
@@ -330,7 +435,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Record("First");
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         _counted.HoldTheFirstListOfProjects();
 
         // The first read has its list, of one project, and is kept from handing it over.
@@ -355,7 +460,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Record("First");
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         _counted.HoldTheFirstListOfProjects();
         var reading = vm.EnsureStudioStorageInitializedAsync();
         Assert.True(_counted.FirstListWasRead.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
@@ -378,7 +483,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         _tracker.MarkOpened(open);
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
         var openRow = vm.StudioDrafts.Single(row => row.Id == open);
         var closedRow = vm.StudioDrafts.Single(row => row.Id == closed);
@@ -398,7 +503,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     {
         var first = Record("First");
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
 
         Assert.Null(await vm.DeleteStudioDraftAsync(Assert.Single(vm.StudioDrafts)));
@@ -414,7 +519,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         var first = Record("First");
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
         var row = Assert.Single(vm.StudioDrafts);
 
@@ -436,7 +541,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Record("First");
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
         var row = Assert.Single(vm.StudioDrafts);
         AssertOffersToSave(row);
@@ -512,7 +617,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Record("Nothing in it", withScreenRecording: false);
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
         var row = Assert.Single(vm.StudioDrafts);
         Assert.False(row.CanSaveRecording);
@@ -530,7 +635,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     {
         Record("First");
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
 
         var (path, error) = await vm.SaveStudioScreenRecordingAsync(Assert.Single(vm.StudioDrafts));
@@ -554,7 +659,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         var draft = Record("Never exported");
         _settings.StudioPreviewEnabled = true;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
         Assert.StartsWith("3 projects, ", vm.StudioStorageDisplay);
         Assert.Equal(Visibility.Collapsed, vm.StudioCleanupStatusVisibility);
@@ -580,7 +685,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Export(old);
         _clock.Advance(TimeSpan.FromDays(40));
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
         await vm.EnsureStudioStorageInitializedAsync();
 
         await vm.CleanUpStudioProjectsAsync();
@@ -675,7 +780,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         var vm = new SettingsViewModel(
             _settings, new HotKeys(), new LaunchAtLogin(), new NoMicrophones(), new NoWebcams(), _names,
             new NoAnalytics(), new NoCredentials(), dispatcherQueue: null);
-        Show(vm, SettingsSectionKind.General);
+        Show(vm, SettingsSectionKind.Studio);
 
         vm.IsStudioPreviewEnabled = true;
         await vm.EnsureStudioStorageInitializedAsync();

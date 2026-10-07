@@ -263,7 +263,7 @@ public sealed partial class SettingsViewModel
 
     private void RefreshStudioProjectsIfShown()
     {
-        // Nothing to refresh until General has shown the numbers for the first time.
+        // Nothing to refresh until the Studio page has shown the numbers for the first time.
         if (!_closed && _studioStorageInitialization is not null)
         {
             _ = RefreshStudioStorageAsync();
@@ -398,10 +398,10 @@ public sealed partial class SettingsViewModel
     };
 
     // Called while the other file restores a section's saved values, or all of them. The switch
-    // and the storage rules are in General.
+    // and the storage rules are on the Studio page.
     partial void RestoreStudioSettings(SettingsSectionKind? kind)
     {
-        if (kind is null or SettingsSectionKind.General)
+        if (kind is null or SettingsSectionKind.Studio)
         {
             IsStudioPreviewEnabled = _settings.StudioPreviewEnabled;
             StudioSourceRetentionDays = _settings.StudioSourceRetentionDays;
@@ -420,7 +420,7 @@ public sealed partial class SettingsViewModel
 
     partial void OnIsStudioPreviewEnabledChanged(bool value)
     {
-        if (!IsPersistenceSuppressed(SettingsSectionKind.General))
+        if (!IsPersistenceSuppressed(SettingsSectionKind.Studio))
         {
             _settings.StudioPreviewEnabled = value;
         }
@@ -438,7 +438,7 @@ public sealed partial class SettingsViewModel
             return;
         }
 
-        PersistStudio(SettingsSectionKind.General, () => _settings.StudioSourceRetentionDays = (int)Math.Round(value));
+        PersistStudio(() => _settings.StudioSourceRetentionDays = (int)Math.Round(value));
     }
 
     partial void OnStudioStorageCapGigabytesChanged(double value)
@@ -449,16 +449,16 @@ public sealed partial class SettingsViewModel
             return;
         }
 
-        PersistStudio(SettingsSectionKind.General, () => _settings.StudioStorageCapGigabytes = (int)Math.Round(value));
+        PersistStudio(() => _settings.StudioStorageCapGigabytes = (int)Math.Round(value));
     }
 
     // The Studio controls are hidden while the preview is switched off, so nothing they are bound
     // to may reach the saved settings then.
-    private void PersistStudio(SettingsSectionKind kind, Action apply)
+    private void PersistStudio(Action apply)
     {
         if (IsStudioPreviewEnabled)
         {
-            Persist(kind, apply);
+            Persist(SettingsSectionKind.Studio, apply);
         }
     }
 }

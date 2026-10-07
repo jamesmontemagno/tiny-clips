@@ -974,7 +974,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             // Switched off since this list was read. Nothing would open, so it is said why, and
             // the videos stop offering it.
             ClearStudioLinks();
-            ShowStatus("Tiny Clips Studio is switched off. Switch it on in Settings to open this project.");
+            ShowStatus("Tiny Clips Studio is switched off. Switch it on in Settings \u203A Studio to open this project.");
             return;
         }
 

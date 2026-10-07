@@ -34,6 +34,17 @@
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioAnnouncementEventArgs.cs" Link="Studio\StudioAnnouncementEventArgs.cs" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Studio\*.xaml" Link="Studio\Markup\%(Filename)%(Extension)" LogicalName="StudioMarkup.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Views\Studio\*.xaml" Link="Studio\Markup\%(Filename)%(Extension)" LogicalName="StudioMarkup.%(Filename)%(Extension)" />
+    <!--
+      The Settings pages cannot be made here either. Their markup, the markup of the window that
+      shows them, and the code of the window and of the General and Studio pages go in as text:
+      the tests read from it where the Studio controls are, which values they are bound to both
+      ways, and that there is a page for every item of the navigation.
+    -->
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Settings\*.xaml" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\SettingsWindow.xaml" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\SettingsWindow.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Settings\GeneralSettingsSection.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Settings\StudioSettingsSection.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
     <!-- A clock a test advances by hand, shared with the Core tests. -->
     <Compile Include="..\TinyClips.Core.Tests\ManualTimeProvider.cs" Link="Support\ManualTimeProvider.cs" />
   </ItemGroup>
