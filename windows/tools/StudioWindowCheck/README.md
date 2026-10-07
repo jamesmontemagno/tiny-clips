@@ -1343,7 +1343,12 @@ rail (`--only inspector`, 88 checks).
   the focus landed on the chosen item, and the check passed. The check now tells the window
   so for its few steps, notes what an untold window does, and also reads the two cases the
   rule leaves alone: a focus that moves on inside the rail, and one that comes the way a
-  press brings it. With the rule taken out of the inspector the check fails (tried once).
+  press brings it. It counts how often the framework asks the rail, and passes only if it
+  asked about each of the three: what the framework does about being told it does in its
+  own time, and in two runs of three groups the first focus put after the telling was not
+  asked about, which failed the check as it stood then. The focus is therefore put again
+  until the framework has asked, ten times at most. With the rule taken out of the inspector
+  the check fails (tried once).
   That the Tab key coming into the rail lands on the chosen item after a jump has changed
   the panel is still for a person to try: the tool presses no keys.
 

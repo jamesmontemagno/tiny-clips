@@ -476,26 +476,47 @@ internal sealed partial class WindowChecks
         // coming (GettingFocus), and the framework asks only in a window that has the keyboard.
         // So the window is told that it has it, for these few steps: without that the focus
         // stays where it was put, in the app as it is and with the rule taken out alike.
+        // How often the framework asks is counted, so that each step is known to have been
+        // asked about: what the framework does once it has been told, it does in its own time.
         ShowPanel(editor, StudioInspectorPanel.Project);
-        string PutOnRailItem(string panel, FocusState state)
+        var asked = 0;
+        Windows.Foundation.TypedEventHandler<UIElement, GettingFocusEventArgs> onAsked = (_, _) => Interlocked.Increment(ref asked);
+        var rail = OnUi(() =>
         {
+            var list = Descendant<ListView>(editor.Window.Content, InspectorRailId);
+            list?.AddHandler(UIElement.GettingFocusEvent, onAsked, true);
+            return list;
+        });
+        (string Focused, int Asked) PutOnRailItem(string panel, FocusState state)
+        {
+            Volatile.Write(ref asked, 0);
             OnUi(() =>
             {
                 Descendant<ListViewItem>(editor.Window.Content, $"{InspectorRailId}_{panel}")?.Focus(state);
             });
             Thread.Sleep(200);
-            return FocusedId(editor);
+            return (FocusedId(editor), Volatile.Read(ref asked));
         }
 
         FocusOn(editor, "StudioPlayPauseButton");
         var untold = PutOnRailItem("Cut", FocusState.Keyboard);
-        FocusOn(editor, "StudioPlayPauseButton");
         var wasTold = TellKeyboard(editor, hasKeyboard: true);
-        string landed, moved, asPressed;
+        (string Focused, int Asked) landed, moved, asPressed;
         (string Title, string[] Selected) project, afterMove, afterPress;
+        var tries = 0;
         try
         {
-            landed = PutOnRailItem("Cut", FocusState.Keyboard);
+            do
+            {
+                if (tries++ > 0)
+                {
+                    Thread.Sleep(150);
+                }
+
+                FocusOn(editor, "StudioPlayPauseButton");
+                landed = PutOnRailItem("Cut", FocusState.Keyboard);
+            }
+            while (landed.Asked == 0 && tries < 10);
             project = PanelShown(editor);
 
             // From the chosen item on to another one, as Ctrl and an arrow key move it, and from
@@ -510,14 +531,15 @@ internal sealed partial class WindowChecks
         finally
         {
             TellKeyboard(editor, hasKeyboard: false);
+            OnUi(() => rail?.RemoveHandler(UIElement.GettingFocusEvent, onAsked));
         }
 
-        _report.Note($"in a window that has not been told that it has the keyboard, the focus put on the rail's Cut item from Play while Project is the chosen one is on \"{untold}\": the framework asks the rail nothing there");
+        _report.Note($"in a window that has not been told that it has the keyboard, the focus put on the rail's Cut item from Play while Project is the chosen one is on \"{untold.Focused}\", and the framework asked the rail about it {untold.Asked} time(s); told, it asked from try {tries} on");
         _report.Check(
-            "the keyboard focus alone chooses no panel: in a window that is told it has the keyboard, put on the rail's Cut item from outside the rail while Project is the chosen one, it lands on the Project item, and the Project panel stays on show; moved on from there to the Speed item, as Ctrl and an arrow key move it, and put on the Cut item from outside as a press puts it, it is left on that item",
-            wasTold && landed == $"{InspectorRailId}_Project" && IsShown(project, "Project")
-                && moved == $"{InspectorRailId}_Speed" && asPressed == $"{InspectorRailId}_Cut",
-            $"the window was told: {wasTold}; from Play the focus is on \"{landed}\"; {PanelWords(project)}; moved on it is on \"{moved}\"; {PanelWords(afterMove)}; as a press puts it, it is on \"{asPressed}\"; {PanelWords(afterPress)}");
+            "the keyboard focus alone chooses no panel: in a window that is told it has the keyboard, put on the rail's Cut item from outside the rail while Project is the chosen one, it lands on the Project item, and the Project panel stays on show; moved on from there to the Speed item, as Ctrl and an arrow key move it, and put on the Cut item from outside as a press puts it, it is left on that item; the framework asked the rail about each of the three",
+            wasTold && landed.Asked > 0 && landed.Focused == $"{InspectorRailId}_Project" && IsShown(project, "Project")
+                && moved.Asked > 0 && moved.Focused == $"{InspectorRailId}_Speed" && asPressed.Asked > 0 && asPressed.Focused == $"{InspectorRailId}_Cut",
+            $"the window was told: {wasTold}; from Play the focus is on \"{landed.Focused}\" (asked {landed.Asked} time(s)); {PanelWords(project)}; moved on it is on \"{moved.Focused}\" (asked {moved.Asked}); {PanelWords(afterMove)}; as a press puts it, it is on \"{asPressed.Focused}\" (asked {asPressed.Asked}); {PanelWords(afterPress)}");
         ShowPanel(editor, StudioInspectorPanel.Project);
     }
 
