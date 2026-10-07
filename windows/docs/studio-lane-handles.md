@@ -61,5 +61,7 @@ limits, one undo step.
 - The five tests of what a press takes hold of pass.
 - The timeline was drawn off screen, in light and dark, with wide and narrow blocks selected and
   not, and the pictures read.
-- Not checked by a person at the controls: dragging a handle with a pointer, the pointer
-  changing over a handle, and the look of a block with the pointer over it.
+- On the afternoon of 7 October the owner dragged the ends of a zoom, a cut and a speed change
+  on a new recording and reported that it worked. The project saved from that run has a cut
+  from 2.570 to 4.511 and a speed change from 6.279 to 7.860, ends that no button gives.
+- Not asked about: the pointer changing over a handle.

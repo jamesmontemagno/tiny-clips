@@ -65,4 +65,7 @@ group titles of the other Settings pages are styled the same and not marked.
 
 - The page was drawn off screen with Studio switched on, and the picture read.
 - 354 tests pass and both builds succeed.
-- Not done by anyone yet: opening Settings and using the page.
+- On the afternoon of 7 October the owner used the page with a draft open in an editor: its
+  Delete… unavailable while the editor is open, Delete… asking first, and Save Screen
+  Recording saying what it saved. The report was that it worked, with nothing more.
+- Not done by anyone yet: the page with VoiceOver, and Clean Up Now.

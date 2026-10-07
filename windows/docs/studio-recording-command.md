@@ -86,5 +86,9 @@ Where Windows differs from the Mac: the tray menu is a panel of buttons and not 
 
 - 354 tests pass and both builds succeed. None of them starts a recording: that needs screen
   recording permission and a display, which the unit tests do not have by the repository's rule.
-- Not done by anyone yet: choosing **Studio Recording…** and recording with it, the label in
-  the Record panel, and **Record Video…** with Studio on making an ordinary recording.
+- On the afternoon of 7 October the owner chose **Studio Recording…** and recorded the whole
+  display with the camera, the microphone and the computer's sound. The editor opened on it,
+  and its project has both sound tracks listed, the camera, and the clicks.
+- Not done by anyone yet: **Record Video…** with Studio on making an ordinary recording, and
+  the capture picker coming back after a Studio recording. Nobody was asked about the label in
+  the Record panel.

@@ -56,4 +56,6 @@ Nothing else changed: the names, the help text, the accessible names, and what e
   macOS 14 or earlier (the app's minimum is 15).
 - The editor was drawn off screen at its default size and at its smallest, light and dark, with
   each panel shown, and the pictures read: nothing is clipped or wraps.
-- Not looked at in the running app by anyone yet.
+- The owner has had them in the running app since they were built, through one recording
+  edited on the afternoon of 7 October, and said nothing against them. Nobody was asked to
+  look at them one by one.

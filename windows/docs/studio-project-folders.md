@@ -126,6 +126,14 @@ recent captures.
 - A `.tinyclips` file was opened with the running app from the command line, as the Finder does
   it, with the app not running and with it running: a new project in the store, one Studio
   window, and no Clips Manager window.
-- Not done by anyone yet: pressing Save Project… and Delete Project…, which ask through a panel
-  and an alert; double-clicking the file in the Finder; and everything about the App Store
-  build's sandbox, which a build made without signing does not have.
+- On the afternoon of 7 October the owner pressed Save Project… on a new recording that had
+  exported once, double-clicked the `.tinyclips` file in the Finder, looked for the draft in
+  Recent Captures, and pressed Delete Project…, and reported that each worked. What the files
+  show: the folder has `screen.mp4` (with two sound tracks, the computer's and the
+  microphone, in that order), `camera.mp4`, `events.json`, `poster.jpg` and the `.tinyclips`
+  file; that file's `exports` is empty and it names nothing outside the folder; and opening it
+  made a second project in the store, with an id of its own and no exports.
+- That folder is 51 MB and shows a desktop, so it is not in the repository. The owner is
+  taking it to the PC by hand to open there (#429).
+- Not done by anyone yet: everything about the App Store build's sandbox, which a build made
+  without signing does not have.

@@ -169,6 +169,7 @@ Mac strings, in title case as the Mac writes buttons. Windows keeps its own sent
 - The editor was drawn off screen from a real project with a camera, in light and dark, with each
   panel shown in turn, and the pictures read. In the same run, adding a zoom, a cut, and a speed
   change, splitting a scene, and selecting a zoom each put the view model on the right panel.
-- Not checked by a person at the controls: the rail with VoiceOver and with Full Keyboard Access,
-  a recording without a camera, and the jump from pressing a lane block or dragging the camera
-  with a pointer.
+- The owner has edited three recordings with it by hand since 6 October, the last on the
+  afternoon of 7 October, and had nothing to say against it.
+- Still not checked by anyone: the rail with VoiceOver and with Full Keyboard Access, and a
+  recording without a camera.
