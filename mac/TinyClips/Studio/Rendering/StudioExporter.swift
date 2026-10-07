@@ -68,17 +68,21 @@ enum StudioExporter {
         exportSession.audioMix = build.audioMix(for: project)
         exportSession.shouldOptimizeForNetworkUse = true
 
-        // The sequence ends by itself when the export finishes, fails, or is cancelled.
+        // An export may be cancelled, and asked how far it is, from any thread; the session is
+        // only not marked `Sendable`.
+        nonisolated(unsafe) let cancellableSession = exportSession
+
+        // How far the export is, asked ten times a second. Not read from the session's
+        // `states(updateInterval:)`: when an export fails while that sequence is being read,
+        // AVFoundation's own code stops the app (a trap in `ProgressStates.Iterator`, seen on
+        // macOS 26.6 in each of three runs, within five exports that failed). `progress` is the
+        // older way to ask; with it, five failed and five cancelled exports ended as they should.
         let progressTask = Task {
-            for await state in exportSession.states(updateInterval: 0.1) {
-                if case .exporting(let progress) = state {
-                    onProgress?(progress.fractionCompleted)
-                }
+            while !Task.isCancelled {
+                onProgress?(Double(cancellableSession.progress))
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
         }
-
-        // An export may be cancelled from any thread; the session is only not marked `Sendable`.
-        nonisolated(unsafe) let cancellableSession = exportSession
         do {
             try await withTaskCancellationHandler {
                 try await exportSession.export(to: outputURL, as: .mp4)
@@ -90,7 +94,7 @@ enum StudioExporter {
             return outputURL
         } catch {
             progressTask.cancel()
-            exportSession.cancelExport()
+            // The session has ended: it failed, or the cancellation handler above stopped it.
 
             // What this export wrote so far is removed. Not when it never began because a
             // file had taken the name in the last moment: that file is not this export's.

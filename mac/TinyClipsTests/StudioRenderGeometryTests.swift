@@ -1,3 +1,4 @@
+import CoreMedia
 import XCTest
 @testable import TinyClips
 
@@ -120,5 +121,43 @@ final class StudioRenderGeometryTests: XCTestCase {
         let gradient = StudioRenderGeometry.gradientEndpoints(renderSize: CGSize(width: 200, height: 100))
         XCTAssertEqual(gradient.start, CGPoint(x: 0, y: 100))
         XCTAssertEqual(gradient.end, CGPoint(x: 200, y: 0))
+    }
+
+    // MARK: - Dividing a Piece at the Edges of a Track
+
+    private func time(_ seconds: Double, _ timescale: CMTimeScale = 600) -> CMTime {
+        CMTime(seconds: seconds, preferredTimescale: timescale)
+    }
+
+    private func range(_ start: Double, _ end: Double) -> CMTimeRange {
+        CMTimeRange(start: time(start), end: time(end))
+    }
+
+    func testARangeIsDividedAtEveryEdgeInsideItInOrder() {
+        let parts = StudioCompositionBuilder.divided(range(2, 8), at: [time(6.5, 48_000), time(3), time(7)])
+
+        XCTAssertEqual(parts.map(\.start.seconds), [2, 3, 6.5, 7])
+        XCTAssertEqual(parts.map(\.end.seconds), [3, 6.5, 7, 8])
+        // The parts are the range again, with nothing between them.
+        XCTAssertEqual(parts.first?.start, time(2))
+        XCTAssertEqual(parts.last?.end, time(8))
+        for (part, next) in zip(parts, parts.dropFirst()) {
+            XCTAssertEqual(part.end, next.start)
+        }
+    }
+
+    func testAnEdgeAtAnEndOfTheRangeOrOutsideItDividesNothing() {
+        let whole = range(2, 8)
+
+        XCTAssertEqual(StudioCompositionBuilder.divided(whole, at: []), [whole])
+        XCTAssertEqual(StudioCompositionBuilder.divided(whole, at: [time(2), time(8), time(1), time(9)]), [whole])
+        XCTAssertEqual(StudioCompositionBuilder.divided(whole, at: [.invalid, .positiveInfinity, .indefinite]), [whole])
+    }
+
+    func testAnEdgeNamedTwiceDividesOnce() {
+        let parts = StudioCompositionBuilder.divided(range(2, 8), at: [time(5), time(5, 48_000), time(5)])
+
+        XCTAssertEqual(parts.map(\.start.seconds), [2, 5])
+        XCTAssertEqual(parts.map(\.end.seconds), [5, 8])
     }
 }

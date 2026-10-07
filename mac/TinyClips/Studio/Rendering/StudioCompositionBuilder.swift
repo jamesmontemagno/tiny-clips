@@ -114,10 +114,51 @@ enum StudioCompositionBuilder {
         let canHoldFrame = screenTrackRange.duration >= instant
         let firstInstant = screenTrackRange.start
         let lastInstant = CMTimeSubtract(screenTrackRange.end, instant)
+
+        // The camera, when the project has one that is still there. It is found before the
+        // pieces are placed, because where it begins and ends is where a piece at another speed
+        // is divided. The asset is kept with its track: a track does not keep its asset alive.
+        var cameraSource: (asset: AVURLAsset, track: AVAssetTrack, startOffset: CMTime, onTimeline: CMTimeRange)?
+        if let camera = project.sources.camera,
+           let cameraURL = paths.cameraURL,
+           FileManager.default.fileExists(atPath: cameraURL.path) {
+            let cameraAsset = AVURLAsset(url: cameraURL)
+            guard let cameraTrack = try await cameraAsset.loadTracks(withMediaType: .video).first else {
+                throw Error.cameraVideoTrackMissing(cameraURL)
+            }
+            // The camera's own time 0 sits at `startOffset` on the source timeline (it can be
+            // negative). `onTimeline` is the camera media expressed in source time.
+            let cameraTrackRange = try await cameraTrack.load(.timeRange)
+            let startOffset = CMTime(seconds: camera.startOffset.isFinite ? camera.startOffset : 0, preferredTimescale: 600)
+            cameraSource = (
+                asset: cameraAsset,
+                track: cameraTrack,
+                startOffset: startOffset,
+                onTimeline: CMTimeRange(start: CMTimeAdd(cameraTrackRange.start, startOffset), duration: cameraTrackRange.duration)
+            )
+        }
+
+        // A piece at another speed is stretched or squeezed as a whole further down, every
+        // track at once. Where such a stretch holds more than one thing in a track (the end of
+        // the screen's picture and the frame held after it, or the camera and what comes after
+        // it), AVFoundation divides the new length among them itself, in nanoseconds, and an
+        // export of the result fails ("The video could not be composed", -17390). So a piece at
+        // another speed is divided beforehand wherever a track begins or ends inside it, and
+        // each part then holds one thing in each track, or nothing.
+        var trackEdges = [screenTrackRange.start, screenTrackRange.end]
+        if let cameraSource {
+            trackEdges += [cameraSource.onTimeline.start, cameraSource.onTimeline.end]
+        }
+
         var placements: [(source: CMTimeRange, at: CMTime, rate: Double)] = []
         var cursor = CMTime.zero
-        for piece in timeMap.pieces {
-            let wanted = CMTimeRange(start: cmTime(piece.start), end: cmTime(piece.end))
+        let wantedParts: [(range: CMTimeRange, rate: Double)] = timeMap.pieces.flatMap { piece in
+            let whole = CMTimeRange(start: cmTime(piece.start), end: cmTime(piece.end))
+            let parts = piece.rate == 1 ? [whole] : divided(whole, at: trackEdges)
+            return parts.map { (range: $0, rate: piece.rate) }
+        }
+        for piece in wantedParts {
+            let wanted = piece.range
             guard wanted.duration > .zero else { continue }
             let onTrack = wanted.intersection(screenTrackRange)
             guard canHoldFrame else {
@@ -201,13 +242,10 @@ enum StudioCompositionBuilder {
         }
 
         var cameraTrackID: CMPersistentTrackID?
-        if let camera = project.sources.camera,
-           let cameraURL = paths.cameraURL,
-           FileManager.default.fileExists(atPath: cameraURL.path) {
-            let cameraAsset = AVURLAsset(url: cameraURL)
-            guard let cameraTrack = try await cameraAsset.loadTracks(withMediaType: .video).first else {
-                throw Error.cameraVideoTrackMissing(cameraURL)
-            }
+        if let cameraSource {
+            let cameraTrack = cameraSource.track
+            let startOffset = cameraSource.startOffset
+            let onTimeline = cameraSource.onTimeline
             guard let compositionCameraTrack = composition.addMutableTrack(
                 withMediaType: .video,
                 preferredTrackID: kCMPersistentTrackID_Invalid
@@ -217,14 +255,6 @@ enum StudioCompositionBuilder {
             compositionCameraTrack.preferredTransform = try await cameraTrack.load(.preferredTransform)
             cameraTrackID = compositionCameraTrack.trackID
 
-            // The camera's own time 0 sits at `startOffset` on the source timeline (it can be
-            // negative). `onTimeline` is the camera media expressed in source time.
-            let cameraTrackRange = try await cameraTrack.load(.timeRange)
-            let startOffset = CMTime(seconds: camera.startOffset.isFinite ? camera.startOffset : 0, preferredTimescale: 600)
-            let onTimeline = CMTimeRange(
-                start: CMTimeAdd(cameraTrackRange.start, startOffset),
-                duration: cameraTrackRange.duration
-            )
             var hasCamera = false
             for placement in placements {
                 let overlap = placement.source.intersection(onTimeline)
@@ -249,7 +279,17 @@ enum StudioCompositionBuilder {
         var outputDuration = cursor
         for placement in placements.reversed() where placement.rate != 1 {
             let range = CMTimeRange(start: placement.at, duration: placement.source.duration)
-            let scaled = CMTimeMultiplyByFloat64(placement.source.duration, multiplier: 1 / placement.rate)
+            // The product comes back in nanoseconds, and every time after it in the composition
+            // is then a nanosecond time too. An export of that fails where a held frame follows
+            // ("The video could not be composed", -17390), as a run on a real recording showed.
+            // So the new length is put on a clock the pieces themselves are on: the times of a
+            // project are six-hundredths of a second and a track's are, as a rule, 48,000ths,
+            // and both are whole steps of this one.
+            let scaled = CMTimeConvertScale(
+                CMTimeMultiplyByFloat64(placement.source.duration, multiplier: 1 / placement.rate),
+                timescale: speedTimescale,
+                method: .roundHalfAwayFromZero
+            )
             if scaled > .zero {
                 composition.scaleTimeRange(range, toDuration: scaled)
                 outputDuration = CMTimeAdd(CMTimeSubtract(outputDuration, placement.source.duration), scaled)
@@ -290,6 +330,22 @@ enum StudioCompositionBuilder {
             soundTrackCountInFile: soundTrackCountInFile
         )
     }
+
+    /// A range divided at each of the given times that lies inside it, in order. A time at
+    /// either end of the range, or outside it, divides nothing.
+    static func divided(_ range: CMTimeRange, at edges: [CMTime]) -> [CMTimeRange] {
+        var parts: [CMTimeRange] = []
+        var start = range.start
+        for edge in edges.filter({ $0.isNumeric && $0 > range.start && $0 < range.end }).sorted() where edge > start {
+            parts.append(CMTimeRange(start: start, end: edge))
+            start = edge
+        }
+        parts.append(CMTimeRange(start: start, end: range.end))
+        return parts
+    }
+
+    /// The clock the length of a piece at another speed is rounded to.
+    private static let speedTimescale: CMTimeScale = 48_000
 
     static func cmTime(_ seconds: Double) -> CMTime {
         CMTime(seconds: max(0, seconds), preferredTimescale: 600)
