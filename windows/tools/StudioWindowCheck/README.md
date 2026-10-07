@@ -1276,19 +1276,24 @@ of 6 October, still without a window. What that changed here, none of it run:
   now also runs the window's look after the key.
 
 **After a second reading.** Those mends were read through in their turn, the same evening.
-The reader found no fault in them, and one in what they stand on, older than they are and as
-old as the rail:
+The reader found no fault in them, and one in what they stand on. Half of it came with the
+rail, and half is older:
 
 - With a zoom selected, the window's sliders hand back to the editor what they have just
   been told to show, and the editor took that for an edit of the zoom. Moving an edge of the
   crop then showed the Zoom panel under the crop slider, and so did an Undo that changed the
-  zoom. Where a zoom looks inside a crop is worked out from the crop, and handed back it was
-  written into the zoom with its last digit changed: a second undo step, and no Redo after
-  an Undo. No check moved a crop edge with a zoom selected. Two do now: *an edge moved while
-  a zoom is selected*, and *Undo and Redo of the selected zoom's level with another panel on
-  show*. The window no longer passes on a value that is the one on show, and the editor no
-  longer shows a panel for an edit that changed nothing; the second is unit tested, the
-  first is in the window and has these two checks.
+  zoom. That half came with the rail. Where a zoom looks inside a crop is worked out from
+  the crop, and handed back it was written into the zoom with its last digit changed: a
+  second undo step, and no Redo after an Undo. That half is from 4 October, when the Zoom
+  section was built, so it was in the window that this tool ran on 5 October. It needs a
+  zoom selected over a cropped screen: without a crop a point inside the picture comes back
+  as it went. One older check has that, *a zoom inside a crop*, and it reads the zoom's
+  point to nine decimals, which a changed last digit passes. No check moved a crop edge
+  with a zoom selected. Two do now: *an edge moved while a zoom is selected*, and *Undo and
+  Redo of the selected zoom's level with another panel on show*. The window no longer passes
+  on a value that is the one on show, and the editor no longer shows a panel for an edit
+  that changed nothing; the second is unit tested, the first is in the window and has these
+  two checks.
 - The check of a group collapsed over a crop collapses it through UI Automation. It did
   that with the focus on one of the group's sliders, where the check before it had left it,
   and nothing read where the focus went: to Play. The group now sends such a focus to its
