@@ -150,7 +150,8 @@ public sealed partial class StudioEditorSession
     public StudioCutEditResult MoveCut(int index, double sourceTime) =>
         EditCut(index, model => model.MoveCut(index, sourceTime));
 
-    // An edit to one cut. The selection goes with the cut when it is the selected one.
+    // An edit to one cut. The selection goes with the cut when it is the selected one. An edit
+    // that changed nothing says nothing of the selection and shows no panel, as for a zoom.
     private StudioCutEditResult EditCut(int index, Func<StudioEditorModel, StudioCutEditResult> change)
     {
         var result = new StudioCutEditResult(false, index);
@@ -158,7 +159,7 @@ public sealed partial class StudioEditorSession
         EditAndSelect(model =>
         {
             result = change(model);
-            return isSelected ? EditSelection.Cut(result.Index) : null;
+            return isSelected && result.Changed ? EditSelection.Cut(result.Index) : null;
         });
         return result;
     }

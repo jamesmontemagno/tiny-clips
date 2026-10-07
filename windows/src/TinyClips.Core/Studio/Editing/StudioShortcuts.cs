@@ -140,7 +140,9 @@ public readonly record struct StudioShortcutInput(
 /// </summary>
 /// <remarks>
 /// The window only asks about a key that the focused control did not use, so a focused slider
-/// keeps its arrow keys and a focused button keeps Space.
+/// keeps its arrow keys and a focused button keeps Space. The Windows window makes one
+/// exception: Space on the chosen item of the inspector's rail, which it asks about before
+/// the list has the key, because the list would keep it and do nothing with it there.
 /// </remarks>
 public static class StudioShortcuts
 {

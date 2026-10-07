@@ -898,7 +898,9 @@ public sealed partial class StudioEditorSession
         return result;
     }
 
-    // An edit to one zoom. The selection goes with the zoom when it is the selected one.
+    // An edit to one zoom. The selection goes with the zoom when it is the selected one. An edit
+    // that changed nothing says nothing of the selection, and so shows no panel: a window hands
+    // a slider's value back when it has only shown it, which is no hold of the zoom.
     private StudioZoomEditResult EditZoom(int index, Func<StudioEditorModel, StudioZoomEditResult> change)
     {
         var result = new StudioZoomEditResult(false, index);
@@ -906,7 +908,7 @@ public sealed partial class StudioEditorSession
         EditAndSelect(model =>
         {
             result = change(model);
-            return isSelected ? EditSelection.Zoom(result.Index) : null;
+            return isSelected && result.Changed ? EditSelection.Zoom(result.Index) : null;
         });
         return result;
     }

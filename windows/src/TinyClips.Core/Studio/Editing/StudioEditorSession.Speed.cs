@@ -165,7 +165,8 @@ public sealed partial class StudioEditorSession
     public StudioSpeedEditResult SetSpeedRate(int index, double rate) =>
         EditSpeed(index, model => model.SetSpeedRate(index, rate));
 
-    // An edit to one speed change. The selection goes with it when it is the selected one.
+    // An edit to one speed change. The selection goes with it when it is the selected one. An
+    // edit that changed nothing says nothing of the selection and shows no panel, as for a zoom.
     private StudioSpeedEditResult EditSpeed(int index, Func<StudioEditorModel, StudioSpeedEditResult> change)
     {
         var result = new StudioSpeedEditResult(false, index);
@@ -173,7 +174,7 @@ public sealed partial class StudioEditorSession
         EditAndSelect(model =>
         {
             result = change(model);
-            return isSelected ? EditSelection.Speed(result.Index) : null;
+            return isSelected && result.Changed ? EditSelection.Speed(result.Index) : null;
         });
         return result;
     }

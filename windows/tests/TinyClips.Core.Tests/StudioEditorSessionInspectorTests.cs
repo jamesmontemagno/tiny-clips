@@ -393,6 +393,91 @@ public sealed class StudioEditorSessionInspectorTests : StudioEditorSessionTestB
         Assert.Equal(Background, session.InspectorPanel);
     }
 
+    [Fact]
+    public async Task AnEditToTheSelectedOne_ThatChangesNothing_ShowsNoPanel()
+    {
+        var session = await OpenWithEverythingAsync();
+
+        // What a window hands back when it has only shown a slider the value it was told.
+        session.SelectZoom(0);
+        session.ShowInspectorPanel(Background);
+        var zoom = session.SelectedZoom!;
+        Changes.Clear();
+        Assert.False(session.SetZoomScale(0, zoom.Scale).Changed);
+        Assert.False(session.SetZoomEaseIn(0, zoom.EaseIn).Changed);
+        Assert.False(session.SetZoomEaseOut(0, zoom.EaseOut).Changed);
+        Assert.False(session.SetZoomFocusPoint(0, zoom.Focus.X, zoom.Focus.Y).Changed);
+        Assert.False(session.SetZoomFocusMode(0, zoom.Focus.Mode).Changed);
+        Assert.False(session.MoveZoom(0, zoom.Start).Changed);
+        Assert.Equal(Background, session.InspectorPanel);
+        Assert.Equal(0, session.SelectedZoomIndex);
+        Assert.Empty(Changes);
+
+        session.SelectCut(0);
+        session.ShowInspectorPanel(Background);
+        Changes.Clear();
+        Assert.False(session.MoveCut(0, session.SelectedCut!.Start).Changed);
+        Assert.Equal(Background, session.InspectorPanel);
+        Assert.Equal(0, session.SelectedCutIndex);
+        Assert.Empty(Changes);
+
+        session.SelectSpeed(0);
+        session.ShowInspectorPanel(Background);
+        Changes.Clear();
+        Assert.False(session.SetSpeedRate(0, session.SelectedSpeed!.Rate).Changed);
+        Assert.False(session.MoveSpeed(0, session.SelectedSpeed.Start).Changed);
+        Assert.Equal(Background, session.InspectorPanel);
+        Assert.Equal(0, session.SelectedSpeedIndex);
+        Assert.Empty(Changes);
+    }
+
+    [Fact]
+    public async Task WhatAWindowHandsBackOfTheSelectedZoom_LeavesThePanelThatIsBeingEdited()
+    {
+        var session = await OpenWithEverythingAsync();
+        session.SelectZoom(0);
+        session.ShowInspectorPanel(Screen);
+
+        // A window's sliders are bound both ways: whenever the project changes they are shown
+        // the selected zoom's values, and hand each one back.
+        var handedBack = 0;
+        session.Changed += (_, e) =>
+        {
+            if (e.Includes(StudioEditorChanges.Project) && session.SelectedZoomIndex is { } index && session.SelectedZoom is { } zoom)
+            {
+                handedBack++;
+                session.SetZoomScale(index, zoom.Scale);
+                session.SetZoomEaseIn(index, zoom.EaseIn);
+                session.SetZoomEaseOut(index, zoom.EaseOut);
+                session.SetZoomFocusPoint(index, zoom.Focus.X, zoom.Focus.Y);
+            }
+        };
+
+        // An edit in the Screen panel, with the zoom still selected.
+        session.SetScreenCornerRadius(0.1);
+        Assert.Equal(1, handedBack);
+        Assert.Equal(Screen, session.InspectorPanel);
+
+        // Undo and Redo of it.
+        session.Undo();
+        Assert.Equal(Screen, session.InspectorPanel);
+        Assert.True(session.CanRedo);
+        session.Redo();
+        Assert.Equal(Screen, session.InspectorPanel);
+
+        // Undo of an edit to the selected zoom itself, with another panel on show: the zoom's
+        // level goes back, the window is shown the level and hands it back, and the panel stays.
+        var level = session.SelectedZoom!.Scale;
+        Assert.True(session.SetZoomScale(0, level + 1).Changed);
+        Assert.Equal(Zoom, session.InspectorPanel);
+        session.ShowInspectorPanel(Screen);
+        session.Undo();
+        Assert.Equal(level, session.SelectedZoom!.Scale, Precision);
+        Assert.Equal(Screen, session.InspectorPanel);
+        Assert.True(session.CanRedo);
+        Assert.Equal(5, handedBack);
+    }
+
     // What shows a panel: Suggest zooms
 
     [Fact]

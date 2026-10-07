@@ -11,7 +11,13 @@ namespace TinyClips.Core.Studio.Editing;
 // and before the playhead moves. A window hides the controls of what is no longer selected as
 // soon as it hears of the selection or the edit, and one of them may have the keyboard focus.
 // Told of the panel first, the window can take the focus off that control while it is still
-// there. Whoever hears of the panel finds the selection and the project already as they will be.
+// there. For a zoom, a cut or a speed change, whoever hears of the panel finds the selection
+// and the project already as they will be. A split, the camera's move in the preview and the
+// suggestions say the panel and then make their edit.
+//
+// An edit to the selected zoom, cut or speed change that changes nothing shows no panel. A
+// window hands a value back to the editor when it has only shown it, and with a zoom selected
+// that would bring the Zoom panel up under whatever else is being edited, and under Undo.
 public sealed partial class StudioEditorSession
 {
     private StudioInspectorPanel _inspectorPanel = StudioInspectorPanel.Background;
@@ -78,8 +84,9 @@ public sealed partial class StudioEditorSession
     }
 
     // An edit that says which zoom, cut or speed change it left selected shows the panel of
-    // that one. Adding one does, and so does an edit to the selected one. An edit that leaves
-    // none selected, as deleting the selected one does, shows nothing.
+    // that one. Adding one does, also where one already is, and so does an edit that changes
+    // the selected one. An edit that leaves none selected, as deleting the selected one does,
+    // shows nothing, and an edit to the selected one that changes nothing does not say so.
     private void ShowPanelOf(EditSelection? selection)
     {
         switch (selection?.Kind)
