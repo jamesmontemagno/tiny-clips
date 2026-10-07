@@ -557,6 +557,38 @@ public sealed class StudioZoomLaneTests
     }
 
     [Fact]
+    public void ACropEdge_PutWhereItIs_LeavesACropTheEditorDidNotWriteAsItIsStored()
+    {
+        // A crop from 0.1 that is 0.9 wide reaches the right edge. The editor itself stores the
+        // same crop a hair before 0.1, which is what binary leaves of 1 - 0.9, so this one is
+        // not as the editor would have written it. The camera's is the same, from the top.
+        var project = MakeProject(camera: true);
+        project = project with
+        {
+            Screen = project.Screen with { Crop = new StudioRect(0.1, 0, 0.9, 1) },
+            Camera = project.Camera with { Crop = new StudioRect(0, 0.2, 1, 0.8) },
+        };
+        var model = new StudioEditorModel(project);
+        var before = model.Project;
+
+        // What a window hands back when it has only shown each slider the value it was told.
+        model.SetScreenCropInset(StudioCropEdge.Left, 0.1);
+        model.SetScreenCropInset(StudioCropEdge.Top, 0);
+        model.SetScreenCropInset(StudioCropEdge.Right, 0);
+        model.SetScreenCropInset(StudioCropEdge.Bottom, 0);
+        model.SetCameraCropInset(StudioCropEdge.Top, 0.2);
+        model.SetCameraCropInset(StudioCropEdge.Left, 0);
+
+        Assert.Same(before, model.Project);
+        Assert.False(model.CanUndo);
+
+        // An edge that does move is an edit as ever.
+        model.SetScreenCropInset(StudioCropEdge.Top, 0.1);
+        AssertRect(model.Project.Screen.Crop, 0.1, 0.1, 0.9, 0.9);
+        Assert.True(model.CanUndo);
+    }
+
+    [Fact]
     public void MovingACropEdge_KeepsWhatTheCropHasThatThisVersionDoesNotKnow()
     {
         var project = StudioProjectJson.ReadProject("""

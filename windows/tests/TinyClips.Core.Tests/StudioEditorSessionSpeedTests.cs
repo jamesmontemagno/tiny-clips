@@ -33,7 +33,7 @@ public sealed class StudioEditorSessionSpeedTests : StudioEditorSessionTestBase
         Assert.Single(Preview.LastProject!.Edits.Speed);
         Assert.Equal(4, session.Playhead, Precision);
         Assert.Empty(Preview.Seeks);
-        Assert.Equal(new[] { Edited | StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, Edited | StudioEditorChanges.Selection }, Changes);
         Assert.True(session.HasUnsavedEdits);
 
         // The video is a second shorter, and its time passes half as fast inside the stretch.
@@ -64,7 +64,7 @@ public sealed class StudioEditorSessionSpeedTests : StudioEditorSessionTestBase
         Assert.Equal(new StudioSpeedEditResult(false, 1), session.AddSpeed(5.5));
 
         Assert.Equal(1, session.SelectedSpeedIndex);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection }, Changes);
         Assert.False(session.HasUnsavedEdits);
 
         // Where none fits, nothing is selected and nothing changes.
@@ -90,7 +90,7 @@ public sealed class StudioEditorSessionSpeedTests : StudioEditorSessionTestBase
         session.AddSpeed(6);
         Assert.Equal(0, session.SelectedSpeedIndex);
         Assert.Null(session.SelectedZoomIndex);
-        Assert.Equal(new[] { Edited | StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, Edited | StudioEditorChanges.Selection }, Changes);
 
         // Adding a cut lets go of the speed change, and adding a zoom of the cut.
         session.AddCut(9);
@@ -113,7 +113,7 @@ public sealed class StudioEditorSessionSpeedTests : StudioEditorSessionTestBase
         Assert.Equal((0, null, null), (session.SelectedZoomIndex, session.SelectedCutIndex, session.SelectedSpeedIndex));
         // Each of the four also brings the panel of what it selected.
         Assert.Equal(
-            Enumerable.Repeat(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, 4).SelectMany(pair => pair),
+            Enumerable.Repeat(new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection }, 4).SelectMany(pair => pair),
             Changes);
 
         // What is selected already, and what is not there, change nothing.
@@ -334,7 +334,7 @@ public sealed class StudioEditorSessionSpeedTests : StudioEditorSessionTestBase
         Assert.True(session.SelectAndShowSpeed(2));
         Assert.Equal(2, session.SelectedSpeedIndex);
         Assert.Equal(8, session.Playhead, Precision);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector, StudioEditorChanges.Playback }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection, StudioEditorChanges.Playback }, Changes);
 
         Assert.True(session.SelectAndShowSpeed(0));
         Assert.Equal(0, session.SelectedSpeedIndex);

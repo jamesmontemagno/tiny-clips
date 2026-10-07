@@ -31,7 +31,7 @@ public sealed class StudioEditorSessionCutTests : StudioEditorSessionTestBase
         Assert.Single(Preview.LastProject!.Edits.Cuts);
         Assert.Equal(4, session.Playhead, Precision);
         Assert.Empty(Preview.Seeks);
-        Assert.Equal(new[] { Edited | StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, Edited | StudioEditorChanges.Selection }, Changes);
         Assert.True(session.HasUnsavedEdits);
 
         // The video is a second shorter, and its time stands still inside the cut.
@@ -62,7 +62,7 @@ public sealed class StudioEditorSessionCutTests : StudioEditorSessionTestBase
         Assert.Equal(new StudioCutEditResult(false, 1), session.AddCut(5.5));
 
         Assert.Equal(1, session.SelectedCutIndex);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection }, Changes);
         Assert.False(session.HasUnsavedEdits);
 
         // Where no cut fits, nothing is selected and nothing changes.
@@ -88,7 +88,7 @@ public sealed class StudioEditorSessionCutTests : StudioEditorSessionTestBase
         session.AddCut(6);
         Assert.Equal(0, session.SelectedCutIndex);
         Assert.Null(session.SelectedZoomIndex);
-        Assert.Equal(new[] { Edited | StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, Edited | StudioEditorChanges.Selection }, Changes);
 
         // Selecting one lets go of the other, and says so once.
         Changes.Clear();
@@ -99,7 +99,7 @@ public sealed class StudioEditorSessionCutTests : StudioEditorSessionTestBase
         Assert.Equal(0, session.SelectedCutIndex);
         Assert.Null(session.SelectedZoomIndex);
         Assert.Equal(
-            new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector, StudioEditorChanges.Selection, StudioEditorChanges.Inspector },
+            new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection, StudioEditorChanges.Inspector, StudioEditorChanges.Selection },
             Changes);
 
         // What is selected already, and what is not there, change nothing.
@@ -297,7 +297,7 @@ public sealed class StudioEditorSessionCutTests : StudioEditorSessionTestBase
         Assert.True(session.SelectAndShowCut(2));
         Assert.Equal(2, session.SelectedCutIndex);
         Assert.Equal(8, session.Playhead, Precision);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector, StudioEditorChanges.Playback }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection, StudioEditorChanges.Playback }, Changes);
 
         Assert.True(session.SelectAndShowCut(0));
         Assert.Equal(0, session.SelectedCutIndex);

@@ -590,14 +590,30 @@ public sealed partial class StudioEditorModel
 
     /// <summary>
     /// Moves one edge of the screen crop to cut off <paramref name="value"/> of the frame. With
-    /// nothing cut off any edge, the crop is removed.
+    /// nothing cut off any edge, the crop is removed. An edge that is put where it is leaves the
+    /// crop as it is stored: a window hands a slider's value back when it has only shown it,
+    /// and a crop that was not written by this editor would be rewritten by that.
     /// </summary>
-    public void SetScreenCropInset(StudioCropEdge edge, double value) =>
-        SetScreenCrop(WithInsets(Project.Screen.Crop, ScreenCropInsets.With(edge, value)));
+    public void SetScreenCropInset(StudioCropEdge edge, double value)
+    {
+        var insets = ScreenCropInsets;
+        var moved = insets.With(edge, value);
+        if (moved != insets)
+        {
+            SetScreenCrop(WithInsets(Project.Screen.Crop, moved));
+        }
+    }
 
     /// <summary>Moves one edge of the camera crop. The same rules as <see cref="SetScreenCropInset"/>.</summary>
-    public void SetCameraCropInset(StudioCropEdge edge, double value) =>
-        SetCameraCrop(WithInsets(Project.Camera.Crop, CameraCropInsets.With(edge, value)));
+    public void SetCameraCropInset(StudioCropEdge edge, double value)
+    {
+        var insets = CameraCropInsets;
+        var moved = insets.With(edge, value);
+        if (moved != insets)
+        {
+            SetCameraCrop(WithInsets(Project.Camera.Crop, moved));
+        }
+    }
 
     public void SetCameraBubbleSize(double value)
     {

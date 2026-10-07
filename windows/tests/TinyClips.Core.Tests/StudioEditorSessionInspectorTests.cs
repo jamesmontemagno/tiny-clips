@@ -20,6 +20,9 @@ public sealed class StudioEditorSessionInspectorTests : StudioEditorSessionTestB
     private const StudioInspectorPanel Audio = StudioInspectorPanel.Audio;
     private const StudioInspectorPanel Project = StudioInspectorPanel.Project;
 
+    // What every edit says.
+    private const StudioEditorChanges Edited = StudioEditorChanges.Project | StudioEditorChanges.Playback;
+
     // Opening a project
 
     [Fact]
@@ -118,7 +121,7 @@ public sealed class StudioEditorSessionInspectorTests : StudioEditorSessionTestB
         session.SelectZoom(1);
 
         Assert.Equal(Zoom, session.InspectorPanel);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection }, Changes);
 
         // A press on the block of the zoom that is selected already: nothing new is selected,
         // and its panel comes back.
@@ -139,7 +142,7 @@ public sealed class StudioEditorSessionInspectorTests : StudioEditorSessionTestB
         session.SelectCut(0);
 
         Assert.Equal(Cut, session.InspectorPanel);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection }, Changes);
 
         session.ShowInspectorPanel(Project);
         Changes.Clear();
@@ -158,7 +161,7 @@ public sealed class StudioEditorSessionInspectorTests : StudioEditorSessionTestB
         session.SelectSpeed(0);
 
         Assert.Equal(Speed, session.InspectorPanel);
-        Assert.Equal(new[] { StudioEditorChanges.Selection, StudioEditorChanges.Inspector }, Changes);
+        Assert.Equal(new[] { StudioEditorChanges.Inspector, StudioEditorChanges.Selection }, Changes);
 
         session.ShowInspectorPanel(Project);
         Changes.Clear();
@@ -486,6 +489,94 @@ public sealed class StudioEditorSessionInspectorTests : StudioEditorSessionTestB
         Assert.False(session.HasUnsavedEdits);
     }
 
+    // The order: the panel, and then what else changed
+
+    [Fact]
+    public async Task ThePanelIsSaid_BeforeTheSelectionAndTheEditThatGoWithIt()
+    {
+        var session = await OpenAsync(CreateProject(camera: true));
+        var heard = new List<(StudioEditorChanges Changes, StudioInspectorPanel Panel, int? Zoom, int? Cut, int Cuts)>();
+        session.Changed += (_, e) => heard.Add((e.Changes, session.InspectorPanel, session.SelectedZoomIndex, session.SelectedCutIndex, session.CutCount));
+
+        // A zoom is selected and its panel is on show. A window has that zoom's controls up
+        // then, and one of them may have the keyboard focus.
+        session.AddZoom(1);
+        Assert.Equal((Zoom, (int?)0), (session.InspectorPanel, session.SelectedZoomIndex));
+        heard.Clear();
+
+        // Adding a cut lets go of the zoom, which takes those controls away. The panel is said
+        // first and alone, and whoever hears it finds the cut there and selected already.
+        Assert.True(session.AddCut(6).Changed);
+        Assert.Equal(
+            new[]
+            {
+                (StudioEditorChanges.Inspector, Cut, (int?)null, (int?)0, 1),
+                (Edited | StudioEditorChanges.Selection, Cut, (int?)null, (int?)0, 1),
+            },
+            heard);
+
+        // The same without an edit: where a cut already is, that one is selected in place of the zoom.
+        session.SelectZoom(0);
+        heard.Clear();
+        Assert.Equal(new StudioCutEditResult(false, 0), session.AddCut(6.5));
+        Assert.Equal(
+            new[]
+            {
+                (StudioEditorChanges.Inspector, Cut, (int?)null, (int?)0, 1),
+                (StudioEditorChanges.Selection, Cut, (int?)null, (int?)0, 1),
+            },
+            heard);
+
+        // And for a press on a block of a lane.
+        heard.Clear();
+        session.SelectZoom(0);
+        Assert.Equal(
+            new[]
+            {
+                (StudioEditorChanges.Inspector, Zoom, (int?)0, (int?)null, 1),
+                (StudioEditorChanges.Selection, Zoom, (int?)0, (int?)null, 1),
+            },
+            heard);
+    }
+
+    [Fact]
+    public async Task ThePanelOfAnEditToTheSelectedOne_IsSaidBeforeTheEdit()
+    {
+        var session = await OpenWithEverythingAsync();
+        session.SelectZoom(0);
+        session.ShowInspectorPanel(Background);
+        var start = session.SelectedZoom!.Start;
+        var heard = new List<(StudioEditorChanges Changes, StudioInspectorPanel Panel, double Start)>();
+        session.Changed += (_, e) => heard.Add((e.Changes, session.InspectorPanel, session.SelectedZoom!.Start));
+
+        // A drag of the selected zoom's block, with another panel on show.
+        Assert.True(session.MoveZoom(0, start + 0.2).Changed);
+
+        Assert.Equal(2, heard.Count);
+        Assert.Equal((StudioEditorChanges.Inspector, Zoom), (heard[0].Changes, heard[0].Panel));
+        Assert.Equal(start + 0.2, heard[0].Start, Precision);
+        Assert.Equal(Edited, heard[1].Changes);
+    }
+
+    [Fact]
+    public async Task GoingToAScene_SaysThePanelBeforeThePlayheadMoves()
+    {
+        var session = await OpenAsync(CreateProjectWithScenes(ThreeScenes()));
+        session.ShowInspectorPanel(Camera);
+        var from = session.Playhead;
+        var heard = new List<(StudioEditorChanges Changes, StudioInspectorPanel Panel, double Playhead)>();
+        session.Changed += (_, e) => heard.Add((e.Changes, session.InspectorPanel, session.Playhead));
+
+        // The scene that shows the camera alone hides what the Camera panel had on show for the bubble.
+        Assert.True(session.ShowScene(2));
+
+        Assert.Equal(2, heard.Count);
+        Assert.Equal((StudioEditorChanges.Inspector, Scene), (heard[0].Changes, heard[0].Panel));
+        Assert.Equal(from, heard[0].Playhead, Precision);
+        Assert.True(heard[1].Changes.HasFlag(StudioEditorChanges.Playback));
+        Assert.True(heard[1].Playhead >= 7);
+    }
+
     // What shows a panel: the camera, dragged in the preview
 
     [Fact]
@@ -774,6 +865,75 @@ public sealed class StudioEditorSessionInspectorTests : StudioEditorSessionTestB
     }
 
     [Fact]
+    public async Task ACropGroup_WhoseSliderMovedAnEdge_StaysOpen_AlsoWithNothingCroppedAnyMore()
+    {
+        var session = await OpenAsync(CreateCroppedProject());
+        Assert.True(session.IsScreenCropOpen);
+        Assert.True(session.IsCameraCropOpen);
+        Changes.Clear();
+
+        // The one edge that cuts anything off is brought back to nothing. The slider that does
+        // it is in the group, and the hand or the key that moves it is still on it.
+        session.SetScreenCropInset(StudioCropEdge.Left, 0);
+        Assert.Null(session.Project!.Screen.Crop);
+        Assert.True(session.IsScreenCropOpen);
+        session.SetCameraCropInset(StudioCropEdge.Top, 0);
+        Assert.Null(session.Project.Camera.Crop);
+        Assert.True(session.IsCameraCropOpen);
+
+        // A group that stays as it is has nothing new to say.
+        Assert.Equal(new[] { Edited, Edited }, Changes);
+
+        // From then on it is open whatever the crop is, through Undo and Redo ...
+        session.Undo();
+        session.Undo();
+        Assert.NotNull(session.Project.Screen.Crop);
+        session.Redo();
+        session.Redo();
+        Assert.Null(session.Project.Screen.Crop);
+        Assert.True(session.IsScreenCropOpen);
+        Assert.True(session.IsCameraCropOpen);
+
+        // ... until its header closes it.
+        session.SetScreenCropOpen(false);
+        session.SetCameraCropOpen(false);
+        session.Undo();
+        session.Undo();
+        Assert.NotNull(session.Project.Screen.Crop);
+        Assert.NotNull(session.Project.Camera.Crop);
+        Assert.False(session.IsScreenCropOpen);
+        Assert.False(session.IsCameraCropOpen);
+    }
+
+    [Fact]
+    public async Task ACropGroup_GoesOnFollowingItsCrop_WhenNoEdgeWasMovedInIt()
+    {
+        var session = await OpenAsync(CreateCroppedProject());
+
+        // What a window hands back when it has only shown a slider the value it was told: no edge moves.
+        session.SetScreenCropInset(StudioCropEdge.Left, 0.1);
+        session.SetScreenCropInset(StudioCropEdge.Top, 0);
+        session.SetCameraCropInset(StudioCropEdge.Top, 0.2);
+        session.SetCameraCropInset(StudioCropEdge.Right, 0);
+        Assert.False(session.HasUnsavedEdits);
+
+        // A move that is refused, because the project cannot be edited just now, moves no edge either.
+        var export = session.ExportAsync(() => ExportPath, default);
+        Assert.True(session.IsExporting);
+        session.SetScreenCropInset(StudioCropEdge.Left, 0.3);
+        session.SetCameraCropInset(StudioCropEdge.Top, 0.4);
+        Exporter.Complete();
+        await FinishAsync(export);
+        Assert.False(session.HasUnsavedEdits);
+
+        // So Reset crop still closes both groups.
+        session.ClearScreenCrop();
+        session.ClearCameraCrop();
+        Assert.False(session.IsScreenCropOpen);
+        Assert.False(session.IsCameraCropOpen);
+    }
+
+    [Fact]
     public async Task TheStateACropGroupIsInAlready_SaysNothingNew_AndLeavesItFollowingTheCrop()
     {
         var session = await OpenAsync(CreateProject(camera: true));
@@ -839,6 +999,19 @@ public sealed class StudioEditorSessionInspectorTests : StudioEditorSessionTestB
         Assert.Equal(1, session.SpeedCount);
         Assert.Equal(1, session.CutCount);
         return session;
+    }
+
+    /// <summary>A recording with a camera whose screen has 0.1 cut off its left edge and whose camera 0.2 off its top.</summary>
+    private string CreateCroppedProject()
+    {
+        var id = CreateProject(camera: true);
+        var project = Projects.Load(id);
+        Projects.Save(project with
+        {
+            Screen = project.Screen with { Crop = new StudioRect { X = 0.1, Y = 0, Width = 0.9, Height = 1 } },
+            Camera = project.Camera with { Crop = new StudioRect { X = 0, Y = 0.2, Width = 1, Height = 0.8 } },
+        });
+        return id;
     }
 
     private string CreateProjectWithScenes(params StudioScene[] scenes)

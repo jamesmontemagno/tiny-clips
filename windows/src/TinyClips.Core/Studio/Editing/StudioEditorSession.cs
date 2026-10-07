@@ -437,9 +437,24 @@ public sealed partial class StudioEditorSession
 
     public void ClearScreenCrop() => Edit(static model => model.ClearScreenCrop());
 
-    /// <summary>Moves one edge of the screen crop to cut off a fraction of the frame.</summary>
-    public void SetScreenCropInset(StudioCropEdge edge, double value) =>
-        Edit(model => model.SetScreenCropInset(edge, value));
+    /// <summary>
+    /// Moves one edge of the screen crop to cut off a fraction of the frame. This is what a
+    /// slider of the Screen panel's Crop group does, and an edge that moves while the group is
+    /// open leaves it open (see <see cref="IsScreenCropOpen"/>).
+    /// </summary>
+    public void SetScreenCropInset(StudioCropEdge edge, double value)
+    {
+        var wasOpen = IsScreenCropOpen;
+        Edit(model =>
+        {
+            var before = model.ScreenCropInsets;
+            model.SetScreenCropInset(edge, value);
+            if (wasOpen && model.ScreenCropInsets != before)
+            {
+                _isScreenCropOpen = true;
+            }
+        });
+    }
 
     public void SetCameraShape(StudioCameraShape shape) => Edit(model => model.SetCameraShape(shape));
 
@@ -487,9 +502,24 @@ public sealed partial class StudioEditorSession
 
     public void ClearCameraCrop() => Edit(static model => model.ClearCameraCrop());
 
-    /// <summary>Moves one edge of the camera crop to cut off a fraction of the frame.</summary>
-    public void SetCameraCropInset(StudioCropEdge edge, double value) =>
-        Edit(model => model.SetCameraCropInset(edge, value));
+    /// <summary>
+    /// Moves one edge of the camera crop to cut off a fraction of the frame, as
+    /// <see cref="SetScreenCropInset"/> does for the screen: an edge that moves while the Camera
+    /// panel's Crop group is open leaves it open.
+    /// </summary>
+    public void SetCameraCropInset(StudioCropEdge edge, double value)
+    {
+        var wasOpen = IsCameraCropOpen;
+        Edit(model =>
+        {
+            var before = model.CameraCropInsets;
+            model.SetCameraCropInset(edge, value);
+            if (wasOpen && model.CameraCropInsets != before)
+            {
+                _isCameraCropOpen = true;
+            }
+        });
+    }
 
     public void SetSideBySide(StudioCameraSide cameraSide, double fraction) =>
         EditCurrentScene(model => model.SetSideBySide(cameraSide, fraction));
@@ -524,7 +554,8 @@ public sealed partial class StudioEditorSession
     /// <summary>
     /// Selects a zoom, or none with null or a place that has no zoom. The playhead stays. A
     /// selected cut or speed change is let go when a zoom is selected, and the inspector shows
-    /// the Zoom panel, also for the zoom that was selected already.
+    /// the Zoom panel, also for the zoom that was selected already. The panel is said before
+    /// the selection (see <see cref="ShowInspectorPanel"/>).
     /// </summary>
     public void SelectZoom(int? index)
     {
@@ -535,16 +566,12 @@ public sealed partial class StudioEditorSession
         {
             _selectedCutIndex = null;
             _selectedSpeedIndex = null;
+            ShowInspectorPanel(StudioInspectorPanel.Zoom);
         }
 
         if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
-        }
-
-        if (_selectedZoomIndex is not null)
-        {
-            ShowInspectorPanel(StudioInspectorPanel.Zoom);
         }
     }
 
@@ -841,12 +868,12 @@ public sealed partial class StudioEditorSession
             : StudioEditorChanges.None;
         if (!isChanged)
         {
+            ShowPanelOf(selection);
             if (selectionChange != StudioEditorChanges.None)
             {
                 RaiseChanged(selectionChange);
             }
 
-            ShowPanelOf(selection);
             return;
         }
 
@@ -858,8 +885,9 @@ public sealed partial class StudioEditorSession
             PausePreview();
         }
 
-        RaiseChanged(StudioEditorChanges.Project | StudioEditorChanges.Playback | selectionChange);
+        // The panel first, and then the edit: see ShowInspectorPanel.
         ShowPanelOf(selection);
+        RaiseChanged(StudioEditorChanges.Project | StudioEditorChanges.Playback | selectionChange);
     }
 
     // An edit that also has something to say about what it did.

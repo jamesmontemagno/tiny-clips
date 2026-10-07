@@ -6,6 +6,12 @@ namespace TinyClips.Core.Studio.Editing;
 // camera in the preview. Undo and redo, the layout, playing, scrubbing, letting go of what is
 // selected and deleting it leave the panel as it is. What the inspector shows is not part of
 // the project and not an undo step.
+//
+// The panel is said before the change that goes with it: before the selection, before the edit
+// and before the playhead moves. A window hides the controls of what is no longer selected as
+// soon as it hears of the selection or the edit, and one of them may have the keyboard focus.
+// Told of the panel first, the window can take the focus off that control while it is still
+// there. Whoever hears of the panel finds the selection and the project already as they will be.
 public sealed partial class StudioEditorSession
 {
     private StudioInspectorPanel _inspectorPanel = StudioInspectorPanel.Background;
@@ -19,9 +25,11 @@ public sealed partial class StudioEditorSession
     public StudioInspectorPanel InspectorPanel => _inspectorPanel;
 
     /// <summary>
-    /// Whether the Crop group of the Screen panel is open. Until its header is pressed it is
-    /// open while the screen is cropped, so a panel is not half crop sliders that are rarely
-    /// moved. From then on it is as the header left it.
+    /// Whether the Crop group of the Screen panel is open. Left to itself it is open while the
+    /// screen is cropped, so a panel is not half crop sliders that are rarely moved. Once its
+    /// header is pressed it is as the header left it. And once one of its sliders has moved an
+    /// edge it stays open, until the header closes it: a group that followed its crop would
+    /// close under the slider that brings the last edge back to nothing.
     /// </summary>
     public bool IsScreenCropOpen => _isScreenCropOpen ?? Model is { ScreenCropInsets.IsEmpty: false };
 
@@ -31,7 +39,8 @@ public sealed partial class StudioEditorSession
     /// <summary>
     /// Shows an inspector panel, or the nearest one this recording has: without a camera, Scene
     /// is Background and Camera is Screen. The rail does this, and so does taking hold of
-    /// something a panel edits. Not an edit: Undo leaves it.
+    /// something a panel edits, which says the panel before it says what else it changed. Not
+    /// an edit: Undo leaves it.
     /// </summary>
     public void ShowInspectorPanel(StudioInspectorPanel panel)
     {

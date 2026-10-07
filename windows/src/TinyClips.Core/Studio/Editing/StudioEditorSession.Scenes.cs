@@ -106,8 +106,8 @@ public sealed partial class StudioEditorSession
     public bool ShowPreviousScene() => ShowScene(CurrentSceneIndex - 1);
 
     /// <summary>
-    /// Moves the playhead to where a scene has been entered, and shows the Scene panel of the
-    /// inspector. False, with nothing changed, when there is no such scene.
+    /// Shows the Scene panel of the inspector, and then moves the playhead to where a scene has
+    /// been entered. False, with nothing changed, when there is no such scene.
     /// </summary>
     public bool ShowScene(int index)
     {
@@ -116,8 +116,8 @@ public sealed partial class StudioEditorSession
             return false;
         }
 
-        Scrub(time);
         ShowInspectorPanel(StudioInspectorPanel.Scene);
+        Scrub(time);
         return true;
     }
 
