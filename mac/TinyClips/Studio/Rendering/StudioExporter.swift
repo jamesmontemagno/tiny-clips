@@ -65,7 +65,7 @@ enum StudioExporter {
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
         exportSession.videoComposition = build.videoComposition
-        exportSession.audioMix = build.audioMix(for: project)
+        exportSession.audioMix = build.exportAudioMix(for: project)
         exportSession.shouldOptimizeForNetworkUse = true
 
         // An export may be cancelled, and asked how far it is, from any thread; the session is

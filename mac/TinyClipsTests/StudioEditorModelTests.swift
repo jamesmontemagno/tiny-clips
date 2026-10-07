@@ -2825,6 +2825,21 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.4, 1])
     }
 
+    func testAnExportAddsItsSoundTracksTogetherIntoOne() {
+        // Two tracks become one whatever their volumes, so that the voice is in the first.
+        XCTAssertTrue(StudioSound.exportIsMixed(trackGains: [1, 1], soundTracksInVideo: 2))
+        XCTAssertTrue(StudioSound.exportIsMixed(trackGains: [0.4, 1], soundTracksInVideo: 2))
+        // The gains are the file's tracks and may be more or fewer than the video's.
+        XCTAssertTrue(StudioSound.exportIsMixed(trackGains: [], soundTracksInVideo: 2))
+
+        // One track is copied as it is, unless it is turned down.
+        XCTAssertFalse(StudioSound.exportIsMixed(trackGains: [1], soundTracksInVideo: 1))
+        XCTAssertTrue(StudioSound.exportIsMixed(trackGains: [0.4], soundTracksInVideo: 1))
+
+        // A muted video has no sound track, and nothing to mix.
+        XCTAssertFalse(StudioSound.exportIsMixed(trackGains: [0.4, 0.9], soundTracksInVideo: 0))
+    }
+
     func testAListThatDoesNotFitTheFileIsNotUsed() {
         var project = withSoundTracks(nil)
         project.audio = StudioAudio(systemVolume: 0.4, microphoneVolume: 0.9)

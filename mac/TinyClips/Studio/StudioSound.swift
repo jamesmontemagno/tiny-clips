@@ -39,6 +39,13 @@ enum StudioSound {
         }
     }
 
+    /// Whether an export adds the sound tracks together itself: when there is more than one, so
+    /// that the video has one sound track, and when one is not at the volume it was recorded
+    /// at. A single track as recorded is copied as it is.
+    static func exportIsMixed(trackGains: [Double], soundTracksInVideo: Int) -> Bool {
+        soundTracksInVideo > 1 || (soundTracksInVideo == 1 && trackGains.contains { $0 != 1 })
+    }
+
     /// A stored volume as it is used: between 0 and 1, and 1 when it is not a number.
     static func volume(_ value: Double) -> Double {
         guard !value.isNaN else { return 1 }

@@ -26,10 +26,25 @@ struct StudioCompositionBuildResult {
     var soundTrackCountInFile = 0
 
     /// The mix that plays each sound track at the gain the project gives it (section 7 of the
-    /// project format). Nil when every track plays as recorded, which needs no mix.
+    /// project format). Nil when every track plays as recorded, which needs no mix: a player
+    /// plays all of them together as they are.
     func audioMix(for project: StudioProject) -> AVAudioMix? {
         let gains = StudioSound.trackGains(project: project, trackCount: soundTrackCountInFile)
         guard gains.contains(where: { $0 != 1 }) else { return nil }
+        return mix(gains: gains)
+    }
+
+    /// The mix an export is given, which also decides how many sound tracks the video gets. An
+    /// export session that has no mix writes a sound track for each one of the composition, and
+    /// one that has any mix adds them together into one. A video with the computer's sound and
+    /// the microphone as two tracks plays without the voice wherever only the first is played.
+    func exportAudioMix(for project: StudioProject) -> AVAudioMix? {
+        let gains = StudioSound.trackGains(project: project, trackCount: soundTrackCountInFile)
+        guard StudioSound.exportIsMixed(trackGains: gains, soundTracksInVideo: soundTracks.count) else { return nil }
+        return mix(gains: gains)
+    }
+
+    private func mix(gains: [Double]) -> AVAudioMix {
         let mix = AVMutableAudioMix()
         mix.inputParameters = soundTracks.compactMap { soundTrack -> AVAudioMixInputParameters? in
             guard gains.indices.contains(soundTrack.indexInFile) else { return nil }
