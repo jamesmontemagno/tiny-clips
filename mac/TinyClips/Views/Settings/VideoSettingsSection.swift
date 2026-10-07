@@ -141,41 +141,20 @@ struct VideoSettingsSection: View {
         }
 
         Section("After Capture") {
-            if settings.studioPreviewEnabled {
-                Picker("After recording:", selection: $settings.videoAfterRecording) {
-                    Text("Save").tag(VideoAfterRecording.save)
-                    Text("Open trimmer").tag(VideoAfterRecording.trimmer)
-                    Text("Open in Studio (Preview)").tag(VideoAfterRecording.studio)
-                }
-                .help("Choose what happens when a video recording ends. Studio keeps the screen and camera as separate layers that you arrange before exporting.")
-                .onChange(of: settings.videoAfterRecording) { _, choice in
-                    // Studio leaves this alone, as it leaves the trimmer switch: both are what
-                    // applies again once Studio is switched off.
-                    if choice == .save {
+            Toggle("Open trimmer after recording", isOn: $settings.showTrimmer)
+                .help("Open the trimmer when recording ends so you can trim before saving.")
+                .onChange(of: settings.showTrimmer) { _, isEnabled in
+                    if !isEnabled {
                         settings.saveImmediatelyVideo = true
                     }
                 }
-            } else {
-                Toggle("Open trimmer after recording", isOn: $settings.showTrimmer)
-                    .help("Open the trimmer when recording ends so you can trim before saving.")
-                    .onChange(of: settings.showTrimmer) { _, isEnabled in
-                        if !isEnabled {
-                            settings.saveImmediatelyVideo = true
-                        }
-                    }
-            }
 
-            Toggle("Save immediately", isOn: saveImmediatelyShown)
-                .help(settings.videoAfterRecording == .trimmer
-                    ? "Save immediately instead of waiting for actions in the trimmer."
-                    : "Applies when the trimmer opens after a recording. Without the trimmer, a recording is saved as soon as it ends.")
-                .disabled(settings.videoAfterRecording != .trimmer)
+            Toggle("Save immediately", isOn: $settings.saveImmediatelyVideo)
+                .help("Save immediately instead of waiting for actions in the trimmer.")
+                .disabled(!settings.showTrimmer)
             Toggle("Copy to clipboard", isOn: $settings.copyVideoToClipboard)
                 .help("Copy saved videos to the clipboard as a file URL.")
         }
-
-        // Its switch is always there. The rest of it shows once Studio is switched on.
-        StudioSettingsSection(settings: settings)
 
         Section("Countdown") {
             Toggle("Countdown before recording", isOn: $settings.videoCountdownEnabled)
@@ -195,20 +174,5 @@ struct VideoSettingsSection: View {
                 .help("Set the countdown duration in seconds.")
             }
         }
-    }
-
-    /// What the Save immediately switch shows. With the trimmer it is the setting. Without it a
-    /// recording is saved as soon as it ends, whatever the setting says: the switch is greyed
-    /// then and shows on, which is what happens. Nothing is written while it is greyed, so the
-    /// setting is as it was when the trimmer is chosen again.
-    private var saveImmediatelyShown: Binding<Bool> {
-        Binding(
-            get: { settings.videoAfterRecording != .trimmer || settings.saveImmediatelyVideo },
-            set: { isOn in
-                if settings.videoAfterRecording == .trimmer {
-                    settings.saveImmediatelyVideo = isOn
-                }
-            }
-        )
     }
 }

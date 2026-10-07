@@ -183,6 +183,10 @@ class CaptureManager: ObservableObject {
     private var regionIndicatorPanel: RegionIndicatorPanel?
     private var pendingRecordingTarget: CaptureTarget?
     private var pendingRecordingType: CaptureType?
+    /// Whether the video recording being set up was started with Studio Recording. Set by
+    /// `startVideoRecording(forStudio:)` and kept through the picker, the Record panel, and a
+    /// picker that comes back after the recording, until a recording is asked for again.
+    private var pendingVideoIsForStudio = false
     private var pendingRecordingCountdownEnabled: Bool = true
     private var pendingRecordingCountdownDuration: Int = 3
     private var pendingVideoTimeLimitMinutes: Int = 0
@@ -838,8 +842,12 @@ class CaptureManager: ObservableObject {
         window.show()
     }
 
-    func startVideoRecording() {
+    /// Starts setting up a video recording. `forStudio` makes it a Studio recording: the screen
+    /// and the camera are kept as separate layers and the Studio editor opens when it ends. It
+    /// counts only while Studio is switched on.
+    func startVideoRecording(forStudio: Bool = false) {
         guard !isCaptureActionInProgress else { return }
+        pendingVideoIsForStudio = forStudio && CaptureSettings.shared.studioPreviewEnabled
 
         isCapturePreparationInProgress = true
         let cursorScreen = screenUnderMouseCursor()
@@ -875,10 +883,11 @@ class CaptureManager: ObservableObject {
         timeLimitMinutes: Int,
         countdownEnabled: Bool,
         countdownDuration: Int,
-        studioModeEnabled: Bool? = nil
+        studioModeEnabled: Bool = false
     ) {
         let settings = CaptureSettings.shared
-        let isStudioRecording = studioModeEnabled ?? settings.isStudioVideoRecordingEnabled
+        // Asked again here: Studio may have been switched off since the recording was set up.
+        let isStudioRecording = studioModeEnabled && settings.studioPreviewEnabled
 
         let doRecord = { [weak self] in
             guard let self else { return }
@@ -914,9 +923,7 @@ class CaptureManager: ObservableObject {
                     return
                 }
 
-                // Asked of the choice and not of the trimmer switch: with Studio chosen the
-                // switch keeps what it said before, and no trimmer opens.
-                let shouldSaveImmediately = settings.videoAfterRecording != .trimmer || settings.saveImmediatelyVideo
+                let shouldSaveImmediately = !settings.showTrimmer || settings.saveImmediatelyVideo
                 let url: URL
                 if let studioCoordinator {
                     url = studioCoordinator.screenURL
@@ -1450,7 +1457,7 @@ class CaptureManager: ObservableObject {
         // Snapshot video settings before any suspension so that overlay output URL
         // selection and downstream trimmer/save decisions stay consistent even if
         // the user changes preferences while export is in progress.
-        let videoShowTrimmer = streamFailureMessage == nil && CaptureSettings.shared.videoAfterRecording == .trimmer
+        let videoShowTrimmer = streamFailureMessage == nil && CaptureSettings.shared.showTrimmer
         let videoShouldSaveImmediately = streamFailureMessage != nil || !videoShowTrimmer || CaptureSettings.shared.saveImmediatelyVideo
         let shouldReturnToPickerAfterRecording = streamFailureMessage == nil && self.shouldReturnToPickerAfterRecording
         let videoOverlayStyle = CaptureSettings.shared.mouseClickOverlayStyle(for: .video)
@@ -2125,7 +2132,8 @@ class CaptureManager: ObservableObject {
     private func showStartPanel() {
         let panel = StartRecordingPanel(
             captureType: pendingRecordingType ?? .video,
-            onStart: { [weak self] systemAudio, microphoneSelection, webcamSelection, mouseClicksEnabled, _, recordForStudio in
+            forStudio: pendingVideoIsForStudio,
+            onStart: { [weak self] systemAudio, microphoneSelection, webcamSelection, mouseClicksEnabled, _ in
                 guard
                     let self,
                     let target = self.pendingRecordingTarget,
@@ -2152,7 +2160,7 @@ class CaptureManager: ObservableObject {
                         timeLimitMinutes: videoTimeLimitMinutes,
                         countdownEnabled: countdownEnabled,
                         countdownDuration: countdownDuration,
-                        studioModeEnabled: recordForStudio
+                        studioModeEnabled: self.pendingVideoIsForStudio
                     )
                 case .gif:
                     self.beginGifRecording(

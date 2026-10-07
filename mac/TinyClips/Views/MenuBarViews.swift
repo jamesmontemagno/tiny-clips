@@ -59,6 +59,18 @@ struct MenuBarContentView: View {
             .accessibilityHint("Starts video recording.")
             .disabled(captureManager.isCaptureActionInProgress)
 
+            // Only while Studio is switched on. Record Video above is always an ordinary
+            // recording; this is the one way to record for Studio.
+            if settings.studioPreviewEnabled {
+                Button {
+                    captureManager.startVideoRecording(forStudio: true)
+                } label: {
+                    Label("Studio Recording...", systemImage: "square.stack.3d.up")
+                }
+                .accessibilityHint("Starts a video recording that opens in Tiny Clips Studio, with the screen and camera kept as separate layers.")
+                .disabled(captureManager.isCaptureActionInProgress)
+            }
+
             Button {
                 captureManager.startGifRecording()
             } label: {

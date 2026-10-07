@@ -16,14 +16,17 @@ class StartRecordingPanel: NSPanel {
         let size: String
     }
 
-    /// The arguments are: output audio, microphone, webcam, mouse click visuals, the video time
-    /// limit in minutes, and whether to record for Tiny Clips Studio.
-    private var onStart: ((Bool, MicrophoneSelection, WebcamSelection, Bool, Int, Bool) -> Void)?
+    /// The arguments are: output audio, microphone, webcam, mouse click visuals, and the video
+    /// time limit in minutes.
+    private var onStart: ((Bool, MicrophoneSelection, WebcamSelection, Bool, Int) -> Void)?
     private var onCancel: (() -> Void)?
 
+    /// `forStudio` says the recording was started with Studio Recording. The panel shows that
+    /// and does not change it.
     convenience init(
         captureType: CaptureType,
-        onStart: @escaping (Bool, MicrophoneSelection, WebcamSelection, Bool, Int, Bool) -> Void,
+        forStudio: Bool = false,
+        onStart: @escaping (Bool, MicrophoneSelection, WebcamSelection, Bool, Int) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.init(
@@ -84,13 +87,12 @@ class StartRecordingPanel: NSPanel {
             availableWebcams: availableWebcams,
             mouseClicksEnabled: defaultMouseClicksEnabled,
             allowsMouseClickToggle: allowsMouseClickToggle,
-            recordForStudio: settings.isStudioVideoRecordingEnabled,
-            allowsStudioToggle: captureType == .video && settings.studioPreviewEnabled,
-            onStart: { [weak self] systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes, recordForStudio in
+            isStudioRecording: captureType == .video && forStudio,
+            onStart: { [weak self] systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes in
                 guard let panel = self, let onStart = panel.onStart else { return }
                 panel.onStart = nil
                 panel.onCancel = nil
-                onStart(systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes, recordForStudio)
+                onStart(systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes)
             },
             onCancel: { [weak self] in
                 guard let panel = self, let onCancel = panel.onCancel else { return }
@@ -136,9 +138,10 @@ private struct StartRecordingView: View {
     let availableWebcams: [WebcamDeviceOption]
     @State var mouseClicksEnabled: Bool
     let allowsMouseClickToggle: Bool
-    @State var recordForStudio: Bool
-    let allowsStudioToggle: Bool
-    let onStart: (Bool, StartRecordingPanel.MicrophoneSelection, StartRecordingPanel.WebcamSelection, Bool, Int, Bool) -> Void
+    /// The recording was started with Studio Recording and opens in Tiny Clips Studio. Chosen
+    /// in the menu, not here: the panel only says so.
+    let isStudioRecording: Bool
+    let onStart: (Bool, StartRecordingPanel.MicrophoneSelection, StartRecordingPanel.WebcamSelection, Bool, Int) -> Void
     let onCancel: () -> Void
 
     /// Tracks that the user tried to enable an input but was blocked by a denied
@@ -329,22 +332,15 @@ private struct StartRecordingView: View {
                 .accessibilityHint("Toggles mouse click visuals for this recording.")
             }
 
-            if allowsStudioToggle {
-                Button {
-                    recordForStudio.toggle()
-                } label: {
-                    Image(systemName: "square.stack.3d.up.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(recordForStudio ? .white : .primary.opacity(0.5))
-                        .frame(width: 28, height: 28)
-                        .background(recordForStudio ? .blue : .primary.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help(recordForStudio ? "Record for Studio: ON" : "Record for Studio: OFF")
-                .accessibilityLabel("Record for Studio")
-                .accessibilityValue(recordForStudio ? "On" : "Off")
-                .accessibilityHint("Keeps the screen and camera as separate layers and opens Tiny Clips Studio when recording ends.")
+            if isStudioRecording {
+                // Not a control: it says which of the two menu commands this recording came from.
+                Label("Studio", systemImage: "square.stack.3d.up.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.primary.opacity(0.75))
+                    .padding(.horizontal, 6)
+                    .help("A Studio recording: the screen and camera are kept as separate layers, and Tiny Clips Studio opens when recording ends.")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Studio recording")
             }
 
             Divider()
@@ -364,8 +360,7 @@ private struct StartRecordingView: View {
                         size: webcamSize
                     ),
                     mouseClicksEnabled,
-                    CaptureSettings.shared.videoRecordingTimeLimitMinutes,
-                    allowsStudioToggle && recordForStudio
+                    CaptureSettings.shared.videoRecordingTimeLimitMinutes
                 )
             } label: {
                 HStack(spacing: 5) {
@@ -383,7 +378,11 @@ private struct StartRecordingView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.defaultAction)
-            .accessibilityHint("Starts recording with the selected audio options.")
+            .accessibilityHint(
+                isStudioRecording
+                    ? "Starts a Studio recording with the selected audio options. Tiny Clips Studio opens when it ends."
+                    : "Starts recording with the selected audio options."
+            )
 
             // Cancel button
             Button {

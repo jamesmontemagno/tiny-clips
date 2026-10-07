@@ -58,7 +58,7 @@ final class StudioWindowRegistry {
             SaveService.shared.showNotice(
                 onClose != nil
                     ? "Recording saved as a Tiny Clips Studio project."
-                    : "Tiny Clips Studio is turned off. Turn it on in Settings to open this project."
+                    : "Tiny Clips Studio is turned off. Turn it on in Studio settings to open this project."
             )
             onClose?()
             return
@@ -123,7 +123,7 @@ final class StudioWindowRegistry {
     /// was chosen is only read.
     func openProjectFile(at url: URL) {
         guard CaptureSettings.shared.studioPreviewEnabled else {
-            SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Settings to open this project.")
+            SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this project.")
             return
         }
         Task { [weak self] in

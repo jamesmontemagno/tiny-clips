@@ -713,7 +713,7 @@ private struct StudioInspectorView: View {
         StudioInspectorSection(title: "Storage") {
             Toggle("Keep this project", isOn: keepsSourcesBinding)
                 .toggleStyle(.checkbox)
-                .help("Storage cleanup never removes a kept project, so its video stays editable. Otherwise a project goes by the rules in Video settings once its video has been exported.")
+                .help("Storage cleanup never removes a kept project, so its video stays editable. Otherwise a project goes by the rules in Studio settings once its video has been exported.")
             noteText("Storage cleanup skips a kept project, so its video stays editable.")
         }
         StudioInspectorSection(title: "Project Folder") {

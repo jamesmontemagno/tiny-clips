@@ -119,7 +119,32 @@ struct StudioSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if settings.studioPreviewEnabled {
+            if !settings.studioPreviewEnabled, let keptText {
+                Text(keptText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        if settings.studioPreviewEnabled {
+            Section("Recording") {
+                Label("Choose Studio Recording… in the menu bar menu", systemImage: "square.stack.3d.up")
+                Text("Studio Recording keeps the screen and camera as separate layers and opens the editor when the recording ends. Record Video is always an ordinary recording.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Projects") {
+                Button("Open Project…") {
+                    StudioWindowRegistry.shared.chooseProjectFileToOpen()
+                }
+                .help("Open a project that was saved as a folder, from its .tinyclips file.")
+                Text("Opens a project saved with Save Project in the editor. Recordings you kept as drafts are listed below, and exported videos reopen their project from the Clips Manager.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Storage") {
                 Picker("Keep exported projects for:", selection: $settings.studioSourceRetentionDays) {
                     Text("7 days").tag(7)
                     Text("14 days").tag(14)
@@ -159,15 +184,11 @@ struct StudioSettingsSection: View {
                 Text("Studio keeps the original screen and camera recordings so a video can be rearranged later. Removing a project does not remove the videos you exported from it. Drafts are never removed automatically, and neither is a project whose exported video is gone.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if let keptText {
-                Text(keptText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
 
         if settings.studioPreviewEnabled, !draftRows.isEmpty {
-            Section("Studio Drafts") {
+            Section("Drafts") {
                 ForEach(draftRows) { row in
                     draftRow(row)
                 }

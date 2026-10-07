@@ -207,12 +207,6 @@ enum VideoCodec: String, CaseIterable {
     }
 }
 
-enum VideoAfterRecording: String, CaseIterable {
-    case save
-    case trimmer
-    case studio
-}
-
 enum MultiMonitorCaptureMode: String, CaseIterable {
     case askEveryTime
     case displayUnderCursor
@@ -381,39 +375,11 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifMouseClickDuration") var gifMouseClickDuration: Double = 0.45
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
     /// Whether Tiny Clips Studio is switched on, while it is in preview. It is the
-    /// "Tiny Clips Studio (Preview)" switch in Video settings; with it off, nothing else of
-    /// Studio is shown and a recording is made as it always was.
+    /// "Tiny Clips Studio (Preview)" switch in Studio settings; with it off, nothing else of
+    /// Studio is shown. Switched on, the menu has Studio Recording beside Record Video, and
+    /// that command is the one way to record for Studio: Record Video is always an ordinary
+    /// recording.
     @AppStorage("studioPreviewEnabled") var studioPreviewEnabled: Bool = false
-    @AppStorage("videoAfterRecording") private var storedVideoAfterRecording: String = ""
-    var videoAfterRecording: VideoAfterRecording {
-        get {
-            // The choice of Studio stands apart from the trimmer switch, and counts only while
-            // Studio is switched on. Everything else is read from `showTrimmer`, where the last
-            // choice made anywhere is: it has writers that do not know this property, which are
-            // the toggle shown while Studio is switched off, onboarding, and older builds.
-            if studioPreviewEnabled, storedVideoAfterRecording == VideoAfterRecording.studio.rawValue {
-                return .studio
-            }
-            return showTrimmer ? .trimmer : .save
-        }
-        set {
-            storedVideoAfterRecording = newValue.rawValue
-            switch newValue {
-            case .save:
-                showTrimmer = false
-            case .trimmer:
-                showTrimmer = true
-            case .studio:
-                // Says nothing about the trimmer. The switch keeps what it said, and that
-                // applies again once Studio is switched off: a recording is then made as it
-                // was before Studio was tried.
-                break
-            }
-        }
-    }
-    var isStudioVideoRecordingEnabled: Bool {
-        studioPreviewEnabled && videoAfterRecording == .studio
-    }
     @AppStorage("studioDefaultLook") private var storedStudioDefaultLook: String = ""
     /// The look new Studio recordings start with, or nil for the built-in one.
     var studioDefaultLook: StudioLook? {

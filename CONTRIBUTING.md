@@ -154,7 +154,7 @@ Accessibility is treated as a release gate. When adding or changing UI:
 
 1. **Screenshot:** permission → picker (region/screen/window + countdown) → optional screen picker for multi-display → optional region indicator → capture → optional editor → save.
 2. **Video/GIF:** permission → picker → optional region indicator → start panel → optional countdown → record → stop panel → optional trimmer → save.
-3. **Video for Studio** (while **Tiny Clips Studio (Preview)** is switched on in Video settings; the `studioPreviewEnabled` default): as video, but the screen and camera are written as separate tracks into a project folder with the click and cursor data, and the Studio editor opens instead of the trimmer. Nothing is rendered until export.
+3. **Video for Studio** (started with **Studio Recording…** in the menu bar menu, which is there while **Tiny Clips Studio (Preview)** is switched on in Studio settings; the `studioPreviewEnabled` default. `CaptureManager.startVideoRecording(forStudio:)` carries the flag to the recorder, and **Record Video…** never sets it): as video, but the screen and camera are written as separate tracks into a project folder with the click and cursor data, and the Studio editor opens instead of the trimmer. Nothing is rendered until export.
 
 ### Tiny Clips Studio
 
