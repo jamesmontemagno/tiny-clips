@@ -748,6 +748,10 @@ internal sealed class CountingStore(IStudioProjectStore inner) : IStudioProjectS
     public void SaveEvents(string projectId, StudioEvents events) => inner.SaveEvents(projectId, events);
 
     public StudioCleanupResult Cleanup(StudioCleanupOptions? options = null, IReadOnlyCollection<string>? inUseProjectIds = null, Func<string, bool>? isInUse = null) => inner.Cleanup(options, inUseProjectIds, isInUse);
+
+    public void SaveProjectFolder(string projectId, string folder, bool replaceSavedProject = false, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => inner.SaveProjectFolder(projectId, folder, replaceSavedProject, progress, cancellationToken);
+
+    public StudioProject OpenProjectFolder(string path, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => inner.OpenProjectFolder(path, progress, cancellationToken);
 }
 
 /// <summary>An exporter that renders nothing. The session writes a poster through it when it closes.</summary>

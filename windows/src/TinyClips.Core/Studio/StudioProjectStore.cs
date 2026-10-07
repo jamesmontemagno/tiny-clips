@@ -69,9 +69,86 @@ public interface IStudioProjectStore
         StudioCleanupOptions? options = null,
         IReadOnlyCollection<string>? inUseProjectIds = null,
         Func<string, bool>? isInUse = null);
+
+    /// <summary>
+    /// Saves a copy of a project as a folder that can be kept elsewhere or taken to another
+    /// computer (section 14 of the project format): the files the project names, and beside
+    /// them a <c>.tinyclips</c> file named after the folder. That file is the project as
+    /// <c>project.json</c> has it, without its list of exported videos. The project in the
+    /// store is not changed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Where <paramref name="folder"/> is already there it is replaced only when asked to, and
+    /// only when it is a project saved this way before
+    /// (<see cref="StudioProjectFolder.IsSavedProjectFolder"/>): anything else is left alone and
+    /// the save is refused. A folder that is replaced goes with everything in it. The copy is
+    /// made beside where it will be and given its name once it is whole, so a folder that is
+    /// replaced is whole until the new one is. The folder it goes into has to be there.
+    /// </para>
+    /// <para>
+    /// Copying a recording takes as long as the recording is large: call this off the UI
+    /// thread. The store is not locked while the files are copied, so an editor saving an edit
+    /// does not wait for it. A save that fails or is cancelled leaves nothing: no new folder,
+    /// nothing beside it, and a folder that was to be replaced as it was.
+    /// </para>
+    /// </remarks>
+    /// <param name="folder">The folder to make. The <c>.tinyclips</c> file gets its name.</param>
+    /// <param name="replaceSavedProject">Whether a project saved there before may be replaced.</param>
+    /// <param name="progress">
+    /// Told how much of the recordings has been copied, from 0 to 1, on the thread the copy
+    /// runs on.
+    /// </param>
+    /// <exception cref="StudioProjectFolderException">
+    /// <see cref="StudioProjectFolderProblem.ExternalSource"/> for a project built around a
+    /// video kept elsewhere, <see cref="StudioProjectFolderProblem.MissingFile"/> when a
+    /// recording of the project is gone, <see cref="StudioProjectFolderProblem.DestinationExists"/>
+    /// when something that may not be replaced is where the folder would go.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">The save was cancelled. Nothing is left of it.</exception>
+    void SaveProjectFolder(
+        string projectId,
+        string folder,
+        bool replaceSavedProject = false,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Makes a new project in the store from a <c>.tinyclips</c> file and the recordings beside
+    /// it, and returns it (section 14 of the project format). The folder is only read. The
+    /// project gets an id of its own, so opening the same file twice makes two projects, and it
+    /// starts as a draft: it has exported nothing on this computer, whatever its file says.
+    /// </summary>
+    /// <remarks>
+    /// Only the names of files in the folder are followed, so a project file cannot make the
+    /// app copy a file from outside its folder. Copying a recording takes as long as the
+    /// recording is large: call this off the UI thread. An open that fails or is cancelled
+    /// leaves nothing in the store.
+    /// </remarks>
+    /// <param name="path">The <c>.tinyclips</c> file, or a folder with exactly one in it.</param>
+    /// <param name="progress">
+    /// Told how much of the recordings has been copied, from 0 to 1, on the thread the copy
+    /// runs on.
+    /// </param>
+    /// <exception cref="StudioProjectFolderException">
+    /// <see cref="StudioProjectFolderProblem.NotAProjectFile"/> when the path is neither, or
+    /// the file is larger than a project file gets,
+    /// <see cref="StudioProjectFolderProblem.Unreadable"/> when the file cannot be read as a
+    /// project, <see cref="StudioProjectFolderProblem.NewerVersion"/> when a later version
+    /// wrote it, <see cref="StudioProjectFolderProblem.ExternalSource"/> when it is built around
+    /// a video kept elsewhere, <see cref="StudioProjectFolderProblem.FileOutsideFolder"/> when
+    /// it names a recording by more than the name of a file in its folder, and
+    /// <see cref="StudioProjectFolderProblem.MissingFile"/> when a recording it names is not
+    /// beside it.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">The open was cancelled. Nothing is left of it.</exception>
+    StudioProject OpenProjectFolder(
+        string path,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default);
 }
 
-public sealed class StudioProjectStore : IStudioProjectStore
+public sealed partial class StudioProjectStore : IStudioProjectStore
 {
     public const string ProjectFileName = "project.json";
     public const string EventsFileName = "events.json";
@@ -705,6 +782,9 @@ public sealed class StudioProjectStore : IStudioProjectStore
             var project = LoadProjectFile(folder.Directory, folder.Id);
             var isFlat = project.Sources.Screen.External;
             var externalExists = !isFlat || File.Exists(project.Sources.Screen.File);
+            var sourceExists = isFlat
+                ? externalExists
+                : File.Exists(Path.Combine(folder.Directory, project.Sources.Screen.File));
 
             // Looked at where each video was saved. One on a drive that is not connected counts
             // as not there, which keeps the project: the safe side of not knowing.
@@ -719,7 +799,8 @@ public sealed class StudioProjectStore : IStudioProjectStore
                 project.KeepSources,
                 DirectorySize(folder.Directory),
                 externalExists,
-                exportMissing);
+                exportMissing,
+                sourceExists);
         }
         catch (Exception ex) when (CanSkipProjectRead(ex))
         {
@@ -856,7 +937,7 @@ public sealed class StudioProjectStore : IStudioProjectStore
     private static string RequirePlainFileName(string fileName, string property) =>
         StudioProjectJson.IsPlainFileName(fileName)
             ? fileName
-            : throw new StudioProjectInvalidException($"Property {property} must be a file name.");
+            : throw new StudioProjectInvalidException($"Property {property} must be a file name.") { FileNameProperty = property };
 
     private static void ValidateProjectId(string? projectId)
     {
@@ -905,6 +986,10 @@ public sealed record StudioProjectPaths(
 /// only copy of the recording, as a draft is, and is treated as one: listed with the drafts, and
 /// never removed by cleanup.
 /// </param>
+/// <param name="SourceExists">
+/// Whether the recording the project is made around is still there to open: the screen
+/// recording in its folder, or for a project built around a video kept elsewhere, that video.
+/// </param>
 public sealed record StudioProjectSummary(
     string Id,
     string Name,
@@ -915,7 +1000,8 @@ public sealed record StudioProjectSummary(
     bool KeepSources,
     long SizeBytes,
     bool ExternalVideoExists = true,
-    bool ExportMissing = false)
+    bool ExportMissing = false,
+    bool SourceExists = true)
 {
     /// <summary>
     /// Whether cleanup may remove the project: a video exported from it is still where it was
@@ -925,6 +1011,27 @@ public sealed record StudioProjectSummary(
     /// </summary>
     public bool IsRemovableByCleanup =>
         !IsDraft && !ExportMissing && !KeepSources && !IsFlat && LastOpenedAt != DateTimeOffset.UnixEpoch;
+
+    /// <summary>
+    /// The projects an Open recent menu lists: those that still have their recording, the one
+    /// opened last first, without the project the menu belongs to. Projects opened at the same
+    /// instant are in the order of their ids, so the menu does not shuffle.
+    /// </summary>
+    /// <param name="excludingId">The project the menu belongs to, or null to leave none out.</param>
+    /// <param name="limit">How many to list at most. Zero or less lists none.</param>
+    public static IReadOnlyList<StudioProjectSummary> Recent(
+        IEnumerable<StudioProjectSummary> summaries,
+        string? excludingId,
+        int limit)
+    {
+        ArgumentNullException.ThrowIfNull(summaries);
+        return summaries
+            .Where(summary => !string.Equals(summary.Id, excludingId, StringComparison.Ordinal) && summary.SourceExists)
+            .OrderByDescending(static summary => summary.LastOpenedAt)
+            .ThenBy(static summary => summary.Id, StringComparer.Ordinal)
+            .Take(Math.Max(0, limit))
+            .ToArray();
+    }
 }
 
 /// <summary>A project folder whose <c>project.json</c> cannot be read.</summary>

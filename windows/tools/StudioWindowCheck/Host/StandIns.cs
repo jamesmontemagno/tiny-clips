@@ -396,5 +396,16 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
                 Interlocked.Increment(ref _cleanups);
             }
         }
+
+        public void SaveProjectFolder(
+            string projectId,
+            string folder,
+            bool replaceSavedProject = false,
+            IProgress<double>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            _inner.SaveProjectFolder(projectId, folder, replaceSavedProject, progress, cancellationToken);
+
+        public StudioProject OpenProjectFolder(string path, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+            _inner.OpenProjectFolder(path, progress, cancellationToken);
     }
 }

@@ -15,6 +15,12 @@ public sealed class StudioProjectInvalidException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <summary>
+    /// The property that has to hold a plain file name and does not, such as
+    /// <c>sources.screen.file</c>. Null where the project is invalid for another reason.
+    /// </summary>
+    public string? FileNameProperty { get; init; }
 }
 
 public sealed class StudioUnsupportedSchemaVersionException : Exception
@@ -556,7 +562,7 @@ public static class StudioProjectJson
 
         if (!IsPlainFileName(fileName))
         {
-            throw new StudioProjectInvalidException($"Property {path} must be a file name.");
+            throw new StudioProjectInvalidException($"Property {path} must be a file name.") { FileNameProperty = path };
         }
     }
 

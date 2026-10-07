@@ -548,4 +548,15 @@ internal sealed class RecordingStore(StudioProjectStore inner, List<string> log)
         IReadOnlyCollection<string>? inUseProjectIds = null,
         Func<string, bool>? isInUse = null) =>
         inner.Cleanup(options, inUseProjectIds, isInUse);
+
+    public void SaveProjectFolder(
+        string projectId,
+        string folder,
+        bool replaceSavedProject = false,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        inner.SaveProjectFolder(projectId, folder, replaceSavedProject, progress, cancellationToken);
+
+    public StudioProject OpenProjectFolder(string path, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+        inner.OpenProjectFolder(path, progress, cancellationToken);
 }
