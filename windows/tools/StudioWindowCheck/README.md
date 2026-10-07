@@ -238,6 +238,10 @@ Someone may be working on the machine while the tool runs, so:
   activation, and the editor puts the focus on a control only while it is the active window. The
   same message tells a window that it is no longer active, for the checks of what a window in the
   background does.
+- A window is told that it has the keyboard (`WM_SETFOCUS`), and that it no longer has
+  (`WM_KILLFOCUS`), only where a check needs the framework to ask or tell a control about a
+  focus that moves: see "The focus is moved inside the window only" under "What stands in for
+  a person". Nothing takes the keyboard.
 - The app sets its theme for the whole application when it starts, which also colours the
   caption buttons. The tool shows both themes in one run, so it sets each window's caption button
   theme itself; the rest of the theme comes from the window's own root element, as in the app.
@@ -306,7 +310,20 @@ Someone may be working on the machine while the tool runs, so:
   focus goes is read from XAML's own focus manager: the order of the tab stops by asking it to
   move the focus to the next stop over and over, and where the focus lands after a button
   switches itself off or goes away by putting it on the button first. Each of these asks
-  Windows for the keyboard, and each request is refused and counted like every other. A group
+  Windows for the keyboard, and each request is refused and counted like every other.
+  **In a window without the keyboard the framework moves the focus and says nothing about
+  it to the controls:** it asks none before the focus comes or goes (`GettingFocus`,
+  `LosingFocus`) and tells none afterwards (`GotFocus`, `LostFocus`). That is the
+  framework's rule (`CFocusManager::CanRaiseFocusEventChange` in its source), and it was seen
+  on 7 October 2026: a handler of the inspector for `GettingFocus` was never called in a run
+  that moved the focus into the rail dozens of times. So where a check is about what one of
+  those four does, the window is told that it has the keyboard for as long as the check
+  needs it, with the messages Windows sends for that (`WM_SETFOCUS`, `WM_KILLFOCUS`, to the
+  window inside it that the framework asks the keyboard for), as it is told that it is
+  active. The keyboard itself stays where it is. One check does that: the focus put on an item
+  of the rail that is not the chosen one (`inspector`). Everywhere else the window has not
+  been told, and a handler for one of the four would not run; the Studio window has one, the
+  rail's. A group
   of radio buttons is one stop and is listed by the group: which of its buttons the Tab key
   lands on is the group's doing for a focus that comes from the keyboard, and a focus moved
   this way stays on its first button. Where the window itself puts the focus, which it does
@@ -1205,8 +1222,10 @@ walked as it is.
   one is added; from a slider of the selected zoom to the rail's Zoom item when what Delete
   runs has deleted the zoom; Space, handed to the window the way a key on its way down is,
   plays and pauses with the focus on the rail's chosen item, and is left to the control with
-  Ctrl, as a held key, on another item of the rail and on Play; and a focus that is put on an
-  item of the rail that is not the chosen one lands on the chosen one and changes no panel.
+  Ctrl, as a held key, on another item of the rail and on Play; and, in a window that is told
+  it has the keyboard, a focus that is put on an item of the rail that is not the chosen one
+  from outside the rail lands on the chosen one and changes no panel, while one that moves on
+  inside the rail, or comes the way a press brings it, is left where it goes.
 - *What leaves the panel alone* (1): Undo and Redo and what Ctrl+Z and Ctrl+Y run, what the
   keys 1 to 4 run, playing into a zoom, the playhead moved into a zoom, a cut, a speed change
   and another scene, a press on an empty part of three lanes, an item taken out of the
@@ -1270,7 +1289,10 @@ of 6 October, still without a window. What that changed here, none of it run:
 - The check that the focus alone chooses no panel put the focus on an item of the rail as
   the keyboard does. The app told a press from that by the device the window had seen last,
   which under this tool is wherever the pointer happens to be. It goes by how the focus
-  comes now, so the check no longer depends on the pointer.
+  comes now, so the check no longer depends on the pointer. (On 7 October, in the first run
+  it ever had, this check failed, and the fault was the check's: the inspector's rule is
+  never asked in a window that has not been told it has the keyboard. See "The first runs,
+  on 7 October 2026" below.)
 - What a key does to the focus is checked through the window's own method for a key, as
   everywhere here. A check that puts the focus on a control of a panel and then runs a key
   now also runs the window's look after the key.
@@ -1305,6 +1327,25 @@ rail, and half is older:
 - One check is for a decision and not for a fault. The focus is sent to the rail whenever
   its panel or its control goes away, and on the rail Space was the list's, which did
   nothing with it. Space on the rail's chosen item now plays.
+
+**The first runs, on 7 October 2026.** The `inspector` group ran for the first time with the
+rail (`--only inspector`, 88 checks).
+
+- The window could not be made: the crop groups' style was based on a key the framework
+  does not have (`DefaultExpanderStyle`). That was the app's, and is mended (e40ad26).
+- Of the rail's 31 checks 30 passed as they were written. The one that failed was *the
+  keyboard focus alone chooses no panel*: the focus stayed on the item it was put on. The
+  app was right and the check was not. The inspector sends such a focus to the chosen item
+  when the framework asks the rail about it (`GettingFocus`), and the framework asks only in
+  a window that has the keyboard, which a window of this tool never has: traced, the
+  inspector's handler was not called once in the whole group. Told that it has the keyboard
+  (see "The focus is moved inside the window only"), the same window called the handler,
+  the focus landed on the chosen item, and the check passed. The check now tells the window
+  so for its few steps, notes what an untold window does, and also reads the two cases the
+  rule leaves alone: a focus that moves on inside the rail, and one that comes the way a
+  press brings it. With the rule taken out of the inspector the check fails (tried once).
+  That the Tab key coming into the rail lands on the chosen item after a jump has changed
+  the panel is still for a person to try: the tool presses no keys.
 
 ## Three checks on a smaller preview
 

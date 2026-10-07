@@ -86,6 +86,13 @@ internal sealed partial class WindowChecks
     /// </summary>
     private void TellActive(Editor editor, bool isActive) => OnUi(() => Native.TellActivation(editor.Handle, isActive));
 
+    /// <summary>
+    /// Tells the window that it has the keyboard, or that it no longer has. Only a window that
+    /// has been told so asks and tells its controls about a focus that moves: see
+    /// <see cref="Native.TellKeyboard"/>. Returns false when the window could not be told.
+    /// </summary>
+    private bool TellKeyboard(Editor editor, bool hasKeyboard) => OnUi(() => Native.TellKeyboard(editor.Handle, hasKeyboard));
+
     /// <summary>The automation id, or failing that the name, of the element that has the keyboard focus inside the window, as XAML sees it.</summary>
     private string FocusedId(Editor editor) => OnUi(() =>
     {

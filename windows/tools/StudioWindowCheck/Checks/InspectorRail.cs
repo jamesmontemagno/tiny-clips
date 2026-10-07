@@ -472,19 +472,53 @@ internal sealed partial class WindowChecks
             $"with the focus on \"{onChosen}\": with Ctrl {withControl}, held {whileHeld}, the first Space {firstSpace} and the button says \"{playing}\", the second {secondSpace} and it says \"{paused}\"; with the focus on \"{onAnother}\" while {PanelWords(chosenStill)}: {onAnotherRan}; with the focus on \"{onPlayAgain}\": {onPlayRan}");
 
         // The focus alone never chooses: put on an item of the rail that is not the chosen one, it goes to the chosen one.
+        // The inspector sends it there when the framework asks the rail about a focus that is
+        // coming (GettingFocus), and the framework asks only in a window that has the keyboard.
+        // So the window is told that it has it, for these few steps: without that the focus
+        // stays where it was put, in the app as it is and with the rule taken out alike.
         ShowPanel(editor, StudioInspectorPanel.Project);
-        FocusOn(editor, "StudioPlayPauseButton");
-        OnUi(() =>
+        string PutOnRailItem(string panel, FocusState state)
         {
-            Descendant<ListViewItem>(editor.Window.Content, $"{InspectorRailId}_Cut")?.Focus(FocusState.Keyboard);
-        });
-        Thread.Sleep(200);
-        var landed = FocusedId(editor);
-        var project = PanelShown(editor);
+            OnUi(() =>
+            {
+                Descendant<ListViewItem>(editor.Window.Content, $"{InspectorRailId}_{panel}")?.Focus(state);
+            });
+            Thread.Sleep(200);
+            return FocusedId(editor);
+        }
+
+        FocusOn(editor, "StudioPlayPauseButton");
+        var untold = PutOnRailItem("Cut", FocusState.Keyboard);
+        FocusOn(editor, "StudioPlayPauseButton");
+        var wasTold = TellKeyboard(editor, hasKeyboard: true);
+        string landed, moved, asPressed;
+        (string Title, string[] Selected) project, afterMove, afterPress;
+        try
+        {
+            landed = PutOnRailItem("Cut", FocusState.Keyboard);
+            project = PanelShown(editor);
+
+            // From the chosen item on to another one, as Ctrl and an arrow key move it, and from
+            // outside as a press brings it: both are left where they go.
+            moved = PutOnRailItem("Speed", FocusState.Keyboard);
+            afterMove = PanelShown(editor);
+            ShowPanel(editor, StudioInspectorPanel.Project);
+            FocusOn(editor, "StudioPlayPauseButton");
+            asPressed = PutOnRailItem("Cut", FocusState.Pointer);
+            afterPress = PanelShown(editor);
+        }
+        finally
+        {
+            TellKeyboard(editor, hasKeyboard: false);
+        }
+
+        _report.Note($"in a window that has not been told that it has the keyboard, the focus put on the rail's Cut item from Play while Project is the chosen one is on \"{untold}\": the framework asks the rail nothing there");
         _report.Check(
-            "the keyboard focus alone chooses no panel: put on the rail's Cut item from outside the rail while Project is the chosen one, it lands on the Project item, and the Project panel stays on show",
-            landed == $"{InspectorRailId}_Project" && IsShown(project, "Project"),
-            $"the focus is on \"{landed}\"; {PanelWords(project)}");
+            "the keyboard focus alone chooses no panel: in a window that is told it has the keyboard, put on the rail's Cut item from outside the rail while Project is the chosen one, it lands on the Project item, and the Project panel stays on show; moved on from there to the Speed item, as Ctrl and an arrow key move it, and put on the Cut item from outside as a press puts it, it is left on that item",
+            wasTold && landed == $"{InspectorRailId}_Project" && IsShown(project, "Project")
+                && moved == $"{InspectorRailId}_Speed" && asPressed == $"{InspectorRailId}_Cut",
+            $"the window was told: {wasTold}; from Play the focus is on \"{landed}\"; {PanelWords(project)}; moved on it is on \"{moved}\"; {PanelWords(afterMove)}; as a press puts it, it is on \"{asPressed}\"; {PanelWords(afterPress)}");
+        ShowPanel(editor, StudioInspectorPanel.Project);
     }
 
     /// <summary>

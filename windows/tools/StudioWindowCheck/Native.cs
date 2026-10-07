@@ -4,7 +4,8 @@ namespace TinyClips.Tools.StudioWindowCheck;
 
 /// <summary>
 /// The few Win32 calls the tool needs. All of them read, except the one that puts a window of the
-/// tool behind the others. None sends input, and none changes which window is in front.
+/// tool behind the others and the two that tell a window of the tool that it is active or has
+/// the keyboard. None sends input, and none changes which window is in front or has the keyboard.
 /// </summary>
 internal static partial class Native
 {
@@ -17,6 +18,9 @@ internal static partial class Native
     private const long WsExTopmost = 0x00000008;
     private const int SwHide = 0;
     private const uint WmActivate = 0x0006;
+    private const uint WmSetFocus = 0x0007;
+    private const uint WmKillFocus = 0x0008;
+    private const string InputSiteClass = "InputSiteWindowClass";
     private static readonly nint HwndBottom = 1;
 
     [ThreadStatic]
@@ -95,6 +99,47 @@ internal static partial class Native
     /// does not change. Call it on the window's thread.
     /// </summary>
     internal static void TellActivation(nint window, bool isActive) => SendMessage(window, WmActivate, isActive ? 1 : 0, 0);
+
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint FindWindowEx(nint parent, nint after, string? className, string? title);
+
+    /// <summary>
+    /// Tells a window that it has the keyboard, or that it no longer has, with the messages
+    /// Windows sends for it. Windows itself is not involved: the keyboard stays where it is, and
+    /// which window is in front does not change. The messages go to the window inside it that
+    /// the framework asks the keyboard for. Returns false when there is no such window. Call it
+    /// on the window's thread.
+    /// </summary>
+    /// <remarks>
+    /// The framework asks a control before the focus comes to it or leaves it (GettingFocus,
+    /// LosingFocus), and tells it afterwards (GotFocus, LostFocus), only in a window that has
+    /// the keyboard. In a window of this tool, which never has it, none of the four happens.
+    /// </remarks>
+    internal static bool TellKeyboard(nint window, bool hasKeyboard)
+    {
+        var site = InputSiteOf(window);
+        if (site == 0)
+        {
+            return false;
+        }
+
+        SendMessage(site, hasKeyboard ? WmSetFocus : WmKillFocus, 0, 0);
+        return true;
+    }
+
+    private static nint InputSiteOf(nint window)
+    {
+        for (nint child = 0; (child = FindWindowEx(window, child, null, null)) != 0;)
+        {
+            var site = ClassOf(child) == InputSiteClass ? child : InputSiteOf(child);
+            if (site != 0)
+            {
+                return site;
+            }
+        }
+
+        return 0;
+    }
 
     /// <summary>Puts a window behind every other window without activating it.</summary>
     internal static void SendToBack(nint window) =>
