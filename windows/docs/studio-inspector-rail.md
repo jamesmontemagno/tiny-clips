@@ -1,8 +1,11 @@
 # Studio inspector: rail and panels (Windows handoff)
 
-**Status:** built on macOS on 6 October 2026. Not started on Windows. Nothing under `windows/src`,
-`windows/tests`, or `windows/tools` was changed for it. This document is the brief for the agent
-that brings Windows in line.
+**Status:** built on macOS on 6 October 2026. Built on Windows the same day, from this brief
+(`8c3f4e1`, with its checks in `2c5ac42`): the rules are unit tested, and no window has been opened
+with it yet. What follows is the brief as it was written, before that. What was decided where it
+says "to decide there", and where the code is not as it expected, is in
+`plans/video-studio-plan.md` under "The Windows inspector as a rail" and "The inspector: a rail
+and one panel".
 
 ## Why
 
