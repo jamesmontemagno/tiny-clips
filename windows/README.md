@@ -210,7 +210,7 @@ With the switch on:
   splitting or going to a scene, and dragging the camera in the preview show that panel by
   themselves; undo, redo, the layout keys, playing, and scrubbing leave the panel alone. The
   crop sliders of the screen and of the camera are in a **Crop** group that is closed while
-  nothing is cropped.
+  nothing is cropped and stays open once one of its sliders has been moved.
   Keys: `Space` play or pause, `Left`/`Right` step a frame, `I`/`O` start and end the video at the
   playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
   at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
