@@ -62,7 +62,7 @@ The owner ran Studio on a Mac for the first time. The editing was right; the ins
 | How the inspector is arranged | A rail of buttons down its edge and one panel on show at a time: Scene, Background, Screen, Camera, Zoom, Cut, Speed, Audio, Project. Taking hold of a zoom, a cut, a speed change, a scene, or the camera shows the panel that edits it. Some labels were reworded with it |
 | Which platform | The Mac now, built the same day. Windows from a written brief, [`windows/docs/studio-inspector-rail.md`](../windows/docs/studio-inspector-rail.md), which has the panels, what shows each, and every label that changed |
 
-Until Windows follows, "Shared design" below describes the inspector's sections and labels as Windows has them. The editor-model strings, the project format, the lanes, and the keys are the same on both.
+Windows followed the same day, from the brief: built and unit tested, and not yet on a screen (see "The Windows inspector as a rail" under "Implementation status"). "Shared design" below describes the inspector as both platforms have it now. What this plan wrote before 6 October, under "Implementation status" and in the hands-on lists, names the inspector's sections and labels as they were then; the brief has the table of what was renamed. The editor-model strings, the project format, the lanes, and the keys are the same on both.
 
 ## Where the code is today
 
@@ -153,26 +153,56 @@ Shared golden fixtures in `shared/studio/fixtures/` (a project plus the expected
 ### Studio window
 
 ```
-+----------------------------------------------------------------+
-| clip name            aspect: Auto v                  [ Export ] |
-+------------------------------------------+---------------------+
-|                                          | Layout  [S][B][=][C] |
-|             preview canvas               | Background           |
-|   drag/resize camera, drag zoom focus,   | Screen  crop corners |
-|   crop handles                           | Camera  shape size   |
-|                                          | Zoom    Audio        |
-+------------------------------------------+---------------------+
-| > 00:12.4 / 01:32      [Split] [Add zoom] [Cut]                |
-| Scenes | Bubble         | Side by side      | Camera |         |
-| Zoom   |      [ 2x ]            [ 1.5x ]                       |
-| Clip   [======== trim ===============================]         |
-+----------------------------------------------------------------+
++---------------------------------------------------------------------+
+| clip name            aspect: Auto v                      [ Export ] |
++--------------------------------------+-----------------+------------+
+|                                      | Scene           | Scene      |
+|           preview canvas             |  < 2 of 3 >     | Background |
+|    drag the camera                   |  Layout         | Screen     |
+|                                      |  Split scene    | Camera     |
+|                                      |  Transition     | ---------- |
+|                                      |  Timing         | Zoom       |
+|                                      |  Delete scene   | Cut        |
+|                                      |                 | Speed      |
+|                                      |                 | ---------- |
+|                                      |                 | Audio      |
+|                                      |                 | Project    |
++--------------------------------------+-----------------+------------+
+| > 00:12.4 / 01:32      [Split] [Add zoom] [Cut] [Speed]             |
+| Scenes | Bubble         | Side by side      | Camera |              |
+| Zoom   |      [ 2x ]            [ 1.5x ]                            |
+| Cut    |               [  ]                                         |
+| Speed  |                          [ 2x ]                            |
+| Clip   [======== trim ===============================]              |
++---------------------------------------------------------------------+
 ```
 
 - Every drag on the canvas has an inspector equivalent with numeric fields.
 - Every timeline item is keyboard reachable and has an accessible name and value, such as "Zoom 2×, 12.0 to 16.5 seconds".
 - Keys: Space to play or pause, Left and Right to step a frame, I and O for trim in and out, S to split a scene, Z to add a zoom, 1–4 for the layout, Delete, undo and redo, and Ctrl/Cmd+E to export.
 - Undo and redo are a snapshot stack over the project value.
+
+### The inspector: a rail and one panel
+
+The inspector shows one panel at a time, under its name, and a rail down its outer edge chooses which. The owner chose this on 6 October, after running Studio on a Mac, over eleven sections in one scroll. [`windows/docs/studio-inspector-rail.md`](../windows/docs/studio-inspector-rail.md) is the brief Windows was built from and has the full tables; this is the short form.
+
+| Group | Panel | Holds |
+|---|---|---|
+| Look | Scene | Previous and next scene; Layout; Split scene; Transition (Instant or Animated, and Duration); Timing (Start); Delete scene |
+| Look | Background | Show background, the swatches, Padding |
+| Look | Screen | Corner radius, Shadow, Click highlights, and a Crop group |
+| Look | Camera | Placement, which belongs to the scene; Appearance and a Crop group, which belong to the whole video |
+| Timeline | Zoom, Cut, Speed | Previous and next, the button that adds one, and the controls of the selected one |
+| Rest | Audio | Mute, and the volumes a recording has |
+| Rest | Project | Tiny Clips badge, Keep this project, Save as default look |
+
+- A recording without a camera has no Scene and no Camera panel. A request for either goes to Background or to Screen.
+- **What shows a panel besides the rail.** Selecting, adding or stepping to a zoom, a cut or a speed change shows its panel. Splitting a scene, going to one, and pressing one on the scene lane show Scene; a split that is refused does too, so that the reason is on show. Dragging the camera in the preview shows Camera. A project opens on Scene, or on Background without a camera.
+- **What does not.** Undo and redo, the layout keys 1 to 4, playing, scrubbing, a press on an empty part of a lane, and deleting the selected item. The panel on show is not part of the project and not an undo step.
+- **The crop sliders** are behind a header that opens and closes them. Until the header is pressed the group is open while its picture is cropped; from then on it is as the header left it. Closed over a crop it says "Cropped".
+- An empty Zoom, Cut or Speed panel says how to add the first one, with its key.
+
+**Where Windows differs.** The rail is a list: one stop for the Tab key, before the panel, and Up, Down, Home and End choose. The keyboard focus alone never changes the panel: on Windows a lane takes the focus, so what selects an item on a lane shows its panel, and the focus coming to the lane does not. When a jump replaces the panel that holds the keyboard focus, the focus goes to the rail's item for the new panel, because the control it was on is gone; on the Mac a jump never moves the focus. The Audio panel holds Mute alone, because a Windows recording has one mixed sound track. A time row keeps its three buttons where the Mac has a stepper. The Screen panel of a recording without a camera says that it has none.
 
 ### Zooms and crops in the editor (Milestone 2)
 
@@ -188,15 +218,15 @@ The same design on both platforms. The rule behind every control is in the edito
 
 **Add zoom** (also Z) adds a zoom at the playhead and selects it. Where a zoom already is, that one is selected instead. A zoom starts unzoomed, so a paused playhead then moves to where the new zoom has finished moving in; otherwise adding one would look as if nothing had happened.
 
-**Zoom section in the inspector.**
+**Zoom panel in the inspector.**
 
 - Previous and Next step through the zooms and show each where it has moved in. Between them: "Zoom 2 of 5" and its times. This is how a zoom is selected without a pointer.
-- For the selected zoom: Scale (1× to 5×); Looks at (a point, or the pointer); the focus pad with Horizontal and Vertical sliders under it; Start and End, each with buttons that step 0.1 s and one that sets it to the playhead; Ease in and Ease out (0 to 3 s); and Delete (also the Delete key).
+- For the selected zoom: Zoom level (1× to 5×); Focus (Fixed point, or Follow pointer); the focus pad with Horizontal and Vertical sliders under it; Start and End, each with buttons that step 0.1 s and one that sets it to the playhead; Zoom-in time and Zoom-out time (0 to 3 s); and Delete zoom (also the Delete key).
 - The focus pad stands for the screen, or for its crop. It shows the part the zoom holds as a rectangle and the point it looks at as a dot, and dragging in it moves the point. The two sliders do the same.
 - Suggest zooms replaces the suggested zooms with new ones worked out from the clicks and says how many there are. Remove suggestions takes them away. Each is one undo step.
-- A recording without clicks, such as one of a window, has Suggest zooms disabled with the reason next to it. One without pointer positions has "the pointer" disabled the same way.
+- A recording without clicks, such as one of a window, has Suggest zooms disabled with the reason next to it. One without pointer positions has "Follow pointer" disabled the same way.
 
-**Crops.** The Screen and Camera sections each have four sliders, Left, Top, Right and Bottom, for how much of the frame is cut off that edge (0 to 95%), and Reset. The preview shows the result as a slider moves.
+**Crops.** The Screen and Camera panels each have a Crop group with four sliders, Left, Top, Right and Bottom, for how much of the frame is cut off that edge (0 to 95%), and Reset crop. The preview shows the result as a slider moves. When the group is open is in "The inspector" above.
 
 **Not in this pass:** crop handles on the canvas, and dragging the zoomed picture in the preview to move the focus. The inspector controls are their equivalents and stay when those arrive. The timeline does not magnify, so short zooms in a long recording sit close together on the lane; Start and End in the inspector are exact.
 
@@ -213,15 +243,16 @@ The same design on both platforms, with the rules in the editor model and unit t
 - To a screen reader each block is an item named like "Scene 2 of 3, Side by side, 12.0 to 30.5 seconds", and says whether it is the current one.
 - A recording without a camera has one scene and no lane, because every layout without a camera is the screen alone.
 
-**Split** (also S) starts a new scene at the playhead. It is a copy of the current scene, entered by moving for 0.35 seconds, so nothing looks different until one of the two is changed. A paused playhead then moves to where the new scene has been entered. Otherwise a change of layout would show nothing, because at its first instant a scene still looks like the one before.
+**Split scene** (Split in the transport row, also S) starts a new scene at the playhead. It is a copy of the current scene, entered by moving for 0.35 seconds, so nothing looks different until one of the two is changed. A paused playhead then moves to where the new scene has been entered. Otherwise a change of layout would show nothing, because at its first instant a scene still looks like the one before.
 
 - Both halves have to last at least 0.3 seconds, and the current scene has to be at rest at the playhead: a scene is not split while its layers are still moving into place. Where a split is not possible the button is disabled and says why.
 
-**Scene section in the inspector.**
+**Scene panel in the inspector.**
 
 - Previous and Next move the playhead from scene to scene, each to where that scene has been entered. Between them: "Scene 2 of 3" and its times.
+- Layout: the four layouts, for the current scene.
 - Start, with buttons that step 0.1 s and one that sets it to the playhead. Not for the first scene, which starts at 0.
-- Entered by: a cut, or moving, with how long the move takes (0.1 to 2 s). Not for the first scene, which has nothing to move from. A move is never longer than its scene; when the scene is shorter than the time asked for, the section says how long the move really is.
+- Transition: Instant, or Animated with its Duration (0.1 to 2 s). Not for the first scene, which has nothing to move from. A move is never longer than its scene; when the scene is shorter than the time asked for, the panel says how long the move really is.
 - Delete removes the current scene, and the scene before it then lasts until the next one. Deleting the first scene hands its time to the second. The only scene cannot be deleted. The Delete key does the same while a block of the lane has the keyboard focus.
 
 **Limits.** A scene made or moved in the editor is never shorter than 0.3 seconds. A start dragged against a neighbor stops 0.3 seconds from it. Scenes in a project file that are shorter, out of order, or past the end of the recording are put in order when the project is opened, as section 6.1 of the format reads them, and those that start at or after the end of the recording are dropped.
@@ -239,11 +270,11 @@ A cut is a stretch of the recording that the video leaves out. It is a range on 
 - Pressing a block selects its cut, dragging it moves the cut, and dragging one of its ends changes where the cut starts or stops. A drag is one undo step.
 - To a screen reader each block is an item named like "Cut, 12.0 to 16.5 seconds", and says whether it is selected.
 
-**Cut** (also X) starts a cut at the playhead and selects it. It lasts 1 second, or until the next cut or the end of the recording when that comes sooner. Where a cut already is, that one is selected instead. The usual next step is to move the playhead to where the video should pick up again and choose End: At Playhead, or to drag the end of the block there.
+**Add cut** (Cut in the transport row, also X) starts a cut at the playhead and selects it. It lasts 1 second, or until the next cut or the end of the recording when that comes sooner. Where a cut already is, that one is selected instead. The usual next step is to move the playhead to where the video should pick up again and choose End: At Playhead, or to drag the end of the block there.
 
 **One selection.** A zoom or a cut is selected, never both: selecting one lets go of the other, and Delete removes whichever is selected.
 
-**Cut section in the inspector.** Previous and Next step through the cuts. Between them: "Cut 2 of 3", its times, and how long it is. With a cut selected: Start and End, each with buttons that step 0.1 s and one that sets it to the playhead, and Delete Cut, which puts the stretch back.
+**Cut panel in the inspector.** Previous and Next step through the cuts. Between them: "Cut 2 of 3", its times, and how long it is. With a cut selected: Start and End, each with buttons that step 0.1 s and one that sets it to the playhead, and Delete cut, which puts the stretch back.
 
 **Playing.** Playback jumps over cuts, as the exported video does. A paused playhead can be inside a cut and shows the picture there, so its ends can be judged, and stepping by frames goes through it. The time display counts the video's time, so it stands still inside a cut. The jump in the preview is not exact to the frame: a few frames of a cut can show while playing. The export is exact.
 
@@ -253,18 +284,18 @@ A cut is a stretch of the recording that the video leaves out. It is a range on 
 
 A speed change is a stretch of the recording that the video plays faster or slower. It is a range on the timeline with a start, an end, and a rate, and it is made, selected, moved, and deleted the way a cut is. Nothing else moves when one is made: zooms, scenes, cuts, and the trim are stored in recording time and stay where they are. What changes is how long the video is. Everything inside the stretch passes at its rate: the picture, a zoom moving in, a move between scenes, the click rings.
 
-**Sound.** A stretch at another speed plays without sound, in the export and in the preview. The Speed section says so. Sound that keeps its pitch at another speed needs a time-stretching step on both platforms and is not in this version.
+**Sound.** A stretch at another speed plays without sound, in the export and in the preview. The Speed panel says so. Sound that keeps its pitch at another speed needs a time-stretching step on both platforms and is not in this version.
 
 **Speed lane.** A lane under the cut lane, on the same time scale, with one block for each speed change. A block shows its rate, such as 2×.
 
 - Pressing a block selects it, dragging it moves it, and dragging one of its ends changes where it starts or stops. A drag is one undo step.
 - To a screen reader each block is an item named like "Speed 2×, 12.0 to 16.5 seconds", and says whether it is selected.
 
-**Speed** (also R) starts a speed change at the playhead and selects it. It plays twice as fast and covers 2 seconds of the recording, or up to the next speed change or the end of the recording when that comes sooner. Where one already is, that one is selected instead.
+**Add speed change** (Speed in the transport row, also R) starts a speed change at the playhead and selects it. It plays twice as fast and covers 2 seconds of the recording, or up to the next speed change or the end of the recording when that comes sooner. Where one already is, that one is selected instead.
 
 **One selection.** A zoom, a cut, or a speed change is selected, never two of them: selecting one lets go of the others, and Delete removes whichever is selected.
 
-**Speed section in the inspector.** Previous and Next step through the speed changes. Between them: "Speed change 2 of 3", its times, and how much of the recording it covers and how long that plays, such as "4.5 seconds, plays in 1.1 seconds". With one selected: the rate, as a choice of 0.25×, 0.5×, 1.5×, 2×, 4×, and 8×; Start and End, each with buttons that step 0.1 s and one that sets it to the playhead; and Delete, after which the stretch plays at the recording's own speed again.
+**Speed panel in the inspector.** Previous and Next step through the speed changes. Between them: "Speed change 2 of 3", its times, and how much of the recording it covers and how long that plays, such as "4.5 seconds, plays in 1.1 seconds". With one selected: the rate, as a choice of 0.25×, 0.5×, 1.5×, 2×, 4×, and 8×; Start and End, each with buttons that step 0.1 s and one that sets it to the playhead; and Delete, after which the stretch plays at the recording's own speed again.
 
 **Playing.** The preview plays each stretch at its rate, without sound there. Like the jump over a cut, the change of speed in the preview is not exact to the frame; the export is. The time display counts the video's time, so inside a faster stretch it runs at half the pace of the playhead or less.
 
@@ -276,7 +307,7 @@ A recording can have the computer's sound and the microphone in one file. Where 
 
 **What the project says.** `sources.screen.audioTracks` lists what each sound track of the screen file holds, in the file's order: `system`, `microphone`, or `mixed`. `audio.systemVolume` and `audio.microphoneVolume` are the two volumes. A track that holds both, a track the project says nothing about, and every track of a file the list does not fit play as recorded. Mute still takes all sound away.
 
-**Audio section in the inspector.** Mute, and under it a slider for each kind of sound the recording has in a track of its own: System audio and Microphone, in steps of 5 percent. A recording with one mixed track, or one made before the list existed, shows Mute alone. A drag is one undo step. The preview plays with the volumes as they are set, without rebuilding anything.
+**Audio panel in the inspector.** Mute, and under it a slider for each kind of sound the recording has in a track of its own: System audio and Microphone, in steps of 5 percent. A recording with one mixed track, or one made before the list existed, shows Mute alone. A drag is one undo step. The preview plays with the volumes as they are set, without rebuilding anything.
 
 **macOS.** The recorder already writes the computer's sound and the microphone as two tracks. It now tells the project which is which, and only when the file really has one track for each sound it set out to record. Preview and export play each track at its volume through an audio mix.
 
@@ -298,7 +329,7 @@ The rule is in section 9.1 of the project format, is the same on both platforms,
 
 ### Person cutout (Milestone 4)
 
-The camera picture can have everything but the people in it blurred, or taken away so that only the people stand in front of the screen. It is one choice in the Camera section, Background: Keep, Blur, or Remove. It belongs to the look, so saving a look as the default brings it to the next recording.
+The camera picture can have everything but the people in it blurred, or taken away so that only the people stand in front of the screen. It is one choice in the Camera panel, Camera background: Keep, Blur, or Remove. It belongs to the look, so saving a look as the default brings it to the next recording.
 
 - **Blur** leaves the camera layer as it is: its shape, its border, its shadow.
 - **Remove** leaves only the people, clipped by the layer's shape. The border and the shadow go, because they belong to a frame around the picture that is no longer there.
@@ -703,12 +734,26 @@ Left as they are:
 
 After it, 2,002 Core tests pass and 3 are skipped, the 55 tests of the Settings view model pass, both flavours of the app and the four tools build without warnings, and the Mac's 326 tests pass on the runner.
 
+### The Windows inspector as a rail (6 October)
+
+Built the day the owner asked for it, from his brief, by the author of the Windows window in its eighth round, and merged by me. **It has not been on a screen.** The PC was still in quiet mode and the owner could not be reached, so nothing with a window could run: it is built, its rules are unit tested, and its checks are written and unrun.
+
+- **The rules are in Core**, in `StudioEditorSession`, next to the edits they belong to: which panels a recording has, the panel on show, every act that shows a panel and every act that must not, and the two crop groups. 53 unit tests hold them. Their author took 51 rules out, one at a time, and each made a test fail. One row of the brief's table is decided in a control and has no unit test: a press on a scene's block.
+- **The rail is the framework's list**, so that UI Automation reports a list with one selected item. Its Up, Down, Home and End are the list's own, and the framework's source says they choose at once. The window check presses no key, so they have no check. A person's first minute at the rail settles it.
+- **A panel that is not on show is collapsed**, which by the framework's rule takes its controls out of the order of the Tab key and out of what a screen reader walks. Before this, every control of the inspector was always in the window. That is the largest thing nobody has seen: controls that are first laid out when their panel is first shown.
+- **No automation id is gone**: 507 in the app's markup before and 520 after, compared by script.
+- **The window check** finds a control by first showing the panel that holds it: one step, and one table of 133 ids, which a script compared with the markup. It has 25 new checks for the rail and 553 in all when no part ends early. Its list of prepared faults has 106, and the text of each is in the tree exactly once. **None of it has run**, and every older check now goes through the new step.
+- **The window keeps its sizes**, 1180 × 760 as it opens and 980 × 640 at its smallest, as the Mac's did when it got its rail. The inspector is 88 wider, 408, and the preview's column that much narrower. The round had made the window 88 wider at both sizes instead. I took that back: a display 1024 effective pixels wide would have had the rail off its right edge. By the sizes in the markup and one measurement from before the rail, a 16:9 picture is bound by the height at the size the window opens with and loses nothing; a wider picture is smaller. Not measured in this layout.
+
+After it, 2,055 Core tests pass and 3 are skipped, the 55 tests of the Settings view model pass, and both flavours of the app and the four tools build without warnings.
+
 ### Decisions made while building
 
 - **A failed project save keeps the recording.** If the project cannot be saved when a Studio recording stops, the screen track is kept as an ordinary video.
 - **Drafts.** A recording kept as a draft has no exported file, so it does not appear in the Clips Manager. The drafts are listed in Settings, where they can be opened or deleted: under Video on macOS and under General on Windows.
 - **Deleting an exported video leaves its export link in place, and the project then counts as a draft again.** Until 5 October such a project still counted as exported, and cleanup removed its sources later, which left nothing of the recording. Now a project none of whose exported videos is where it was saved is never removed by cleanup, and is listed with the drafts, marked, where it can be opened, exported again or deleted. The link stays so that a video that comes back, from the Recycle Bin or with the drive it is on, is linked again; both stores have a call that removes a link, and nothing uses it. A video on a drive that is not connected counts as gone for as long as that lasts, which keeps the project: the safe side of not knowing. What this costs: someone who exports, shares and then deletes the video keeps the project until they delete it in Settings. Since 6 October a file at the path counts only when it is as large as the exported video was.
 - **The storage limit spares the project opened last**, and **Open in Studio is stored apart from the trimmer switch.** Both were decided on 6 October without asking, from what the read-through found. The first is one line in each platform's cleanup rules and is in "Open questions". The second changes what two switches in Settings › Video do to each other, and has no setting of its own. On Windows, since that afternoon, Save and Open trimmer are kept apart from the switch as well while Studio is on, which the Mac does not do; see "The Studio switch".
+- **The Windows inspector, where the owner's brief left things open.** Decided on 6 October without asking, because he could not be reached. The Audio panel is kept although it holds one check box on Windows, so that both platforms have the same nine panels; it is in "Open questions". What selects an item on the timeline shows its panel, and the keyboard focus coming to a lane does not. The rail comes before the panel for the Tab key. When a jump replaces the panel that holds the keyboard focus, the focus goes to the rail. The transport row's Cut button is called "Add cut" by a screen reader, as on the Mac. The window keeps its sizes.
 - **Cleanup can be switched off.** Zero days keeps projects until they are deleted by hand, and zero gigabytes means no storage limit.
 - **Events during pauses.** Clicks and cursor samples from before the first frame or during a pause are not recorded. Cursor samples are capped at 60 per second, drop consecutive duplicates, and are steps, not points to interpolate between.
 - **Drawing rules** are in section 6.7 of `docs/studio-project-format.md`: sRGB with gamma-space blending, no color conversion of screen pixels, the shadow model, where the border goes, and the click ring geometry.
@@ -870,11 +915,12 @@ Known limits to state up front:
 
 ## Open questions
 
-Three, from 6 October. None of them holds up work.
+Four, from 6 October. None of them holds up work.
 
 1. **Where should Windows keep its projects?** They are in the installed app's own folder, which Windows deletes when the app is uninstalled or reset, drafts included. Settings says so now. The other way is a folder of the user's own, under Videos for instance, which outlives an uninstall and is in plain sight.
 2. **Should the storage limit spare the project opened last?** It does since 6 October, because the read-through found that one exported project larger than the limit was removed the moment its editor closed. The limit can then be passed by that one project. Decided without asking; it is one line in each platform's rules.
 3. **May the check tools run while the owner is away from the PC?** They were stopped on 5 October because they use the screen and the machine. Leave was given once, for one absence. The rule I would suggest: after 15 minutes without input and with no slide show or full-screen app in front, stopping at the first key or mouse move. Until there is an answer they do not run, and every run that is owed stays owed ("Where it stands" in the pull request).
+4. **Should the Windows inspector have an Audio panel for one check box?** The owner's brief for the rail says to ask. Windows has Mute and no volume sliders, because a Windows recording has one mixed sound track. The panel is kept, so that both platforms have the same nine in the same order and the volumes have their place when Windows records two tracks. The other way is Mute in the Project panel until then.
 
 The two that were open on the evening of 5 October, Esc in the Studio window and the fix for `main`, were answered that same evening.
 
@@ -885,6 +931,7 @@ What is left is work that waits for the PC or for a Mac, not for an answer:
 - **The regular Windows recorder's CPU path** gets its own pull request once a real recording on that path has confirmed the fault. See "Found in the regular Windows recorder", which also has two faults found by reading it and left alone: click rings drawn late, and quitting while a recording is being finished.
 - **Windows volumes** are a follow-up: two sound tracks in a Studio recording, made with the owner at the PC. See "Volumes".
 - **Esc in the Studio window** is built on Windows, and no key has been pressed in that window yet.
+- **The Windows inspector's rail** is built, and no window has been opened with it.
 - **Every control written on 5 October has been compiled and never run, and the Tiny Clips app has never been started with this code.** See "The decisions of 5 October, built", "The app around the editor: read, never run" and "The evening of 5 October".
 
 One thing for the owner of the App Store account, which the visible switch does not settle by itself. Guideline 2.3.1(a), as it read on 5 October 2026: "Don't include any hidden, dormant, or undocumented features in your app; your app's functionality should be clear to end users and App Review. All new features, functionality, and product changes must be described with specificity in the Notes for Review section of App Store Connect (generic descriptions will be rejected) and accessible for review." The switch makes Studio visible and reachable for review. The notes for review still have to say what it is.
@@ -906,16 +953,16 @@ First with the switch off, against the released build, since this is what every 
 1. Settings › General: switch on **Tiny Clips Studio (Preview)**. Nobody and nothing has ever pressed this switch. Watch whether the cards under it (storage, Clean up now, the drafts) come without the page jumping or the keyboard focus going elsewhere, and whether Settings › Video now has After recording where the trimmer switch was. Later, with a project or two on the disk, switch it off: a line under it should say how many projects are kept and how much room they take, and switching it on again should bring everything back.
 2. Settings › Video › After recording: Open in Studio. Record a region with the camera on, with some clicks and some sound, and move the camera to another corner while recording. This is the first recording the present code makes, so look at what it wrote before anything else (the project is a folder under `TinyClips\Projects` in the app's data, and `screen.mp4` in it plays in any player). In `project.json`, the camera's `startOffset + duration` should be at least the screen's `duration`, and there should be a second scene from the moment the camera was moved. In `events.json`, clicks in the four corners of the region should be near (0,0), (1,0), (0,1) and (1,1), also on a scaled display and on one left of the primary, and there should be none from a pause. In `camera.mp4`, the first half second should move and the last second should be there. In `webcam-diagnostics.log`, look for the size the camera delivered and for `hardware encoder unavailable`. Then unplug the camera in the middle of one recording, use a virtual camera for another, and record one with HEVC and open it.
 3. In the editor: play (with sound), scrub, step frames, trim with the handles and with I and O, switch layouts with 1 to 4, drag the camera bubble, drag every inspector slider and undo it (one drag should be one undo step), change the background and the canvas shape. The corner move should be there as a second scene on the scene lane.
-4. Zooms and crops: add a zoom with Z, drag it and its ends on the lane, change its scale and where it looks, switch it to follow the pointer, and try Suggest zooms. Move the four crop sliders for the screen and for the camera.
+4. Zooms and crops: add a zoom with Z, drag it and its ends on the lane, change its zoom level and its focus, switch it to Follow pointer, and try Suggest zooms. Open the Crop group of the Screen and of the Camera panel and move its four sliders.
 5. Before anything else in the editor, since no check has done it: play a real recording, pause it at a few places, step frame by frame through a few seconds, and watch the playhead and the time while it plays. A playhead that stands still for half a second, or a picture that steps back when you pause, is the first of the known problems on Windows. Compare a few frames around a click with the export.
-6. Scenes and cuts: press S to split, give the new scene another layout with 1 to 4, switch how it is entered between a cut and a move, and drag the line between two scenes on the lane. Press X for a cut, drag it and its ends, and play over it. Close the editor right after pressing a button with the keyboard, and after playing. Then play from before a split and drag the camera, or the Size slider, while it plays: playback should stop with the first move, only the scene it stopped in should change, and one Undo should take the whole drag back.
-7. Speed (worked by the window check through UI Automation, never by hand): press R, choose each of the six rates, drag the block and each of its ends on the lane, use the Start and End buttons in the Speed section, and delete it with Delete. The preview will not change its pace; the time above the timeline should. Check the smallest size of the window, both themes, and whether Left and Right inside the six rates stay there. What the reviewer that read this code would look at first: the six rates fill their three columns downwards, so the top row reads 0.25×, 1.5×, 4×; Right on 4× and Left on 0.5× probably do nothing, while every other arrow sets the rate at once, one undo step each; a rate that is refused, chosen by keyboard, leaves the focus on the refused button while the dot goes back; a speed change 10 to 25 px wide is as round as it is wide, and when selected shows little of its fill; after R the Speed section is not scrolled into view; and at a larger text size the Background choice may wrap to two columns.
+6. Scenes and cuts: press S to split, give the new scene another layout with 1 to 4, switch its transition between Instant and Animated, and drag the line between two scenes on the lane. Press X for a cut, drag it and its ends, and play over it. Close the editor right after pressing a button with the keyboard, and after playing. Then play from before a split and drag the camera, or the Size slider, while it plays: playback should stop with the first move, only the scene it stopped in should change, and one Undo should take the whole drag back.
+7. Speed (worked by the window check through UI Automation, never by hand): press R, choose each of the six rates, drag the block and each of its ends on the lane, use the Start and End buttons in the Speed panel, and delete it with Delete. The preview will not change its pace; the time above the timeline should. Check the smallest size of the window, both themes, and whether Left and Right inside the six rates stay there. What the reviewer that read this code would look at first: the six rates fill their three columns downwards, so the top row reads 0.25×, 1.5×, 4×; Right on 4× and Left on 0.5× probably do nothing, while every other arrow sets the rate at once, one undo step each; a rate that is refused, chosen by keyboard, leaves the focus on the refused button while the dot goes back; a speed change 10 to 25 px wide is as round as it is wide, and when selected shows little of its fill; and at a larger text size the Camera background choice may wrap to two columns. (Since 6 October R shows the Speed panel, from its top.)
 8. Export. The video should appear in the save folder, in Recent captures, and in the Clips Library, with the camera upright, the sound in step, the zooms and scenes where the preview showed them, the cuts out of the picture and the sound, and a faster or slower stretch at its speed and silent.
 9. Open in Studio… from the Clips Library and from Recent captures. Close a never-exported recording and try Export, Keep as draft, and Delete. Check the drafts list in Settings › General. Each row there has Open, Save recording and Delete…: save one, look for the video in the save folder, and see that the project is still listed. While it is being saved the button says Saving…: the keyboard focus should stay on it, a second press should save nothing, and the buttons beside it should not move. Try it in the narrowest Settings window, where three buttons may not fit the row.
 10. Keep this project (never run): in the editor's inspector, under Project, tick it, export, and close the editor. In the project's `project.json` set `lastOpenedAt` to a date two months back, then press Clean up now in Settings › General. The project should still be there, and Open in Studio… should still be offered for its video. Untick it, set the date back once more, and Clean up now should remove the project and leave the video.
 11. A project that lost its video (never run): export a project, delete the exported video in Explorer, and open Settings › General. The project should be back under Studio drafts with a line that says its exported video is gone, and Open should still work.
 12. An editor that cannot show its project (never run): with Settings › General open and a draft listed, delete the first character of that draft's `project.json`, then press Open on its row. The editor should say that the project can't be opened and offer **Save the screen recording**; press it and look for the video in the save folder. Open Settings again: the draft should now be listed as a project that cannot be read, with Save recording and Delete, and without Open. Then a failure that outlives its window: with the save folder on a USB drive, press Save the screen recording, close the window at once and pull the drive. A notification should say that the recording was not saved.
-13. Camera background, with the model that is in the package now (never run in the live window, and never on webcam footage): in a recording with the camera, Camera › Background: Blur, then Remove, paused and playing. Watch the edge around hair and hands for flicker, and the processor while it plays. Then export and compare.
+13. Camera background, with the model that is in the package now (never run in the live window, and never on webcam footage): in a recording with the camera, Camera › Camera background: Blur, then Remove, paused and playing. Watch the edge around hair and hands for flicker, and the processor while it plays. Then export and compare.
 14. Repeat a short recording with the GPU recording pipeline off, with HEVC, and at 60 fps.
 15. Dark theme, High Contrast, Narrator, and moving the window to a display with another scale.
 16. The direct build as well as the Store flavor.
@@ -936,6 +983,20 @@ First with the switch off, against the released build, since this is what every 
    - The Project storage card should say that uninstalling deletes the projects.
    - With the trimmer switch off, switch Studio on. Put the keyboard focus on After recording, which says Save, and press the Down key twice, to Open in Studio (Preview), passing Open trimmer. Switch Studio off: the trimmer switch should still be off. Then, with Studio on, choose Open trimmer and switch Studio off: the switch should be on.
    - In Settings › About, press Third-party notices twice quickly: one dialog, and the app must not close.
+19. The inspector's rail (never run: the window has not been opened since the inspector was rebuilt on 6 October):
+   - Look first. The inspector should be one panel under its name, with a rail of nine items down its right edge (Scene, Background, Screen, Camera, Zoom, Cut, Speed, Audio, Project), a thin line after Camera and after Speed, and the chosen item marked. The rows of a panel should be as wide as they were, and nothing should be cut off where the panel meets the rail. Repeat in the dark theme and in a contrast theme: the chosen item must be marked by more than its colour, and its glyph and its name must read on the mark.
+   - Click each item. Then press Tab from the header: the rail should be one stop, before the panel's controls, with the focus on the chosen item whichever item had it last. Up, Down, Home and End should choose a panel at once, each with its name over the panel. Tab should go on to the first control of that panel, and Shift+Tab from there back to the chosen item. No control of a panel that is not on show should ever be reached.
+   - With the focus on Play: press Z, X, R and S; click a zoom, a cut, a speed change and a scene on their lanes, and drag one; press Left, Right, Home and End on each lane; drag the camera in the preview. Each should show its panel and leave the focus on Play. S where a scene cannot be split should show Scene, with the reason under Split scene.
+   - With the focus on a slider of the Background panel, press Z: the Zoom panel should show and the focus should be on the rail's Zoom item, and one Tab from there should be in the Zoom panel. With the focus on the rail, press X: the focus should go to the Cut item. With the focus on the rail's Scene item, press S: a scene should be split and Scene should stay on show. A letter must not choose another item of the rail.
+   - These should leave the panel alone: Ctrl+Z and Ctrl+Y, 1 to 4, Space, dragging the playhead and the trim handles, a click on an empty part of a lane, Delete, and Tab onto a lane.
+   - A value that changes while its panel is not on show. With Zoom on show, press 3, then choose Scene: Layout should show the third layout. Move Padding, choose Zoom, press Ctrl+Z, and choose Background: Padding should be back where it was. Then choose panels back and forth without changing anything, and press Ctrl+Z once: it should undo the last real edit and nothing else. Showing a panel must not be an edit.
+   - In a scene with the Screen layout, choose Camera: it should say the camera is hidden and offer Show scene. Press it with the keyboard: Scene should show and the focus should be on the rail's Scene item.
+   - A recording without a camera: seven items, no Scene and no Camera, and it should open on Background. S should show Background.
+   - Crop, in Screen and in Camera: the group should be closed while nothing is cropped. Open it, move a slider, close it with its header: the header should say Cropped. In a group that was opened by its header, Reset crop with the keyboard should put the focus on Left. In a project that came cropped and whose header was never pressed, Reset crop should close the group and put the focus on its header, and Ctrl+Z should open it again.
+   - Make the window as low as it goes: the rail should scroll, and a panel shown by Z should bring its item into view. Make it as narrow as it goes, 980: the preview is 88 narrower than it was before the rail, and should still be large enough to work in.
+   - Settings › Accessibility › Text size at 150% and at 225%: the rail should grow so that "Background" is not cut, and the panel should still be usable beside it.
+   - Narrator: on the rail it should say the list "Inspector panels", the item's name, what its panel holds, that it is selected, and its place ("3 of 9"). The panel's name should be reachable as a heading. After Z from a Background slider, the next thing after "Zoom added." should be the rail's Zoom item. On the header of a Crop group that is closed over a crop it should say "Cropped"; whether it does is not known.
+   - What the writer of this code would look at first: whether Up and Down in the rail choose at once or need Space; whether the rail is 88 wide at the usual text size (its column sizes itself to its labels); whether the two lines sit in the middle of their gaps; whether a click on a rail item leaves no focus rectangle; whether the crop group's border and chevron look at home in the panel; whether the glyphs are the right pictures, above all Scene, Cut and Speed.
 
 **macOS**
 
