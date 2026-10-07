@@ -1075,7 +1075,7 @@ fail, the button being enabled is the one to count on, and the focus is the one 
 No screen reader runs: the checks hold that the sentence is sent, and that the name and the
 description are what UI Automation gives. What a screen reader says of them, and whether it
 says the sentence once, is for a person to hear. The **Save recording** button of a row in
-Settings › General behaves the same way and is not in this tool at all: what its row shows
+Settings › Studio behaves the same way and is not in this tool at all: what its row shows
 and reads is unit tested (`SettingsViewModelStudioTests`), and its XAML and the sentence its
 handler sends are compiled and nothing more.
 

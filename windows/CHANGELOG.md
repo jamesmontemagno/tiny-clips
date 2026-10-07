@@ -19,7 +19,7 @@ own `CHANGELOG.md` at the repository root.
   round the screen card, choose a camera shape and one of four layouts (screen only, camera
   bubble, side by side, camera only), drag the bubble where you want it, trim the start and end,
   and export an MP4. The project stays editable afterward: reopen it from **Open in Studio…** in
-  the Clips Library, from Recent captures, or from the drafts list in Settings › General, which
+  the Clips Library, from Recent captures, or from the drafts list in Settings › Studio, which
   also sets how long projects are kept and how much disk space they may use.
   - **Zooms.** Press **Z** or choose **Add zoom** to zoom in on the screen recording at the
     playhead. Zooms sit on a lane above the trim bar: drag one to move it, or drag one of its ends
@@ -57,7 +57,9 @@ own `CHANGELOG.md` at the repository root.
     makes the stretch play at the recording's own speed again. The time above the timeline
     counts the video as it will be exported, so a faster stretch makes it shorter and a slower
     one longer.
-  - To try it, switch on **Tiny Clips Studio (Preview)** in Settings › General. Then choose
+  - Studio has a page of its own in Settings, **Studio**, after Video: the switch, how a
+    Studio recording is started, project storage, and the drafts.
+    To try it, switch on **Tiny Clips Studio (Preview)** in Settings › Studio. Then choose
     **Studio recording** in the tray menu, which is there while Studio is switched on. The
     recording setup panel says **Studio** for such a recording. **Record video**, from the
     tray menu or with its hotkey, always makes an ordinary recording, and **Open trimmer after
@@ -75,7 +77,7 @@ own `CHANGELOG.md` at the repository root.
     remove, so drafts never push one out, and it never removes the project you opened last. A
     project whose exported video is no longer where it was saved, or has been replaced by
     another file of the same name, is kept and listed with the drafts again. Each draft in
-    Settings › General, and an editor that cannot show its project, has **Save the screen
+    Settings › Studio, and an editor that cannot show its project, has **Save the screen
     recording**, which saves the recording as an ordinary video.
   - Keys in the editor: **Space** plays or pauses, **Left** and **Right** step a frame, **I** and
     **O** start and end the video at the playhead, **S** splits the scene, **Z** adds a zoom,

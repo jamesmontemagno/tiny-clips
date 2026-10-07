@@ -198,8 +198,10 @@ Historical benchmark values are not verified encoder/output-frame measurements.
 
 ## Tiny Clips Studio (preview)
 
-Studio is off until you switch it on: **Settings › General › Tiny Clips Studio (Preview)**. With
-the switch off nothing else of Studio is shown, and a recording is made as it always was.
+Studio has a page of its own in Settings, **Studio**, after Video. Studio is off until you
+switch it on there: **Settings › Studio › Tiny Clips Studio (Preview)**. With the switch off
+the page shows nothing else, nothing else of Studio is shown anywhere, and a recording is made
+as it always was.
 Switching it off again deletes nothing: the projects stay where they are, are not cleaned up while
 it is off, and the line under the switch says how many there are and how much room they take.
 The switch leaves **Open trimmer after recording** in Settings › Video alone: it says what it
@@ -249,8 +251,9 @@ With the switch on:
   **Save the screen recording** saves that as an ordinary video.
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer.
-  **Settings › General** shows the space projects take, the cleanup rules, and the drafts: the
-  recordings that only their project holds. Those are the ones kept without exporting, the ones
+  **Settings › Studio** says how a Studio recording is started, and shows the space projects
+  take, the cleanup rules, and the drafts: the recordings that only their project holds. Those
+  are the ones kept without exporting, the ones
   whose exported video is no longer where it was saved (a file of another size under its name
   counts as gone), and any project Studio cannot read. Each can be deleted, and has **Save
   recording** to save its screen recording as an ordinary video. Cleanup never removes them.
