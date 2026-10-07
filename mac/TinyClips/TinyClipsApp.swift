@@ -32,11 +32,35 @@ enum TinyClipsActivationPolicy {
 
 final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
-        ExternalImageOpenCoordinator.shared.handleOpen(urls: urls)
+        open(urls)
     }
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
-        ExternalImageOpenCoordinator.shared.handleOpen(urls: [URL(fileURLWithPath: filename)])
+        open([URL(fileURLWithPath: filename)])
+    }
+
+    /// A `.tinyclips` file is a Studio project and opens in Studio. Everything else is an image
+    /// for the screenshot editor, as before.
+    @discardableResult
+    private func open(_ urls: [URL]) -> Bool {
+        // The folder of a saved project, dropped on the app, opens as its file does.
+        let projectFiles = urls.filter {
+            $0.isFileURL
+                && ($0.pathExtension.lowercased() == StudioProjectStore.projectFileExtension
+                    || StudioProjectStore.shared.isSavedProjectFolder($0))
+        }
+        let others = urls.filter { !projectFiles.contains($0) }
+
+        if !projectFiles.isEmpty {
+            ExternalImageOpenCoordinator.shared.beginClipsManagerSuppressionWindow()
+            MainActor.assumeIsolated {
+                for url in projectFiles {
+                    StudioWindowRegistry.shared.openProjectFile(at: url)
+                }
+            }
+        }
+        let openedOthers = others.isEmpty ? false : ExternalImageOpenCoordinator.shared.handleOpen(urls: others)
+        return !projectFiles.isEmpty || openedOthers
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -254,7 +278,9 @@ private final class ExternalImageOpenCoordinator {
         Date() <= suppressClipsManagerUntil
     }
 
-    private func beginClipsManagerSuppressionWindow() {
+    /// Closes the Clips Manager that the system opens for a file handed to the app, now and for
+    /// the next moments. The file opens in an editor of its own.
+    func beginClipsManagerSuppressionWindow() {
         suppressClipsManagerUntil = Date().addingTimeInterval(3)
         closeClipsManagerWindowsIfNeeded()
     }

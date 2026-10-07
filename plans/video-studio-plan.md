@@ -64,6 +64,22 @@ The owner ran Studio on a Mac for the first time. The editing was right; the ins
 
 Windows followed the same day, from the brief: built and unit tested, and not yet on a screen (see "The Windows inspector as a rail" under "Implementation status"). "Shared design" below describes the inspector as both platforms have it now. What this plan wrote before 6 October, under "Implementation status" and in the hands-on lists, names the inspector's sections and labels as they were then; the brief has the table of what was renamed. The editor-model strings, the project format, the lanes, and the keys are the same on both.
 
+### Decided on 7 October
+
+The owner, at the Mac, with Studio running:
+
+| Question | Decision |
+|---|---|
+| Making a zoom, a cut, or a speed change longer or shorter | A handle at each end of its block on the lane, where before a drag near the end worked and nothing showed it. Built on the Mac. [`windows/docs/studio-lane-handles.md`](../windows/docs/studio-lane-handles.md), #427 |
+| Saving a project and opening it again | A project can be saved as an ordinary folder: the recordings, and beside them a `.tinyclips` file with the metadata, which the system opens Studio with. Not a package and not an archive, so that Windows can read the same folder. Section 14 of the format |
+| What opening a `.tinyclips` file does | It copies the project into Studio's own storage as a new draft and opens the copy. The folder is only read. Editing the folder in place was the other choice, and would have changed cleanup, the drafts list, and reopening from an exported video on both platforms |
+| When recordings are copied | Only when the owner saves the project or opens a saved one. A new recording stays in Studio's storage as before |
+| Getting rid of a project | **Delete Project…** in the editor, which asks first. It removes the recordings and every edit, and leaves exported videos and saved folders |
+| Opening another project from inside Studio | **Open Recent** in the editor's Project menu and in the Studio menu: the other projects, the one opened last first |
+| Editing the sound apart from the picture | Proposed in [`studio-audio-editing.md`](studio-audio-editing.md), not decided. #428 |
+
+Built on the Mac the same day. The store's part is unit tested, and a `.tinyclips` file was opened in the running app from the command line, as the Finder does it. The Save and Delete buttons, which ask through a panel and an alert, were not pressed by anyone yet. On the App Store build the app may read only what was chosen, so a `.tinyclips` file opened from the Finder cannot reach the recordings beside it: the app then asks for the folder. That path is written and has never run, because a build made here is not sandboxed. Windows from a brief, [`windows/docs/studio-project-folders.md`](../windows/docs/studio-project-folders.md).
+
 ## Where the code is today
 
 | | macOS | Windows |

@@ -62,6 +62,14 @@ private struct StudioUnavailableView: View {
                         .frame(maxWidth: 420)
                 }
             }
+
+            Button(role: .destructive) {
+                viewModel.deleteProject()
+            } label: {
+                Label("Delete Project…", systemImage: "trash")
+            }
+            .disabled(!viewModel.canDeleteProject || viewModel.isSavingScreenRecording)
+            .help("Delete what is left of this project. Asks first.")
         }
         .padding(32)
     }
@@ -83,12 +91,14 @@ private struct StudioEditorView: View {
             Divider()
             StudioTimelineView(viewModel: viewModel)
         }
-        .disabled(viewModel.isExporting)
+        .disabled(viewModel.isExporting || viewModel.isBusy)
         .overlay {
             if viewModel.isExporting {
                 StudioExportOverlay(progress: viewModel.exportProgress) {
                     viewModel.cancelExport()
                 }
+            } else if let message = viewModel.busyMessage {
+                StudioBusyOverlay(message: message)
             }
         }
     }
@@ -116,6 +126,8 @@ private struct StudioHeaderView: View {
             }
 
             Spacer(minLength: 12)
+
+            projectMenu
 
             Button {
                 viewModel.undo()
@@ -155,6 +167,48 @@ private struct StudioHeaderView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    /// Opening another project, saving this one as a folder, and deleting it.
+    private var projectMenu: some View {
+        Menu {
+            Section("Open Recent") {
+                if viewModel.recentProjects.isEmpty {
+                    Text("No Other Projects")
+                } else {
+                    ForEach(viewModel.recentProjects, id: \.id) { summary in
+                        Button(StudioRecentProjectsMenu.title(for: summary)) {
+                            StudioWindowRegistry.shared.open(projectID: summary.id)
+                        }
+                    }
+                }
+            }
+            Button {
+                StudioWindowRegistry.shared.chooseProjectFileToOpen()
+            } label: {
+                Label("Open Project…", systemImage: "folder")
+            }
+            Divider()
+            Button {
+                viewModel.saveProjectFolder()
+            } label: {
+                Label("Save Project…", systemImage: "square.and.arrow.down")
+            }
+            .disabled(!viewModel.canSaveProjectFolder)
+            Divider()
+            Button(role: .destructive) {
+                viewModel.deleteProject()
+            } label: {
+                Label("Delete Project…", systemImage: "trash")
+            }
+            .disabled(!viewModel.canDeleteProject)
+        } label: {
+            Label("Project", systemImage: "folder")
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .help("Open another project, save this one to a folder, or delete it")
+        .accessibilityLabel("Project")
     }
 
     private var exportSizeText: String {
@@ -662,12 +716,33 @@ private struct StudioInspectorView: View {
                 .help("Storage cleanup never removes a kept project, so its video stays editable. Otherwise a project goes by the rules in Video settings once its video has been exported.")
             noteText("Storage cleanup skips a kept project, so its video stays editable.")
         }
+        StudioInspectorSection(title: "Project Folder") {
+            Button {
+                viewModel.saveProjectFolder()
+            } label: {
+                Label("Save Project…", systemImage: "square.and.arrow.down")
+            }
+            .disabled(!viewModel.canSaveProjectFolder)
+            .help("Save the recordings and a .tinyclips file to a folder you choose (Shift-Command-S)")
+            noteText("Saves a copy of the recordings with a .tinyclips file that opens them in Studio again, on this Mac or another.")
+        }
         StudioInspectorSection(title: "New Recordings") {
             Button("Save as Default Look") {
                 viewModel.saveDefaultLook()
             }
             .help("New Studio recordings start with this canvas, background, screen, and camera styling")
             noteText("New Studio recordings start with this background, screen, and camera styling.")
+        }
+        Divider()
+        VStack(alignment: .leading, spacing: 8) {
+            Button(role: .destructive) {
+                viewModel.deleteProject()
+            } label: {
+                Label("Delete Project…", systemImage: "trash")
+            }
+            .disabled(!viewModel.canDeleteProject)
+            .help("Delete the recording and every edit. Asks first.")
+            noteText("Removes the recording and every edit from Studio. Exported videos and saved folders stay.")
         }
     }
 
@@ -1352,6 +1427,30 @@ private struct StudioTrimBar: View {
             viewModel.setTrimStart(sourceTime)
         } else {
             viewModel.setTrimEnd(sourceTime)
+        }
+    }
+}
+
+// MARK: - Busy Overlay
+
+/// Shown over the editor while the project is copied to a folder. The copy cannot be stopped
+/// half way, so there is nothing to press.
+private struct StudioBusyOverlay: View {
+    let message: String
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.25)
+            HStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .font(.headline)
+            }
+            .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .combine)
         }
     }
 }

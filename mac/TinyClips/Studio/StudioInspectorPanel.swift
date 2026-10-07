@@ -55,7 +55,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .cut: return "Cuts"
         case .speed: return "Speed changes"
         case .audio: return "Audio: mute and volumes"
-        case .project: return "Project: badge, storage, and default look"
+        case .project: return "Project: save, storage, and delete"
         }
     }
 

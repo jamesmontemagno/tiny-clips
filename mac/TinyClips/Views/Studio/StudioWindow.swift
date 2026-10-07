@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Registry
 
@@ -91,6 +92,82 @@ final class StudioWindowRegistry {
         }
     }
 
+    // MARK: Project files
+
+    /// Asks for a project that was saved as a folder, and opens it.
+    func chooseProjectFileToOpen() {
+        guard CaptureSettings.shared.studioPreviewEnabled else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Open Project"
+        panel.prompt = "Open"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        #if APPSTORE
+        // The App Store build may read only what was chosen. A `.tinyclips` file chosen by
+        // itself would leave the recordings beside it out of reach, so the folder is chosen.
+        panel.canChooseFiles = false
+        panel.message = "Choose the folder of a saved Tiny Clips project."
+        #else
+        panel.canChooseFiles = true
+        panel.message = "Choose a .tinyclips file, or the folder of a saved project."
+        if let type = UTType(filenameExtension: StudioProjectStore.projectFileExtension) {
+            panel.allowedContentTypes = [type, .folder]
+        }
+        #endif
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        openProjectFile(at: url)
+    }
+
+    /// Opens a project from its `.tinyclips` file, or from the folder that holds one: the
+    /// project is copied into Studio's own storage as a new draft, and that copy is opened. What
+    /// was chosen is only read.
+    func openProjectFile(at url: URL) {
+        guard CaptureSettings.shared.studioPreviewEnabled else {
+            SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Settings to open this project.")
+            return
+        }
+        Task { [weak self] in
+            let result: Result<String, Error> = await Task.detached(priority: .userInitiated) {
+                Result {
+                    let store = StudioProjectStore.shared
+                    return try store.importProjectFolder(projectFile: store.projectFile(at: url)).id
+                }
+            }.value
+            guard let self else { return }
+            switch result {
+            case .success(let projectID):
+                self.open(projectID: projectID)
+            case .failure(let error):
+                #if APPSTORE
+                // Opened from the Finder, the file is all the app was given. Asking for its
+                // folder gives it the recordings as well.
+                if let folderError = error as? StudioProjectFolderError,
+                   case .missingFile = folderError,
+                   url.pathExtension.lowercased() == StudioProjectStore.projectFileExtension,
+                   let folder = self.chooseFolder(of: url) {
+                    self.openProjectFile(at: folder)
+                    return
+                }
+                #endif
+                SaveService.shared.showError("Studio could not open this project: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    #if APPSTORE
+    private func chooseFolder(of projectFile: URL) -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = "Open Project"
+        panel.message = "To open \(projectFile.lastPathComponent), choose the folder it is in. Tiny Clips needs the recordings saved beside it."
+        panel.prompt = "Open"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = projectFile.deletingLastPathComponent()
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+    #endif
+
     private func windowDidClose(projectID: String) {
         guard let closed = windows.removeValue(forKey: projectID) else { return }
         StudioProjectStore.shared.endUse(id: projectID)
@@ -129,10 +206,24 @@ enum StudioMenuCommands {
         guard let mainMenu = NSApp.mainMenu, mainMenu.item(withTitle: menuTitle) == nil else { return }
 
         let menu = NSMenu(title: menuTitle)
+        let openItem = menuItem("Open Project…", action: "studioOpenProject:")
+        openItem.keyEquivalent = "o"
+        openItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(openItem)
+        let recentItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(title: "Open Recent")
+        recentMenu.delegate = StudioRecentProjectsMenu.shared
+        recentItem.submenu = recentMenu
+        menu.addItem(recentItem)
+        let saveItem = menuItem("Save Project…", action: "studioSaveProject:")
+        saveItem.keyEquivalent = "s"
+        saveItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(saveItem)
         let exportItem = menuItem("Export", action: "studioExport:")
         exportItem.keyEquivalent = "e"
         exportItem.keyEquivalentModifierMask = [.command]
         menu.addItem(exportItem)
+        menu.addItem(menuItem("Delete Project…", action: "studioDeleteProject:"))
         menu.addItem(.separator())
         menu.addItem(menuItem("Undo", action: "studioUndo:"))
         menu.addItem(menuItem("Redo", action: "studioRedo:"))
@@ -180,6 +271,45 @@ enum StudioMenuCommands {
     }
 }
 
+/// Fills the Open Recent menu each time it opens, with what the front Studio window has read.
+final class StudioRecentProjectsMenu: NSObject, NSMenuDelegate {
+    static let shared = StudioRecentProjectsMenu()
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let recent = (NSApp.keyWindow as? StudioWindow)?.recentProjects ?? []
+        guard !recent.isEmpty else {
+            let empty = NSMenuItem(title: "No Other Projects", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+            return
+        }
+        for summary in recent {
+            let item = NSMenuItem(
+                title: StudioRecentProjectsMenu.title(for: summary),
+                action: #selector(StudioWindow.studioOpenRecent(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = summary.id
+            menu.addItem(item)
+        }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    /// A project's name with when it was recorded: two recordings can have one name.
+    static func title(for summary: StudioProjectSummary) -> String {
+        let name = summary.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shown = name.isEmpty ? "Untitled Recording" : name
+        return "\(shown), \(dateFormatter.string(from: summary.createdAt))"
+    }
+}
+
 // MARK: - Window
 
 final class StudioWindow: NSWindow, NSWindowDelegate {
@@ -221,6 +351,8 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     func windowDidBecomeKey(_ notification: Notification) {
         // The main menu is rebuilt when scenes change, which can drop the Studio menu.
         StudioMenuCommands.installIfNeeded()
+        // Other projects may have been made, opened, or deleted while this window was behind.
+        viewModel.refreshRecentProjects()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -235,6 +367,17 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     // MARK: Menu actions
 
     func saveBeforeQuitting() { viewModel.saveBeforeQuitting() }
+
+    /// The other projects, for the Open Recent menu.
+    var recentProjects: [StudioProjectSummary] { viewModel.recentProjects }
+
+    @objc func studioOpenProject(_ sender: Any?) { StudioWindowRegistry.shared.chooseProjectFileToOpen() }
+    @objc func studioOpenRecent(_ sender: Any?) {
+        guard let projectID = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        StudioWindowRegistry.shared.open(projectID: projectID)
+    }
+    @objc func studioSaveProject(_ sender: Any?) { viewModel.saveProjectFolder() }
+    @objc func studioDeleteProject(_ sender: Any?) { viewModel.deleteProject() }
 
     @objc func studioExport(_ sender: Any?) { viewModel.export() }
     @objc func studioUndo(_ sender: Any?) { viewModel.undo() }
@@ -277,6 +420,13 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         }
 
         switch action {
+        case #selector(studioOpenProject(_:)),
+            #selector(studioOpenRecent(_:)):
+            return !viewModel.isBusy
+        case #selector(studioSaveProject(_:)):
+            return viewModel.canSaveProjectFolder
+        case #selector(studioDeleteProject(_:)):
+            return viewModel.canDeleteProject
         case #selector(studioExport(_:)):
             return viewModel.canExport
         case #selector(studioUndo(_:)):

@@ -47,6 +47,38 @@
 				<string>org.webmproject.webp</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Tiny Clips Studio Project</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.refractored.tinyclips.studio-project</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.refractored.tinyclips.studio-project</string>
+			<key>UTTypeDescription</key>
+			<string>Tiny Clips Studio Project</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tinyclips</string>
+				</array>
+			</dict>
+		</dict>
 	</array>
 </dict>
 </plist>

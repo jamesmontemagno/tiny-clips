@@ -61,6 +61,15 @@ final class StudioViewModel: ObservableObject {
     /// What came of saving the screen recording: the name it got, or why it was not saved.
     @Published private(set) var screenRecordingStatus: String?
 
+    /// What the window is waiting for while the project is copied to a folder, or nil. Nothing
+    /// is edited meanwhile.
+    @Published private(set) var busyMessage: String?
+
+    /// The other projects in the store, the one opened last first, for Open Recent.
+    @Published private(set) var recentProjects: [StudioProjectSummary] = []
+
+    static let recentProjectLimit = 8
+
     /// Set by the window. Called to close it once an export started from the close prompt is done.
     var requestClose: (() -> Void)?
 
@@ -101,7 +110,15 @@ final class StudioViewModel: ObservableObject {
 
     var project: StudioProject? { editor?.project }
     var isReady: Bool { state == .ready }
-    var isEditable: Bool { state == .ready && !isExporting }
+    var isEditable: Bool { state == .ready && !isExporting && busyMessage == nil }
+    var isBusy: Bool { busyMessage != nil }
+
+    /// Whether the project can be saved as a folder now.
+    var canSaveProjectFolder: Bool { isEditable }
+
+    /// Whether the project can be deleted now. One that cannot be shown can be: that is the
+    /// project there is least reason to keep.
+    var canDeleteProject: Bool { state != .loading && !isBusy }
     var canUndo: Bool { isEditable && (editor?.canUndo ?? false) }
     var canRedo: Bool { isEditable && (editor?.canRedo ?? false) }
     var canExport: Bool { isEditable && (editor?.outputDuration ?? 0) > 0 }
@@ -197,6 +214,7 @@ final class StudioViewModel: ObservableObject {
             player = newPlayback.player
             inspectorPanel = StudioInspectorPanel.initial(hasCamera: model.hasCamera)
             state = .ready
+            refreshRecentProjects()
             seek(to: model.trimStart)
         } catch {
             becomeUnavailable(error.localizedDescription)
@@ -1292,8 +1310,102 @@ final class StudioViewModel: ObservableObject {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
+    // MARK: - The Project as a Whole
+
+    /// Reads which other projects there are, for Open Recent. Reading every project takes a
+    /// moment, so it is done off the main thread.
+    func refreshRecentProjects() {
+        let store = store
+        let currentID = projectID
+        Task { [weak self] in
+            let summaries = await Task.detached(priority: .utility) {
+                (try? store.listSummaries()) ?? []
+            }.value
+            self?.recentProjects = StudioProjectSummary.recent(
+                from: summaries,
+                excluding: currentID,
+                limit: Self.recentProjectLimit
+            )
+        }
+    }
+
+    /// Saves a copy of the project as a folder the user chooses: the recordings, and a
+    /// `.tinyclips` file that opens them in Studio again, here or on another Mac. The project
+    /// stays in Studio's own storage and is edited there as before; the folder is a copy as of
+    /// now.
+    func saveProjectFolder() {
+        guard canSaveProjectFolder else { return }
+        pause()
+        // The folder gets the project as it is saved, so the edits have to be on disk first.
+        guard saveNow() else { return }
+
+        let panel = NSSavePanel()
+        panel.title = "Save Project"
+        panel.message = "Saves the recordings and a .tinyclips file in a folder of this name."
+        panel.prompt = "Save"
+        panel.nameFieldLabel = "Folder name:"
+        panel.nameFieldStringValue = StudioProjectStore.folderName(for: clipName)
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+
+        let store = store
+        let id = projectID
+        busyMessage = "Saving project…"
+        Task { [weak self] in
+            let failure: String? = await Task.detached(priority: .userInitiated) {
+                do {
+                    // The panel has asked before it hands back a name that is taken.
+                    try store.exportProjectFolder(id: id, to: folder, replacingSavedProject: true)
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            guard let self else { return }
+            self.busyMessage = nil
+            if let failure {
+                SaveService.shared.showError("Studio could not save this project: \(failure)")
+            } else {
+                SaveService.shared.showNotice("Project saved to the folder \(folder.lastPathComponent).")
+                let projectFile = folder
+                    .appendingPathComponent(folder.lastPathComponent)
+                    .appendingPathExtension(StudioProjectStore.projectFileExtension)
+                NSWorkspace.shared.activateFileViewerSelecting([projectFile])
+            }
+        }
+    }
+
+    /// Deletes the whole project, after asking: its recordings and every edit. Videos exported
+    /// from it and folders it was saved to are files of the user's own and stay. The window
+    /// closes.
+    func deleteProject() {
+        guard canDeleteProject else { return }
+        pause()
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete “\(clipName)”?"
+        alert.informativeText = "The recording and every edit are removed from Tiny Clips Studio. Videos you exported and folders you saved this project to are not deleted. This cannot be undone."
+        let deleteButton = alert.addButton(withTitle: "Delete Project")
+        deleteButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        closesAfterExport = false
+        exportTask?.cancel()
+        deletesOnClose = true
+        requestClose?()
+    }
+
     /// Asked when the user closes the window. Returns false to keep it open.
     func shouldClose() -> Bool {
+        if isBusy {
+            // The copy runs to its end either way; the window stays to say how it went.
+            NSSound.beep()
+            return false
+        }
+
         if isExporting {
             let alert = NSAlert()
             alert.messageText = "An export is still running."

@@ -147,6 +147,34 @@ struct StudioFlatProjectRequest: Equatable, Sendable {
     }
 }
 
+/// Why a project could not be saved as a folder, or opened from one.
+enum StudioProjectFolderError: Error, Equatable, LocalizedError {
+    /// The project is built around a video that is kept elsewhere, which a folder would not hold.
+    case externalSource
+
+    /// A file the project names is not in the folder. The name of the file.
+    case missingFile(String)
+
+    /// Something that is not a saved project is already where the folder would go.
+    case destinationExists
+
+    /// What was chosen is not a `.tinyclips` file, or a folder with exactly one in it.
+    case notAProjectFile
+
+    var errorDescription: String? {
+        switch self {
+        case .externalSource:
+            return "This project is built around a video that is kept somewhere else, so it cannot be saved as a folder."
+        case .missingFile(let name):
+            return "\(name) is not in the project's folder. A .tinyclips file opens only next to the recordings it was saved with."
+        case .destinationExists:
+            return "There is already something with that name, and it is not a saved Tiny Clips project. Choose another name."
+        case .notAProjectFile:
+            return "Choose a .tinyclips file, or the folder that holds one."
+        }
+    }
+}
+
 struct StudioProjectPaths: Equatable, Sendable {
     var id: String
     var projectDirectory: URL
@@ -186,6 +214,27 @@ struct StudioProjectSummary: Equatable, Sendable {
 }
 
 /// A project folder whose `project.json` is there and cannot be read.
+extension StudioProjectSummary {
+    /// The projects an Open Recent menu lists: those that still have their recording, the one
+    /// opened last first, without the project the menu belongs to. Projects opened at the same
+    /// instant are in the order of their ids, so the menu does not shuffle.
+    static func recent(
+        from summaries: [StudioProjectSummary],
+        excluding currentID: String?,
+        limit: Int
+    ) -> [StudioProjectSummary] {
+        let listed = summaries
+            .filter { $0.id != currentID && $0.sourceExists }
+            .sorted { first, second in
+                if first.lastOpenedAt != second.lastOpenedAt {
+                    return first.lastOpenedAt > second.lastOpenedAt
+                }
+                return first.id < second.id
+            }
+        return Array(listed.prefix(max(0, limit)))
+    }
+}
+
 struct StudioUnreadableProject: Equatable, Sendable {
     var id: String
 
@@ -590,6 +639,209 @@ final class StudioProjectStore {
                 }
             }
             return deletedIDs
+        }
+    }
+
+    // MARK: - Project Folders
+
+    /// The extension of the file that carries the metadata of a project saved as a folder
+    /// (section 14 of the project format).
+    static let projectFileExtension = "tinyclips"
+
+    /// A name the folder of a saved project can have: the project's, without what a path cannot
+    /// hold, and not one that would hide the folder.
+    static func folderName(for name: String) -> String {
+        var cleaned = name
+            .components(separatedBy: CharacterSet(charactersIn: "/:\\").union(.newlines))
+            .joined(separator: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.hasPrefix(".") {
+            cleaned.removeFirst()
+        }
+        return cleaned.isEmpty ? "Tiny Clips Project" : cleaned
+    }
+
+    /// The largest `.tinyclips` file that is read. A project's own is a few kilobytes.
+    private static let largestProjectFile = 16 << 20
+
+    /// Saves a copy of a project as a folder that can be taken to another computer: the files
+    /// the project names, and beside them a `.tinyclips` file named after the folder. That file
+    /// is the project as `project.json` has it, without its list of exported videos. The project
+    /// in the store is not changed.
+    ///
+    /// Where `folder` is already there it is replaced only when asked to, and only when it is a
+    /// project saved this way before: anything else is left alone and the save is refused. A
+    /// folder that is replaced is whole until the new one is, and nothing is left of a new
+    /// folder when the copy fails.
+    ///
+    /// The files are copied after the store's lock is let go, so that an editor saving an edit
+    /// does not wait for gigabytes to be copied. They are the recordings, which nothing rewrites.
+    func exportProjectFolder(id: String, to folder: URL, replacingSavedProject: Bool = false) throws {
+        let (directory, fileNames, data): (URL, [String], Data) = try withLock {
+            var project = try loadUnlocked(id: id)
+            guard !project.sources.screen.external else { throw StudioProjectFolderError.externalSource }
+            let paths = try pathsUnlocked(for: project)
+
+            var names: [String] = []
+            func require(_ url: URL) throws {
+                guard fileManager.fileExists(atPath: url.path) else {
+                    throw StudioProjectFolderError.missingFile(url.lastPathComponent)
+                }
+                names.append(url.lastPathComponent)
+            }
+            func includeIfPresent(_ url: URL) {
+                if fileManager.fileExists(atPath: url.path), !names.contains(url.lastPathComponent) {
+                    names.append(url.lastPathComponent)
+                }
+            }
+            try require(paths.screenURL)
+            if let cameraURL = paths.cameraURL {
+                try require(cameraURL)
+            }
+            includeIfPresent(paths.eventsURL)
+            if let image = validBackgroundImage(project.canvas.background.image) {
+                includeIfPresent(paths.projectDirectory.appendingPathComponent(image))
+            }
+            includeIfPresent(paths.posterURL)
+
+            // Where a video was exported to is a path on this computer, with its user's name in
+            // it, and means nothing on another one.
+            project.exports = []
+            return (paths.projectDirectory, names, try StudioJSON.makeEncoder().encode(project))
+        }
+
+        // Filled where it will stay, or beside what it replaces and then put in its place.
+        func fill(_ target: URL) throws {
+            for name in fileNames {
+                try fileManager.copyItem(
+                    at: directory.appendingPathComponent(name),
+                    to: target.appendingPathComponent(name)
+                )
+            }
+            // Written last: a folder with its `.tinyclips` file in it is a whole copy. The file
+            // has the name the folder will have.
+            let projectFile = target
+                .appendingPathComponent(folder.lastPathComponent)
+                .appendingPathExtension(Self.projectFileExtension)
+            try data.write(to: projectFile, options: .atomic)
+        }
+
+        guard fileManager.fileExists(atPath: folder.path) else {
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+            do {
+                try fill(folder)
+            } catch {
+                try? fileManager.removeItem(at: folder)
+                throw error
+            }
+            return
+        }
+
+        guard replacingSavedProject, isSavedProjectFolder(folder) else {
+            throw StudioProjectFolderError.destinationExists
+        }
+        let scratch = try fileManager.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: folder,
+            create: true
+        )
+        defer { try? fileManager.removeItem(at: scratch) }
+        let replacement = scratch.appendingPathComponent(folder.lastPathComponent, isDirectory: true)
+        try fileManager.createDirectory(at: replacement, withIntermediateDirectories: true)
+        try fill(replacement)
+        _ = try fileManager.replaceItemAt(folder, withItemAt: replacement)
+    }
+
+    /// Whether a folder is a project saved by `exportProjectFolder`: a folder with exactly one
+    /// `.tinyclips` file in it.
+    func isSavedProjectFolder(_ folder: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return false
+        }
+        return (try? projectFile(at: folder)) != nil
+    }
+
+    /// The `.tinyclips` file that was chosen: itself, or the only one in a folder that was.
+    func projectFile(at url: URL) throws -> URL {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            throw StudioProjectFolderError.notAProjectFile
+        }
+        guard isDirectory.boolValue else {
+            guard url.pathExtension.lowercased() == Self.projectFileExtension else {
+                throw StudioProjectFolderError.notAProjectFile
+            }
+            return url
+        }
+        let found = try fileManager
+            .contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+            .filter { $0.pathExtension.lowercased() == Self.projectFileExtension }
+        guard found.count == 1 else { throw StudioProjectFolderError.notAProjectFile }
+        return found[0]
+    }
+
+    /// Makes a new project in the store from a `.tinyclips` file and the recordings in its
+    /// folder, and returns it. The folder is only read. The project gets an id of its own, so
+    /// opening the same file twice makes two projects, and it starts as a draft: it has exported
+    /// nothing on this computer, whatever its file says.
+    func importProjectFolder(projectFile: URL) throws -> StudioProject {
+        let size = (try fileManager.attributesOfItem(atPath: projectFile.path)[.size] as? NSNumber)?.intValue ?? 0
+        guard size <= Self.largestProjectFile else { throw StudioProjectFolderError.notAProjectFile }
+        let data = try Data(contentsOf: projectFile)
+        var project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: data)
+        guard !project.sources.screen.external else { throw StudioProjectFolderError.externalSource }
+
+        // Only plain names are followed, so a file cannot name something outside its folder.
+        let folder = projectFile.deletingLastPathComponent()
+        var names: [String] = []
+        func require(_ name: String, _ property: String) throws {
+            let plain = try StudioJSON.requirePlainFileName(name, property)
+            guard fileManager.fileExists(atPath: folder.appendingPathComponent(plain).path) else {
+                throw StudioProjectFolderError.missingFile(plain)
+            }
+            names.append(plain)
+        }
+        func includeIfPresent(_ name: String) {
+            guard StudioJSON.isPlainFileName(name), !names.contains(name),
+                  fileManager.fileExists(atPath: folder.appendingPathComponent(name).path)
+            else { return }
+            names.append(name)
+        }
+        try require(project.sources.screen.file, "sources.screen.file")
+        if let camera = project.sources.camera {
+            try require(camera.file, "sources.camera.file")
+        }
+        // A name that is not plain makes the project invalid here as it does in the store, where
+        // such a project could not be opened afterwards.
+        if let events = project.sources.events {
+            _ = try StudioJSON.requirePlainFileName(events, "sources.events")
+        }
+        includeIfPresent(project.sources.events ?? "events.json")
+        if let image = project.canvas.background.image {
+            includeIfPresent(image)
+        }
+        includeIfPresent("poster.jpg")
+
+        // The new folder has no `project.json` until the files are in it. Cleanup takes such a
+        // folder for a recording that is still being made, and leaves it alone for a day.
+        let paths = try beginRecording()
+        do {
+            for name in names {
+                try fileManager.copyItem(
+                    at: folder.appendingPathComponent(name),
+                    to: paths.projectDirectory.appendingPathComponent(name)
+                )
+            }
+            project.id = paths.id
+            project.exports = []
+            return try withLock {
+                try saveUnlocked(project, updatingModifiedAt: false)
+            }
+        } catch {
+            try? fileManager.removeItem(at: paths.projectDirectory)
+            throw error
         }
     }
 

@@ -31,7 +31,7 @@ Both platforms implement sections 5 to 8 as pure functions, and both test suites
 - Enumerations are camelCase strings. An unrecognized value reads as the field's default.
 - Times are seconds as finite doubles. Unless stated otherwise they are **source time**: seconds on the pause-adjusted recording timeline, where 0 is the first screen frame.
 - Timestamps are ISO 8601 UTC with a `Z` suffix, written to whole seconds (`2026-10-02T22:41:00Z`). Readers accept fractional seconds.
-- **What no writer writes.** Tiny Clips writes whole numbers without a fraction or an exponent, and timestamps as above. A project never goes from a Mac to a Windows PC or back, so the two readers were not made to agree on anything else, and they do not:
+- **What no writer writes.** Tiny Clips writes whole numbers without a fraction or an exponent, and timestamps as above. Until a project could be saved as a folder (section 14) none ever went from a Mac to a Windows PC or back, so the two readers were not made to agree on anything else, and they do not:
   - A whole number written with a fraction (`"bytes": 12.0`): the Mac reads the number, and Windows calls the project invalid. A number that is not whole, or a value of another type, makes the project invalid on both.
   - A timestamp with an offset in place of `Z` and no fractional seconds (`2026-10-02T22:41:00+02:00`): Windows reads the time, and the Mac reads the timestamp as missing. Text that is no date at all reads as missing on the Mac and makes the project invalid on Windows. A timestamp that is not a string makes the project invalid on both.
 
@@ -754,3 +754,37 @@ Recording fixtures, in `recording/`:
 Tests compare every number with an absolute tolerance of 1e-6. Strings, booleans, and whether `screen` or `camera` is null are compared exactly.
 
 Fixtures only sit on a decision boundary (a rounding midpoint, or either side of a comparison) when the inputs make the outcome exact in double arithmetic. That keeps them independent of the order in which an implementation multiplies and divides.
+
+## 14. A project saved as a folder
+
+A project lives in the projects root (section 1), which no one is meant to look into. To keep a project elsewhere, or take it to another computer, the editor saves a copy of it as a folder:
+
+```
+<any folder>/My Demo/
+  My Demo.tinyclips   the project's metadata: required
+  screen.mp4          required
+  camera.mp4          when the project has a camera
+  events.json         when the project has one
+  poster.jpg          when the project has one
+  <background.image>  when the project has one
+```
+
+- **The `.tinyclips` file is `project.json` under another name**: the same JSON, every rule of sections 2 and 3, unknown properties included. It is named after its folder. It is the one file of the folder that says what the others are, and it is what the system opens the app with.
+- **It has no `exports`.** The list is written empty. A path of an exported video belongs to the computer it was written on and has its user's name in it.
+- **The recordings keep the names the project gives them** (`sources.screen.file`, `sources.camera.file`, `sources.events`), beside the `.tinyclips` file, in no subfolder.
+- A flat project (section 10) is not saved as a folder: its video is kept elsewhere.
+
+**Saving.** The folder is a copy as of the moment it is saved. The project stays in the projects root and is edited there; later edits do not reach the folder until it is saved again. Saving over a folder that is already there replaces it only when that folder is a saved project, which is a folder with exactly one `.tinyclips` file in it. Anything else is left alone and the save is refused.
+
+**Opening.** Opening a `.tinyclips` file, or a folder with exactly one in it, makes a new project in the projects root and opens that:
+
+- The file is read as a project by the rules of section 2. One that is invalid, or has a `schemaVersion` above the reader's, is refused, and so is a flat project.
+- The screen file must be beside it, and the camera file when `sources.camera` is not null. Without them the file is refused: a `.tinyclips` file by itself is not a project.
+- A file name is followed only when it is a plain name (section 1). A screen, camera, or events name with a path separator makes the project invalid, as in section 1; a `background.image` with one is treated as missing. So a `.tinyclips` file cannot make the app copy a file from outside its folder.
+- The new project gets an id of its own. Opening the same file twice makes two projects.
+- Its `exports` are empty whatever the file says, so it is a draft on this computer (section 12) and cleanup does not remove it until it has been exported here.
+- The folder it was opened from is only read, and is not changed.
+
+A `.tinyclips` file larger than 16 MB is refused unread; one a writer wrote is a few kilobytes.
+
+**Between a Mac and a PC.** Section 2 lists what the two readers take differently, and none of it is something a writer writes. Windows does not save or open these folders yet; when it does, a folder saved on one is meant to open on the other. That has not been tried.
