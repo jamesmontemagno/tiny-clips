@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="TinyClips.Tools.StudioPreviewCheck.Windowed.CheckWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:studio="using:TinyClips.App.Controls.Studio"
+    Title="Studio preview check">
+
+    <Grid x:Name="Root" Background="#FF1C1C1C">
+        <!--
+            The rectangle the panel fills. The checks give it a margin and sizes in whole physical
+            pixels, as the editor's host control does, and put a RenderTransform on it to stand in
+            for a display with another scale.
+        -->
+        <Grid
+            x:Name="PanelHost"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+            <!--
+                The app's real panel with XAML drawn over it: a square in two opposite corners,
+                which the screenshot analysis uses as "where XAML layout says the panel is", and
+                one in the middle standing in for the editor's drag handle.
+            -->
+            <studio:StudioPreviewPanel
+                x:Name="Panel"
+                AutomationProperties.AutomationId="StudioPreviewPanel"
+                AutomationProperties.Name="Studio preview">
+                <Border
+                    Width="6"
+                    Height="6"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Background="#FFFF8000" />
+                <Border
+                    Width="6"
+                    Height="6"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="#FFFF8000" />
+                <Border
+                    x:Name="Handle"
+                    Width="20"
+                    Height="20"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="PreviewHandle"
+                    AutomationProperties.Name="Element drawn over the preview"
+                    Background="#FFFF0080" />
+            </studio:StudioPreviewPanel>
+        </Grid>
+    </Grid>
+</Window>

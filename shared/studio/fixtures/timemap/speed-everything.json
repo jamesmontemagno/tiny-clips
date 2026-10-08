@@ -1,0 +1,84 @@
+{
+  "description": "The whole recording at eight times the speed.",
+  "sourceDuration": 16,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 0,
+        "end": 16,
+        "rate": 8
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 2.0,
+    "segments": [
+      {
+        "start": 0,
+        "end": 16
+      }
+    ],
+    "pieces": [
+      {
+        "start": 0,
+        "end": 16,
+        "rate": 8
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": -1,
+        "output": 0
+      },
+      {
+        "source": 0,
+        "output": 0.0
+      },
+      {
+        "source": 4,
+        "output": 0.5
+      },
+      {
+        "source": 8,
+        "output": 1.0
+      },
+      {
+        "source": 16,
+        "output": 2.0
+      },
+      {
+        "source": 17,
+        "output": 2.0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 0
+      },
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 0.5,
+        "source": 4.0
+      },
+      {
+        "output": 1,
+        "source": 8
+      },
+      {
+        "output": 2,
+        "source": 16
+      },
+      {
+        "output": 3,
+        "source": 16
+      }
+    ]
+  }
+}

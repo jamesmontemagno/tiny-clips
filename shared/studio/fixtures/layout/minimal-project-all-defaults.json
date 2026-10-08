@@ -1,0 +1,82 @@
+{
+  "description": "Minimal project with only required screen and camera properties; every optional value defaults.",
+  "project": {
+    "id": "00000000-0000-4000-8000-000000000035",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      },
+      "camera": {
+        "width": 1280,
+        "height": 720,
+        "duration": 20
+      }
+    }
+  },
+  "naturalCanvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "cases": [
+    {
+      "time": 0,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "bubble",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 1
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": {
+          "rect": {
+            "x": 1628.3999999999999,
+            "y": 788.3999999999999,
+            "width": 259.2,
+            "height": 259.2
+          },
+          "source": {
+            "x": 0.21875,
+            "y": 0,
+            "width": 0.5625,
+            "height": 1
+          },
+          "shape": "circle",
+          "cornerRadius": 129.6,
+          "mirror": true,
+          "borderWidth": 0,
+          "shadow": {
+            "blur": 15.12,
+            "offsetY": 4.536,
+            "opacity": 0.175
+          },
+          "sourceTime": 0,
+          "visible": true,
+          "opacity": 1
+        }
+      }
+    }
+  ]
+}

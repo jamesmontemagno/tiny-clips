@@ -48,6 +48,7 @@ internal sealed class MfSinkWriterEncoder : IDisposable
     private readonly int _width;
     private readonly int _height;
     private bool _began;
+    private bool _topDownMemoryFrames;
     private bool _disposed;
     private long _videoSamples;
     private long _audioSamples;
@@ -86,6 +87,16 @@ internal sealed class MfSinkWriterEncoder : IDisposable
     /// instantiated here (BeginWriting) so <see cref="WriteVideo(GpuFrame, TimeSpan)"/> is cheap
     /// from the first frame; call during the pre-roll, not at the recording start instant.
     /// </summary>
+    /// <param name="topDownMemoryFrames">
+    /// For an encoder that is given memory frames through <see cref="WriteVideoTopDown"/>: declares
+    /// that their first row is the top one. Left undeclared, the row order is whatever the
+    /// component that reads the frame assumes, and they differ: an encoder that takes BGRA itself
+    /// reads top-down, and the video processor in front of one that does not reads bottom-up.
+    /// </param>
+    /// <param name="keepFrameTimes">
+    /// Turns off that video processor's frame rate conversion, so that frames keep the times they
+    /// are written with. See <see cref="DisableFrameRateConversion"/>.
+    /// </param>
     public static MfSinkWriterEncoder Create(
         string outputPath,
         ID3D11Device device,
@@ -98,7 +109,10 @@ internal sealed class MfSinkWriterEncoder : IDisposable
         int audioSampleRate,
         int audioChannels,
         int audioBitsPerSample,
-        uint audioBitrate)
+        uint audioBitrate,
+        bool enableHardwareTransforms = true,
+        bool topDownMemoryFrames = false,
+        bool keepFrameTimes = false)
     {
         MediaFactory.MFStartup(true).CheckError();
 
@@ -112,7 +126,10 @@ internal sealed class MfSinkWriterEncoder : IDisposable
             deviceManager.ResetDevice(device).CheckError();
 
             using var attributes = MediaFactory.MFCreateAttributes(5);
-            attributes.Set(SinkWriterAttributeKeys.ReadwriteEnableHardwareTransforms, 1u);
+            if (enableHardwareTransforms)
+            {
+                attributes.Set(SinkWriterAttributeKeys.ReadwriteEnableHardwareTransforms, 1u);
+            }
             attributes.Set(SinkWriterAttributeKeys.D3DManager, deviceManager);
             attributes.Set(SinkWriterAttributeKeys.LowLatency, 1u);
             // Both streams are produced in real time and paced by their own capture clocks, so the
@@ -142,6 +159,11 @@ internal sealed class MfSinkWriterEncoder : IDisposable
             MediaFactory.MFSetAttributeSize(videoIn, MediaTypeAttributeKeys.FrameSize, (uint)width, (uint)height).CheckError();
             MediaFactory.MFSetAttributeRatio(videoIn, MediaTypeAttributeKeys.FrameRate, (uint)fps, 1).CheckError();
             MediaFactory.MFSetAttributeRatio(videoIn, MediaTypeAttributeKeys.PixelAspectRatio, 1, 1).CheckError();
+            if (topDownMemoryFrames)
+            {
+                // A positive stride says that the first row in a memory frame is the top one.
+                videoIn.Set(MediaTypeAttributeKeys.DefaultStride, (uint)(width * 4));
+            }
 
             // Encoder tuning: these are the knobs MediaTranscoder does not expose. No B-frames and
             // low-latency mode stop the hardware encoder holding a look-ahead window of input
@@ -157,6 +179,10 @@ internal sealed class MfSinkWriterEncoder : IDisposable
             encodingParameters.Set(CodecApiAvEncCommonMeanBitRate, videoBitrate);
             encodingParameters.Set(CodecApiAvEncCommonQualityVsSpeed, 50u);
             writer.SetInputMediaType(videoStream, videoIn, encodingParameters);
+            if (keepFrameTimes)
+            {
+                DisableFrameRateConversion(writer, videoStream);
+            }
 
             // --- Audio (PCM in → AAC out) ---
             var audioStream = -1;
@@ -188,10 +214,16 @@ internal sealed class MfSinkWriterEncoder : IDisposable
 
             writer.BeginWriting();
 
-            var description = $"{(codec == VideoCodec.Hevc ? "HEVC Main" : "H.264 High")} via IMFSinkWriter (hardware/low-latency/no B-frames requested; transform unverified)";
+            // What was asked for, not what Media Foundation chose: which transform encodes is not
+            // looked up. With hardware transforms switched off it can only be a software one.
+            var codecName = codec == VideoCodec.Hevc ? "HEVC Main" : "H.264 High";
+            var description = enableHardwareTransforms
+                ? $"{codecName} via IMFSinkWriter (hardware/low-latency/no B-frames requested; transform unverified)"
+                : $"{codecName} via IMFSinkWriter (software fallback; low-latency/no B-frames requested)";
             var encoder = new MfSinkWriterEncoder(writer, deviceManager, videoIn, videoStream, audioStream, width, height, description)
             {
                 _began = true,
+                _topDownMemoryFrames = topDownMemoryFrames,
             };
             writer = null;
             deviceManager = null;
@@ -208,6 +240,46 @@ internal sealed class MfSinkWriterEncoder : IDisposable
             {
                 // Balance the MFStartup above; the encoder instance owns the MFShutdown on success.
                 MediaFactory.MFShutdown();
+            }
+        }
+    }
+
+    /// <summary>
+    /// When the encoder does not take BGRA itself, the writer puts a video processor in front of
+    /// it, and that also converts the frame rate: every frame is moved onto an even grid, and a
+    /// gap in the frames is filled with the frame that follows it. This turns that off.
+    /// </summary>
+    private static void DisableFrameRateConversion(IMFSinkWriter writer, int stream)
+    {
+        using var extended = writer.QueryInterfaceOrNull<IMFSinkWriterEx>();
+        for (var index = 0; extended is not null && index < 16; index++)
+        {
+            IMFTransform transform;
+            Guid category;
+            try
+            {
+                extended.GetTransformForStream(stream, index, out category, out transform);
+            }
+            catch (SharpGenException)
+            {
+                // Past the last transform.
+                return;
+            }
+
+            using (transform)
+            {
+                if (category == TransformCategoryGuids.VideoProcessor)
+                {
+                    try
+                    {
+                        using var attributes = transform.Attributes;
+                        attributes.Set(MediaAttributeKeys.XvpDisableFrcGuid, 1u);
+                    }
+                    catch (SharpGenException)
+                    {
+                        // A processor that keeps no attributes has no such switch.
+                    }
+                }
             }
         }
     }
@@ -272,6 +344,43 @@ internal sealed class MfSinkWriterEncoder : IDisposable
         sample.SampleTime = pts.Ticks;
         sample.SampleDuration = duration.Ticks;
         return Write(_videoStream, sample, ref _videoSamples, _videoGate);
+    }
+
+    /// <summary>
+    /// Writes a CPU frame of BGRA rows that run from the top down, <paramref name="sourceStride"/>
+    /// bytes apart. Only for an encoder created with <c>topDownMemoryFrames</c>, which is what
+    /// tells Media Foundation the row order. The frame is copied before this returns.
+    /// </summary>
+    public unsafe void WriteVideoTopDown(ReadOnlySpan<byte> topDownBgra, int sourceStride, TimeSpan pts, TimeSpan duration)
+    {
+        if (!_topDownMemoryFrames)
+        {
+            throw new InvalidOperationException("The encoder was not created for top-down memory frames.");
+        }
+
+        var stride = _width * 4;
+        var length = stride * _height;
+        using var buffer = MediaFactory.MFCreateMemoryBuffer(length);
+        buffer.Lock(out var data, out _, out _);
+        try
+        {
+            var destination = new Span<byte>((void*)data, length);
+            for (var y = 0; y < _height; y++)
+            {
+                topDownBgra.Slice(y * sourceStride, stride).CopyTo(destination.Slice(y * stride, stride));
+            }
+        }
+        finally
+        {
+            buffer.Unlock();
+        }
+
+        buffer.CurrentLength = length;
+        using var sample = MediaFactory.MFCreateSample();
+        sample.AddBuffer(buffer);
+        sample.SampleTime = pts.Ticks;
+        sample.SampleDuration = duration.Ticks;
+        Write(_videoStream, sample, ref _videoSamples, _videoGate);
     }
 
     public unsafe void WriteAudio(byte[] pcm, TimeSpan pts, TimeSpan duration)

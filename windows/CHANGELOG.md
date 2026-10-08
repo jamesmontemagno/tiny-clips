@@ -14,8 +14,155 @@ own `CHANGELOG.md` at the repository root.
   trimmers, a confirmed Esc behaves like **Cancel** and keeps the original; trim range and
   "Remove audio" count as unsaved for video, frame range and speed for GIFs. Esc is ignored
   while a save, export, or delete is running. (#396)
+- **Tiny Clips Studio (early preview, off by default).** Studio records the screen and the camera
+  as separate layers and opens an editor when the recording ends. Pick a background and padding,
+  round the screen card, choose a camera shape and one of four layouts (screen only, camera
+  bubble, side by side, camera only), drag the bubble where you want it, trim the start and end,
+  and export an MP4. The project stays editable afterward: reopen it from **Open in Studio…** in
+  the Clips Library, from Recent captures, or from the drafts list in Settings › Studio, which
+  also sets how long projects are kept and how much disk space they may use.
+  - **Projects as folders.** **Save project…** saves a copy of a project as an ordinary folder
+    with a name and in a place you choose: the recordings, and a `.tinyclips` file that opens
+    them in Studio again, on this PC or another. It is in the **Project** menu of the editor's
+    header, in the Project panel, and on **Ctrl+S**. The editor takes no edits while the
+    recordings are copied, and **Cancel** or **Esc** stops the copy and leaves nothing behind.
+    Saving under a name where a saved project already is asks before it replaces it, and
+    replaces only a folder that holds nothing but that project: a folder that holds anything
+    else is left as it is, and the dialog says which file is in the way. **Open project…** (the
+    Project menu, **Ctrl+O**, or Settings › Studio › Projects) and opening a `.tinyclips` file
+    from File Explorer copy the project into Studio as a new draft and open that; the folder
+    is only read. **Open recent** in the Project menu lists the other projects, the one opened
+    last first. **Delete project…**, in the Project menu and the Project panel, asks first,
+    then closes the editor and deletes the project; videos you exported and folders you saved
+    it to are not deleted. A recording kept as a draft is listed in the tray's **Recent
+    captures** as "Name — Studio project", with the date and its poster. (#429)
+  - **Zooms.** Press **Z** or choose **Add zoom** to zoom in on the screen recording at the
+    playhead. Zooms sit on a lane above the trim bar: drag one to move it, or drag the handle at
+    one of its ends to change when it starts or stops. The **Zoom** panel of the inspector
+    steps through the
+    zooms and sets each one's zoom level, whether its focus is a fixed point or follows the
+    pointer, when it starts and ends, and how long it takes to zoom in and out. **Suggest zooms** adds
+    zooms where you clicked during the recording, and **Remove suggestions** takes away the
+    suggestions you have not changed. **Delete** removes the selected zoom.
+  - **Crops.** The **Left**, **Top**, **Right**, and **Bottom** sliders in the **Crop** group of
+    the Screen and of the Camera panel cut the edges off the screen recording or the camera,
+    and **Reset crop** brings them back. The group is closed while nothing is cropped, stays
+    open once one of its sliders has been moved, and says "Cropped" when it is closed over a
+    crop.
+  - **Scenes.** In a recording with a camera, press **S** or choose **Split** to start a new scene
+    at the playhead. Each scene has its own layout and its own camera position, so a video can
+    go from the camera bubble to side by side and back. Scenes sit on a lane at the top of the
+    timeline: press one to go to it, or drag the line between two to change when the later one
+    begins. The **Scene** panel of the inspector steps through the scenes, and sets a scene's
+    layout, when it starts, and whether its transition is instant or the screen and the camera
+    move into place, and how long that takes. The Scene and Camera panels show and change the
+    scene the playhead is in. **Delete scene**, or **Delete** while the scene lane has the keyboard focus,
+    removes that scene, and the scene before it then lasts until the next one.
+  - **Cuts.** Press **X** or choose **Cut** to take a second out of the video at the playhead.
+    Cuts sit on a lane above the trim bar, and the trim bar shows a gap where each one is: drag
+    a cut to move it, or drag the handle at one of its ends to change where it starts or
+    stops. The **Cut**
+    panel of the inspector steps through the cuts and sets where each one starts and ends.
+    **Delete** or **Delete cut** puts the stretch back into the video. The time above the
+    timeline counts the video as it will be exported, without what is cut out.
+  - **Speed.** Press **R** or choose **Speed** to have the video play the two seconds from the
+    playhead twice as fast. Speed changes sit on a lane between the cuts and the trim bar: drag
+    one to move it, or drag the handle at one of its ends to change where it starts or stops.
+    The **Speed**
+    panel of the inspector steps through them and sets how fast each stretch plays (0.25×,
+    0.5×, 1.5×, 2×, 4×, or 8×) and where it starts and ends, and says how long the stretch then
+    takes. A stretch at another speed plays without sound. **Delete** or **Delete speed change**
+    makes the stretch play at the recording's own speed again. The time above the timeline
+    counts the video as it will be exported, so a faster stretch makes it shorter and a slower
+    one longer.
+  - **Volume.** The **Audio** panel of the inspector has a **Volume** slider under **Mute**,
+    from 0% (silent) to 100% (as recorded), in steps of 5%. The preview plays at that volume
+    and the exported video has it; a video is never louder than its recording. While **Mute**
+    is on, the slider is switched off and keeps its value. A drag is one step to undo. The
+    volume is saved with the project as `audio.volume`.
+  - **Handles on the lanes.** A zoom, a cut, and a speed change show a handle at each end, 8
+    pixels wide, with the resize pointer over it: drag it to make the stretch longer or
+    shorter. The handles are faint until the pointer is over the block or the block is
+    selected. A block too narrow to hold them, under 28 pixels, such as a new cut in a long
+    recording, could not be resized by dragging before: select it, and it gets a handle
+    outside each end. The **Start** and **End** rows of the Zoom, Cut, and Speed panels do the
+    same from the keyboard and with a screen reader, which is not given the handles. (#427)
+  - Studio has a page of its own in Settings, **Studio**, after Video: the switch, how a
+    Studio recording is started, project storage, and the drafts.
+    To try it, switch on **Tiny Clips Studio (Preview)** in Settings › Studio. Then choose
+    **Studio** in the tray menu, a fourth button between Video and GIF that is there while
+    Studio is switched on. The recording setup panel says **Studio** for such a recording.
+    **Record video**, from the
+    tray menu or with its hotkey, always makes an ordinary recording, and **Open trimmer after
+    recording** in Settings › Video decides what that one does, as before. Studio recording
+    has no hotkey yet. Switching Studio off again hides it and deletes nothing. Projects are
+    stored with the app, so uninstalling Tiny Clips or resetting it in Windows Settings deletes
+    them; exported videos stay, and so does a project that was saved as a folder with **Save
+    project…**.
+  - **Camera background.** **Camera background** in the Camera panel keeps the camera picture as
+    it is, blurs everything but you, or removes it so that only you stand in front of the screen.
+    The people are found on your PC with the MediaPipe Selfie Segmentation model, which ships
+    with Tiny Clips under the Apache License 2.0; see **Third-party notices** in Settings ›
+    About.
+  - **Keeping and saving.** **Keep this project** in the Project panel pins a project against the
+    storage cleanup. The storage limit counts only the exported projects that cleanup may
+    remove, so drafts never push one out, and it never removes the project you opened last. A
+    project whose exported video is no longer where it was saved, or has been replaced by
+    another file of the same name, is kept and listed with the drafts again. Each draft in
+    Settings › Studio, and an editor that cannot show its project, has **Save the screen
+    recording**, which saves the recording as an ordinary video.
+  - Keys in the editor: **Space** plays or pauses, **Left** and **Right** step a frame, **I** and
+    **O** start and end the video at the playhead, **S** splits the scene, **Z** adds a zoom,
+    **X** starts a cut, and **R** changes the speed at the playhead, **Delete** removes the
+    selected zoom, cut, or speed change, **1** to **4** choose the layout of the scene the
+    playhead is in, **Ctrl+Z** and **Ctrl+Y** undo and redo, **Ctrl+E** exports, **Ctrl+O**
+    opens a saved project, **Ctrl+S** saves this one as a folder, and **Esc** stops an export
+    or a save. While a lane has the keyboard focus, **Left** and **Right** go to the
+    scene, zoom, cut, or speed change before and after, and **Home** and **End** to the first
+    and the last. While you drag something, the keys that change the video do nothing;
+    **Space** and the arrow keys still work.
+  - **Esc closes the editor**, the way its close button does. A recording that was never
+    exported asks what to do with it, as it does from the close button. A project that was
+    exported asks "Close Studio?" first, unless **Confirm before closing editors with Esc** is
+    turned off in General settings; nothing is lost either way, because Studio saves every edit
+    as it is made. While an export runs, Esc only stops the export. An open drop-down list
+    keeps the key for itself, and Esc that is held down, or pressed with Ctrl, Shift, or Alt,
+    does nothing.
+  - **The inspector shows one panel at a time.** A rail down its outer edge has an item for each
+    panel: **Scene**, **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**,
+    **Audio**, and **Project** (a recording without a camera has no Scene and no Camera). The
+    chosen panel shows under its name, and the others are out of the way: for a pointer, for
+    the Tab key, and for a screen reader. The rail is one tab stop, and Up, Down, Home, and End
+    choose a panel. Selecting or adding a zoom, a cut, or a speed change, splitting or going to
+    a scene, and dragging the camera in the preview show that panel by themselves; undo, redo,
+    the layout keys, playing, and scrubbing leave the panel alone. When the panel that had the
+    keyboard focus goes away, the focus is on the rail's item for the new panel. When a key
+    takes away the control that had it, as **Delete** does with the selected zoom's, the focus
+    stays in the inspector: on the next control of the panel, or on the rail's item for the
+    panel on show when the panel has none after it. **Space** plays and pauses from the rail's
+    chosen item, as it does from a slider. A panel without a zoom, a cut, or a speed change
+    says how to add the first one.
+  - **Icons on the editor's buttons.** The buttons that edit have an icon before their words:
+    **Split**, **Add zoom**, **Cut**, **Speed**, **Start here**, and **End here** over the
+    timeline; **Split scene**, **Add zoom**, **Suggest zooms**, **Remove suggestions**,
+    **Add cut**, **Add speed change**, the four **Delete** buttons, **Reset crop**,
+    **Show scene**, and **Save as default look** in the inspector; and
+    **Save the screen recording** on a project that cannot be opened. A button that adds a
+    zoom, a cut, or a speed change has the icon of that panel on the rail, and so does
+    **Show scene**. The icons are decoration: every button keeps its words, and a screen reader
+    hears the name it heard before. Where a button has no room for its icon, as at a large
+    text size, the icon gives way and the words stay.
+  - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
+    for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
+    layer. The live preview does not play a speed change at its speed yet: it shows the stretch
+    at the recording's own speed, while the time above the timeline and the exported video have
+    the speed.
 
 ### Fixed
+- **Starting Tiny Clips again while it is running, or opening a file with it, no longer does
+  nothing now and then.** The running app read what the second launch handed over only after
+  that launch had ended, and when it was a moment late there was nothing left to read: no tray
+  menu came up, and a picture chosen with "Open with" did not open. It is read at once now.
 - **A video recording that fails to start no longer deletes the previous one.** The cleanup after
   a failed start deleted the file the recorder had last written. Until the new recording had a
   file of its own, that was the video of the recording before it, saved and finished. The same

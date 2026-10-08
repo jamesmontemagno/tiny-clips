@@ -225,7 +225,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         _closed = true;
         _teleprompterTranscriptSaveScheduler?.Stop();
         PersistPendingTeleprompterTranscript();
+        ReleaseStudio();
     }
+
+    // Tiny Clips Studio's part of this view model is in SettingsViewModel.Studio.cs. A build that
+    // leaves that file out has no Studio settings, and these two calls are then not there.
+    partial void RestoreStudioSettings(SettingsSectionKind? kind);
+
+    partial void ReleaseStudio();
 
     private void PersistPendingTeleprompterTranscript()
     {
@@ -999,6 +1006,8 @@ public sealed partial class SettingsViewModel : ObservableObject
                 TeleprompterFontSizeIndex = (int)_settings.TeleprompterFontSize;
                 TeleprompterPanelHeightIndex = (int)_settings.TeleprompterPanelHeight;
             }
+
+            RestoreStudioSettings(kind);
         }
         finally
         {

@@ -11,6 +11,12 @@ public interface IVideoRecordingService
 {
     bool IsRecording { get; }
 
+    /// <summary>
+    /// The id of the Studio project the current recording is being written into, or null when no
+    /// Studio recording is in progress. Project cleanup must leave that folder alone.
+    /// </summary>
+    string? ActiveStudioProjectId { get; }
+
     bool IsPaused { get; }
 
     bool CanMuteSystemAudio { get; }
@@ -21,8 +27,14 @@ public interface IVideoRecordingService
 
     bool IsMicrophoneMuted { get; }
 
-    /// <summary>Raised when a recording finishes (manual stop or time-limit), with the saved file path.</summary>
+    /// <summary>
+    /// Raised when a recording finishes (manual stop or time-limit), with the saved file path. Studio
+    /// recordings raise this with null after cleanup, then raise <see cref="StudioRecordingCompleted"/>.
+    /// </summary>
     event EventHandler<string?>? RecordingCompleted;
+
+    /// <summary>Raised after a Studio recording has been finalized, carrying the completed project id.</summary>
+    event EventHandler<string>? StudioRecordingCompleted;
 
     /// <summary>
     /// Raised when the webcam overlay could not be started or was lost mid-recording, with a
@@ -45,6 +57,14 @@ public interface IVideoRecordingService
     Task StartAsync(CaptureTarget? target = null, PixelRect? region = null, double? timeLimitMinutesOverride = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Begins recording with per-recording options. When <paramref name="options"/> has
+    /// <see cref="VideoRecordingOptions.RecordForStudio"/> set, the screen is recorded cleanly into
+    /// a Studio project, StopAsync returns null, and completion is reported through
+    /// <see cref="StudioRecordingCompleted"/>.
+    /// </summary>
+    Task StartAsync(CaptureTarget? target, PixelRect? region, double? timeLimitMinutesOverride, VideoRecordingOptions options, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Pre-warms the recording pipeline (capture session, webcam, audio devices, encoder) for the
     /// given target without starting the recorded timeline. A following <see cref="StartAsync"/>
     /// with the same target/region begins emitting immediately instead of paying for setup. Call
@@ -53,10 +73,16 @@ public interface IVideoRecordingService
     /// </summary>
     Task PrepareAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default);
 
+    /// <summary>Pre-warms the recording pipeline with per-recording options.</summary>
+    Task PrepareAsync(CaptureTarget? target, PixelRect? region, VideoRecordingOptions options, CancellationToken cancellationToken = default);
+
     /// <summary>Tears down a pipeline prepared by <see cref="PrepareAsync"/> that will not be started.</summary>
     Task DiscardPreparedAsync();
 
-    /// <summary>Stops recording, finalizes the MP4 and returns the saved path (or null if nothing recorded).</summary>
+    /// <summary>
+    /// Stops recording, finalizes the MP4 and returns the saved path (or null if nothing recorded, or
+    /// when the recording was captured as a Studio project).
+    /// </summary>
     Task<string?> StopAsync();
 
     Task PauseAsync();

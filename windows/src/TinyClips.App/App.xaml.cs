@@ -16,12 +16,17 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
 using TinyClips.App.Services.ClipsLibrary;
+using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.Views.ClipsLibrary;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
+using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
+using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Rendering;
 using Windows.Storage;
 
 namespace TinyClips.App;
@@ -45,6 +50,7 @@ public partial class App : Application
     private const string GlyphBug = "\uEBE8";
     private const string GlyphSettings = "\uE713";
     private const string GlyphExit = "\uE7E8";
+    private const string GlyphStudio = "\uE81E";
     private const uint MonitorDefaultToNearest = 2;
 
     private TaskbarIcon? _taskbarIcon;
@@ -57,6 +63,7 @@ public partial class App : Application
     private OnboardingWindow? _onboardingWindow;
     private readonly HashSet<ScreenshotEditorWindow> _editorWindows = new(ReferenceEqualityComparer.Instance);
     private Window? _trimmerWindow;
+    private StudioWindowService? _studioWindows;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
     private TeleprompterWindow? _teleprompter;
@@ -76,13 +83,28 @@ public partial class App : Application
     private TimeSpan _recordingElapsedBeforePause;
     private TargetSelection? _activeRecordingSelection;
     private CaptureType? _activeRecordingType;
+    private VideoRecordingOptions _activeVideoRecordingOptions = VideoRecordingOptions.Default;
     private bool _activeRecordingWasPickerInitiated;
+
+    // Whether the video recording being set up was asked for with Studio recording. Kept from
+    // one recording to the next, so that a capture picker that comes back by itself is for the
+    // kind of recording that was asked for last.
+    private StudioRecordingIntent? _studioRecordingIntent;
+
+    // Whether the recording that completed last was started from the capture picker. A Studio
+    // recording reports its project in a second callback, queued right after the first one.
+    private bool _completedRecordingWasPickerInitiated;
     private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
+
+    // The fourth capture tile, between Video and GIF. Only there while Studio is switched on.
+    private CaptureTile? _studioTile;
+
+    // The tiles of the popup as it was last built, in their order.
+    private IReadOnlyList<CaptureTile> _captureTiles = [];
     private TrayPopupWindow? _trayPopup;
     private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
-    private const double TrayPopupWidth = 344;
     private const double TrayPopupHeight = 242;
     private const double TrayPopupFooterHeight = 48;
     private const double TrayPopupFooterButtonSize = 32;
@@ -97,6 +119,9 @@ public partial class App : Application
     private static readonly TimeSpan TrayIconInitialRetryDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TrayIconMaxRetryDelay = TimeSpan.FromSeconds(40);
     private const int TrayIconMaxRetryAttempts = 6; // 5 + 10 + 20 + 40 + 40 + 40 s ≈ 2.5 min
+    // Studio project cleanup waits until launch work has settled. Nothing at startup depends on it.
+    private static readonly TimeSpan StudioCleanupStartupDelay = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan StudioStaleExportAge = TimeSpan.FromMinutes(10);
     private GlobalHotKeyManager? _hotKeyManager;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -115,6 +140,13 @@ public partial class App : Application
             .AddSingleton<IThumbnailCache, ThumbnailCacheService>()
             .AddSingleton<IMediaDevicePermissionService, MediaDevicePermissionService>()
             .AddSingleton<IDisplaySleepAssertion, WindowsDisplaySleepAssertion>()
+            .AddSingleton<StudioProjectTracker>()
+            .AddSingleton<StudioProjectCleanupService>()
+            .AddSingleton<IStudioPreviewFactory, StudioPreviewFactory>()
+            .AddSingleton<IStudioExportService, StudioExportService>()
+            .AddSingleton<IStudioPreviewViewFactory, StudioPreviewViewFactory>()
+            .AddSingleton<StudioWindowService>()
+            .AddSingleton<StudioRecentDrafts>()
             .BuildServiceProvider();
 
         ApplyTheme();
@@ -143,7 +175,67 @@ public partial class App : Application
 #if !TINYCLIPS_STORE_BUILD
         RunStartupStep(nameof(RunStartupUpdateCheckAsync), () => _ = RunStartupUpdateCheckAsync());
 #endif
+        RunStartupStep(nameof(ScheduleStudioProjectCleanup), ScheduleStudioProjectCleanup);
+        RunStartupStep(nameof(WatchStudioDrafts), WatchStudioDrafts);
         RunStartupStep(nameof(EndStartupPhaseAfterFirstDispatcherPass), EndStartupPhaseAfterFirstDispatcherPass);
+    }
+
+    /// <summary>
+    /// Queues the Studio project cleanup for a short while after launch, on a background thread.
+    /// Does nothing while the Studio preview is switched off.
+    /// </summary>
+    private static void ScheduleStudioProjectCleanup()
+    {
+        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(StudioCleanupStartupDelay).ConfigureAwait(false);
+            await Services.GetRequiredService<StudioProjectCleanupService>().RunAsync().ConfigureAwait(false);
+            DeleteStaleStudioExportFiles();
+        });
+    }
+
+    /// <summary>
+    /// Reads the Studio projects the tray's recent captures list, ahead of the first time the
+    /// popup shows, and again whenever an editor opens or closes. The popup asks once more as
+    /// it is about to show. With Studio switched off nothing is read and nothing is listed.
+    /// </summary>
+    private void WatchStudioDrafts()
+    {
+        var drafts = Services.GetRequiredService<StudioRecentDrafts>();
+        drafts.Changed += (_, _) => RefreshRecentCapturesButton();
+        Services.GetRequiredService<StudioProjectTracker>().Changed += (_, _) => ReloadStudioDrafts();
+        ReloadStudioDrafts();
+    }
+
+    private void ReloadStudioDrafts()
+    {
+        if (!_isExiting)
+        {
+            _ = Services.GetRequiredService<StudioRecentDrafts>().ReloadAsync(RecentCapturesDisplayCount);
+        }
+    }
+
+    /// <summary>
+    /// An export that was cut short by the app being closed leaves its temporary file next to
+    /// where the video would have gone. Nothing is exporting this soon after launch, and a file
+    /// that is in use is left alone in any case.
+    /// </summary>
+    private static void DeleteStaleStudioExportFiles()
+    {
+        try
+        {
+            var videoFolder = Services.GetRequiredService<IClipStorageService>().OutputDirectory(CaptureType.Video);
+            StudioRenderingMath.DeleteStaleTemporaryFiles(videoFolder, StudioStaleExportAge);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Stale Studio export files could not be removed: {ex}");
+        }
     }
 
     private static void RunStartupStep(string name, Action step)
@@ -210,12 +302,18 @@ public partial class App : Application
     /// <summary>
     /// If the app was launched via "Open with → Tiny Clips" on an image file, open that image
     /// in the screenshot editor. Mirrors the macOS open-in-editor file-activation behaviour.
+    /// A <c>.tinyclips</c> file, the file of a Studio project that was saved as a folder, opens
+    /// in Studio instead.
     /// </summary>
     private void HandleFileActivation()
     {
         try
         {
-            TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs());
+            var activation = SingleInstance.Read(Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs());
+            if (activation.Kind == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File)
+            {
+                TryOpenActivatedFile(activation.FilePaths);
+            }
         }
         catch (Exception ex)
         {
@@ -223,32 +321,94 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Opens the first supported image of a file activation in the screenshot editor.</summary>
-    private bool TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppActivationArguments? activation)
+    /// <summary>
+    /// Opens the first file of a file activation that the app has an editor for: an image in
+    /// the screenshot editor, a Studio project file in Studio. No other window is shown with it.
+    /// </summary>
+    private bool TryOpenActivatedFile(IEnumerable<string?> paths)
     {
-        if (activation?.Kind != Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File ||
-            activation.Data is not Windows.ApplicationModel.Activation.IFileActivatedEventArgs fileArgs)
+        if (ActivatedFile.FirstSupported(paths) is not { } file)
         {
             return false;
         }
 
-        foreach (var item in fileArgs.Files)
-        {
-            if (item is StorageFile file && IsSupportedImage(file.Path))
-            {
-                var path = file.Path;
-                return _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(path)) == true;
-            }
-        }
-
-        return false;
+        return file.Kind == ActivatedFileKind.StudioProject
+            ? _dispatcher?.TryEnqueue(() => _ = OpenActivatedStudioProjectAsync(file.Path)) == true
+            : _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(file.Path)) == true;
     }
 
     /// <summary>
-    /// Receives the activation of a later launch that <see cref="SingleInstance"/> forwarded here.
-    /// Runs on a background thread, so the work is queued to the UI thread.
+    /// Opens a Studio project file the system handed over. The app has no window to say in
+    /// why a project was not opened, so it says it in a notification, as it says that a
+    /// recording was saved: that Studio is switched off, or the store's sentence for the file.
+    /// Never fails. Must be called on the UI thread.
     /// </summary>
-    private void OnRedirectedActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments activation)
+    private async Task OpenActivatedStudioProjectAsync(string path)
+    {
+        try
+        {
+            if (await OpenStudioProjectFileAsync(path) is { } failure)
+            {
+                Announce(
+                    AutomationNotificationKind.ActionAborted,
+                    AutomationNotificationProcessing.ImportantMostRecent,
+                    failure,
+                    "StudioProjectNotOpened");
+                ShowMessageNotification(failure);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"The Studio project {path} could not be opened: {ex}");
+            CrashDiagnostics.Log("Studio project file activation", ex, handled: true);
+        }
+    }
+
+    /// <summary>
+    /// Opens a Studio project that was saved as a folder, from its <c>.tinyclips</c> file: the
+    /// project is copied into Studio's own storage as a new draft, and the editor opens on the
+    /// copy. With Studio switched off nothing is copied. Must be called on the UI thread.
+    /// </summary>
+    /// <returns>Why the project was not opened, as a sentence for the user, or null.</returns>
+    internal async Task<string?> OpenStudioProjectFileAsync(string path)
+    {
+        if (_isExiting)
+        {
+            return null;
+        }
+
+        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            return StudioProjectFolderText.StudioIsOffMessage;
+        }
+
+        return (await StudioWindows().OpenProjectFileAsync(path)).Failure;
+    }
+
+    /// <summary>
+    /// Asks for a Studio project file with the open picker, owned by the Settings window, and
+    /// opens it. Called by the Studio page of Settings. Must be called on the UI thread.
+    /// </summary>
+    /// <returns>Why the project was not opened, or null: it is open, or none was chosen.</returns>
+    internal async Task<string?> ChooseAndOpenStudioProjectFromSettingsAsync()
+    {
+        if (_isExiting || _settingsWindow is not { } owner)
+        {
+            return null;
+        }
+
+        var windows = StudioWindows();
+        return await windows.ChooseProjectFile(owner) is { Length: > 0 } path
+            ? await OpenStudioProjectFileAsync(path)
+            : null;
+    }
+
+    /// <summary>
+    /// Receives the activation of a later launch that <see cref="SingleInstance"/> forwarded here,
+    /// already read: the launch itself is gone by the time the UI thread gets to it. Runs on a
+    /// background thread, so the work is queued to the UI thread.
+    /// </summary>
+    private void OnRedirectedActivation(ForwardedActivation activation)
     {
         var queued = _dispatcher?.TryEnqueue(() =>
         {
@@ -269,7 +429,7 @@ public partial class App : Application
         }
     }
 
-    private void HandleRedirectedActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments activation)
+    private void HandleRedirectedActivation(ForwardedActivation activation)
     {
         if (_isExiting)
         {
@@ -279,7 +439,7 @@ public partial class App : Application
         switch (activation.Kind)
         {
             case Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File:
-                TryOpenActivatedFile(activation);
+                TryOpenActivatedFile(activation.FilePaths);
                 break;
 
             case Microsoft.Windows.AppLifecycle.ExtendedActivationKind.Launch:
@@ -302,14 +462,6 @@ public partial class App : Application
         }
     }
 
-    private static bool IsSupportedImage(string path)
-    {
-        var ext = Path.GetExtension(path);
-        return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
-    }
 
     private void CreateTrayIcon()
     {
@@ -463,20 +615,57 @@ public partial class App : Application
             return;
         }
 
-        _trayPopup.Content = BuildTrayPopupContent(Services.GetRequiredService<IHotKeyService>());
+        // Built anew each time it is shown, so the Studio tile comes and goes with the Studio
+        // switch in Settings while the app runs.
+        var layout = BuildTrayPopupContent(Services.GetRequiredService<IHotKeyService>());
+        _trayPopup.Content = layout;
         UpdateRecordingState();
-        _trayPopup.ShowNearCursor(TrayPopupWidth, TrayPopupHeight);
+
+        // Three tiles have the width they always had, and nothing is measured for them. Four
+        // are given more when a label would wrap in it, as with a larger text size in Windows.
+        var widestLabel = _captureTiles.Count > 3 ? WidestCaptureTileLabel() : 0;
+        var width = TrayPopupLayout.WidthFor(_captureTiles.Count, widestLabel);
+        layout.Width = width;
+        _trayPopup.ShowNearCursor(width, TrayPopupHeight);
+
+        // The popup shows what was read last. A draft made, opened or deleted since then is
+        // read now, and the Recent button is made again when that finds another list.
+        ReloadStudioDrafts();
+    }
+
+    /// <summary>
+    /// How wide the widest label of the capture tiles is on one line, as text is drawn now:
+    /// a text block is measured with the text size chosen in Windows. Zero when it cannot be told.
+    /// </summary>
+    private double WidestCaptureTileLabel()
+    {
+        var widest = 0.0;
+        try
+        {
+            foreach (var tile in _captureTiles)
+            {
+                tile.Label.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+                widest = Math.Max(widest, tile.Label.DesiredSize.Width);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"The tray popup's tile labels could not be measured: {ex}");
+            return 0;
+        }
+
+        return widest;
     }
 
     // PowerToys-style "quick access" popup: capture actions on a layered acrylic content
     // surface with a separate acrylic command bar along the bottom.
-    private UIElement BuildTrayPopupContent(IHotKeyService hotKeys)
+    private Grid BuildTrayPopupContent(IHotKeyService hotKeys)
     {
         void Dismiss() => _trayPopup?.Hide();
 
         var content = new StackPanel
         {
-            Padding = new Thickness(16),
+            Padding = new Thickness(TrayPopupLayout.ContentPadding),
             Spacing = 12,
         };
 
@@ -487,20 +676,12 @@ public partial class App : Application
             Style = ResourceStyle("BodyStrongTextBlockStyle"),
         });
 
-        var tiles = new Grid { ColumnSpacing = 6 };
-        for (var i = 0; i < 3; i++)
-        {
-            tiles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        }
-
         var screenshot = CreateCaptureTile(
             "Screenshot",
             GlyphScreenshot,
             hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString,
             new AsyncRelayCommand(CaptureScreenshotAsync),
             Dismiss);
-        Grid.SetColumn(screenshot.Button, 0);
-        tiles.Children.Add(screenshot.Button);
 
         _videoTile = CreateCaptureTile(
             "Video",
@@ -508,8 +689,28 @@ public partial class App : Application
             hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString,
             new AsyncRelayCommand(ToggleVideoAsync),
             Dismiss);
-        Grid.SetColumn(_videoTile.Button, 1);
-        tiles.Children.Add(_videoTile.Button);
+
+        // Only while Studio is switched on. Video is always an ordinary recording; this tile
+        // is the one way to record for Studio. It has no hotkey, so its tooltip names none.
+        _studioTile = null;
+        if (Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            _studioTile = CreateCaptureTile(
+                "Studio",
+                GlyphStudio,
+                accelerator: null,
+                new AsyncRelayCommand(StartStudioRecordingAsync),
+                Dismiss);
+
+            // "Studio" is enough beside its picture, and too little for a screen reader.
+            var studioButton = _studioTile.Button;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(studioButton, "TrayStudioRecordingButton");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(studioButton, "Studio recording");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+                studioButton,
+                "Starts a video recording that opens in Tiny Clips Studio, with the screen and camera kept as separate layers.");
+            ToolTipService.SetToolTip(studioButton, "Record a video that opens in Tiny Clips Studio");
+        }
 
         _gifTile = CreateCaptureTile(
             "GIF",
@@ -517,8 +718,19 @@ public partial class App : Application
             hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString,
             new AsyncRelayCommand(ToggleGifAsync),
             Dismiss);
-        Grid.SetColumn(_gifTile.Button, 2);
-        tiles.Children.Add(_gifTile.Button);
+
+        // Screenshot, Video, Studio, GIF: three columns, or four with Studio, each as wide as
+        // the others.
+        _captureTiles = _studioTile is null
+            ? [screenshot, _videoTile, _gifTile]
+            : [screenshot, _videoTile, _studioTile, _gifTile];
+        var tiles = new Grid { ColumnSpacing = TrayPopupLayout.TileSpacing };
+        for (var column = 0; column < _captureTiles.Count; column++)
+        {
+            tiles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(_captureTiles[column].Button, column);
+            tiles.Children.Add(_captureTiles[column].Button);
+        }
 
         content.Children.Add(tiles);
 
@@ -533,6 +745,8 @@ public partial class App : Application
         var recent = CreateRecentCapturesButton(Dismiss);
         Grid.SetColumn(recent, 1);
         quickAccess.Children.Add(recent);
+        _recentCapturesHost = quickAccess;
+        _recentCapturesButton = recent;
         content.Children.Add(quickAccess);
 
         var contentArea = new Border
@@ -604,7 +818,7 @@ public partial class App : Application
             Dismiss));
         footer.Children.Add(footerActions);
 
-        var layout = new Grid { Width = TrayPopupWidth };
+        var layout = new Grid { Width = TrayPopupLayout.Width };
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TrayPopupFooterHeight) });
         layout.Children.Add(contentArea);
@@ -646,32 +860,73 @@ public partial class App : Application
     private const double RecentCaptureThumbnailWidth = 40;
     private const double RecentCaptureThumbnailHeight = 22.5;
 
+    // The Recent button of the popup that was built last, the row it is in, and what it lists.
+    private Grid? _recentCapturesHost;
+    private ButtonBase? _recentCapturesButton;
+    private string[] _recentCaptureIds = [];
+
+    /// <summary>
+    /// The lines of the popup's Recent button: the captures that were saved as files and,
+    /// while Studio is switched on, the projects that hold a recording no file has yet,
+    /// mixed by date, five in all.
+    /// </summary>
+    private static IReadOnlyList<RecentMenuEntry> RecentMenuEntries() =>
+        Services.GetRequiredService<StudioRecentDrafts>().EntriesFor(
+            Services.GetRequiredService<IRecentCaptureService>().GetRecentCaptures(),
+            RecentCapturesDisplayCount);
+
     private ButtonBase CreateRecentCapturesButton(Action dismiss)
     {
-        var history = Services.GetRequiredService<IRecentCaptureService>();
+        var drafts = Services.GetRequiredService<StudioRecentDrafts>();
         var thumbnails = Services.GetRequiredService<IThumbnailCache>();
         var fileSystem = Services.GetRequiredService<IFileSystem>();
-        var captures = history.GetRecentCaptures().Take(RecentCapturesDisplayCount).ToList();
+        var entries = RecentMenuEntries();
+        _recentCaptureIds = [.. entries.Select(static entry => entry.Id)];
         var flyout = new MenuFlyout();
         var button = new DropDownButton
         {
-            Content = QuickAccessContent(GlyphHistory, captures.Count == 0 ? "No captures" : $"Recent ({captures.Count})"),
+            Content = QuickAccessContent(GlyphHistory, entries.Count == 0 ? "No captures" : $"Recent ({entries.Count})"),
             Flyout = flyout,
-            IsEnabled = captures.Count > 0,
+            IsEnabled = entries.Count > 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             Padding = new Thickness(8, 6, 8, 6),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Recent captures");
 
-        foreach (var capture in captures)
+        foreach (var entry in entries)
         {
-            var capturedItem = capture;
-            var name = $"{Path.GetFileName(capture.Path)} — {CaptureTypeLabel(capture.Type)}, {capture.CapturedAt:g}";
+            if (entry.StudioDraft is { } draft)
+            {
+                // A recording that is still a Studio project and has no saved file yet.
+                var title = StudioProjectFolderText.GetTrayDraftTitle(draft);
+                var draftItem = new MenuFlyoutItem
+                {
+                    Text = title,
+                    Icon = new FontIcon { Glyph = GlyphStudio, FontFamily = FluentIconFont, FontSize = 14 },
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(draftItem, title);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(draftItem, "Opens this project in Tiny Clips Studio.");
+                draftItem.Click += (_, _) =>
+                {
+                    dismiss();
+                    OpenStudioWindow(draft.Id);
+                };
+                flyout.Items.Add(draftItem);
+                if (drafts.PosterOf(draft.Id) is { } poster)
+                {
+                    _ = LoadStudioDraftPosterAsync(draftItem, poster);
+                }
+
+                continue;
+            }
+
+            var capturedItem = entry.Capture!;
+            var name = $"{Path.GetFileName(capturedItem.Path)} — {CaptureTypeLabel(capturedItem.Type)}, {capturedItem.CapturedAt:g}";
             var item = new MenuFlyoutItem
             {
                 Text = name,
-                Icon = new FontIcon { Glyph = CaptureTypeGlyph(capture.Type), FontFamily = FluentIconFont, FontSize = 14 },
+                Icon = new FontIcon { Glyph = CaptureTypeGlyph(capturedItem.Type), FontFamily = FluentIconFont, FontSize = 14 },
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, name);
             item.Click += (_, _) =>
@@ -685,6 +940,69 @@ public partial class App : Application
         }
 
         return button;
+    }
+
+    /// <summary>
+    /// The projects were read again and are not the ones the open popup lists: its Recent
+    /// button is made again in its place. Left as it is while its menu is open, which would
+    /// close under the pointer; the next time the popup shows it is built anew in any case.
+    /// </summary>
+    private void RefreshRecentCapturesButton()
+    {
+        if (_isExiting
+            || _trayPopup is not { IsOpen: true } popup
+            || _recentCapturesHost is not { } host
+            || _recentCapturesButton is not { } old
+            || (old as DropDownButton)?.Flyout is { IsOpen: true }
+            || RecentMenuEntries().Select(static entry => entry.Id).SequenceEqual(_recentCaptureIds))
+        {
+            return;
+        }
+
+        var hadFocus = old.FocusState != FocusState.Unfocused;
+        var button = CreateRecentCapturesButton(popup.Hide);
+        Grid.SetColumn(button, Grid.GetColumn(old));
+        host.Children.Remove(old);
+        host.Children.Add(button);
+        _recentCapturesButton = button;
+        if (hadFocus && button.IsEnabled)
+        {
+            button.Focus(FocusState.Programmatic);
+        }
+    }
+
+    /// <summary>
+    /// Shows a draft's poster as its picture. The file is read whole and let go of before the
+    /// picture is made of it, so that an editor that closes meanwhile can write its poster anew.
+    /// </summary>
+    private static async Task LoadStudioDraftPosterAsync(MenuFlyoutItem item, string posterPath)
+    {
+        try
+        {
+            var bytes = await Task.Run(() =>
+            {
+                using var file = new FileStream(posterPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                var buffer = new byte[file.Length];
+                file.ReadExactly(buffer);
+                return buffer;
+            });
+
+            using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(bytes));
+            stream.Seek(0);
+            var picture = new BitmapImage { DecodePixelWidth = ThumbnailCacheService.ThumbnailWidth };
+            await picture.SetSourceAsync(stream);
+            item.Icon = new ImageIcon
+            {
+                Source = picture,
+                Width = RecentCaptureThumbnailWidth,
+                Height = RecentCaptureThumbnailHeight,
+            };
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"The poster of a Studio draft could not be shown ({posterPath}): {ex.Message}");
+        }
     }
 
     private async Task LoadRecentCaptureThumbnailAsync(
@@ -801,7 +1119,7 @@ public partial class App : Application
             Command = command,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
-            Padding = new Thickness(4, 14, 4, 14),
+            Padding = new Thickness(TrayPopupLayout.TileSidePadding, 14, TrayPopupLayout.TileSidePadding, 14),
             Background = new SolidColorBrush(Colors.Transparent),
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(8),
@@ -853,14 +1171,26 @@ public partial class App : Application
     /// Shows the capture picker bar (Region / Screen / Window + countdown), resolves the
     /// chosen target, runs the countdown, then performs the capture or starts recording.
     /// </summary>
+    /// <param name="videoCommand">
+    /// What a video recording was asked for with, which decides whether it is one for Studio.
+    /// Null for a screenshot or a GIF.
+    /// </param>
     private async Task BeginCaptureAsync(
         CaptureType type,
         CapturePickerMode? forcedMode = null,
-        bool abortIfRecording = false)
+        bool abortIfRecording = false,
+        VideoRecordingCommand? videoCommand = null)
     {
         if (_captureFlowCts is not null || _scrollingPanel is not null)
         {
             return;
+        }
+
+        // After the check above: a command that is ignored because a capture is being set up
+        // must not change which kind of recording that one is.
+        if (type == CaptureType.Video && videoCommand is { } command)
+        {
+            StudioRecording.Begin(command);
         }
 
         var captureFlowCts = new CancellationTokenSource();
@@ -928,9 +1258,12 @@ public partial class App : Application
 
             RecordingSetupResult? recordingSetup = null;
             Task? recorderPrepare = null;
+            var videoOptions = VideoRecordingOptions.Default;
             if (type is CaptureType.Video or CaptureType.Gif)
             {
-                recordingSetup = await ShowRecordingSetupAsync(type, selection, settings);
+                // Asked here, when the recording is set up, and again before it starts.
+                var isStudioRecording = type == CaptureType.Video && StudioRecording.IsForStudio;
+                recordingSetup = await ShowRecordingSetupAsync(type, selection, settings, isStudioRecording);
                 CaptureFlowTrace.Mark($"setup: {(recordingSetup is null ? "cancelled" : "confirmed")}");
                 if (recordingSetup is null)
                 {
@@ -940,9 +1273,13 @@ public partial class App : Application
 
                 ApplyRecordingSetup(type, recordingSetup, settings);
 
+                // The pre-warm below and the start after the countdown get this same value: the
+                // recorder only reuses a prepared pipeline for a start with matching options.
+                videoOptions = BuildVideoRecordingOptions(type);
+
                 // Pre-warm the whole recording pipeline (capture session, encoder, webcam, audio)
                 // while the countdown runs so the recording starts the instant it hits zero.
-                recorderPrepare = PrepareRecorderAsync(type, selection, captureFlowCts.Token);
+                recorderPrepare = PrepareRecorderAsync(type, selection, videoOptions, captureFlowCts.Token);
             }
 
             var showDisabledStopDuringCountdown = type is CaptureType.Video or CaptureType.Gif
@@ -986,18 +1323,18 @@ public partial class App : Application
                             .RecognizeAsync(selection.Target, selection.Region, captureFlowCts.Token);
                         if (string.IsNullOrWhiteSpace(text))
                         {
-                            ShowTextRecognitionNotification("No text recognized");
+                            ShowMessageNotification("No text recognized");
                         }
                         else
                         {
                             await ClipboardService.CopyTextAsync(text);
-                            ShowTextRecognitionNotification("Text copied to clipboard");
+                            ShowMessageNotification("Text copied to clipboard");
                         }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         Debug.WriteLine($"Text recognition failed: {ex}");
-                        ShowTextRecognitionNotification("Couldn't recognize text");
+                        ShowMessageNotification("Couldn't recognize text");
                     }
 
                     break;
@@ -1014,9 +1351,14 @@ public partial class App : Application
 
                 case CaptureType.Video:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
+
+                    // Studio may have been switched off since the recording was set up. The
+                    // recorder then builds its pipeline again, for an ordinary recording.
+                    videoOptions = StudioRecording.OptionsAtStart(videoOptions);
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection with { Backdrop = null };
                     _activeRecordingType = CaptureType.Video;
+                    _activeVideoRecordingOptions = videoOptions;
                     _activeRecordingWasPickerInitiated = wasPickerInitiated;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
@@ -1026,7 +1368,7 @@ public partial class App : Application
                     AcquireDisplaySleepAssertionIfEnabled();
                     await AwaitRecorderPrepareAsync(recorderPrepare);
                     await Services.GetRequiredService<IVideoRecordingService>()
-                        .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, captureFlowCts.Token);
+                        .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, videoOptions, captureFlowCts.Token);
                     CaptureFlowTrace.Mark("video: StartAsync returned");
                     ActivateRecordingIndicatorForStartedCapture(CaptureType.Video);
                     UpdateRecordingState();
@@ -1120,12 +1462,16 @@ public partial class App : Application
             && monitors.Zip(Monitors).All(pair => pair.First.HMonitor == pair.Second.HMonitor);
     }
 
-    private Task PrepareRecorderAsync(CaptureType type, TargetSelection selection, CancellationToken cancellationToken)
+    private Task PrepareRecorderAsync(
+        CaptureType type,
+        TargetSelection selection,
+        VideoRecordingOptions videoOptions,
+        CancellationToken cancellationToken)
     {
         try
         {
             return type == CaptureType.Video
-                ? Services.GetRequiredService<IVideoRecordingService>().PrepareAsync(selection.Target, selection.Region, cancellationToken)
+                ? Services.GetRequiredService<IVideoRecordingService>().PrepareAsync(selection.Target, selection.Region, videoOptions, cancellationToken)
                 : Services.GetRequiredService<IGifRecordingService>().PrepareAsync(selection.Target, selection.Region, cancellationToken);
         }
         catch (Exception ex)
@@ -1133,6 +1479,22 @@ public partial class App : Application
             return Task.FromException(ex);
         }
     }
+
+    /// <summary>
+    /// Decides whether a video recording is one for Studio: by the command it was asked for
+    /// with, and only while Studio is switched on. The recording setup panel has no say in it.
+    /// </summary>
+    private StudioRecordingIntent StudioRecording =>
+        _studioRecordingIntent ??= new StudioRecordingIntent(Services.GetRequiredService<ICaptureSettings>());
+
+    /// <summary>
+    /// The per-recording options for a video. Anything other than a recording made for Studio gets
+    /// <see cref="VideoRecordingOptions.Default"/>, which is the ordinary recording path.
+    /// </summary>
+    private VideoRecordingOptions BuildVideoRecordingOptions(CaptureType type) =>
+        type == CaptureType.Video
+            ? StudioRecording.CreateOptions(AppVersionInfo.GetCurrentVersionText())
+            : VideoRecordingOptions.Default;
 
     /// <summary>
     /// Waits for a background pre-warm to settle. Failures are swallowed here: StartAsync will
@@ -1505,7 +1867,11 @@ public partial class App : Application
         }
     }
 
-    private async Task<RecordingSetupResult?> ShowRecordingSetupAsync(CaptureType type, TargetSelection selection, ICaptureSettings settings)
+    private async Task<RecordingSetupResult?> ShowRecordingSetupAsync(
+        CaptureType type,
+        TargetSelection selection,
+        ICaptureSettings settings,
+        bool isStudioRecording)
     {
         PixelRect? region = null;
         if (selection.Region is { } selectedRegion)
@@ -1530,7 +1896,8 @@ public partial class App : Application
                     webcamDevices,
                     mediaPermissions,
                     monitor,
-                    region);
+                    region,
+                    isStudioRecording);
             }
             finally
             {
@@ -1549,7 +1916,8 @@ public partial class App : Application
             setupWebcamDevices,
             setupMediaPermissions,
             setupMonitor,
-            region);
+            region,
+            isStudioRecording);
     }
 
     private static void ApplyRecordingSetup(CaptureType type, RecordingSetupResult setup, ICaptureSettings settings)
@@ -1705,7 +2073,13 @@ public partial class App : Application
 
     private readonly record struct TargetSelection(CaptureTarget Target, PixelRect? Region, MonitorInfo? Monitor, CapturedFrame? Backdrop = null);
 
-    private async Task ToggleVideoAsync()
+    private Task ToggleVideoAsync() => ToggleVideoAsync(VideoRecordingCommand.RecordVideo);
+
+    /// <summary>
+    /// Record video, from the tray menu or from its global hotkey: stops the video recording
+    /// that is running, or sets up a new one, which is always an ordinary recording.
+    /// </summary>
+    private async Task ToggleVideoAsync(VideoRecordingCommand command)
     {
         var video = Services.GetRequiredService<IVideoRecordingService>();
         var gif = Services.GetRequiredService<IGifRecordingService>();
@@ -1723,11 +2097,34 @@ public partial class App : Application
                 return;
             }
 
-            await BeginCaptureAsync(CaptureType.Video);
+            await BeginCaptureAsync(CaptureType.Video, videoCommand: command);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Video recording toggle failed: {ex}");
+            UpdateRecordingState();
+        }
+    }
+
+    /// <summary>
+    /// Studio recording, from the tray menu: sets up a video recording that keeps the screen and
+    /// the camera as separate layers and opens in Tiny Clips Studio. It only starts one: a
+    /// recording that is running is stopped with the Video or GIF command, or its hotkey.
+    /// </summary>
+    private async Task StartStudioRecordingAsync()
+    {
+        try
+        {
+            if (IsAnyRecordingActive())
+            {
+                return;
+            }
+
+            await BeginCaptureAsync(CaptureType.Video, videoCommand: VideoRecordingCommand.StudioRecording);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio recording could not be started: {ex}");
             UpdateRecordingState();
         }
     }
@@ -1765,6 +2162,7 @@ public partial class App : Application
         var video = Services.GetRequiredService<IVideoRecordingService>();
         var gif = Services.GetRequiredService<IGifRecordingService>();
         video.RecordingCompleted += OnRecordingCompleted;
+        video.StudioRecordingCompleted += OnStudioRecordingCompleted;
         gif.RecordingCompleted += OnRecordingCompleted;
         video.WebcamCaptureFailed += OnWebcamCaptureFailed;
     }
@@ -1873,6 +2271,7 @@ public partial class App : Application
             _activeRecordingType = null;
             var wasPickerInitiated = _activeRecordingWasPickerInitiated;
             _activeRecordingWasPickerInitiated = false;
+            _completedRecordingWasPickerInitiated = wasPickerInitiated;
             if (_isExiting)
             {
                 return;
@@ -1888,6 +2287,16 @@ public partial class App : Application
                 return;
             }
 
+            if (type == CaptureType.Video && _activeVideoRecordingOptions.RecordForStudio)
+            {
+                // A recording made for Studio comes back with a path only when no project
+                // could be made of it: what is kept is the screen recording, as an ordinary
+                // video, without the camera. Nothing else says so. No editor opens, and the
+                // video goes the way any video does below: to the trimmer, or to the save
+                // folder, as the trimmer switch says.
+                ShowMessageNotification(StudioFallbackNotice(path));
+            }
+
             Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -1901,6 +2310,146 @@ public partial class App : Application
                 await FinalizeClipAsync(path, type);
                 ReopenPickerAfterCaptureIfNeeded(type, wasPickerInitiated);
             }
+        });
+    }
+
+    /// <summary>
+    /// What to say when a recording made for Studio was kept as an ordinary video. The recorder
+    /// moves the screen recording to the save folder. Where it cannot be moved either, it stays
+    /// where it was written, in the folder of the project that could not be made, and the
+    /// storage cleanup removes that folder a day later.
+    /// </summary>
+    private static string StudioFallbackNotice(string path)
+    {
+        var staysInItsProject = false;
+        try
+        {
+            var projects = Path.GetFullPath(Services.GetRequiredService<IStudioProjectStore>().RootDirectory);
+            staysInItsProject = Path.GetFullPath(path).StartsWith(
+                projects.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Could not tell where the recording {path} was kept: {ex}");
+        }
+
+        return staysInItsProject
+            ? "The Studio project could not be saved. The screen recording is listed under Recent captures and is kept for one day."
+            : "The Studio project could not be saved, so the recording was kept as a regular video.";
+    }
+
+    private void OnStudioRecordingCompleted(object? sender, string projectId)
+    {
+        // The recorder raises RecordingCompleted(null) just before this, so OnRecordingCompleted
+        // has already queued the recording UI cleanup ahead of this callback.
+        _dispatcher?.TryEnqueue(() =>
+        {
+            var wasPickerInitiated = _completedRecordingWasPickerInitiated;
+            _completedRecordingWasPickerInitiated = false;
+            if (_isExiting)
+            {
+                return;
+            }
+
+            OpenStudioProject(projectId, wasPickerInitiated);
+        });
+    }
+
+    /// <summary>
+    /// Opens a Studio project for editing, as a finished Studio recording asks for. While the
+    /// Studio preview is switched off the project stays in the store as a draft and the user is
+    /// only told that it was saved. A recording started from the capture picker goes back to the
+    /// picker afterwards, as it does after the trimmer: here, once the editor window has closed.
+    /// Must be called on the UI thread.
+    /// </summary>
+    private void OpenStudioProject(string projectId, bool pickerInitiated)
+    {
+        if (Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            if (OpenStudioWindow(projectId) is { } window && pickerInitiated)
+            {
+                void OnEditorClosed(object sender, WindowEventArgs args)
+                {
+                    window.Closed -= OnEditorClosed;
+                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated: true);
+                }
+
+                window.Closed += OnEditorClosed;
+            }
+
+            return;
+        }
+
+        Debug.WriteLine($"Studio project ready: {projectId}");
+        Announce(
+            AutomationNotificationKind.ActionCompleted,
+            AutomationNotificationProcessing.MostRecent,
+            "Video saved as a Tiny Clips Studio project.",
+            "StudioProjectSaved");
+        ShowMessageNotification("Saved as a Tiny Clips Studio project");
+        ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated);
+    }
+
+    /// <summary>
+    /// Opens a project in the Studio editor, or brings the window that already has it open to the
+    /// front. Called for a finished Studio recording, by Settings for a draft, and by the Clips
+    /// Library and the recent captures for a video that was exported from a project. Must be
+    /// called on the UI thread.
+    /// </summary>
+    /// <returns>
+    /// The window, or null when none was opened: the Studio preview is switched off, the app is
+    /// exiting, or the project is being deleted.
+    /// </returns>
+    internal Window? OpenStudioWindow(string projectId)
+    {
+        if (_isExiting || !Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            return null;
+        }
+
+        return StudioWindows().Open(projectId);
+    }
+
+    /// <summary>The service that opens Studio editors, wired to the app the first time it is asked for.</summary>
+    private StudioWindowService StudioWindows()
+    {
+        if (_studioWindows is null)
+        {
+            _studioWindows = Services.GetRequiredService<StudioWindowService>();
+            _studioWindows.ActivateWindow = ActivateWindowToForeground;
+            _studioWindows.Notify = ShowMessageNotification;
+            _studioWindows.Exported += OnStudioExported;
+            _studioWindows.ScreenRecordingSaved += OnStudioExported;
+            _studioWindows.ErrorReported += (_, e) => ShowMessageNotification(e.Message);
+        }
+
+        return _studioWindows;
+    }
+
+    /// <summary>
+    /// A video exported from Studio is a saved video like any other: it is copied, revealed and
+    /// announced as the settings say, and joins the recent captures, as a trimmed video does. So
+    /// is a screen recording that was saved out of a project an editor could not show.
+    /// </summary>
+    private void OnStudioExported(object? sender, StudioExportedEventArgs e) => AnnounceStudioVideoSaved(e.Path);
+
+    /// <summary>
+    /// Treats a video that came out of a Studio project as the saved video it is. Called for an
+    /// export, and by Settings for a screen recording saved from the drafts list. May be called
+    /// from any thread.
+    /// </summary>
+    internal void AnnounceStudioVideoSaved(string path)
+    {
+        _dispatcher?.TryEnqueue(async () =>
+        {
+            if (_isExiting)
+            {
+                return;
+            }
+
+            await FinalizeClipAsync(path, CaptureType.Video);
+            Services.GetRequiredService<IRecentCaptureService>().Record(path, CaptureType.Video);
         });
     }
 
@@ -2053,8 +2602,11 @@ public partial class App : Application
             {
                 var settings = Services.GetRequiredService<ICaptureSettings>();
                 AcquireDisplaySleepAssertionIfEnabled();
+                // A restart records the same kind of video again, so a Studio recording stays
+                // one, unless Studio has been switched off since it started.
+                _activeVideoRecordingOptions = StudioRecording.OptionsAtStart(_activeVideoRecordingOptions);
                 await Services.GetRequiredService<IVideoRecordingService>()
-                    .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes);
+                    .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes, _activeVideoRecordingOptions);
             }
             else
             {
@@ -2570,6 +3122,13 @@ public partial class App : Application
             ToolTipService.SetToolTip(_gifTile.Button, string.IsNullOrEmpty(accel) ? label : $"{label} ({accel})");
             _gifTile.Button.IsEnabled = !video.IsRecording;
         }
+
+        // The Studio tile only starts a recording. While one runs, of either kind, it is
+        // greyed: a Studio recording is a video recording, and the Video tile says Stop for it.
+        if (_studioTile is not null)
+        {
+            _studioTile.Button.IsEnabled = !video.IsRecording && !gif.IsRecording;
+        }
     }
 
     // Register app notifications only when a toast is actually needed. That keeps packaged
@@ -2624,7 +3183,8 @@ public partial class App : Application
         ShowSaveNotification(path);
     }
 
-    private static void ShowTextRecognitionNotification(string message)
+    /// <summary>Shows a one-line toast whether or not save notifications are turned on.</summary>
+    internal static void ShowMessageNotification(string message)
     {
         try
         {
@@ -2634,7 +3194,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to show text recognition notification: {ex}");
+            Debug.WriteLine($"Failed to show notification '{message}': {ex}");
         }
     }
 
@@ -2988,7 +3548,7 @@ public partial class App : Application
                 $"Record video ({videoBinding.DisplayString})",
                 videoBinding.ModifiersValue,
                 videoBinding.VirtualKey,
-                () => _ = ToggleVideoAsync());
+                () => _ = ToggleVideoAsync(VideoRecordingCommand.RecordVideoHotKey));
 
             var gifBinding = hotKeys.GetBinding(HotKeyAction.RecordGif);
             manager.Add(
@@ -3100,9 +3660,36 @@ public partial class App : Application
         {
             OpenScreenshotEditor(capture.Path, reopenPickerAfterClose: false);
         }
+        else if (capture.Type == CaptureType.Video && TryOpenStudioProjectForVideo(capture.Path))
+        {
+            // A video exported from Studio reopens its project, which is still editable.
+        }
         else
         {
             OpenTrimmer(capture.Path, capture.Type, isRecentCapture: true);
+        }
+    }
+
+    /// <summary>
+    /// Opens the Studio project a video was exported from. Returns false when Studio is switched
+    /// off, or the video did not come from a project that is still stored.
+    /// </summary>
+    private bool TryOpenStudioProjectForVideo(string path)
+    {
+        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            return false;
+        }
+
+        try
+        {
+            var projectId = Services.GetRequiredService<IStudioProjectStore>().FindProjectIdByExportPath(path);
+            return projectId is not null && OpenStudioWindow(projectId) is not null;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio project lookup failed for {path}: {ex}");
+            return false;
         }
     }
 
@@ -3322,6 +3909,19 @@ public partial class App : Application
         }
         _editorWindows.Clear();
         _trimmerWindow?.Close();
+        if (_studioWindows is { } studioWindows)
+        {
+            try
+            {
+                // No questions on the way out: edits are saved and a running export is stopped.
+                await studioWindows.CloseAllForExitAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to close Studio windows on exit: {ex}");
+            }
+        }
+
         CapturePickerWindow.ReleasePooled();
         Application.Current.Exit();
         // No persistent host window keeps the process alive, so force termination
@@ -3349,7 +3949,11 @@ public partial class App : Application
             return;
         }
 
-        await BeginCaptureAsync(type, abortIfRecording: true);
+        // Nobody asked for this one: a video is of the kind that was asked for last.
+        await BeginCaptureAsync(
+            type,
+            abortIfRecording: true,
+            videoCommand: type == CaptureType.Video ? VideoRecordingCommand.PickerReturned : null);
     }
 
     private static bool IsAnyRecordingActive()

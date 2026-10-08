@@ -1,0 +1,1146 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using TinyClips.Core.Services.ClipsLibrary;
+
+namespace TinyClips.Core.Studio;
+
+public interface IStudioProjectStore
+{
+    string RootDirectory { get; }
+    StudioProjectPaths BeginRecording();
+    StudioProject CompleteRecording(string projectId, StudioProjectCreationRequest request);
+    StudioProjectPaths GetPaths(string projectId);
+    StudioProjectPaths GetPaths(StudioProject project);
+    bool Exists(string projectId);
+    StudioProject Load(string projectId);
+    StudioProject Save(StudioProject project);
+    void Delete(string projectId);
+    StudioProject MarkOpened(string projectId);
+
+    /// <summary>
+    /// Pins a project against automatic cleanup, or lets go of it again. It is written into the
+    /// project on disk at once and is not one of the editor's edits: nothing undoes it.
+    /// </summary>
+    StudioProject SetKeepSources(string projectId, bool keepSources);
+
+    IReadOnlyList<StudioProjectSummary> ListSummaries();
+
+    /// <summary>
+    /// The project folders whose <c>project.json</c> is there and cannot be read: damaged, or
+    /// written by a newer version. <see cref="ListSummaries"/> leaves them out and cleanup leaves
+    /// them alone, so this list is the only place they show up.
+    /// </summary>
+    IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects();
+
+    /// <summary>
+    /// The full path of the screen recording a project keeps in its own folder, or null when it
+    /// has none there: the project is built around a video kept elsewhere, the file is gone, or
+    /// there is no such project. A project whose <c>project.json</c> cannot be read is looked
+    /// for under the name every recording gets.
+    /// </summary>
+    string? FindScreenRecording(string projectId);
+
+    StudioStorageSummary GetStorageSummary();
+    StudioProject RecordExport(string projectId, string exportedPath);
+    string? FindProjectIdByExportPath(string exportedPath);
+    bool UpdateExportPath(string oldPath, string newPath);
+    bool RemoveExportPath(string exportedPath);
+    StudioProject GetOrCreateFlatProject(string videoPath, StudioRecordingSourceInfo video, string appVersion);
+    StudioEvents LoadEvents(string projectId);
+    void SaveEvents(string projectId, StudioEvents events);
+
+    /// <summary>
+    /// Deletes what the cleanup rules select: old projects whose video was exported, and
+    /// recordings that were never finished.
+    /// </summary>
+    /// <param name="options">The rules. Null means the defaults.</param>
+    /// <param name="inUseProjectIds">
+    /// Projects that are open in an editor or being recorded into. They are left alone, and the
+    /// storage limit is worked out without counting on their going.
+    /// </param>
+    /// <param name="isInUse">
+    /// Asked again for each project just before it is deleted, and true leaves it. The list
+    /// above is made before the cleanup starts, and reading every project takes a moment: a
+    /// project that is opened in that moment is not in the list, and would lose its folder from
+    /// under its editor. It is called while the store is locked, on the thread the cleanup runs
+    /// on, so it has to answer at once and must not wait for another thread.
+    /// </param>
+    StudioCleanupResult Cleanup(
+        StudioCleanupOptions? options = null,
+        IReadOnlyCollection<string>? inUseProjectIds = null,
+        Func<string, bool>? isInUse = null);
+
+    /// <summary>
+    /// Saves a copy of a project as a folder that can be kept elsewhere or taken to another
+    /// computer (section 14 of the project format): the files the project names, and beside
+    /// them a <c>.tinyclips</c> file named after the folder. That file is the project as
+    /// <c>project.json</c> has it, without its list of exported videos. The project in the
+    /// store is not changed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Where <paramref name="folder"/> is already there it is replaced only when asked to,
+    /// only when it is a project saved this way before
+    /// (<see cref="StudioProjectFolder.IsSavedProjectFolder"/>), and only when it holds nothing
+    /// a save does not write: the files the project in it names, its poster, and what a
+    /// system leaves in folders by itself
+    /// (<see cref="StudioProjectFolder.WhyASaveWouldNotReplace"/>). Anything else is left
+    /// exactly as it is and the save is refused. A folder that is replaced goes with
+    /// everything in it. The copy is made beside where it will be and put under its name once
+    /// it is whole, the project file last, so a folder that is replaced is whole until the
+    /// new one is. The folder it goes into has to be there.
+    /// </para>
+    /// <para>
+    /// Copying a recording takes as long as the recording is large: call this off the UI
+    /// thread. The store is not locked while the files are copied, so an editor saving an edit
+    /// does not wait for it. A save that fails or is cancelled leaves nothing: no new folder,
+    /// nothing beside it, and a folder that was to be replaced as it was. The one exception is
+    /// a file of the copy that something else has open and lets neither be renamed nor
+    /// deleted: the folder the copy was filled in then stays beside the target, with that
+    /// file in it.
+    /// </para>
+    /// </remarks>
+    /// <param name="folder">The folder to make. The <c>.tinyclips</c> file gets its name.</param>
+    /// <param name="replaceSavedProject">Whether a project saved there before may be replaced.</param>
+    /// <param name="progress">
+    /// Told how much of the recordings has been copied, from 0 to 1, on the thread the copy
+    /// runs on.
+    /// </param>
+    /// <exception cref="StudioProjectFolderException">
+    /// <see cref="StudioProjectFolderProblem.ExternalSource"/> for a project built around a
+    /// video kept elsewhere, <see cref="StudioProjectFolderProblem.MissingFile"/> when a
+    /// recording of the project is gone, <see cref="StudioProjectFolderProblem.DestinationExists"/>
+    /// when something that is not a saved project is where the folder would go, or a saved
+    /// project that was not to be replaced, and
+    /// <see cref="StudioProjectFolderProblem.DestinationHasOtherFiles"/> when a saved project
+    /// that was to be replaced holds something that is not part of it.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">The save was cancelled. Nothing is left of it.</exception>
+    void SaveProjectFolder(
+        string projectId,
+        string folder,
+        bool replaceSavedProject = false,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Makes a new project in the store from a <c>.tinyclips</c> file and the recordings beside
+    /// it, and returns it (section 14 of the project format). The folder is only read. The
+    /// project gets an id of its own, so opening the same file twice makes two projects, and it
+    /// starts as a draft: it has exported nothing on this computer, whatever its file says.
+    /// </summary>
+    /// <remarks>
+    /// Only the names of files in the folder are followed, so a project file cannot make the
+    /// app copy a file from outside its folder. Copying a recording takes as long as the
+    /// recording is large: call this off the UI thread. An open that fails or is cancelled
+    /// leaves nothing in the store. Where a file that was copied cannot be deleted because
+    /// something else has it open, its folder stays without a <c>project.json</c>, which
+    /// cleanup takes for a recording that never finished and removes after a day.
+    /// </remarks>
+    /// <param name="path">The <c>.tinyclips</c> file, or a folder with exactly one in it.</param>
+    /// <param name="progress">
+    /// Told how much of the recordings has been copied, from 0 to 1, on the thread the copy
+    /// runs on.
+    /// </param>
+    /// <exception cref="StudioProjectFolderException">
+    /// <see cref="StudioProjectFolderProblem.NotAProjectFile"/> when the path is neither, or
+    /// the file is larger than a project file gets,
+    /// <see cref="StudioProjectFolderProblem.Unreadable"/> when the file cannot be read as a
+    /// project, <see cref="StudioProjectFolderProblem.NewerVersion"/> when a later version
+    /// wrote it, <see cref="StudioProjectFolderProblem.ExternalSource"/> when it is built around
+    /// a video kept elsewhere, <see cref="StudioProjectFolderProblem.FileOutsideFolder"/> when
+    /// it names a recording by more than the name of a file in its folder, and
+    /// <see cref="StudioProjectFolderProblem.MissingFile"/> when a recording it names is not
+    /// beside it.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">The open was cancelled. Nothing is left of it.</exception>
+    StudioProject OpenProjectFolder(
+        string path,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed partial class StudioProjectStore : IStudioProjectStore
+{
+    public const string ProjectFileName = "project.json";
+    public const string EventsFileName = "events.json";
+    public const string ScreenFileName = "screen.mp4";
+    public const string CameraFileName = "camera.mp4";
+    public const string PosterFileName = "poster.jpg";
+
+    private static readonly Regex ProjectIdRegex = new(
+        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private readonly string _rootDirectory;
+    private readonly TimeProvider _timeProvider;
+    private readonly object _sync = new();
+    private readonly Dictionary<string, string> _exportIndex = new(StringComparer.OrdinalIgnoreCase);
+    private bool _exportIndexLoaded;
+
+    public StudioProjectStore(string? rootDirectory = null, TimeProvider? timeProvider = null)
+    {
+        _rootDirectory = rootDirectory ?? DefaultRootDirectory();
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    public string RootDirectory => _rootDirectory;
+
+    public static string DefaultRootDirectory() =>
+        Path.Combine(ClipsLibraryPaths.LocalDataDirectory(), "TinyClips", "Projects");
+
+    public StudioProjectPaths BeginRecording()
+    {
+        lock (_sync)
+        {
+            var projectId = Guid.NewGuid().ToString("D");
+            var paths = BuildPaths(projectId, null);
+            Directory.CreateDirectory(paths.ProjectDirectory);
+            return paths;
+        }
+    }
+
+    public StudioProject CompleteRecording(string projectId, StudioProjectCreationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateProjectId(projectId);
+
+        lock (_sync)
+        {
+            var project = BuildDefaultProject(projectId, request, _timeProvider.GetUtcNow().ToUniversalTime());
+            SaveProjectFile(ProjectDirectory(projectId), project);
+            _exportIndexLoaded = false;
+            return project;
+        }
+    }
+
+    public StudioProjectPaths GetPaths(string projectId)
+    {
+        ValidateProjectId(projectId);
+        return BuildPaths(projectId, null);
+    }
+
+    public StudioProjectPaths GetPaths(StudioProject project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ValidateProjectId(project.Id);
+        return BuildPaths(project.Id, project);
+    }
+
+    public bool Exists(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            return File.Exists(Path.Combine(ProjectDirectory(projectId), ProjectFileName));
+        }
+    }
+
+    public StudioProject Load(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            return LoadProjectFile(ProjectDirectory(projectId), projectId);
+        }
+    }
+
+    public StudioProject Save(StudioProject project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ValidateProjectId(project.Id);
+
+        lock (_sync)
+        {
+            var updated = project with { ModifiedAt = _timeProvider.GetUtcNow().ToUniversalTime() };
+            SaveProjectFile(ProjectDirectory(updated.Id), updated);
+            _exportIndexLoaded = false;
+            return updated;
+        }
+    }
+
+    public void Delete(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            var directory = ProjectDirectory(projectId);
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+                _exportIndexLoaded = false;
+            }
+        }
+    }
+
+    public StudioProject MarkOpened(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            var project = LoadProjectFile(ProjectDirectory(projectId), projectId);
+            var updated = project with { LastOpenedAt = _timeProvider.GetUtcNow().ToUniversalTime() };
+            SaveProjectFile(ProjectDirectory(projectId), updated);
+            return updated;
+        }
+    }
+
+    public StudioProject SetKeepSources(string projectId, bool keepSources)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            var directory = ProjectDirectory(projectId);
+            var project = LoadProjectFile(directory, projectId);
+            if (project.KeepSources == keepSources)
+            {
+                return project;
+            }
+
+            var updated = project with { KeepSources = keepSources };
+            SaveProjectFile(directory, updated);
+            return updated;
+        }
+    }
+
+    public IReadOnlyList<StudioProjectSummary> ListSummaries()
+    {
+        lock (_sync)
+        {
+            return EnumerateProjectFolders()
+                .Select(folder => TryLoadSummary(folder))
+                .Where(static summary => summary is not null)
+                .Select(static summary => summary!)
+                .OrderBy(summary => summary.CreatedAt)
+                .ThenBy(summary => summary.Id, StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
+    public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects()
+    {
+        lock (_sync)
+        {
+            var unreadable = new List<StudioUnreadableProject>();
+            foreach (var folder in EnumerateProjectFolders())
+            {
+                // Without the file it is a recording that never finished, which cleanup removes
+                // after a day.
+                if (!File.Exists(Path.Combine(folder.Directory, ProjectFileName)))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    LoadProjectFile(folder.Directory, folder.Id);
+                }
+                catch (Exception ex) when (CanSkipProjectRead(ex))
+                {
+                    unreadable.Add(new StudioUnreadableProject(
+                        folder.Id,
+                        FolderCreationTime(folder.Directory),
+                        DirectorySize(folder.Directory),
+                        File.Exists(Path.Combine(folder.Directory, ScreenFileName))));
+                }
+            }
+
+            return unreadable
+                .OrderBy(project => project.CreatedAt)
+                .ThenBy(project => project.Id, StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
+    public string? FindScreenRecording(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            var directory = ProjectDirectory(projectId);
+            string path;
+            try
+            {
+                var project = LoadProjectFile(directory, projectId);
+                if (project.Sources.Screen.External)
+                {
+                    return null;
+                }
+
+                path = Path.Combine(directory, RequirePlainFileName(project.Sources.Screen.File, "sources.screen.file"));
+            }
+            catch (Exception ex) when (CanSkipProjectRead(ex))
+            {
+                // What cannot be read does not say where its recording is. Every recording is
+                // written under the same name, so that is where it is looked for.
+                path = Path.Combine(directory, ScreenFileName);
+            }
+
+            return File.Exists(path) ? path : null;
+        }
+    }
+
+    public StudioStorageSummary GetStorageSummary()
+    {
+        var summaries = ListSummaries();
+        return new StudioStorageSummary(summaries.Count, summaries.Sum(summary => summary.SizeBytes));
+    }
+
+    public StudioProject RecordExport(string projectId, string exportedPath)
+    {
+        ValidateProjectId(projectId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(exportedPath);
+
+        lock (_sync)
+        {
+            var normalizedExportPath = NormalizePath(exportedPath);
+            var now = _timeProvider.GetUtcNow().ToUniversalTime();
+            StudioProject? updatedProject = null;
+
+            foreach (var folder in EnumerateProjectFolders())
+            {
+                StudioProject project;
+                try
+                {
+                    project = LoadProjectFile(folder.Directory, folder.Id);
+                }
+                catch (Exception ex) when (CanSkipProjectRead(ex))
+                {
+                    continue;
+                }
+
+                var exports = project.Exports
+                    .Where(export => !PathEquals(export.Path, normalizedExportPath))
+                    .ToArray();
+
+                if (project.Id == projectId)
+                {
+                    exports =
+                    [
+                        .. exports,
+                        new StudioExport { Path = normalizedExportPath, ExportedAt = now, Bytes = FileLength(normalizedExportPath) },
+                    ];
+                    updatedProject = project with { ModifiedAt = now, Exports = exports };
+                    SaveProjectFile(folder.Directory, updatedProject);
+                }
+                else if (exports.Length != project.Exports.Length)
+                {
+                    SaveProjectFile(folder.Directory, project with { ModifiedAt = now, Exports = exports });
+                }
+            }
+
+            if (updatedProject is null)
+            {
+                throw new DirectoryNotFoundException($"Studio project '{projectId}' does not exist.");
+            }
+
+            EnsureExportIndex(force: true);
+            return updatedProject;
+        }
+    }
+
+    public string? FindProjectIdByExportPath(string exportedPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(exportedPath);
+        lock (_sync)
+        {
+            EnsureExportIndex();
+            return _exportIndex.TryGetValue(NormalizePath(exportedPath), out var projectId) ? projectId : null;
+        }
+    }
+
+    public bool UpdateExportPath(string oldPath, string newPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newPath);
+
+        lock (_sync)
+        {
+            EnsureExportIndex();
+            if (!_exportIndex.TryGetValue(NormalizePath(oldPath), out var projectId))
+            {
+                return false;
+            }
+
+            var normalizedNewPath = NormalizePath(newPath);
+            var now = _timeProvider.GetUtcNow().ToUniversalTime();
+            var directory = ProjectDirectory(projectId);
+            var project = LoadProjectFile(directory, projectId);
+            var moved = project.Exports.LastOrDefault(export => PathEquals(export.Path, oldPath));
+            if (moved is null)
+            {
+                return false;
+            }
+
+            // The file at the new path is now this export, so no other entry may keep pointing at it.
+            var exports = project.Exports
+                .Where(export => !PathEquals(export.Path, oldPath) && !PathEquals(export.Path, normalizedNewPath))
+                .Append(moved with { Path = normalizedNewPath })
+                .ToArray();
+            SaveProjectFile(directory, project with { ModifiedAt = now, Exports = exports });
+
+            foreach (var folder in EnumerateProjectFolders().Where(folder => folder.Id != projectId))
+            {
+                try
+                {
+                    var other = LoadProjectFile(folder.Directory, folder.Id);
+                    var remaining = other.Exports.Where(export => !PathEquals(export.Path, normalizedNewPath)).ToArray();
+                    if (remaining.Length != other.Exports.Length)
+                    {
+                        SaveProjectFile(folder.Directory, other with { ModifiedAt = now, Exports = remaining });
+                    }
+                }
+                catch (Exception ex) when (CanSkipProjectRead(ex))
+                {
+                }
+            }
+
+            EnsureExportIndex(force: true);
+            return true;
+        }
+    }
+
+    public bool RemoveExportPath(string exportedPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(exportedPath);
+
+        lock (_sync)
+        {
+            EnsureExportIndex();
+            if (!_exportIndex.TryGetValue(NormalizePath(exportedPath), out var projectId))
+            {
+                return false;
+            }
+
+            var directory = ProjectDirectory(projectId);
+            var project = LoadProjectFile(directory, projectId);
+            var exports = project.Exports.Where(export => !PathEquals(export.Path, exportedPath)).ToArray();
+            if (exports.Length == project.Exports.Length)
+            {
+                return false;
+            }
+
+            SaveProjectFile(directory, project with { ModifiedAt = _timeProvider.GetUtcNow().ToUniversalTime(), Exports = exports });
+            EnsureExportIndex(force: true);
+            return true;
+        }
+    }
+
+    public StudioProject GetOrCreateFlatProject(string videoPath, StudioRecordingSourceInfo video, string appVersion)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(videoPath);
+        var normalizedVideoPath = NormalizePath(videoPath);
+
+        lock (_sync)
+        {
+            foreach (var folder in EnumerateProjectFolders())
+            {
+                try
+                {
+                    var flatProject = LoadProjectFile(folder.Directory, folder.Id);
+                    if (flatProject.Sources.Screen.External && PathEquals(flatProject.Sources.Screen.File, normalizedVideoPath))
+                    {
+                        return flatProject;
+                    }
+                }
+                catch (Exception ex) when (CanSkipProjectRead(ex))
+                {
+                }
+            }
+
+            var now = _timeProvider.GetUtcNow().ToUniversalTime();
+            var projectId = Guid.NewGuid().ToString("D");
+            var project = new StudioProject
+            {
+                Id = projectId,
+                Name = Path.GetFileNameWithoutExtension(normalizedVideoPath),
+                CreatedAt = now,
+                ModifiedAt = now,
+                LastOpenedAt = now,
+                App = new StudioAppInfo { Platform = "windows", Version = appVersion ?? string.Empty },
+                Sources = new StudioSources
+                {
+                    Screen = new StudioScreenSource
+                    {
+                        File = normalizedVideoPath,
+                        External = true,
+                        Width = video.Width,
+                        Height = video.Height,
+                        Duration = video.Duration,
+                        FrameRate = video.FrameRate,
+                    },
+                    Camera = null,
+                    Events = null,
+                },
+                Scenes = [new StudioScene { Layout = StudioLayout.Screen }],
+            };
+
+            SaveProjectFile(ProjectDirectory(projectId), project);
+            return project;
+        }
+    }
+
+    public StudioEvents LoadEvents(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            var path = Path.Combine(ProjectDirectory(projectId), EventsFileName);
+            return File.Exists(path) ? StudioProjectJson.ReadEvents(File.ReadAllText(path)) : new StudioEvents();
+        }
+    }
+
+    public void SaveEvents(string projectId, StudioEvents events)
+    {
+        ValidateProjectId(projectId);
+        ArgumentNullException.ThrowIfNull(events);
+
+        lock (_sync)
+        {
+            var directory = ProjectDirectory(projectId);
+            Directory.CreateDirectory(directory);
+            AtomicWrite(Path.Combine(directory, EventsFileName), StudioProjectJson.WriteEvents(events));
+        }
+    }
+
+    public StudioCleanupResult Cleanup(
+        StudioCleanupOptions? options = null,
+        IReadOnlyCollection<string>? inUseProjectIds = null,
+        Func<string, bool>? isInUse = null)
+    {
+        if (inUseProjectIds is not null)
+        {
+            foreach (var id in inUseProjectIds)
+            {
+                ValidateProjectId(id);
+            }
+        }
+
+        lock (_sync)
+        {
+            var now = _timeProvider.GetUtcNow().ToUniversalTime();
+            var inUse = new HashSet<string>(inUseProjectIds ?? [], StringComparer.Ordinal);
+            var summaries = new List<StudioProjectSummary>();
+            var unfinishedRecordings = new List<string>();
+
+            foreach (var folder in EnumerateProjectFolders())
+            {
+                if (!File.Exists(Path.Combine(folder.Directory, ProjectFileName)))
+                {
+                    if (!inUse.Contains(folder.Id) && IsOlderThanUnfinishedRecordingLimit(folder.Directory, now))
+                    {
+                        unfinishedRecordings.Add(folder.Id);
+                    }
+
+                    continue;
+                }
+
+                var summary = TryLoadSummary(folder);
+                if (summary is not null)
+                {
+                    summaries.Add(summary);
+                }
+            }
+
+            var plan = StudioCleanupPolicy.Plan(summaries, now, options, inUse);
+            var candidates = unfinishedRecordings.Concat(plan.ProjectIdsToDelete).Distinct(StringComparer.Ordinal).ToArray();
+            var deleted = new List<string>();
+
+            foreach (var projectId in candidates)
+            {
+                // Asked now, with the store locked: an editor reads its project through the
+                // store before it opens any of its files, so a project that is not in use at
+                // this moment is gone before an editor can have anything of it open.
+                if (isInUse?.Invoke(projectId) == true)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var directory = ProjectDirectory(projectId);
+                    if (Directory.Exists(directory))
+                    {
+                        Directory.Delete(directory, recursive: true);
+                        deleted.Add(projectId);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+
+            if (deleted.Count > 0)
+            {
+                _exportIndexLoaded = false;
+            }
+
+            return new StudioCleanupResult(deleted.Count, deleted.ToArray());
+        }
+    }
+
+    internal static StudioProject BuildDefaultProjectForRecording(string projectId, StudioProjectCreationRequest request, DateTimeOffset now)
+    {
+        ValidateProjectId(projectId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var hasCamera = request.Camera is not null;
+        var look = request.Look;
+        var screen = (look?.Screen ?? new StudioScreenStyle()) with { Crop = null };
+        var camera = (look?.Camera ?? new StudioCameraStyle()) with { Crop = null };
+        var firstScene = new StudioScene
+        {
+            Layout = hasCamera ? StudioLayout.Bubble : StudioLayout.Screen,
+            Bubble = new StudioBubble { Anchor = request.BubbleAnchor },
+        };
+
+        return new StudioProject
+        {
+            Id = projectId,
+            Name = request.Name ?? string.Empty,
+            CreatedAt = now.ToUniversalTime(),
+            ModifiedAt = now.ToUniversalTime(),
+            LastOpenedAt = now.ToUniversalTime(),
+            App = new StudioAppInfo { Platform = "windows", Version = request.AppVersion ?? string.Empty },
+            Sources = new StudioSources
+            {
+                Screen = new StudioScreenSource
+                {
+                    File = ScreenFileName,
+                    Width = request.Screen.Width,
+                    Height = request.Screen.Height,
+                    Duration = request.Screen.Duration,
+                    FrameRate = request.Screen.FrameRate,
+                },
+                Camera = request.Camera is null
+                    ? null
+                    : new StudioCameraSource
+                    {
+                        File = CameraFileName,
+                        Width = request.Camera.Width,
+                        Height = request.Camera.Height,
+                        Duration = request.Camera.Duration,
+                        StartOffset = request.Camera.StartOffset,
+                    },
+                Events = EventsFileName,
+            },
+            Canvas = look?.Canvas ?? new StudioCanvas(),
+            Screen = screen,
+            Camera = camera,
+            // With a camera, what was changed while recording becomes scenes (section 9.1).
+            Scenes = hasCamera
+                ? StudioRecordingBuilder.BuildScenes(firstScene, request.CameraCorners, request.LayoutMarkers, request.Screen.Duration)
+                : [firstScene],
+            Edits = new StudioEdits { TrimStart = hasCamera ? Math.Max(0, request.Camera!.StartOffset) : 0 },
+            Overlays = new StudioOverlays { Clicks = request.ClickOverlay, Branding = request.Branding },
+        };
+    }
+
+    private StudioProject BuildDefaultProject(string projectId, StudioProjectCreationRequest request, DateTimeOffset now) =>
+        BuildDefaultProjectForRecording(projectId, request, now);
+
+    private StudioProjectPaths BuildPaths(string projectId, StudioProject? project)
+    {
+        ValidateProjectId(projectId);
+        var projectDirectory = ProjectDirectory(projectId);
+        var screenPath = project?.Sources.Screen.External == true
+            ? NormalizePath(project.Sources.Screen.File)
+            : Path.Combine(projectDirectory, RequirePlainFileName(project?.Sources.Screen.File ?? ScreenFileName, "sources.screen.file"));
+        var cameraPath = project is null
+            ? Path.Combine(projectDirectory, CameraFileName)
+            : project.Sources.Camera is null ? null : Path.Combine(projectDirectory, RequirePlainFileName(project.Sources.Camera.File, "sources.camera.file"));
+        var eventsPath = Path.Combine(projectDirectory, RequirePlainFileName(project?.Sources.Events ?? EventsFileName, "sources.events"));
+
+        return new StudioProjectPaths(
+            projectId,
+            projectDirectory,
+            Path.Combine(projectDirectory, ProjectFileName),
+            screenPath,
+            cameraPath,
+            eventsPath,
+            Path.Combine(projectDirectory, PosterFileName));
+    }
+
+    private void EnsureExportIndex(bool force = false)
+    {
+        if (_exportIndexLoaded && !force)
+        {
+            return;
+        }
+
+        _exportIndex.Clear();
+        foreach (var folder in EnumerateProjectFolders())
+        {
+            try
+            {
+                var project = LoadProjectFile(folder.Directory, folder.Id);
+                foreach (var export in project.Exports.Where(export => !string.IsNullOrWhiteSpace(export.Path)))
+                {
+                    _exportIndex[NormalizePath(export.Path)] = project.Id;
+                }
+            }
+            catch (Exception ex) when (CanSkipProjectRead(ex))
+            {
+            }
+        }
+
+        _exportIndexLoaded = true;
+    }
+
+    private StudioProjectSummary? TryLoadSummary(ProjectFolder folder)
+    {
+        try
+        {
+            var project = LoadProjectFile(folder.Directory, folder.Id);
+            var isFlat = project.Sources.Screen.External;
+            var externalExists = !isFlat || File.Exists(project.Sources.Screen.File);
+            var sourceExists = isFlat
+                ? externalExists
+                : File.Exists(Path.Combine(folder.Directory, project.Sources.Screen.File));
+
+            // Looked at where each video was saved. One on a drive that is not connected counts
+            // as not there, which keeps the project: the safe side of not knowing.
+            var exportMissing = project.Exports.Length > 0 && !project.Exports.Any(IsStillWhereItWasSaved);
+            return new StudioProjectSummary(
+                folder.Id,
+                project.Name,
+                project.CreatedAt,
+                project.LastOpenedAt,
+                project.Exports.Length == 0,
+                isFlat,
+                project.KeepSources,
+                DirectorySize(folder.Directory),
+                externalExists,
+                exportMissing,
+                sourceExists);
+        }
+        catch (Exception ex) when (CanSkipProjectRead(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether the video of an export is still where it was saved: a file is at its path and,
+    /// where the export says how large the video was, the file is that large. A file of another
+    /// size is another video that has taken the name, or the same one changed since. Either way
+    /// it is not what the project exported, and counting it would let cleanup remove a project
+    /// that holds the only copy of its recording.
+    /// </summary>
+    private static bool IsStillWhereItWasSaved(StudioExport export)
+    {
+        if (string.IsNullOrWhiteSpace(export.Path) || FileLength(export.Path) is not { } length)
+        {
+            return false;
+        }
+
+        return export.Bytes is not > 0 || length == export.Bytes;
+    }
+
+    /// <summary>The size of a file in bytes, or null where there is no file or it cannot be read.</summary>
+    private static long? FileLength(string path)
+    {
+        try
+        {
+            var file = new FileInfo(path);
+            return file.Exists ? file.Length : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
+        {
+            return null;
+        }
+    }
+
+    private IEnumerable<ProjectFolder> EnumerateProjectFolders()
+    {
+        if (!Directory.Exists(_rootDirectory))
+        {
+            return [];
+        }
+
+        return Directory.EnumerateDirectories(_rootDirectory)
+            .Select(directory => new ProjectFolder(Path.GetFileName(directory), directory))
+            .Where(folder => IsValidProjectId(folder.Id))
+            .ToArray();
+    }
+
+    private StudioProject LoadProjectFile(string projectDirectory, string projectId)
+    {
+        var project = StudioProjectJson.ReadProject(File.ReadAllText(Path.Combine(projectDirectory, ProjectFileName)));
+        return project with { Id = projectId };
+    }
+
+    private void SaveProjectFile(string projectDirectory, StudioProject project)
+    {
+        ValidateProjectId(project.Id);
+        Directory.CreateDirectory(projectDirectory);
+        AtomicWrite(Path.Combine(projectDirectory, ProjectFileName), StudioProjectJson.WriteProject(project));
+    }
+
+    private static void AtomicWrite(string path, string contents)
+    {
+        var temporaryPath = path + ".tmp";
+        File.WriteAllText(temporaryPath, contents);
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                File.Move(temporaryPath, path, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (attempt < 2 && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(25 * (attempt + 1));
+            }
+        }
+
+        File.Move(temporaryPath, path, overwrite: true);
+    }
+
+    private string ProjectDirectory(string projectId)
+    {
+        ValidateProjectId(projectId);
+        return Path.Combine(_rootDirectory, projectId);
+    }
+
+    private static bool IsOlderThanUnfinishedRecordingLimit(string directory, DateTimeOffset now)
+    {
+        var creationTime = new DirectoryInfo(directory).CreationTimeUtc;
+        return creationTime <= (now - TimeSpan.FromHours(24)).UtcDateTime;
+    }
+
+    private static DateTimeOffset FolderCreationTime(string directory)
+    {
+        try
+        {
+            return new DateTimeOffset(new DirectoryInfo(directory).CreationTimeUtc, TimeSpan.Zero);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return DateTimeOffset.UnixEpoch;
+        }
+    }
+
+    private static long DirectorySize(string directory)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories).Sum(path => new FileInfo(path).Length);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    private static string NormalizePath(string path) =>
+        Path.GetFullPath(path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar));
+
+    private static bool PathEquals(string left, string right) =>
+        string.Equals(NormalizePath(left), NormalizePath(right), StringComparison.OrdinalIgnoreCase);
+
+    private static bool CanSkipProjectRead(Exception ex) =>
+        ex is StudioProjectInvalidException or StudioUnsupportedSchemaVersionException or IOException or UnauthorizedAccessException or JsonException;
+
+    private static bool IsValidProjectId(string? projectId) =>
+        projectId is not null && ProjectIdRegex.IsMatch(projectId);
+
+    // The reader already rejects these, but a project built in memory has not been through it.
+    private static string RequirePlainFileName(string fileName, string property) =>
+        StudioProjectJson.IsPlainFileName(fileName)
+            ? fileName
+            : throw new StudioProjectInvalidException($"Property {property} must be a file name.") { FileNameProperty = property };
+
+    private static void ValidateProjectId(string? projectId)
+    {
+        if (!IsValidProjectId(projectId))
+        {
+            throw new ArgumentException("Project id must be a lowercase hyphenated GUID.", nameof(projectId));
+        }
+    }
+
+    private readonly record struct ProjectFolder(string Id, string Directory);
+}
+
+public sealed record StudioRecordingSourceInfo(int Width, int Height, double Duration, double FrameRate = 30);
+
+public sealed record StudioCameraSourceInfo(int Width, int Height, double Duration, double StartOffset = 0);
+
+/// <param name="CameraCorners">
+/// The corners the camera was in while recording, with the time it got to each. With
+/// <paramref name="LayoutMarkers"/> they become the project's scenes (section 9.1 of the format).
+/// </param>
+/// <param name="LayoutMarkers">The layouts chosen while recording, with the time of each.</param>
+public sealed record StudioProjectCreationRequest(
+    string Name,
+    StudioRecordingSourceInfo Screen,
+    StudioCameraSourceInfo? Camera,
+    StudioAnchor BubbleAnchor,
+    StudioClickOverlay ClickOverlay,
+    bool Branding,
+    string AppVersion,
+    StudioLook? Look = null,
+    IReadOnlyList<StudioCameraCornerEvent>? CameraCorners = null,
+    IReadOnlyList<StudioLayoutMarker>? LayoutMarkers = null);
+
+public sealed record StudioProjectPaths(
+    string ProjectId,
+    string ProjectDirectory,
+    string ProjectJsonPath,
+    string ScreenPath,
+    string? CameraPath,
+    string EventsPath,
+    string PosterPath);
+
+/// <param name="IsDraft">No video was ever exported from the project.</param>
+/// <param name="ExportMissing">
+/// Videos were exported and none of them is where it was saved any more. The project is then the
+/// only copy of the recording, as a draft is, and is treated as one: listed with the drafts, and
+/// never removed by cleanup.
+/// </param>
+/// <param name="SourceExists">
+/// Whether the recording the project is made around is still there to open: the screen
+/// recording in its folder, or for a project built around a video kept elsewhere, that video.
+/// </param>
+public sealed record StudioProjectSummary(
+    string Id,
+    string Name,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset LastOpenedAt,
+    bool IsDraft,
+    bool IsFlat,
+    bool KeepSources,
+    long SizeBytes,
+    bool ExternalVideoExists = true,
+    bool ExportMissing = false,
+    bool SourceExists = true)
+{
+    /// <summary>
+    /// Whether cleanup may remove the project: a video exported from it is still where it was
+    /// saved, the project is not pinned, it is not built around a video kept elsewhere, and it
+    /// says when it was last opened. A project file without that time reads as the start of
+    /// 1970, which would make the project the oldest there is and the first to go.
+    /// </summary>
+    public bool IsRemovableByCleanup =>
+        !IsDraft && !ExportMissing && !KeepSources && !IsFlat && LastOpenedAt != DateTimeOffset.UnixEpoch;
+
+    /// <summary>When the project was last worked on: when it was last open, or failing that recorded.</summary>
+    public DateTimeOffset LastUsedAt => CreatedAt > LastOpenedAt ? CreatedAt : LastOpenedAt;
+
+    /// <summary>
+    /// Whether the project holds the only copy of its recording: nothing was exported from it,
+    /// or what was exported is gone. The Settings list calls both drafts.
+    /// </summary>
+    public bool IsDraftOrLostItsExport => (IsDraft || ExportMissing) && !IsFlat;
+
+    /// <summary>
+    /// The projects the tray menu lists beside the saved captures: those that hold the only
+    /// copy of a recording that is still there to open. A project with an exported video is in
+    /// that menu already, as the video, which opens its project.
+    /// </summary>
+    public static IReadOnlyList<StudioProjectSummary> MenuDrafts(IEnumerable<StudioProjectSummary> summaries)
+    {
+        ArgumentNullException.ThrowIfNull(summaries);
+        return summaries.Where(static summary => summary.IsDraftOrLostItsExport && summary.SourceExists).ToArray();
+    }
+
+    /// <summary>
+    /// The projects an Open recent menu lists: those that still have their recording, the one
+    /// opened last first, without the project the menu belongs to. Projects opened at the same
+    /// instant are in the order of their ids, so the menu does not shuffle.
+    /// </summary>
+    /// <param name="excludingId">The project the menu belongs to, or null to leave none out.</param>
+    /// <param name="limit">How many to list at most. Zero or less lists none.</param>
+    public static IReadOnlyList<StudioProjectSummary> Recent(
+        IEnumerable<StudioProjectSummary> summaries,
+        string? excludingId,
+        int limit)
+    {
+        ArgumentNullException.ThrowIfNull(summaries);
+        return summaries
+            .Where(summary => !string.Equals(summary.Id, excludingId, StringComparison.Ordinal) && summary.SourceExists)
+            .OrderByDescending(static summary => summary.LastOpenedAt)
+            .ThenBy(static summary => summary.Id, StringComparer.Ordinal)
+            .Take(Math.Max(0, limit))
+            .ToArray();
+    }
+}
+
+/// <summary>A project folder whose <c>project.json</c> cannot be read.</summary>
+/// <param name="CreatedAt">When the folder was made, which is when the recording started.</param>
+/// <param name="HasScreenRecording">Whether a screen recording is in the folder to be saved out of it.</param>
+public sealed record StudioUnreadableProject(string Id, DateTimeOffset CreatedAt, long SizeBytes, bool HasScreenRecording);
+
+public sealed record StudioStorageSummary(int ProjectCount, long TotalBytes);
+
+public sealed record StudioCleanupOptions(int RetentionDays = 30, long SizeCapBytes = 10L * 1024 * 1024 * 1024);
+
+public sealed record StudioCleanupPlan(string[] ProjectIdsToDelete);
+
+public sealed record StudioCleanupResult(int DeletedProjectCount, string[] ProjectIdsDeleted);
+
+public static class StudioCleanupPolicy
+{
+    public static StudioCleanupPlan Plan(
+        IEnumerable<StudioProjectSummary> summaries,
+        DateTimeOffset now,
+        StudioCleanupOptions? options = null,
+        IReadOnlyCollection<string>? inUseProjectIds = null)
+    {
+        ArgumentNullException.ThrowIfNull(summaries);
+        options ??= new StudioCleanupOptions();
+
+        var inUse = new HashSet<string>(inUseProjectIds ?? [], StringComparer.Ordinal);
+        var snapshot = summaries.ToArray();
+        var remaining = snapshot.ToDictionary(summary => summary.Id, StringComparer.Ordinal);
+        var selected = new List<string>();
+
+        foreach (var flat in snapshot.Where(summary => !inUse.Contains(summary.Id) && summary.IsFlat && !summary.ExternalVideoExists))
+        {
+            if (remaining.Remove(flat.Id))
+            {
+                selected.Add(flat.Id);
+            }
+        }
+
+        if (options.RetentionDays > 0)
+        {
+            var cutoff = now - TimeSpan.FromDays(options.RetentionDays);
+            foreach (var summary in snapshot.Where(summary => !inUse.Contains(summary.Id) && summary.IsRemovableByCleanup && summary.LastOpenedAt < cutoff))
+            {
+                if (remaining.Remove(summary.Id))
+                {
+                    selected.Add(summary.Id);
+                }
+            }
+        }
+
+        if (options.SizeCapBytes > 0)
+        {
+            // The limit is on what cleanup may remove. Drafts, pinned projects and the like are
+            // not counted: they are never removed, and counted they would use the room up, so
+            // that every exported project went the moment it was exported.
+            var removable = remaining.Values
+                .Where(static summary => summary.IsRemovableByCleanup)
+                .OrderBy(summary => summary.LastOpenedAt)
+                .ThenBy(summary => summary.Id, StringComparer.Ordinal)
+                .ToArray();
+            var total = removable.Sum(summary => summary.SizeBytes);
+
+            // The one opened last stays, whatever it weighs. With that one alone over the limit,
+            // the limit would otherwise take a project the moment its editor closed.
+            foreach (var summary in removable.SkipLast(1).Where(summary => !inUse.Contains(summary.Id)))
+            {
+                if (total <= options.SizeCapBytes)
+                {
+                    break;
+                }
+
+                selected.Add(summary.Id);
+                total -= summary.SizeBytes;
+            }
+        }
+
+        return new StudioCleanupPlan(selected.ToArray());
+    }
+}

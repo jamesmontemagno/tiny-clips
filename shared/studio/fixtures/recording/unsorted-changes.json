@@ -1,0 +1,120 @@
+{
+  "description": "Changes are taken in the order of their times, whatever order the lists are in.",
+  "duration": 20,
+  "first": {
+    "start": 0,
+    "layout": "bubble",
+    "bubble": {
+      "anchor": "bottomRight",
+      "size": 0.24,
+      "offsetX": 0,
+      "offsetY": 0
+    },
+    "split": {
+      "cameraSide": "trailing",
+      "cameraFraction": 0.3
+    },
+    "transition": {
+      "kind": "cut",
+      "duration": 0.35
+    }
+  },
+  "cameraCorners": [
+    {
+      "t": 10,
+      "corner": "topLeft"
+    },
+    {
+      "t": 0,
+      "corner": "bottomRight"
+    },
+    {
+      "t": 4,
+      "corner": "topRight"
+    }
+  ],
+  "markers": [
+    {
+      "t": 15,
+      "layout": "camera"
+    },
+    {
+      "t": 7,
+      "layout": "sideBySide"
+    }
+  ],
+  "expected": [
+    {
+      "start": 0,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "bottomRight",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "cut",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 4,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "topRight",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 7,
+      "layout": "sideBySide",
+      "bubble": {
+        "anchor": "topLeft",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 15,
+      "layout": "camera",
+      "bubble": {
+        "anchor": "topLeft",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    }
+  ]
+}

@@ -1,0 +1,160 @@
+{
+  "description": "A rate above 8 counts as 8 and one below 0.25 as 0.25. A rate of 1, of 0, below 0, or left out makes no range.",
+  "sourceDuration": 40,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 2,
+        "end": 4,
+        "rate": 16
+      },
+      {
+        "start": 6,
+        "end": 8,
+        "rate": 0.125
+      },
+      {
+        "start": 10,
+        "end": 12,
+        "rate": 1
+      },
+      {
+        "start": 14,
+        "end": 16,
+        "rate": 0
+      },
+      {
+        "start": 18,
+        "end": 20,
+        "rate": -2
+      },
+      {
+        "start": 22,
+        "end": 24
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 44.25,
+    "segments": [
+      {
+        "start": 0,
+        "end": 40
+      }
+    ],
+    "pieces": [
+      {
+        "start": 0,
+        "end": 2,
+        "rate": 1
+      },
+      {
+        "start": 2,
+        "end": 4,
+        "rate": 8
+      },
+      {
+        "start": 4,
+        "end": 6,
+        "rate": 1
+      },
+      {
+        "start": 6,
+        "end": 8,
+        "rate": 0.25
+      },
+      {
+        "start": 8,
+        "end": 40,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 2,
+        "output": 2.0
+      },
+      {
+        "source": 3,
+        "output": 2.125
+      },
+      {
+        "source": 4,
+        "output": 2.25
+      },
+      {
+        "source": 6,
+        "output": 4.25
+      },
+      {
+        "source": 7,
+        "output": 8.25
+      },
+      {
+        "source": 8,
+        "output": 12.25
+      },
+      {
+        "source": 11,
+        "output": 15.25
+      },
+      {
+        "source": 15,
+        "output": 19.25
+      },
+      {
+        "source": 19,
+        "output": 23.25
+      },
+      {
+        "source": 23,
+        "output": 27.25
+      },
+      {
+        "source": 40,
+        "output": 44.25
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 2,
+        "source": 2
+      },
+      {
+        "output": 2.125,
+        "source": 3.0
+      },
+      {
+        "output": 2.25,
+        "source": 4.0
+      },
+      {
+        "output": 4.25,
+        "source": 6.0
+      },
+      {
+        "output": 8.25,
+        "source": 7.0
+      },
+      {
+        "output": 12.25,
+        "source": 8.0
+      },
+      {
+        "output": 44.25,
+        "source": 40
+      }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "description": "trimEnd before trimStart clamps up to start and produces no kept segments.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 12,
+    "trimEnd": 5,
+    "cuts": [],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 0,
+    "segments": [],
+    "pieces": [],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 12,
+        "output": 0
+      },
+      {
+        "source": 20,
+        "output": 0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 12
+      },
+      {
+        "output": 0,
+        "source": 12
+      },
+      {
+        "output": 5,
+        "source": 12
+      }
+    ]
+  }
+}

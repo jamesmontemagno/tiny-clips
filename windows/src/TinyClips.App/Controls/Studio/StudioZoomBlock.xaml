@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<local:StudioRangeBlock
+    x:Class="TinyClips.App.Controls.Studio.StudioZoomBlock"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TinyClips.App.Controls.Studio"
+    IsTabStop="False">
+
+    <local:StudioRangeBlock.Resources>
+        <ResourceDictionary>
+            <!--
+                A zoom that is not selected is a tint of the accent color. In a contrast theme a
+                tint is not one of the theme's colors, so there the block takes the window color
+                and is told apart by its border.
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush
+                        x:Key="StudioZoomBlockFillBrush"
+                        Opacity="0.35"
+                        Color="{ThemeResource SystemAccentColorDark1}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush
+                        x:Key="StudioZoomBlockFillBrush"
+                        Opacity="0.35"
+                        Color="{ThemeResource SystemAccentColorLight2}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="StudioZoomBlockFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </local:StudioRangeBlock.Resources>
+
+    <Grid x:Name="Root">
+        <VisualStateManager.VisualStateGroups>
+            <!--  The selected zoom is filled, and has a thicker border, so it is not told apart by color alone.  -->
+            <VisualStateGroup x:Name="SelectionStates">
+                <VisualState x:Name="Unselected" />
+                <VisualState x:Name="Selected">
+                    <VisualState.Setters>
+                        <Setter Target="Fill.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <Setter Target="Fill.BorderBrush" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <Setter Target="Fill.BorderThickness" Value="2" />
+                        <Setter Target="ScaleText.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                        <Setter Target="PointerIcon.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                        <Setter Target="SuggestedIcon.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <Border
+            x:Name="Fill"
+            Background="{ThemeResource StudioZoomBlockFillBrush}"
+            BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource ControlCornerRadius}" />
+
+        <!--  The list item says all of this in its name, so screen readers skip the parts.  -->
+        <StackPanel
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            IsHitTestVisible="False"
+            Orientation="Horizontal"
+            Spacing="4">
+            <TextBlock
+                x:Name="ScaleText"
+                VerticalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="NoWrap" />
+            <!--  Follows the pointer.  -->
+            <FontIcon
+                x:Name="PointerIcon"
+                VerticalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw"
+                FontSize="12"
+                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                Glyph="&#xE8B0;"
+                Visibility="Collapsed" />
+            <!--  A suggestion that has not been changed. Its glyph is the one Suggest zooms has, set in code.  -->
+            <FontIcon
+                x:Name="SuggestedIcon"
+                VerticalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw"
+                FontSize="12"
+                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                Visibility="Collapsed" />
+        </StackPanel>
+
+        <!--  The handles at the two ends. On the selected zoom, which is filled, they take the color of what is written on it.  -->
+        <local:StudioLaneBlockHandles
+            x:Name="BlockHandles"
+            GripBrush="{ThemeResource TextFillColorPrimaryBrush}"
+            SelectedGripBrush="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+            TabBrush="{ThemeResource AccentFillColorDefaultBrush}"
+            TabGripBrush="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+    </Grid>
+</local:StudioRangeBlock>

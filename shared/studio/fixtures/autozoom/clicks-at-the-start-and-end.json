@@ -1,0 +1,172 @@
+{
+  "description": "A zoom cannot start before the recording or end after it, a click at the very end still counts, and clicks outside the recording's time are ignored.",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-4000-8000-000000000074",
+    "name": "Clicks at the start and the end",
+    "createdAt": "2026-10-02T22:41:00Z",
+    "modifiedAt": "2026-10-02T22:41:00Z",
+    "lastOpenedAt": "2026-10-02T22:41:00Z",
+    "app": {
+      "platform": "windows",
+      "version": "1.9.0"
+    },
+    "keepSources": false,
+    "sources": {
+      "screen": {
+        "file": "screen.mp4",
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "duration": 10,
+        "external": false
+      },
+      "camera": null,
+      "events": "events.json"
+    },
+    "canvas": {
+      "aspect": "auto",
+      "padding": 0.06,
+      "background": {
+        "style": "gradient",
+        "preset": "ocean",
+        "primary": "#2687E8",
+        "secondary": "#2EE0BF",
+        "image": null
+      }
+    },
+    "screen": {
+      "cornerRadius": 0.02,
+      "shadow": 0.5,
+      "crop": null
+    },
+    "camera": {
+      "shape": "circle",
+      "cornerRadius": 0.12,
+      "mirror": true,
+      "borderWidth": 0,
+      "borderColor": "#FFFFFF",
+      "shadow": 0.35,
+      "crop": null,
+      "cutout": "none"
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen",
+        "bubble": {
+          "anchor": "bottomRight",
+          "size": 0.24,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "split": {
+          "cameraSide": "trailing",
+          "cameraFraction": 0.3
+        },
+        "transition": {
+          "kind": "cut",
+          "duration": 0.35
+        }
+      }
+    ],
+    "zooms": [],
+    "edits": {
+      "trimStart": 0,
+      "trimEnd": null,
+      "cuts": [],
+      "speed": []
+    },
+    "audio": {
+      "muted": false,
+      "systemVolume": 1,
+      "microphoneVolume": 1
+    },
+    "overlays": {
+      "clicks": {
+        "enabled": true,
+        "color": "#0A84FF",
+        "size": 40,
+        "strokeWidth": 3,
+        "opacity": 0.85,
+        "duration": 0.45
+      },
+      "branding": false
+    },
+    "exports": []
+  },
+  "events": {
+    "schemaVersion": 1,
+    "capture": {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1.0,
+      "kind": "display"
+    },
+    "clicks": [
+      {
+        "t": -0.5,
+        "x": 0.5,
+        "y": 0.5,
+        "button": "left"
+      },
+      {
+        "t": 0.2,
+        "x": 0.3,
+        "y": 0.3,
+        "button": "left"
+      },
+      {
+        "t": 9.5,
+        "x": 0.7,
+        "y": 0.7,
+        "button": "left"
+      },
+      {
+        "t": 10,
+        "x": 0.7,
+        "y": 0.7,
+        "button": "left"
+      },
+      {
+        "t": 10.5,
+        "x": 0.7,
+        "y": 0.7,
+        "button": "left"
+      }
+    ],
+    "cursor": [],
+    "cameraCorners": [],
+    "markers": []
+  },
+  "expected": {
+    "zooms": [
+      {
+        "start": 0,
+        "end": 1.7,
+        "scale": 2,
+        "focus": {
+          "mode": "point",
+          "x": 0.3,
+          "y": 0.3
+        },
+        "easeIn": 0.5,
+        "easeOut": 0.5,
+        "origin": "auto"
+      },
+      {
+        "start": 8.9,
+        "end": 10,
+        "scale": 2,
+        "focus": {
+          "mode": "point",
+          "x": 0.7,
+          "y": 0.7
+        },
+        "easeIn": 0.5,
+        "easeOut": 0.5,
+        "origin": "auto"
+      }
+    ]
+  }
+}

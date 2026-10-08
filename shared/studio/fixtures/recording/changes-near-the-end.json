@@ -1,0 +1,75 @@
+{
+  "description": "A change in the last 0.3 s of the recording is left out. One a little before that is kept.",
+  "duration": 20,
+  "first": {
+    "start": 0,
+    "layout": "bubble",
+    "bubble": {
+      "anchor": "bottomRight",
+      "size": 0.24,
+      "offsetX": 0,
+      "offsetY": 0
+    },
+    "split": {
+      "cameraSide": "trailing",
+      "cameraFraction": 0.3
+    },
+    "transition": {
+      "kind": "cut",
+      "duration": 0.35
+    }
+  },
+  "cameraCorners": [
+    {
+      "t": 0,
+      "corner": "bottomRight"
+    },
+    {
+      "t": 19.6,
+      "corner": "topLeft"
+    },
+    {
+      "t": 19.95,
+      "corner": "topRight"
+    }
+  ],
+  "markers": [],
+  "expected": [
+    {
+      "start": 0,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "bottomRight",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "cut",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 19.6,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "topLeft",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    }
+  ]
+}

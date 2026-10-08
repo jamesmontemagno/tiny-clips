@@ -1,0 +1,476 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="TinyClips.App.Views.Studio.StudioWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:editing="using:TinyClips.Core.Studio.Editing"
+    xmlns:studio="using:TinyClips.App.Controls.Studio"
+    Title="Tiny Clips — Studio">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Native WinUI TitleBar: icon, title, drag region, and DWM chrome.  -->
+        <TitleBar
+            x:Name="AppTitleBar"
+            Title="Studio"
+            Grid.Row="0"
+            AutomationProperties.AutomationId="StudioTitleBar"
+            IsPaneToggleButtonVisible="False">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <!--  While the project opens.  -->
+        <StackPanel
+            Grid.Row="1"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="12"
+            Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}">
+            <ProgressRing
+                x:Name="LoadingRing"
+                Width="32"
+                Height="32"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="StudioLoadingRing"
+                AutomationProperties.Name="Opening the project"
+                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="StudioLoadingText"
+                Text="Opening&#x2026;" />
+        </StackPanel>
+
+        <!--
+            A project that cannot be shown: the reason, and where its recording is still there, a
+            way to save that. The panel takes the keyboard focus, so a screen reader reads the
+            reason first.
+        -->
+        <studio:StudioMessagePanel
+            x:Name="UnavailablePanel"
+            Grid.Row="1"
+            MaxWidth="484"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            AutomationProperties.AutomationId="StudioUnavailablePanel"
+            AutomationProperties.Name="{x:Bind ViewModel.UnavailableDescription, Mode=OneWay}"
+            Visibility="{x:Bind ViewModel.IsUnavailable, Mode=OneWay}">
+            <StackPanel Padding="32" Spacing="12">
+                <FontIcon
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AccessibilityView="Raw"
+                    FontSize="34"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Glyph="&#xE7BA;" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioUnavailableHeading"
+                    AutomationProperties.HeadingLevel="Level1"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="{x:Bind ViewModel.UnavailableHeading}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioUnavailableMessage"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.UnavailableMessage, Mode=OneWay}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <!--
+                    The way out, where the recording itself is still there: it is saved as an
+                    ordinary video, and the project stays as it is. One Tab from the message.
+
+                    The button is not disabled while the recording is copied. A button that is
+                    disabled while it has the keyboard focus passes the focus on, and the next
+                    Enter or Space would press whatever got it. It keeps its name, shows and
+                    reads that it is busy, and a press then saves nothing more. Both of its
+                    labels take their room and one of them is seen, so that it keeps its width.
+                    The glyph before them is decoration: the button says its name.
+                -->
+                <Button
+                    x:Name="SaveScreenRecordingButton"
+                    Margin="0,8,0,0"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioSaveScreenRecordingButton"
+                    AutomationProperties.HelpText="{x:Bind ViewModel.SaveScreenRecordingHelpText, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind ViewModel.SaveScreenRecordingName}"
+                    Click="OnSaveScreenRecordingClick"
+                    ToolTipService.ToolTip="Save the screen recording to your videos folder as an ordinary video"
+                    Visibility="{x:Bind ViewModel.CanSaveScreenRecording, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon
+                            AutomationProperties.AccessibilityView="Raw"
+                            FontSize="14"
+                            Glyph="{x:Bind editing:StudioGlyphs.SaveRecording}" />
+                        <Grid>
+                            <TextBlock
+                                AutomationProperties.AccessibilityView="Raw"
+                                Opacity="0"
+                                Text="{x:Bind ViewModel.SaveScreenRecordingName}" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                AutomationProperties.AccessibilityView="Raw"
+                                AutomationProperties.AutomationId="StudioSaveScreenRecordingLabel"
+                                Text="{x:Bind ViewModel.SaveScreenRecordingLabel, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
+                </Button>
+                <!--  What came of it. Read out by the window when it changes.  -->
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioScreenRecordingStatus"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.ScreenRecordingStatus, Mode=OneWay}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasScreenRecordingStatus, Mode=OneWay}" />
+                <!--  What is left of a project that cannot be shown can be deleted from here. It asks first.  -->
+                <Button
+                    x:Name="DeleteUnavailableProjectButton"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioDeleteUnavailableProjectButton"
+                    AutomationProperties.HelpText="Deletes what is left of this project. Asks first."
+                    AutomationProperties.Name="Delete project&#x2026;"
+                    Click="{x:Bind ViewModel.RequestDeleteProject}"
+                    ToolTipService.ToolTip="Delete what is left of this project. Asks first.">
+                    <studio:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.DeleteProject}" Text="Delete project&#x2026;" />
+                </Button>
+            </StackPanel>
+        </studio:StudioMessagePanel>
+
+        <!--  The editor. Disabled as a whole while exporting.  -->
+        <ContentControl
+            x:Name="EditorHost"
+            Grid.Row="1"
+            HorizontalContentAlignment="Stretch"
+            VerticalContentAlignment="Stretch"
+            IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}"
+            IsTabStop="False"
+            Visibility="{x:Bind ViewModel.IsReady, Mode=OneWay}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!--  Header  -->
+                <Grid
+                    Grid.Row="0"
+                    Padding="16,12"
+                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1"
+                    ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                        <TextBlock
+                            x:Name="ClipNameText"
+                            AutomationProperties.AutomationId="StudioClipName"
+                            IsTextTrimmedChanged="OnClipNameTrimmedChanged"
+                            MaxLines="1"
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            Text="{x:Bind ViewModel.ClipName, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="NoWrap" />
+                        <TextBlock
+                            AutomationProperties.AutomationId="StudioExportSizeText"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.ExportSizeText, Mode=OneWay}" />
+                    </StackPanel>
+
+                    <StackPanel
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="4">
+                        <!--
+                            The project as a whole: opening another, saving this one as a folder,
+                            deleting it. One button with a menu, left of Undo, as on the Mac: four
+                            buttons more would take the preview's room at the window's smallest
+                            width. The picture and the word are the button's content and say
+                            nothing of their own to a screen reader, which reads the button's name.
+                            The picture is the Project panel's, on the rail, and is set in code,
+                            where that glyph has its name. Ctrl+O and Ctrl+S are the window's keys,
+                            so the menu only shows them.
+                        -->
+                        <DropDownButton
+                            x:Name="ProjectMenuButton"
+                            Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="StudioProjectMenuButton"
+                            AutomationProperties.HelpText="Open another project, save this one as a folder, or delete it."
+                            AutomationProperties.Name="Project"
+                            ToolTipService.ToolTip="Open another project, save this one as a folder, or delete it">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon
+                                    x:Name="ProjectMenuIcon"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    FontSize="14" />
+                                <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Project" />
+                            </StackPanel>
+                            <DropDownButton.Flyout>
+                                <MenuFlyout Opening="OnProjectMenuOpening" Placement="BottomEdgeAlignedLeft">
+                                    <MenuFlyoutSubItem
+                                        x:Name="OpenRecentItem"
+                                        AutomationProperties.AutomationId="StudioOpenRecentItem"
+                                        Text="Open recent">
+                                        <MenuFlyoutSubItem.Icon>
+                                            <FontIcon Glyph="{x:Bind editing:StudioGlyphs.OpenRecentProject}" />
+                                        </MenuFlyoutSubItem.Icon>
+                                    </MenuFlyoutSubItem>
+                                    <MenuFlyoutItem
+                                        x:Name="OpenProjectItem"
+                                        AutomationProperties.AcceleratorKey="Ctrl+O"
+                                        AutomationProperties.AutomationId="StudioOpenProjectItem"
+                                        Click="{x:Bind ViewModel.RequestOpenProject}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+O"
+                                        Text="Open project&#x2026;">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="{x:Bind editing:StudioGlyphs.OpenProject}" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="SaveProjectItem"
+                                        AutomationProperties.AcceleratorKey="Ctrl+S"
+                                        AutomationProperties.AutomationId="StudioSaveProjectItem"
+                                        Click="{x:Bind ViewModel.RequestSaveProject}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+S"
+                                        Text="Save project&#x2026;">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="{x:Bind editing:StudioGlyphs.SaveProject}" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="DeleteProjectItem"
+                                        AutomationProperties.AutomationId="StudioDeleteProjectItem"
+                                        Click="{x:Bind ViewModel.RequestDeleteProject}"
+                                        Text="Delete project&#x2026;">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="{x:Bind editing:StudioGlyphs.DeleteProject}" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                        <Button
+                            AutomationProperties.AcceleratorKey="Ctrl+Z"
+                            AutomationProperties.AutomationId="StudioUndoButton"
+                            AutomationProperties.Name="Undo"
+                            Click="{x:Bind ViewModel.Undo}"
+                            IsEnabled="{x:Bind ViewModel.CanUndo, Mode=OneWay}"
+                            ToolTipService.ToolTip="Undo (Ctrl+Z)">
+                            <FontIcon FontSize="14" Glyph="&#xE7A7;" />
+                        </Button>
+                        <Button
+                            AutomationProperties.AcceleratorKey="Ctrl+Y"
+                            AutomationProperties.AutomationId="StudioRedoButton"
+                            AutomationProperties.Name="Redo"
+                            Click="{x:Bind ViewModel.Redo}"
+                            IsEnabled="{x:Bind ViewModel.CanRedo, Mode=OneWay}"
+                            ToolTipService.ToolTip="Redo (Ctrl+Y)">
+                            <FontIcon FontSize="14" Glyph="&#xE7A6;" />
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AccessibilityView="Raw"
+                        Text="Canvas" />
+                    <ComboBox
+                        x:Name="CanvasChoice"
+                        Grid.Column="3"
+                        MinWidth="104"
+                        AutomationProperties.AutomationId="StudioCanvasComboBox"
+                        AutomationProperties.Name="Canvas"
+                        SelectedIndex="{x:Bind ViewModel.CanvasAspectIndex, Mode=TwoWay}"
+                        ToolTipService.ToolTip="The shape of the exported video" />
+
+                    <Button
+                        x:Name="ExportButton"
+                        Grid.Column="4"
+                        AutomationProperties.AcceleratorKey="Ctrl+E"
+                        AutomationProperties.AutomationId="StudioExportButton"
+                        AutomationProperties.Name="Export"
+                        Click="OnExportClick"
+                        IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"
+                        Style="{StaticResource AccentButtonStyle}"
+                        ToolTipService.ToolTip="Export the video (Ctrl+E)">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontSize="14" Glyph="&#xEDE1;" />
+                            <TextBlock Text="Export" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <!--
+                    What went wrong, when something did. It reads itself out when it opens. It is
+                    collapsed while closed, because its margin would leave a gap under the header.
+                    The name is for a screen reader that comes across the bar later.
+                -->
+                <InfoBar
+                    x:Name="ErrorBar"
+                    Grid.Row="1"
+                    Margin="16,8,16,0"
+                    AutomationProperties.AutomationId="StudioErrorBar"
+                    AutomationProperties.Name="Error"
+                    IsOpen="{x:Bind ViewModel.HasError, Mode=TwoWay}"
+                    Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                    Severity="Error"
+                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}" />
+
+                <!--
+                    Preview and inspector. The inspector is its panel, as wide as the inspector
+                    was before it had a rail, and the rail, 88 wide. At a large text size the rail
+                    takes what its labels need more from the panel.
+                -->
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="408" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Padding="16">
+                        <studio:StudioCanvasHost
+                            x:Name="CanvasHost"
+                            AutomationProperties.AutomationId="StudioPreview"
+                            AutomationProperties.HelpText="{x:Bind ViewModel.PreviewDescription, Mode=OneWay}"
+                            AutomationProperties.Name="Preview"
+                            CanvasAspectRatio="{x:Bind ViewModel.CanvasAspectRatio, Mode=OneWay}" />
+                    </Border>
+
+                    <Border
+                        x:Name="InspectorHost"
+                        Grid.Column="1"
+                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                        BorderThickness="1,0,0,0" />
+                </Grid>
+
+                <!--  Timeline  -->
+                <Border
+                    x:Name="TimelineHost"
+                    Grid.Row="3"
+                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,1,0,0" />
+            </Grid>
+        </ContentControl>
+
+        <!--  Over the disabled editor while a video is being rendered.  -->
+        <Grid
+            x:Name="ExportOverlay"
+            Grid.Row="1"
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Visibility="{x:Bind ViewModel.IsExporting, Mode=OneWay}">
+            <Border
+                Padding="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource OverlayCornerRadius}">
+                <StackPanel Width="240" Spacing="12">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AutomationId="StudioExportingText"
+                        AutomationProperties.HeadingLevel="Level1"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="Exporting&#x2026;" />
+                    <ProgressBar
+                        AutomationProperties.AutomationId="StudioExportProgressBar"
+                        AutomationProperties.Name="Export progress"
+                        Maximum="100"
+                        Minimum="0"
+                        Value="{x:Bind ViewModel.ExportProgressPercent, Mode=OneWay}" />
+                    <!--  The progress bar already reports this number.  -->
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AccessibilityView="Raw"
+                        AutomationProperties.AutomationId="StudioExportPercentText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.ExportPercentText, Mode=OneWay}"
+                        Typography.NumeralAlignment="Tabular" />
+                    <Button
+                        x:Name="CancelExportButton"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AutomationId="StudioCancelExportButton"
+                        AutomationProperties.Name="Cancel export"
+                        Click="{x:Bind ViewModel.CancelExport}"
+                        Content="Cancel"
+                        ToolTipService.ToolTip="Stop the export (Esc)" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!--  Over the disabled editor while the project's recordings are copied into a folder.  -->
+        <Grid
+            x:Name="SaveProjectOverlay"
+            Grid.Row="1"
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Visibility="{x:Bind ViewModel.IsSavingProject, Mode=OneWay}">
+            <Border
+                Padding="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource OverlayCornerRadius}">
+                <StackPanel Width="240" Spacing="12">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AutomationId="StudioSavingProjectText"
+                        AutomationProperties.HeadingLevel="Level1"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="{x:Bind ViewModel.SavingProjectText}" />
+                    <ProgressBar
+                        AutomationProperties.AutomationId="StudioSaveProjectProgressBar"
+                        AutomationProperties.Name="Save progress"
+                        Maximum="100"
+                        Minimum="0"
+                        Value="{x:Bind ViewModel.SaveProjectProgressPercent, Mode=OneWay}" />
+                    <!--  The progress bar already reports this number.  -->
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AccessibilityView="Raw"
+                        AutomationProperties.AutomationId="StudioSaveProjectPercentText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.SaveProjectPercentText, Mode=OneWay}"
+                        Typography.NumeralAlignment="Tabular" />
+                    <Button
+                        x:Name="CancelSaveProjectButton"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AutomationId="StudioCancelSaveProjectButton"
+                        AutomationProperties.Name="Cancel save"
+                        Click="{x:Bind ViewModel.CancelProjectSave}"
+                        Content="Cancel"
+                        ToolTipService.ToolTip="Stop saving the project (Esc)" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

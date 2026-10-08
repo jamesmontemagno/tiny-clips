@@ -1,0 +1,121 @@
+{
+  "description": "Explicit null for root camera, nested numbers, nested objects, enums, array values, sources.camera.startOffset, and safe root arrays/objects counts as missing and defaults.",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-4000-8000-000000000039",
+    "name": "Null as missing",
+    "createdAt": "2026-10-02T22:41:00Z",
+    "modifiedAt": "2026-10-02T22:41:00Z",
+    "lastOpenedAt": "2026-10-02T22:41:00Z",
+    "app": {
+      "platform": "windows",
+      "version": "1.9.0"
+    },
+    "keepSources": false,
+    "sources": {
+      "screen": {
+        "file": "screen.mp4",
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "duration": 20,
+        "external": false
+      },
+      "camera": {
+        "file": "camera.mp4",
+        "width": 1280,
+        "height": 720,
+        "duration": 20,
+        "startOffset": null
+      },
+      "events": "events.json"
+    },
+    "canvas": {
+      "aspect": null,
+      "padding": null,
+      "background": null
+    },
+    "screen": {
+      "cornerRadius": null,
+      "shadow": 0.5,
+      "crop": null
+    },
+    "camera": null,
+    "scenes": [
+      {
+        "start": null,
+        "layout": null,
+        "bubble": null
+      }
+    ],
+    "zooms": null,
+    "edits": null,
+    "audio": null,
+    "overlays": null,
+    "exports": null
+  },
+  "naturalCanvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "cases": [
+    {
+      "time": 0,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "bubble",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 1
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": {
+          "rect": {
+            "x": 1628.3999999999999,
+            "y": 788.3999999999999,
+            "width": 259.2,
+            "height": 259.2
+          },
+          "source": {
+            "x": 0.21875,
+            "y": 0,
+            "width": 0.5625,
+            "height": 1
+          },
+          "shape": "circle",
+          "cornerRadius": 129.6,
+          "mirror": true,
+          "borderWidth": 0,
+          "shadow": {
+            "blur": 15.12,
+            "offsetY": 4.536,
+            "opacity": 0.175
+          },
+          "sourceTime": 0,
+          "visible": true,
+          "opacity": 1
+        }
+      }
+    }
+  ]
+}

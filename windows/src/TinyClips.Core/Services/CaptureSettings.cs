@@ -1,9 +1,12 @@
 using TinyClips.Core.Models;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Services;
 
 public sealed class CaptureSettings : ICaptureSettings
 {
+    private const string StudioDefaultLookKey = "studioDefaultLook";
+
     private readonly ISettingsService _settings;
     private readonly IClipAnalyticsService? _analytics;
 
@@ -286,6 +289,54 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         get => _settings.Get("showTrimmer", true);
         set => _settings.Set("showTrimmer", value);
+    }
+
+    public bool StudioPreviewEnabled
+    {
+        get => _settings.Get("studioPreviewEnabled", false);
+        set => _settings.Set("studioPreviewEnabled", value);
+    }
+
+    public const int DefaultStudioSourceRetentionDays = 30;
+    public const int MinStudioSourceRetentionDays = 0;
+    public const int MaxStudioSourceRetentionDays = 365;
+
+    public int StudioSourceRetentionDays
+    {
+        get => Math.Clamp(
+            _settings.Get("studioSourceRetentionDays", DefaultStudioSourceRetentionDays),
+            MinStudioSourceRetentionDays,
+            MaxStudioSourceRetentionDays);
+        set => _settings.Set(
+            "studioSourceRetentionDays",
+            Math.Clamp(value, MinStudioSourceRetentionDays, MaxStudioSourceRetentionDays));
+    }
+
+    public const int DefaultStudioStorageCapGigabytes = 10;
+    public const int MinStudioStorageCapGigabytes = 0;
+    public const int MaxStudioStorageCapGigabytes = 500;
+
+    public int StudioStorageCapGigabytes
+    {
+        get => Math.Clamp(
+            _settings.Get("studioStorageCapGigabytes", DefaultStudioStorageCapGigabytes),
+            MinStudioStorageCapGigabytes,
+            MaxStudioStorageCapGigabytes);
+        set => _settings.Set(
+            "studioStorageCapGigabytes",
+            Math.Clamp(value, MinStudioStorageCapGigabytes, MaxStudioStorageCapGigabytes));
+    }
+
+    public StudioLook? StudioDefaultLook
+    {
+        get => StudioLookText.Read(_settings.Get(StudioDefaultLookKey, string.Empty));
+        set => _settings.Set(StudioDefaultLookKey, value is null ? string.Empty : StudioLookText.Write(value));
+    }
+
+    public string StudioProjectSaveFolder
+    {
+        get => _settings.Get("studioProjectSaveFolder", string.Empty);
+        set => _settings.Set("studioProjectSaveFolder", value ?? string.Empty);
     }
 
     public bool RecordAudio
@@ -817,6 +868,11 @@ public sealed class CaptureSettings : ICaptureSettings
         GifMouseClickOpacity = 0.85;
         GifMouseClickDuration = 0.45;
         ShowTrimmer = true;
+        StudioPreviewEnabled = false;
+        StudioSourceRetentionDays = DefaultStudioSourceRetentionDays;
+        StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
+        StudioDefaultLook = null;
+        StudioProjectSaveFolder = string.Empty;
         RecordAudio = false;
         RecordMicrophone = false;
         SelectedMicrophoneId = string.Empty;
@@ -929,6 +985,7 @@ public sealed class CaptureSettings : ICaptureSettings
             "circle" => WebcamShape.Circle,
             _ => WebcamShape.Circle,
         };
+
 
     private static string ToPersistedWebcamShape(WebcamShape value) => value switch
     {

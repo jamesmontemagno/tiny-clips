@@ -1,0 +1,47 @@
+{
+  "description": "trimStart beyond duration clamps to duration and produces no kept segments.",
+  "sourceDuration": 10,
+  "edits": {
+    "trimStart": 15,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 0,
+    "segments": [],
+    "pieces": [],
+    "sourceToOutput": [
+      {
+        "source": -1,
+        "output": 0
+      },
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 10,
+        "output": 0
+      },
+      {
+        "source": 15,
+        "output": 0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 10
+      },
+      {
+        "output": 0,
+        "source": 10
+      },
+      {
+        "output": 1,
+        "source": 10
+      }
+    ]
+  }
+}

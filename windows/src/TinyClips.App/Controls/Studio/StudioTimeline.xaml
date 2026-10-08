@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="TinyClips.App.Controls.Studio.StudioTimeline"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:editing="using:TinyClips.Core.Studio.Editing"
+    xmlns:local="using:TinyClips.App.Controls.Studio"
+    IsTabStop="False">
+
+    <StackPanel Padding="16,12" Spacing="12">
+        <Grid x:Name="TransportRow" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="PlayPauseButton"
+                Grid.Column="0"
+                AutomationProperties.AutomationId="StudioPlayPauseButton"
+                AutomationProperties.Name="{x:Bind ViewModel.PlayPauseLabel, Mode=OneWay}"
+                Click="{x:Bind ViewModel.TogglePlayback}"
+                ToolTipService.ToolTip="Play or pause (Space)">
+                <FontIcon FontSize="14" Glyph="{x:Bind ViewModel.PlayPauseGlyph, Mode=OneWay}" />
+            </Button>
+            <Button
+                Grid.Column="1"
+                AutomationProperties.AutomationId="StudioPreviousFrameButton"
+                AutomationProperties.Name="Previous frame"
+                Click="{x:Bind ViewModel.StepPreviousFrame}"
+                ToolTipService.ToolTip="Previous frame (Left arrow)">
+                <FontIcon FontSize="14" Glyph="&#xE76B;" />
+            </Button>
+            <Button
+                Grid.Column="2"
+                AutomationProperties.AutomationId="StudioNextFrameButton"
+                AutomationProperties.Name="Next frame"
+                Click="{x:Bind ViewModel.StepNextFrame}"
+                ToolTipService.ToolTip="Next frame (Right arrow)">
+                <FontIcon FontSize="14" Glyph="&#xE76C;" />
+            </Button>
+
+            <!--
+                Output time: where the playhead is in the exported video, and how long that is.
+                It has the room the buttons leave. The stack around it lets it be as wide as
+                its text also where that room is less, so that the row knows what it needs.
+            -->
+            <StackPanel Grid.Column="3" Orientation="Horizontal">
+                <TextBlock
+                    Margin="4,0,0,0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioTimeText"
+                    AutomationProperties.Name="{x:Bind ViewModel.TimeAccessibleName, Mode=OneWay}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.TimeText, Mode=OneWay}"
+                    Typography.NumeralAlignment="Tabular" />
+            </StackPanel>
+
+            <!--
+                Scenes are for a recording with a camera: without one every layout is the screen alone.
+
+                Each of the six buttons that edit has a glyph before its words, one of
+                StudioGlyphs, and says its words as its name. Where the row has no room for
+                the six glyphs, as at a large text size, they give way and the words stay
+                (StudioGlyphRow, in the code behind).
+            -->
+            <Button
+                x:Name="SplitSceneButton"
+                Grid.Column="4"
+                AutomationProperties.AutomationId="StudioSplitSceneButton"
+                AutomationProperties.HelpText="{x:Bind ViewModel.SplitSceneHelpText, Mode=OneWay}"
+                AutomationProperties.Name="Split scene"
+                Click="OnSplitSceneClick"
+                IsEnabled="{x:Bind ViewModel.CanSplitSceneAtPlayhead, Mode=OneWay}"
+                ToolTipService.ToolTip="Start a new scene at the playhead (S)"
+                Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SplitScene}" Text="Split" />
+            </Button>
+            <Button
+                x:Name="AddZoomButton"
+                Grid.Column="5"
+                AutomationProperties.AutomationId="StudioAddZoomButton"
+                AutomationProperties.Name="Add zoom"
+                Click="{x:Bind ViewModel.AddZoomAtPlayhead}"
+                IsEnabled="{x:Bind ViewModel.CanAddZoomAtPlayhead, Mode=OneWay}"
+                ToolTipService.ToolTip="Add a zoom at the playhead (Z)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddZoom}" Text="Add zoom" />
+            </Button>
+            <Button
+                x:Name="AddCutButton"
+                Grid.Column="6"
+                AutomationProperties.AutomationId="StudioAddCutButton"
+                AutomationProperties.Name="Add cut"
+                Click="{x:Bind ViewModel.AddCutAtPlayhead}"
+                IsEnabled="{x:Bind ViewModel.CanAddCutAtPlayhead, Mode=OneWay}"
+                ToolTipService.ToolTip="Start a cut at the playhead (X)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddCut}" Text="Cut" />
+            </Button>
+            <Button
+                x:Name="AddSpeedButton"
+                Grid.Column="7"
+                AutomationProperties.AutomationId="StudioAddSpeedButton"
+                AutomationProperties.Name="Add speed change"
+                Click="{x:Bind ViewModel.AddSpeedAtPlayhead}"
+                IsEnabled="{x:Bind ViewModel.CanAddSpeedAtPlayhead, Mode=OneWay}"
+                ToolTipService.ToolTip="Play two seconds of the video twice as fast from the playhead (R)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddSpeed}" Text="Speed" />
+            </Button>
+            <Button
+                Grid.Column="8"
+                AutomationProperties.AutomationId="StudioStartHereButton"
+                AutomationProperties.Name="Start here"
+                Click="{x:Bind ViewModel.SetTrimStartAtPlayhead}"
+                ToolTipService.ToolTip="Start the video at the playhead (I)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.TrimStart}" Text="Start here" />
+            </Button>
+            <Button
+                Grid.Column="9"
+                AutomationProperties.AutomationId="StudioEndHereButton"
+                AutomationProperties.Name="End here"
+                Click="{x:Bind ViewModel.SetTrimEndAtPlayhead}"
+                ToolTipService.ToolTip="End the video at the playhead (O)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.TrimEnd}" Text="End here" />
+            </Button>
+        </Grid>
+
+        <!--  The scenes, the zooms, the cuts, the speed changes and the trim, one above the other on the same time scale.  -->
+        <StackPanel Spacing="4">
+            <Border x:Name="SceneLaneHost" Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}" />
+            <Border x:Name="ZoomLaneHost" />
+            <Border x:Name="CutLaneHost" />
+            <Border x:Name="SpeedLaneHost" />
+            <local:StudioTrimBar
+                x:Name="TrimBar"
+                AutomationProperties.AutomationId="StudioTrimBar"
+                AutomationProperties.Name="Trim bar"
+                GestureCompleted="OnTrimGestureCompleted"
+                GestureStarted="OnTrimGestureStarted"
+                ScrubRequested="OnScrubRequested"
+                TrimEndRequested="OnTrimEndRequested"
+                TrimStartRequested="OnTrimStartRequested" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

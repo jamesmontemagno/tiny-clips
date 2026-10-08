@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Throwaway engine spike for Tiny Clips Studio (todo m0-win-engine-spike).
+
+    STANDALONE on purpose: it is not part of windows\TinyClips.Windows.slnx and has no
+    ProjectReference to TinyClips.Core or TinyClips.App. The few pieces it needs from Core
+    (sink writer wrapper, frame pacer, WinRT/D3D interop) are copied under Engine\ and Interop\.
+
+    One executable, several modes (see README.md). It is an unpackaged WinUI 3 app with a
+    console subsystem so the headless modes can print to the terminal and the `present` mode can
+    open a XAML window from the same binary. That also means a single NativeAOT publish covers
+    every code path the questions ask about.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <RootNamespace>StudioEngineSpike</RootNamespace>
+    <AssemblyName>StudioEngineSpike</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <!-- Unpackaged + self-contained Windows App SDK: nothing is registered or installed on the machine. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!--
+      Needed although nothing is packaged: without it `dotnet publish` leaves the app's own
+      StudioEngineSpike.pri (which holds the compiled XAML) out of the publish folder, and the
+      published exe fails at the first LoadComponent with XamlParseException 0x802B000A.
+    -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Program.Main picks the mode, so the XAML compiler must not emit its own entry point. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- Surface trim/AOT analyzer warnings in ordinary builds too, not only at publish time. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    WinUI 3 has no AnyCPU. `dotnet publish -r win-x64` on its own leaves Platform at AnyCPU, so
+    derive it from the runtime identifier (or default to x64) when the caller did not pass one.
+  -->
+  <PropertyGroup Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">
+    <Platform Condition="'$(RuntimeIdentifier)' == 'win-arm64'">ARM64</Platform>
+    <Platform Condition="'$(RuntimeIdentifier)' != 'win-arm64'">x64</Platform>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!--
+    The XAML application object is not called App.xaml and is not in the project root, so the SDK
+    would compile it as an ordinary page. Then nothing implements IXamlMetadataProvider for the
+    app and the first non-framework type in markup (XamlControlsResources, Win2D's
+    CanvasSwapChainPanel) fails with XamlParseException 0x802B000A.
+  -->
+  <ItemGroup>
+    <Page Remove="Present\PresentApp.xaml" />
+    <ApplicationDefinition Include="Present\PresentApp.xaml" />
+  </ItemGroup>
+
+  <!-- Same versions as TinyClips.App / TinyClips.Core so the results carry over. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260528001" />
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+    <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+    <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
+  </ItemGroup>
+
+  <!-- Generated media, results and build output never belong in the compilation. -->
+  <ItemGroup>
+    <Compile Remove="media\**;out\**" />
+    <None Remove="media\**;out\**" />
+    <Content Remove="media\**;out\**" />
+  </ItemGroup>
+
+</Project>

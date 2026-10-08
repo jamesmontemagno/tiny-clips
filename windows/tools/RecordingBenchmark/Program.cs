@@ -1,11 +1,15 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Studio;
+using Windows.Graphics.DirectX.Direct3D11;
+using Windows.Graphics.Imaging;
 
 namespace TinyClips.Tools.RecordingBenchmark;
 
@@ -46,14 +50,20 @@ internal static class Program
         var primary = monitors.GetPrimaryMonitor() ?? throw new InvalidOperationException("No primary monitor found.");
         var outputDirectory = Path.Combine(Path.GetTempPath(), "TinyClipsBenchmark");
         Directory.CreateDirectory(outputDirectory);
+        var projectsDirectory = Path.Combine(Path.GetTempPath(), "TinyClipsBenchmarkProjects");
+        Directory.CreateDirectory(projectsDirectory);
 
-        await using var webcam = new WebcamCaptureService();
+        await using IWebcamCaptureService webcam = options.Studio
+            ? new SyntheticWebcamCaptureService()
+            : new WebcamCaptureService();
+        var studioStore = new StudioProjectStore(projectsDirectory);
         var recorder = new VideoRecordingService(
             monitors,
             new TempClipStorage(outputDirectory),
             settings,
             new NoOpAnalytics(),
-            webcam);
+            webcam,
+            studioStore);
 
         PixelRect? region = null;
         if (options.Region is { } r)
@@ -156,11 +166,19 @@ internal static class Program
         settings.VideoCodec = scenario.Hevc ? VideoCodec.Hevc : VideoCodec.H264;
         settings.ShowBrandingOverlay = scenario.Overlays;
         settings.ShowMouseClickVisualsInVideo = scenario.Overlays;
-        settings.WebcamEnabled = scenario.Overlays && options.Webcam;
+        settings.WebcamEnabled = options.Studio || (scenario.Overlays && options.Webcam);
 
-        await recorder.StartAsync(target, region).ConfigureAwait(false);
+        string? studioProjectId = null;
+        void OnStudioCompleted(object? _, string id) => studioProjectId = id;
+        recorder.StudioRecordingCompleted += OnStudioCompleted;
+        await recorder.StartAsync(
+            target,
+            region,
+            null,
+            options.Studio ? new VideoRecordingOptions { RecordForStudio = true, AppVersion = "benchmark" } : VideoRecordingOptions.Default).ConfigureAwait(false);
         await Task.Delay(TimeSpan.FromSeconds(options.Seconds)).ConfigureAwait(false);
         var path = await recorder.StopAsync().ConfigureAwait(false);
+        recorder.StudioRecordingCompleted -= OnStudioCompleted;
 
         long bytes = 0;
         if (!string.IsNullOrEmpty(path) && File.Exists(path))
@@ -176,7 +194,34 @@ internal static class Program
             }
         }
 
+        if (options.Studio && studioProjectId is not null)
+        {
+            PrintStudioProject(studioProjectId);
+        }
+
         return new ScenarioResult(label, scenario, recorder.LastPerformanceReport, bytes, null);
+    }
+
+    private static void PrintStudioProject(string projectId)
+    {
+        var store = new StudioProjectStore(Path.Combine(Path.GetTempPath(), "TinyClipsBenchmarkProjects"));
+        var project = store.Load(projectId);
+        var paths = store.GetPaths(project);
+        var events = store.LoadEvents(projectId);
+        var screen = MediaFileProbe.Probe(paths.ScreenPath, project.Sources.Screen.FrameRate);
+        Console.WriteLine($"studio project={projectId} valid=true screen={screen.Width}x{screen.Height} duration={screen.Duration:F3}s fps={screen.FrameRate:F2}");
+        if (project.Sources.Camera is not null && paths.CameraPath is not null)
+        {
+            var camera = MediaFileProbe.Probe(paths.CameraPath, 30);
+            Console.WriteLine($"studio camera={camera.Width}x{camera.Height} duration={camera.Duration:F3}s fps={camera.FrameRate:F2} startOffset={project.Sources.Camera.StartOffset:F3}s");
+        }
+        else
+        {
+            Console.WriteLine("studio camera=none");
+        }
+
+        Console.WriteLine($"studio events clicks={events.Clicks.Length} cursor={events.Cursor.Length} cameraCorners={events.CameraCorners.Length}");
+        store.Delete(projectId);
     }
 
     private static string BuildComparisonTable(IReadOnlyList<ScenarioResult> results)
@@ -288,6 +333,8 @@ internal static class Program
 
         public bool Audio { get; private set; }
 
+        public bool Studio { get; private set; }
+
         public bool KeepFiles { get; private set; }
 
         public string? JsonPath { get; private set; }
@@ -359,6 +406,9 @@ internal static class Program
                     case "--audio":
                         options.Audio = true;
                         break;
+                    case "--studio":
+                        options.Studio = true;
+                        break;
                     case "--keep":
                         options.KeepFiles = true;
                         break;
@@ -421,7 +471,7 @@ internal static class Program
         {
             Console.WriteLine("""
                 Usage: RecordingBenchmark [--seconds N] [--fps N] [--iterations N] [--scenarios cpu,gpu,cpu+overlays,gpu+overlays]
-                                          [--region WxH] [--webcam] [--audio] [--keep] [--json out.json]
+                                          [--region WxH] [--webcam] [--audio] [--studio] [--keep] [--json out.json]
 
                   --seconds     Recording length per scenario (default 10).
                   --fps         Target frame rate (default 30).
@@ -433,6 +483,7 @@ internal static class Program
                   --window      Record the first visible window whose title contains this text (resize it to test letterboxing).
                   --webcam      Enable the webcam overlay in "+overlays" scenarios (needs a camera and permission).
                   --audio       Record system audio too (exercises the muxer's audio path).
+                  --studio      Record Studio projects with a synthetic camera under %TEMP% and delete them after probing.
                   --keep        Keep the recorded MP4s in %TEMP%\TinyClipsBenchmark.
                   --json        Also write all reports as JSON.
                 """);
@@ -488,6 +539,120 @@ internal static class Program
             Path.Combine(_directory, $"bench-{DateTime.Now:yyyyMMdd-HHmmss-fff}{stemSuffix}{fileExtension ?? FileExtensionFor(type)}");
 
         public string OutputDirectory(CaptureType type) => _directory;
+    }
+
+    private sealed class SyntheticWebcamCaptureService : IWebcamCaptureService
+    {
+        private CancellationTokenSource? _cts;
+        private Task? _pump;
+        private WebcamFrame? _latest;
+        private readonly object _gate = new();
+
+        public bool IsRunning { get; private set; }
+
+        public event EventHandler<WebcamCaptureFailedEventArgs>? CaptureFailed
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<WebcamFrameArrivedEventArgs>? FrameArrived;
+
+        public Task StartAsync(string? deviceId, BitmapSize bitmapSize, CancellationToken cancellationToken = default)
+        {
+            var width = (int)Math.Clamp(bitmapSize.Width, 2, 1920);
+            var height = (int)Math.Clamp(bitmapSize.Height, 2, 1080);
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            IsRunning = true;
+            _pump = Task.Run(() => PumpAsync(width, height, _cts.Token), CancellationToken.None);
+            return Task.CompletedTask;
+        }
+
+        public async Task StopAsync()
+        {
+            IsRunning = false;
+            _cts?.Cancel();
+            if (_pump is not null)
+            {
+                try
+                {
+                    await _pump.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            _cts?.Dispose();
+            _cts = null;
+            _pump = null;
+        }
+
+        public bool TryGetLatestFrame(out WebcamFrame? frame)
+        {
+            lock (_gate)
+            {
+                frame = _latest;
+                return frame is not null;
+            }
+        }
+
+        public void SetPreferredDirect3DDevice(IDirect3DDevice? device)
+        {
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await StopAsync().ConfigureAwait(false);
+        }
+
+        private async Task PumpAsync(int width, int height, CancellationToken cancellationToken)
+        {
+            var pixels = new byte[width * height * 4];
+            var frameIndex = 0;
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(1000.0 / 30));
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                FillFrame(pixels, width, height, frameIndex++);
+                var copy = new byte[pixels.Length];
+                Buffer.BlockCopy(pixels, 0, copy, 0, pixels.Length);
+                var frame = new WebcamFrame(copy, width, height, SystemRelativeNow());
+                lock (_gate)
+                {
+                    _latest = frame;
+                }
+
+                FrameArrived?.Invoke(this, new WebcamFrameArrivedEventArgs(frame));
+            }
+        }
+
+        private static void FillFrame(byte[] pixels, int width, int height, int frameIndex)
+        {
+            var ballX = (frameIndex * 11) % width;
+            var ballY = (frameIndex * 7) % height;
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    var i = (y * width + x) * 4;
+                    pixels[i] = (byte)(40 + (x * 120 / Math.Max(1, width)));
+                    pixels[i + 1] = (byte)(30 + (y * 120 / Math.Max(1, height)));
+                    pixels[i + 2] = 80;
+                    pixels[i + 3] = 255;
+                    var dx = x - ballX;
+                    var dy = y - ballY;
+                    if (dx * dx + dy * dy < 80 * 80)
+                    {
+                        pixels[i] = 20;
+                        pixels[i + 1] = 220;
+                        pixels[i + 2] = 255;
+                    }
+                }
+            }
+        }
+
+        private static TimeSpan SystemRelativeNow() =>
+            Stopwatch.GetElapsedTime(0, Stopwatch.GetTimestamp());
     }
 
     private sealed class NoOpAnalytics : IClipAnalyticsService

@@ -11,9 +11,56 @@
     <ProjectReference Include="..\..\src\TinyClips.Core\TinyClips.Core.csproj" />
     <!-- Compile the shipping view model without launching a packaged XAML application. -->
     <Compile Include="..\..\src\TinyClips.App\ViewModels\SettingsViewModel.cs" Link="SettingsViewModel.cs" />
+    <!-- Tiny Clips Studio's part of the same view model, and the three app classes it needs. -->
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\SettingsViewModel.Studio.cs" Link="SettingsViewModel.Studio.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioDraftItem.cs" Link="Studio\StudioDraftItem.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\Studio\StudioProjectCleanupService.cs" Link="Studio\StudioProjectCleanupService.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\Studio\StudioProjectTracker.cs" Link="Studio\StudioProjectTracker.cs" />
     <Compile Include="..\..\src\TinyClips.App\Settings\SettingsSectionKind.cs" Link="SettingsSectionKind.cs" />
     <Compile Include="..\..\src\TinyClips.App\Settings\TeleprompterTranscriptSaveScheduler.cs" Link="TeleprompterTranscriptSaveScheduler.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\ClipboardService.cs" Link="ClipboardService.cs" />
+    <!--
+      A Studio project saved as a folder (#429): how the app tells a .tinyclips file from a
+      picture, the projects the tray's recent captures list, and the two package manifests as
+      text, for the file type they register.
+    -->
+    <Compile Include="..\..\src\TinyClips.App\Infrastructure\ActivatedFile.cs" Link="ActivatedFile.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\Studio\StudioRecentDrafts.cs" Link="Studio\StudioRecentDrafts.cs" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Package.appxmanifest" Link="Manifests\Package.appxmanifest" LogicalName="PackageManifest.Package.appxmanifest" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Package.Store.appxmanifest" Link="Manifests\Package.Store.appxmanifest" LogicalName="PackageManifest.Package.Store.appxmanifest" />
+    <!-- How wide the tray popup is for three capture tiles and for four. -->
+    <Compile Include="..\..\src\TinyClips.App\Infrastructure\TrayPopupLayout.cs" Link="TrayPopupLayout.cs" />
+    <!-- When a row of Studio buttons shows the glyphs before their words. -->
+    <Compile Include="..\..\src\TinyClips.App\Controls\Studio\StudioGlyphRowLayout.cs" Link="Studio\StudioGlyphRowLayout.cs" />
+    <!--
+      The Studio editor's view model. The one app class it needs that cannot be compiled here,
+      the background swatches, which are the screenshot editor's presets, has a stand-in next to
+      the tests. The markup of the Studio window and of its controls goes in as text: the tests
+      read from it which values a control is bound to both ways.
+    -->
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.cs" Link="Studio\StudioViewModel.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Cut.cs" Link="Studio\StudioViewModel.Cut.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Inspector.cs" Link="Studio\StudioViewModel.Inspector.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Project.cs" Link="Studio\StudioViewModel.Project.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Scene.cs" Link="Studio\StudioViewModel.Scene.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Speed.cs" Link="Studio\StudioViewModel.Speed.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Zoom.cs" Link="Studio\StudioViewModel.Zoom.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioAnnouncementEventArgs.cs" Link="Studio\StudioAnnouncementEventArgs.cs" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Studio\*.xaml" Link="Studio\Markup\%(Filename)%(Extension)" LogicalName="StudioMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\Studio\*.xaml" Link="Studio\Markup\%(Filename)%(Extension)" LogicalName="StudioMarkup.%(Filename)%(Extension)" />
+    <!--
+      The Settings pages cannot be made here either. Their markup, the markup of the window that
+      shows them, and the code of the window and of the General and Studio pages go in as text:
+      the tests read from it where the Studio controls are, which values they are bound to both
+      ways, and that there is a page for every item of the navigation.
+    -->
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Settings\*.xaml" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\SettingsWindow.xaml" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\SettingsWindow.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Settings\GeneralSettingsSection.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Settings\StudioSettingsSection.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <!-- A clock a test advances by hand, shared with the Core tests. -->
+    <Compile Include="..\TinyClips.Core.Tests\ManualTimeProvider.cs" Link="Support\ManualTimeProvider.cs" />
   </ItemGroup>
 
   <ItemGroup>

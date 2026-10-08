@@ -61,6 +61,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
                 services.GetRequiredService<IClipArchiveService>(),
                 services.GetRequiredService<IClipLibraryWatcher>(),
                 services.GetRequiredService<IThumbnailCache>(),
+                services.GetRequiredService<TinyClips.Core.Studio.IStudioProjectStore>(),
                 services.GetRequiredService<TimeProvider>(),
                 DispatcherQueue.GetForCurrentThread());
             ViewModel.Attach(this);
@@ -661,6 +662,8 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
         ShareService.Share(WinRT.Interop.WindowNative.GetWindowHandle(this), paths, title);
 
     public void OpenInEditor(RecentCapture capture) => (Application.Current as App)?.OpenRecentCaptureFromLibrary(capture);
+
+    public void OpenInStudio(string projectId) => (Application.Current as App)?.OpenStudioWindow(projectId);
 
     public void OpenSettings() => (Application.Current as App)?.OpenSettingsWindow(Settings.SettingsSectionKind.ClipsLibrary);
 

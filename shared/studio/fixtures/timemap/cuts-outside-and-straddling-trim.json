@@ -1,0 +1,120 @@
+{
+  "description": "Cuts outside the trim range and straddling both trim ends are clamped or dropped.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 3,
+    "trimEnd": 15,
+    "cuts": [
+      {
+        "start": -5,
+        "end": 1
+      },
+      {
+        "start": 1,
+        "end": 4
+      },
+      {
+        "start": 8,
+        "end": 10
+      },
+      {
+        "start": 14,
+        "end": 25
+      },
+      {
+        "start": 16,
+        "end": 17
+      }
+    ],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 8,
+    "segments": [
+      {
+        "start": 4,
+        "end": 8
+      },
+      {
+        "start": 10,
+        "end": 14
+      }
+    ],
+    "pieces": [
+      {
+        "start": 4,
+        "end": 8,
+        "rate": 1
+      },
+      {
+        "start": 10,
+        "end": 14,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 2,
+        "output": 0
+      },
+      {
+        "source": 3,
+        "output": 0
+      },
+      {
+        "source": 3.5,
+        "output": 0
+      },
+      {
+        "source": 4,
+        "output": 0
+      },
+      {
+        "source": 9,
+        "output": 4
+      },
+      {
+        "source": 14.5,
+        "output": 8
+      },
+      {
+        "source": 15,
+        "output": 8
+      },
+      {
+        "source": 16,
+        "output": 8
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 4
+      },
+      {
+        "output": 0,
+        "source": 4
+      },
+      {
+        "output": 1,
+        "source": 5
+      },
+      {
+        "output": 4,
+        "source": 10
+      },
+      {
+        "output": 7,
+        "source": 13
+      },
+      {
+        "output": 8,
+        "source": 14
+      },
+      {
+        "output": 9,
+        "source": 14
+      }
+    ]
+  }
+}

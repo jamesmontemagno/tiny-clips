@@ -498,7 +498,7 @@ enum BrandingOverlayProcessor {
         )
     }
 
-    private static func applyBranding(to image: CIImage, renderSize: CGSize) -> CIImage {
+    static func applyBranding(to image: CIImage, renderSize: CGSize) -> CIImage {
         let scale: CGFloat = 2.0
         let fontSize = badgeFontSize(for: renderSize.height)
         let ctFont = makeBadgeFont(size: fontSize)

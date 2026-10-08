@@ -32,6 +32,12 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture. `Esc`
   closes each of them, asking first unless **Confirm before closing editors with Esc** is turned
   off in General settings; in the editor it clears a crop selection first.
+- **Tiny Clips Studio (early preview, off by default)** — records the screen and the camera as
+  separate layers and opens a compositing editor when the recording ends: background and padding,
+  a rounded screen card, camera shape and four layouts, a draggable camera bubble, scenes that
+  change the layout partway through, zooms (added by hand or suggested from your clicks), crops
+  for the screen and the camera, cuts, speed changes, trim, and MP4 export.
+  The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
@@ -47,7 +53,8 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   auto-refresh, archive-old-clips). Metadata is stored in `clip-metadata.json` in the app's local
   data folder; the files themselves are never modified.
 - **Global hotkeys** — Screenshot `Ctrl+Shift+5`, Video `Ctrl+Shift+6`, GIF `Ctrl+Shift+7`,
-  Stop recording `Ctrl+Shift+S`.
+  Stop recording `Ctrl+Shift+S`. The Video hotkey always makes an ordinary recording; Studio
+  recording has no hotkey.
 - **Launch at login** — optionally start TinyClips when you sign in to Windows.
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
 - **System-tray** Fluent menu (rounded/acrylic), light/dark/system theming, full **Settings** window.
@@ -78,6 +85,9 @@ windows/
     ui/                         winapp ui automation scripts (run against a live app by PID)
   tools/
     RecordingBenchmark/         Headless CPU-vs-GPU recording benchmark (manual; see docs)
+    StudioRenderCheck/          Headless check of the Studio renderer, exporter and camera recorder
+    StudioPreviewCheck/         Check of the Studio live preview engine and its panel
+    StudioWindowCheck/          Check of the Studio editor window, opened in a process of its own
     Collect-Diagnostics.ps1     Zips logs, system details and UI-stall timings from any machine
   packaging/
     msix/  winget/              Packaging artifacts (later phases)
@@ -107,6 +117,16 @@ The App tests compile the shipping Settings view model with fake services and a 
 transcript-save scheduler, without launching XAML or querying devices, credentials, or real
 transcripts. They cover lazy lookup counts, initial TwoWay-binding write-backs, overlapping
 realization, edits/imports/reset, reopening, and late results after closure.
+
+They compile the Tiny Clips Studio editor's view model as well, over real projects in a temp
+folder, and bind stand-ins for the window's controls to it. Which values a control is bound to
+both ways is read from the markup of the Studio window and its controls when the tests run.
+A new two-way binding that is written as today's are is tested without being added, and one
+written another way fails a test that says so. A control that is bound both ways hands back
+what it has just been told to show. The tests hold that none of that is an edit (opening a
+project, selecting, playing, Undo), and that what a control is asked for by the user is one
+edit and one undo step. They say nothing of focus, the rail, or anything else that is in the
+window itself.
 
 Settings restores persisted scalar preferences at construction and repairs only the newly
 realized section after its first layout pass (or the rapid-navigation dispatcher fallback).
@@ -151,7 +171,8 @@ dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:Platform
 
 The app launches **tray-only** (no window). Left- or right-click the tray icon for the Fluent
 menu: **Screenshot**, **Capture Region**, **Record Video**, **Record GIF**, **Settings**,
-**Guide**, **Exit**. Capture items first show the **Region / Screen / Window** picker.
+**Guide**, **Exit**, and, while Tiny Clips Studio is switched on, **Studio** as a fourth capture
+button, between Video and GIF. Capture items first show the **Region / Screen / Window** picker.
 Video/GIF captures then show a setup panel before countdown and recording. Recording items toggle
 to **Stop Recording** (also `Ctrl+Shift+S`) while active, and a floating recording indicator shows
 the elapsed time. Global hotkeys work app-wide.
@@ -174,6 +195,123 @@ For schema-2 timing/cadence/submission definitions, requested versus actual back
 encoder selection, and the local collector's target-process architecture evidence and required
 helper source, see the [diagnostic contract](docs/gpu-recording-pipeline.md#41-diagnostic-contract-schema-2).
 Historical benchmark values are not verified encoder/output-frame measurements.
+
+## Tiny Clips Studio (preview)
+
+Studio has a page of its own in Settings, **Studio**, after Video. Studio is off until you
+switch it on there: **Settings › Studio › Tiny Clips Studio (Preview)**. With the switch off
+the page shows nothing else, nothing else of Studio is shown anywhere, and a recording is made
+as it always was.
+Switching it off again deletes nothing: the projects stay where they are, are not cleaned up while
+it is off, and the line under the switch says how many there are and how much room they take.
+The switch leaves **Open trimmer after recording** in Settings › Video alone: it says what it
+said before, and decides what an ordinary recording does with Studio on or off.
+
+With the switch on:
+
+- **The tray menu** has a fourth capture button, **Studio**: Screenshot, Video, Studio, GIF.
+  It is the Studio recording command: it starts a video recording that is saved as a project
+  (a clean screen track, a camera track, and click and cursor data) and opens in the editor
+  when it ends. While a recording runs it is greyed, and the Video button, which says Stop
+  then, stops a Studio recording as it stops any video. The recording setup panel says
+  **Studio** for such a recording, and nothing for any other. **Record video**, from the tray
+  menu or with its hotkey, is always an ordinary recording, and Studio recording has no hotkey
+  yet. A capture picker that comes back after a Studio recording is for another one, until a
+  recording is asked for again. If Studio is switched off before the recording starts, it is
+  made as an ordinary recording. A Studio recording that cannot be saved as a project is kept
+  as an ordinary video, which then opens the trimmer or is saved, as the trimmer switch says.
+- **The editor** has a live preview, an inspector, a scene lane, a zoom lane, a cut lane, and a
+  speed lane above a trim bar, a Project menu, undo and redo, and Export. A recording without a
+  camera has no scenes.
+  The inspector shows one panel at a time, chosen on the rail down its outer edge: **Scene**,
+  **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**, **Audio**, and
+  **Project** (no Scene and no Camera without a camera). The rail is one stop for `Tab`, and
+  `Up`/`Down`/`Home`/`End` choose a panel; `Space` plays and pauses from its chosen item as it
+  does from a slider. Selecting or adding a zoom, a cut, or a speed change,
+  splitting or going to a scene, and dragging the camera in the preview show that panel by
+  themselves; undo, redo, the layout keys, playing, and scrubbing leave the panel alone. The
+  crop sliders of the screen and of the camera are in a **Crop** group that is closed while
+  nothing is cropped and stays open once one of its sliders has been moved.
+  Keys: `Space` play or pause, `Left`/`Right` step a frame, `I`/`O` start and end the video at the
+  playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
+  at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
+  selected zoom, cut, or speed change, `1`–`4` layout of the scene the playhead is in,
+  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
+  this project as a folder (not `Ctrl+Shift+S`, which is the global Stop recording hotkey and
+  does not reach the window), `Esc` stop an export or a save, and otherwise close
+  the editor as its close button does: a recording that was never exported asks what to do with
+  it, and a project that was exported asks first unless **Confirm before closing editors with
+  Esc** is turned off in General settings. While a lane has the keyboard focus, `Left`/`Right`
+  go to the previous and the next scene, zoom, cut, or speed change on it, and `Home`/`End` to
+  the first and the last; on the scene lane, `Delete` removes the scene the playhead is in.
+  While something is being dragged, the keys that change the project do nothing; `Space` and
+  the arrow keys still work.
+  The Camera panel has a **Camera background** choice: keep, blur, or remove what is behind you. The
+  people are found on this PC with the MediaPipe Selfie Segmentation model, which ships with the
+  app under the Apache License 2.0 (**Settings › About › Third-party notices**).
+  The Audio panel has **Mute** and a **Volume** slider for the whole video, from 0% to 100% in
+  steps of 5%: the preview plays at that volume and the export has it. The slider is switched
+  off while Mute is on.
+  **Keep this project**, in the Project panel, pins a project against the storage
+  cleanup; it is written at once and is not undone by `Ctrl+Z`.
+  A project the editor cannot show says why, and where its screen recording is still there,
+  **Save the screen recording** saves that as an ordinary video; **Delete project…** under it
+  deletes what is left.
+  **Project**, in the header, has **Open recent** (the other projects, the one opened last
+  first), **Open project…**, **Save project…**, and **Delete project…**; the last two are in the
+  Project panel as well. **Save project…** saves a copy of the project as a folder with a name
+  and in a place you choose: the recordings, and a `.tinyclips` file that opens them in Studio
+  again. A saved project that is in the way is replaced only after a question, and only when
+  its folder holds nothing else; the save can be cancelled, and the editor takes no edits
+  while it runs. **Open project…**, or a `.tinyclips` file opened from File Explorer, copies
+  the project into Studio as a new draft and opens that; the folder is only read. **Delete
+  project…** asks first, and leaves exported videos and saved folders alone.
+- **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
+  choosing such a video in **Recent captures** opens its project instead of the trimmer. A
+  recording kept as a draft is in **Recent captures** too, as "Name — Studio project" with its
+  date and poster, among the five lines the list has.
+  **Settings › Studio** says how a Studio recording is started, has **Open project…** for a
+  project that was saved as a folder, and shows the space projects
+  take, the cleanup rules, and the drafts: the recordings that only their project holds. Those
+  are the ones kept without exporting, the ones
+  whose exported video is no longer where it was saved (a file of another size under its name
+  counts as gone), and any project Studio cannot read. Each can be deleted, and has **Save
+  recording** to save its screen recording as an ordinary video. Cleanup never removes them.
+  The storage limit counts only what cleanup may remove, and never removes the project that was
+  opened last.
+
+Projects are kept in the app's local data folder under `TinyClips\Projects`. That folder belongs
+to the installed app: uninstalling Tiny Clips, or resetting it in Windows Settings, deletes it,
+and with it every project, drafts included. Exported videos are not in it, and neither is a
+project that was saved as a folder with **Save project…**, which is the way to keep one. The format, layout
+math and drawing rules are in [`/docs/studio-project-format.md`](../docs/studio-project-format.md),
+shared with the macOS app; the design and its status are in
+[`/plans/video-studio-plan.md`](../plans/video-studio-plan.md). The renderer and exporter are
+described in [`docs/studio-rendering.md`](docs/studio-rendering.md) and the live preview in
+[`docs/studio-preview.md`](docs/studio-preview.md). Each has a check tool that runs without the
+app, plays no sound and sends no input, and so has the editor window. None runs in CI, and the
+preview and window tools are not in the solution.
+
+```powershell
+# Renderer, exporter and camera recorder. No window; about four minutes.
+dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c Release -p:Platform=x64
+
+# The same tool, running no check: export a project of your own with the app's exporter.
+# Takes a project file, a .tinyclips file, or the folder that holds one, and only reads it.
+dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c Release -p:Platform=x64 -- --export-project <project> <output.mp4>
+
+# Live preview. Needs ffmpeg and ffprobe on PATH and a desktop session; about ten minutes.
+# Its window stays behind every other window. Options are in the tool's README.
+dotnet build windows/tools/StudioPreviewCheck/StudioPreviewCheck.csproj -c Debug -p:Platform=x64
+windows\tools\StudioPreviewCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioPreviewCheck.exe
+
+# Editor window: the real window on real projects, with the real preview and exporter. Needs
+# ffmpeg and ffprobe on PATH and a desktop session; about three and a half minutes. Its windows
+# stay behind every other window and cannot take the keyboard focus. What it checks is in the
+# tool's README.
+dotnet build windows/tools/StudioWindowCheck/StudioWindowCheck.csproj -c Debug -p:Platform=x64
+windows\tools\StudioWindowCheck\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\StudioWindowCheck.exe
+```
 
 ## CI
 

@@ -133,6 +133,16 @@ public sealed partial class ClipItemViewModel : ObservableObject
 
     public bool HasThumbnail => Thumbnail is not null;
 
+    /// <summary>
+    /// The Studio project this video was exported from, while that project is still stored. Null
+    /// for everything else, and always null while the Studio preview is switched off.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStudioProject))]
+    private string? _studioProjectId;
+
+    public bool HasStudioProject => StudioProjectId is not null;
+
     partial void OnThumbnailChanged(BitmapImage? value) => OnPropertyChanged(nameof(HasThumbnail));
 
     /// <summary>

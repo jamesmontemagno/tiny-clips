@@ -1,0 +1,88 @@
+{
+  "description": "One cut removes the middle of the trim range.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 2,
+    "trimEnd": 18,
+    "cuts": [
+      {
+        "start": 5,
+        "end": 7
+      }
+    ],
+    "speed": []
+  },
+  "expected": {
+    "outputDuration": 14,
+    "segments": [
+      {
+        "start": 2,
+        "end": 5
+      },
+      {
+        "start": 7,
+        "end": 18
+      }
+    ],
+    "pieces": [
+      {
+        "start": 2,
+        "end": 5,
+        "rate": 1
+      },
+      {
+        "start": 7,
+        "end": 18,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 2,
+        "output": 0
+      },
+      {
+        "source": 4.999,
+        "output": 2.9989999999999997
+      },
+      {
+        "source": 5,
+        "output": 3
+      },
+      {
+        "source": 6,
+        "output": 3
+      },
+      {
+        "source": 7,
+        "output": 3
+      },
+      {
+        "source": 18,
+        "output": 14
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": 0,
+        "source": 2
+      },
+      {
+        "output": 3,
+        "source": 7
+      },
+      {
+        "output": 3.5,
+        "source": 7.5
+      },
+      {
+        "output": 14,
+        "source": 18
+      },
+      {
+        "output": 15,
+        "source": 18
+      }
+    ]
+  }
+}

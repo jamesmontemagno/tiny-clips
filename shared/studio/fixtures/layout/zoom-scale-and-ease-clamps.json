@@ -1,0 +1,375 @@
+{
+  "description": "Scale clamps to 1 through 5 and the eases to 0 through 3 when they are used: a scale under 1 shows no zoom, a negative ease in is a cut, and an ease in of 10 takes 3 seconds.",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-4000-8000-000000000051",
+    "name": "Zoom clamps",
+    "createdAt": "2026-10-02T22:41:00Z",
+    "modifiedAt": "2026-10-02T22:41:00Z",
+    "lastOpenedAt": "2026-10-02T22:41:00Z",
+    "app": {
+      "platform": "windows",
+      "version": "1.9.0"
+    },
+    "keepSources": false,
+    "sources": {
+      "screen": {
+        "file": "screen.mp4",
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "duration": 20,
+        "external": false
+      },
+      "camera": null,
+      "events": "events.json"
+    },
+    "canvas": {
+      "aspect": "auto",
+      "padding": 0.06,
+      "background": {
+        "style": "gradient",
+        "preset": "ocean",
+        "primary": "#2687E8",
+        "secondary": "#2EE0BF",
+        "image": null
+      }
+    },
+    "screen": {
+      "cornerRadius": 0.02,
+      "shadow": 0.5,
+      "crop": null
+    },
+    "camera": {
+      "shape": "circle",
+      "cornerRadius": 0.12,
+      "mirror": true,
+      "borderWidth": 0,
+      "borderColor": "#FFFFFF",
+      "shadow": 0.35,
+      "crop": null,
+      "cutout": "none"
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen",
+        "bubble": {
+          "anchor": "bottomRight",
+          "size": 0.24,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "split": {
+          "cameraSide": "trailing",
+          "cameraFraction": 0.3
+        },
+        "transition": {
+          "kind": "cut",
+          "duration": 0.35
+        }
+      }
+    ],
+    "zooms": [
+      {
+        "start": 1,
+        "end": 4,
+        "scale": 0.5,
+        "focus": {
+          "mode": "point",
+          "x": 0.5,
+          "y": 0.5
+        },
+        "easeIn": 0.5,
+        "easeOut": 0.5,
+        "origin": "manual"
+      },
+      {
+        "start": 5,
+        "end": 9,
+        "scale": 9,
+        "focus": {
+          "mode": "point",
+          "x": 0.5,
+          "y": 0.5
+        },
+        "easeIn": -1,
+        "easeOut": 0.5,
+        "origin": "manual"
+      },
+      {
+        "start": 10,
+        "end": 18,
+        "scale": 2,
+        "focus": {
+          "mode": "point",
+          "x": 0.5,
+          "y": 0.5
+        },
+        "easeIn": 10,
+        "easeOut": 0.25,
+        "origin": "manual"
+      }
+    ],
+    "edits": {
+      "trimStart": 0,
+      "trimEnd": null,
+      "cuts": [],
+      "speed": []
+    },
+    "audio": {
+      "muted": false,
+      "systemVolume": 1,
+      "microphoneVolume": 1
+    },
+    "overlays": {
+      "clicks": {
+        "enabled": true,
+        "color": "#0A84FF",
+        "size": 40,
+        "strokeWidth": 3,
+        "opacity": 0.85,
+        "duration": 0.45
+      },
+      "branding": false
+    },
+    "exports": []
+  },
+  "naturalCanvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "cases": [
+    {
+      "time": 2,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "screen",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 1.0,
+            "height": 1.0
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": null
+      }
+    },
+    {
+      "time": 5,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "screen",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0.4,
+            "y": 0.4,
+            "width": 0.2,
+            "height": 0.2
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": null
+      }
+    },
+    {
+      "time": 7,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "screen",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0.4,
+            "y": 0.4,
+            "width": 0.2,
+            "height": 0.2
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": null
+      }
+    },
+    {
+      "time": 11.5,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "screen",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0.125,
+            "y": 0.125,
+            "width": 0.75,
+            "height": 0.75
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": null
+      }
+    },
+    {
+      "time": 13,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "screen",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0.25,
+            "y": 0.25,
+            "width": 0.5,
+            "height": 0.5
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": null
+      }
+    },
+    {
+      "time": 17.75,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "screen",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0.25,
+            "y": 0.25,
+            "width": 0.5,
+            "height": 0.5
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": null
+      }
+    },
+    {
+      "time": 17.875,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "screen",
+        "screen": {
+          "rect": {
+            "x": 115.20000000000009,
+            "y": 64.8,
+            "width": 1689.6,
+            "height": 950.4
+          },
+          "source": {
+            "x": 0.125,
+            "y": 0.125,
+            "width": 0.75,
+            "height": 0.75
+          },
+          "cornerRadius": 21.6,
+          "shadow": {
+            "blur": 21.6,
+            "offsetY": 6.48,
+            "opacity": 0.25
+          },
+          "opacity": 1
+        },
+        "camera": null
+      }
+    }
+  ]
+}

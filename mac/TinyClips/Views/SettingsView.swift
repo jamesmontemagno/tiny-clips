@@ -8,6 +8,7 @@ enum SettingsTab: String, CaseIterable {
     case analytics = "Analytics"
     case screenshot = "Screenshot"
     case video = "Video"
+    case studio = "Studio"
     case teleprompter = "Teleprompter"
     case gif = "GIF"
     case mouseClicks = "Mouse Clicks"
@@ -22,6 +23,7 @@ enum SettingsTab: String, CaseIterable {
         case .analytics: return "chart.bar.xaxis"
         case .screenshot: return "camera"
         case .video: return "video"
+        case .studio: return "square.stack.3d.up"
         case .teleprompter: return "text.alignleft"
         case .gif: return "photo.on.rectangle"
         case .mouseClicks: return "cursorarrow.rays"
@@ -91,6 +93,9 @@ struct SettingsView: View {
                         availableWebcams: availableWebcams,
                         selectedTab: $selectedTab
                     )
+                case .studio:
+                    // Its switch is always there. The rest shows once Studio is switched on.
+                    StudioSettingsSection(settings: settings)
                 case .teleprompter:
                     TeleprompterSettingsSection(settings: settings)
                 case .gif:
@@ -239,7 +244,7 @@ struct SettingsView: View {
         NSApplication.shared.setActivationPolicy(
             TinyClipsActivationPolicy.resolve(
                 showInDock: showInDock,
-                hasOpenScreenshotEditors: ScreenshotEditorRegistry.shared.hasOpenSessions
+                hasOpenEditors: TinyClipsActivationPolicy.hasOpenEditors
             )
         )
         if showInDock {

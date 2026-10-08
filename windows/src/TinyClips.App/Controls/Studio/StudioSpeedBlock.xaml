@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<local:StudioRangeBlock
+    x:Class="TinyClips.App.Controls.Studio.StudioSpeedBlock"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TinyClips.App.Controls.Studio"
+    IsTabStop="False">
+
+    <local:StudioRangeBlock.Resources>
+        <ResourceDictionary>
+            <!--
+                A stretch at another speed is neither a zoom nor a cut, and has to look like
+                neither whatever the accent color is. Its block has round ends, where theirs have
+                corners; it is filled with a tint of the text color, where a zoom is a tint of the
+                accent color and a cut is hatched; and it carries a mark that says faster or
+                slower. A tint is not one of a contrast theme's colors, so there the block takes
+                the window color and keeps its outline, its round ends and its mark.
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush
+                        x:Key="StudioSpeedBlockFillBrush"
+                        Opacity="0.14"
+                        Color="{ThemeResource TextFillColorPrimary}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush
+                        x:Key="StudioSpeedBlockFillBrush"
+                        Opacity="0.16"
+                        Color="{ThemeResource TextFillColorPrimary}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="StudioSpeedBlockFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </local:StudioRangeBlock.Resources>
+
+    <Grid x:Name="Root" SizeChanged="OnRootSizeChanged">
+        <VisualStateManager.VisualStateGroups>
+            <!--  The selected speed change is filled, and has a thicker border, so it is not told apart by color alone.  -->
+            <VisualStateGroup x:Name="SelectionStates">
+                <VisualState x:Name="Unselected" />
+                <VisualState x:Name="Selected">
+                    <VisualState.Setters>
+                        <Setter Target="Fill.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <Setter Target="Fill.BorderBrush" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <Setter Target="Fill.BorderThickness" Value="2" />
+                        <Setter Target="FasterIcon.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                        <Setter Target="SlowerIcon.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                        <Setter Target="RateText.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <!--  The corner radius is half the block's height, set in code, which makes both ends round.  -->
+        <Border
+            x:Name="Fill"
+            Background="{ThemeResource StudioSpeedBlockFillBrush}"
+            BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+            BorderThickness="1" />
+
+        <!--  The list item says all of this in its name, so screen readers skip the parts.  -->
+        <StackPanel
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            IsHitTestVisible="False"
+            Orientation="Horizontal"
+            Spacing="4">
+            <!--  Faster than the recording: the mark of fast forward.  -->
+            <FontIcon
+                x:Name="FasterIcon"
+                VerticalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw"
+                FontSize="12"
+                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                Glyph="&#xEB9D;"
+                Visibility="Collapsed" />
+            <!--  Slower than the recording: a tortoise.  -->
+            <FontIcon
+                x:Name="SlowerIcon"
+                VerticalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw"
+                FontSize="12"
+                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                Glyph="&#xEA79;"
+                Visibility="Collapsed" />
+            <!--  The rate, such as "2×".  -->
+            <TextBlock
+                x:Name="RateText"
+                VerticalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="NoWrap"
+                Visibility="Collapsed" />
+        </StackPanel>
+
+        <!--
+            The handles at the two ends, as round as the ends are. On the selected speed change,
+            which is filled, they take the color of what is written on it.
+        -->
+        <local:StudioLaneBlockHandles
+            x:Name="BlockHandles"
+            GripBrush="{ThemeResource TextFillColorPrimaryBrush}"
+            SelectedGripBrush="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+            TabBrush="{ThemeResource AccentFillColorDefaultBrush}"
+            TabGripBrush="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+    </Grid>
+</local:StudioRangeBlock>

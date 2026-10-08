@@ -2,6 +2,7 @@ using System.Reflection;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Studio;
 using Windows.Graphics.Imaging;
 
 namespace TinyClips.Core.Tests;
@@ -32,7 +33,8 @@ public sealed class VideoRecordingServiceStartTests : IDisposable
             new NoNames(),
             new CaptureSettings(_saved),
             new NoAnalytics(),
-            new NoCamera());
+            new NoCamera(),
+            new StudioProjectStore(Path.Combine(_directory, "Projects")));
         _saved.MayBeRead = false;
 
         // What a finished recording leaves behind: the recorder keeps the path of the video it
@@ -213,6 +215,12 @@ public sealed class VideoRecordingServiceStartTests : IDisposable
         public bool IsRunning => false;
 
         public event EventHandler<WebcamCaptureFailedEventArgs>? CaptureFailed
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<WebcamFrameArrivedEventArgs>? FrameArrived
         {
             add { }
             remove { }

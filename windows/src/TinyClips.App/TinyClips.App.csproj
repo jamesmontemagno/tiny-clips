@@ -75,6 +75,18 @@
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
 
+  <!--
+    The model Tiny Clips Studio finds people with, for a camera whose background is blurred or
+    removed: MediaPipe Selfie Segmentation, passed on under the Apache License 2.0. It ships with
+    the app, where StudioPersonFinders.ModelPath looks for it, and so does the notice that licence
+    asks for, which Settings > About shows. Without the model the Windows renderer keeps every
+    camera background.
+  -->
+  <ItemGroup>
+    <Content Include="Assets\Studio\selfie_segmentation.onnx" />
+    <Content Include="Assets\THIRD-PARTY-NOTICES.txt" />
+  </ItemGroup>
+
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>

@@ -131,7 +131,6 @@ public sealed partial class HotkeysSettingsSection : UserControl
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             IsPrimaryButtonEnabled = false,
-            XamlRoot = XamlRoot,
         };
 
         HotKeyDefinition? candidate = null;
@@ -216,7 +215,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
         recorder.KeyDown += OnKey;
         dialog.PrimaryButtonClick += OnPrimaryButtonClick;
         dialog.Opened += OnOpened;
-        await dialog.ShowAsync();
+        await SettingsDialog.TryShowAsync(dialog, XamlRoot);
         recorder.KeyDown -= OnKey;
         dialog.PrimaryButtonClick -= OnPrimaryButtonClick;
         dialog.Opened -= OnOpened;

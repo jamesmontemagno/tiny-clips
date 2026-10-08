@@ -1,0 +1,452 @@
+using System.Globalization;
+
+namespace TinyClips.Core.Studio.Editing;
+
+/// <summary>
+/// The text the Studio editor shows and reads out, and the number rules behind it. Kept apart from
+/// the window so the wording and the rounding are tested, and match the Mac editor.
+/// </summary>
+public static class StudioEditorText
+{
+    /// <summary>What a project with no name is called.</summary>
+    public const string UntitledName = "Untitled recording";
+
+    /// <summary>Said when a zoom has been added at the playhead.</summary>
+    public const string ZoomAddedMessage = "Zoom added.";
+
+    /// <summary>Said when a zoom was asked for where one already is. That zoom is selected instead.</summary>
+    public const string ZoomAlreadyThereMessage = "There is already a zoom here.";
+
+    /// <summary>Said when a zoom was asked for where less than the shortest zoom fits.</summary>
+    public const string NoRoomForZoomMessage = "There is no room for a zoom here.";
+
+    /// <summary>Said when the selected zoom has been deleted.</summary>
+    public const string ZoomDeletedMessage = "Zoom deleted.";
+
+    /// <summary>Said when the suggested zooms have been removed.</summary>
+    public const string ZoomSuggestionsRemovedMessage = "Suggested zooms removed.";
+
+    /// <summary>Said when zooms were asked for and the clicks give none.</summary>
+    public const string NoZoomSuggestionsMessage = "No zooms to suggest for this recording.";
+
+    /// <summary>Why zooms cannot be suggested for a recording without clicks, such as one of a window.</summary>
+    public const string NoClicksExplanation = "This recording has no clicks to suggest zooms from.";
+
+    /// <summary>Why a zoom cannot follow the pointer in a recording without pointer positions.</summary>
+    public const string NoPointerExplanation = "This recording has no pointer positions to follow.";
+
+    /// <summary>Said when a scene has been split at the playhead.</summary>
+    public const string SceneSplitMessage = "Scene split.";
+
+    /// <summary>Said when the current scene has been deleted.</summary>
+    public const string SceneDeletedMessage = "Scene deleted.";
+
+    /// <summary>Why a recording without a camera has one scene.</summary>
+    public const string NoCameraForScenesExplanation = "This recording has no camera, so there is nothing to arrange differently.";
+
+    /// <summary>Why a scene cannot be split near where it starts or ends.</summary>
+    public const string SceneTooShortToSplitExplanation = "Both scenes would have to last at least 0.3 seconds.";
+
+    /// <summary>Why a scene cannot be split while its layers are still moving into place.</summary>
+    public const string SceneStillMovingExplanation = "This scene is still moving into place here.";
+
+    /// <summary>Why the only scene cannot be deleted.</summary>
+    public const string OnlySceneExplanation = "The only scene cannot be deleted.";
+
+    /// <summary>Why the first scene has no start to set and no way of being entered.</summary>
+    public const string FirstSceneExplanation = "The first scene starts with the recording and has nothing to move from.";
+
+    /// <summary>What the Scene section says while the recording is one scene: what scenes are for.</summary>
+    public const string OneSceneExplanation = "Split the recording into scenes to change the layout partway through.";
+
+    /// <summary>What the cut lane says while there are no cuts.</summary>
+    public const string NoCutsHint = "No cuts. Press X to cut a second out at the playhead.";
+
+    /// <summary>What the Cut section says while there are cuts and none is selected.</summary>
+    public const string SelectCutHint = "Select a cut on the timeline, or step to one with the arrows above.";
+
+    /// <summary>Said when a cut has been added at the playhead.</summary>
+    public const string CutAddedMessage = "Cut added.";
+
+    /// <summary>Said when a cut was asked for where one already is. That cut is selected instead.</summary>
+    public const string CutAlreadyThereMessage = "There is already a cut here.";
+
+    /// <summary>Said when a cut was asked for where the shortest cut does not fit, or where it would leave no video.</summary>
+    public const string NoRoomForCutMessage = "There is no room for a cut here.";
+
+    /// <summary>Said when the selected cut has been deleted.</summary>
+    public const string CutDeletedMessage = "Cut deleted.";
+
+    /// <summary>What the speed lane says while no stretch plays at another speed.</summary>
+    public const string NoSpeedHint = "No speed changes. Press R to speed up two seconds from the playhead.";
+
+    /// <summary>What the Speed section says while there are speed changes and none is selected.</summary>
+    public const string SelectSpeedHint = "Select a speed change on the timeline, or step to one with the arrows above.";
+
+    /// <summary>What the Speed section says of the sound, which a stretch at another speed does not have.</summary>
+    public const string SpeedSilentNote = "A stretch at another speed plays without sound.";
+
+    /// <summary>Said when a speed change has been added at the playhead.</summary>
+    public const string SpeedAddedMessage = "Speed change added.";
+
+    /// <summary>Said when a speed change was asked for where one already is. That one is selected instead.</summary>
+    public const string SpeedAlreadyThereMessage = "There is already a speed change here.";
+
+    /// <summary>Said when a speed change was asked for where the shortest one does not fit, or where it would leave too little video.</summary>
+    public const string NoRoomForSpeedMessage = "There is no room for a speed change here.";
+
+    /// <summary>Said when the selected speed change has been deleted.</summary>
+    public const string SpeedDeletedMessage = "Speed change deleted.";
+
+    // How far a number that went through single precision may be from what was meant, as a part of
+    // its size. One unit in the last place is 2^-23 of it at most, and the value a screen reader
+    // read, the step it read and the sum it sent back each lose up to half of one.
+    private const double SinglePrecisionTolerance = 4.0 / (1 << 23);
+
+    /// <summary>The project name without surrounding white space, or <see cref="UntitledName"/>.</summary>
+    public static string GetClipName(string? name)
+    {
+        var trimmed = name?.Trim();
+        return string.IsNullOrEmpty(trimmed) ? UntitledName : trimmed;
+    }
+
+    /// <summary>The transport read-out, such as <c>0:02.5 / 0:10.0</c>. Both times are output time.</summary>
+    public static string GetTimeText(double outputTime, double outputDuration) =>
+        $"{StudioEditorModel.FormatTime(outputTime)} / {StudioEditorModel.FormatTime(outputDuration)}";
+
+    /// <summary>For example <c>Exports at 1920 × 1080</c>.</summary>
+    public static string GetExportSizeText(StudioSize size) =>
+        string.Create(CultureInfo.InvariantCulture, $"Exports at {WholeNumber(size.Width)} × {WholeNumber(size.Height)}");
+
+    /// <summary>A fraction as a whole percentage, such as <c>6%</c>. Halves round away from zero.</summary>
+    public static string GetPercentText(double fraction) =>
+        string.Create(CultureInfo.InvariantCulture, $"{WholePercent(fraction)}%");
+
+    /// <summary>Like <see cref="GetPercentText"/>, with a plus sign on values above zero: <c>+3%</c>.</summary>
+    public static string GetSignedPercentText(double fraction)
+    {
+        var percent = WholePercent(fraction);
+        return string.Create(CultureInfo.InvariantCulture, $"{(percent > 0 ? "+" : string.Empty)}{percent}%");
+    }
+
+    /// <summary>
+    /// The value a slider stores: the nearest multiple of <paramref name="step"/>, kept inside the
+    /// range. A step of zero or less only applies the range.
+    /// </summary>
+    public static double SnapToStep(double value, double step, double minimum, double maximum)
+    {
+        if (!double.IsFinite(value))
+        {
+            return minimum;
+        }
+
+        var snapped = step > 0 ? Math.Round(value / step, MidpointRounding.AwayFromZero) * step : value;
+        return Math.Min(Math.Max(snapped, minimum), maximum);
+    }
+
+    /// <summary>
+    /// How far one keyboard or screen reader step moves a trim handle: about a hundred steps across
+    /// the recording, never finer than one frame and never coarser than one second.
+    /// </summary>
+    public static double GetTrimStep(double frameDuration, double sourceDuration) =>
+        Math.Max(frameDuration, Math.Min(1, sourceDuration / 100));
+
+    /// <summary>
+    /// The value a screen reader meant when it set a number through UI Automation.
+    /// </summary>
+    /// <remarks>
+    /// WinUI passes such a number on in single precision, so 3.2 arrives as 3.2000000477 and a
+    /// time that was on a frame boundary may arrive just before it. A screen reader asks for the
+    /// current value plus or minus a number of steps. A request that is a whole number of steps
+    /// away, as closely as single precision can tell, is therefore taken to mean exactly that, and
+    /// gives the value the arrow keys would give. Any other request is kept to a thousandth, which
+    /// for a time is a millisecond.
+    /// </remarks>
+    /// <param name="requested">The number that arrived.</param>
+    /// <param name="current">The value the control has now.</param>
+    /// <param name="step">One step of the control.</param>
+    public static double ResolveAutomationValue(double requested, double current, double step)
+    {
+        if (!double.IsFinite(requested))
+        {
+            return current;
+        }
+
+        if (double.IsFinite(current) && double.IsFinite(step) && step > 0)
+        {
+            var steps = Math.Round((requested - current) / step, MidpointRounding.AwayFromZero);
+            var stepped = current + steps * step;
+            var tolerance = Math.Max(Math.Abs(requested), Math.Abs(stepped)) * SinglePrecisionTolerance + 1e-9;
+            if (Math.Abs(requested - stepped) <= tolerance)
+            {
+                return stepped;
+            }
+        }
+
+        return Math.Round(requested, 3, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
+    /// What the preview is showing, for screen readers: the layout, and for the bubble layout the
+    /// corner the camera is anchored to.
+    /// </summary>
+    public static string GetPreviewDescription(StudioEditorModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var layout = StudioEditorModel.GetLayoutName(model.EffectiveLayout);
+        if (model.EffectiveLayout != StudioLayout.Bubble)
+        {
+            return layout;
+        }
+
+        var corner = StudioEditorModel.GetAnchorName(model.CurrentScene.Bubble.Anchor).ToLowerInvariant();
+        return $"{layout}, camera {corner}";
+    }
+
+    /// <summary>
+    /// A zoom for screen readers, such as <c>Zoom 2×, 12.0 to 16.5 seconds</c>. The times are
+    /// source time, as the trim handles read. "Follows the pointer" and "suggested" are added
+    /// where they apply.
+    /// </summary>
+    public static string GetZoomDescription(StudioZoom zoom)
+    {
+        ArgumentNullException.ThrowIfNull(zoom);
+        return $"Zoom {GetZoomDetailText(zoom)}";
+    }
+
+    /// <summary>
+    /// What is read out when a zoom is stepped to with Previous or Next, which say nothing of
+    /// where they land by themselves: which zoom it is, and then what
+    /// <see cref="GetZoomDescription"/> says of it, such as
+    /// <c>Zoom 2 of 5, 2×, 12.0 to 16.5 seconds</c>.
+    /// </summary>
+    public static string GetZoomStepText(int index, int count, StudioZoom zoom)
+    {
+        ArgumentNullException.ThrowIfNull(zoom);
+        return $"{GetZoomPositionText(index, count)}, {GetZoomDetailText(zoom)}";
+    }
+
+    // "2×, 12.0 to 16.5 seconds", with "follows the pointer" and "suggested" where they apply.
+    private static string GetZoomDetailText(StudioZoom zoom)
+    {
+        var text = $"{GetZoomScaleText(zoom.Scale)}, {GetZoomRangeText(zoom)}";
+        if (zoom.Focus.Mode == StudioZoomFocusMode.Cursor)
+        {
+            text += ", follows the pointer";
+        }
+
+        return zoom.Origin == StudioZoomOrigin.Auto ? text + ", suggested" : text;
+    }
+
+    /// <summary>
+    /// How much a zoom magnifies, such as <c>2×</c> or <c>1.25×</c>: the scale that is drawn, which
+    /// is the stored one kept within 1 to 5, with up to two decimals.
+    /// </summary>
+    public static string GetZoomScaleText(double scale)
+    {
+        var drawn = double.IsFinite(scale) ? Math.Min(5, Math.Max(1, scale)) : 1;
+        return string.Create(CultureInfo.InvariantCulture, $"{drawn:0.##}×");
+    }
+
+    /// <summary>When a zoom starts and ends, in source time: <c>12.0 to 16.5 seconds</c>.</summary>
+    public static string GetZoomRangeText(StudioZoom zoom)
+    {
+        ArgumentNullException.ThrowIfNull(zoom);
+        var start = double.IsFinite(zoom.Start) ? zoom.Start : 0;
+        var end = double.IsFinite(zoom.End) ? zoom.End : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{start:0.0} to {end:0.0} seconds");
+    }
+
+    /// <summary>Which zoom is selected, counting from one: <c>Zoom 2 of 5</c>.</summary>
+    public static string GetZoomPositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Zoom {index + 1} of {count}");
+
+    /// <summary>Why a scene cannot be split, in words, or null when it can be.</summary>
+    public static string? GetSplitSceneExplanation(StudioSceneSplitObstacle obstacle) => obstacle switch
+    {
+        StudioSceneSplitObstacle.NoCamera => NoCameraForScenesExplanation,
+        StudioSceneSplitObstacle.TooShort => SceneTooShortToSplitExplanation,
+        StudioSceneSplitObstacle.StillMoving => SceneStillMovingExplanation,
+        _ => null,
+    };
+
+    /// <summary>
+    /// A scene for screen readers, such as <c>Scene 2 of 3, Side by side, 12.0 to 30.5 seconds</c>.
+    /// The times are source time, as the trim handles read. Empty when there is no such scene.
+    /// </summary>
+    public static string GetSceneDescription(StudioEditorModel model, int index)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var scenes = model.Project.Scenes;
+        if (index < 0 || index >= scenes.Length)
+        {
+            return string.Empty;
+        }
+
+        var layout = model.HasCamera ? scenes[index].Layout : StudioLayout.Screen;
+        return $"{GetScenePositionText(index, scenes.Length)}, {StudioEditorModel.GetLayoutName(layout)}, {GetSceneRangeText(model, index)}";
+    }
+
+    /// <summary>Which scene the playhead is in, counting from one: <c>Scene 2 of 3</c>.</summary>
+    public static string GetScenePositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Scene {index + 1} of {count}");
+
+    /// <summary>When a scene starts and ends, in source time: <c>12.0 to 30.5 seconds</c>. Empty when there is no such scene.</summary>
+    public static string GetSceneRangeText(StudioEditorModel model, int index)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return model.GetSceneRange(index) is { } range
+            ? string.Create(CultureInfo.InvariantCulture, $"{range.Start:0.0} to {range.End:0.0} seconds")
+            : string.Empty;
+    }
+
+    /// <summary>
+    /// Says how long the move into a scene really is when the scene is shorter than the time
+    /// asked for. Null when the move takes as long as asked, or the scene is cut to.
+    /// </summary>
+    public static string? GetSceneMoveLimitedText(StudioEditorModel model, int index)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var scenes = model.Project.Scenes;
+        if (index < 1 || index >= scenes.Length || scenes[index].Transition.Kind != StudioTransitionKind.Morph)
+        {
+            return null;
+        }
+
+        var asked = Math.Min(2, Math.Max(0, scenes[index].Transition.Duration));
+        var length = model.GetSceneTransitionLength(index);
+        return length < asked
+            ? string.Create(CultureInfo.InvariantCulture, $"The scene is shorter than that, so the move takes {length:0.00} seconds.")
+            : null;
+    }
+
+    /// <summary>
+    /// A cut for screen readers, such as <c>Cut, 12.0 to 16.5 seconds</c>. The times are source
+    /// time, as the trim handles read.
+    /// </summary>
+    public static string GetCutDescription(StudioTimeRange cut) => $"Cut, {GetCutRangeText(cut)}";
+
+    /// <summary>When a cut starts and ends, in source time: <c>12.0 to 16.5 seconds</c>.</summary>
+    public static string GetCutRangeText(StudioTimeRange cut)
+    {
+        ArgumentNullException.ThrowIfNull(cut);
+        var start = double.IsFinite(cut.Start) ? cut.Start : 0;
+        var end = double.IsFinite(cut.End) ? cut.End : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{start:0.0} to {end:0.0} seconds");
+    }
+
+    /// <summary>How long a cut is: <c>4.5 seconds long</c>.</summary>
+    public static string GetCutLengthText(StudioTimeRange cut)
+    {
+        ArgumentNullException.ThrowIfNull(cut);
+        var length = double.IsFinite(cut.End - cut.Start) ? Math.Max(0, cut.End - cut.Start) : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{length:0.0} seconds long");
+    }
+
+    /// <summary>Which cut is selected, counting from one: <c>Cut 2 of 3</c>.</summary>
+    public static string GetCutPositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Cut {index + 1} of {count}");
+
+    /// <summary>
+    /// What is read out when a cut is stepped to with Previous or Next, which say nothing of where
+    /// they land by themselves: which cut it is and its times, such as
+    /// <c>Cut 2 of 3, 12.0 to 16.5 seconds</c>. A scene that is stepped to is read out with
+    /// <see cref="GetSceneDescription"/>, which already says which scene it is.
+    /// </summary>
+    public static string GetCutStepText(int index, int count, StudioTimeRange cut) =>
+        $"{GetCutPositionText(index, count)}, {GetCutRangeText(cut)}";
+
+    /// <summary>
+    /// A speed change for screen readers, such as <c>Speed 2×, 12.0 to 16.5 seconds</c>. The times
+    /// are source time, as the trim handles read.
+    /// </summary>
+    public static string GetSpeedDescription(StudioSpeedRange speed)
+    {
+        ArgumentNullException.ThrowIfNull(speed);
+        return $"Speed {GetSpeedRateText(speed.Rate)}, {GetSpeedRangeText(speed)}";
+    }
+
+    /// <summary>
+    /// How fast a stretch plays, such as <c>2×</c> or <c>0.25×</c>: the rate the time map plays,
+    /// which is the stored one kept within its limits, with up to two decimals.
+    /// </summary>
+    public static string GetSpeedRateText(double rate)
+    {
+        var played = double.IsFinite(rate) && rate > 0
+            ? Math.Min(StudioTimeMap.FastestRate, Math.Max(StudioTimeMap.SlowestRate, rate))
+            : 1;
+        return string.Create(CultureInfo.InvariantCulture, $"{played:0.##}×");
+    }
+
+    /// <summary>
+    /// A rate in words, for the name of the button that chooses it: <c>Half speed</c>,
+    /// <c>Twice the speed</c>, <c>4 times the speed</c>.
+    /// </summary>
+    public static string GetSpeedRateName(double rate)
+    {
+        var played = double.IsFinite(rate) && rate > 0
+            ? Math.Min(StudioTimeMap.FastestRate, Math.Max(StudioTimeMap.SlowestRate, rate))
+            : 1;
+        return played switch
+        {
+            0.25 => "Quarter speed",
+            0.5 => "Half speed",
+            1 => "The recording's own speed",
+            1.5 => "One and a half times the speed",
+            2 => "Twice the speed",
+            _ => string.Create(CultureInfo.InvariantCulture, $"{played:0.##} times the speed"),
+        };
+    }
+
+    /// <summary>When a speed change starts and ends, in source time: <c>12.0 to 16.5 seconds</c>.</summary>
+    public static string GetSpeedRangeText(StudioSpeedRange speed)
+    {
+        ArgumentNullException.ThrowIfNull(speed);
+        var start = double.IsFinite(speed.Start) ? speed.Start : 0;
+        var end = double.IsFinite(speed.End) ? speed.End : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{start:0.0} to {end:0.0} seconds");
+    }
+
+    /// <summary>
+    /// How much of the recording a speed change covers and how long that takes in the video:
+    /// <c>4.5 seconds, plays in 2.3 seconds</c>. It is the whole stretch that counts, whether or
+    /// not the trim and the cuts keep all of it.
+    /// </summary>
+    public static string GetSpeedLengthText(StudioSpeedRange speed)
+    {
+        ArgumentNullException.ThrowIfNull(speed);
+        var length = double.IsFinite(speed.End - speed.Start) ? Math.Max(0, speed.End - speed.Start) : 0;
+        var rate = double.IsFinite(speed.Rate) && speed.Rate > 0
+            ? Math.Min(StudioTimeMap.FastestRate, Math.Max(StudioTimeMap.SlowestRate, speed.Rate))
+            : 1;
+        return string.Create(CultureInfo.InvariantCulture, $"{length:0.0} seconds, plays in {length / rate:0.0} seconds");
+    }
+
+    /// <summary>Which speed change is selected, counting from one: <c>Speed change 2 of 3</c>.</summary>
+    public static string GetSpeedPositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Speed change {index + 1} of {count}");
+
+    /// <summary>
+    /// What is read out when a speed change is stepped to with Previous or Next, which say nothing
+    /// of where they land by themselves: which one it is, its rate and its times, such as
+    /// <c>Speed change 2 of 3, 2×, 12.0 to 16.5 seconds</c>.
+    /// </summary>
+    public static string GetSpeedStepText(int index, int count, StudioSpeedRange speed)
+    {
+        ArgumentNullException.ThrowIfNull(speed);
+        return $"{GetSpeedPositionText(index, count)}, {GetSpeedRateText(speed.Rate)}, {GetSpeedRangeText(speed)}";
+    }
+
+    /// <summary>What to say after zooms were suggested, given how many suggestions there are now.</summary>
+    public static string GetZoomSuggestionsText(int count) => count switch
+    {
+        <= 0 => NoZoomSuggestionsMessage,
+        1 => "1 zoom suggested.",
+        _ => string.Create(CultureInfo.InvariantCulture, $"{count} zooms suggested."),
+    };
+
+    private static long WholePercent(double fraction) =>
+        double.IsFinite(fraction) ? (long)Math.Round(fraction * 100, MidpointRounding.AwayFromZero) : 0;
+
+    private static long WholeNumber(double value) => double.IsFinite(value) ? (long)value : 0;
+}

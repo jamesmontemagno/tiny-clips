@@ -18,6 +18,11 @@ internal static class ClipContextMenu
 
         menu.Items.Add(Item("Open", "\uE8A7", owner.OpenCommand, item, Id(item, surface, "Open"), "Enter"));
         menu.Items.Add(Item($"{item.EditVerb}…", item.EditGlyph, owner.OpenCommand, item, Id(item, surface, "Edit")));
+        if (item.HasStudioProject)
+        {
+            menu.Items.Add(Item("Open in Studio…", "\uE81E", owner.OpenInStudioCommand, item, Id(item, surface, "Studio")));
+        }
+
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item(item.IsFavorite ? "Remove from favorites" : "Add to favorites", item.IsFavorite ? "\uE8D9" : "\uE734", owner.ToggleFavoriteCommand, item, Id(item, surface, "Favorite")));
         menu.Items.Add(Item("Rename…", "\uE8AC", owner.RenameCommand, item, Id(item, surface, "Rename"), "F2"));

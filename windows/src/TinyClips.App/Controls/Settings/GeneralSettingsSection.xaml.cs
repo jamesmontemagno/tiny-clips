@@ -10,9 +10,10 @@ namespace TinyClips.App.Settings.Sections;
 /// General settings: theme, save location, file naming, launch-at-login, and capture behavior
 /// toggles.
 /// </summary>
-public sealed partial class GeneralSettingsSection : UserControl
+public sealed partial class GeneralSettingsSection : UserControl, ISettingsSectionLifecycle
 {
     private readonly IDisposable _realizationScope;
+    private bool _closed;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -31,6 +32,8 @@ public sealed partial class GeneralSettingsSection : UserControl
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
     }
 
+    public void NotifyWindowClosed() => _closed = true;
+
     private void OnBrowseScreenshotSaveDirectory(object sender, RoutedEventArgs e) =>
         BrowseSaveDirectoryRequested?.Invoke(CaptureType.Screenshot);
 
@@ -42,6 +45,14 @@ public sealed partial class GeneralSettingsSection : UserControl
 
     private void OnOpenTempFolder(object sender, RoutedEventArgs e) => ViewModel.OpenTempFolder();
 
+    /// <summary>
+    /// Shows one of this section's dialogs, and returns what was chosen. Returns null when it
+    /// could not be shown: the section is no longer on a window, or another dialog is open in
+    /// it. See <see cref="SettingsDialog"/> for why that has to be answered and not thrown.
+    /// </summary>
+    private Task<ContentDialogResult?> TryShowAsync(ContentDialog dialog) =>
+        _closed ? Task.FromResult<ContentDialogResult?>(null) : SettingsDialog.TryShowAsync(dialog, XamlRoot);
+
     private async void OnPurgeTempFiles(object sender, RoutedEventArgs e)
     {
         var dialog = new ContentDialog
@@ -51,22 +62,27 @@ public sealed partial class GeneralSettingsSection : UserControl
             PrimaryButtonText = "Purge",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        // Not shown, or not answered with Purge: nothing is deleted.
+        if (await TryShowAsync(dialog) != ContentDialogResult.Primary)
         {
-            var result = ViewModel.PurgeTempFiles();
-            if (result.SkippedFileCount > 0)
+            return;
+        }
+
+        var result = ViewModel.PurgeTempFiles();
+        if (result.SkippedFileCount > 0)
+        {
+            var kept = $"{result.RemovedFileCount} temporary file(s) were removed. {result.SkippedFileCount} active or unavailable file(s) were kept.";
+            var skippedDialog = new ContentDialog
             {
-                var skippedDialog = new ContentDialog
-                {
-                    Title = "Some temporary files are still in use",
-                    Content = $"{result.RemovedFileCount} temporary file(s) were removed. {result.SkippedFileCount} active or unavailable file(s) were kept.",
-                    CloseButtonText = "OK",
-                    XamlRoot = XamlRoot,
-                };
-                await skippedDialog.ShowAsync();
+                Title = "Some temporary files are still in use",
+                Content = kept,
+                CloseButtonText = "OK",
+            };
+            if (await TryShowAsync(skippedDialog) is null)
+            {
+                App.ShowMessageNotification($"Some temporary files are still in use. {kept}");
             }
         }
     }
@@ -80,10 +96,9 @@ public sealed partial class GeneralSettingsSection : UserControl
             PrimaryButtonText = "Reset",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await TryShowAsync(dialog) == ContentDialogResult.Primary)
         {
             ViewModel.ResetAllSettings();
         }

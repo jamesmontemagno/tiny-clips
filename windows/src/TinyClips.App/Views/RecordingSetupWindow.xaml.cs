@@ -58,6 +58,7 @@ public sealed partial class RecordingSetupWindow : Window
     private RecordingSetupResult? _pendingResult;
     private bool _suppressEvents;
     private bool _showMouseClicks;
+    private readonly bool _isStudioRecording;
     private bool _microphonePermissionPending;
     private bool _webcamPermissionPending;
 
@@ -68,7 +69,8 @@ public sealed partial class RecordingSetupWindow : Window
         ICaptureSettings settings,
         IAudioDeviceService audioDevices,
         IWebcamDeviceEnumerator webcamDevices,
-        IMediaDevicePermissionService mediaPermissions)
+        IMediaDevicePermissionService mediaPermissions,
+        bool isStudioRecording)
     {
         InitializeComponent();
 
@@ -77,6 +79,7 @@ public sealed partial class RecordingSetupWindow : Window
         _webcamDevices = webcamDevices;
         _mediaPermissions = mediaPermissions;
         _showMouseClicks = settings.ShouldShowMouseClickVisuals(captureType);
+        _isStudioRecording = captureType == CaptureType.Video && isStudioRecording;
 
         AudioDevices.MicrophoneToggleRequested += OnMicrophoneToggleRequested;
         WebcamOptions.WebcamToggleRequested += OnWebcamToggleRequested;
@@ -103,6 +106,10 @@ public sealed partial class RecordingSetupWindow : Window
         Closed += OnClosed;
     }
 
+    /// <param name="isStudioRecording">
+    /// The recording was started with Studio recording and opens in Tiny Clips Studio. The
+    /// caller decides that; this panel only says so.
+    /// </param>
     public static Task<RecordingSetupResult?> RunAsync(
         CaptureType captureType,
         ICaptureSettings settings,
@@ -110,14 +117,16 @@ public sealed partial class RecordingSetupWindow : Window
         IWebcamDeviceEnumerator webcamDevices,
         IMediaDevicePermissionService mediaPermissions,
         MonitorInfo? monitor,
-        PixelRect? regionInVirtualDesktop)
+        PixelRect? regionInVirtualDesktop,
+        bool isStudioRecording = false)
     {
         var window = new RecordingSetupWindow(
             captureType,
             settings,
             audioDevices,
             webcamDevices,
-            mediaPermissions);
+            mediaPermissions,
+            isStudioRecording);
         window.ShowNear(monitor, regionInVirtualDesktop);
         CaptureFlowTrace.Mark("setup: panel shown");
         if (captureType == CaptureType.Video)
@@ -134,6 +143,14 @@ public sealed partial class RecordingSetupWindow : Window
         var isVideo = _captureType != CaptureType.Gif;
         AudioDevices.SetVisibleForVideo(isVideo);
         WebcamOptions.SetVisibleForVideo(isVideo);
+        if (_isStudioRecording)
+        {
+            // An ordinary recording shows nothing of this.
+            StudioRecordingLabel.Visibility = Visibility.Visible;
+
+            // Read after the Record button's name, which changes with the devices being ready.
+            AutomationProperties.SetHelpText(StartButton, "Starts a Studio recording. Tiny Clips Studio opens when it ends.");
+        }
     }
 
     private async Task LoadMicrophonesAsync()
@@ -443,7 +460,11 @@ public sealed partial class RecordingSetupWindow : Window
 
         if (isReady)
         {
-            ToolTipService.SetToolTip(StartButton, "Start recording (Enter)");
+            ToolTipService.SetToolTip(
+                StartButton,
+                _isStudioRecording
+                    ? "Start recording (Enter). Tiny Clips Studio opens when it ends."
+                    : "Start recording (Enter)");
             AutomationProperties.SetName(StartButton, "Start recording");
         }
         else
