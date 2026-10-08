@@ -65,11 +65,34 @@
                     Header="Choose Studio in the tray menu"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE81E;}" />
 
-                <!--
-                    Projects goes here, between Recording and Storage, as on the Mac: a heading like
-                    the others and one card with Open project, which opens a project that was saved
-                    as a folder (#429).
-                -->
+                <!--  Projects, between Recording and Storage, as on the Mac: a project that was saved as a folder is opened from here.  -->
+                <TextBlock
+                    Margin="4,16,0,0"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Projects" />
+
+                <controls:SettingsCard
+                    AutomationProperties.AutomationId="StudioOpenProjectCard"
+                    Description="Opens a project saved with Save project in the editor, from its .tinyclips file. The project is copied into Studio as a new draft, and the folder is only read. Recordings you kept as drafts are listed below, and exported videos reopen their project from the Clips Library."
+                    Header="Open a saved project"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8E5;}">
+                    <!--  The button's name is its words. Its picture says nothing of its own.  -->
+                    <Button
+                        x:Name="StudioOpenProjectButton"
+                        AutomationProperties.AutomationId="StudioOpenProjectButton"
+                        AutomationProperties.Name="Open project&#x2026;"
+                        Click="OnOpenStudioProject"
+                        ToolTipService.ToolTip="Open a project that was saved as a folder, from its .tinyclips file">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                AutomationProperties.AccessibilityView="Raw"
+                                FontSize="14"
+                                Glyph="&#xE8E5;" />
+                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Open project&#x2026;" />
+                        </StackPanel>
+                    </Button>
+                </controls:SettingsCard>
 
                 <TextBlock
                     Margin="4,16,0,0"
@@ -93,7 +116,7 @@
                                 <!--  The projects are in the package's own folder, which goes with the package.  -->
                                 <TextBlock
                                     AutomationProperties.AutomationId="StudioUninstallNoteText"
-                                    Text="Projects are stored with the app. Uninstalling Tiny Clips, or resetting it in Windows Settings, deletes all of them, drafts included."
+                                    Text="Projects are stored with the app. Uninstalling Tiny Clips, or resetting it in Windows Settings, deletes all of them, drafts included. To keep one past that, save it as a folder with Save project in the editor."
                                     TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="StudioCleanupStatusText"

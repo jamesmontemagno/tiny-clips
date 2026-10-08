@@ -117,11 +117,10 @@ public sealed partial class SettingsStudioPageTests
             .Select(element => (Text: element.Attr("Text"), Level: element.Attr("AutomationProperties.HeadingLevel")))
             .ToList();
 
-        // Projects, which the Mac has between Recording and Storage, holds Open project and is
-        // not built yet (#429). It may come without this test changing.
+        // Projects, between Recording and Storage as on the Mac, holds Open project (#429).
         Assert.Equal(
-            [("Studio", "Level1"), ("Tiny Clips Studio", "Level2"), ("Recording", "Level2"), ("Storage", "Level2"), ("Drafts", "Level2")],
-            headings.Where(heading => heading.Text != "Projects"));
+            [("Studio", "Level1"), ("Tiny Clips Studio", "Level2"), ("Recording", "Level2"), ("Projects", "Level2"), ("Storage", "Level2"), ("Drafts", "Level2")],
+            headings);
 
         // No text that looks like a heading is only made to look like one.
         var styled = SettingsMarkup.Elements(StudioPage)
@@ -149,6 +148,48 @@ public sealed partial class SettingsStudioPageTests
         Assert.Empty(card.Elements());
         Assert.Null(card.Attr("IsClickEnabled"));
         Assert.Null(card.Attr("Click"));
+    }
+
+    [Fact]
+    public void TheStudioPage_HasOpenProjectUnderProjects_AButtonCalledByItsWords_AndSaysHowAProjectOutlivesAnUninstall()
+    {
+        var elements = SettingsMarkup.Elements(StudioPage);
+        var projects = elements.Single(element => element.Attr("Text") == "Projects");
+
+        // Under the heading, up to the next one: one card with one button.
+        var under = projects.ElementsAfterSelf()
+            .TakeWhile(element => element.Attr("AutomationProperties.HeadingLevel") is null)
+            .ToList();
+        var card = Assert.Single(under);
+        Assert.Equal("SettingsCard", card.Name.LocalName);
+        Assert.Equal("Open a saved project", card.Attr("Header"));
+        Assert.Contains("The project is copied into Studio as a new draft, and the folder is only read.", card.Attr("Description"));
+        var button = Assert.Single(card.Elements());
+        Assert.Equal("Button", button.Name.LocalName);
+        Assert.Equal("StudioOpenProjectButton", button.Attr(Id));
+        Assert.Equal("Open project\u2026", button.Attr("AutomationProperties.Name"));
+        Assert.Equal("OnOpenStudioProject", button.Attr("Click"));
+
+        // Its picture and its word are the button's content, and say nothing of their own to
+        // a screen reader, which reads the button's name: the words alone.
+        var inside = button.Descendants().Where(element => element.Name.LocalName is "FontIcon" or "TextBlock").ToList();
+        Assert.Equal(["FontIcon", "TextBlock"], inside.Select(element => element.Name.LocalName));
+        Assert.All(inside, element => Assert.Equal("Raw", element.Attr("AutomationProperties.AccessibilityView")));
+        Assert.Equal("Open project\u2026", inside[1].Attr("Text"));
+
+        // Shown only while Studio is on, like everything else below the switch.
+        Assert.Contains(card.Ancestors(), element => element.Attr("Visibility") == "{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}");
+
+        // The page asks the app, which owns the picker and says why a project was not opened.
+        var code = SettingsMarkup.Read(StudioPage + ".cs");
+        Assert.Contains("app.ChooseAndOpenStudioProjectFromSettingsAsync()", code, StringComparison.Ordinal);
+        Assert.Contains("Title = \"The project was not opened\"", code, StringComparison.Ordinal);
+
+        // Where the page says that uninstalling deletes the projects, it says how to keep one.
+        var note = elements.Single(element => element.Attr(Id) == "StudioUninstallNoteText").Attr("Text");
+        Assert.Equal(
+            "Projects are stored with the app. Uninstalling Tiny Clips, or resetting it in Windows Settings, deletes all of them, drafts included. To keep one past that, save it as a folder with Save project in the editor.",
+            note);
     }
 
     [Fact]

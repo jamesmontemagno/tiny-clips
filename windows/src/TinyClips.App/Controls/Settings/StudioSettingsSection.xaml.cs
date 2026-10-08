@@ -7,19 +7,22 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.Settings.Sections;
 
 /// <summary>
 /// Tiny Clips Studio's page of Settings: the switch that turns Studio on while it is a preview,
-/// and, while it is on, how a Studio recording is started, project storage with its cleanup
-/// rules, and the recordings that only their project holds. It comes after Video in the
+/// and, while it is on, how a Studio recording is started, Open project for a project that
+/// was saved as a folder, project storage with its cleanup rules, and the recordings that
+/// only their project holds. It comes after Video in the
 /// navigation.
 /// </summary>
 public sealed partial class StudioSettingsSection : UserControl, ISettingsSectionLifecycle
 {
     private readonly IDisposable _realizationScope;
     private bool _closed;
+    private bool _isOpeningProject;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -56,6 +59,51 @@ public sealed partial class StudioSettingsSection : UserControl, ISettingsSectio
         if (sender is FrameworkElement { Tag: StudioDraftItem draft } && Application.Current is App app)
         {
             app.OpenStudioWindow(draft.Id);
+        }
+    }
+
+    /// <summary>
+    /// Asks for the <c>.tinyclips</c> file of a project that was saved as a folder, and opens
+    /// it in Studio as a new draft. Why a project was not opened is said in a dialog, or in a
+    /// notification where no dialog can be shown. A press while the picker is open does nothing.
+    /// </summary>
+    private async void OnOpenStudioProject(object sender, RoutedEventArgs e)
+    {
+        if (_isOpeningProject || Application.Current is not App app)
+        {
+            return;
+        }
+
+        _isOpeningProject = true;
+        string? failure;
+        try
+        {
+            failure = await app.ChooseAndOpenStudioProjectFromSettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            failure = StudioProjectFolderText.GetOpenFailure(ex);
+        }
+        finally
+        {
+            _isOpeningProject = false;
+        }
+
+        if (failure is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "The project was not opened",
+            Content = failure,
+            CloseButtonText = "OK",
+        };
+        if (await TryShowAsync(dialog) is null)
+        {
+            // Settings was closed while the project was copied, or is asking something else.
+            App.ShowMessageNotification(failure);
         }
     }
 

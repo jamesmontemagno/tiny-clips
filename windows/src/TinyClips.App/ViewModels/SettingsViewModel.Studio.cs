@@ -185,9 +185,9 @@ public sealed partial class SettingsViewModel
         }
     }
 
-    // A recording that only its project holds: never exported, or exported to a video that is gone.
-    private static bool IsShownAsDraft(StudioProjectSummary summary) =>
-        (summary.IsDraft || summary.ExportMissing) && !summary.IsFlat;
+    // A recording that only its project holds: never exported, or exported to a video that is
+    // gone. The store's own rule, which the tray's recent captures go by as well.
+    private static bool IsShownAsDraft(StudioProjectSummary summary) => summary.IsDraftOrLostItsExport;
 
     /// <summary>
     /// Shows the recordings that only their project holds, newest first, and after them the
