@@ -2096,8 +2096,12 @@ time the tool kept nothing but the sentence. It did not happen again in 24 runs 
 The group `project` checks the editor's four commands for the project as a whole: the
 **Project** button of the header and its menu, **Save project…** and **Delete project…** in
 the inspector's Project panel, what saving asks and does, a saved project opened again, and
-deleting. It was written and first run on the night of 7 October 2026: `--only project`, 25
-checks, all passed, in 19 s; with `themes` before it, 45 of 45.
+deleting. It was written and first run on the night of 7 October 2026. The group has 20
+checks; run alone (`--only project`) the tool reports 25, with the five that end every run,
+all passed, in 18 s; with `themes` before it, 45 of 45. A full run with it, on the head that
+also has the icons of #432: 601 checks, where there were 579, all passed, in 367 s. The 22
+are the group's 20, and two pictures of the Project panel where there was one for each theme:
+the panel is taller than the inspector now, so it is pictured at its start and at its end.
 
 Four things the app shows are windows of their own, in front of other windows, so the tool
 shows none of them and stands in for each (`Host\ToolServices.cs`):

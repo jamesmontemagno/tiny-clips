@@ -289,11 +289,23 @@ picker; a draft's line and a file opened from Explorer are the tray's ways in.
   `TinyClips.App.Tests`: the editor's view model (what Open recent lists, when a command is
   passed on, what a save says and shows), the file type in both manifests and how a project
   file is told from a picture, the projects the tray lists, and the Settings page's markup.
+  On the head that also has the icons of #432: 2,273 Core tests, of which 2,269 passed and
+  the same 4 as before were skipped, and 169 app tests, all passed.
 - The editor's part in the real window, by `StudioWindowCheck --only project`: 20 checks
   through UI Automation, with stand-ins for the two pickers, the Explorer window and the
   notification, and the Project menu read without being opened. They save a real project
   into a temp folder, have the store open it again, try to edit while a save is held, replace,
-  are refused, stop a save, open the saved folder as a second editor, and delete.
+  are refused, stop a save, open the saved folder as a second editor, and delete. A full run
+  of the window check with them: 601 checks, all passed.
+- Each rule taken out once, to see what notices, before the icons of #432 were under it: 17
+  in Core and 20 in the app, eight of those in three runs of two or three at a time. A test
+  or a check failed for 35 of them. **Nothing notices two**: that the same file asked for twice
+  while it is being copied is copied once, and the notification after two seconds. Three
+  more are noticed by the window check only and by no unit test: Esc stopping a save in the
+  view model, the lists of projects being read again once an editor has read its project
+  (and that only when another group has run before), and everything the window's own code
+  asks and answers. With the editor left editable during a save, a Core test does not fail
+  but never ends.
 
 **Read, not run:**
 

@@ -614,7 +614,7 @@ The store's half is in `TinyClips.Core` since that evening. The app's half follo
 - **The three cases of a place that is taken** are told apart before anything is copied: a saved project with nothing else in it is asked about; one that holds anything else is refused with the name of what it holds; anything else takes the name.
 - **A `.tinyclips` file** is registered in both package manifests and opens Studio on a copy of its project. With Studio off, and for a file that cannot be opened, a notification says why.
 - **Drafts in the tray's recent captures**, read ahead of time off the UI thread, and **Open project…** on the Studio page of Settings.
-- **Run:** the unit tests, and the editor's part in the real window by `StudioWindowCheck` (group `project`), with stand-ins for the pickers, the Explorer window and the notification. **Not run by anyone:** the installed app. So no file has been opened from Explorer, and the tray popup and the Settings page have not been opened with this. Step 22 of the hands-on checklist is what a person should do.
+- **Run:** the unit tests (2,273 in Core with the same 4 skipped, 169 in the app), and the editor's part in the real window by `StudioWindowCheck` (group `project`, 20 checks; a full run is 601), with stand-ins for the pickers, the Explorer window and the notification. **Not run by anyone:** the installed app. So no file has been opened from Explorer, and the tray popup and the Settings page have not been opened with this. Step 22 of the hands-on checklist is what a person should do.
 ### Known problems on Windows
 
 Found by the check tools, and open:
