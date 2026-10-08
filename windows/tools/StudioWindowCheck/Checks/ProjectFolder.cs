@@ -171,10 +171,10 @@ internal sealed partial class WindowChecks
         // Undo is no stop while there is nothing to undo, as now: Canvas is then the next one.
         var (menuStop, undoStop, canvasStop) = (stops.IndexOf(ProjectMenuId), stops.IndexOf("StudioUndoButton"), stops.IndexOf("StudioCanvasComboBox"));
         var lines = ProjectMenu(editor);
-        string[] wanted = ["menu|Open recent|StudioOpenRecentItem||\uE81C", "item|Open project\u2026|StudioOpenProjectItem|Ctrl+O|\uE8E5", "separator||||", "item|Save project\u2026|StudioSaveProjectItem|Ctrl+Shift+S|\uE74E", "separator||||", "item|Delete project\u2026|StudioDeleteProjectItem||\uE74D"];
+        string[] wanted = ["menu|Open recent|StudioOpenRecentItem||\uE81C", "item|Open project\u2026|StudioOpenProjectItem|Ctrl+O|\uE8E5", "separator||||", "item|Save project\u2026|StudioSaveProjectItem|Ctrl+S|\uE74E", "separator||||", "item|Delete project\u2026|StudioDeleteProjectItem||\uE74D"];
         var read = lines.Select(line => $"{line.Kind}|{line.Text}|{line.Id}|{line.Keys}|{line.Glyph}").ToArray();
         _report.Check(
-            "the header has one Project button, the first stop of the Tab key in the editor, before Undo and Canvas: a button with a menu, called Project, that says what it is for, and whose picture and word are nothing of their own to a screen reader; its menu has Open recent, Open project\u2026 with Ctrl+O, Save project\u2026 with Ctrl+Shift+S and Delete project\u2026, each with its picture, and all of them can be chosen",
+            "the header has one Project button, the first stop of the Tab key in the editor, before Undo and Canvas: a button with a menu, called Project, that says what it is for, and whose picture and word are nothing of their own to a screen reader; its menu has Open recent, Open project\u2026 with Ctrl+O, Save project\u2026 with Ctrl+S and Delete project\u2026, each with its picture, and all of them can be chosen",
             button is { ControlType: ControlTypeNames.Button, Name: "Project", IsEnabled: true, IsKeyboardFocusable: true } && button.HelpText == ProjectHelp && button.IsExpanded == false
                 && inside.Length == 0 && menuStop >= 0 && canvasStop == menuStop + (undoStop < 0 ? 1 : 3) && (undoStop < 0 || undoStop == menuStop + 1)
                 && read.SequenceEqual(wanted) && lines.All(line => line.IsEnabled) && lines.Where(line => line.Kind == "item").All(line => line.AcceleratorKey == line.Keys),
@@ -194,7 +194,7 @@ internal sealed partial class WindowChecks
         var insideButtons = (save?.Children().Count ?? -1) + (delete?.Children().Count ?? -1);
         _report.Check(
             "the Project panel has Save project\u2026 under a heading Project folder, and Delete project\u2026 after it, each a button called by its words alone, with a note under it; Save project\u2026 names its keys; they come after Save as default look for a screen reader and for the Tab key, and are the panel's last two stops",
-            save is { ControlType: ControlTypeNames.Button, Name: "Save project\u2026", IsEnabled: true, IsKeyboardFocusable: true, AcceleratorKey: "Ctrl+Shift+S" }
+            save is { ControlType: ControlTypeNames.Button, Name: "Save project\u2026", IsEnabled: true, IsKeyboardFocusable: true, AcceleratorKey: "Ctrl+S" }
                 && delete is { ControlType: ControlTypeNames.Button, Name: "Delete project\u2026", IsEnabled: true, IsKeyboardFocusable: true } && delete.HelpText == "Deletes the recording and every edit. Asks first."
                 && insideButtons == 0 && look >= 0 && look < heading && heading < saveAt && saveAt < deleteAt
                 && lookStop >= 0 && saveStop == lookStop + 1 && deleteStop == saveStop + 1
@@ -206,19 +206,19 @@ internal sealed partial class WindowChecks
         ProjectPicture(editor, "panel");
 
         // The keys.
-        Timeline.Mark("15: Ctrl+O and Ctrl+Shift+S");
+        Timeline.Mark("15: Ctrl+O and Ctrl+S");
         var pickerBefore = _services.ProjectFilePickerAsked;
         var openKey = Key(editor, StudioShortcutKey.O, control: true);
         var pickerAsked = Until(() => _services.ProjectFilePickerAsked - pickerBefore, asked => asked == 1, 2);
-        var saveKey = Key(editor, StudioShortcutKey.S, control: true, shift: true);
+        var saveKey = Key(editor, StudioShortcutKey.S, control: true);
         var byKey = SaveQuestion(editor);
-        var plainSave = Key(editor, StudioShortcutKey.S, control: true);
+        var shiftOpen = Key(editor, StudioShortcutKey.O, control: true, shift: true);
         Dismiss(editor, byKey);
         _report.Check(
-            "Ctrl+O asks for a project file with the open picker, and when none is chosen nothing happens; Ctrl+Shift+S asks where to save the project; Ctrl+S alone is no key of the window",
-            openKey == StudioShortcutAction.OpenProject && pickerAsked == 1 && saveKey == StudioShortcutAction.SaveProject && byKey is { Name: SaveDialogTitle } && plainSave == StudioShortcutAction.None
+            "Ctrl+O asks for a project file with the open picker, and when none is chosen nothing happens; Ctrl+S asks where to save the project; Ctrl+Shift+O is no key of the window",
+            openKey == StudioShortcutAction.OpenProject && pickerAsked == 1 && saveKey == StudioShortcutAction.SaveProject && byKey is { Name: SaveDialogTitle } && shiftOpen == StudioShortcutAction.None
                 && ErrorOf(editor).Length == 0 && _services.Tracker.OpenProjectIds.Count == 1,
-            $"Ctrl+O ran {openKey}, and the picker was asked {pickerAsked} time(s); Ctrl+Shift+S ran {saveKey}, and the window asked \"{byKey?.Name}\"; Ctrl+S ran {plainSave}; {_services.Tracker.OpenProjectIds.Count} project(s) open{(ErrorOf(editor) is { Length: > 0 } error ? $"; the window says \"{error}\"" : string.Empty)}");
+            $"Ctrl+O ran {openKey}, and the picker was asked {pickerAsked} time(s); Ctrl+S ran {saveKey}, and the window asked \"{byKey?.Name}\"; Ctrl+Shift+O ran {shiftOpen}; {_services.Tracker.OpenProjectIds.Count} project(s) open{(ErrorOf(editor) is { Length: > 0 } error ? $"; the window says \"{error}\"" : string.Empty)}");
 
         // Save project: what it asks.
         Timeline.Mark("15: Save project asks for a name and a place");
@@ -296,7 +296,7 @@ internal sealed partial class WindowChecks
         StudioShortcutAction[] keys =
         [
             Key(editor, StudioShortcutKey.Space), Key(editor, StudioShortcutKey.Z), Key(editor, StudioShortcutKey.Z, control: true), Key(editor, StudioShortcutKey.E, control: true),
-            Key(editor, StudioShortcutKey.O, control: true), Key(editor, StudioShortcutKey.S, control: true, shift: true), Key(editor, StudioShortcutKey.Delete),
+            Key(editor, StudioShortcutKey.O, control: true), Key(editor, StudioShortcutKey.S, control: true), Key(editor, StudioShortcutKey.Delete),
         ];
         var savesBegun = _services.Store.ProjectSavesBegun;
         var after = Describe(OnUi(() => _services.Store.Load(editor.Id)));

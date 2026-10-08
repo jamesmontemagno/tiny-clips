@@ -95,7 +95,7 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
         Assert.True(viewModel.CanSaveProject);
         Assert.True(viewModel.CanDeleteProject);
 
-        // The keys come the same way: Ctrl+O and Ctrl+Shift+S, once the window has asked what they mean.
+        // The keys come the same way: Ctrl+O and Ctrl+S, once the window has asked what they mean.
         asked.Clear();
         viewModel.Run(StudioShortcutAction.OpenProject);
         viewModel.Run(StudioShortcutAction.SaveProject);

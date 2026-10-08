@@ -58,7 +58,7 @@ public enum StudioShortcutAction
     /// </summary>
     OpenProject,
 
-    /// <summary>Asks where to save the project as a folder, and saves it there.</summary>
+    /// <summary>Asks where to save the project as a folder, and saves it there. Ctrl+S.</summary>
     SaveProject,
 
     /// <summary>Stops the save of the project as a folder that is under way.</summary>
@@ -154,8 +154,8 @@ public readonly record struct StudioShortcutInput(
 /// scene at the playhead, Z adds a zoom there, X a cut and R a speed change, Delete removes the
 /// selected zoom, cut or speed change, or the current scene while a scene on the lane has the
 /// focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Ctrl+O opens a
-/// project that was saved as a folder and Ctrl+Shift+S saves this one as a folder, where the
-/// Mac has Command-O and Shift-Command-S. Esc stops a running export or a save of the project
+/// project that was saved as a folder and Ctrl+S saves this one as a folder, where the Mac
+/// has Command-O and Shift-Command-S. Esc stops a running export or a save of the project
 /// that is under way, and otherwise asks the window to close; held down, it does none of
 /// them. While something is being dragged, only Space and the arrow keys act.
 /// </summary>
@@ -245,11 +245,15 @@ public static class StudioShortcuts
         StudioShortcutKey.Y when !input.IsShiftDown => StudioShortcutAction.Redo,
         StudioShortcutKey.E when !input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.Export,
 
-        // Plain O sets the trim end and plain S splits the scene. With Ctrl, and for S with
-        // Shift as well, they are about the project as a whole. Each asks something first, so
-        // a key that is held asks once.
+        // Plain O sets the trim end and plain S splits the scene. With Ctrl they are about
+        // the project as a whole. Each asks something first, so a key that is held asks once.
+        //
+        // Saving is Ctrl+S on Windows, not the Mac's key with Shift: Ctrl+Shift+S is the
+        // app's own global hotkey for Stop recording, which Windows hands to the app and
+        // not to the window that has the keyboard, so in the app it never arrives here.
+        // Where it does arrive, because the hotkey could not be registered, it saves too.
         StudioShortcutKey.O when !input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.OpenProject,
-        StudioShortcutKey.S when input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.SaveProject,
+        StudioShortcutKey.S when !input.IsRepeat => StudioShortcutAction.SaveProject,
         _ => StudioShortcutAction.None,
     };
 

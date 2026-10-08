@@ -35,8 +35,8 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.E, true, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.O, false, StudioShortcutAction.OpenProject)]
     [InlineData(StudioShortcutKey.O, true, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.S, false, StudioShortcutAction.SaveProject)]
     [InlineData(StudioShortcutKey.S, true, StudioShortcutAction.SaveProject)]
-    [InlineData(StudioShortcutKey.S, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Space, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Left, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Digit1, false, StudioShortcutAction.None)]
@@ -81,19 +81,21 @@ public sealed class StudioEditorSessionShortcutTests
     }
 
     [Fact]
-    public void OpenAndSave_AreCtrlOAndCtrlShiftS_AndAKeyThatIsHeldAsksOnce()
+    public void OpenAndSave_AreCtrlOAndCtrlS_AndAKeyThatIsHeldAsksOnce()
     {
         // Plain O sets the trim end and plain S splits the scene, so the two keys of the
-        // project as a whole have Ctrl, and S has Shift as well: Ctrl+S alone is nothing, as
-        // every edit is saved by itself.
+        // project as a whole have Ctrl. Saving is Ctrl+S: the Mac's key with Shift is the
+        // app's global hotkey for Stop recording on Windows, and does not come to a window.
+        // Should it come all the same, where that hotkey could not be registered, it saves.
         var open = Press(StudioShortcutKey.O) with { IsControlDown = true };
-        var save = Press(StudioShortcutKey.S) with { IsControlDown = true, IsShiftDown = true };
+        var save = Press(StudioShortcutKey.S) with { IsControlDown = true };
 
         Assert.Equal(StudioShortcutAction.OpenProject, StudioShortcuts.Resolve(open));
         Assert.Equal(StudioShortcutAction.SaveProject, StudioShortcuts.Resolve(save));
+        Assert.Equal(StudioShortcutAction.SaveProject, StudioShortcuts.Resolve(save with { IsShiftDown = true }));
         Assert.Equal(StudioShortcutAction.SetTrimEndAtPlayhead, StudioShortcuts.Resolve(Press(StudioShortcutKey.O)));
         Assert.Equal(StudioShortcutAction.SplitScene, StudioShortcuts.Resolve(Press(StudioShortcutKey.S)));
-        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(save with { IsShiftDown = false }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(open with { IsShiftDown = true }));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(StudioShortcutKey.S) with { IsShiftDown = true }));
 
         // Each asks something first. Held, the key would ask again under the question.
@@ -198,7 +200,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Y, false, StudioShortcutAction.Redo)]
     [InlineData(StudioShortcutKey.E, false, StudioShortcutAction.Export)]
     [InlineData(StudioShortcutKey.O, false, StudioShortcutAction.OpenProject)]
-    [InlineData(StudioShortcutKey.S, true, StudioShortcutAction.SaveProject)]
+    [InlineData(StudioShortcutKey.S, false, StudioShortcutAction.SaveProject)]
     public void AListThatSearchesAsYouType_LeavesTheControlShortcuts(StudioShortcutKey key, bool shift, StudioShortcutAction expected)
     {
         var press = Press(key) with { IsControlDown = true, IsShiftDown = shift, IsTypeToSearchFocused = true };
@@ -508,7 +510,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Y, true, false)]
     [InlineData(StudioShortcutKey.E, true, false)]
     [InlineData(StudioShortcutKey.O, true, false)]
-    [InlineData(StudioShortcutKey.S, true, true)]
+    [InlineData(StudioShortcutKey.S, true, false)]
     public void WhileSomethingIsDragged_AKeyThatChangesTheProjectDoesNothing(StudioShortcutKey key, bool control, bool shift)
     {
         var press = Press(key) with { IsControlDown = control, IsShiftDown = shift };

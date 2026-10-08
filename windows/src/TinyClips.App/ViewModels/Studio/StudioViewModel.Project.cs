@@ -34,7 +34,7 @@ public sealed partial class StudioViewModel
     /// <summary>Raised when Open project was asked for: by its menu item, or by Ctrl+O.</summary>
     public event EventHandler? OpenProjectRequested;
 
-    /// <summary>Raised when Save project was asked for, while the project can be saved.</summary>
+    /// <summary>Raised when Save project was asked for, by its buttons or by Ctrl+S, while the project can be saved.</summary>
     public event EventHandler? SaveProjectRequested;
 
     /// <summary>Raised when Delete project was asked for, while the project can be deleted.</summary>

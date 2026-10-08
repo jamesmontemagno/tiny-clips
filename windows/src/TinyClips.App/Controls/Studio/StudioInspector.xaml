@@ -1470,11 +1470,11 @@
                         <StackPanel Spacing="8">
                             <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Project folder" />
                             <Button
-                                AutomationProperties.AcceleratorKey="Ctrl+Shift+S"
+                                AutomationProperties.AcceleratorKey="Ctrl+S"
                                 AutomationProperties.AutomationId="StudioSaveProjectButton"
                                 AutomationProperties.Name="Save project&#x2026;"
                                 Click="{x:Bind ViewModel.RequestSaveProject}"
-                                ToolTipService.ToolTip="Save the recordings and a .tinyclips file to a folder you choose (Ctrl+Shift+S)">
+                                ToolTipService.ToolTip="Save the recordings and a .tinyclips file to a folder you choose (Ctrl+S)">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon AutomationProperties.AccessibilityView="Raw" FontSize="14" Glyph="&#xE74E;" />
                                     <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Save project&#x2026;" />

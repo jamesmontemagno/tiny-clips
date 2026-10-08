@@ -215,7 +215,7 @@
                             buttons more would take the preview's room at the window's smallest
                             width. The picture and the word are the button's content and say
                             nothing of their own to a screen reader, which reads the button's name.
-                            Ctrl+O and Ctrl+Shift+S are the window's keys, so the menu only shows them.
+                            Ctrl+O and Ctrl+S are the window's keys, so the menu only shows them.
                         -->
                         <DropDownButton
                             x:Name="ProjectMenuButton"
@@ -255,10 +255,10 @@
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
                                         x:Name="SaveProjectItem"
-                                        AutomationProperties.AcceleratorKey="Ctrl+Shift+S"
+                                        AutomationProperties.AcceleratorKey="Ctrl+S"
                                         AutomationProperties.AutomationId="StudioSaveProjectItem"
                                         Click="{x:Bind ViewModel.RequestSaveProject}"
-                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+S"
+                                        KeyboardAcceleratorTextOverride="Ctrl+S"
                                         Text="Save project&#x2026;">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE74E;" />
