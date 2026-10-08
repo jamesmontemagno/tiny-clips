@@ -504,8 +504,11 @@ internal sealed partial class WindowChecks
     /// <para>
     /// On a canvas of 1082 × 609 the check of a fully round camera read the middle one of its
     /// three points as covered where nothing covers it ("010"), in every run of 5 October 2026.
-    /// What follows is what was worked out for it while no check could be run. It is a
-    /// prediction, and this picture is how a run tests it.
+    /// What follows is what was worked out for it while no check could be run, and this picture
+    /// is how the runs of 7 October 2026 tested it: the two pictures without the camera
+    /// differed by 22 at the middle point, where a point counts as covered above 20, and
+    /// against this one the fully round camera read "000". So it was the copies, and the corner
+    /// checks go by this picture.
     /// </para>
     /// <para>
     /// The preview draws a clip from a copy of its frame, and how large that copy is depends on
@@ -526,15 +529,14 @@ internal sealed partial class WindowChecks
     /// a frame is scaled into its copy, where a point counts as covered above 20. That reads
     /// "000", or "001", and not "010". It reads "010" only when the copies are sampled a fifth
     /// of a copy pixel or more away from where that arithmetic has them, and then in fewer than
-    /// one combination in five of those tried. So the copies may not be it, and then something
-    /// is at the middle point in the picture with the camera: the note after the corner checks
-    /// tells the two apart.
+    /// one combination in five of those tried. The run had them differ by 0, 22 and 12: more at
+    /// the middle point than was worked out.
     /// </para>
     /// <para>
     /// How the earlier picture differs from this one is written into the report, and after the
     /// corner checks what each of them reads against either (<see cref="CameraStyle"/>). Which of
-    /// the two the checks go by is <see cref="AsPrepared"/>: the earlier one, as in the runs
-    /// that failed, unless the tool is told otherwise.
+    /// the two the checks go by is <see cref="AsPrepared"/>: this one, unless the tool is told
+    /// to judge as in the runs that failed, which went by the earlier one.
     /// </para>
     /// </summary>
     private Sight? WithoutTheCamera(Editor editor, Sight early)
@@ -592,7 +594,8 @@ internal sealed partial class WindowChecks
 
             differs = $"by {string.Join(", ", distances.Select(d => F(d, "0")))} at the three points near the corner of a wide camera, which is in {R(camera.Rect)} (a point counts as covered above 20), "
                 + $"and by more than 20 in {differing} of the {area} pixels of the screen recording";
-            if (distances.Any(d => d > 20))
+            // Kept only where the checks go by the earlier picture, which is where they fail by it.
+            if (!AsPrepared && distances.Any(d => d > 20))
             {
                 kept = Kept(early.Shot, "inspector-without-the-camera-before-the-layouts") + Kept(again.Shot, "inspector-without-the-camera-before-the-camera-checks");
             }
@@ -612,8 +615,9 @@ internal sealed partial class WindowChecks
             return;
         }
 
-        // The checks go by the picture taken further up, as they did in the runs that failed.
-        // Told to (--as-prepared), they go by the second one.
+        // The checks go by the second picture, which is drawn from the copy of the frame that
+        // the pictures with the camera are drawn from. Told to (--as-before), they go by the
+        // one taken further up, as they did in the runs that failed.
         var again = WithoutTheCamera(editor, early);
         var under = AsPrepared && again is not null ? again : early;
 
@@ -692,7 +696,7 @@ internal sealed partial class WindowChecks
         _report.Note(
             "the three points near the camera's corner, read against the picture without the camera that was taken at the layout Screen further up, and against the second one, taken right before these checks: "
             + string.Join("; ", read.Select(entry => $"{entry.Name} {entry.Early} and {entry.Again}"))
-            + $". Wanted: the circle 000, Rectangle 111, Squircle 001, Rounded rectangle 011, fully round 000. The checks went by the {(ReferenceEquals(under, early) ? "first" : "second")} picture{(AsPrepared ? ", as --as-prepared asks" : "; with --as-prepared they go by the second")}");
+            + $". Wanted: the circle 000, Rectangle 111, Squircle 001, Rounded rectangle 011, fully round 000. The checks went by the {(ReferenceEquals(under, early) ? "first" : "second")} picture{(AsPrepared ? string.Empty : ", as --as-before asks; without it they go by the second")}");
         if (!cornersHeld)
         {
             _report.Note($"what the three points near the camera's corner are compared with is the picture without the camera{Kept(under.Shot, "inspector-without-the-camera")}");

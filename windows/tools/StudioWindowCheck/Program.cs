@@ -21,7 +21,7 @@ internal static class Program
         try
         {
             options = CheckOptions.Parse(args);
-            if (options.Unknown("only", "skip", "out", "media", "held-up", "late-drags", "as-prepared", "memory", "help") is { Length: > 0 } unknown)
+            if (options.Unknown("only", "skip", "out", "media", "held-up", "late-drags", "as-prepared", "as-before", "memory", "help") is { Length: > 0 } unknown)
             {
                 throw new ArgumentException($"Unknown option --{unknown[0]}.");
             }
@@ -131,7 +131,7 @@ internal static class Program
     {
         Console.WriteLine(
             $"""
-            StudioWindowCheck [--only a,b] [--skip a,b] [--out <folder>] [--media <folder>] [--held-up] [--late-drags <n>] [--as-prepared] [--memory]
+            StudioWindowCheck [--only a,b] [--skip a,b] [--out <folder>] [--media <folder>] [--held-up] [--late-drags <n>] [--as-before] [--memory]
 
               --only a,b        run only these groups of checks
               --skip a,b        leave these groups out
@@ -143,12 +143,12 @@ internal static class Program
                                 process a few times, as happens to an app on a busy PC
               --late-drags <n>  in the scene group, how often a drag is begun in the last frame of a
                                 scene while the preview plays (default: 20)
-              --as-prepared     judge three picture checks the way that was prepared for them while
-                                no check could be run: the camera's corner against a second picture
-                                without the camera; the picture a play-through starts from right but
-                                for one or two edges; and playing into a scene from frame 81, not 75.
-                                Without it all three judge as before and say what the prepared way
-                                would read: see the README
+              --as-before       judge three picture checks as they did when they failed on 5 October
+                                2026: the camera's corner against the picture without the camera
+                                taken at the layout Screen; the picture a play-through starts from
+                                right in every edge; and playing into a scene from frame 75, not 81.
+                                They then say what the tool's way would read: see the README.
+                                (--as-prepared, which asked for that way, is taken and does nothing)
               --memory           run none of the groups: open and close windows in several ways, and
                                 say which are still in memory afterwards
 

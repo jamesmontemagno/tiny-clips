@@ -81,7 +81,7 @@ It exits with 0 when every check passed and with 1 when one did not, after print
 | `--media <folder>` | where the test clips are, or are generated (default `..\StudioPreviewCheck\out\media` when it has them, otherwise `media` in the out folder) |
 | `--held-up` | in the `zoom` group, play through a zoom that moves in a second time while the tool holds its own process up: see "A frame that comes late" |
 | `--late-drags <n>` | in the `scene` group, how often a drag is begun in the last frame of a scene (default 20, at least 2): see "Something dragged while the preview plays" |
-| `--as-prepared` | judge the three checks that failed on 5 October 2026 the way that was prepared for each while no check tool could be run. Without it they judge as they did when they failed, and the report says what the prepared way would have read: see "Three checks on a smaller preview" |
+| `--as-before` | judge the three checks that failed on 5 October 2026 as they did then, and say what the tool's way would have read: see "Three checks on a smaller preview". (`--as-prepared`, which asked for the tool's way before it was that, is taken and does nothing) |
 | `--memory` | run none of the groups: open and close windows with one thing done to each, and say which are still in memory afterwards: see "A closed window that stays in memory" |
 
 Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut speed`.
@@ -358,9 +358,10 @@ Someone may be working on the machine while the tool runs, so:
   when at most a fifth of the pixels the edit changed, and a twentieth of the others, differ.
   The camera's shapes are told apart by three points near the corner of the camera's rectangle,
   which a shape covers or leaves to the picture without the camera. That picture is the one
-  taken at the layout Screen. A second one is taken right before the camera's checks, a note
-  says what each corner check reads against either, and the checks go by the second one only
-  with `--as-prepared`: see "Three checks on a smaller preview".
+  taken right before the camera's checks, by going to the layout Screen and back. An earlier
+  one is taken at the layout Screen, a note says what each corner check reads against either,
+  and the checks go by the earlier one only with `--as-before`: see "Three checks on a smaller
+  preview".
   Then the camera's Background choice (`Checks\CameraBackground.cs`): that it is not there
   where people cannot be found, nor in a recording without a camera; that Keep, Blur and Remove
   are radio buttons by those names between Mirror and Border, one tab stop together; that Blur
@@ -1352,6 +1353,7 @@ rail (`--only inspector`, 88 checks).
   That the Tab key coming into the rail lands on the chosen item after a jump has changed
   the panel is still for a person to try: the tool presses no keys.
 
+
 ## Three checks on a smaller preview
 
 With the speed lane under it, the preview is smaller than it was: the canvas of a window with
@@ -1359,16 +1361,41 @@ a camera went from 1157 × 651 to 1082 × 609 pixels, and the screen of a window
 camera from 1071 × 603 to 1019 × 573. In every one of the four runs made on that code, in the
 evening of 5 October 2026, the same three checks failed.
 
-**Nothing in this section was seen in a picture taken at the moment of a check.** No check
-tool could be run when it was written. It says what each of the three checks reads and
-where, what the test clips have at those places by their definition, and what a run should
-therefore show. Each of those is a prediction, to be held against the first run, which leaves
-what is needed for it: `failed-*.png` and `failed-*.txt` (see "What it leaves behind") and
-the notes named below.
+**What the runs of 7 October 2026 showed.** The three groups were run as the checks were
+(`--only inspector,scene,cut`, 4 of 230 failed: these three and one of the rail's, which is
+another matter) and the prepared way (`--as-prepared`, where all three passed). Each of the
+three read what is worked out below, line for line, and none is the app's:
 
-**The three checks judge as they did when they failed.** What was prepared for each is done
-only with `--as-prepared`. Without it the report says what the prepared way would have read,
-so that one run shows both.
+1. *The corner.* The two pictures without the camera differed by 0, 22 and 12 at the three
+   points, and by more than 20 in 10,170 of the 236,520 pixels of the screen recording.
+   Against the second picture the fully round camera read "000", and the other four shapes
+   read the same against either. So it was the copies: the check compared a picture drawn
+   from one copy of the frame with a picture drawn from another. Nothing is drawn at the
+   middle point.
+2. *Playing into a scene.* `failed-scene-rest.txt` had, of the camera at its frame 69: the
+   red patch's right edge not found, with nothing on rows 456 and 472 and an edge 0.19 px
+   from its place on row 488; the lime patch's left edge not found, with nothing on rows 456
+   and 472 and an edge on row 488; the lime patch's top not found, with an edge on column
+   560 and nothing on columns 576 and 592. On row 456 the reading stopped at a pixel of
+   (245, 13, 106) for the one edge and of (243, 1, 79) for the other: the band, worked out
+   as about (240, 0, 78). Paused at frame 81, the picture was in the first scene's layout.
+3. *Playing over a cut.* `failed-cut-rest.txt` had the lime patch's top by 2 of 3 lines:
+   0.12 px from its place on column 296, 1.50 px above it on column 304, and nothing on
+   column 312, where the pixel was (3, 249, 86), the band's green; and the blue patch's top
+   not found, with the band's colour before two of its lines. The edge was 0.81 px off,
+   where 0.75 px is allowed.
+
+**So what was prepared for each is how the tool judges now**, and `--as-before` judges as the
+checks did when they failed, saying what the tool's way would have read. For the third that
+means a picture a play-through starts from may be right but for one or two edges. A way that
+lets nothing off would be to start that play-through at a frame the band is clear of, as
+the second now does: that was not done, and is noted here for whoever takes it up.
+
+**The rest of this section is as it was written before those runs,** when no check tool
+could be run and nothing in it had been seen in a picture taken at the moment of a check. It
+says what each of the three checks reads and where, what the test clips have at those places
+by their definition, and what a run should therefore show. Where it says `--as-prepared`,
+that is the tool's way now.
 
 ### How the pictures were worked out
 

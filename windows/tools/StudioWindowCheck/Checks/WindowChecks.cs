@@ -57,14 +57,15 @@ internal sealed partial class WindowChecks
 
     /// <summary>
     /// Whether three picture checks judge the way that was prepared for them on 5 October 2026,
-    /// while no check could be run (<c>--as-prepared</c>): the corner of the camera is held
-    /// against a picture without the camera taken right before; the picture a play-through
-    /// starts from may be right but for one or two edges; and playing into a scene starts at
-    /// frame 81 and not at 75. Without the option all three judge as they did when they failed,
-    /// and say in the report what the prepared way would have read. See "Three checks on a
-    /// smaller preview" in the README.
+    /// while no check could be run: the corner of the camera is held against a picture without
+    /// the camera taken right before; the picture a play-through starts from may be right but
+    /// for one or two edges; and playing into a scene starts at frame 81 and not at 75. The
+    /// runs of 7 October 2026 read what had been worked out for each, so this is how the tool
+    /// judges. With <c>--as-before</c> all three judge as they did when they failed, and say in
+    /// the report what this way would have read. See "Three checks on a smaller preview" in
+    /// the README.
     /// </summary>
-    private bool AsPrepared => _options.Flag("as-prepared");
+    private bool AsPrepared => !_options.Flag("as-before");
 
     /// <summary>Starts the checks on their own thread. When they are done, <c>finished</c> runs on the UI thread.</summary>
     public void Start()
@@ -85,9 +86,13 @@ internal sealed partial class WindowChecks
         {
             _uia = new Uia();
             _report.Line($"foreground window at the start: \"{Native.TitleOf(Native.Foreground())}\"");
-            if (AsPrepared)
+            if (!AsPrepared)
             {
-                _report.Line("--as-prepared: the corner of the camera is held against a second picture without the camera, the picture a play-through starts from may be right but for one or two edges, and playing into a scene starts at frame 81.");
+                _report.Line("--as-before: the corner of the camera is held against the picture without the camera that was taken at the layout Screen, the picture a play-through starts from has to be right in every edge, and playing into a scene starts at frame 75, as on 5 October 2026.");
+            }
+            else if (_options.Flag("as-prepared"))
+            {
+                _report.Line("--as-prepared: that is how the tool judges since 7 October 2026, with or without the option.");
             }
             if (_options.Flag("memory"))
             {

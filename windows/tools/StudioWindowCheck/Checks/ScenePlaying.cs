@@ -297,13 +297,15 @@ internal sealed partial class WindowChecks
     /// that the preview rests there failed in every run of the evening of 5 October 2026.
     /// </para>
     /// <para>
-    /// Such a picture is not at rest here, as it was not in those runs: what is wrong then says
-    /// that the picture is in its layout but for those edges. With <c>--as-prepared</c> it is at
-    /// rest, and a note says which edges were off and by how much. That was prepared while no
-    /// check could be run, and is not the tool's way until a run has shown what is at the
-    /// edge. The reasoning for it: a play-through holds its own picture of such a frame against
-    /// the paused one, so the paused one cannot be asked for more than the play-through's rule
-    /// allows, and a layer that is in the wrong place has all its edges off, not one or two.
+    /// Such a picture is at rest here, and a note says which edges were off and by how much.
+    /// That was prepared while no check could be run. The runs of 7 October 2026 showed what is
+    /// at the edge: the band of the test picture, on two of the three lines across the lime
+    /// patch's top, as worked out. The reasoning for it: a play-through holds its own picture
+    /// of such a frame against the paused one, so the paused one cannot be asked for more than
+    /// the play-through's rule allows, and a layer that is in the wrong place has all its edges
+    /// off, not one or two. With <c>--as-before</c> such a picture is not at rest, as it was not
+    /// in the runs that failed: what is wrong then says that the picture is in its layout but
+    /// for those edges.
     /// </para>
     /// </summary>
     /// <param name="playing">What the play-through is, for the note.</param>
@@ -343,12 +345,12 @@ internal sealed partial class WindowChecks
         {
             _report.Note(
                 $"{playing}: the picture the playing starts from, frame {frame}, is in its layout but for {edges}, further off than an edge may be, paused. "
-                + $"With --as-prepared that is taken as what moves in the test clip lying against it, as at the frames of a play-through that are looked at again paused; read as {sight.Reading}");
+                + $"That is taken as what moves in the test clip lying against it, as at the frames of a play-through that are looked at again paused; read as {sight.Reading}");
             wrong = null;
             return sight;
         }
 
-        wrong = $"{judged}. But for {edges} the picture is in its layout: that is what a play-through looks at again paused in the pictures it draws, and what --as-prepared lets pass here"
+        wrong = $"{judged}. But for {edges} the picture is in its layout: that is what a play-through looks at again paused in the pictures it draws, and what the tool lets pass here without --as-before"
             + KeptLayout(editor, sight, keptAs);
         return sight;
     }
@@ -363,11 +365,12 @@ internal sealed partial class WindowChecks
         const int MovingLast = 129;
         const int Last = 165;
 
-        // Playing starts at frame 75, and the layout of what is drawn is read from five frames
-        // after the start.
+        // Playing starts at frame 81, and the layout of what is drawn is read from five frames
+        // after the start. It started at frame 75 until 7 October 2026.
         //
         // At frame 75 the camera shows its frame 69. Worked out from the test picture's
-        // definition, and not seen: in that frame its slanted band runs through the gap
+        // definition, and read in the runs of 7 October 2026: in that frame its slanted band
+        // runs through the gap
         // between the camera's red and lime patch and over the top of the lime patch, on two
         // of the three lines that are read across the red patch's right edge, the lime patch's
         // left edge and the lime patch's top. Since the speed lane made the preview smaller,
@@ -379,9 +382,8 @@ internal sealed partial class WindowChecks
         // patch's edge it still touches one, of the three across the top of the camera's red
         // patch.
         //
-        // So with --as-prepared the playing starts at frame 81. That moves a frame, which is
-        // not this tool's way until a run has shown what is at frame 75: without the option
-        // the check is as it was, and when it fails a note says what frame 81 reads.
+        // So the playing starts at frame 81. With --as-before it starts at frame 75, as it did
+        // when the check failed, and when it fails a note says what frame 81 reads.
         const int PreparedFrom = 81;
         var from = AsPrepared ? PreparedFrom : 75;
         var plainFirst = from + 5;
@@ -411,7 +413,7 @@ internal sealed partial class WindowChecks
                 SetSlider(editor, "StudioPlayhead", MiddleOf(PreparedFrom));
                 var other = Until(() => LookAtLayout(editor, PreparedFrom), found => found is not null && JudgeLayout(found.Reading) is null, 3, 30);
                 _report.Note(
-                    $"with --as-prepared playing into a scene starts at frame {PreparedFrom}, where the slanted band of the test picture should be past the camera's patches and not yet on the screen's. Paused there, the picture "
+                    $"without --as-before playing into a scene starts at frame {PreparedFrom}, where the slanted band of the test picture should be past the camera's patches and not yet on the screen's. Paused there, the picture "
                     + (other is null
                         ? "could not be taken"
                         : JudgeLayout(other.Reading) is { } judged
@@ -423,9 +425,9 @@ internal sealed partial class WindowChecks
             return;
         }
 
-        if (AsPrepared)
+        if (!AsPrepared)
         {
-            _report.Note($"--as-prepared: playing into a scene starts at frame {from} and not at 75, and the layout of what is drawn is read from frame {plainFirst} and not from 80; at least {plainWanted} pictures of the frames {plainFirst} to {MovingFirst - 11} are asked for and not 20 of the frames 80 to 109");
+            _report.Note($"--as-before: playing into a scene starts at frame {from} and not at {PreparedFrom}, and the layout of what is drawn is read from frame {plainFirst}; at least {plainWanted} pictures of the frames {plainFirst} to {MovingFirst - 11} are asked for");
         }
 
         // Every picture the engine draws, through the hook it has for its check tools.
