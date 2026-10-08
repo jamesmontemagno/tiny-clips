@@ -11,7 +11,7 @@ namespace TinyClips.App.Controls.Studio;
 /// One cut on the Studio cut lane: a hatched block with scissors on it and, where there is room,
 /// how long the stretch is that the video leaves out.
 /// </summary>
-public sealed partial class StudioCutBlock : StudioLaneBlock
+public sealed partial class StudioCutBlock : StudioRangeBlock
 {
     // Below these widths the scissors, and then the length, would not fit inside the block.
     private const double IconMinimumWidth = 26;
@@ -24,7 +24,7 @@ public sealed partial class StudioCutBlock : StudioLaneBlock
     private const double HatchInset = 1;
 
     internal StudioCutBlock(StudioLane lane)
-        : base(lane, "StudioCut_")
+        : base(lane, "StudioCut_", "cut", "where")
     {
         InitializeComponent();
     }
@@ -36,6 +36,7 @@ public sealed partial class StudioCutBlock : StudioLaneBlock
         LengthText.Text = string.Create(CultureInfo.InvariantCulture, $"{length:0.0} s");
         LengthText.Visibility = width >= LengthTextMinimumWidth ? Visibility.Visible : Visibility.Collapsed;
         Plate.Visibility = width >= IconMinimumWidth ? Visibility.Visible : Visibility.Collapsed;
+        ShowHandles(BlockHandles, width);
         Show(index, StudioEditorText.GetCutDescription(cut), isSelected);
     }
 

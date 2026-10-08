@@ -98,8 +98,16 @@ public abstract partial class StudioLaneBlock : UserControl
 
     protected override AutomationPeer OnCreateAutomationPeer() => new StudioLaneBlockAutomationPeer(this);
 
-    private void ShowSelection() =>
+    /// <summary>Called when the block has been shown as the marked one, or as not marked.</summary>
+    private protected virtual void OnSelectionShown()
+    {
+    }
+
+    private void ShowSelection()
+    {
         VisualStateManager.GoToState(this, _isSelected ? "Selected" : "Unselected", false);
+        OnSelectionShown();
+    }
 }
 
 /// <summary>

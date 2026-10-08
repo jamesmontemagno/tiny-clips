@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<local:StudioLaneBlock
+<local:StudioRangeBlock
     x:Class="TinyClips.App.Controls.Studio.StudioSpeedBlock"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:TinyClips.App.Controls.Studio"
-    IsTabStop="False"
-    ToolTipService.ToolTip="Drag to move this speed change. Drag an end to change where it starts or stops.">
+    IsTabStop="False">
 
-    <local:StudioLaneBlock.Resources>
+    <local:StudioRangeBlock.Resources>
         <ResourceDictionary>
             <!--
                 A stretch at another speed is neither a zoom nor a cut, and has to look like
@@ -35,7 +34,7 @@
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
-    </local:StudioLaneBlock.Resources>
+    </local:StudioRangeBlock.Resources>
 
     <Grid x:Name="Root" SizeChanged="OnRootSizeChanged">
         <VisualStateManager.VisualStateGroups>
@@ -98,5 +97,16 @@
                 TextWrapping="NoWrap"
                 Visibility="Collapsed" />
         </StackPanel>
+
+        <!--
+            The handles at the two ends, as round as the ends are. On the selected speed change,
+            which is filled, they take the color of what is written on it.
+        -->
+        <local:StudioLaneBlockHandles
+            x:Name="BlockHandles"
+            GripBrush="{ThemeResource TextFillColorPrimaryBrush}"
+            SelectedGripBrush="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+            TabBrush="{ThemeResource AccentFillColorDefaultBrush}"
+            TabGripBrush="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
     </Grid>
-</local:StudioLaneBlock>
+</local:StudioRangeBlock>

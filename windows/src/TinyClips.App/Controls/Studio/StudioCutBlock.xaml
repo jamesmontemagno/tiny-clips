@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<local:StudioLaneBlock
+<local:StudioRangeBlock
     x:Class="TinyClips.App.Controls.Studio.StudioCutBlock"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:TinyClips.App.Controls.Studio"
-    IsTabStop="False"
-    ToolTipService.ToolTip="Drag to move this cut. Drag an end to change where it starts or stops.">
+    IsTabStop="False">
 
-    <local:StudioLaneBlock.Resources>
+    <local:StudioRangeBlock.Resources>
         <ResourceDictionary>
             <!--
                 A cut is a stretch that has been taken out, so its block is not filled: it is
@@ -46,7 +45,7 @@
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
-    </local:StudioLaneBlock.Resources>
+    </local:StudioRangeBlock.Resources>
 
     <Grid x:Name="Root" SizeChanged="OnRootSizeChanged">
         <VisualStateManager.VisualStateGroups>
@@ -79,6 +78,21 @@
                 Stroke="{ThemeResource StudioCutBlockHatchBrush}"
                 StrokeThickness="2.5" />
         </Canvas>
+
+        <!--
+            The handles at the two ends, under the outline. A grip mark on hatching would not be
+            seen, so each stands on a plate of the window's own color, as the scissors do. A
+            selected cut is not filled, so its marks keep the color of the text; the tabs outside
+            a narrow selected cut are that color, as its outline is, with the mark in the
+            window's.
+        -->
+        <local:StudioLaneBlockHandles
+            x:Name="BlockHandles"
+            GripBrush="{ThemeResource TextFillColorPrimaryBrush}"
+            PlateBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+            SelectedGripBrush="{ThemeResource TextFillColorPrimaryBrush}"
+            TabBrush="{ThemeResource TextFillColorPrimaryBrush}"
+            TabGripBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}" />
 
         <Rectangle
             x:Name="Outline"
@@ -130,4 +144,4 @@
             </StackPanel>
         </Border>
     </Grid>
-</local:StudioLaneBlock>
+</local:StudioRangeBlock>
