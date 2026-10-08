@@ -344,6 +344,21 @@ public sealed class CaptureSettingsStudioTests
     }
 
     [Fact]
+    public void StudioProjectSaveFolder_IsEmptyUntilAProjectWasSaved_AndRoundTripsThroughItsOwnKey()
+    {
+        var settings = Create(out var service);
+        Assert.Equal(string.Empty, settings.StudioProjectSaveFolder);
+
+        settings.StudioProjectSaveFolder = @"D:\Projects";
+
+        Assert.Equal(@"D:\Projects", settings.StudioProjectSaveFolder);
+        Assert.Equal(@"D:\Projects", service.Get("studioProjectSaveFolder", "unset"));
+
+        settings.StudioProjectSaveFolder = null!;
+        Assert.Equal(string.Empty, settings.StudioProjectSaveFolder);
+    }
+
+    [Fact]
     public void ResetToDefaults_RestoresStudioDefaults()
     {
         var settings = Create(out var service);
@@ -352,9 +367,11 @@ public sealed class CaptureSettingsStudioTests
         settings.StudioSourceRetentionDays = 90;
         settings.StudioStorageCapGigabytes = 250;
         settings.StudioDefaultLook = new StudioLook(new StudioCanvas { Padding = 0.2 }, new StudioScreenStyle(), new StudioCameraStyle());
+        settings.StudioProjectSaveFolder = @"D:\Projects";
 
         settings.ResetToDefaults();
 
+        Assert.Equal(string.Empty, settings.StudioProjectSaveFolder);
         Assert.True(settings.ShowTrimmer);
         Assert.False(settings.StudioPreviewEnabled);
         Assert.Equal(30, settings.StudioSourceRetentionDays);

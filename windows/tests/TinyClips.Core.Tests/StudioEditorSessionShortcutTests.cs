@@ -33,6 +33,10 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Y, true, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.E, false, StudioShortcutAction.Export)]
     [InlineData(StudioShortcutKey.E, true, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.O, false, StudioShortcutAction.OpenProject)]
+    [InlineData(StudioShortcutKey.O, true, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.S, true, StudioShortcutAction.SaveProject)]
+    [InlineData(StudioShortcutKey.S, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Space, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Left, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Digit1, false, StudioShortcutAction.None)]
@@ -69,10 +73,72 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Z, true, StudioShortcutAction.Undo)]
     [InlineData(StudioShortcutKey.Y, true, StudioShortcutAction.Redo)]
     [InlineData(StudioShortcutKey.E, true, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.O, true, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Escape, false, StudioShortcutAction.None)]
     public void HoldingAKey_RepeatsOnlySteppingUndoAndRedo(StudioShortcutKey key, bool control, StudioShortcutAction expected)
     {
         Assert.Equal(expected, StudioShortcuts.Resolve(Press(key) with { IsControlDown = control, IsRepeat = true }));
+    }
+
+    [Fact]
+    public void OpenAndSave_AreCtrlOAndCtrlShiftS_AndAKeyThatIsHeldAsksOnce()
+    {
+        // Plain O sets the trim end and plain S splits the scene, so the two keys of the
+        // project as a whole have Ctrl, and S has Shift as well: Ctrl+S alone is nothing, as
+        // every edit is saved by itself.
+        var open = Press(StudioShortcutKey.O) with { IsControlDown = true };
+        var save = Press(StudioShortcutKey.S) with { IsControlDown = true, IsShiftDown = true };
+
+        Assert.Equal(StudioShortcutAction.OpenProject, StudioShortcuts.Resolve(open));
+        Assert.Equal(StudioShortcutAction.SaveProject, StudioShortcuts.Resolve(save));
+        Assert.Equal(StudioShortcutAction.SetTrimEndAtPlayhead, StudioShortcuts.Resolve(Press(StudioShortcutKey.O)));
+        Assert.Equal(StudioShortcutAction.SplitScene, StudioShortcuts.Resolve(Press(StudioShortcutKey.S)));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(save with { IsShiftDown = false }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(StudioShortcutKey.S) with { IsShiftDown = true }));
+
+        // Each asks something first. Held, the key would ask again under the question.
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(open with { IsRepeat = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(save with { IsRepeat = true }));
+
+        // With Alt they are the system's, as every key is.
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(open with { IsAltDown = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(save with { IsAltDown = true }));
+    }
+
+    [Fact]
+    public void WhileTheProjectIsBeingSaved_NoKeyActsButEsc_WhichStopsTheSave()
+    {
+        bool[] either = [false, true];
+        var presses =
+            from key in Enum.GetValues<StudioShortcutKey>()
+            from control in either
+            from shift in either
+            from repeat in either
+            select Press(key) with
+            {
+                IsControlDown = control,
+                IsShiftDown = shift,
+                IsRepeat = repeat,
+                IsSavingProject = true,
+                HasSelectedZoom = true,
+            };
+
+        foreach (var press in presses)
+        {
+            var expected = press is { Key: StudioShortcutKey.Escape, IsControlDown: false, IsShiftDown: false, IsRepeat: false }
+                ? StudioShortcutAction.CancelProjectSave
+                : StudioShortcutAction.None;
+            var actual = StudioShortcuts.Resolve(press);
+
+            Assert.True(expected == actual, $"{press}: expected {expected}, and it was {actual}");
+        }
+
+        // Esc stops the save from wherever the focus is, as it stops an export, and does not
+        // go on to ask the window to close.
+        var escape = Press(StudioShortcutKey.Escape) with { IsSavingProject = true };
+        Assert.Equal(StudioShortcutAction.CancelProjectSave, StudioShortcuts.Resolve(escape with { IsTextInputFocused = true }));
+        Assert.Equal(StudioShortcutAction.CancelProjectSave, StudioShortcuts.Resolve(escape with { IsDragging = true }));
+        Assert.Equal(StudioShortcutAction.RequestClose, StudioShortcuts.Resolve(escape with { IsSavingProject = false }));
     }
 
     [Theory]
@@ -85,6 +151,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Z, true)]
     [InlineData(StudioShortcutKey.Y, true)]
     [InlineData(StudioShortcutKey.E, true)]
+    [InlineData(StudioShortcutKey.O, true)]
     public void ATextBox_KeepsEveryKey(StudioShortcutKey key, bool control)
     {
         Assert.Equal(
@@ -100,6 +167,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Z, false)]
     [InlineData(StudioShortcutKey.Z, true)]
     [InlineData(StudioShortcutKey.E, true)]
+    [InlineData(StudioShortcutKey.O, true)]
     public void NothingActs_UntilTheProjectIsOpen_OrWhileItIsExporting(StudioShortcutKey key, bool control)
     {
         var press = Press(key) with { IsControlDown = control };
@@ -129,6 +197,8 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Z, true, StudioShortcutAction.Redo)]
     [InlineData(StudioShortcutKey.Y, false, StudioShortcutAction.Redo)]
     [InlineData(StudioShortcutKey.E, false, StudioShortcutAction.Export)]
+    [InlineData(StudioShortcutKey.O, false, StudioShortcutAction.OpenProject)]
+    [InlineData(StudioShortcutKey.S, true, StudioShortcutAction.SaveProject)]
     public void AListThatSearchesAsYouType_LeavesTheControlShortcuts(StudioShortcutKey key, bool shift, StudioShortcutAction expected)
     {
         var press = Press(key) with { IsControlDown = true, IsShiftDown = shift, IsTypeToSearchFocused = true };
@@ -301,8 +371,9 @@ public sealed class StudioEditorSessionShortcutTests
     public void Escape_TakesTheFirstRuleThatApplies()
     {
         // Every state an Esc press can arrive in. In this order: a modifier leaves the key to
-        // the system; a held key does nothing at all; an export that runs is stopped; text
-        // being edited, an open drop-down list and a drag keep the window open; otherwise it is
+        // the system; a held key does nothing at all; an export that runs is stopped, and so
+        // is a save of the project as a folder; text being edited, an open drop-down list and
+        // a drag keep the window open; otherwise it is
         // asked to close. A drop-down that has the focus, and whether the project is open,
         // change nothing.
         bool[] either = [false, true];
@@ -311,6 +382,7 @@ public sealed class StudioEditorSessionShortcutTests
             from shift in either
             from alt in either
             from exporting in either
+            from saving in either
             from repeat in either
             from text in either
             from list in either
@@ -323,6 +395,7 @@ public sealed class StudioEditorSessionShortcutTests
                 IsShiftDown = shift,
                 IsAltDown = alt,
                 IsExporting = exporting,
+                IsSavingProject = saving,
                 IsRepeat = repeat,
                 IsTextInputFocused = text,
                 IsTypeToSearchFocused = list,
@@ -337,6 +410,7 @@ public sealed class StudioEditorSessionShortcutTests
                 press.IsControlDown || press.IsShiftDown || press.IsAltDown ? StudioShortcutAction.None
                 : press.IsRepeat ? StudioShortcutAction.None
                 : press.IsExporting ? StudioShortcutAction.CancelExport
+                : press.IsSavingProject ? StudioShortcutAction.CancelProjectSave
                 : press.IsTextInputFocused || press.IsDropDownOpen || press.IsDragging ? StudioShortcutAction.None
                 : StudioShortcutAction.RequestClose;
             var actual = StudioShortcuts.Resolve(press);
@@ -433,6 +507,8 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Z, true, true)]
     [InlineData(StudioShortcutKey.Y, true, false)]
     [InlineData(StudioShortcutKey.E, true, false)]
+    [InlineData(StudioShortcutKey.O, true, false)]
+    [InlineData(StudioShortcutKey.S, true, true)]
     public void WhileSomethingIsDragged_AKeyThatChangesTheProjectDoesNothing(StudioShortcutKey key, bool control, bool shift)
     {
         var press = Press(key) with { IsControlDown = control, IsShiftDown = shift };

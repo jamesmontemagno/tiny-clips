@@ -29,13 +29,14 @@ public sealed class StudioCloseQuestionsTests
     public void EveryState_AgainstTheRuleWrittenOutAgain()
     {
         var states = EveryState();
-        Assert.Equal(24, states.Length);
+        Assert.Equal(32, states.Length);
 
         foreach (var state in states)
         {
             var expected =
                 // What closing asks of itself comes first, however it was asked for.
                 state.Prompt == StudioClosePrompt.ExportRunning ? StudioCloseQuestion.RunningExport
+                : state.Prompt == StudioClosePrompt.ProjectSaveRunning ? StudioCloseQuestion.RunningProjectSave
                 : state.Prompt == StudioClosePrompt.NeverExported ? StudioCloseQuestion.Draft
 
                 // Where closing asks nothing, the close button asks nothing.
@@ -105,6 +106,7 @@ public sealed class StudioCloseQuestionsTests
             var expected = state.Prompt switch
             {
                 StudioClosePrompt.ExportRunning => StudioCloseQuestion.RunningExport,
+                StudioClosePrompt.ProjectSaveRunning => StudioCloseQuestion.RunningProjectSave,
                 StudioClosePrompt.NeverExported => StudioCloseQuestion.Draft,
                 _ => StudioCloseQuestion.None,
             };
@@ -136,6 +138,18 @@ public sealed class StudioCloseQuestionsTests
         foreach (var state in EveryState().Where(state => state.Prompt == StudioClosePrompt.ExportRunning))
         {
             Assert.True(state.Question == StudioCloseQuestion.RunningExport, $"{state}: {state.Question}");
+        }
+    }
+
+    [Fact]
+    public void WhileTheProjectIsBeingSavedAsAFolder_TheQuestionIsAboutThatSave()
+    {
+        // The keys stop the save on Esc and never ask the window to close then. The close
+        // button asks, however the setting stands: no window closes from over a copy that is
+        // half made without saying so.
+        foreach (var state in EveryState().Where(state => state.Prompt == StudioClosePrompt.ProjectSaveRunning))
+        {
+            Assert.True(state.Question == StudioCloseQuestion.RunningProjectSave, $"{state}: {state.Question}");
         }
     }
 

@@ -53,6 +53,18 @@ public enum StudioShortcutAction
     CancelExport,
 
     /// <summary>
+    /// Asks for a project that was saved as a folder, to open it. The window acts on this one
+    /// and on the next itself: both ask the user something first, which an editor cannot.
+    /// </summary>
+    OpenProject,
+
+    /// <summary>Asks where to save the project as a folder, and saves it there.</summary>
+    SaveProject,
+
+    /// <summary>Stops the save of the project as a folder that is under way.</summary>
+    CancelProjectSave,
+
+    /// <summary>
     /// Asks the window to close, as its close button does. The window acts on this one itself,
     /// with whatever closing asks first: an editor cannot close its window.
     /// </summary>
@@ -127,6 +139,13 @@ public readonly record struct StudioShortcutInput(
     /// either.
     /// </summary>
     public bool IsDragging { get; init; }
+
+    /// <summary>
+    /// True while the project is being saved as a folder
+    /// (<see cref="StudioEditorSession.IsSavingProjectFolder"/>). The editor takes no edits
+    /// then, so no key acts but Esc, which stops the save as it stops an export.
+    /// </summary>
+    public bool IsSavingProject { get; init; }
 }
 
 /// <summary>
@@ -134,9 +153,11 @@ public readonly record struct StudioShortcutInput(
 /// Right step a frame, I and O set the trim at the playhead, 1 to 4 choose the layout, S splits the
 /// scene at the playhead, Z adds a zoom there, X a cut and R a speed change, Delete removes the
 /// selected zoom, cut or speed change, or the current scene while a scene on the lane has the
-/// focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Esc stops a running
-/// export, and otherwise asks the window to close; held down, it does neither. While something
-/// is being dragged, only Space and the arrow keys act.
+/// focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Ctrl+O opens a
+/// project that was saved as a folder and Ctrl+Shift+S saves this one as a folder, where the
+/// Mac has Command-O and Shift-Command-S. Esc stops a running export or a save of the project
+/// that is under way, and otherwise asks the window to close; held down, it does none of
+/// them. While something is being dragged, only Space and the arrow keys act.
 /// </summary>
 /// <remarks>
 /// The window only asks about a key that the focused control did not use, so a focused slider
@@ -159,7 +180,7 @@ public static class StudioShortcuts
         }
 
         // Text being edited keeps every key, including its own Undo and Redo.
-        if (input.IsTextInputFocused || !input.IsReady || input.IsExporting)
+        if (input.IsTextInputFocused || !input.IsReady || input.IsExporting || input.IsSavingProject)
         {
             return StudioShortcutAction.None;
         }
@@ -179,7 +200,8 @@ public static class StudioShortcuts
     /// to do, and may have done it somewhere else. Held a little too long, the Esc that answered
     /// "Keep exporting" would otherwise stop the export it was asked to keep, the Esc that
     /// stopped an export would go on to close the window, and the Esc whose question was
-    /// answered would ask it again. While an export runs it stops the export, and that is all.
+    /// answered would ask it again. While an export runs it stops the export, and that is all;
+    /// while the project is being saved as a folder it stops that save, and that is all.
     /// In text that is being edited, and while the list of a drop-down is open, the key belongs
     /// to that control. In the middle of a drag it waits, like every key that does more than
     /// move the playhead. Otherwise it asks the window to close.
@@ -202,6 +224,11 @@ public static class StudioShortcuts
             return StudioShortcutAction.CancelExport;
         }
 
+        if (input.IsSavingProject)
+        {
+            return StudioShortcutAction.CancelProjectSave;
+        }
+
         return input.IsTextInputFocused || input.IsDropDownOpen || input.IsDragging
             ? StudioShortcutAction.None
             : StudioShortcutAction.RequestClose;
@@ -217,6 +244,12 @@ public static class StudioShortcuts
         StudioShortcutKey.Z => input.IsShiftDown ? StudioShortcutAction.Redo : StudioShortcutAction.Undo,
         StudioShortcutKey.Y when !input.IsShiftDown => StudioShortcutAction.Redo,
         StudioShortcutKey.E when !input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.Export,
+
+        // Plain O sets the trim end and plain S splits the scene. With Ctrl, and for S with
+        // Shift as well, they are about the project as a whole. Each asks something first, so
+        // a key that is held asks once.
+        StudioShortcutKey.O when !input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.OpenProject,
+        StudioShortcutKey.S when input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.SaveProject,
         _ => StudioShortcutAction.None,
     };
 

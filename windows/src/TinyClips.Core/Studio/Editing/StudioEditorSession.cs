@@ -169,8 +169,11 @@ public sealed partial class StudioEditorSession
 
     public bool IsReady => State == StudioEditorLoadState.Ready;
 
-    /// <summary>Whether edits, the transport and export are accepted: ready, not exporting, not closed.</summary>
-    public bool IsEditable => IsReady && !IsExporting && !_isClosed;
+    /// <summary>
+    /// Whether edits, the transport and export are accepted: ready, not exporting, not being
+    /// saved as a folder, not closed.
+    /// </summary>
+    public bool IsEditable => IsReady && !IsExporting && !IsSavingProjectFolder && !_isClosed;
 
     public bool CanUndo => IsEditable && Model is { CanUndo: true };
 
@@ -1443,6 +1446,11 @@ public sealed partial class StudioEditorSession
             return StudioClosePrompt.ExportRunning;
         }
 
+        if (IsSavingProjectFolder)
+        {
+            return StudioClosePrompt.ProjectSaveRunning;
+        }
+
         return IsReady && HasNeverExported ? StudioClosePrompt.NeverExported : StudioClosePrompt.None;
     }
 
@@ -1451,8 +1459,9 @@ public sealed partial class StudioEditorSession
     /// edits are saved, the preview is disposed, and then the poster image is written. The save has
     /// happened by the time this returns; the task finishes when the rest has. A screen recording
     /// that is being saved as a video (<see cref="SaveScreenRecordingAsync"/>) is not stopped:
-    /// the task does not finish before that save has said what came of it. Calling it again
-    /// returns the same task.
+    /// the task does not finish before that save has said what came of it. A save of the project
+    /// as a folder (<see cref="SaveProjectFolderAsync"/>) is stopped, which leaves nothing of
+    /// it, and waited for. Calling it again returns the same task.
     /// </summary>
     /// <param name="deleteProject">
     /// True to delete the project instead of saving it. The preview is disposed first, and waited
@@ -1466,8 +1475,10 @@ public sealed partial class StudioEditorSession
         _isClosed = true;
         _lifetime.Cancel();
         _exportCancellation?.Cancel();
+        _projectFolderCancellation?.Cancel();
         var exportTask = _exportTask;
         var screenRecordingSave = _screenRecordingSave;
+        var projectFolderSave = _projectFolderSave;
         var preview = DetachPreview();
 
         if (deleteProject)
@@ -1494,6 +1505,10 @@ public sealed partial class StudioEditorSession
         // listens to the session until it has closed is told. And the copy reads the
         // recording, so the project is not deleted from under it.
         await screenRecordingSave.ConfigureAwait(false);
+
+        // A save of the project as a folder was told to stop, and reads the recordings until
+        // it has: the project is not deleted from under it either. That never fails.
+        await projectFolderSave.ConfigureAwait(false);
 
         if (deleteProject)
         {

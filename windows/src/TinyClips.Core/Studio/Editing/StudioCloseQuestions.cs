@@ -21,6 +21,9 @@ public enum StudioCloseQuestion
     /// <summary>An export is running: keep exporting, or stop and close.</summary>
     RunningExport,
 
+    /// <summary>The project is being saved as a folder: keep saving, or stop and close.</summary>
+    RunningProjectSave,
+
     /// <summary>The recording was never exported: export it, keep it as a draft, or delete it.</summary>
     Draft,
 
@@ -38,7 +41,8 @@ public static class StudioCloseQuestions
     /// <summary>
     /// Each request takes the first of these that applies. What closing asks of itself is asked,
     /// however the close was asked for and whatever the setting says: while an export runs, the
-    /// question about the export, and of a recording that was never exported, what to do with
+    /// question about the export, while the project is being saved as a folder, the question
+    /// about that save, and of a recording that was never exported, what to do with
     /// it. That question is the confirmation, and Esc adds none to it. Where closing asks
     /// nothing, the close button asks nothing. Esc asks whether it was meant, as it does in the
     /// other editors and behind the same setting, of a project that is open, which is then one
@@ -61,6 +65,8 @@ public static class StudioCloseQuestions
         {
             case StudioClosePrompt.ExportRunning:
                 return StudioCloseQuestion.RunningExport;
+            case StudioClosePrompt.ProjectSaveRunning:
+                return StudioCloseQuestion.RunningProjectSave;
             case StudioClosePrompt.NeverExported:
                 return StudioCloseQuestion.Draft;
         }

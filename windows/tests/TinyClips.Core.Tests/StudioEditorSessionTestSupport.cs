@@ -549,13 +549,37 @@ internal sealed class RecordingStore(StudioProjectStore inner, List<string> log)
         Func<string, bool>? isInUse = null) =>
         inner.Cleanup(options, inUseProjectIds, isInUse);
 
+    /// <summary>
+    /// Runs when a save of a project as a folder is asked for, before anything of it is done,
+    /// on the thread the copy runs on: a test that waits in it holds the save under way.
+    /// </summary>
+    public Action? SavingProjectFolder { get; set; }
+
     public void SaveProjectFolder(
         string projectId,
         string folder,
         bool replaceSavedProject = false,
         IProgress<double>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        inner.SaveProjectFolder(projectId, folder, replaceSavedProject, progress, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        lock (log)
+        {
+            log.Add("store.saveProjectFolder");
+        }
+
+        try
+        {
+            SavingProjectFolder?.Invoke();
+            inner.SaveProjectFolder(projectId, folder, replaceSavedProject, progress, cancellationToken);
+        }
+        finally
+        {
+            lock (log)
+            {
+                log.Add("store.saveProjectFolder.ended");
+            }
+        }
+    }
 
     public StudioProject OpenProjectFolder(string path, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
         inner.OpenProjectFolder(path, progress, cancellationToken);

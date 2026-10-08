@@ -22,6 +22,9 @@ public enum StudioClosePrompt
     /// <summary>An export is running: keep exporting, or stop and close.</summary>
     ExportRunning,
 
+    /// <summary>The project is being saved as a folder: keep saving, or stop and close.</summary>
+    ProjectSaveRunning,
+
     /// <summary>The project was never exported: export it, keep it as a draft, or delete it.</summary>
     NeverExported,
 }
@@ -64,6 +67,38 @@ public enum StudioScreenRecordingOutcome
     Failed,
 }
 
+/// <summary>How <see cref="StudioEditorSession.SaveProjectFolderAsync"/> ended.</summary>
+public enum StudioProjectFolderSaveOutcome
+{
+    /// <summary>
+    /// Nothing was copied: the project cannot be edited just now, a save was already under
+    /// way, or the edits could not be written into the project first, which has been reported.
+    /// </summary>
+    NotStarted,
+
+    /// <summary>The folder is there, with the project as it was when the save began.</summary>
+    Saved,
+
+    /// <summary>The save was stopped. Nothing is left of it.</summary>
+    Cancelled,
+
+    /// <summary>The save failed. <see cref="StudioProjectFolderSaveResult.Failure"/> says why.</summary>
+    Failed,
+}
+
+/// <summary>What came of saving a project as a folder.</summary>
+/// <param name="Outcome">How the save ended.</param>
+/// <param name="ProjectFilePath">The <c>.tinyclips</c> file in the folder that was made, when one was.</param>
+/// <param name="Failure">
+/// What the store or the system refused with, when the save failed: a
+/// <see cref="StudioProjectFolderException"/>, or what the system threw. The session does not
+/// report it as an error: whoever asked for the save puts it into words.
+/// </param>
+public sealed record StudioProjectFolderSaveResult(
+    StudioProjectFolderSaveOutcome Outcome,
+    string? ProjectFilePath = null,
+    Exception? Failure = null);
+
 /// <summary>The parts of a <see cref="StudioEditorSession"/> that can change.</summary>
 [Flags]
 public enum StudioEditorChanges
@@ -94,7 +129,10 @@ public enum StudioEditorChanges
     /// <summary>Which panel of the inspector is on show, and whether a crop group of it is open.</summary>
     Inspector = 128,
 
-    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector,
+    /// <summary>How far the save of the project as a folder is. That one starts or ends changes everything.</summary>
+    ProjectFolder = 256,
+
+    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector | ProjectFolder,
 }
 
 public sealed class StudioEditorChangedEventArgs(StudioEditorChanges changes) : EventArgs

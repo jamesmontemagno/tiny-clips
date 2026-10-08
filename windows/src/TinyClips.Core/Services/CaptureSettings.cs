@@ -333,6 +333,12 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set(StudioDefaultLookKey, value is null ? string.Empty : StudioLookText.Write(value));
     }
 
+    public string StudioProjectSaveFolder
+    {
+        get => _settings.Get("studioProjectSaveFolder", string.Empty);
+        set => _settings.Set("studioProjectSaveFolder", value ?? string.Empty);
+    }
+
     public bool RecordAudio
     {
         get => _settings.Get("recordAudio", false);
@@ -866,6 +872,7 @@ public sealed class CaptureSettings : ICaptureSettings
         StudioSourceRetentionDays = DefaultStudioSourceRetentionDays;
         StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
         StudioDefaultLook = null;
+        StudioProjectSaveFolder = string.Empty;
         RecordAudio = false;
         RecordMicrophone = false;
         SelectedMicrophoneId = string.Empty;
