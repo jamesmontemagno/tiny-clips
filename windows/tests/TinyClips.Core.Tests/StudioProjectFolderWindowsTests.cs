@@ -645,6 +645,27 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
     }
 
     [Fact]
+    public void WhatWillBeRefused_IsRefusedBeforeAnythingIsCopied()
+    {
+        var id = MakeProject(camera: true);
+        var taken = Path.Combine(Outside, "Taken");
+        Directory.CreateDirectory(taken);
+        var file = Path.Combine(Outside, "A File");
+        File.WriteAllText(file, "mine");
+        var saved = Path.Combine(Outside, "Saved");
+        Save(id, saved);
+        File.Delete(Path.Combine(saved, "camera.mp4"));
+        var told = new List<double>();
+
+        AssertRefused(StudioProjectFolderProblem.DestinationExists, () => Save(id, taken, progress: new Told(told.Add)));
+        AssertRefused(StudioProjectFolderProblem.DestinationExists, () => Save(id, file, replaceSavedProject: true, new Told(told.Add)));
+        Assert.Throws<DirectoryNotFoundException>(() => Save(id, Path.Combine(Outside, "Not Here", "Demo"), progress: new Told(told.Add)));
+        AssertRefused(StudioProjectFolderProblem.MissingFile, () => Open(saved, new Told(told.Add)));
+
+        Assert.Empty(told);
+    }
+
+    [Fact]
     public void AFileThatIsStillBeingLookedAtWhenTheFolderIsPutInPlace_DoesNotStopTheSave()
     {
         var id = MakeProject(camera: true);
@@ -676,6 +697,82 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
         }
 
         Assert.Equal("Test", Open(folder).Name);
+    }
+
+    [Fact]
+    public void TheProjectFileIsTheLastToArriveUnderTheFoldersName()
+    {
+        var id = MakeProject(camera: true, events: true, poster: true);
+        var folder = Path.Combine(Outside, "In Order");
+        var arrived = new List<string>();
+        using var projectFileArrived = new ManualResetEventSlim();
+        using var watcher = new FileSystemWatcher(Outside) { IncludeSubdirectories = true, InternalBufferSize = 64 * 1024 };
+        void Arrived(object sender, FileSystemEventArgs e)
+        {
+            // Only what turns up in the folder itself: not in the one it was filled in beside it.
+            if (string.Equals(Path.GetDirectoryName(e.FullPath), folder, StringComparison.OrdinalIgnoreCase))
+            {
+                lock (arrived)
+                {
+                    arrived.Add(Path.GetFileName(e.FullPath));
+                }
+
+                if (e.FullPath.EndsWith(".tinyclips", StringComparison.OrdinalIgnoreCase))
+                {
+                    projectFileArrived.Set();
+                }
+            }
+        }
+
+        watcher.Created += Arrived;
+        watcher.Renamed += Arrived;
+        watcher.EnableRaisingEvents = true;
+
+        Save(id, folder);
+
+        // A folder with its .tinyclips file in it is a whole copy, so that file comes last.
+        // The wait after it is for a file that would wrongly come later still.
+        Assert.True(projectFileArrived.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The project file was not seen to arrive.");
+        Thread.Sleep(300);
+        watcher.EnableRaisingEvents = false;
+        lock (arrived)
+        {
+            Assert.Equal(["camera.mp4", "events.json", "poster.jpg", "screen.mp4"], arrived.Take(arrived.Count - 1).Order(StringComparer.Ordinal));
+            Assert.Equal("In Order.tinyclips", arrived[^1]);
+        }
+    }
+
+    [Fact]
+    public void WhatTheSystemRefusesForAMoment_IsTriedAgain_AndWhatItRefusesForGoodIsGivenUp()
+    {
+        // The third try gets through.
+        var tries = 0;
+        StudioProjectStore.Insist(() =>
+        {
+            if (++tries < 3)
+            {
+                throw new IOException("in use");
+            }
+        });
+        Assert.Equal(3, tries);
+
+        // Six tries, and then the system's refusal is the caller's.
+        tries = 0;
+        Assert.Throws<UnauthorizedAccessException>(() => StudioProjectStore.Insist(() =>
+        {
+            tries++;
+            throw new UnauthorizedAccessException("denied");
+        }));
+        Assert.Equal(6, tries);
+
+        // Anything else is not something a moment mends.
+        tries = 0;
+        Assert.Throws<InvalidOperationException>(() => StudioProjectStore.Insist(() =>
+        {
+            tries++;
+            throw new InvalidOperationException();
+        }));
+        Assert.Equal(1, tries);
     }
 
     [Fact]
@@ -733,6 +830,46 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
 
         Assert.InRange(Assert.Single(told), 0.01, 0.5);
         Assert.Equal([id], Names(StoreRoot));
+    }
+
+    [Fact]
+    public void ASaveOrAnOpenCancelledWhenTheLastPieceIsCopied_StillLeavesNothing()
+    {
+        var (folder, file) = SaveNewProject("Late", camera: true);
+        var id = Assert.Single(Names(StoreRoot));
+        var target = Path.Combine(Outside, "Too Late");
+
+        // The copy says that it is done once more after its last piece. Cancelled then, there
+        // is no piece left to give up between.
+        foreach (var save in new[] { true, false })
+        {
+            using var late = new CancellationTokenSource();
+            var done = 0;
+            var progress = new Told(value =>
+            {
+                if (value >= 1 && ++done == 2)
+                {
+                    late.Cancel();
+                }
+            });
+
+            Assert.ThrowsAny<OperationCanceledException>(() =>
+            {
+                if (save)
+                {
+                    Store.SaveProjectFolder(id, target, progress: progress, cancellationToken: late.Token);
+                }
+                else
+                {
+                    Store.OpenProjectFolder(file, progress, late.Token);
+                }
+            });
+            Assert.Equal(2, done);
+        }
+
+        Assert.Equal(["Late"], Names(Outside));
+        Assert.Equal([id], Names(StoreRoot));
+        Assert.Equal(["Late.tinyclips", "camera.mp4", "screen.mp4"], Names(folder));
     }
 
     [Fact]

@@ -83,8 +83,9 @@ public interface IStudioProjectStore
     /// only when it is a project saved this way before
     /// (<see cref="StudioProjectFolder.IsSavedProjectFolder"/>): anything else is left alone and
     /// the save is refused. A folder that is replaced goes with everything in it. The copy is
-    /// made beside where it will be and given its name once it is whole, so a folder that is
-    /// replaced is whole until the new one is. The folder it goes into has to be there.
+    /// made beside where it will be and put under its name once it is whole, the project file
+    /// last, so a folder that is replaced is whole until the new one is. The folder it goes
+    /// into has to be there.
     /// </para>
     /// <para>
     /// Copying a recording takes as long as the recording is large: call this off the UI

@@ -317,7 +317,7 @@ public sealed partial class StudioProjectStore
     /// second. A file that was just written is looked at by a virus scanner and by the search
     /// index, and while they have it open it cannot always be renamed or removed.
     /// </summary>
-    private static void Insist(Action action)
+    internal static void Insist(Action action)
     {
         const int attempts = 6;
         for (var attempt = 1; ; attempt++)
