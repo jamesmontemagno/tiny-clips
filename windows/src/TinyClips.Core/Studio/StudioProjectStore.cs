@@ -91,7 +91,10 @@ public interface IStudioProjectStore
     /// Copying a recording takes as long as the recording is large: call this off the UI
     /// thread. The store is not locked while the files are copied, so an editor saving an edit
     /// does not wait for it. A save that fails or is cancelled leaves nothing: no new folder,
-    /// nothing beside it, and a folder that was to be replaced as it was.
+    /// nothing beside it, and a folder that was to be replaced as it was. The one exception is
+    /// a file of the copy that something else has open and lets neither be renamed nor
+    /// deleted: the folder the copy was filled in then stays beside the target, with that
+    /// file in it.
     /// </para>
     /// </remarks>
     /// <param name="folder">The folder to make. The <c>.tinyclips</c> file gets its name.</param>
@@ -124,7 +127,9 @@ public interface IStudioProjectStore
     /// Only the names of files in the folder are followed, so a project file cannot make the
     /// app copy a file from outside its folder. Copying a recording takes as long as the
     /// recording is large: call this off the UI thread. An open that fails or is cancelled
-    /// leaves nothing in the store.
+    /// leaves nothing in the store. Where a file that was copied cannot be deleted because
+    /// something else has it open, its folder stays without a <c>project.json</c>, which
+    /// cleanup takes for a recording that never finished and removes after a day.
     /// </remarks>
     /// <param name="path">The <c>.tinyclips</c> file, or a folder with exactly one in it.</param>
     /// <param name="progress">
