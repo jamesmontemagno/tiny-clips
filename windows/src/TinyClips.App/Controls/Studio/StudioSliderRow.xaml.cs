@@ -55,6 +55,8 @@ public sealed partial class StudioSliderRow : UserControl
     {
         InitializeComponent();
         SyncSlider();
+        IsEnabledChanged += (_, _) => ShowEnabled();
+        Loaded += (_, _) => ShowEnabled();
     }
 
     /// <summary>Raised when a pointer drag on the slider starts.</summary>
@@ -121,6 +123,9 @@ public sealed partial class StudioSliderRow : UserControl
 
     /// <summary>Puts the keyboard focus on the slider. The row itself is not a tab stop.</summary>
     public bool FocusSlider(FocusState state) => ValueSlider.Focus(state);
+
+    // A row that is switched off keeps its value on show and dims its name and value with the slider.
+    private void ShowEnabled() => VisualStateManager.GoToState(this, IsEnabled ? "Enabled" : "Disabled", false);
 
     private static void OnTitleChanged(DependencyObject sender, DependencyPropertyChangedEventArgs e)
     {

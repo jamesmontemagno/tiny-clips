@@ -353,7 +353,7 @@ public sealed partial class StudioViewModel
 
     public string CameraShadowText => StudioEditorText.GetPercentText(CameraShadow);
 
-    // Click highlights in the Screen panel, the badge in Project, and Mute in Audio
+    // Click highlights in the Screen panel, the badge in Project, and Mute and the volume in Audio
 
     public bool AreClickRingsEnabled
     {
@@ -396,6 +396,27 @@ public sealed partial class StudioViewModel
             ResyncIfDifferent(value, IsMuted);
         }
     }
+
+    /// <summary>
+    /// How loud the video's sound is, from 0 to 1: the project's volume as it is used, which is
+    /// what the preview plays at and the export has.
+    /// </summary>
+    public double Volume
+    {
+        get => Project is { } project ? StudioSound.Volume(project.Audio) : 1;
+        set
+        {
+            if (IsRequest(value, Volume))
+            {
+                _session.SetVolume(value);
+            }
+        }
+    }
+
+    public string VolumeText => StudioEditorText.GetPercentText(Volume);
+
+    /// <summary>False while the video is muted: the slider keeps its value and cannot be moved.</summary>
+    public bool IsVolumeEnabled => !IsMuted;
 
     // Project
 

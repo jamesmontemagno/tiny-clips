@@ -50,7 +50,8 @@ public interface IStudioPreview : IAsyncDisposable
     /// <summary>
     /// Replaces the project being drawn and redraws the current frame. Only the editable parts of
     /// the project may differ from the one the preview was opened with (see
-    /// <see cref="StudioEditableState"/>). <see cref="StudioAudio.Muted"/> silences the sound.
+    /// <see cref="StudioEditableState"/>). <see cref="StudioAudio.Muted"/> silences the sound, and
+    /// <see cref="StudioAudio.Volume"/> is how loud it plays.
     /// </summary>
     void UpdateProject(StudioProject project);
 

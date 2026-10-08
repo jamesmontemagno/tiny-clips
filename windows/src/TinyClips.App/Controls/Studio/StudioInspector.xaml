@@ -1406,7 +1406,11 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!--  Audio: on Windows a recording's sound is one track, so there is Mute and no volume for a part of it.  -->
+                    <!--
+                        Audio: Mute, and the volume of the whole video. On Windows a recording's
+                        sound is one track, so there is no volume for a part of it. The volume
+                        cannot be moved while the video is muted, as on the Mac.
+                    -->
                     <StackPanel
                         x:Name="AudioPanel"
                         Spacing="8"
@@ -1416,6 +1420,18 @@
                             Content="Mute"
                             IsChecked="{x:Bind ViewModel.IsMuted, Mode=TwoWay}"
                             ToolTipService.ToolTip="Export the video without sound" />
+                        <local:StudioSliderRow
+                            Title="Volume"
+                            GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                            GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                            IsEnabled="{x:Bind ViewModel.IsVolumeEnabled, Mode=OneWay}"
+                            Maximum="1"
+                            Minimum="0"
+                            SliderAutomationId="StudioVolumeSlider"
+                            Step="0.05"
+                            ToolTipService.ToolTip="How loud the video's sound is"
+                            ValueText="{x:Bind ViewModel.VolumeText, Mode=OneWay}"
+                            Value="{x:Bind ViewModel.Volume, Mode=TwoWay}" />
                     </StackPanel>
 
                     <!--

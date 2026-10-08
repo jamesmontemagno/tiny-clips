@@ -7,6 +7,18 @@
     IsTabStop="False">
 
     <StackPanel>
+        <VisualStateManager.VisualStateGroups>
+            <!--  The slider dims itself in a row that is switched off. The two labels are dimmed here.  -->
+            <VisualStateGroup x:Name="EnabledStates">
+                <VisualState x:Name="Enabled" />
+                <VisualState x:Name="Disabled">
+                    <VisualState.Setters>
+                        <Setter Target="TitleLabel.Foreground" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                        <Setter Target="ValueLabel.Foreground" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <!--  The slider says both of these itself, so screen readers skip the two labels.  -->
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>

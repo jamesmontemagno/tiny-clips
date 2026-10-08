@@ -56,6 +56,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.Contains(nameof(StudioViewModel.CameraBubbleSize), names);
         Assert.Contains(nameof(StudioViewModel.LayoutIndex), names);
         Assert.Contains(nameof(StudioViewModel.IsMuted), names);
+        Assert.Contains(nameof(StudioViewModel.Volume), names);
         Assert.Contains(nameof(StudioViewModel.CanvasAspectIndex), names);
         Assert.Contains(nameof(StudioViewModel.HasError), names);
 
@@ -186,6 +187,51 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.Equal(-0.3, stored.Zooms[0].Focus.Y, Precision);
         Assert.Equal(9, stored.Zooms[0].EaseIn, Precision);
         Assert.Equal(9, stored.Zooms[0].EaseOut, Precision);
+        Assert.Equal(3, stored.Audio.Volume, Precision);
+    }
+
+    // ---- The volume
+
+    [Fact]
+    public async Task TheVolume_IsShownAsItIsUsed_ADragIsOneStep_AndMuteSwitchesItOffAndLeavesItsValue()
+    {
+        var id = CreateProject(project => project with { Audio = project.Audio with { Volume = 3 } });
+        var viewModel = await OpenAsync(id, _controls);
+
+        // Out of range in the file: the slider shows what is heard, and that is no edit.
+        Assert.Equal(1, viewModel.Volume, Precision);
+        Assert.Equal("100%", viewModel.VolumeText);
+        Assert.True(viewModel.IsVolumeEnabled);
+        AssertNothingWasEdited(viewModel, "opening");
+
+        // A drag is one step, however many values it passes.
+        viewModel.BeginGesture();
+        _controls.Move(nameof(StudioViewModel.Volume), 0.8);
+        _controls.Move(nameof(StudioViewModel.Volume), 0.35);
+        viewModel.EndGesture();
+        Pump();
+        Assert.Equal(0.35, viewModel.Volume, Precision);
+        Assert.Equal("35%", viewModel.VolumeText);
+        Assert.Equal(0.35, LastProject().Audio.Volume, Precision);
+
+        _controls.Move(nameof(StudioViewModel.IsMuted), true);
+        Pump();
+        Assert.False(viewModel.IsVolumeEnabled);
+        Assert.Equal(0.35, viewModel.Volume, Precision);
+        Assert.Equal("35%", viewModel.VolumeText);
+        Assert.Equal(0.35, LastProject().Audio.Volume, Precision);
+
+        // Two steps back: the mute, and the whole drag.
+        viewModel.Undo();
+        Pump();
+        Assert.True(viewModel.IsVolumeEnabled);
+        Assert.Equal(0.35, viewModel.Volume, Precision);
+        viewModel.Undo();
+        Pump();
+        Assert.Equal(1, viewModel.Volume, Precision);
+        Assert.Equal(3, LastProject().Audio.Volume, Precision);
+        Assert.False(viewModel.CanUndo);
+        Assert.Empty(_controls.OutOfStep());
     }
 
     // ---- Selecting, stepping and playing
@@ -388,6 +434,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
                 viewModel.Run(StudioShortcutAction.RemoveSelectedZoom);
             }),
             ("muting", () => _controls.Move(nameof(StudioViewModel.IsMuted), true)),
+            ("moving the volume", () => _controls.Move(nameof(StudioViewModel.Volume), 0.35)),
             ("resetting the crop", viewModel.ResetScreenCrop),
         ];
 
@@ -796,5 +843,6 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         [
             new StudioZoom { Start = 1, End = 3, Scale = 7, Focus = new StudioZoomFocus { X = 1.4, Y = -0.3 }, EaseIn = 9, EaseOut = 9 },
         ],
+        Audio = project.Audio with { Volume = 3 },
     });
 }
