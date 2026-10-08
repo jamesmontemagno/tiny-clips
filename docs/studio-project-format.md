@@ -755,6 +755,8 @@ Tests compare every number with an absolute tolerance of 1e-6. Strings, booleans
 
 Fixtures only sit on a decision boundary (a rounding midpoint, or either side of a comparison) when the inputs make the outcome exact in double arithmetic. That keeps them independent of the order in which an implementation multiplies and divides.
 
+Project files, in `folder/`: the `.tinyclips` file of a project saved as a folder (section 14), as an app really wrote it, byte for byte. These are not generated and have no expected values: a test puts a few bytes under the names the file gives, opens the folder, and holds what was read against the file. `saved-on-macos-1.9.0.tinyclips` is from a folder the macOS app saved on 7 October 2026. Only the Windows tests load it so far.
+
 ## 14. A project saved as a folder
 
 A project lives in the projects root (section 1), which no one is meant to look into. To keep a project elsewhere, or take it to another computer, the editor saves a copy of it as a folder:
@@ -774,9 +776,19 @@ A project lives in the projects root (section 1), which no one is meant to look 
 - **The recordings keep the names the project gives them** (`sources.screen.file`, `sources.camera.file`, `sources.events`), beside the `.tinyclips` file, in no subfolder.
 - A flat project (section 10) is not saved as a folder: its video is kept elsewhere.
 
-**Saving.** The folder is a copy as of the moment it is saved. The project stays in the projects root and is edited there; later edits do not reach the folder until it is saved again. Saving over a folder that is already there replaces it only when that folder is a saved project, which is a folder with exactly one `.tinyclips` file in it. Anything else is left alone and the save is refused.
+**A saved project** is a folder with exactly one `.tinyclips` file in it. An entry whose name starts with a dot is not counted: a Mac writes `._My Demo.tinyclips` beside the file on a volume that is not its own, such as the stick a project is carried to a PC on.
 
-**Opening.** Opening a `.tinyclips` file, or a folder with exactly one in it, makes a new project in the projects root and opens that:
+**Saving.** The folder is a copy as of the moment it is saved. The project stays in the projects root and is edited there; later edits do not reach the folder until it is saved again. Saving over a folder that is already there replaces it, with everything in it, only when all of this holds:
+
+- The folder is a saved project, and its `.tinyclips` file reads as a project (section 2).
+- Every other entry in it is a file, not a folder and not a link, and is either something a save writes or something a system leaves in a folder by itself:
+  - what a save writes: the names that `.tinyclips` file gives (`sources.screen.file`, `sources.camera.file`, `sources.events` or `events.json` when it names none, `background.image`) and `poster.jpg`;
+  - what a system leaves: `.DS_Store`, `Thumbs.db`, `desktop.ini`, and any name that starts with `._`.
+- Names are compared without regard to case.
+
+Anything else is left exactly as it is and the save is refused, naming the first entry that does not belong. So a project file that was copied into a folder of other things does not make that folder replaceable. Decided by the owner on 7 October 2026; before that, any folder with exactly one `.tinyclips` file was replaced. **macOS still has the earlier rule until its store is changed to match: it replaces any folder with exactly one `.tinyclips` file that is not hidden.**
+
+**Opening.** Opening a `.tinyclips` file, or a saved project's folder, makes a new project in the projects root and opens that:
 
 - The file is read as a project by the rules of section 2. One that is invalid, or has a `schemaVersion` above the reader's, is refused, and so is a flat project.
 - The screen file must be beside it, and the camera file when `sources.camera` is not null. Without them the file is refused: a `.tinyclips` file by itself is not a project.
@@ -787,4 +799,8 @@ A project lives in the projects root (section 1), which no one is meant to look 
 
 A `.tinyclips` file larger than 16 MB is refused unread; one a writer wrote is a few kilobytes.
 
-**Between a Mac and a PC.** Section 2 lists what the two readers take differently, and none of it is something a writer writes. Windows does not save or open these folders yet; when it does, a folder saved on one is meant to open on the other. That has not been tried.
+**Between a Mac and a PC.** Section 2 lists what the two readers take differently, and none of it is something a writer writes. A folder saved on one is meant to open on the other. What has been tried, as of 7 October 2026:
+
+- A folder the macOS app saved was opened by the Windows store, from its file and from its folder, and saved again as a folder: the only value that differs in the project file is the `id`. Its project file is the fixture `folder/saved-on-macos-1.9.0.tinyclips` (section 13). The same project was exported by the Windows exporter and held against the Mac's export; `windows/docs/studio-project-folders.md` has what agreed and what did not.
+- The Windows app has no command for either yet: the store does both, and nothing in the app calls it.
+- A folder saved on Windows has not been opened on a Mac.

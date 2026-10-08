@@ -1,7 +1,10 @@
 # Studio: save a project as a folder, open it again, delete it (Windows handoff)
 
-**Status:** built on macOS on 7 October 2026. Not started on Windows. Nothing under
-`windows/src`, `windows/tests`, or `windows/tools` was changed for it.
+**Status:** built on macOS on 7 October 2026. On Windows the store's half is built and tested
+(item 1 under "What to do on Windows", and the rule for drafts in recent captures); nothing in
+the app calls it yet, so there is no command, no file type and no menu. See "How Windows was
+checked" at the end. **The Mac's store does not have the replace rule of that evening yet**
+(below, and section 14 of the format).
 
 ## Why
 
@@ -123,7 +126,7 @@ recent captures.
 The owner brought the folder of his recording of that afternoon to the PC, with the video the
 Mac exported from it: 2880 × 1800, a camera that starts 1.4 s in, two scenes with a move
 between them, a cut, a stretch at twice the speed, a zoom that follows the pointer and one on
-a point. Windows cannot open a folder yet. What was tried is the half that exists: the project
+a point. Windows could not open a folder yet that afternoon. What was tried is the half that existed: the project
 file was read by the Windows reader and exported by the Windows exporter, without the app, by
 `StudioRenderCheck --export-project` (written for this), and the result was held against the
 Mac's export frame by frame. The folder was only read.
@@ -170,3 +173,53 @@ Mac's export frame by frame. The folder was only read.
   taking it to the PC by hand to open there (#429).
 - Not done by anyone yet: everything about the App Store build's sandbox, which a build made
   without signing does not have.
+
+## What changed on the evening of 7 October, for both platforms
+
+The owner was asked what saving over a folder may replace. By the first rule any folder with
+exactly one `.tinyclips` file in it was a saved project and was replaced with everything in
+it, so a project file copied by hand into Documents made Documents replaceable. His decision:
+**replace only a folder that holds nothing a save does not write, and refuse otherwise.**
+Section 14 of the format has the rule in full. Windows has it. **The Mac still replaces by the
+first rule** (`saveProjectFolder` and `isSavedProjectFolder` in `StudioProjectStore.swift`,
+read); that is the Mac session's to change and to run.
+
+Decided with it, by the Windows lead and not asked: an entry whose name starts with a dot is
+not counted when a folder is searched for its `.tinyclips` file, so that the `._Name.tinyclips`
+a Mac writes on an exFAT stick does not make the folder unopenable on a PC. The Mac skips every
+hidden file there, which comes to the same for those names.
+
+## How Windows was checked
+
+The store's half, 7 October, in `TinyClips.Core` (`StudioProjectStore.Folders.cs`,
+`StudioProjectFolder.cs`, `Services/RecentMenuEntry.cs`):
+
+- **Unit tests.** The Mac's 20 tests and its three for recent captures have Windows twins, and
+  there are more for what Windows adds: names Windows takes for something else, links, two
+  names for one file, a folder put in place file by file, and the replace rule. The Core tests
+  count 2,199 with them, 4 skipped on purpose. Each rule of the new code was taken out once,
+  and a test fails for every one but one: that the names of a folder are sorted before the
+  first that does not belong is named, which NTFS does by itself.
+- **The owner's folder from the Mac**, the one above. Opened by the Windows store from its
+  file and from its folder: a project with an id of its own and no exports, and the four files
+  copied byte for byte; the folder itself unchanged. Saved again by Windows, the only value in
+  the project file that differs is the `id`, and `audioTracks` is kept. The writing differs
+  (line ends, spacing, the order of keys). The test that does this is skipped unless it is
+  given the folder, and its project file is the fixture
+  `shared/studio/fixtures/folder/saved-on-macos-1.9.0.tinyclips`, which every run reads.
+- **Found by the tests on the way:** a folder that was just filled cannot always be renamed
+  into place while a virus scanner or the search index has a file in it open. The folder is
+  now made empty under its name and the files moved in one by one, the project file last.
+- **One limit, stated in a test:** when something else holds a file of the new copy open and
+  lets it neither be renamed nor deleted, the save fails, what was to be replaced is as it
+  was, and the folder the copy was filled in stays beside it with that one file.
+
+Where Windows differs from the Mac's store, on purpose: the folder a project is saved into is
+not made when it is not there; a suggested folder name is cut at 80 characters, since the name
+is in the path twice; a recording that is a link is refused; and a recording whose name
+Windows would take for something else (a colon, `CON`, a dot at the end) is refused as naming
+something outside the folder.
+
+Not done on Windows: everything in the app (items 2 to 6), so nobody has saved, opened or
+deleted a project there. Not tried by anyone: a folder saved on Windows opened on a Mac; a path
+longer than 260 characters; a FAT or exFAT volume.
