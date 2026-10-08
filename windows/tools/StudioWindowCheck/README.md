@@ -44,6 +44,11 @@ runs after that four had one check fail, a different one in three of them, and t
 - all 573 passed, in 355 s: the last run of the day, of the tool and the editor as they
   were committed.
 
+That evening the buttons of the editor got glyphs before their words, and this tool six
+checks about them: see "The glyphs before the words of the buttons". Two more full runs were
+made with them, of 577 checks and then, with the last two in, of 579, in 348 s and 352 s.
+Every check passed in both.
+
 None of the checks that failed on 7 October was failed by a fault of the editor's: each was
 the check's, or the PC being busy, except the first of the four above, which is open. The
 one fault of the editor's that the day found came before any check: the window could not be
@@ -124,6 +129,12 @@ Groups: `open transport inspector trim export close windows accessibility themes
   on show, where Tiny Clips badge, Keep this project and Save as default look are.
   `out\cannot-be-shown-light.png`, `-dark.png`: the window of a project whose file cannot be
   read, with the button that saves its screen recording.
+- `out\timeline-row-without-glyphs-light.png`, `-dark.png`: the window at its smallest size
+  with its timeline given less room than the six glyphs of its buttons need, so that the row
+  shows words alone. `out\button-delete-scene-light.png`, `-delete-speed-change-`,
+  `-reset-screen-crop-`, `-reset-camera-crop-`, `-show-scene-`, and the same for `dark`: the
+  window with a button on show that has a glyph and is in no picture of a panel from its top.
+  See "The glyphs before the words of the buttons".
 - `out\lane-handles-zoom.png`, `-cut.png`, `-speed-change.png`: the window with a block too
   narrow for handles inside its ends selected on that lane, so that its two handles stand
   outside it. For a person to look at; nothing reads them.
@@ -793,6 +804,59 @@ through the lane's own method does. "Faint", "stronger" and "strongest" are whic
 three states the handles are in, and no pixel is read for them: what the handles look like,
 on each of the three kinds of block, in light, in dark and in a contrast theme, is for a
 person. So is a handle outside a block that has a neighbour right next to it.
+
+## The glyphs before the words of the buttons
+
+The buttons that edit have a glyph before their words since 7 October 2026 (#432): the six of
+the timeline's row and fourteen of the inspector, each a `StudioButtonLabel`, and Save the
+screen recording. Which glyph a button has is held by unit tests (`StudioInspectorPanelTests`
+in the Core tests, `StudioButtonIconTests` in the app's, which reads the markup). What this
+tool adds is in the `themes` group, in `Checks\ButtonGlyphs.cs`, on the recording with three
+scenes, two zooms, two cuts and two speed changes, in a window at its smallest size:
+
+- **A row without room for its glyphs.** A glyph gives way where there is no room for it, and
+  the words stay (`StudioGlyphRow`). The case that matters is a large text size, which is a
+  setting of Windows this tool does not change. So the room is taken away instead: the
+  timeline is given a largest width that leaves its row half of what the six glyphs take
+  less than it needs. The check reads from the window's own elements that no glyph is drawn,
+  that each button is narrower by its glyph and the gap after it, that what the row needs
+  (added up by the check, and not by the row) is no more than it has, that the last button
+  ends inside the row and the time is whole; and from UI Automation that the six buttons say
+  the names they said and hold nothing a screen reader walks, with their glyphs and without.
+  Then the timeline is given its room back, and the glyphs are drawn again and the buttons as
+  wide as they were. A picture of the row without glyphs is saved.
+- **Buttons of the inspector without room.** The same with Add zoom and Suggest zooms, which
+  stand side by side in the Zoom panel, by a largest width on the stack that holds them; and
+  with Add speed change, a button that stands alone, by a largest width on the button, which
+  then is as wide as its words need.
+- **Five buttons no other picture shows**: Delete scene, Delete speed change, Reset crop of
+  the screen and of the camera (their groups are opened first), and Show scene (the scene is
+  made the screen alone first). Each is brought into view and the window pictured. The check
+  says that each is whole in the part of the panel that shows, with its glyph drawn and its
+  words as its name. What a button looks like is not judged.
+- **A note, "the timeline's row by its sizes"**: how wide the ten items of the row are, and
+  how wide they would be at a text size of 200%. It is a sum: every text and glyph of the row
+  is measured again in a copy at twice its font size, and what a button has around its content
+  is taken as it is. The note says how far a copy measured at the present size is from what
+  the window has (0.85 of an effective pixel on 7 October; widths in the window are rounded to
+  whole pixels), what the row would need with its glyphs and without, and in how wide a window
+  each fits. It is printed once, and it judges nothing.
+
+Three checks in each theme, six in all. They passed in every run they were in on 7 October:
+the four of rows without room in two runs of `themes` and two full runs, and the two of the
+pictures in the last run of each kind.
+
+One older check was mended for the labels: in `speed`, the check that Speed in the timeline's
+row shows "Speed" read the button's content as text. The content is a label now, and the check
+reads the label's words.
+
+**What these do not show.** Nothing was run at a text size other than 100%, so that a glyph
+gives way at 200% rests on the sum and on the room being taken away by a largest width, which
+is not the same thing: at a large text size every text in the window is larger, the rail is
+wider and the panel narrower. Nothing judges what a glyph looks like or whether it says what
+its button does. No contrast theme was run. A recording without a camera, whose row has no
+Split, has the row checked only by the checks that were there. And the largest widths are set
+on the window's own elements by the tool, which nothing in the app does.
 
 ## Written on 5 October 2026 and not run
 

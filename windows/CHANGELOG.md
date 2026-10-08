@@ -120,6 +120,16 @@ own `CHANGELOG.md` at the repository root.
     panel on show when the panel has none after it. **Space** plays and pauses from the rail's
     chosen item, as it does from a slider. A panel without a zoom, a cut, or a speed change
     says how to add the first one.
+  - **Icons on the editor's buttons.** The buttons that edit have an icon before their words:
+    **Split**, **Add zoom**, **Cut**, **Speed**, **Start here**, and **End here** over the
+    timeline; **Split scene**, **Add zoom**, **Suggest zooms**, **Remove suggestions**,
+    **Add cut**, **Add speed change**, the four **Delete** buttons, **Reset crop**,
+    **Show scene**, and **Save as default look** in the inspector; and
+    **Save the screen recording** on a project that cannot be opened. A button that adds a
+    zoom, a cut, or a speed change has the icon of that panel on the rail, and so does
+    **Show scene**. The icons are decoration: every button keeps its words, and a screen reader
+    hears the name it heard before. Where a button has no room for its icon, as at a large
+    text size, the icon gives way and the words stay.
   - Known limits: window recordings keep no click or cursor data, so zooms cannot be suggested
     for them and a zoom cannot follow the pointer in them, and the cursor is part of the screen
     layer. The live preview does not play a speed change at its speed yet: it shows the stretch
