@@ -1,8 +1,8 @@
 # Studio: a Settings page of its own (Windows handoff)
 
 **Status:** built on macOS on 7 October 2026, and on Windows the same day from this brief
-(#430), without the Projects section: **Open project** needs saved project folders, which are
-#429. On Windows it is compiled and unit tested and has never been run: nobody has opened
+(#430). The Projects section, with **Open project…**, came that night with the saved project
+folders (#429). On Windows it is compiled and unit tested and has never been run: nobody has opened
 Settings and seen the page. What to try by hand is step 21 of the Windows hands-on checklist in
 [`plans/video-studio-plan.md`](../../plans/video-studio-plan.md). "What Windows has now" below
 says where each part is.
@@ -54,9 +54,12 @@ Studio now says "Studio settings".
 | The projects are read when the Studio page is first chosen. They were read whenever Settings opened, because General is the page it opens on | `StudioSettingsSection` constructor: `EnsureStudioStorageInitializedAsync` |
 | The Clips Library's notice for Open in Studio with Studio off says Settings › Studio | `ViewModels/ClipsLibrary/ClipsLibraryViewModel.cs` |
 
-**Projects is not there.** It goes between Recording and Storage, where the page's markup has
-a comment for it: a heading like the others and one card with **Open project…**. The test
-that holds the page's headings to the Mac's order lets a Projects heading in without changing.
+**Projects** is between Recording and Storage since the night of 7 October (#429): a heading
+like the others and one card with **Open project…**, which asks for a `.tinyclips` file with
+the open picker and opens the project in Studio as a new draft. Why a project was not opened is
+said in a dialog. The Project storage card says how a project outlives an uninstall: saved as a
+folder. A test holds the page's headings to the Mac's order, and one the card's markup. The
+page has not been opened with it.
 
 The headings of this page are marked as headings for a screen reader (`HeadingLevel`). The
 group titles of the other Settings pages are styled the same and not marked.

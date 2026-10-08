@@ -221,8 +221,8 @@ With the switch on:
   made as an ordinary recording. A Studio recording that cannot be saved as a project is kept
   as an ordinary video, which then opens the trimmer or is saved, as the trimmer switch says.
 - **The editor** has a live preview, an inspector, a scene lane, a zoom lane, a cut lane, and a
-  speed lane above a trim bar, undo and redo, and Export. A recording without a camera has no
-  scenes.
+  speed lane above a trim bar, a Project menu, undo and redo, and Export. A recording without a
+  camera has no scenes.
   The inspector shows one panel at a time, chosen on the rail down its outer edge: **Scene**,
   **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**, **Audio**, and
   **Project** (no Scene and no Camera without a camera). The rail is one stop for `Tab`, and
@@ -236,7 +236,9 @@ With the switch on:
   playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
   at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
   selected zoom, cut, or speed change, `1`–`4` layout of the scene the playhead is in,
-  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Esc` stop an export, and otherwise close
+  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
+  this project as a folder (not `Ctrl+Shift+S`, which is the global Stop recording hotkey and
+  does not reach the window), `Esc` stop an export or a save, and otherwise close
   the editor as its close button does: a recording that was never exported asks what to do with
   it, and a project that was exported asks first unless **Confirm before closing editors with
   Esc** is turned off in General settings. While a lane has the keyboard focus, `Left`/`Right`
@@ -250,10 +252,23 @@ With the switch on:
   **Keep this project**, in the Project panel, pins a project against the storage
   cleanup; it is written at once and is not undone by `Ctrl+Z`.
   A project the editor cannot show says why, and where its screen recording is still there,
-  **Save the screen recording** saves that as an ordinary video.
+  **Save the screen recording** saves that as an ordinary video; **Delete project…** under it
+  deletes what is left.
+  **Project**, in the header, has **Open recent** (the other projects, the one opened last
+  first), **Open project…**, **Save project…**, and **Delete project…**; the last two are in the
+  Project panel as well. **Save project…** saves a copy of the project as a folder with a name
+  and in a place you choose: the recordings, and a `.tinyclips` file that opens them in Studio
+  again. A saved project that is in the way is replaced only after a question, and only when
+  its folder holds nothing else; the save can be cancelled, and the editor takes no edits
+  while it runs. **Open project…**, or a `.tinyclips` file opened from File Explorer, copies
+  the project into Studio as a new draft and opens that; the folder is only read. **Delete
+  project…** asks first, and leaves exported videos and saved folders alone.
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
-  choosing such a video in **Recent captures** opens its project instead of the trimmer.
-  **Settings › Studio** says how a Studio recording is started, and shows the space projects
+  choosing such a video in **Recent captures** opens its project instead of the trimmer. A
+  recording kept as a draft is in **Recent captures** too, as "Name — Studio project" with its
+  date and poster, among the five lines the list has.
+  **Settings › Studio** says how a Studio recording is started, has **Open project…** for a
+  project that was saved as a folder, and shows the space projects
   take, the cleanup rules, and the drafts: the recordings that only their project holds. Those
   are the ones kept without exporting, the ones
   whose exported video is no longer where it was saved (a file of another size under its name
@@ -264,7 +279,8 @@ With the switch on:
 
 Projects are kept in the app's local data folder under `TinyClips\Projects`. That folder belongs
 to the installed app: uninstalling Tiny Clips, or resetting it in Windows Settings, deletes it,
-and with it every project, drafts included. Exported videos are not in it. The format, layout
+and with it every project, drafts included. Exported videos are not in it, and neither is a
+project that was saved as a folder with **Save project…**, which is the way to keep one. The format, layout
 math and drawing rules are in [`/docs/studio-project-format.md`](../docs/studio-project-format.md),
 shared with the macOS app; the design and its status are in
 [`/plans/video-studio-plan.md`](../plans/video-studio-plan.md). The renderer and exporter are

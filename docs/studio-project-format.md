@@ -802,5 +802,5 @@ A `.tinyclips` file larger than 16 MB is refused unread; one a writer wrote is a
 **Between a Mac and a PC.** Section 2 lists what the two readers take differently, and none of it is something a writer writes. A folder saved on one is meant to open on the other. What has been tried, as of 7 October 2026:
 
 - A folder the macOS app saved was opened by the Windows store, from its file and from its folder, and saved again as a folder: the only value that differs in the project file is the `id`. Its project file is the fixture `folder/saved-on-macos-1.9.0.tinyclips` (section 13). The same project was exported by the Windows exporter and held against the Mac's export; `windows/docs/studio-project-folders.md` has what agreed and what did not.
-- The Windows app has no command for either yet: the store does both, and nothing in the app calls it.
+- The Windows app has the commands for both since the night of 7 October: built and unit tested, and the editor's part run in the real window by the window check. The app itself was not started, so no folder has been saved or opened by a person there, and the folder from the Mac has been opened by the store only. `windows/docs/studio-project-folders.md` has what was run and what was not.
 - A folder saved on Windows has not been opened on a Mac.

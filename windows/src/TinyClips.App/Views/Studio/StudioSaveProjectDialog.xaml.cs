@@ -40,7 +40,9 @@ public sealed partial class StudioSaveProjectDialog : ContentDialog
         InitializeComponent();
 
         NameBox.Text = folderName;
-        NameBox.SelectAll();
+
+        // Selected once the box is there, so that typing replaces the suggestion.
+        NameBox.Loaded += OnNameBoxLoaded;
         ShowPlace();
         PrimaryButtonClick += OnSaveClick;
     }
@@ -56,6 +58,12 @@ public sealed partial class StudioSaveProjectDialog : ContentDialog
 
     /// <summary>What the dialog says cannot be done, or empty.</summary>
     public string Problem => ProblemText.Visibility == Visibility.Visible ? ProblemText.Text : string.Empty;
+
+    private void OnNameBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        NameBox.Loaded -= OnNameBoxLoaded;
+        NameBox.SelectAll();
+    }
 
     private void OnSaveClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {

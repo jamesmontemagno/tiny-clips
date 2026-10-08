@@ -1,9 +1,11 @@
 # Studio: save a project as a folder, open it again, delete it (Windows handoff)
 
 **Status:** built on macOS on 7 October 2026. On Windows the store's half is built and tested
-(item 1 under "What to do on Windows", and the rule for drafts in recent captures); nothing in
-the app calls it yet, so there is no command, no file type and no menu. See "How Windows was
-checked" at the end. **The Mac's store does not have the replace rule of that evening yet**
+(item 1 under "What to do on Windows", and the rule for drafts in recent captures), and the
+app's half is built: the commands in the editor, the file type, the drafts in the tray, and
+Open project in Settings. The editor's part was run in the real window by the window check;
+the app itself was not started, so nobody has opened a `.tinyclips` file from Explorer or
+seen the tray. See "How Windows was checked" at the end. **The Mac's store does not have the replace rule of that evening yet**
 (below, and section 14 of the format).
 
 ## Why
@@ -220,6 +222,94 @@ is in the path twice; a recording that is a link is refused; and a recording who
 Windows would take for something else (a colon, `CON`, a dot at the end) is refused as naming
 something outside the folder.
 
-Not done on Windows: everything in the app (items 2 to 6), so nobody has saved, opened or
-deleted a project there. Not tried by anyone: a folder saved on Windows opened on a Mac; a path
-longer than 260 characters; a FAT or exFAT volume.
+### The app's half (the night of 7 October)
+
+Items 2 to 6 above, and the drafts in recent captures. What a person sees, where the Mac's
+description above is not the whole of it:
+
+- **The editor** has one **Project** button with a menu in the header, left of Undo: Open
+  recent, Open project… (Ctrl+O), Save project… (Ctrl+S), Delete project…. One button and not
+  four: four more would take the preview's room at the window's smallest width, and it is
+  what the Mac has. The inspector's Project panel ends with Save project… and, under a line,
+  Delete project…, each with a sentence; a project that cannot be shown has Delete project…
+  under its message. Open recent and Open project are in the header only, as on the Mac:
+  they are not about this project.
+- **Save project is Ctrl+S on Windows, not Ctrl+Shift+S.** Ctrl+Shift+S is the app's own
+  global hotkey for Stop recording, registered at launch and not changeable, and Windows
+  gives a registered hotkey to the app and not to the window with the keyboard. That is read
+  in the code, not tried.
+- **Saving asks in a dialog of its own**: a box for the folder's name, which starts as the
+  project's name made fit for a folder, the place, which starts where a project was last
+  saved and in Documents the first time, and **Choose folder…** over the folder picker. The
+  system's save picker was the other way: it makes an empty file where it is pointed, which
+  a folder of that name then cannot take, and its own "replace?" is about a file. What is at
+  the place is looked at before the dialog closes, with the store's own function
+  (`WhyASaveWouldNotReplace`), so nothing is copied before the answer is known:
+  - nothing there: saved;
+  - a saved project with nothing else in its folder: **Replace the saved project “Name”?**,
+    naming the folder and where it is, Cancel by default; Cancel brings the dialog back;
+  - a saved project that holds something else: no question; under the name, "This folder
+    holds X, which is not part of the project, so it was not replaced. Choose another name.";
+  - anything else: "There is already something with that name, and it is not a saved Tiny
+    Clips project. Choose another name.";
+  - a name a folder cannot have: "A folder cannot be called that. Try “…”."
+- **While the recordings are copied** the editor is under "Saving project…" with a progress
+  bar and Cancel, takes no edits, and is told to ask before its window closes. The edits the
+  editor holds are written into `project.json` before the copy starts. **The save can be
+  stopped**, by Cancel, by Esc, and by closing the window and answering Stop and close; the
+  Mac's cannot, and its window beeps instead. Afterwards Explorer shows the folder with the
+  `.tinyclips` file selected.
+- **Opening** copies off the UI thread. Nothing of the app shows meanwhile, as on the Mac;
+  on Windows a copy that is still running after two seconds is said to be running in a
+  notification, and the same file asked for again meanwhile is not copied twice. Why a
+  project was not opened is said in the editor's message bar when an editor asked, in a
+  dialog in Settings, and in a notification when the file came from Explorer: "Studio could
+  not open this project:" and the store's sentence. With Studio switched off: "Tiny Clips
+  Studio is switched off. Switch it on in Settings, under Studio, to open this project.",
+  and nothing is copied.
+- **The open picker takes a `.tinyclips` file**, not a folder. The app is full trust, so the
+  recordings beside the file are read by their path, and no folder has to be chosen for them.
+  That is read from the manifest's `runFullTrust`, not tried on an installed app.
+- **The tray's Recent** lists drafts among the saved captures, by `RecentMenuEntry.ForMenu`.
+  The projects are read off the UI thread at launch, when an editor opens, has read its
+  project, or closes, and when the popup is about to show; the popup shows what was read last
+  and makes its Recent button again when the read finds another list.
+- **Settings › Studio** has Projects with Open project…, and says under Project storage how
+  a project outlives an uninstall.
+
+The tray popup has no Open project: the Mac's menu bar menu has none, and the popup has no
+menu to put it in. The brief for this work named the tray among the places for the open
+picker; a draft's line and a file opened from Explorer are the tray's ways in.
+
+**Run:**
+
+- Unit tests. In `TinyClips.Core.Tests`: the session's save (the edits first, no edits
+  meanwhile, stopped, refused, a close that waits), the keys, the question a close asks, and
+  every sentence, with the cases of a place that is taken worked on real folders. In
+  `TinyClips.App.Tests`: the editor's view model (what Open recent lists, when a command is
+  passed on, what a save says and shows), the file type in both manifests and how a project
+  file is told from a picture, the projects the tray lists, and the Settings page's markup.
+- The editor's part in the real window, by `StudioWindowCheck --only project`: 20 checks
+  through UI Automation, with stand-ins for the two pickers, the Explorer window and the
+  notification, and the Project menu read without being opened. They save a real project
+  into a temp folder, have the store open it again, try to edit while a save is held, replace,
+  are refused, stop a save, open the saved folder as a second editor, and delete.
+
+**Read, not run:**
+
+- That Ctrl+Shift+S does not reach the window.
+- That a full-trust package reads the recordings beside a file it was handed.
+- What Windows does with the file type: the icon, the name in Explorer, "Open with".
+
+**Not run by anyone: the app.** It was not started for this work. So nobody has opened a
+`.tinyclips` file from Explorer, with the app running or not; seen the notification for
+Studio switched off or for a file that cannot be opened; opened the tray popup with a draft
+in it; pressed Open project… in Settings; or seen the folder picker, the open picker, the
+Explorer window, or the open Project menu. A person's steps for all of it are step 22 of
+the hands-on checklist in [`plans/video-studio-plan.md`](../../plans/video-studio-plan.md),
+and rows A11Y-35 to A11Y-39 of the [accessibility gate](accessibility-release-gate.md).
+
+Not tried by anyone, on either half: a folder saved on Windows opened on a Mac; the folder
+the owner saved on his Mac opened in the Windows app (the store opened it); a path longer
+than 260 characters; a FAT or exFAT volume; a recording of gigabytes, which is where the
+progress bar, the notice after two seconds, and cancelling in the middle of a copy matter.

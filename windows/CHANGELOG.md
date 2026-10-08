@@ -21,6 +21,21 @@ own `CHANGELOG.md` at the repository root.
   and export an MP4. The project stays editable afterward: reopen it from **Open in Studio…** in
   the Clips Library, from Recent captures, or from the drafts list in Settings › Studio, which
   also sets how long projects are kept and how much disk space they may use.
+  - **Projects as folders.** **Save project…** saves a copy of a project as an ordinary folder
+    with a name and in a place you choose: the recordings, and a `.tinyclips` file that opens
+    them in Studio again, on this PC or another. It is in the **Project** menu of the editor's
+    header, in the Project panel, and on **Ctrl+S**. The editor takes no edits while the
+    recordings are copied, and **Cancel** or **Esc** stops the copy and leaves nothing behind.
+    Saving under a name where a saved project already is asks before it replaces it, and
+    replaces only a folder that holds nothing but that project: a folder that holds anything
+    else is left as it is, and the dialog says which file is in the way. **Open project…** (the
+    Project menu, **Ctrl+O**, or Settings › Studio › Projects) and opening a `.tinyclips` file
+    from File Explorer copy the project into Studio as a new draft and open that; the folder
+    is only read. **Open recent** in the Project menu lists the other projects, the one opened
+    last first. **Delete project…**, in the Project menu and the Project panel, asks first,
+    then closes the editor and deletes the project; videos you exported and folders you saved
+    it to are not deleted. A recording kept as a draft is listed in the tray's **Recent
+    captures** as "Name — Studio project", with the date and its poster. (#429)
   - **Zooms.** Press **Z** or choose **Add zoom** to zoom in on the screen recording at the
     playhead. Zooms sit on a lane above the trim bar: drag one to move it, or drag the handle at
     one of its ends to change when it starts or stops. The **Zoom** panel of the inspector
@@ -77,7 +92,8 @@ own `CHANGELOG.md` at the repository root.
     recording** in Settings › Video decides what that one does, as before. Studio recording
     has no hotkey yet. Switching Studio off again hides it and deletes nothing. Projects are
     stored with the app, so uninstalling Tiny Clips or resetting it in Windows Settings deletes
-    them; exported videos stay.
+    them; exported videos stay, and so does a project that was saved as a folder with **Save
+    project…**.
   - **Camera background.** **Camera background** in the Camera panel keeps the camera picture as
     it is, blurs everything but you, or removes it so that only you stand in front of the screen.
     The people are found on your PC with the MediaPipe Selfie Segmentation model, which ships
@@ -94,8 +110,9 @@ own `CHANGELOG.md` at the repository root.
     **O** start and end the video at the playhead, **S** splits the scene, **Z** adds a zoom,
     **X** starts a cut, and **R** changes the speed at the playhead, **Delete** removes the
     selected zoom, cut, or speed change, **1** to **4** choose the layout of the scene the
-    playhead is in, **Ctrl+Z** and **Ctrl+Y** undo and redo, **Ctrl+E** exports, and **Esc**
-    stops an export. While a lane has the keyboard focus, **Left** and **Right** go to the
+    playhead is in, **Ctrl+Z** and **Ctrl+Y** undo and redo, **Ctrl+E** exports, **Ctrl+O**
+    opens a saved project, **Ctrl+S** saves this one as a folder, and **Esc** stops an export
+    or a save. While a lane has the keyboard focus, **Left** and **Right** go to the
     scene, zoom, cut, or speed change before and after, and **Home** and **End** to the first
     and the last. While you drag something, the keys that change the video do nothing;
     **Space** and the arrow keys still work.

@@ -91,7 +91,7 @@ It exits with 0 when every check passed and with 1 when one did not, after print
 | `--as-before` | judge the three checks that failed on 5 October 2026 as they did then, and say what the tool's way would have read: see "Three checks on a smaller preview". (`--as-prepared`, which asked for the tool's way before it was that, is taken and does nothing) |
 | `--memory` | run none of the groups: open and close windows with one thing done to each, and say which are still in memory afterwards: see "A closed window that stays in memory" |
 
-Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut speed`.
+Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut speed project`.
 
 ## What it leaves behind
 
@@ -232,9 +232,12 @@ Someone may be working on the machine while the tool runs, so:
     (`Host\SlowRecording.cs`) that hands out the first half of the recording's bytes to
     whoever opens it as a file, and the rest, and the end of the file, when the check says
     so. The copy that the editor makes of the recording is then under way for as long as the
-    check needs to do something in the middle of it. Nothing of a pipe is to be seen.
+    check needs to do something in the middle of it. Nothing of a pipe is to be seen. And a
+    check can have it hold every save of a project as a folder before anything is copied:
+    see "The project as a whole".
 - `Host\ToolServices.cs` builds `StudioWindowService` the way the app does, with those five, and
-  replaces `ActivateWindow`: a window is shown once, without activation; a second request for the
+  replaces the pickers, the Explorer window and the notification (see "The project as a whole"), and
+  `ActivateWindow`: a window is shown once, without activation; a second request for the
   same window, which in the app brings it to the front, is counted. What the window service
   hands the app is written down: every export it reports as finished, every screen recording
   it reports as saved from a project that cannot be shown, and every error it reports for a
@@ -2087,3 +2090,52 @@ opened one after the other, each 2 ms after the one before it was closed, both s
 recording could not be decoded (DecodingError)", and the next one, 0.4 s later, opened. At that
 time the tool kept nothing but the sentence. It did not happen again in 24 runs of
 `--only inspector,trim,export`, which open the same three editors in the same order.
+
+## The project as a whole (#429)
+
+The group `project` checks the editor's four commands for the project as a whole: the
+**Project** button of the header and its menu, **Save project…** and **Delete project…** in
+the inspector's Project panel, what saving asks and does, a saved project opened again, and
+deleting. It was written and first run on the night of 7 October 2026: `--only project`, 25
+checks, all passed, in 19 s; with `themes` before it, 45 of 45.
+
+Four things the app shows are windows of their own, in front of other windows, so the tool
+shows none of them and stands in for each (`Host\ToolServices.cs`):
+
+- **The folder picker** behind **Choose folder…** and **the open picker** behind **Open
+  project…**: a check says what the picker answers the next time it is asked, once
+  (`AnswerSaveFolderPicker`, `AnswerProjectFilePicker`), and how often each was asked is
+  counted. Nothing says what the real pickers do, or that they open at all.
+- **The Explorer window** that shows a saved folder with its `.tinyclips` file selected: the
+  path the window asks to have shown is written down (`Revealed`).
+- **The notification** the app shows where no window is left to say something: the sentence
+  is written down (`Notices`).
+
+The Project menu is not opened either, as no drop-down is: an open menu is a window in
+front. The window brings its menu up to date as opening does (`PrepareProjectMenu`), and the
+items are read from the window's own elements: their words, keys, pictures, and whether they
+are greyed. So nothing here says what the open menu looks like, or that the arrow keys move
+in it. A line of Open recent is chosen by the method its click runs.
+
+**A save that can be looked at.** The copy of a test recording is over in a few
+milliseconds. `GuardedStore.HoldProjectSaves` holds every save before anything of it is
+copied until a check lets go, so that the editor is saving for as long as the check reads
+its overlay, tries to edit, and presses the close button. A save that is stopped while it
+is held is therefore stopped before the first byte: that a copy is stopped in its middle,
+and leaves nothing, is in the store's tests and not here.
+
+What the checks save goes to a folder of the run beside the store, in the temp folder
+(`TinyClipsStudioWindowCheck-saved-<process id>`), which is removed when the group is over.
+The folder a save starts in is a setting (`StudioProjectSaveFolder`), and the group sets it
+there: no check writes to Documents.
+
+Pictures for a person, in the out folder, from which nothing is read: `project-panel.png`,
+`project-save-question.png`, `project-save-question-refused.png`, `project-saving.png`,
+`project-replace-question.png`, `project-delete-question.png`,
+`project-delete-question-cannot-be-shown.png`; and, from `themes`, `project-section-end-light.png`
+and `project-section-end-dark.png`, the end of the Project panel, which is now longer than
+the inspector is high as the window opens.
+
+Not checked by this group, because it is not in the window: the `.tinyclips` file type and a
+file opened from Explorer, the tray's recent captures, and the Studio page of Settings. Those
+are in the app, which the tool never starts.
