@@ -220,6 +220,9 @@ internal sealed class UiaElement
     public UiaRange? Range => Get<UIA.IUIAutomationRangeValuePattern, UiaRange?>(UIA.UIA_PatternIds.UIA_RangeValuePatternId, static pattern =>
         new UiaRange(pattern.CurrentValue, pattern.CurrentMinimum, pattern.CurrentMaximum, pattern.CurrentIsReadOnly != 0, pattern.CurrentSmallChange, pattern.CurrentLargeChange));
 
+    /// <summary>Sets the text of a text box through the value pattern, as a screen reader's dictation does.</summary>
+    public bool SetValue(string value) => Act<UIA.IUIAutomationValuePattern>(UIA.UIA_PatternIds.UIA_ValuePatternId, pattern => pattern.SetValue(value));
+
     /// <summary>The value pattern's text, or null when the element has no value pattern.</summary>
     public string? ValueText => Get<UIA.IUIAutomationValuePattern, string?>(UIA.UIA_PatternIds.UIA_ValuePatternId, static pattern => pattern.CurrentValue ?? string.Empty);
 

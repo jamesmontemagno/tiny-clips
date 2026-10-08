@@ -53,8 +53,8 @@ internal sealed partial class WindowChecks
     /// key handler calls once it has mapped the key. It asks StudioShortcuts what the key means in
     /// the window as it is now, and runs that. The key itself is not pressed.
     /// </summary>
-    private StudioShortcutAction Key(Editor editor, StudioShortcutKey key, bool control = false) =>
-        OnUi(() => editor.Window.RunShortcut(key, isControlDown: control, isShiftDown: false, isAltDown: false, isRepeat: false));
+    private StudioShortcutAction Key(Editor editor, StudioShortcutKey key, bool control = false, bool shift = false) =>
+        OnUi(() => editor.Window.RunShortcut(key, isControlDown: control, isShiftDown: shift, isAltDown: false, isRepeat: false));
 
     /// <summary>
     /// What the window does with Esc, as <see cref="Key"/>: with Ctrl, Shift or Alt held, and as

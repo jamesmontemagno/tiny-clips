@@ -23,7 +23,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 /// </summary>
 internal sealed partial class WindowChecks
 {
-    public static readonly string[] Groups = ["open", "transport", "inspector", "trim", "export", "close", "windows", "accessibility", "themes", "zoom", "crop", "scene", "cut", "speed"];
+    public static readonly string[] Groups = ["open", "transport", "inspector", "trim", "export", "close", "windows", "accessibility", "themes", "zoom", "crop", "scene", "cut", "speed", "project"];
 
     private const int Fps = TestMedia.Fps;
 
@@ -122,6 +122,7 @@ internal sealed partial class WindowChecks
             Group("scene", "12. Scenes", Scenes);
             Group("cut", "13. Cuts", Cuts);
             Group("speed", "14. Speed changes", Speeds);
+            Group("project", "15. The project as a whole: saved as a folder, opened, and deleted", ProjectAsAWhole);
 
             // Last of all: after this the window service opens nothing.
             Group("windows", "7, at the end. The app exits while editors are open", ExitingWithWindowsOpen);

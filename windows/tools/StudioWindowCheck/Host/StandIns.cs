@@ -194,7 +194,9 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
     }
 
     /// <summary>
-    /// The real project store on the tool's temp folder, with five additions: it refuses a root
+    /// The real project store on the tool's temp folder, with six additions: it can hold a save
+    /// of a project as a folder before anything of it is copied, for as long as a check wants
+    /// to look at the editor meanwhile; it refuses a root
     /// outside the temp folder, it counts how often a delete was tried and how often it failed, it
     /// never lets a cleanup throw, it can be told to refuse to write, as a disk that is full
     /// or a folder that may not be written does, and it can be told to say, once, that a
@@ -216,6 +218,8 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
         private string? _refuseNextKeep;
         private (string ProjectId, string Message)? _refuseSaves;
         private (string ProjectId, string Path)? _recordingElsewhere;
+        private ManualResetEventSlim? _projectSaveGate;
+        private int _projectSavesBegun;
 
         public GuardedStore(string rootDirectory)
         {
@@ -397,13 +401,27 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
             }
         }
 
+        /// <summary>How often a save of a project as a folder was begun.</summary>
+        public int ProjectSavesBegun => Volatile.Read(ref _projectSavesBegun);
+
+        /// <summary>
+        /// Holds every save of a project as a folder, from now on, before anything of it is
+        /// copied, until the gate is set: the editor is then saving for as long as a check
+        /// looks at it. Null to hold none. A save is held for a minute at most.
+        /// </summary>
+        public void HoldProjectSaves(ManualResetEventSlim? gate) => Volatile.Write(ref _projectSaveGate, gate);
+
         public void SaveProjectFolder(
             string projectId,
             string folder,
             bool replaceSavedProject = false,
             IProgress<double>? progress = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _projectSavesBegun);
+            Volatile.Read(ref _projectSaveGate)?.Wait(TimeSpan.FromSeconds(60));
             _inner.SaveProjectFolder(projectId, folder, replaceSavedProject, progress, cancellationToken);
+        }
 
         public StudioProject OpenProjectFolder(string path, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
             _inner.OpenProjectFolder(path, progress, cancellationToken);

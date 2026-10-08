@@ -22,7 +22,10 @@ public sealed partial class StudioWindow
     /// Open recent lists what was read last. The projects are read again for the next time,
     /// and the list changes under the open menu when that finds another one.
     /// </summary>
-    private void OnProjectMenuOpening(object? sender, object e)
+    private void OnProjectMenuOpening(object? sender, object e) => PrepareProjectMenu();
+
+    /// <summary>Brings the Project menu up to date, as its opening does.</summary>
+    internal void PrepareProjectMenu()
     {
         SaveProjectItem.IsEnabled = ViewModel.CanSaveProject;
         DeleteProjectItem.IsEnabled = ViewModel.CanDeleteProject;
