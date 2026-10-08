@@ -3,9 +3,9 @@
 **Status:** built on macOS on 7 October 2026. On Windows the store's half is built and tested
 (item 1 under "What to do on Windows", and the rule for drafts in recent captures), and the
 app's half is built: the commands in the editor, the file type, the drafts in the tray, and
-Open project in Settings. The editor's part was run in the real window by the window check;
-the app itself was not started, so nobody has opened a `.tinyclips` file from Explorer or
-seen the tray. See "How Windows was checked" at the end. **The Mac's store does not have the replace rule of that evening yet**
+Open project in Settings. The editor's part was run in the real window by the window check,
+and that night the app itself was started and handed the folder the owner saved on his Mac:
+it opened, was saved again, and was deleted. See "How Windows was checked" at the end. **The Mac's store does not have the replace rule of that evening yet**
 (below, and section 14 of the format).
 
 ## Why
@@ -269,7 +269,9 @@ description above is not the whole of it:
   and nothing is copied.
 - **The open picker takes a `.tinyclips` file**, not a folder. The app is full trust, so the
   recordings beside the file are read by their path, and no folder has to be chosen for them.
-  That is read from the manifest's `runFullTrust`, not tried on an installed app.
+  Read from the manifest's `runFullTrust`; in the app, started under an identity of its own,
+  a file handed over by the system opened with the recordings beside it (below). The picker
+  itself was not used.
 - **The tray's Recent** lists drafts among the saved captures, by `RecentMenuEntry.ForMenu`.
   The projects are read off the UI thread at launch, when an editor opens, has read its
   project, or closes, and when the popup is about to show; the popup shows what was read last
@@ -313,15 +315,23 @@ picker; a draft's line and a file opened from Explorer are the tray's ways in.
 - That a full-trust package reads the recordings beside a file it was handed.
 - What Windows does with the file type: the icon, the name in Explorer, "Open with".
 
-**Not run by anyone: the app.** It was not started for this work. So nobody has opened a
-`.tinyclips` file from Explorer, with the app running or not; seen the notification for
-Studio switched off or for a file that cannot be opened; opened the tray popup with a draft
-in it; pressed Open project… in Settings; or seen the folder picker, the open picker, the
-Explorer window, or the open Project menu. A person's steps for all of it are step 22 of
+**Run in the app, on the night of 7 October**, by the Windows lead: a copy of the Store
+flavor under a package identity of its own, worked through UI Automation, with the folder the
+owner saved on his Mac. The account is in the plan ("The app itself, started on a PC"). In
+short: the `.tinyclips` file, handed over as Explorer hands it, opened a Studio window on a
+new project, with the app running and with the app not running, and copied nothing while
+Studio was off; Save project… made a folder whose recordings are byte for byte the Mac's,
+asked before replacing it, refused to replace it while a file of someone's own was in it,
+and replaced it once that was gone; the tray's Recent listed the draft; Delete project…
+asked and deleted; the folder Windows saved opened again.
+
+**Still not done by anyone:** a double-click in Explorer itself (the file was handed over by
+the same call, from a script); the notification for Studio switched off or for a file that
+cannot be opened, which no tool can read; Open project… in Settings and in the editor, which
+go through the open picker; Open recent; a save cancelled in the middle; a key pressed. A person's steps for all of it are step 22 of
 the hands-on checklist in [`plans/video-studio-plan.md`](../../plans/video-studio-plan.md),
 and rows A11Y-35 to A11Y-39 of the [accessibility gate](accessibility-release-gate.md).
 
-Not tried by anyone, on either half: a folder saved on Windows opened on a Mac; the folder
-the owner saved on his Mac opened in the Windows app (the store opened it); a path longer
+Not tried by anyone, on either half: a folder saved on Windows opened on a Mac; a path longer
 than 260 characters; a FAT or exFAT volume; a recording of gigabytes, which is where the
 progress bar, the notice after two seconds, and cancelling in the middle of a copy matter.
