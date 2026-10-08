@@ -160,6 +160,7 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | Property | Type | Default | Notes |
 |---|---|---|---|
 | `audio.muted` | bool | false | The video has no sound |
+| `audio.volume` | number | 1 | How loud the video's sound is, from 0 (silent) to 1 (as recorded). Clamped to that range when used. It is on top of the two below: see section 7 |
 | `audio.systemVolume`, `audio.microphoneVolume` | number | 1 | How loud the sound tracks of that kind are in the video, from 0 (silent) to 1 (as recorded). Clamped to that range when used. See section 7 |
 | `overlays.clicks.enabled` | bool | true | |
 | `overlays.clicks.color` | color | `#0A84FF` | |
@@ -570,9 +571,17 @@ Everything else stays in source time. A zoom, a move between scenes, and a click
 
 **Sound.** The video has the recording's sound only in pieces with rate 1. For the output time of a piece with another rate it is silent.
 
-Where the video has sound, the sound tracks of the screen file are added together, each at its gain. `sources.screen.audioTracks` says what each track holds. A `system` track has the gain `audio.systemVolume` and a `microphone` track the gain `audio.microphoneVolume`, each clamped to 0 to 1. Every other track has the gain 1: a `mixed` track, a track named by any other word, and every track when the list is missing or does not have one entry for each sound track in the file. With `audio.muted` the video has no sound at all. The video has one sound track, however many the screen file has: a video with two plays without one of them wherever only the first is played.
+Where the video has sound, the sound tracks of the screen file are added together, each at its gain. A track's gain is two numbers multiplied: the gain of what the track holds, and `audio.volume`. Each is clamped to 0 to 1 before they are multiplied.
 
-The macOS recorder writes the computer's sound and the microphone as two tracks and lists them, the computer's first. The Windows recorder mixes them into one track while recording and lists nothing, so there the two volumes change nothing. The Windows preview and exporter read the first sound track of the file only and do not apply the two volumes yet; a project where that makes a difference cannot be recorded on Windows, but one saved as a folder on a Mac can be opened there (section 14), and until Windows adds the tracks together it plays and exports without its microphone.
+`sources.screen.audioTracks` says what each track holds. A `system` track has the gain `audio.systemVolume` and a `microphone` track the gain `audio.microphoneVolume`. Every other track has the gain 1: a `mixed` track, a track named by any other word, and every track when the list is missing or does not have one entry for each sound track in the file.
+
+`audio.volume` is the volume of the whole video: it is in the gain of every track, a `mixed` one too. That is the same as adding the tracks together at the gains of what they hold and multiplying the sum by `audio.volume`. No gain is above 1, so the video is never louder than the recording, and a reader needs no limiter for it.
+
+With `audio.muted` the video has no sound at all, whatever the three volumes are. The video has one sound track, however many the screen file has: a video with two plays without one of them wherever only the first is played.
+
+Both editors have one **Volume** slider for `audio.volume`, from 0% to 100%, under Mute, and it is switched off while Mute is on. The macOS editor also has **System audio** and **Microphone**, for `audio.systemVolume` and `audio.microphoneVolume`, when the recording has those tracks apart. A reader from before `audio.volume` keeps it as a property it does not recognize (section 2) and plays and exports the sound as recorded.
+
+The macOS recorder writes the computer's sound and the microphone as two tracks and lists them, the computer's first. The Windows recorder mixes them into one track while recording and lists nothing, so there `audio.systemVolume` and `audio.microphoneVolume` change nothing and `audio.volume` is the only volume there is. The Windows preview and exporter read the first sound track of the file only, at `audio.volume`, and do not apply the other two volumes yet; a project where that makes a difference cannot be recorded on Windows, but one saved as a folder on a Mac can be opened there (section 14), and until Windows adds the tracks together it plays and exports without its microphone.
 
 ## 8. Zoom suggestions
 
@@ -801,6 +810,6 @@ A `.tinyclips` file larger than 16 MB is refused unread; one a writer wrote is a
 
 **Between a Mac and a PC.** Section 2 lists what the two readers take differently, and none of it is something a writer writes. A folder saved on one is meant to open on the other. What has been tried, as of 7 October 2026:
 
-- A folder the macOS app saved was opened by the Windows store, from its file and from its folder, and saved again as a folder: the only value that differs in the project file is the `id`. Its project file is the fixture `folder/saved-on-macos-1.9.0.tinyclips` (section 13). The same project was exported by the Windows exporter and held against the Mac's export; `windows/docs/studio-project-folders.md` has what agreed and what did not.
+- A folder the macOS app saved was opened by the Windows store, from its file and from its folder, and saved again as a folder: the only value that differs in the project file is the `id`. Since 8 October the Windows file has one property more, `audio.volume` at 1, which a Mac of 1.9.0 does not write; nothing the Mac wrote is dropped or changed. Its project file is the fixture `folder/saved-on-macos-1.9.0.tinyclips` (section 13). The same project was exported by the Windows exporter and held against the Mac's export; `windows/docs/studio-project-folders.md` has what agreed and what did not.
 - The Windows app has the commands for both since the night of 7 October: built and unit tested, and the editor's part run in the real window by the window check. The app itself was not started, so no folder has been saved or opened by a person there, and the folder from the Mac has been opened by the store only. `windows/docs/studio-project-folders.md` has what was run and what was not.
 - A folder saved on Windows has not been opened on a Mac.

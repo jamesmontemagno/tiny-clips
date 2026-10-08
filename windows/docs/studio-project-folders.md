@@ -205,7 +205,9 @@ The store's half, 7 October, in `TinyClips.Core` (`StudioProjectStore.Folders.cs
 - **The owner's folder from the Mac**, the one above. Opened by the Windows store from its
   file and from its folder: a project with an id of its own and no exports, and the four files
   copied byte for byte; the folder itself unchanged. Saved again by Windows, the only value in
-  the project file that differs is the `id`, and `audioTracks` is kept. The writing differs
+  the project file that differs is the `id`, and `audioTracks` is kept. (Since 8 October the
+  Windows file also has `audio.volume`, at 1, which that Mac did not write: the fixture's
+  test says so, and the owner's folder has not been run through again.) The writing differs
   (line ends, spacing, the order of keys). The test that does this is skipped unless it is
   given the folder, and its project file is the fixture
   `shared/studio/fixtures/folder/saved-on-macos-1.9.0.tinyclips`, which every run reads.
