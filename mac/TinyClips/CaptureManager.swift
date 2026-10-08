@@ -1540,6 +1540,13 @@ class CaptureManager: ObservableObject {
                         SaveService.shared.showError("Video compositing failed: \(error.localizedDescription)")
                     }
                 }
+
+                // The passes above mix the sounds as they export. A recording that went through
+                // neither is still the recorder's own file, with a track for each sound.
+                if let recordedURL = savedVideoURL {
+                    updateProcessingProgress(0.97, status: "Finalizing...")
+                    await Self.mixDownAudioOffMain(at: recordedURL)
+                }
             }
 
             updateProcessingProgress(1.0, status: "Done")
@@ -2606,6 +2613,12 @@ class CaptureManager: ObservableObject {
                 codec: codec,
                 onProgress: onProgress
             )
+        }.value
+    }
+
+    nonisolated private static func mixDownAudioOffMain(at url: URL) async {
+        await Task.detached(priority: .userInitiated) {
+            _ = await RecordingAudioMixdown.mixDownIfNeeded(at: url)
         }.value
     }
 

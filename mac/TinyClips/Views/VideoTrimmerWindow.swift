@@ -1037,14 +1037,25 @@ private class TrimmerViewModel: ObservableObject {
                     toDuration: targetDuration
                 )
 
-                if !removeAudio,
-                   let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first,
-                   let compositionAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                    try? compositionAudio.insertTimeRange(timeRange, of: audioTrack, at: .zero)
-                    compositionAudio.scaleTimeRange(
-                        CMTimeRange(start: .zero, duration: timeRange.duration),
-                        toDuration: targetDuration
-                    )
+                // A recording with system audio and the microphone has a track for each. Every
+                // one is kept, and the export mixes them into a single track.
+                if !removeAudio {
+                    let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+                    for audioTrack in audioTracks {
+                        guard let compositionAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                            continue
+                        }
+                        do {
+                            try compositionAudio.insertTimeRange(timeRange, of: audioTrack, at: .zero)
+                        } catch {
+                            composition.removeTrack(compositionAudio)
+                            continue
+                        }
+                        compositionAudio.scaleTimeRange(
+                            CMTimeRange(start: .zero, duration: timeRange.duration),
+                            toDuration: targetDuration
+                        )
+                    }
                 }
 
                 let formatDescriptions = try await track.load(.formatDescriptions)
@@ -1061,6 +1072,7 @@ private class TrimmerViewModel: ObservableObject {
                 }
                 session.outputURL = outputURL
                 session.outputFileType = .mp4
+                session.audioMix = RecordingAudioMixdown.audioMix(for: composition)
 
                 try await session.export(to: outputURL, as: .mp4)
                 try? FileManager.default.removeItem(at: self.sourceURL)

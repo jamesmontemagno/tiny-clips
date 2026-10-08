@@ -39,6 +39,7 @@
 		B1000000000000000000001E /* HotKeyBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000021 /* HotKeyBinding.swift */; };
 		B1000000000000000000001F /* ShortcutRecorderField.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000022 /* ShortcutRecorderField.swift */; };
 		B10000000000000000000020 /* MouseClickOverlayProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000023 /* MouseClickOverlayProcessor.swift */; };
+		B10000000000000000000433 /* RecordingAudioMixdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000433 /* RecordingAudioMixdown.swift */; };
 		B1000000000000000000002E /* BrandingOverlayProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000031 /* BrandingOverlayProcessor.swift */; };
 		B10000000000000000000032 /* CaptureAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000032 /* CaptureAnalyticsStore.swift */; };
 		B10000000000000000000033 /* AnalyticsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000033 /* AnalyticsSettingsSection.swift */; };
@@ -84,6 +85,7 @@
 		B2000000000000000000001E /* HotKeyBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000021 /* HotKeyBinding.swift */; };
 		B2000000000000000000001F /* ShortcutRecorderField.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000022 /* ShortcutRecorderField.swift */; };
 		B20000000000000000000020 /* MouseClickOverlayProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000023 /* MouseClickOverlayProcessor.swift */; };
+		B20000000000000000000433 /* RecordingAudioMixdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000433 /* RecordingAudioMixdown.swift */; };
 		B2000000000000000000002E /* BrandingOverlayProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000031 /* BrandingOverlayProcessor.swift */; };
 		B20000000000000000000032 /* CaptureAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000032 /* CaptureAnalyticsStore.swift */; };
 		B20000000000000000000033 /* AnalyticsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000033 /* AnalyticsSettingsSection.swift */; };
@@ -129,6 +131,7 @@
 		B4EB92CF2F3FCA0B002723CD /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = B4EB92CE2F3FCA0B002723CD /* libwebp */; };
 		B4EB92CF2F3FCA0B002723CE /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = B4EB92CE2F3FCA0B002723CD /* libwebp */; };
 		B30000000000000000000001 /* CaptureMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* CaptureMathTests.swift */; };
+		B30000000000000000000433 /* RecordingAudioMixdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000433 /* RecordingAudioMixdownTests.swift */; };
 		B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* HotKeyBindingTests.swift */; };
 		B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* CaptureSettingsTests.swift */; };
 		B30000000000000000000004 /* SaveServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SaveServiceTests.swift */; };
@@ -185,6 +188,7 @@
 		A10000000000000000000021 /* HotKeyBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyBinding.swift; sourceTree = "<group>"; };
 		A10000000000000000000022 /* ShortcutRecorderField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderField.swift; sourceTree = "<group>"; };
 		A10000000000000000000023 /* MouseClickOverlayProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseClickOverlayProcessor.swift; sourceTree = "<group>"; };
+		A10000000000000000000433 /* RecordingAudioMixdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioMixdown.swift; sourceTree = "<group>"; };
 		A10000000000000000000031 /* BrandingOverlayProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandingOverlayProcessor.swift; sourceTree = "<group>"; };
 		A10000000000000000000032 /* CaptureAnalyticsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAnalyticsStore.swift; sourceTree = "<group>"; };
 		A10000000000000000000033 /* AnalyticsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsSettingsSection.swift; sourceTree = "<group>"; };
@@ -212,6 +216,7 @@
 		A2000000000000000000000D /* TinyClipsMAS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TinyClipsMAS.entitlements; sourceTree = "<group>"; };
 		A2000000000000000000000E /* TinyClipsMAS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TinyClipsMAS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000001 /* CaptureMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureMathTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000433 /* RecordingAudioMixdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioMixdownTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000002 /* HotKeyBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyBindingTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000003 /* CaptureSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettingsTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000004 /* SaveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveServiceTests.swift; sourceTree = "<group>"; };
@@ -342,6 +347,7 @@
 				A10000000000000000000007 /* VideoRecorder.swift */,
 				A10000000000000000000008 /* GifWriter.swift */,
 				A10000000000000000000023 /* MouseClickOverlayProcessor.swift */,
+				A10000000000000000000433 /* RecordingAudioMixdown.swift */,
 				A10000000000000000000031 /* BrandingOverlayProcessor.swift */,
 				A1000000000000000000001E /* WindowSelector.swift */,
 				A1000000000000000000003E /* ScrollingPanoramaCapture.swift */,
@@ -380,6 +386,7 @@
 			isa = PBXGroup;
 			children = (
 				A30000000000000000000001 /* CaptureMathTests.swift */,
+				A30000000000000000000433 /* RecordingAudioMixdownTests.swift */,
 				A30000000000000000000002 /* HotKeyBindingTests.swift */,
 				A30000000000000000000003 /* CaptureSettingsTests.swift */,
 				A30000000000000000000004 /* SaveServiceTests.swift */,
@@ -557,6 +564,7 @@
 				B1000000000000000000001E /* HotKeyBinding.swift in Sources */,
 				B1000000000000000000001F /* ShortcutRecorderField.swift in Sources */,
 				B10000000000000000000020 /* MouseClickOverlayProcessor.swift in Sources */,
+				B10000000000000000000433 /* RecordingAudioMixdown.swift in Sources */,
 				B1000000000000000000002E /* BrandingOverlayProcessor.swift in Sources */,
 				B10000000000000000000032 /* CaptureAnalyticsStore.swift in Sources */,
 				B10000000000000000000021 /* CaptureManager.swift in Sources */,
@@ -622,6 +630,7 @@
 				B2000000000000000000001E /* HotKeyBinding.swift in Sources */,
 				B2000000000000000000001F /* ShortcutRecorderField.swift in Sources */,
 				B20000000000000000000020 /* MouseClickOverlayProcessor.swift in Sources */,
+				B20000000000000000000433 /* RecordingAudioMixdown.swift in Sources */,
 				B2000000000000000000002E /* BrandingOverlayProcessor.swift in Sources */,
 				B20000000000000000000032 /* CaptureAnalyticsStore.swift in Sources */,
 				B20000000000000000000021 /* CaptureManager.swift in Sources */,
@@ -649,6 +658,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B30000000000000000000001 /* CaptureMathTests.swift in Sources */,
+				B30000000000000000000433 /* RecordingAudioMixdownTests.swift in Sources */,
 				B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */,
 				B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */,
 				B30000000000000000000004 /* SaveServiceTests.swift in Sources */,
