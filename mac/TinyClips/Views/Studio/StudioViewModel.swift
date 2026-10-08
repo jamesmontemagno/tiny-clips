@@ -415,6 +415,10 @@ final class StudioViewModel: ObservableObject {
         edit { $0.setMuted(value) }
     }
 
+    func setVolume(_ value: Double) {
+        edit { $0.setVolume(value) }
+    }
+
     func setSystemVolume(_ value: Double) {
         edit { $0.setSystemVolume(value) }
     }

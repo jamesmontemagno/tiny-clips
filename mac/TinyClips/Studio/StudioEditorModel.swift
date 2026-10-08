@@ -1550,6 +1550,17 @@ struct StudioEditorModel: Equatable, Sendable {
         mutate { $0.audio.muted = isMuted }
     }
 
+    /// How loud the video's sound is as a whole, from 0 (silent) to 1 (as recorded). Every
+    /// recording has this one, whatever its sound tracks hold.
+    var volume: Double { StudioSound.volume(project.audio.volume) }
+
+    /// Sets how loud the video's sound is as a whole, from 0 to 1. A value that is not a number
+    /// is not taken.
+    mutating func setVolume(_ value: Double) {
+        guard !value.isNaN else { return }
+        mutate { $0.audio.volume = StudioSound.volume(value) }
+    }
+
     /// Whether the recording has the computer's sound in a track of its own, so that its volume
     /// can be set. False for one track that holds everything, and when the project does not say
     /// what its tracks hold.

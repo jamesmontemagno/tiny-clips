@@ -208,6 +208,29 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertEqual(unknown.audio, StudioAudio())
     }
 
+    func testTheVolumeOfTheWholeSoundIsReadAndWritten() throws {
+        let decoder = StudioJSON.makeDecoder()
+        let encoder = StudioJSON.makeEncoder()
+
+        // Missing or null is as recorded.
+        XCTAssertEqual(try decoder.decode(StudioAudio.self, from: Data(#"{"muted": true}"#.utf8)).volume, 1)
+        XCTAssertEqual(try decoder.decode(StudioAudio.self, from: Data(#"{"volume": null}"#.utf8)).volume, 1)
+
+        // It is a property of its own, not one of the unknown ones that are carried along.
+        let read = try decoder.decode(StudioAudio.self, from: Data(#"{"volume": 0.4, "future": 3}"#.utf8))
+        XCTAssertEqual(read.volume, 0.4)
+        XCTAssertNil(read.extra["volume"])
+        XCTAssertNotNil(read.extra["future"])
+
+        // Written once, with the value it has, and what was unknown still beside it.
+        var changed = read
+        changed.volume = 0.25
+        let written = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(changed)) as? [String: Any])
+        XCTAssertEqual((written["volume"] as? NSNumber)?.doubleValue, 0.25)
+        XCTAssertEqual((written["future"] as? NSNumber)?.intValue, 3)
+        XCTAssertEqual(try decoder.decode(StudioAudio.self, from: encoder.encode(changed)), changed)
+    }
+
     func testANewProjectHasASceneForEachCornerTheCameraWasMovedTo() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         var request = creationRequest(camera: StudioCameraCreationInfo(width: 640, height: 480, duration: 10, startOffset: 0.25))
@@ -1453,7 +1476,7 @@ final class StudioProjectTests: XCTestCase {
             scenes: [StudioScene(start: 1, layout: .sideBySide, bubble: StudioBubble(anchor: .topRight, size: 0.3, offsetX: 0.1, offsetY: 0.2), split: StudioSplit(cameraSide: .leading, cameraFraction: 0.4), transition: StudioTransition(kind: .morph, duration: 0.5))],
             zooms: [StudioZoom(start: 1, end: 2, scale: 1.5, focus: StudioZoomFocus(mode: .cursor, x: 0.2, y: 0.3), easeIn: 0.1, easeOut: 0.2, origin: .auto)],
             edits: StudioEdits(trimStart: 1, trimEnd: 9, cuts: [StudioTimeRange(start: 2, end: 3)], speed: [StudioSpeedRange(start: 4, end: 5, rate: 2)]),
-            audio: StudioAudio(muted: true, systemVolume: 0.5, microphoneVolume: 0.6),
+            audio: StudioAudio(muted: true, systemVolume: 0.5, microphoneVolume: 0.6, volume: 0.7),
             overlays: StudioOverlays(clicks: StudioClickOverlay(enabled: false, color: "#123456", size: 20, strokeWidth: 2, opacity: 0.5, duration: 0.2), branding: true),
             exports: [StudioExport(path: "/tmp/export.mp4", exportedAt: fixedDate, bytes: 1_234)]
         )

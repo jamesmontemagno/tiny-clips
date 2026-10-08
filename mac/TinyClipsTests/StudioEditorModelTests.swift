@@ -2959,6 +2959,85 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(undoDepth(&model), depth)
     }
 
+    func testTheVolumeOfTheWholeSoundIsOnEveryTrack_WhateverItHolds() {
+        // One track with everything in it, which no other volume reaches.
+        var project = withSoundTracks(["mixed"])
+        project.audio = StudioAudio(volume: 0.5)
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 1), [0.5])
+
+        // A project that does not say what its tracks hold, and a track of an unknown kind.
+        project.sources.screen.audioTracks = nil
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.5, 0.5])
+        project.sources.screen.audioTracks = ["system", "music"]
+        project.audio.systemVolume = 0.4
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.2, 0.5])
+
+        // With a volume of its own, a track has both.
+        project.sources.screen.audioTracks = ["system", "microphone"]
+        project.audio = StudioAudio(systemVolume: 0.4, microphoneVolume: 0.9, volume: 0.5)
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.2, 0.45])
+
+        // Silent, as recorded, and past either end.
+        project.audio.volume = 0
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0, 0])
+        project.audio.volume = 1
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.4, 0.9])
+        project.audio.volume = 3
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.4, 0.9])
+        project.audio.volume = -1
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0, 0])
+        project.audio.volume = .nan
+        XCTAssertEqual(StudioSound.trackGains(project: project, trackCount: 2), [0.4, 0.9])
+
+        // One track that is not as loud as it was recorded is mixed by the export, not copied.
+        XCTAssertTrue(StudioSound.exportIsMixed(trackGains: [0.5], soundTracksInVideo: 1))
+    }
+
+    func testTheVolumeOfTheWholeSoundIsSetLikeTheOthers() {
+        // Every recording has it, also one with everything in one track.
+        var model = StudioEditorModel(project: withSoundTracks(["mixed"]))
+        XCTAssertEqual(model.volume, 1)
+
+        model.setVolume(0.35)
+        XCTAssertEqual(model.project.audio.volume, 0.35)
+        XCTAssertEqual(model.volume, 0.35)
+        XCTAssertEqual(model.project.audio.systemVolume, 1)
+        XCTAssertEqual(model.project.audio.microphoneVolume, 1)
+        XCTAssertEqual(undoDepth(&model), 1)
+
+        // The same value again, and a value that is no number, are no edit.
+        model.setVolume(0.35)
+        model.setVolume(.nan)
+        XCTAssertEqual(model.project.audio.volume, 0.35)
+        XCTAssertEqual(undoDepth(&model), 1)
+
+        // Past the ends it stops there.
+        model.setVolume(1.7)
+        XCTAssertEqual(model.project.audio.volume, 1)
+        model.setVolume(-3)
+        XCTAssertEqual(model.project.audio.volume, 0)
+
+        model.undo()
+        model.undo()
+        XCTAssertEqual(model.project.audio.volume, 0.35)
+        model.undo()
+        XCTAssertEqual(model.project.audio.volume, 1)
+        XCTAssertFalse(model.canUndo)
+
+        // A stored value past the ends is used clamped and kept as it is until it is set.
+        var stored = withSoundTracks(["mixed"])
+        stored.audio.volume = 2.5
+        let past = StudioEditorModel(project: stored)
+        XCTAssertEqual(past.volume, 1)
+        XCTAssertEqual(past.project.audio.volume, 2.5)
+
+        // The preview plays the project with its volume, and mutes by itself.
+        model.redo()
+        model.setMuted(true)
+        XCTAssertEqual(model.previewProject.audio.volume, 0.35)
+        XCTAssertFalse(model.previewProject.audio.muted)
+    }
+
     /// A recording 10 s long whose screen file has these sound tracks, or does not say.
     private func withSoundTracks(_ tracks: [String]?) -> StudioProject {
         var project = makeProject()

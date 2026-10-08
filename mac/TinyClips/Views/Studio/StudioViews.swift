@@ -666,13 +666,25 @@ private struct StudioInspectorView: View {
         )
     }
 
-    /// Mute, and a volume for each kind of sound the recording has in a track of its own. A
-    /// recording with everything in one track, or one that does not say, has only Mute.
+    /// Mute, a volume for the video's sound as a whole, and a volume for each kind of sound the
+    /// recording has in a track of its own. A recording with everything in one track, or one
+    /// that does not say, has Mute and the one volume.
     @ViewBuilder
     private var audioPanel: some View {
         Toggle("Mute", isOn: muteBinding)
             .toggleStyle(.checkbox)
             .help("Export the video without sound")
+        StudioSliderRow(
+            title: "Volume",
+            value: volume,
+            range: 0...1,
+            step: 0.05,
+            valueText: percentText(volume),
+            onChange: { viewModel.setVolume($0) },
+            onEditingChanged: { gestureChanged($0) }
+        )
+        .disabled(isMuted)
+        .help("How loud the video's sound is")
         if viewModel.editor?.hasSystemSoundTrack == true {
             StudioSliderRow(
                 title: "System audio",
@@ -788,6 +800,7 @@ private struct StudioInspectorView: View {
     private var canvasPadding: Double { viewModel.project?.canvas.padding ?? 0 }
     private var layout: StudioLayout { viewModel.editor?.effectiveLayout ?? .screen }
     private var isMuted: Bool { viewModel.project?.audio.muted ?? false }
+    private var volume: Double { viewModel.editor?.volume ?? 1 }
     private var systemVolume: Double { viewModel.editor?.systemVolume ?? 1 }
     private var microphoneVolume: Double { viewModel.editor?.microphoneVolume ?? 1 }
 

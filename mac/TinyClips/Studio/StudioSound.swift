@@ -25,16 +25,19 @@ enum StudioSound {
         return listed.map { StudioAudioTrackKind(rawValue: $0) ?? .mixed }
     }
 
-    /// The gain of each of the file's sound tracks, from 0 (silent) to 1 (as recorded).
+    /// The gain of each of the file's sound tracks, from 0 (silent) to 1 (as recorded): the
+    /// volume of what the track holds, times the volume of the video's sound as a whole
+    /// (`audio.volume`). A track that holds everything has only the second.
     static func trackGains(project: StudioProject, trackCount: Int) -> [Double] {
-        trackKinds(project: project, trackCount: trackCount).map { kind in
+        let whole = volume(project.audio.volume)
+        return trackKinds(project: project, trackCount: trackCount).map { kind in
             switch kind {
             case .system:
-                return volume(project.audio.systemVolume)
+                return volume(project.audio.systemVolume) * whole
             case .microphone:
-                return volume(project.audio.microphoneVolume)
+                return volume(project.audio.microphoneVolume) * whole
             case .mixed:
-                return 1
+                return whole
             }
         }
     }

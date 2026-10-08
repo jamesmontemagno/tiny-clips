@@ -872,12 +872,15 @@ struct StudioAudio: Codable, Equatable, Sendable {
     var muted: Bool
     var systemVolume: Double
     var microphoneVolume: Double
+    /// How loud the video's sound is as a whole, whatever its tracks hold.
+    var volume: Double
     var extra: [String: StudioJSONValue]
 
-    init(muted: Bool = false, systemVolume: Double = 1, microphoneVolume: Double = 1, extra: [String: StudioJSONValue] = [:]) {
+    init(muted: Bool = false, systemVolume: Double = 1, microphoneVolume: Double = 1, volume: Double = 1, extra: [String: StudioJSONValue] = [:]) {
         self.muted = muted
         self.systemVolume = systemVolume
         self.microphoneVolume = microphoneVolume
+        self.volume = volume
         self.extra = extra
     }
 
@@ -886,7 +889,8 @@ struct StudioAudio: Codable, Equatable, Sendable {
         muted = try container.decodeBool("muted", default: false)
         systemVolume = try container.decodeDouble("systemVolume", default: 1)
         microphoneVolume = try container.decodeDouble("microphoneVolume", default: 1)
-        extra = try StudioJSON.decodeExtra(from: container, excluding: ["muted", "systemVolume", "microphoneVolume"])
+        volume = try container.decodeDouble("volume", default: 1)
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["muted", "systemVolume", "microphoneVolume", "volume"])
     }
 
     func encode(to encoder: Encoder) throws {
@@ -895,6 +899,7 @@ struct StudioAudio: Codable, Equatable, Sendable {
         try container.encode(muted, forKey: StudioJSONKey("muted"))
         try container.encode(systemVolume, forKey: StudioJSONKey("systemVolume"))
         try container.encode(microphoneVolume, forKey: StudioJSONKey("microphoneVolume"))
+        try container.encode(volume, forKey: StudioJSONKey("volume"))
     }
 }
 
