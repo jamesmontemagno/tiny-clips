@@ -3,6 +3,7 @@
     x:Class="TinyClips.App.Views.Studio.StudioWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:editing="using:TinyClips.Core.Studio.Editing"
     xmlns:studio="using:TinyClips.App.Controls.Studio"
     Title="Tiny Clips — Studio">
     <Window.SystemBackdrop>
@@ -93,6 +94,7 @@
                     Enter or Space would press whatever got it. It keeps its name, shows and
                     reads that it is busy, and a press then saves nothing more. Both of its
                     labels take their room and one of them is seen, so that it keeps its width.
+                    The glyph before them is decoration: the button says its name.
                 -->
                 <Button
                     x:Name="SaveScreenRecordingButton"
@@ -104,17 +106,23 @@
                     Click="OnSaveScreenRecordingClick"
                     ToolTipService.ToolTip="Save the screen recording to your videos folder as an ordinary video"
                     Visibility="{x:Bind ViewModel.CanSaveScreenRecording, Mode=OneWay}">
-                    <Grid>
-                        <TextBlock
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon
                             AutomationProperties.AccessibilityView="Raw"
-                            Opacity="0"
-                            Text="{x:Bind ViewModel.SaveScreenRecordingName}" />
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            AutomationProperties.AccessibilityView="Raw"
-                            AutomationProperties.AutomationId="StudioSaveScreenRecordingLabel"
-                            Text="{x:Bind ViewModel.SaveScreenRecordingLabel, Mode=OneWay}" />
-                    </Grid>
+                            FontSize="14"
+                            Glyph="{x:Bind editing:StudioGlyphs.SaveRecording}" />
+                        <Grid>
+                            <TextBlock
+                                AutomationProperties.AccessibilityView="Raw"
+                                Opacity="0"
+                                Text="{x:Bind ViewModel.SaveScreenRecordingName}" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                AutomationProperties.AccessibilityView="Raw"
+                                AutomationProperties.AutomationId="StudioSaveScreenRecordingLabel"
+                                Text="{x:Bind ViewModel.SaveScreenRecordingLabel, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
                 </Button>
                 <!--  What came of it. Read out by the window when it changes.  -->
                 <TextBlock

@@ -29,7 +29,7 @@
             IsTabStop="False"
             ToolTipService.ToolTip="Delete this recording. This cannot be undone.">
             <StackPanel Orientation="Horizontal" Spacing="6">
-                <FontIcon FontSize="14" Glyph="&#xE74D;" />
+                <FontIcon x:Name="DeleteIcon" FontSize="14" />
                 <TextBlock Text="Delete" />
             </StackPanel>
         </Button>

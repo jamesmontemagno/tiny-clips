@@ -27,6 +27,7 @@ public sealed partial class StudioCutBlock : StudioRangeBlock
         : base(lane, "StudioCut_", "cut", "where")
     {
         InitializeComponent();
+        CutIcon.Glyph = StudioGlyphs.AddCut;
     }
 
     /// <summary>Shows a cut in a block of the given width.</summary>

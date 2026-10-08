@@ -124,13 +124,13 @@
             IsHitTestVisible="False"
             Visibility="Collapsed">
             <StackPanel Orientation="Horizontal" Spacing="4">
-                <!--  Scissors: something was cut out here.  -->
+                <!--  Scissors: something was cut out here. The glyph is the one Cut has, set in code.  -->
                 <FontIcon
+                    x:Name="CutIcon"
                     VerticalAlignment="Center"
                     AutomationProperties.AccessibilityView="Raw"
                     FontSize="12"
-                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                    Glyph="&#xE8C6;" />
+                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 <!--  How long the cut is, such as "1.0 s".  -->
                 <TextBlock
                     x:Name="LengthText"

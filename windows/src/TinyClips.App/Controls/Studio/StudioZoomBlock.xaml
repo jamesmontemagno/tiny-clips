@@ -82,14 +82,13 @@
                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                 Glyph="&#xE8B0;"
                 Visibility="Collapsed" />
-            <!--  A suggestion that has not been changed.  -->
+            <!--  A suggestion that has not been changed. Its glyph is the one Suggest zooms has, set in code.  -->
             <FontIcon
                 x:Name="SuggestedIcon"
                 VerticalAlignment="Center"
                 AutomationProperties.AccessibilityView="Raw"
                 FontSize="12"
                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                Glyph="&#xE794;"
                 Visibility="Collapsed" />
         </StackPanel>
 

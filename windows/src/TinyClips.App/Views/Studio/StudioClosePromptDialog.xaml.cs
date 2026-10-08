@@ -1,6 +1,7 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.Views.Studio;
 
@@ -36,6 +37,7 @@ public sealed partial class StudioClosePromptDialog : ContentDialog
     public StudioClosePromptDialog(bool canExport)
     {
         InitializeComponent();
+        DeleteIcon.Glyph = StudioGlyphs.Delete;
 
         if (!canExport)
         {

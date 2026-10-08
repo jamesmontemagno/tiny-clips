@@ -18,6 +18,7 @@ public sealed partial class StudioZoomBlock : StudioRangeBlock
         : base(lane, "StudioZoom_", "zoom", "when")
     {
         InitializeComponent();
+        SuggestedIcon.Glyph = StudioGlyphs.SuggestZooms;
     }
 
     /// <summary>Shows a zoom in a block of the given width.</summary>

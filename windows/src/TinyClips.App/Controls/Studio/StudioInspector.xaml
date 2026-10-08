@@ -3,6 +3,7 @@
     x:Class="TinyClips.App.Controls.Studio.StudioInspector"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:editing="using:TinyClips.Core.Studio.Editing"
     xmlns:local="using:TinyClips.App.Controls.Studio"
     IsTabStop="False">
 
@@ -234,10 +235,12 @@
                                 x:Name="SceneSectionSplitButton"
                                 AutomationProperties.AutomationId="StudioSceneSectionSplitButton"
                                 AutomationProperties.HelpText="{x:Bind ViewModel.SplitSceneHelpText, Mode=OneWay}"
+                                AutomationProperties.Name="Split scene"
                                 Click="OnSplitSceneClick"
-                                Content="Split scene"
                                 IsEnabled="{x:Bind ViewModel.CanSplitSceneAtPlayhead, Mode=OneWay}"
-                                ToolTipService.ToolTip="Start a new scene at the playhead (S)" />
+                                ToolTipService.ToolTip="Start a new scene at the playhead (S)">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SplitScene}" Text="Split scene" />
+                            </Button>
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioSplitSceneNote"
                                 Style="{StaticResource StudioNoteStyle}"
@@ -333,11 +336,13 @@
                             x:Name="DeleteSceneButton"
                             AutomationProperties.AutomationId="StudioDeleteSceneButton"
                             AutomationProperties.HelpText="The scene before it then lasts until the next one."
+                            AutomationProperties.Name="Delete scene"
                             Click="OnDeleteSceneClick"
-                            Content="Delete scene"
                             IsEnabled="{x:Bind ViewModel.CanRemoveCurrentScene, Mode=OneWay}"
                             ToolTipService.ToolTip="Delete this scene. The scene before it then lasts until the next one."
-                            Visibility="{x:Bind ViewModel.IsDeleteSceneVisible, Mode=OneWay}" />
+                            Visibility="{x:Bind ViewModel.IsDeleteSceneVisible, Mode=OneWay}">
+                            <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete scene" />
+                        </Button>
                     </StackPanel>
 
                     <!--  Background: what is behind the screen and the camera, and how much of it shows around them.  -->
@@ -502,9 +507,11 @@
                                     Value="{x:Bind ViewModel.ScreenCropBottom, Mode=TwoWay}" />
                                 <Button
                                     AutomationProperties.AutomationId="StudioScreenCropResetButton"
+                                    AutomationProperties.Name="Reset crop"
                                     Click="OnResetScreenCropClick"
-                                    Content="Reset crop"
-                                    IsEnabled="{x:Bind ViewModel.CanResetScreenCrop, Mode=OneWay}" />
+                                    IsEnabled="{x:Bind ViewModel.CanResetScreenCrop, Mode=OneWay}">
+                                    <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.ResetCrop}" Text="Reset crop" />
+                                </Button>
                             </StackPanel>
                         </Expander>
                     </StackPanel>
@@ -525,9 +532,11 @@
                                 Text="The camera is hidden in the Screen layout. Choose another layout in Scene to show it." />
                             <Button
                                 AutomationProperties.AutomationId="StudioShowSceneButton"
+                                AutomationProperties.Name="Show scene"
                                 Click="{x:Bind ViewModel.ShowScenePanel}"
-                                Content="Show scene"
-                                ToolTipService.ToolTip="Show the Scene panel, where the layout is chosen" />
+                                ToolTipService.ToolTip="Show the Scene panel, where the layout is chosen">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.ShowScene}" Text="Show scene" />
+                            </Button>
                         </StackPanel>
 
                         <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsCameraPlacementVisible, Mode=OneWay}">
@@ -750,9 +759,11 @@
                                     Value="{x:Bind ViewModel.CameraCropBottom, Mode=TwoWay}" />
                                 <Button
                                     AutomationProperties.AutomationId="StudioCameraCropResetButton"
+                                    AutomationProperties.Name="Reset crop"
                                     Click="OnResetCameraCropClick"
-                                    Content="Reset crop"
-                                    IsEnabled="{x:Bind ViewModel.CanResetCameraCrop, Mode=OneWay}" />
+                                    IsEnabled="{x:Bind ViewModel.CanResetCameraCrop, Mode=OneWay}">
+                                    <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.ResetCrop}" Text="Reset crop" />
+                                </Button>
                             </StackPanel>
                         </Expander>
                     </StackPanel>
@@ -811,18 +822,22 @@
                                 <Button
                                     x:Name="ZoomSectionAddButton"
                                     AutomationProperties.AutomationId="StudioZoomSectionAddButton"
+                                    AutomationProperties.Name="Add zoom"
                                     Click="{x:Bind ViewModel.AddZoomAtPlayhead}"
-                                    Content="Add zoom"
                                     IsEnabled="{x:Bind ViewModel.CanAddZoomAtPlayhead, Mode=OneWay}"
-                                    ToolTipService.ToolTip="Add a zoom at the playhead (Z)" />
+                                    ToolTipService.ToolTip="Add a zoom at the playhead (Z)">
+                                    <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddZoom}" Text="Add zoom" />
+                                </Button>
                                 <Button
                                     x:Name="SuggestZoomsButton"
                                     AutomationProperties.AutomationId="StudioSuggestZoomsButton"
                                     AutomationProperties.HelpText="{x:Bind ViewModel.SuggestZoomsHelpText, Mode=OneWay}"
+                                    AutomationProperties.Name="Suggest zooms"
                                     Click="{x:Bind ViewModel.SuggestZooms}"
-                                    Content="Suggest zooms"
                                     IsEnabled="{x:Bind ViewModel.CanSuggestZooms, Mode=OneWay}"
-                                    ToolTipService.ToolTip="Add zooms where you clicked" />
+                                    ToolTipService.ToolTip="Add zooms where you clicked">
+                                    <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SuggestZooms}" Text="Suggest zooms" />
+                                </Button>
                             </StackPanel>
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioNoClicksNote"
@@ -831,9 +846,11 @@
                                 Visibility="{x:Bind ViewModel.IsClicksExplanationVisible, Mode=OneWay}" />
                             <Button
                                 AutomationProperties.AutomationId="StudioRemoveSuggestionsButton"
+                                AutomationProperties.Name="Remove suggestions"
                                 Click="OnRemoveSuggestionsClick"
-                                Content="Remove suggestions"
-                                Visibility="{x:Bind ViewModel.HasSuggestedZooms, Mode=OneWay}" />
+                                Visibility="{x:Bind ViewModel.HasSuggestedZooms, Mode=OneWay}">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.RemoveSuggestions}" Text="Remove suggestions" />
+                            </Button>
                             <!--  Without a zoom the panel says how to add the first one, and with zooms and none selected how to select one.  -->
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioZoomEmptyHint"
@@ -1017,9 +1034,11 @@
 
                             <Button
                                 AutomationProperties.AutomationId="StudioDeleteZoomButton"
+                                AutomationProperties.Name="Delete zoom"
                                 Click="OnDeleteZoomClick"
-                                Content="Delete zoom"
-                                ToolTipService.ToolTip="Delete this zoom (Delete)" />
+                                ToolTipService.ToolTip="Delete this zoom (Delete)">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete zoom" />
+                            </Button>
                         </StackPanel>
                     </StackPanel>
                     <!--
@@ -1074,10 +1093,12 @@
                             <Button
                                 x:Name="CutSectionAddButton"
                                 AutomationProperties.AutomationId="StudioCutSectionAddButton"
+                                AutomationProperties.Name="Add cut"
                                 Click="{x:Bind ViewModel.AddCutAtPlayhead}"
-                                Content="Add cut"
                                 IsEnabled="{x:Bind ViewModel.CanAddCutAtPlayhead, Mode=OneWay}"
-                                ToolTipService.ToolTip="Start a cut at the playhead (X)" />
+                                ToolTipService.ToolTip="Start a cut at the playhead (X)">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddCut}" Text="Add cut" />
+                            </Button>
                             <!--  Without a cut the panel says how to add the first one, and with cuts and none selected how to select one.  -->
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioCutEmptyHint"
@@ -1182,9 +1203,11 @@
                             <Button
                                 AutomationProperties.AutomationId="StudioDeleteCutButton"
                                 AutomationProperties.HelpText="Puts the part it removed back in the video."
+                                AutomationProperties.Name="Delete cut"
                                 Click="OnDeleteCutClick"
-                                Content="Delete cut"
-                                ToolTipService.ToolTip="Delete this cut and put the part it removed back in the video (Delete)" />
+                                ToolTipService.ToolTip="Delete this cut and put the part it removed back in the video (Delete)">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete cut" />
+                            </Button>
                         </StackPanel>
                     </StackPanel>
 
@@ -1241,10 +1264,12 @@
                             <Button
                                 x:Name="SpeedSectionAddButton"
                                 AutomationProperties.AutomationId="StudioSpeedSectionAddButton"
+                                AutomationProperties.Name="Add speed change"
                                 Click="{x:Bind ViewModel.AddSpeedAtPlayhead}"
-                                Content="Add speed change"
                                 IsEnabled="{x:Bind ViewModel.CanAddSpeedAtPlayhead, Mode=OneWay}"
-                                ToolTipService.ToolTip="Play two seconds of the video twice as fast from the playhead (R)" />
+                                ToolTipService.ToolTip="Play two seconds of the video twice as fast from the playhead (R)">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddSpeed}" Text="Add speed change" />
+                            </Button>
                             <!--  Without a speed change the panel says how to add the first one, and with some and none selected how to select one.  -->
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioSpeedEmptyHint"
@@ -1369,9 +1394,11 @@
                             <Button
                                 AutomationProperties.AutomationId="StudioDeleteSpeedButton"
                                 AutomationProperties.HelpText="This part then plays at normal speed again."
+                                AutomationProperties.Name="Delete speed change"
                                 Click="OnDeleteSpeedClick"
-                                Content="Delete speed change"
-                                ToolTipService.ToolTip="Delete this speed change, so this part plays at normal speed again (Delete)" />
+                                ToolTipService.ToolTip="Delete this speed change, so this part plays at normal speed again (Delete)">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete speed change" />
+                            </Button>
                         </StackPanel>
                     </StackPanel>
 
@@ -1420,9 +1447,11 @@
                             <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="New recordings" />
                             <Button
                                 AutomationProperties.AutomationId="StudioSaveDefaultLookButton"
+                                AutomationProperties.Name="Save as default look"
                                 Click="{x:Bind ViewModel.SaveDefaultLook}"
-                                Content="Save as default look"
-                                ToolTipService.ToolTip="New Studio recordings start with this canvas, background, screen, and camera styling" />
+                                ToolTipService.ToolTip="New Studio recordings start with this canvas, background, screen, and camera styling">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SaveDefaultLook}" Text="Save as default look" />
+                            </Button>
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioDefaultLookNote"
                                 Style="{StaticResource StudioNoteStyle}"

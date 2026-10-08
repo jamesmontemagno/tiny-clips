@@ -3,6 +3,7 @@
     x:Class="TinyClips.App.Controls.Studio.StudioTimeline"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:editing="using:TinyClips.Core.Studio.Editing"
     xmlns:local="using:TinyClips.App.Controls.Studio"
     IsTabStop="False">
 
@@ -58,7 +59,12 @@
                 Text="{x:Bind ViewModel.TimeText, Mode=OneWay}"
                 Typography.NumeralAlignment="Tabular" />
 
-            <!--  Scenes are for a recording with a camera: without one every layout is the screen alone.  -->
+            <!--
+                Scenes are for a recording with a camera: without one every layout is the screen alone.
+
+                Each of the six buttons that edit has a glyph before its words, one of
+                StudioGlyphs, and says its words as its name.
+            -->
             <Button
                 x:Name="SplitSceneButton"
                 Grid.Column="4"
@@ -66,48 +72,57 @@
                 AutomationProperties.HelpText="{x:Bind ViewModel.SplitSceneHelpText, Mode=OneWay}"
                 AutomationProperties.Name="Split scene"
                 Click="OnSplitSceneClick"
-                Content="Split"
                 IsEnabled="{x:Bind ViewModel.CanSplitSceneAtPlayhead, Mode=OneWay}"
                 ToolTipService.ToolTip="Start a new scene at the playhead (S)"
-                Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}" />
+                Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SplitScene}" Text="Split" />
+            </Button>
             <Button
                 x:Name="AddZoomButton"
                 Grid.Column="5"
                 AutomationProperties.AutomationId="StudioAddZoomButton"
+                AutomationProperties.Name="Add zoom"
                 Click="{x:Bind ViewModel.AddZoomAtPlayhead}"
-                Content="Add zoom"
                 IsEnabled="{x:Bind ViewModel.CanAddZoomAtPlayhead, Mode=OneWay}"
-                ToolTipService.ToolTip="Add a zoom at the playhead (Z)" />
+                ToolTipService.ToolTip="Add a zoom at the playhead (Z)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddZoom}" Text="Add zoom" />
+            </Button>
             <Button
                 x:Name="AddCutButton"
                 Grid.Column="6"
                 AutomationProperties.AutomationId="StudioAddCutButton"
                 AutomationProperties.Name="Add cut"
                 Click="{x:Bind ViewModel.AddCutAtPlayhead}"
-                Content="Cut"
                 IsEnabled="{x:Bind ViewModel.CanAddCutAtPlayhead, Mode=OneWay}"
-                ToolTipService.ToolTip="Start a cut at the playhead (X)" />
+                ToolTipService.ToolTip="Start a cut at the playhead (X)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddCut}" Text="Cut" />
+            </Button>
             <Button
                 x:Name="AddSpeedButton"
                 Grid.Column="7"
                 AutomationProperties.AutomationId="StudioAddSpeedButton"
                 AutomationProperties.Name="Add speed change"
                 Click="{x:Bind ViewModel.AddSpeedAtPlayhead}"
-                Content="Speed"
                 IsEnabled="{x:Bind ViewModel.CanAddSpeedAtPlayhead, Mode=OneWay}"
-                ToolTipService.ToolTip="Play two seconds of the video twice as fast from the playhead (R)" />
+                ToolTipService.ToolTip="Play two seconds of the video twice as fast from the playhead (R)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddSpeed}" Text="Speed" />
+            </Button>
             <Button
                 Grid.Column="8"
                 AutomationProperties.AutomationId="StudioStartHereButton"
+                AutomationProperties.Name="Start here"
                 Click="{x:Bind ViewModel.SetTrimStartAtPlayhead}"
-                Content="Start here"
-                ToolTipService.ToolTip="Start the video at the playhead (I)" />
+                ToolTipService.ToolTip="Start the video at the playhead (I)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.TrimStart}" Text="Start here" />
+            </Button>
             <Button
                 Grid.Column="9"
                 AutomationProperties.AutomationId="StudioEndHereButton"
+                AutomationProperties.Name="End here"
                 Click="{x:Bind ViewModel.SetTrimEndAtPlayhead}"
-                Content="End here"
-                ToolTipService.ToolTip="End the video at the playhead (O)" />
+                ToolTipService.ToolTip="End the video at the playhead (O)">
+                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.TrimEnd}" Text="End here" />
+            </Button>
         </Grid>
 
         <!--  The scenes, the zooms, the cuts, the speed changes and the trim, one above the other on the same time scale.  -->

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.UI.Xaml.Controls;
+using TinyClips.App.Controls.Studio;
 using TinyClips.App.Views.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
@@ -144,7 +145,7 @@ internal sealed partial class WindowChecks
                 && text?.Name == StudioEditorText.NoSpeedHint && list.HelpText == StudioEditorText.NoSpeedHint && list.Patterns.Contains("Selection", StringComparison.Ordinal) && list.SelectedNames.Length == 0,
             $"{list} with {LaneItems(editor, SpeedLane).Count} item(s), described as \"{list?.HelpText}\"; the text: \"{text?.Name}\"; patterns({list?.Patterns})");
         var section = SpeedSectionShows(editor, "No speed changes yet", range: null);
-        var row = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioAddSpeedButton") is { } button ? (Text: button.Content as string, Tip: ToolTipService.GetToolTip(button) as string) : default);
+        var row = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioAddSpeedButton") is { } button ? (Text: (button.Content as StudioButtonLabel)?.Text, Tip: ToolTipService.GetToolTip(button) as string) : default);
         var inSection = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioSpeedSectionAddButton") is { } button ? ToolTipService.GetToolTip(button) as string : null);
         _report.Check(
             "without speed changes the Speed panel says so, has nothing to step to and no speed change's controls, says how to add the first one, and offers Add speed change; Speed in the transport row has the same name for a screen reader, and both say in their tooltips what they do, with the key",
