@@ -19,6 +19,15 @@
     <Compile Include="..\..\src\TinyClips.App\Settings\SettingsSectionKind.cs" Link="SettingsSectionKind.cs" />
     <Compile Include="..\..\src\TinyClips.App\Settings\TeleprompterTranscriptSaveScheduler.cs" Link="TeleprompterTranscriptSaveScheduler.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\ClipboardService.cs" Link="ClipboardService.cs" />
+    <!--
+      A Studio project saved as a folder (#429): how the app tells a .tinyclips file from a
+      picture, the projects the tray's recent captures list, and the two package manifests as
+      text, for the file type they register.
+    -->
+    <Compile Include="..\..\src\TinyClips.App\Infrastructure\ActivatedFile.cs" Link="ActivatedFile.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\Studio\StudioRecentDrafts.cs" Link="Studio\StudioRecentDrafts.cs" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Package.appxmanifest" Link="Manifests\Package.appxmanifest" LogicalName="PackageManifest.Package.appxmanifest" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Package.Store.appxmanifest" Link="Manifests\Package.Store.appxmanifest" LogicalName="PackageManifest.Package.Store.appxmanifest" />
     <!-- How wide the tray popup is for three capture tiles and for four. -->
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\TrayPopupLayout.cs" Link="TrayPopupLayout.cs" />
     <!-- When a row of Studio buttons shows the glyphs before their words. -->

@@ -62,16 +62,16 @@ internal sealed partial class WindowChecks
         }).ToArray();
     });
 
-    /// <summary>The ids of the projects Open recent lists, in its order, once the window has read them again.</summary>
+    /// <summary>
+    /// The ids of the projects Open recent lists, in its order, as the window has them without
+    /// its menu being opened: what it was told to read by an editor that opened, read its
+    /// project, or closed. Waited for, since the projects are read on another thread.
+    /// </summary>
     private string[] OpenRecentIds(Editor editor, Func<string[], bool> wanted, double seconds = 5) => Until(
-        () =>
-        {
-            ProjectMenu(editor);
-            return OnUi(() => editor.Window.ViewModel.RecentProjects.Select(project => project.Id).ToArray());
-        },
+        () => OnUi(() => editor.Window.ViewModel.RecentProjects.Select(project => project.Id).ToArray()),
         wanted,
         seconds,
-        100);
+        50);
 
     /// <summary>The question Save project asks, once it is there: the one with a name box.</summary>
     private static UiaElement? SaveQuestion(Editor editor, double seconds = 3) => Until(
@@ -542,10 +542,11 @@ internal sealed partial class WindowChecks
 
         // Open recent, with the copy open and Another project in the store.
         Timeline.Mark("15: Open recent");
-        var recent = OpenRecentIds(editor, ids => newId is not null && ids.Contains(newId) && ids.Contains(other.Paths.ProjectId));
+        string[] Expected() => [.. StudioProjectFolderText.GetRecentProjects(_services.Store.ListSummaries(), editor.Id).Select(summary => summary.Id)];
+        var recent = OpenRecentIds(editor, ids => ids.Contains(other.Paths.ProjectId) && ids.SequenceEqual(Expected()));
         var menu = ProjectMenu(editor).FirstOrDefault(line => line.Kind == "menu");
         var others = _services.Store.ListSummaries();
-        var expected = StudioProjectFolderText.GetRecentProjects(others, editor.Id).Select(summary => summary.Id).ToArray();
+        var expected = Expected();
         var titles = StudioProjectFolderText.GetRecentProjects(others, editor.Id).Select(summary => StudioProjectFolderText.GetRecentTitle(summary)).ToArray();
         var activationsBefore = copyWindow is null ? 0 : _services.ActivationsOf(OnUi(() => WinRT.Interop.WindowNative.GetWindowHandle(copyWindow)));
         if (newId is not null)
@@ -555,7 +556,7 @@ internal sealed partial class WindowChecks
 
         var activations = copyWindow is null ? 0 : _services.ActivationsOf(OnUi(() => WinRT.Interop.WindowNative.GetWindowHandle(copyWindow)));
         _report.Check(
-            "Open recent lists the other projects of the store that can be opened, the one opened last first, eight at most, each by its name and when it was recorded, and never the project the menu belongs to; choosing one that is open already brings its window forward",
+            "Open recent lists the other projects of the store that can be opened, the one opened last first, eight at most, each by its name and when it was recorded, and never the project the menu belongs to; the project that was just opened from a folder is first in it without the menu having been opened; choosing one that is open already brings its window forward",
             recent.SequenceEqual(expected) && recent.Length is > 0 and <= 8 && !recent.Contains(editor.Id) && recent[0] == newId
                 && (menu.Inner ?? []).SequenceEqual(titles) && titles.All(title => title.Contains(", ", StringComparison.Ordinal)) && activations == activationsBefore + 1,
             $"the store has {others.Count} project(s); Open recent lists {recent.Length}: {string.Join(" | ", menu.Inner ?? [])}; the first is the copy that was just opened: {recent.FirstOrDefault() == newId}; the window of the copy was asked forward {activations - activationsBefore} time(s)");

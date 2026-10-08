@@ -64,6 +64,14 @@
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="tinyclipsproject">
+            <uap:DisplayName>Tiny Clips project</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.tinyclips</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
       </Extensions>
     </Application>
   </Applications>

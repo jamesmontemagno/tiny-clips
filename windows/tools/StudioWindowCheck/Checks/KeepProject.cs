@@ -222,10 +222,11 @@ internal sealed partial class WindowChecks
     }
 
     /// <summary>
-    /// Shows the Project panel and scrolls it to its end, without an animation. Returns the
-    /// scroll viewer's rectangle in the window's content, or null when it was not found.
+    /// Shows the Project panel and scrolls it to its end, or to its start, without an
+    /// animation. Returns the scroll viewer's rectangle in the window's content, or null when
+    /// it was not found.
     /// </summary>
-    private Windows.Foundation.Rect? ScrollInspectorToEnd(Editor editor) => OnUi<Windows.Foundation.Rect?>(() =>
+    private Windows.Foundation.Rect? ScrollInspectorToEnd(Editor editor, bool toEnd = true) => OnUi<Windows.Foundation.Rect?>(() =>
     {
         ScrollViewer? scroller = null;
         for (DependencyObject? at = Descendant<CheckBox>(editor.Window.Content, KeepBox); at is not null && scroller is null; at = VisualTreeHelper.GetParent(at))
@@ -238,20 +239,22 @@ internal sealed partial class WindowChecks
             return null;
         }
 
-        scroller.ChangeView(null, scroller.ScrollableHeight, null, disableAnimation: true);
+        scroller.ChangeView(null, toEnd ? scroller.ScrollableHeight : 0, null, disableAnimation: true);
         scroller.UpdateLayout();
         return scroller.TransformToVisual(editor.Window.Content).TransformBounds(new Windows.Foundation.Rect(0, 0, scroller.ActualWidth, scroller.ActualHeight));
     });
 
     /// <summary>
-    /// A picture of the Project panel, for a person to look at: Tiny Clips badge, Keep this
-    /// project, and Save as default look.
+    /// Two pictures of the Project panel, for a person to look at. The panel is longer than
+    /// the inspector is high as the window opens, since it has Save project and Delete project
+    /// (#429): its start, with Tiny Clips badge, Keep this project and Save as default look,
+    /// and its end, with those two.
     /// </summary>
     private void ProjectSectionPicture(Editor editor, string name, bool isLight, List<string> saved)
     {
         Timeline.Mark($"9: the Project panel, {name}");
         var check = $"the Project panel in the {name} theme: a picture shows the inspector, which is {(isLight ? "light" : "dark")}, with Keep this project whole in it between Tiny Clips badge and Save as default look";
-        var viewport = ScrollInspectorToEnd(editor);
+        var viewport = ScrollInspectorToEnd(editor, toEnd: false);
         Thread.Sleep(500);
         if (viewport is not { } view || editor.Camera.Take() is not { } shot)
         {
@@ -279,6 +282,32 @@ internal sealed partial class WindowChecks
             keep is { Name: "Keep this project" } && outside.Length == 0 && inOrder && (isLight ? Luma(surface) > 170 : Luma(surface) < 90),
             $"the inspector shows {R(box)} of the window, and its surface is {surface}; {(outside.Length == 0 ? "Tiny Clips badge, Keep this project and Save as default look are whole in it" : "not whole in it: " + string.Join(", ", outside))}, "
                 + $"from top to bottom: {inOrder}; saved as {Path.GetFileName(path)}");
+
+        // The end of the panel: the project as a folder of its own, and Delete project.
+        var endCheck = $"the end of the Project panel in the {name} theme: a picture shows Save project\u2026 and, under it, Delete project\u2026 whole in the inspector";
+        var endViewport = ScrollInspectorToEnd(editor);
+        Thread.Sleep(500);
+        if (endViewport is not { } endView || editor.Camera.Take() is not { } endShot)
+        {
+            _report.Check(endCheck, false, endViewport is null ? "the inspector's scroll viewer was not found" : "no screenshot");
+        }
+        else
+        {
+            var endPath = Path.Combine(_output, $"project-section-end-{name}.png");
+            endShot.Save(endPath);
+            saved.Add(endPath);
+            var endBox = InShot(editor, endShot, endView);
+            string[] endIds = ["StudioSaveProjectButton", "StudioDeleteProjectButton", "StudioDeleteProjectNote"];
+            var endPlaces = endIds.Select(id => Until(() => editor.Root.Find(id), found => found is { IsOffscreen: false, Bounds: { Width: > 0, Height: > 0 } }, 2) is { IsOffscreen: false } found ? found.Bounds : default).ToArray();
+            var endOutside = endIds.Where((_, index) => endPlaces[index] is not { Width: > 0, Height: > 0 } at
+                || at.X - endShot.ScreenX < endBox.X - 1 || at.Y - endShot.ScreenY < endBox.Y - 1
+                || at.X - endShot.ScreenX + at.Width > endBox.X + endBox.Width + 1 || at.Y - endShot.ScreenY + at.Height > endBox.Y + endBox.Height + 1).ToArray();
+            _report.Check(
+                endCheck,
+                endOutside.Length == 0 && endPlaces[0].Y < endPlaces[1].Y && endPlaces[1].Y < endPlaces[2].Y,
+                $"the inspector shows {R(endBox)} of the window; {(endOutside.Length == 0 ? "Save project\u2026, Delete project\u2026 and the note under it are whole in it, from top to bottom" : "not whole in it: " + string.Join(", ", endOutside))}; saved as {Path.GetFileName(endPath)}");
+        }
+
         ScrollInspector(editor, _ => 0);
     }
 }

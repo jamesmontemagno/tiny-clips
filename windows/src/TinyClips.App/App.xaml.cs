@@ -146,6 +146,7 @@ public partial class App : Application
             .AddSingleton<IStudioExportService, StudioExportService>()
             .AddSingleton<IStudioPreviewViewFactory, StudioPreviewViewFactory>()
             .AddSingleton<StudioWindowService>()
+            .AddSingleton<StudioRecentDrafts>()
             .BuildServiceProvider();
 
         ApplyTheme();
@@ -175,6 +176,7 @@ public partial class App : Application
         RunStartupStep(nameof(RunStartupUpdateCheckAsync), () => _ = RunStartupUpdateCheckAsync());
 #endif
         RunStartupStep(nameof(ScheduleStudioProjectCleanup), ScheduleStudioProjectCleanup);
+        RunStartupStep(nameof(WatchStudioDrafts), WatchStudioDrafts);
         RunStartupStep(nameof(EndStartupPhaseAfterFirstDispatcherPass), EndStartupPhaseAfterFirstDispatcherPass);
     }
 
@@ -195,6 +197,27 @@ public partial class App : Application
             await Services.GetRequiredService<StudioProjectCleanupService>().RunAsync().ConfigureAwait(false);
             DeleteStaleStudioExportFiles();
         });
+    }
+
+    /// <summary>
+    /// Reads the Studio projects the tray's recent captures list, ahead of the first time the
+    /// popup shows, and again whenever an editor opens or closes. The popup asks once more as
+    /// it is about to show. With Studio switched off nothing is read and nothing is listed.
+    /// </summary>
+    private void WatchStudioDrafts()
+    {
+        var drafts = Services.GetRequiredService<StudioRecentDrafts>();
+        drafts.Changed += (_, _) => RefreshRecentCapturesButton();
+        Services.GetRequiredService<StudioProjectTracker>().Changed += (_, _) => ReloadStudioDrafts();
+        ReloadStudioDrafts();
+    }
+
+    private void ReloadStudioDrafts()
+    {
+        if (!_isExiting)
+        {
+            _ = Services.GetRequiredService<StudioRecentDrafts>().ReloadAsync(RecentCapturesDisplayCount);
+        }
     }
 
     /// <summary>
@@ -279,6 +302,8 @@ public partial class App : Application
     /// <summary>
     /// If the app was launched via "Open with → Tiny Clips" on an image file, open that image
     /// in the screenshot editor. Mirrors the macOS open-in-editor file-activation behaviour.
+    /// A <c>.tinyclips</c> file, the file of a Studio project that was saved as a folder, opens
+    /// in Studio instead.
     /// </summary>
     private void HandleFileActivation()
     {
@@ -292,7 +317,10 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Opens the first supported image of a file activation in the screenshot editor.</summary>
+    /// <summary>
+    /// Opens the first file of a file activation that the app has an editor for: an image in
+    /// the screenshot editor, a Studio project file in Studio. No other window is shown with it.
+    /// </summary>
     private bool TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppActivationArguments? activation)
     {
         if (activation?.Kind != Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File ||
@@ -301,16 +329,80 @@ public partial class App : Application
             return false;
         }
 
-        foreach (var item in fileArgs.Files)
+        if (ActivatedFile.FirstSupported(fileArgs.Files.Select(static item => (item as StorageFile)?.Path)) is not { } file)
         {
-            if (item is StorageFile file && IsSupportedImage(file.Path))
-            {
-                var path = file.Path;
-                return _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(path)) == true;
-            }
+            return false;
         }
 
-        return false;
+        return file.Kind == ActivatedFileKind.StudioProject
+            ? _dispatcher?.TryEnqueue(() => _ = OpenActivatedStudioProjectAsync(file.Path)) == true
+            : _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(file.Path)) == true;
+    }
+
+    /// <summary>
+    /// Opens a Studio project file the system handed over. The app has no window to say in
+    /// why a project was not opened, so it says it in a notification, as it says that a
+    /// recording was saved: that Studio is switched off, or the store's sentence for the file.
+    /// Never fails. Must be called on the UI thread.
+    /// </summary>
+    private async Task OpenActivatedStudioProjectAsync(string path)
+    {
+        try
+        {
+            if (await OpenStudioProjectFileAsync(path) is { } failure)
+            {
+                Announce(
+                    AutomationNotificationKind.ActionAborted,
+                    AutomationNotificationProcessing.ImportantMostRecent,
+                    failure,
+                    "StudioProjectNotOpened");
+                ShowMessageNotification(failure);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"The Studio project {path} could not be opened: {ex}");
+            CrashDiagnostics.Log("Studio project file activation", ex, handled: true);
+        }
+    }
+
+    /// <summary>
+    /// Opens a Studio project that was saved as a folder, from its <c>.tinyclips</c> file: the
+    /// project is copied into Studio's own storage as a new draft, and the editor opens on the
+    /// copy. With Studio switched off nothing is copied. Must be called on the UI thread.
+    /// </summary>
+    /// <returns>Why the project was not opened, as a sentence for the user, or null.</returns>
+    internal async Task<string?> OpenStudioProjectFileAsync(string path)
+    {
+        if (_isExiting)
+        {
+            return null;
+        }
+
+        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            return StudioProjectFolderText.StudioIsOffMessage;
+        }
+
+        return (await StudioWindows().OpenProjectFileAsync(path)).Failure;
+    }
+
+    /// <summary>
+    /// Asks for a Studio project file with the open picker, owned by the Settings window, and
+    /// opens it. Called by the Studio page of Settings. Must be called on the UI thread.
+    /// </summary>
+    /// <returns>Why the project was not opened, or null: it is open, or none was chosen.</returns>
+    internal async Task<string?> ChooseAndOpenStudioProjectFromSettingsAsync()
+    {
+        if (_isExiting || _settingsWindow is not { } owner)
+        {
+            return null;
+        }
+
+        var windows = StudioWindows();
+        return await windows.ChooseProjectFile(owner) is { Length: > 0 } path
+            ? await OpenStudioProjectFileAsync(path)
+            : null;
     }
 
     /// <summary>
@@ -371,14 +463,6 @@ public partial class App : Application
         }
     }
 
-    private static bool IsSupportedImage(string path)
-    {
-        var ext = Path.GetExtension(path);
-        return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
-    }
 
     private void CreateTrayIcon()
     {
@@ -544,6 +628,10 @@ public partial class App : Application
         var width = TrayPopupLayout.WidthFor(_captureTiles.Count, widestLabel);
         layout.Width = width;
         _trayPopup.ShowNearCursor(width, TrayPopupHeight);
+
+        // The popup shows what was read last. A draft made, opened or deleted since then is
+        // read now, and the Recent button is made again when that finds another list.
+        ReloadStudioDrafts();
     }
 
     /// <summary>
@@ -658,6 +746,8 @@ public partial class App : Application
         var recent = CreateRecentCapturesButton(Dismiss);
         Grid.SetColumn(recent, 1);
         quickAccess.Children.Add(recent);
+        _recentCapturesHost = quickAccess;
+        _recentCapturesButton = recent;
         content.Children.Add(quickAccess);
 
         var contentArea = new Border
@@ -771,32 +861,73 @@ public partial class App : Application
     private const double RecentCaptureThumbnailWidth = 40;
     private const double RecentCaptureThumbnailHeight = 22.5;
 
+    // The Recent button of the popup that was built last, the row it is in, and what it lists.
+    private Grid? _recentCapturesHost;
+    private ButtonBase? _recentCapturesButton;
+    private string[] _recentCaptureIds = [];
+
+    /// <summary>
+    /// The lines of the popup's Recent button: the captures that were saved as files and,
+    /// while Studio is switched on, the projects that hold a recording no file has yet,
+    /// mixed by date, five in all.
+    /// </summary>
+    private static IReadOnlyList<RecentMenuEntry> RecentMenuEntries() =>
+        Services.GetRequiredService<StudioRecentDrafts>().EntriesFor(
+            Services.GetRequiredService<IRecentCaptureService>().GetRecentCaptures(),
+            RecentCapturesDisplayCount);
+
     private ButtonBase CreateRecentCapturesButton(Action dismiss)
     {
-        var history = Services.GetRequiredService<IRecentCaptureService>();
+        var drafts = Services.GetRequiredService<StudioRecentDrafts>();
         var thumbnails = Services.GetRequiredService<IThumbnailCache>();
         var fileSystem = Services.GetRequiredService<IFileSystem>();
-        var captures = history.GetRecentCaptures().Take(RecentCapturesDisplayCount).ToList();
+        var entries = RecentMenuEntries();
+        _recentCaptureIds = [.. entries.Select(static entry => entry.Id)];
         var flyout = new MenuFlyout();
         var button = new DropDownButton
         {
-            Content = QuickAccessContent(GlyphHistory, captures.Count == 0 ? "No captures" : $"Recent ({captures.Count})"),
+            Content = QuickAccessContent(GlyphHistory, entries.Count == 0 ? "No captures" : $"Recent ({entries.Count})"),
             Flyout = flyout,
-            IsEnabled = captures.Count > 0,
+            IsEnabled = entries.Count > 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             Padding = new Thickness(8, 6, 8, 6),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Recent captures");
 
-        foreach (var capture in captures)
+        foreach (var entry in entries)
         {
-            var capturedItem = capture;
-            var name = $"{Path.GetFileName(capture.Path)} — {CaptureTypeLabel(capture.Type)}, {capture.CapturedAt:g}";
+            if (entry.StudioDraft is { } draft)
+            {
+                // A recording that is still a Studio project and has no saved file yet.
+                var title = StudioProjectFolderText.GetTrayDraftTitle(draft);
+                var draftItem = new MenuFlyoutItem
+                {
+                    Text = title,
+                    Icon = new FontIcon { Glyph = GlyphStudio, FontFamily = FluentIconFont, FontSize = 14 },
+                };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(draftItem, title);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(draftItem, "Opens this project in Tiny Clips Studio.");
+                draftItem.Click += (_, _) =>
+                {
+                    dismiss();
+                    OpenStudioWindow(draft.Id);
+                };
+                flyout.Items.Add(draftItem);
+                if (drafts.PosterOf(draft.Id) is { } poster)
+                {
+                    _ = LoadStudioDraftPosterAsync(draftItem, poster);
+                }
+
+                continue;
+            }
+
+            var capturedItem = entry.Capture!;
+            var name = $"{Path.GetFileName(capturedItem.Path)} — {CaptureTypeLabel(capturedItem.Type)}, {capturedItem.CapturedAt:g}";
             var item = new MenuFlyoutItem
             {
                 Text = name,
-                Icon = new FontIcon { Glyph = CaptureTypeGlyph(capture.Type), FontFamily = FluentIconFont, FontSize = 14 },
+                Icon = new FontIcon { Glyph = CaptureTypeGlyph(capturedItem.Type), FontFamily = FluentIconFont, FontSize = 14 },
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, name);
             item.Click += (_, _) =>
@@ -810,6 +941,69 @@ public partial class App : Application
         }
 
         return button;
+    }
+
+    /// <summary>
+    /// The projects were read again and are not the ones the open popup lists: its Recent
+    /// button is made again in its place. Left as it is while its menu is open, which would
+    /// close under the pointer; the next time the popup shows it is built anew in any case.
+    /// </summary>
+    private void RefreshRecentCapturesButton()
+    {
+        if (_isExiting
+            || _trayPopup is not { IsOpen: true } popup
+            || _recentCapturesHost is not { } host
+            || _recentCapturesButton is not { } old
+            || (old as DropDownButton)?.Flyout is { IsOpen: true }
+            || RecentMenuEntries().Select(static entry => entry.Id).SequenceEqual(_recentCaptureIds))
+        {
+            return;
+        }
+
+        var hadFocus = old.FocusState != FocusState.Unfocused;
+        var button = CreateRecentCapturesButton(popup.Hide);
+        Grid.SetColumn(button, Grid.GetColumn(old));
+        host.Children.Remove(old);
+        host.Children.Add(button);
+        _recentCapturesButton = button;
+        if (hadFocus && button.IsEnabled)
+        {
+            button.Focus(FocusState.Programmatic);
+        }
+    }
+
+    /// <summary>
+    /// Shows a draft's poster as its picture. The file is read whole and let go of before the
+    /// picture is made of it, so that an editor that closes meanwhile can write its poster anew.
+    /// </summary>
+    private static async Task LoadStudioDraftPosterAsync(MenuFlyoutItem item, string posterPath)
+    {
+        try
+        {
+            var bytes = await Task.Run(() =>
+            {
+                using var file = new FileStream(posterPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                var buffer = new byte[file.Length];
+                file.ReadExactly(buffer);
+                return buffer;
+            });
+
+            using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(bytes));
+            stream.Seek(0);
+            var picture = new BitmapImage { DecodePixelWidth = ThumbnailCacheService.ThumbnailWidth };
+            await picture.SetSourceAsync(stream);
+            item.Icon = new ImageIcon
+            {
+                Source = picture,
+                Width = RecentCaptureThumbnailWidth,
+                Height = RecentCaptureThumbnailHeight,
+            };
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"The poster of a Studio draft could not be shown ({posterPath}): {ex.Message}");
+        }
     }
 
     private async Task LoadRecentCaptureThumbnailAsync(
@@ -2215,16 +2409,23 @@ public partial class App : Application
             return null;
         }
 
+        return StudioWindows().Open(projectId);
+    }
+
+    /// <summary>The service that opens Studio editors, wired to the app the first time it is asked for.</summary>
+    private StudioWindowService StudioWindows()
+    {
         if (_studioWindows is null)
         {
             _studioWindows = Services.GetRequiredService<StudioWindowService>();
             _studioWindows.ActivateWindow = ActivateWindowToForeground;
+            _studioWindows.Notify = ShowMessageNotification;
             _studioWindows.Exported += OnStudioExported;
             _studioWindows.ScreenRecordingSaved += OnStudioExported;
             _studioWindows.ErrorReported += (_, e) => ShowMessageNotification(e.Message);
         }
 
-        return _studioWindows.Open(projectId);
+        return _studioWindows;
     }
 
     /// <summary>

@@ -10,9 +10,23 @@ public sealed class StudioProjectTracker
     private readonly HashSet<string> _openProjectIds = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Raised after a project was opened or closed, on the thread that did it (the UI thread).
+    /// Raised after a project was opened or closed, and after an editor has read its project,
+    /// which writes down when the project was last opened: whatever lists the projects by
+    /// that reads them again then. On the thread that did it (the UI thread).
     /// </summary>
     public event EventHandler? Changed;
+
+    /// <summary>
+    /// Says that an open project is no longer as the lists of projects have it: its editor has
+    /// read it, so it is the one opened last.
+    /// </summary>
+    public void MarkRead(string projectId)
+    {
+        if (IsOpen(projectId))
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     /// <summary>A snapshot of the ids of the projects that are open right now. Safe to read from any thread.</summary>
     public IReadOnlyCollection<string> OpenProjectIds

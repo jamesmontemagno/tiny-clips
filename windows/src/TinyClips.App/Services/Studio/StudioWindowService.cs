@@ -182,6 +182,7 @@ public sealed class StudioWindowService : IStudioProjectHost
             viewModel.Exported += OnExported;
             viewModel.ScreenRecordingSaved += OnScreenRecordingSaved;
             viewModel.ErrorReported += OnErrorReported;
+            viewModel.StateChanged += OnEditorStateChanged;
             window = new StudioWindow(viewModel, _previewViews, _settings, this, OnWindowClosed);
             _windows[projectId] = window;
             _tracker.MarkOpened(projectId);
@@ -293,6 +294,16 @@ public sealed class StudioWindowService : IStudioProjectHost
         }
     }
 
+    // An editor has read its project, which made that project the one opened last. The lists
+    // that were read when its window opened, a moment before, still have it where it was.
+    private void OnEditorStateChanged(object? sender, EventArgs e)
+    {
+        if (sender is StudioViewModel { IsLoading: false } viewModel)
+        {
+            _tracker.MarkRead(viewModel.ProjectId);
+        }
+    }
+
     private void OnOpenProjectsChanged(object? sender, EventArgs e)
     {
         foreach (var window in _windows.Values)
@@ -385,6 +396,7 @@ public sealed class StudioWindowService : IStudioProjectHost
         window.ViewModel.Exported -= OnExported;
         window.ViewModel.ScreenRecordingSaved -= OnScreenRecordingSaved;
         window.ViewModel.ErrorReported -= OnErrorReported;
+        window.ViewModel.StateChanged -= OnEditorStateChanged;
         _deletingProjectIds.Remove(projectId);
 
         // Unless it was opened again in the meantime.
