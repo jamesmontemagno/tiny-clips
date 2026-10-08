@@ -27,16 +27,20 @@ Every result is read back by the tool itself, in one of these ways:
 **Last run on 7 October 2026.** Everything below that says it was written on 5 or 6 October
 "and not run" has run now, for the first time that day: see "The first runs, on 7 October
 2026" under "The inspector as a rail with one panel on show", and "Three checks on a smaller
-preview". Five full runs were made that day. The first, of the checks as they had been
-written, had 7 of 551 fail (two parts ended early). The checks were mended, and of the four
-runs after that three had one check fail, and one had none:
+preview". Six full runs were made that day. The first, of the checks as they had been
+written, had 7 of 551 fail (two parts ended early). The checks were mended, and of the five
+runs after that four had one check fail, a different one in three of them, and one had none:
 
 - 1 of 559: the trim bar's Start handle was read 188.6 px from its place. Not explained; the
   check has said more about itself since, and has not failed again.
 - 1 of 559, twice: the zoom's block was read between getting its place and getting its
-  width. The check's; its mend comes with the handles on the lanes (#427).
+  width. The check's, and mended with the handles of 7 October.
 - all 559 passed.
-
+- 1 of 573, with the handles and their checks in: one view model was still in memory at the
+  end, of a window that Esc had closed, and neither the window nor its inspector. That is
+  how "A closed window that stays in memory" describes a window that is closed while a
+  tooltip waits, which is the framework's. It was not looked into further, and it is the
+  first time a full run ended on it.
 
 None of the checks that failed on 7 October was failed by a fault of the editor's: each was
 the check's, or the PC being busy, except the first of the four above, which is open. The
@@ -118,7 +122,9 @@ Groups: `open transport inspector trim export close windows accessibility themes
   on show, where Tiny Clips badge, Keep this project and Save as default look are.
   `out\cannot-be-shown-light.png`, `-dark.png`: the window of a project whose file cannot be
   read, with the button that saves its screen recording.
-
+- `out\lane-handles-zoom.png`, `-cut.png`, `-speed-change.png`: the window with a block too
+  narrow for handles inside its ends selected on that lane, so that its two handles stand
+  outside it. For a person to look at; nothing reads them.
 - `out\panel-scene-light.png` and so on, one for each of the nine panels of the inspector in
   each theme: the window with that panel on show, from its top, with the middle one of three
   zooms selected. Each panel is first laid out when it is first shown, and these are for a
@@ -647,9 +653,10 @@ What the group checks, in `Checks\Speed.cs`, `SpeedLane.cs` and `SpeedPlaying.cs
   and so gets shorter for a faster stretch.
 - **The lane.** That it is on the trim bar's time scale; its keys; its blocks as list items;
   presses and drags, by what the lane's pointer handlers call: a press on a block and on the
-  empty lane, a drag of the body, of the first and of the last 6 pixels, against a neighbour
-  and against the ends of the recording, a block too narrow for ends of its own, and each drag
-  as one undo step.
+  empty lane, a drag of the body, of the handle at the start and of the one at the end,
+  against a neighbour and against the ends of the recording, a block too narrow for handles
+  inside its ends, and each drag as one undo step; then the handles themselves: see "The
+  handles at the ends of a block".
 - **The section.** Previous and Next with what they read out and where the focus goes at the
   ends; the choice of the six rates, each shown as its rate and named in words, with the
   block's mark and the video's length following a choice, each choice one undo step, and a
@@ -720,6 +727,70 @@ same measurements are then two checks, that the picture and the playhead go at t
 rate inside it and at the recording's own after it, each within a fifth. Nothing else has to
 change. The checks of the pictures drawn on the way, of the playhead and of the time shown hold
 for an engine that plays the rate as for one that does not.
+
+## The handles at the ends of a block
+
+A zoom, a cut and a speed change are made longer and shorter by dragging a handle at an end
+of the block (#427). The rule is the editor model's, the same on the Mac
+(`StudioEditorModel.GetLaneBlockPart`, `GetLaneHandleOutset`, `LaneBlockHasInsideHandles`,
+unit tested in `StudioLaneHandleTests`): a handle is 8 wide; a block of 28 or more has one
+inside each end; a narrower block has none, and is only moved, until it is selected, and
+then has one outside each end and is that much wider to press. Before 7 October 2026 the
+first and the last 6 of a block of 24 or more were its ends, and nothing was drawn there.
+
+**Older checks, read against the new numbers.** The checks of a drag of an end press 3 in
+from the end of a block that is 92 wide or more, which was an end and is one. The checks of
+a block "narrower than 24" press a block of 10 and of 18.5 that is not the selected one, at
+its first or second pixel: it was moved as a whole and is, and the checks say 28 now. No
+check pressed 7 or 8 in from an end, or a block between 24 and 28 wide.
+
+**New, four checks on each of the three lanes** (`Checks\LaneHandles.cs`, run at the end of
+the lane's presses and drags in `zoom`, `cut` and `speed`, on the same window, with every
+drag undone again):
+
+1. *A block of 28 or more.* Pressed 8 in from its start and dragged, its start moves and its
+   end stays; pressed 8.5 in, the whole block moves; and the same from its end. On the zoom
+   from 7 to 9 s, and on the cut and the speed change from 4 to 4.45 s, which is 41.3 wide.
+2. *A narrower block that is not selected.* A press 4 before its start and 4 after its end,
+   where a selected one has its handles, takes hold of nothing: nothing is selected, and
+   dragged on, nothing changes. On the zoom of 0.06 s, which is drawn 10 wide, and on the
+   cut and the speed change of 0.2 s, 18.5 wide.
+3. *The same block, selected.* Pressed 4 before its start and dragged, its start moves and
+   its end stays; pressed 4 after its end, its end moves; pressed in its middle, it moves as
+   a whole; and it stays the selected one.
+4. *What is drawn.* On the block of 28 or more: handles inside its two ends, 8 wide each,
+   read as the handles' own rectangles along the lane; faint at rest, stronger after what
+   the block's handler for a pointer coming over it calls, as before after what the handler
+   for a pointer leaving calls, and at their strongest while the block is selected. On the
+   narrower block: none, then one outside each end once it is selected. The selected block
+   is drawn over the others. The block's tooltip says where the handles are, or that the
+   block has to be selected for them. And a screen reader is given each block as one item
+   with nothing inside it, and UI Automation knows of no handle at all. The item's
+   rectangle is the block's, and while a narrow block is selected it takes in the two
+   handles outside it: 8 more on each side.
+
+**Where a block is, for these checks, is what the lane itself holds** (`BlockOnLane`: the
+block's place and width as the lane set them), and not its rectangle on the screen. The
+first run of these checks pressed by the rectangle UI Automation gives, and seven checks
+failed for it: that rectangle is in whole pixels of the screen, so a place 8 in from an end
+was not 8 in; it takes in the handles outside a narrow selected block, so a place 4 before
+it was 12 before the block; and it gets its width only when the window is next laid out.
+The third is what failed an older check twice on 7 October, *the Start and End buttons move
+the zoom's two times, and its block follows* (`zoom`): that check judges the lane's own
+numbers now, and waits separately for the rectangle a screen reader is given, which for a
+zoom of 0.3 s, 27.7 wide and selected, is the block with its two handles.
+
+A picture of each lane with its narrow block selected is saved (`lane-handles-zoom.png`,
+`-cut.png`, `-speed-change.png`), for a person to look at.
+
+**What these cannot show.** No pointer is moved or pressed: that a real pointer over a
+handle lands on the handle, that its shape is the one for resizing from side to side
+(`ProtectedCursor` on the handle, set and never read back), that the block is told when a
+real pointer comes over it, and that a drag of a real pointer takes hold of what a press
+through the lane's own method does. "Faint", "stronger" and "strongest" are which of its
+three states the handles are in, and no pixel is read for them: what the handles look like,
+on each of the three kinds of block, in light, in dark and in a contrast theme, is for a
+person. So is a handle outside a block that has a neighbour right next to it.
 
 ## Written on 5 October 2026 and not run
 
@@ -1400,8 +1471,8 @@ time. Each counted 559 checks. One passed them all, and three had one check fail
   at once and its width when the window is next laid out, and the check had read the
   block's rectangle on the screen between the two. What a person sees is drawn after the
   layout. The check reads where the lane itself has the block now, and separately waits
-  for the rectangle a screen reader is given. That mend comes with the handles on the
-  lanes (#427), because it uses what they added, and is not in this commit.
+  for the rectangle a screen reader is given: see "The handles at the ends of a block",
+  with which that was mended.
 
 A picture of each panel of the inspector is saved since then, in both themes, for a person
 to look at each of them once: see "What it leaves behind".

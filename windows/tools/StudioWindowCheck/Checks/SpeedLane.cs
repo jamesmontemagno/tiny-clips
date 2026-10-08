@@ -25,7 +25,7 @@ internal sealed partial class WindowChecks
         Timeline.Mark("14: presses and drags on the speed lane");
 
         // Four speed changes of four widths: one wide enough for its rate to be written on it, one
-        // for the mark alone, a long one, and one too narrow for either and for ends of its own.
+        // for the mark alone, a long one, and one too narrow for either and for handles inside its ends.
         // Two are faster than the recording and two slower.
         StudioSpeedRange[] opened = [Speed(1, 2), Speed(4, 4.45, 0.5), Speed(6, 7.5, 4), Speed(11, 11.2, 0.25)];
         var folder = NewScreenProject("Speed drags", p => p with { Edits = p.Edits with { Speed = opened }, Zooms = [PointZoom(8, 10, 0.5, 0.5)] });
@@ -73,7 +73,7 @@ internal sealed partial class WindowChecks
         _report.Check(
             "each speed change's block runs from where it starts to where it ends; one that is at least 26 wide carries a mark, the one for faster or the one for slower and never both, and one that is at least 64 wide its rate as well, such as \"2×\"",
             geometry.All(ok => ok) && marks.Select(mark => mark.Faster && mark.Slower ? "both" : mark.Faster ? "faster" : mark.Slower ? "slower" : "none").SequenceEqual(kinds) && marks.Select(mark => mark.Rate).SequenceEqual(rates)
-                && blocks[0].Width >= 64 && blocks[1].Width is >= 26 and < 64 && blocks[3].Width < 24,
+                && blocks[0].Width >= 64 && blocks[1].Width is >= 26 and < 64 && blocks[3].Width < 28,
             $"the lane is {F(laneWidth, "0.#")} wide; the blocks: {string.Join(", ", blocks.Select((block, index) => $"{F(block.Width, "0.#")} wide at {F(block.Left, "0.#")} (wanted {F((opened[index].End - opened[index].Start) / secondsPerPixel, "0.#")} at {F(XOf(opened[index].Start), "0.#")})"))}; "
                 + $"marks: {string.Join(", ", marks.Select(mark => mark.Faster && mark.Slower ? "both" : mark.Faster ? "faster" : mark.Slower ? "slower" : "none"))}; written on them: {string.Join(", ", marks.Select(mark => $"\"{mark.Rate}\""))}");
 
@@ -179,7 +179,7 @@ internal sealed partial class WindowChecks
         var startAgainstEnd = SpeedAt(0);
         var headAgainstEnd = Playhead(editor);
         _report.Check(
-            "the first 6 of a block move where its speed change starts, and the playhead follows it: no earlier than the start of the recording, and no later than a tenth of a second before the speed change's end, which stays",
+            "the handle at the start of a block of 28 or more, taken 3 in, moves where its speed change starts, and the playhead follows it: no earlier than the start of the recording, and no later than a tenth of a second before the speed change's end, which stays",
             Same(startEarlier.Start, 1 - (30 * secondsPerPixel)) && startEarlier.End == 2 && Same(headAtStart, startEarlier.Start)
                 && startAtZero.Start == 0 && startAtZero.End == 2 && Same(startAgainstEnd.Start, 1.9) && startAgainstEnd.End == 2 && Same(headAgainstEnd, 1.9) && SelectedSpeedOf(editor) == 0,
             $"30 to the left: {Describe(startEarlier)}, playhead {Seconds(headAtStart)} s; far to the left: {Describe(startAtZero)}; far to the right: {Describe(startAgainstEnd)}, playhead {Seconds(headAgainstEnd)} s");
@@ -200,22 +200,22 @@ internal sealed partial class WindowChecks
         var endAgainstStart = SpeedAt(0);
         var headAgainstStart = Playhead(editor);
         _report.Check(
-            "the last 6 of a block move where its speed change ends, and the playhead follows it: no later than where the next one starts, and no earlier than a tenth of a second after the speed change's start, which stays; the one Undo before it took the whole drag of the start back",
+            "the handle at the end of a block of 28 or more, taken 3 in, moves where its speed change ends, and the playhead follows it: no later than where the next one starts, and no earlier than a tenth of a second after the speed change's start, which stays; the one Undo before it took the whole drag of the start back",
             startBack == Describe(opened[0]) && endLater.Start == 1 && Same(endLater.End, 2 + (40 * secondsPerPixel)) && Same(headAtEnd, endLater.End)
                 && endAgainstNext.Start == 1 && Same(endAgainstNext.End, 4) && endAgainstStart.Start == 1 && Same(endAgainstStart.End, 1.1) && Same(headAgainstStart, 1.1),
             $"after the Undo: {startBack}; 40 to the right: {Describe(endLater)}, playhead {Seconds(headAtEnd)} s; far to the right: {Describe(endAgainstNext)}; far to the left: {Describe(endAgainstStart)}, playhead {Seconds(headAgainstStart)} s");
         Invoke(editor, "StudioUndoButton");
         Until(() => Describe(SpeedAt(0)), now => now == Describe(opened[0]), 1);
 
-        // A block narrower than 24 has no ends of its own: wherever it is taken, the whole speed change moves.
+        // A block narrower than 28 has no handles until it is selected, and this one is not: wherever it is taken, the whole speed change moves.
         var narrow = BlockAt(3, blocks[3].Left);
         Press(narrow.Left + 2);
         Drag(narrow.Left + 2 - 40);
         LetGo();
         var narrowMoved = SpeedAt(3);
         _report.Check(
-            "a block narrower than 24 is moved as a whole from its first pixels too, because it has no room for ends of its own: the speed change keeps its length",
-            narrow.Width < 24 && Same(narrowMoved.Start, 11 - (40 * secondsPerPixel)) && Same(narrowMoved.End - narrowMoved.Start, 0.2) && SelectedSpeedOf(editor) == 3,
+            "a block narrower than 28 that is not the selected one is moved as a whole from its first pixels too, because it has no room for handles inside its ends: the speed change keeps its length",
+            narrow.Width < 28 && Same(narrowMoved.Start, 11 - (40 * secondsPerPixel)) && Same(narrowMoved.End - narrowMoved.Start, 0.2) && SelectedSpeedOf(editor) == 3,
             $"the block is {F(narrow.Width, "0.#")} wide; taken at its second pixel and dragged 40 to the left: {Describe(narrowMoved)}");
 
         // Every drag was one step. Two were taken back above; the four that are left, of the
@@ -233,6 +233,13 @@ internal sealed partial class WindowChecks
             "each drag was one undo step: the four that had not been undone are taken back by four Undo, after which the speed changes are as the project was opened, the one that was selected still is, and there is nothing left to undo",
             steps.Count == 4 && back is null && Until(() => !CanUndo(), nothing => nothing, 1),
             back ?? $"after each Undo: {string.Join(" | ", steps)}");
+
+        // The handles, on the speed change from 4 to 4.45 s and on the narrow one.
+        LaneHandles(
+            editor,
+            new LaneWithHandles("14", "speed change", "where", SpeedLane, "StudioSpeed_", () => [.. SpeedsOf(editor).Select(speed => (speed.Start, speed.End))], () => SelectedSpeedOf(editor)),
+            wide: 1,
+            narrow: 3);
         CloseQuietly(editor);
 
         SpeedBlockLooks(AppTheme.Light, "light");

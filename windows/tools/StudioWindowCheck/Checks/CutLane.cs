@@ -26,7 +26,7 @@ internal sealed partial class WindowChecks
         Timeline.Mark("13: presses and drags on the cut lane");
 
         // Four cuts of four widths: one wide enough for its length to be written on it, one for
-        // the scissors alone, a long one, and one too narrow for either and for ends of its own.
+        // the scissors alone, a long one, and one too narrow for either and for handles inside its ends.
         StudioTimeRange[] opened = [Cut(1, 2), Cut(4, 4.45), Cut(6, 7.5), Cut(11, 11.2)];
         var folder = NewScreenProject("Cut drags", p => p with { Edits = p.Edits with { Cuts = opened }, Zooms = [PointZoom(8, 10, 0.5, 0.5)] });
         if (OpenReady(folder, "cut drags") is not { } editor)
@@ -79,7 +79,7 @@ internal sealed partial class WindowChecks
         _report.Check(
             "each cut's block runs from where the cut starts to where it ends; one that is at least 26 wide carries the scissors, and one that is at least 62 wide its length as well, such as \"1.0 s\"",
             geometry.All(ok => ok) && marks.Select(mark => mark.Scissors).SequenceEqual(scissors) && marks.Select(mark => mark.Length).SequenceEqual(lengths)
-                && blocks[0].Width >= 62 && blocks[1].Width is >= 26 and < 62 && blocks[3].Width < 24,
+                && blocks[0].Width >= 62 && blocks[1].Width is >= 26 and < 62 && blocks[3].Width < 28,
             $"the lane is {F(laneWidth, "0.#")} wide; the blocks: {string.Join(", ", blocks.Select((block, index) => $"{F(block.Width, "0.#")} wide at {F(block.Left, "0.#")} (wanted {F((opened[index].End - opened[index].Start) / secondsPerPixel, "0.#")} at {F(XOf(opened[index].Start), "0.#")})"))}; "
                 + $"scissors: {string.Join(", ", marks.Select(mark => mark.Scissors))}; written on them: {string.Join(", ", marks.Select(mark => $"\"{mark.Length}\""))}");
 
@@ -170,7 +170,7 @@ internal sealed partial class WindowChecks
                 && Same(stoppedLeft.Start, 4.45) && Same(stoppedLeft.End, 5.95) && SelectedCutOf(editor) == 2 && LaneItems(editor, CutLane).Count == 4,
             $"dragged far to the right: {Describe(stopped)}, its block ends at {F(stoppedBlock.Left + stoppedBlock.Width, "0.#")} and the next starts at {F(nextBlock.Left, "0.#")}; dragged far to the left: {Describe(stoppedLeft)}; the lane: {LaneText(editor, CutLane)}");
 
-        // The first pixels of a block move where the cut starts.
+        // The first pixels of a block are the handle that moves where the cut starts.
         Timeline.Mark("13: dragging the ends of a cut");
         var first = Block(0);
         Press(first.Left + 3);
@@ -184,7 +184,7 @@ internal sealed partial class WindowChecks
         var startAgainstEnd = CutAt(0);
         var headAgainstEnd = Playhead(editor);
         _report.Check(
-            "the first 6 of a block move where its cut starts, and the playhead follows it: no earlier than the start of the recording, and no later than a tenth of a second before the cut's end, which stays",
+            "the handle at the start of a block of 28 or more, taken 3 in, moves where its cut starts, and the playhead follows it: no earlier than the start of the recording, and no later than a tenth of a second before the cut's end, which stays",
             Same(startEarlier.Start, 1 - (30 * secondsPerPixel)) && startEarlier.End == 2 && Same(headAtStart, startEarlier.Start)
                 && startAtZero.Start == 0 && startAtZero.End == 2 && Same(startAgainstEnd.Start, 1.9) && startAgainstEnd.End == 2 && Same(headAgainstEnd, 1.9) && SelectedCutOf(editor) == 0,
             $"30 to the left: {Describe(startEarlier)}, playhead {Seconds(headAtStart)} s; far to the left: {Describe(startAtZero)}; far to the right: {Describe(startAgainstEnd)}, playhead {Seconds(headAgainstEnd)} s");
@@ -205,22 +205,22 @@ internal sealed partial class WindowChecks
         var endAgainstStart = CutAt(0);
         var headAgainstStart = Playhead(editor);
         _report.Check(
-            "the last 6 of a block move where its cut ends, and the playhead follows it: no later than where the next cut starts, and no earlier than a tenth of a second after the cut's start, which stays; the one Undo before it took the whole drag of the start back",
+            "the handle at the end of a block of 28 or more, taken 3 in, moves where its cut ends, and the playhead follows it: no later than where the next cut starts, and no earlier than a tenth of a second after the cut's start, which stays; the one Undo before it took the whole drag of the start back",
             startBack == Describe(opened[0]) && endLater.Start == 1 && Same(endLater.End, 2 + (40 * secondsPerPixel)) && Same(headAtEnd, endLater.End)
                 && endAgainstNext.Start == 1 && Same(endAgainstNext.End, 4) && endAgainstStart.Start == 1 && Same(endAgainstStart.End, 1.1) && Same(headAgainstStart, 1.1),
             $"after the Undo: {startBack}; 40 to the right: {Describe(endLater)}, playhead {Seconds(headAtEnd)} s; far to the right: {Describe(endAgainstNext)}; far to the left: {Describe(endAgainstStart)}, playhead {Seconds(headAgainstStart)} s");
         Invoke(editor, "StudioUndoButton");
         Until(() => Describe(CutAt(0)), now => now == Describe(opened[0]), 1);
 
-        // A block narrower than 24 has no ends of its own: wherever it is taken, the whole cut moves.
+        // A block narrower than 28 has no handles until it is selected, and this one is not: wherever it is taken, the whole cut moves.
         var narrow = BlockAt(3, blocks[3].Left);
         Press(narrow.Left + 2);
         Drag(narrow.Left + 2 - 40);
         LetGo();
         var narrowMoved = CutAt(3);
         _report.Check(
-            "a block narrower than 24 is moved as a whole from its first pixels too, because it has no room for ends of its own: the cut keeps its length",
-            narrow.Width < 24 && Same(narrowMoved.Start, 11 - (40 * secondsPerPixel)) && Same(narrowMoved.End - narrowMoved.Start, 0.2) && SelectedCutOf(editor) == 3,
+            "a block narrower than 28 that is not the selected one is moved as a whole from its first pixels too, because it has no room for handles inside its ends: the cut keeps its length",
+            narrow.Width < 28 && Same(narrowMoved.Start, 11 - (40 * secondsPerPixel)) && Same(narrowMoved.End - narrowMoved.Start, 0.2) && SelectedCutOf(editor) == 3,
             $"the block is {F(narrow.Width, "0.#")} wide; taken at its second pixel and dragged 40 to the left: {Describe(narrowMoved)}");
 
         // Every drag was one step. Two were taken back above; the four that are left, of the
@@ -238,6 +238,13 @@ internal sealed partial class WindowChecks
             "each drag was one undo step: the four that had not been undone are taken back by four Undo, after which the cuts are as the project was opened, the cut that was selected still is, and there is nothing left to undo",
             steps.Count == 4 && back is null && Until(() => !CanUndo(), nothing => nothing, 1),
             back ?? $"after each Undo: {string.Join(" | ", steps)}");
+
+        // The handles, on the cut from 4 to 4.45 s and on the narrow one.
+        LaneHandles(
+            editor,
+            new LaneWithHandles("13", "cut", "where", CutLane, "StudioCut_", () => [.. CutsOf(editor).Select(cut => (cut.Start, cut.End))], () => SelectedCutOf(editor)),
+            wide: 1,
+            narrow: 3);
         CloseQuietly(editor);
 
         CutBlockLooks(AppTheme.Light, "light");

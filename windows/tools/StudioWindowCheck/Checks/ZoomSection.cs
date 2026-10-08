@@ -207,27 +207,38 @@ internal sealed partial class WindowChecks
         void Press(string button, double wantedStart, double wantedEnd, string name, string said)
         {
             var mark = heard.Mark();
-            var blockBefore = Find(editor, "StudioZoom_0")?.Bounds ?? default;
+            var blockBefore = BlockOnLane(editor, "StudioZoom_0");
             var pressed = Invoke(editor, button);
             var text = WaitForLane(editor, $"*{name}{others}");
             var zoom = ZoomsOf(editor)[0];
             var sentence = Said(heard, mark, said);
-            var block = Find(editor, "StudioZoom_0")?.Bounds ?? default;
 
-            // The block's two edges follow the zoom's two times.
-            var leftMoved = block.X - blockBefore.X;
-            var rightMoved = block.X + block.Width - blockBefore.X - blockBefore.Width;
+            // The block's two edges follow the zoom's two times: where the lane itself has the
+            // block, which it sets at once. Until 7 October 2026 this read the block's
+            // rectangle on the screen, which gets its place at once and its width with the next
+            // layout: read between the two, in two runs of that day, both edges had moved.
             var leftWanted = (wantedStart - start) * pixelsPerSecond;
             var rightWanted = (wantedEnd - end) * pixelsPerSecond;
+            var block = BlockOnLane(editor, "StudioZoom_0");
+            var leftMoved = (block.Left - blockBefore.Left) * editor.Scale;
+            var rightMoved = (block.Left + block.Width - blockBefore.Left - blockBefore.Width) * editor.Scale;
+
+            // The rectangle a screen reader is given comes with the layout, and is the block
+            // with the handles that stand outside it while it is narrow.
+            var onScreen = Until(
+                () => Find(editor, "StudioZoom_0")?.Bounds ?? default,
+                now => Math.Abs(now.X - lane.X - ((block.Left - block.Outset) * editor.Scale)) <= 1.5 && Math.Abs(now.Width - ((block.Width + (2 * block.Outset)) * editor.Scale)) <= 1.5,
+                1);
+            var isOnScreen = Math.Abs(onScreen.X - lane.X - ((block.Left - block.Outset) * editor.Scale)) <= 1.5 && Math.Abs(onScreen.Width - ((block.Width + (2 * block.Outset)) * editor.Scale)) <= 1.5;
             var startText = NameOf(editor, "StudioZoomStartText");
             var endText = NameOf(editor, "StudioZoomEndText");
             steps.Add($"{button.Replace("Studio", string.Empty, StringComparison.Ordinal).Replace("Button", string.Empty, StringComparison.Ordinal)}: {Seconds(zoom.Start)} to {Seconds(zoom.End)} s, said \"{said}\"");
             if (!pressed || !Same(zoom.Start, wantedStart) || !Same(zoom.End, wantedEnd) || text != $"*{name}{others}" || !sentence.Said
-                || Math.Abs(leftMoved - leftWanted) > 1.5 || Math.Abs(rightMoved - rightWanted) > 1.5 || !Same(Playhead(editor), head)
+                || Math.Abs(leftMoved - leftWanted) > 1.5 || Math.Abs(rightMoved - rightWanted) > 1.5 || !isOnScreen || !Same(Playhead(editor), head)
                 || startText != "Start " + StudioEditorModel.GetSecondsText(wantedStart) || endText != "End " + StudioEditorModel.GetSecondsText(wantedEnd))
             {
                 wrong.Add($"{button}: pressed {pressed}; the zoom is {Seconds(zoom.Start)} to {Seconds(zoom.End)} s and should be {Seconds(wantedStart)} to {Seconds(wantedEnd)} s; the lane: {text}; sent: {sentence.Heard}; "
-                    + $"the block's edges moved {F(leftMoved, "0.#")} and {F(rightMoved, "0.#")} px, wanted {F(leftWanted, "0.#")} and {F(rightWanted, "0.#")}; \"{startText}\", \"{endText}\"; playhead {Seconds(Playhead(editor))} s");
+                    + $"the block's edges moved {F(leftMoved, "0.#")} and {F(rightMoved, "0.#")} px, wanted {F(leftWanted, "0.#")} and {F(rightWanted, "0.#")}; its rectangle for a screen reader is {onScreen.Width} wide at {onScreen.X - lane.X}, and the lane has it {F(block.Width * editor.Scale, "0.#")} wide at {F(block.Left * editor.Scale, "0.#")} with handles {F(block.Outset * editor.Scale, "0.#")} outside it; \"{startText}\", \"{endText}\"; playhead {Seconds(Playhead(editor))} s");
             }
 
             (start, end) = (zoom.Start, zoom.End);
@@ -469,7 +480,7 @@ internal sealed partial class WindowChecks
             $"120 along the lane is {Seconds(by)} s; after 60: {Times(half)}; after 120: {Times(whole)}, the block at {F(movedLeft, "0.#")} ({F(firstLeft, "0.#")} before), playhead {Seconds(headAfterMove)} s; "
                 + $"after one Undo {Times(undone)} with nothing left to undo: {undoLeft}; after Redo {Times(redone)}");
 
-        // The first 6 of a block move its start, and the playhead goes with it.
+        // The first 8 of a block are the handle that moves its start, and the playhead goes with it.
         Timeline.Mark("10: dragging the ends of a block");
         var (left, width) = Block(0);
         Press(left + 3);
@@ -479,7 +490,7 @@ internal sealed partial class WindowChecks
         var headAtStart = Playhead(editor);
         var back = 40 * secondsPerPixel;
 
-        // The last 6 move its end.
+        // The last 8 move its end.
         (left, width) = Block(0);
         Press(left + width - 3);
         Drag(left + width - 3 + 50);
@@ -488,7 +499,7 @@ internal sealed partial class WindowChecks
         var headAtEnd = Playhead(editor);
         var on = 50 * secondsPerPixel;
         _report.Check(
-            "dragging the first 6 of a block moves the zoom's start and dragging the last 6 its end; the other end stays, and the playhead follows the end that is dragged",
+            "dragging a block of 28 or more by the handle at its start, taken 3 in, moves the zoom's start, and by the one at its end its end; the other end stays, and the playhead follows the end that is dragged",
             Same(startMoved.Start, whole.Start - back) && startMoved.End == whole.End && Same(headAtStart, startMoved.Start)
                 && endMoved.Start == startMoved.Start && Same(endMoved.End, whole.End + on) && Same(headAtEnd, endMoved.End),
             $"the start dragged 40 back: {Times(startMoved)} (wanted the start at {Seconds(whole.Start - back)} s), playhead {Seconds(headAtStart)} s; the end dragged 50 on: {Times(endMoved)} (wanted the end at {Seconds(whole.End + on)} s), playhead {Seconds(headAtEnd)} s");
@@ -504,14 +515,14 @@ internal sealed partial class WindowChecks
             against[0].End == against[1].Start && against[1].Start == 7 && Same(against[0].End - against[0].Start, endMoved.End - endMoved.Start, 1e-9),
             $"{Times(against[0])}, and the next zoom is {Times(against[1])}");
 
-        // The shortest zoom is too narrow to have ends to drag: any press on it moves the whole zoom.
+        // The shortest zoom is too narrow to have handles inside its ends, and it is not selected: any press on it moves the whole zoom.
         (left, width) = Block(2);
         Press(left + 1);
         Drag(left + 1 + 30);
         LetGo();
         var shortMoved = ZoomsOf(editor)[2];
         _report.Check(
-            "a block narrower than 24 is moved as a whole, also when it is pressed at its edge",
+            "a block narrower than 28 that is not the selected one is moved as a whole, also when it is pressed at its edge",
             Same(shortMoved.Start, 10 + (30 * secondsPerPixel)) && Same(shortMoved.End - shortMoved.Start, 0.06, 1e-9) && SelectedZoomOf(editor) == 2,
             $"pressed 1 from its left edge and dragged 30: {Times(shortMoved)}, wanted the start at {Seconds(10 + (30 * secondsPerPixel))} s");
 
@@ -545,6 +556,13 @@ internal sealed partial class WindowChecks
             "each drag that changed a zoom is one undo step, and a press or a drag of the playhead is none: five Undo bring back the three zooms as they were opened and leave nothing to undo",
             nothingLeft && restored.Length == 3 && restored.Zip(zooms, (now, then) => now.Start == then.Start && now.End == then.End).All(same => same),
             $"after five Undo the zooms are {string.Join(", ", restored.Select(Times))}, and nothing is left to undo: {nothingLeft}");
+
+        // The handles, on the zoom from 7 to 9 s and on the short one.
+        LaneHandles(
+            editor,
+            new LaneWithHandles("10", "zoom", "when", ZoomLane, "StudioZoom_", () => [.. ZoomsOf(editor).Select(zoom => (zoom.Start, zoom.End))], () => SelectedZoomOf(editor)),
+            wide: 1,
+            narrow: 2);
         CloseQuietly(editor);
     }
 
