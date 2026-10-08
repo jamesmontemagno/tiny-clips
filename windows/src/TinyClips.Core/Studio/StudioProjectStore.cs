@@ -79,13 +79,16 @@ public interface IStudioProjectStore
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Where <paramref name="folder"/> is already there it is replaced only when asked to, and
+    /// Where <paramref name="folder"/> is already there it is replaced only when asked to,
     /// only when it is a project saved this way before
-    /// (<see cref="StudioProjectFolder.IsSavedProjectFolder"/>): anything else is left alone and
-    /// the save is refused. A folder that is replaced goes with everything in it. The copy is
-    /// made beside where it will be and put under its name once it is whole, the project file
-    /// last, so a folder that is replaced is whole until the new one is. The folder it goes
-    /// into has to be there.
+    /// (<see cref="StudioProjectFolder.IsSavedProjectFolder"/>), and only when it holds nothing
+    /// a save does not write: the files the project in it names, its poster, and what a
+    /// system leaves in folders by itself
+    /// (<see cref="StudioProjectFolder.WhyASaveWouldNotReplace"/>). Anything else is left
+    /// exactly as it is and the save is refused. A folder that is replaced goes with
+    /// everything in it. The copy is made beside where it will be and put under its name once
+    /// it is whole, the project file last, so a folder that is replaced is whole until the
+    /// new one is. The folder it goes into has to be there.
     /// </para>
     /// <para>
     /// Copying a recording takes as long as the recording is large: call this off the UI
@@ -107,7 +110,10 @@ public interface IStudioProjectStore
     /// <see cref="StudioProjectFolderProblem.ExternalSource"/> for a project built around a
     /// video kept elsewhere, <see cref="StudioProjectFolderProblem.MissingFile"/> when a
     /// recording of the project is gone, <see cref="StudioProjectFolderProblem.DestinationExists"/>
-    /// when something that may not be replaced is where the folder would go.
+    /// when something that is not a saved project is where the folder would go, or a saved
+    /// project that was not to be replaced, and
+    /// <see cref="StudioProjectFolderProblem.DestinationHasOtherFiles"/> when a saved project
+    /// that was to be replaced holds something that is not part of it.
     /// </exception>
     /// <exception cref="OperationCanceledException">The save was cancelled. Nothing is left of it.</exception>
     void SaveProjectFolder(

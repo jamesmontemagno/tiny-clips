@@ -1118,17 +1118,6 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
         Assert.Equal([opened.Id], StudioProjectSummary.MenuDrafts(Store.ListSummaries()).Select(draft => draft.Id));
     }
 
-    private static void MakeLinkOrSkip(string path, string target)
-    {
-        try
-        {
-            File.CreateSymbolicLink(path, target);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Assert.Skip($"This account may not make a symbolic link, so there is none to refuse: {ex.Message}");
-        }
-    }
 
     /// <summary>Is told how far a copy is on the thread that copies, so that a test can step in between two pieces.</summary>
     private sealed class Told(Action<double> told) : IProgress<double>

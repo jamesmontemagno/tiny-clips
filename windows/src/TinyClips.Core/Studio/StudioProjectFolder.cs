@@ -17,10 +17,17 @@ public enum StudioProjectFolderProblem
     MissingFile,
 
     /// <summary>
-    /// Something is already where the folder would go, and it is not a saved project, or it is
-    /// one and replacing it was not asked for.
+    /// Something is already where the folder would go, and it is not a saved project whose
+    /// project file can be read, or it is one and replacing it was not asked for.
     /// </summary>
     DestinationExists,
+
+    /// <summary>
+    /// A saved project is where the folder would go, replacing it was asked for, and it holds
+    /// something a save does not write: a file the project in it does not name, a folder, or
+    /// a link. Replacing the folder would take that with it, so it is left as it is.
+    /// </summary>
+    DestinationHasOtherFiles,
 
     /// <summary>
     /// What was chosen is not a <c>.tinyclips</c> file, or a folder with exactly one in it, or
@@ -59,7 +66,12 @@ public sealed class StudioProjectFolderException : Exception
 
     public StudioProjectFolderProblem Problem { get; }
 
-    /// <summary>The name of the file that is not there, for <see cref="StudioProjectFolderProblem.MissingFile"/>.</summary>
+    /// <summary>
+    /// The name of the file that is not there, for <see cref="StudioProjectFolderProblem.MissingFile"/>.
+    /// For <see cref="StudioProjectFolderProblem.DestinationHasOtherFiles"/>, the name of what
+    /// is in the folder and is not part of the project: the first by name, so that it is the
+    /// same one each time.
+    /// </summary>
     public string? FileName { get; private init; }
 
     /// <summary>
@@ -84,10 +96,19 @@ public sealed class StudioProjectFolderException : Exception
             FileName = fileName,
         };
 
-    internal static StudioProjectFolderException DestinationExists() =>
+    internal static StudioProjectFolderException DestinationExists(Exception? innerException = null) =>
         new(
             StudioProjectFolderProblem.DestinationExists,
-            "There is already something with that name, and it is not a saved Tiny Clips project. Choose another name.");
+            "There is already something with that name, and it is not a saved Tiny Clips project. Choose another name.",
+            innerException);
+
+    internal static StudioProjectFolderException DestinationHasOtherFiles(string fileName) =>
+        new(
+            StudioProjectFolderProblem.DestinationHasOtherFiles,
+            $"This folder holds {fileName}, which is not part of the project, so it was not replaced. Choose another name.")
+        {
+            FileName = fileName,
+        };
 
     internal static StudioProjectFolderException NotAProjectFile() =>
         new(StudioProjectFolderProblem.NotAProjectFile, "Choose a .tinyclips file, or the folder that holds one.");
@@ -144,6 +165,12 @@ public static class StudioProjectFolder
     public const int LongestFolderName = 80;
 
     private static readonly char[] InvalidFileNameCharacters = Path.GetInvalidFileNameChars();
+
+    // What a system leaves in a folder by itself: the Finder's and Explorer's own files. A
+    // name that starts with "._" is what macOS writes beside a file on a volume that is not
+    // its own.
+    private static readonly string[] SystemLitter = [".DS_Store", "Thumbs.db", "desktop.ini"];
+    private const string SystemLitterPrefix = "._";
 
     // What Windows takes for a device and not a file, whatever folder it is in and whatever
     // extension follows it.
@@ -231,8 +258,10 @@ public static class StudioProjectFolder
 
     /// <summary>
     /// Whether a folder is a project that was saved as one: a folder with exactly one
-    /// <c>.tinyclips</c> file in it. Only such a folder is ever replaced by a save. A folder
-    /// that cannot be looked into is not one.
+    /// <c>.tinyclips</c> file in it, counted as <see cref="FindProjectFile"/> counts. Only such
+    /// a folder is ever replaced by a save, and not every one is:
+    /// <see cref="WhyASaveWouldNotReplace"/> says whether this one would be. A folder that
+    /// cannot be looked into is not one.
     /// </summary>
     public static bool IsSavedProjectFolder(string? folder)
     {
@@ -248,6 +277,94 @@ public static class StudioProjectFolder
         catch (Exception ex) when (ex is StudioProjectFolderException or IOException or UnauthorizedAccessException or SecurityException)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Why a save that was asked to replace what is at a path would not, or null when it would
+    /// (and when nothing is there). Asked by a save before it copies and again before it puts
+    /// its folder in place, and there for the app to ask before it puts the question.
+    /// </summary>
+    /// <remarks>
+    /// A folder is replaced only when it holds nothing a save does not write. It has exactly
+    /// one counted <c>.tinyclips</c> file, that file reads as a project, and everything else
+    /// in the folder, hidden or not, is a plain file, not a folder and not a link, that the
+    /// project names (its screen recording, its camera recording when it has a camera, its
+    /// events file or <c>events.json</c> when it names none, its background image) or that is
+    /// the poster, or one of the files a system leaves in folders by itself:
+    /// <c>.DS_Store</c>, <c>Thumbs.db</c>, <c>desktop.ini</c>, and any name that starts with
+    /// <c>._</c>. Names are compared without case. So a folder that only happens to have one
+    /// <c>.tinyclips</c> file in it is never taken with everything else it holds.
+    /// </remarks>
+    /// <returns>
+    /// Null, or the refusal a save would throw:
+    /// <see cref="StudioProjectFolderProblem.DestinationHasOtherFiles"/> with the first name
+    /// that is not part of the project, or
+    /// <see cref="StudioProjectFolderProblem.DestinationExists"/> for a file, a folder that is
+    /// not a saved project, one whose project file cannot be read as a project (what the
+    /// reader said is the inner exception), and a folder that cannot be looked into.
+    /// </returns>
+    public static StudioProjectFolderException? WhyASaveWouldNotReplace(string? folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return null;
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(folder);
+            if (File.Exists(fullPath))
+            {
+                return StudioProjectFolderException.DestinationExists();
+            }
+
+            if (!Directory.Exists(fullPath))
+            {
+                return null;
+            }
+
+            // What is in the file says what belongs to it. A file that cannot be read says nothing.
+            string projectFile;
+            StudioProject project;
+            try
+            {
+                projectFile = FindProjectFile(fullPath);
+                project = ReadProjectFile(projectFile);
+            }
+            catch (StudioProjectFolderException ex)
+            {
+                return StudioProjectFolderException.DestinationExists(ex);
+            }
+
+            var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                Path.GetFileName(projectFile),
+                project.Sources.Screen.File,
+                project.Sources.Events ?? StudioProjectStore.EventsFileName,
+                StudioProjectStore.PosterFileName,
+            };
+            if (project.Sources.Camera is { } camera)
+            {
+                written.Add(camera.File);
+            }
+
+            if (project.Canvas.Background.Image is { } image)
+            {
+                written.Add(image);
+            }
+
+            var other = Directory.EnumerateFileSystemEntries(fullPath)
+                .Where(entry => !IsPlainFile(entry) || !(written.Contains(Path.GetFileName(entry)) || IsSystemLitter(Path.GetFileName(entry))))
+                .Select(entry => Path.GetFileName(entry))
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static name => name, StringComparer.Ordinal)
+                .FirstOrDefault();
+            return other is null ? null : StudioProjectFolderException.DestinationHasOtherFiles(other);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException or NotSupportedException)
+        {
+            return StudioProjectFolderException.DestinationExists(ex);
         }
     }
 
@@ -328,6 +445,12 @@ public static class StudioProjectFolder
 
     private static bool HasProjectFileExtension(string path) =>
         string.Equals(Path.GetExtension(path), ProjectFileExtension, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPlainFile(string path) => File.Exists(path) && !IsLink(path);
+
+    private static bool IsSystemLitter(string name) =>
+        name.StartsWith(SystemLitterPrefix, StringComparison.Ordinal)
+        || SystemLitter.Contains(name, StringComparer.OrdinalIgnoreCase);
 
     // What a folder is searched for: not a name that starts with a dot.
     private static bool IsCountedProjectFile(string path) =>

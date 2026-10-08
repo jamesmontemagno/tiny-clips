@@ -96,6 +96,19 @@ public abstract class StudioProjectFolderTestBase : IDisposable
         File.WriteAllText(file, project.ToJsonString());
     }
 
+    /// <summary>Makes a symbolic link, or skips the test where this account may not make one.</summary>
+    protected static void MakeLinkOrSkip(string path, string target)
+    {
+        try
+        {
+            File.CreateSymbolicLink(path, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"This account may not make a symbolic link, so there is none to refuse: {ex.Message}");
+        }
+    }
+
     /// <summary>Runs what should be refused, and returns the refusal after checking its kind.</summary>
     protected static StudioProjectFolderException AssertRefused(StudioProjectFolderProblem problem, Action action)
     {
