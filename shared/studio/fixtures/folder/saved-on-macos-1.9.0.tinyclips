@@ -1,0 +1,163 @@
+{
+  "app" : {
+    "platform" : "macos",
+    "version" : "1.9.0"
+  },
+  "audio" : {
+    "microphoneVolume" : 1,
+    "muted" : false,
+    "systemVolume" : 1
+  },
+  "camera" : {
+    "borderColor" : "#FFFFFF",
+    "borderWidth" : 0,
+    "cornerRadius" : 0.12,
+    "crop" : null,
+    "cutout" : "none",
+    "mirror" : true,
+    "shadow" : 0.35,
+    "shape" : "circle"
+  },
+  "canvas" : {
+    "aspect" : "auto",
+    "background" : {
+      "image" : null,
+      "preset" : "ocean",
+      "primary" : "#2687E8",
+      "secondary" : "#2EE0BF",
+      "style" : "gradient"
+    },
+    "padding" : 0.06
+  },
+  "createdAt" : "2026-10-07T22:39:57Z",
+  "edits" : {
+    "cuts" : [
+      {
+        "end" : 4.510652003169483,
+        "start" : 2.5704111409215593
+      }
+    ],
+    "speed" : [
+      {
+        "end" : 7.860499147390271,
+        "rate" : 2,
+        "start" : 6.278711285031138
+      }
+    ],
+    "trimEnd" : 12.950710527413255,
+    "trimStart" : 1.408335792
+  },
+  "exports" : [
+
+  ],
+  "id" : "c12c76bc-d410-44d5-9db4-00c166b6bc34",
+  "keepSources" : false,
+  "lastOpenedAt" : "2026-10-07T22:39:57Z",
+  "modifiedAt" : "2026-10-07T22:41:56Z",
+  "name" : "TinyClips 2026-10-07 at 15.39.57",
+  "overlays" : {
+    "branding" : false,
+    "clicks" : {
+      "color" : "#0003FF",
+      "duration" : 0.45,
+      "enabled" : false,
+      "opacity" : 0.85,
+      "size" : 86,
+      "strokeWidth" : 6
+    }
+  },
+  "scenes" : [
+    {
+      "bubble" : {
+        "anchor" : "bottomRight",
+        "offsetX" : 0,
+        "offsetY" : 0,
+        "size" : 0.24
+      },
+      "layout" : "bubble",
+      "split" : {
+        "cameraFraction" : 0.3,
+        "cameraSide" : "trailing"
+      },
+      "start" : 0,
+      "transition" : {
+        "duration" : 0.35,
+        "kind" : "cut"
+      }
+    },
+    {
+      "bubble" : {
+        "anchor" : "bottomRight",
+        "offsetX" : 0,
+        "offsetY" : 0,
+        "size" : 0.24
+      },
+      "layout" : "sideBySide",
+      "split" : {
+        "cameraFraction" : 0.3,
+        "cameraSide" : "trailing"
+      },
+      "start" : 5.568259401875741,
+      "transition" : {
+        "duration" : 0.35,
+        "kind" : "morph"
+      }
+    }
+  ],
+  "schemaVersion" : 1,
+  "screen" : {
+    "cornerRadius" : 0.02,
+    "crop" : null,
+    "shadow" : 0.5
+  },
+  "sources" : {
+    "camera" : {
+      "duration" : 13.095,
+      "file" : "camera.mp4",
+      "height" : 720,
+      "startOffset" : 1.408335792,
+      "width" : 1280
+    },
+    "events" : "events.json",
+    "screen" : {
+      "audioTracks" : [
+        "system",
+        "microphone"
+      ],
+      "duration" : 14.483333333333333,
+      "external" : false,
+      "file" : "screen.mp4",
+      "frameRate" : 30,
+      "height" : 1800,
+      "width" : 2880
+    }
+  },
+  "zooms" : [
+    {
+      "easeIn" : 0.5,
+      "easeOut" : 0.5,
+      "end" : 8.820395502020313,
+      "focus" : {
+        "mode" : "cursor",
+        "x" : 0.34689974620097386,
+        "y" : 0.42055536408673827
+      },
+      "origin" : "manual",
+      "scale" : 2,
+      "start" : 5.996854206053528
+    },
+    {
+      "easeIn" : 0.5,
+      "easeOut" : 0.5,
+      "end" : 12.604701343323693,
+      "focus" : {
+        "mode" : "point",
+        "x" : 0.2006683349609375,
+        "y" : 0.2218505859375
+      },
+      "origin" : "manual",
+      "scale" : 3.5,
+      "start" : 9.604701343323693
+    }
+  ]
+}

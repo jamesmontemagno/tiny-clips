@@ -8,6 +8,7 @@
 - `fixtures/timemap/*.json`: a source duration, edits, the expected kept segments, the pieces they are divided into where the speed changes, the output duration, and source/output query pairs for section 7. The `speed-*.json` files cover speed.
 - `fixtures/canvas/*.json`: export-size cases for section 5, each with a natural canvas size, long-side limit, and expected export size.
 - `fixtures/autozoom/*.json`: a `project`, its `events`, and the zoom suggestions section 8 gives for them.
+- `fixtures/folder/*.tinyclips`: the project file of a project saved as a folder (section 14), as an app really wrote it, byte for byte. `saved-on-macos-1.9.0.tinyclips` is from a folder the macOS app saved on 7 October 2026. The recordings beside it are not here: a test puts a few bytes under the names the file gives. These files are not generated, and the generator leaves them alone.
 
 ## Regenerating
 

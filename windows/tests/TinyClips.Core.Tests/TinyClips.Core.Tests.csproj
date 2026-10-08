@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Content Include="..\..\..\shared\studio\fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="StudioFixtures" />
+    <Content Include="..\..\..\shared\studio\fixtures\**\*.tinyclips" CopyToOutputDirectory="PreserveNewest" LinkBase="StudioFixtures" />
   </ItemGroup>
 
   <ItemGroup>
