@@ -171,7 +171,17 @@ internal sealed partial class WindowChecks
         // Undo is no stop while there is nothing to undo, as now: Canvas is then the next one.
         var (menuStop, undoStop, canvasStop) = (stops.IndexOf(ProjectMenuId), stops.IndexOf("StudioUndoButton"), stops.IndexOf("StudioCanvasComboBox"));
         var lines = ProjectMenu(editor);
-        string[] wanted = ["menu|Open recent|StudioOpenRecentItem||\uE81C", "item|Open project\u2026|StudioOpenProjectItem|Ctrl+O|\uE8E5", "separator||||", "item|Save project\u2026|StudioSaveProjectItem|Ctrl+S|\uE74E", "separator||||", "item|Delete project\u2026|StudioDeleteProjectItem||\uE74D"];
+        // Each picture is the glyph that has the command's name (StudioGlyphs), so the Delete
+        // of the menu is the bin of the other Delete buttons, and Save the disk.
+        string[] wanted =
+        [
+            $"menu|Open recent|StudioOpenRecentItem||{StudioGlyphs.OpenRecentProject}",
+            $"item|Open project\u2026|StudioOpenProjectItem|Ctrl+O|{StudioGlyphs.OpenProject}",
+            "separator||||",
+            $"item|Save project\u2026|StudioSaveProjectItem|Ctrl+S|{StudioGlyphs.SaveProject}",
+            "separator||||",
+            $"item|Delete project\u2026|StudioDeleteProjectItem||{StudioGlyphs.DeleteProject}",
+        ];
         var read = lines.Select(line => $"{line.Kind}|{line.Text}|{line.Id}|{line.Keys}|{line.Glyph}").ToArray();
         _report.Check(
             "the header has one Project button, the first stop of the Tab key in the editor, before Undo and Canvas: a button with a menu, called Project, that says what it is for, and whose picture and word are nothing of their own to a screen reader; its menu has Open recent, Open project\u2026 with Ctrl+O, Save project\u2026 with Ctrl+S and Delete project\u2026, each with its picture, and all of them can be chosen",

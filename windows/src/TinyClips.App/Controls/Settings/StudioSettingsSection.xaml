@@ -5,6 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:editing="using:TinyClips.Core.Studio.Editing"
+    xmlns:editor="using:TinyClips.App.Controls.Studio"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:studio="using:TinyClips.App.ViewModels.Studio"
     xmlns:ui="using:CommunityToolkit.WinUI"
@@ -75,8 +77,11 @@
                 <controls:SettingsCard
                     AutomationProperties.AutomationId="StudioOpenProjectCard"
                     Description="Opens a project saved with Save project in the editor, from its .tinyclips file. The project is copied into Studio as a new draft, and the folder is only read. Recordings you kept as drafts are listed below, and exported videos reopen their project from the Clips Library."
-                    Header="Open a saved project"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE8E5;}">
+                    Header="Open a saved project">
+                    <!--  The picture of Open project in the editor's Project menu, here and on the button.  -->
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="{x:Bind editing:StudioGlyphs.OpenProject}" />
+                    </controls:SettingsCard.HeaderIcon>
                     <!--  The button's name is its words. Its picture says nothing of its own.  -->
                     <Button
                         x:Name="StudioOpenProjectButton"
@@ -84,13 +89,7 @@
                         AutomationProperties.Name="Open project&#x2026;"
                         Click="OnOpenStudioProject"
                         ToolTipService.ToolTip="Open a project that was saved as a folder, from its .tinyclips file">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon
-                                AutomationProperties.AccessibilityView="Raw"
-                                FontSize="14"
-                                Glyph="&#xE8E5;" />
-                            <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Open project&#x2026;" />
-                        </StackPanel>
+                        <editor:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.OpenProject}" Text="Open project&#x2026;" />
                     </Button>
                 </controls:SettingsCard>
 

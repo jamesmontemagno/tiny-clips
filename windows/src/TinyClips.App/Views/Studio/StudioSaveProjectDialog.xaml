@@ -42,15 +42,8 @@
                 AutomationProperties.AutomationId="StudioSaveProjectChooseFolderButton"
                 AutomationProperties.Name="Choose folder&#x2026;"
                 Click="OnChooseFolderClick"
-                ToolTipService.ToolTip="Choose the folder the project's folder is made in">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon
-                        AutomationProperties.AccessibilityView="Raw"
-                        FontSize="14"
-                        Glyph="&#xE8B7;" />
-                    <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Choose folder&#x2026;" />
-                </StackPanel>
-            </Button>
+                Content="Choose folder&#x2026;"
+                ToolTipService.ToolTip="Choose the folder the project's folder is made in" />
         </StackPanel>
         <!--
             Why the project cannot be saved there, when it cannot: the name is taken, the folder

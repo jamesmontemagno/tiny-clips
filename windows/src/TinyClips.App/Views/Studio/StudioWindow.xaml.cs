@@ -80,6 +80,9 @@ public sealed partial class StudioWindow : Window
 
         InitializeComponent();
 
+        // The Project button has the picture of the Project panel, as the rail has it.
+        ProjectMenuIcon.Glyph = StudioInspectorPanels.GetGlyph(StudioInspectorPanel.Project);
+
         foreach (var aspect in Enum.GetValues<StudioCanvasAspect>())
         {
             CanvasChoice.Items.Add(StudioEditorModel.GetAspectName(aspect));

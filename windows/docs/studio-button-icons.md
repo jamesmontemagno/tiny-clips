@@ -83,10 +83,22 @@ as well, as the rail's are.
 | Save as default look | Project panel | U+E790 Color, a palette | `paintpalette` | `SaveDefaultLook` |
 | Save the screen recording | a project that cannot be shown | U+E74E Save, a disk | `square.and.arrow.down` | `SaveRecording` |
 
-Four more names are there for the project commands of #429, which no button has yet, so that
-its buttons and these end up alike: `OpenProject` (U+E838 FolderOpen), `OpenRecentProject`
-(U+E823 Recent, a clock), `SaveProject` (the disk of `SaveRecording`), and `DeleteProject` (the
-bin of `Delete`).
+Four more names are for the project commands of #429: `OpenProject` (U+E838 FolderOpen),
+`OpenRecentProject` (U+E823 Recent, a clock), `SaveProject` (the disk of `SaveRecording`), and
+`DeleteProject` (the bin of `Delete`). Since the night of 7 October they are on:
+
+| Command | Where | Held as |
+|---|---|---|
+| Open recent, Open project…, Save project…, Delete project… | the menu of **Project** in the editor's header | the `Icon` of each menu item, a `FontIcon` |
+| Save project…, Delete project… | the end of the Project panel | a `StudioButtonLabel`, as the other buttons of the panels |
+| Delete project… | under the message of a project that cannot be shown | a `StudioButtonLabel` |
+| Open project… | Settings › Studio › Projects, on the button and before the card's header | a `StudioButtonLabel`, and a `FontIcon` |
+
+The **Project** button itself shows the Project panel's glyph, the rail's folder, before its
+word. It is set in code (`StudioWindow`'s constructor), as the marks of the blocks are,
+because it is a button with a menu and holds a row like Export's, not a `StudioButtonLabel`.
+**Choose folder…** in the Save project dialog has no glyph: it is none of the commands, and
+the answers of a dialog have none.
 
 **Where the glyphs are.** In one place, `StudioGlyphs` in
 `windows/src/TinyClips.Core/Studio/Editing/StudioGlyphs.cs`, beside the rail's
@@ -100,9 +112,11 @@ their glyphs written out, take them from there now too.
 **The one rule** is held by `StudioInspectorPanelTests.AButtonThatAddsWhatAPanelEditsHasThatPanelsGlyph`
 in the Core tests, the Mac's test ported. Two more tests there hold the code point of each name
 and that buttons that do different things show different pictures. In the app tests,
-`StudioButtonIconTests` reads the markup: each of the twenty buttons shows its glyph from
-`StudioGlyphs` before its words and has its name written on it, and no glyph that has a name is
-written out in the markup.
+`StudioButtonIconTests` reads the markup: each of the twenty-three buttons (the twenty of #432
+and the three of #429 in the editor) shows its glyph from `StudioGlyphs` before its words and
+has its name written on it, each of the four items of the Project menu has its glyph as its
+icon, and no glyph that has a name is written out in the markup. The Settings button is held
+by `SettingsStudioPageTests`.
 
 **What a button holds.** A `StudioButtonLabel` (`Controls/Studio`): the glyph, 14 high, and 6
 further on the words, as Export has them. The glyph and the words are both kept out of what a

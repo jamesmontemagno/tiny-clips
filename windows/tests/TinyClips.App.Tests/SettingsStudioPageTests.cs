@@ -164,18 +164,24 @@ public sealed partial class SettingsStudioPageTests
         Assert.Equal("SettingsCard", card.Name.LocalName);
         Assert.Equal("Open a saved project", card.Attr("Header"));
         Assert.Contains("The project is copied into Studio as a new draft, and the folder is only read.", card.Attr("Description"));
-        var button = Assert.Single(card.Elements());
+        var button = Assert.Single(card.Elements(), element => element.Name.LocalName != "SettingsCard.HeaderIcon");
         Assert.Equal("Button", button.Name.LocalName);
         Assert.Equal("StudioOpenProjectButton", button.Attr(Id));
         Assert.Equal("Open project\u2026", button.Attr("AutomationProperties.Name"));
         Assert.Equal("OnOpenStudioProject", button.Attr("Click"));
 
-        // Its picture and its word are the button's content, and say nothing of their own to
-        // a screen reader, which reads the button's name: the words alone.
-        var inside = button.Descendants().Where(element => element.Name.LocalName is "FontIcon" or "TextBlock").ToList();
-        Assert.Equal(["FontIcon", "TextBlock"], inside.Select(element => element.Name.LocalName));
-        Assert.All(inside, element => Assert.Equal("Raw", element.Attr("AutomationProperties.AccessibilityView")));
-        Assert.Equal("Open project\u2026", inside[1].Attr("Text"));
+        // It holds what the editor's buttons hold: the glyph of Open project and then the
+        // words, neither of which a screen reader is shown, so it reads the button's name,
+        // the words alone. The card has the same glyph before its header.
+        var label = Assert.Single(button.Elements());
+        Assert.Equal("StudioButtonLabel", label.Name.LocalName);
+        Assert.Equal("using:TinyClips.App.Controls.Studio", label.Name.NamespaceName);
+        Assert.Equal("Open project\u2026", label.Attr("Text"));
+        Assert.Equal("{x:Bind editing:StudioGlyphs.OpenProject}", label.Attr("Glyph"));
+        Assert.Equal("using:TinyClips.Core.Studio.Editing", label.GetNamespaceOfPrefix("editing")?.NamespaceName);
+        Assert.Null(button.Attr("Content"));
+        var headerIcon = Assert.Single(elements, element => element.Name.LocalName == "SettingsCard.HeaderIcon" && element.Parent == card);
+        Assert.Equal("{x:Bind editing:StudioGlyphs.OpenProject}", Assert.Single(headerIcon.Elements()).Attr("Glyph"));
 
         // Shown only while Studio is on, like everything else below the switch.
         Assert.Contains(card.Ancestors(), element => element.Attr("Visibility") == "{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}");

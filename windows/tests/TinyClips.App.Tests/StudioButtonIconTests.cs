@@ -55,6 +55,13 @@ public sealed class StudioButtonIconTests
         ("StudioInspector.xaml", "StudioSpeedSectionAddButton", nameof(StudioGlyphs.AddSpeed), "Add speed change", "Add speed change"),
         ("StudioInspector.xaml", "StudioDeleteSpeedButton", nameof(StudioGlyphs.Delete), "Delete speed change", "Delete speed change"),
         ("StudioInspector.xaml", "StudioSaveDefaultLookButton", nameof(StudioGlyphs.SaveDefaultLook), "Save as default look", "Save as default look"),
+
+        // The project as a whole (#429): at the end of the Project panel, and under the message
+        // of a project that cannot be shown. The menu of the Project button has the same four
+        // glyphs, on menu items, which are held by the test below.
+        ("StudioInspector.xaml", "StudioSaveProjectButton", nameof(StudioGlyphs.SaveProject), "Save project\u2026", "Save project\u2026"),
+        ("StudioInspector.xaml", "StudioDeleteProjectButton", nameof(StudioGlyphs.DeleteProject), "Delete project\u2026", "Delete project\u2026"),
+        ("StudioWindow.xaml", "StudioDeleteUnavailableProjectButton", nameof(StudioGlyphs.DeleteProject), "Delete project\u2026", "Delete project\u2026"),
     ];
 
     public static TheoryData<string, string, string, string, string> Buttons
@@ -119,6 +126,26 @@ public sealed class StudioButtonIconTests
         Assert.Equal(GlyphsNamespace, parts[0].GetNamespaceOfPrefix("editing")?.NamespaceName);
         Assert.Equal("Raw", Attr(parts[0], "AutomationProperties.AccessibilityView"));
         Assert.All(parts[1].Elements(), text => Assert.Equal("Raw", Attr(text, "AutomationProperties.AccessibilityView")));
+    }
+
+    [Theory]
+    [InlineData("MenuFlyoutSubItem", "StudioOpenRecentItem", nameof(StudioGlyphs.OpenRecentProject), "Open recent")]
+    [InlineData("MenuFlyoutItem", "StudioOpenProjectItem", nameof(StudioGlyphs.OpenProject), "Open project\u2026")]
+    [InlineData("MenuFlyoutItem", "StudioSaveProjectItem", nameof(StudioGlyphs.SaveProject), "Save project\u2026")]
+    [InlineData("MenuFlyoutItem", "StudioDeleteProjectItem", nameof(StudioGlyphs.DeleteProject), "Delete project\u2026")]
+    public void AnItemOfTheProjectMenu_HasItsGlyphAsItsIcon_AndItsWordsAsItsText(string kind, string id, string glyph, string words)
+    {
+        var item = Assert.Single(Elements("StudioWindow.xaml"), element => Attr(element, "AutomationProperties.AutomationId") == id);
+        Assert.Equal(kind, item.Name.LocalName);
+
+        // A menu item takes its name from its text. Its icon is no part of that.
+        Assert.Equal(words, Attr(item, "Text"));
+        Assert.Null(Attr(item, "AutomationProperties.Name"));
+
+        var icon = Assert.Single(Assert.Single(item.Elements(), element => element.Name.LocalName == kind + ".Icon").Elements());
+        Assert.Equal("FontIcon", icon.Name.LocalName);
+        Assert.Equal($"{{x:Bind editing:StudioGlyphs.{glyph}}}", Attr(icon, "Glyph"));
+        Assert.Equal(GlyphsNamespace, icon.GetNamespaceOfPrefix("editing")?.NamespaceName);
     }
 
     [Fact]

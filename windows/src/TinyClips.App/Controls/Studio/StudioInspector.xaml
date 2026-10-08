@@ -1475,10 +1475,7 @@
                                 AutomationProperties.Name="Save project&#x2026;"
                                 Click="{x:Bind ViewModel.RequestSaveProject}"
                                 ToolTipService.ToolTip="Save the recordings and a .tinyclips file to a folder you choose (Ctrl+S)">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon AutomationProperties.AccessibilityView="Raw" FontSize="14" Glyph="&#xE74E;" />
-                                    <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Save project&#x2026;" />
-                                </StackPanel>
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SaveProject}" Text="Save project&#x2026;" />
                             </Button>
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioSaveProjectNote"
@@ -1496,10 +1493,7 @@
                                 AutomationProperties.Name="Delete project&#x2026;"
                                 Click="{x:Bind ViewModel.RequestDeleteProject}"
                                 ToolTipService.ToolTip="Delete the recording and every edit. Asks first.">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon AutomationProperties.AccessibilityView="Raw" FontSize="14" Glyph="&#xE74D;" />
-                                    <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Delete project&#x2026;" />
-                                </StackPanel>
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.DeleteProject}" Text="Delete project&#x2026;" />
                             </Button>
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioDeleteProjectNote"

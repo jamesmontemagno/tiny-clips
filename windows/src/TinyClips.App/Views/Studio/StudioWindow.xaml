@@ -142,13 +142,7 @@
                     AutomationProperties.Name="Delete project&#x2026;"
                     Click="{x:Bind ViewModel.RequestDeleteProject}"
                     ToolTipService.ToolTip="Delete what is left of this project. Asks first.">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon
-                            AutomationProperties.AccessibilityView="Raw"
-                            FontSize="14"
-                            Glyph="&#xE74D;" />
-                        <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Delete project&#x2026;" />
-                    </StackPanel>
+                    <studio:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.DeleteProject}" Text="Delete project&#x2026;" />
                 </Button>
             </StackPanel>
         </studio:StudioMessagePanel>
@@ -215,7 +209,9 @@
                             buttons more would take the preview's room at the window's smallest
                             width. The picture and the word are the button's content and say
                             nothing of their own to a screen reader, which reads the button's name.
-                            Ctrl+O and Ctrl+S are the window's keys, so the menu only shows them.
+                            The picture is the Project panel's, on the rail, and is set in code,
+                            where that glyph has its name. Ctrl+O and Ctrl+S are the window's keys,
+                            so the menu only shows them.
                         -->
                         <DropDownButton
                             x:Name="ProjectMenuButton"
@@ -226,9 +222,9 @@
                             ToolTipService.ToolTip="Open another project, save this one as a folder, or delete it">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon
+                                    x:Name="ProjectMenuIcon"
                                     AutomationProperties.AccessibilityView="Raw"
-                                    FontSize="14"
-                                    Glyph="&#xE8B7;" />
+                                    FontSize="14" />
                                 <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Project" />
                             </StackPanel>
                             <DropDownButton.Flyout>
@@ -238,7 +234,7 @@
                                         AutomationProperties.AutomationId="StudioOpenRecentItem"
                                         Text="Open recent">
                                         <MenuFlyoutSubItem.Icon>
-                                            <FontIcon Glyph="&#xE81C;" />
+                                            <FontIcon Glyph="{x:Bind editing:StudioGlyphs.OpenRecentProject}" />
                                         </MenuFlyoutSubItem.Icon>
                                     </MenuFlyoutSubItem>
                                     <MenuFlyoutItem
@@ -249,7 +245,7 @@
                                         KeyboardAcceleratorTextOverride="Ctrl+O"
                                         Text="Open project&#x2026;">
                                         <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE8E5;" />
+                                            <FontIcon Glyph="{x:Bind editing:StudioGlyphs.OpenProject}" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutSeparator />
@@ -261,7 +257,7 @@
                                         KeyboardAcceleratorTextOverride="Ctrl+S"
                                         Text="Save project&#x2026;">
                                         <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE74E;" />
+                                            <FontIcon Glyph="{x:Bind editing:StudioGlyphs.SaveProject}" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutSeparator />
@@ -271,7 +267,7 @@
                                         Click="{x:Bind ViewModel.RequestDeleteProject}"
                                         Text="Delete project&#x2026;">
                                         <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE74D;" />
+                                            <FontIcon Glyph="{x:Bind editing:StudioGlyphs.DeleteProject}" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                 </MenuFlyout>
