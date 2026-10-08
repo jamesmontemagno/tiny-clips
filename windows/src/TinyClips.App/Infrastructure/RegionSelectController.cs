@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI.Dispatching;
 using TinyClips.Core.Capture;
 
 namespace TinyClips.App;
@@ -35,8 +36,10 @@ public static class RegionSelectController
         }).ToArray();
     }
 
-    public static Task<RegionSelectResult?> RunAsync(IReadOnlyList<MonitorInfo> monitors) =>
-        RunAsync(monitors, backdrops: null);
+    public static Task<RegionSelectResult?> RunAsync(
+        IReadOnlyList<MonitorInfo> monitors,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(monitors, backdrops: null, cancellationToken);
 
     /// <summary>
     /// Shows the region overlay on every monitor. When <paramref name="backdrops"/> is supplied
@@ -46,8 +49,11 @@ public static class RegionSelectController
     /// </summary>
     public static async Task<RegionSelectResult?> RunAsync(
         IReadOnlyList<MonitorInfo> monitors,
-        IReadOnlyList<Task<CapturedFrame?>>? backdrops)
+        IReadOnlyList<Task<CapturedFrame?>>? backdrops,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (monitors.Count == 0)
         {
             return null;
@@ -89,6 +95,19 @@ public static class RegionSelectController
         {
             window.Activate();
         }
+
+        var dispatcher = DispatcherQueue.GetForCurrentThread();
+        using var cancellationRegistration = cancellationToken.Register(() =>
+        {
+            if (dispatcher.HasThreadAccess)
+            {
+                Complete(null);
+            }
+            else if (!dispatcher.TryEnqueue(() => Complete(null)))
+            {
+                completion.TrySetCanceled(cancellationToken);
+            }
+        });
 
         CaptureFlowTrace.Mark("region: overlay windows activated");
         return await completion.Task;
