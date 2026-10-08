@@ -417,7 +417,7 @@ internal sealed partial class WindowChecks
         SetSlider(editor, "StudioPlayhead", 6.0);
         WaitForLane(editor, SceneLaneWanted(editor, 1), 2, SceneLane);
 
-        // The seventeen sliders of the side-by-side layout, and the transition's Duration.
+        // The eighteen sliders of the side-by-side layout, and the transition's Duration.
         (string Id, string Name)[] names =
         [
             ("StudioSplitSceneButton", "Split scene"), (SceneLane, "Scenes"), ("StudioScene_0", SceneName(editor, 0)), ("StudioScene_1", SceneName(editor, 1)), ("StudioScene_2", SceneName(editor, 2)),
@@ -426,7 +426,7 @@ internal sealed partial class WindowChecks
             ("StudioSceneStartEarlierButton", "Scene start 0.1 seconds earlier"), ("StudioSceneStartLaterButton", "Scene start 0.1 seconds later"), ("StudioSceneStartAtPlayheadButton", "Start scene at playhead"),
             ("StudioSceneEntryChoice", "Transition"), ("StudioSceneEntryCut", "Instant"), ("StudioSceneEntryMove", "Animated"), ("StudioSceneMoveSlider", "Transition duration"), ("StudioDeleteSceneButton", "Delete scene"),
         ];
-        AuditState(editor, "the editor with three scenes, in one whose transition is animated", "tree-scenes.txt", 18, tree => Named(tree, names));
+        AuditState(editor, "the editor with three scenes, in one whose transition is animated", "tree-scenes.txt", 19, tree => Named(tree, names));
         var delete = Find(editor, "StudioDeleteSceneButton");
         _report.Check(
             "Delete scene tells a screen reader what becomes of the scene's time",

@@ -56,8 +56,8 @@ internal sealed partial class WindowChecks
         ShowsPart(editor, "pressing a zoom on the lane shows it: the preview is zoomed on the part that zoom holds", HeldAtFirst, Shown, "scale 2 around (0.30, 0.28) is the part from 0.05 across and 0.03 down, half the screen each way");
         ZoomSectionShows(editor, "the Zoom panel shows the zoom that was pressed", "Zoom 1 of 3", "2.0 to 5.0 seconds", 2, "2×", PointerFirst, "Start 2.0 seconds", "End 5.0 seconds", 0.5, 0.5);
 
-        // With a zoom selected: padding, two sliders for the screen and four for its crop, five for the zoom, and the three of the trim bar.
-        AuditState(editor, "the editor with a zoom selected", "tree-zoom.txt", 15, tree =>
+        // With a zoom selected: padding, two sliders for the screen and four for its crop, five for the zoom, the volume, and the three of the trim bar.
+        AuditState(editor, "the editor with a zoom selected", "tree-zoom.txt", 16, tree =>
             tree.Any(entry => entry.Element.Id == "StudioZoomFocusPad") ? "the focus pad is in what a screen reader walks"
             : !PadShows(editor) ? "the focus pad is not shown"
             : Find(editor, "StudioZoomFocusXSlider", 0.5) is not { Name: "Horizontal" } || Find(editor, "StudioZoomFocusYSlider", 0.5) is not { Name: "Vertical" } ? "the two sliders that stand for the focus pad are not called Horizontal and Vertical"
@@ -747,7 +747,7 @@ internal sealed partial class WindowChecks
             "suggested again, a zoom the user made or changed wins: the suggestion that would lie over it is left out, and a screen reader is told that there are two",
             again == $"*{Changed} | {SecondSuggestion} | {Own} | {ThirdSuggestion}" && againSaid.Said,
             $"the lane: {again}; sent: {againSaid.Heard}");
-        AuditState(editor, "the editor with suggested zooms", "tree-suggestions.txt", 15);
+        AuditState(editor, "the editor with suggested zooms", "tree-suggestions.txt", 16);
         CloseQuietly(editor);
     }
 }

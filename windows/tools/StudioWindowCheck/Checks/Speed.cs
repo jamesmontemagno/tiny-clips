@@ -732,7 +732,7 @@ internal sealed partial class WindowChecks
         Until(() => SelectedSpeedOf(editor), index => index == 1, 1);
         Until(() => Find(editor, "StudioDeleteSpeedButton", 0.5), found => found is not null, 1.5);
 
-        // A recording without a camera has ten sliders, and a speed change adds none.
+        // A recording without a camera has eleven sliders, and a speed change adds none.
         (string Id, string Name)[] names =
         [
             ("StudioAddSpeedButton", "Add speed change"), (SpeedLane, "Speed changes"), ("StudioSpeed_0", "Speed 2×, 2.0 to 4.0 seconds"), ("StudioSpeed_1", "Speed 2×, 6.0 to 8.0 seconds"), ("StudioSpeed_2", "Speed 2×, 11.0 to 12.0 seconds"),
@@ -743,7 +743,7 @@ internal sealed partial class WindowChecks
             ("StudioSpeedEndText", "End 8.0 seconds"), ("StudioSpeedEndEarlierButton", "End 0.1 seconds earlier"), ("StudioSpeedEndLaterButton", "End 0.1 seconds later"), ("StudioSpeedEndAtPlayheadButton", "End at playhead"),
             ("StudioSpeedLengthText", "2.0 seconds, plays in 1.0 seconds"), ("StudioSpeedSilentNote", "A stretch at another speed plays without sound."), ("StudioDeleteSpeedButton", "Delete speed change"),
         ];
-        AuditState(editor, "the editor with a speed change selected", "tree-speed.txt", 10, tree => Named(tree, names));
+        AuditState(editor, "the editor with a speed change selected", "tree-speed.txt", 11, tree => Named(tree, names));
 
         // What Delete speed change does to the video is said to a screen reader, and shown as its tooltip with its key.
         var delete = Find(editor, "StudioDeleteSpeedButton");

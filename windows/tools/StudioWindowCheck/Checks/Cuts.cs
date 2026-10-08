@@ -500,7 +500,7 @@ internal sealed partial class WindowChecks
         Until(() => SelectedCutOf(editor), index => index == 1, 1);
         Until(() => Find(editor, "StudioDeleteCutButton", 0.5), found => found is not null, 1.5);
 
-        // A recording without a camera has ten sliders, and a cut adds none.
+        // A recording without a camera has eleven sliders, and a cut adds none.
         (string Id, string Name)[] names =
         [
             ("StudioAddCutButton", "Add cut"), (CutLane, "Cuts"), ("StudioCut_0", CutName(2, 3)), ("StudioCut_1", CutName(6, 7)), ("StudioCut_2", CutName(11.5, 12)),
@@ -510,7 +510,7 @@ internal sealed partial class WindowChecks
             ("StudioCutEndText", "End 7.0 seconds"), ("StudioCutEndEarlierButton", "End 0.1 seconds earlier"), ("StudioCutEndLaterButton", "End 0.1 seconds later"), ("StudioCutEndAtPlayheadButton", "End at playhead"),
             ("StudioCutLengthText", "1.0 seconds long"), ("StudioDeleteCutButton", "Delete cut"),
         ];
-        AuditState(editor, "the editor with a cut selected", "tree-cut.txt", 10, tree => Named(tree, names));
+        AuditState(editor, "the editor with a cut selected", "tree-cut.txt", 11, tree => Named(tree, names));
 
         // What Delete cut does to the video is said to a screen reader, and shown as its tooltip with its key.
         var delete = Find(editor, "StudioDeleteCutButton");
