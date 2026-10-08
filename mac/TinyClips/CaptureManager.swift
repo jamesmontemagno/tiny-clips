@@ -1540,6 +1540,15 @@ class CaptureManager: ObservableObject {
                         SaveService.shared.showError("Video compositing failed: \(error.localizedDescription)")
                     }
                 }
+
+                // The passes above mix the sounds as they export. A recording that went through
+                // neither is still the recorder's own file, with a track for each sound.
+                if let recordedURL = savedVideoURL {
+                    updateProcessingProgress(0.97, status: "Finalizing...")
+                    if await Self.mixDownAudioOffMain(at: recordedURL) == .failed {
+                        SaveService.shared.showError("The system audio and microphone could not be combined into one audio track. The recording was kept with two audio tracks, so some players may play it without the microphone.")
+                    }
+                }
             }
 
             updateProcessingProgress(1.0, status: "Done")
@@ -2606,6 +2615,12 @@ class CaptureManager: ObservableObject {
                 codec: codec,
                 onProgress: onProgress
             )
+        }.value
+    }
+
+    nonisolated private static func mixDownAudioOffMain(at url: URL) async -> RecordingAudioMixdown.Outcome {
+        await Task.detached(priority: .userInitiated) {
+            await RecordingAudioMixdown.mixDownIfNeeded(at: url)
         }.value
     }
 

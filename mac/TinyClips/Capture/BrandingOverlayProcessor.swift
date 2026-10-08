@@ -349,6 +349,7 @@ enum BrandingOverlayProcessor {
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
         exportSession.videoComposition = videoComposition
+        exportSession.audioMix = RecordingAudioMixdown.audioMix(for: composition)
         exportSession.shouldOptimizeForNetworkUse = true
 
         onProgress?(0.8)
