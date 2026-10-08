@@ -169,6 +169,7 @@ internal sealed partial class WindowChecks
         SideBySide(editor);
         CameraBorder(editor);
         CanvasShapes(editor);
+        VolumeSlider(editor);
         Extras(editor);
         Gestures(editor);
         DefaultLook(editor);
@@ -188,6 +189,15 @@ internal sealed partial class WindowChecks
         var refused = new List<string>();
         var sliders = 0;
         Try("StudioPaddingSlider", "StudioScreenCornerRadiusSlider", "StudioScreenShadowSlider", "StudioCameraCornerRadiusSlider", "StudioCameraSizeSlider", "StudioCameraOffsetXSlider", "StudioCameraOffsetYSlider", "StudioCameraBorderSlider", "StudioCameraShadowSlider");
+
+        // The volume cannot be moved while Mute is on, which is how the checks before this one left it.
+        if (Find(editor, "StudioMuteCheckBox") is { IsToggledOn: true } mute)
+        {
+            mute.Toggle();
+            Until(() => Find(editor, VolumeSliderId, 0.5)?.IsEnabled, enabled => enabled == true, 2);
+        }
+
+        Try(VolumeSliderId);
         Find(editor, "StudioLayoutSideBySide")?.Select();
         Try("StudioCameraShareSlider");
 
@@ -196,7 +206,7 @@ internal sealed partial class WindowChecks
         Try("StudioCameraCropLeftSlider", "StudioCameraCropTopSlider", "StudioCameraCropRightSlider", "StudioCameraCropBottomSlider");
         _report.Check(
             "every slider of the inspector can be set to its lowest and to its highest value through UI Automation",
-            refused.Count == 0 && sliders == 18,
+            refused.Count == 0 && sliders == 19,
             refused.Count == 0 ? $"{sliders} sliders" : string.Join("; ", refused));
 
         void Try(params string[] ids)
@@ -985,7 +995,7 @@ internal sealed partial class WindowChecks
         + $"screen radius {F(p.Screen.CornerRadius)}, shadow {F(p.Screen.Shadow)}; "
         + $"camera {p.Camera.Shape}, radius {F(p.Camera.CornerRadius)}, mirrored {p.Camera.Mirror}, border {F(p.Camera.BorderWidth)}, shadow {F(p.Camera.Shadow)}; "
         + $"layout {p.Scenes[0].Layout}, bubble {p.Scenes[0].Bubble.Anchor} {F(p.Scenes[0].Bubble.Size)} {F(p.Scenes[0].Bubble.OffsetX)} {F(p.Scenes[0].Bubble.OffsetY)}, split {p.Scenes[0].Split.CameraSide} {F(p.Scenes[0].Split.CameraFraction)}; "
-        + $"badge {p.Overlays.Branding}, click rings {p.Overlays.Clicks.Enabled}, muted {p.Audio.Muted}; "
+        + $"badge {p.Overlays.Branding}, click rings {p.Overlays.Clicks.Enabled}, muted {p.Audio.Muted}, volume {F(p.Audio.Volume)}; "
         + $"screen crop {Describe(p.Screen.Crop)}, camera crop {Describe(p.Camera.Crop)}; "
         + $"zooms {(p.Zooms.Length == 0 ? "none" : string.Join(", ", p.Zooms.Select(Describe)))}";
 

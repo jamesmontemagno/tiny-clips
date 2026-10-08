@@ -87,7 +87,7 @@ internal sealed partial class WindowChecks
         string[] summaries =
         [
             "Scene: layout, splits, and transitions", "Background and padding", "Screen: corners, shadow, clicks, and crop", "Camera: placement, appearance, and crop",
-            "Zooms", "Cuts", "Speed changes", "Audio: mute", "Project: badge, storage, and default look",
+            "Zooms", "Cuts", "Speed changes", "Audio: mute and volume", "Project: badge, storage, and default look",
         ];
 
         // As it opens.

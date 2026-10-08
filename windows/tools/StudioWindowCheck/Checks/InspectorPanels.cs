@@ -99,7 +99,7 @@ internal sealed partial class WindowChecks
             "StudioSpeedStartLaterButton", "StudioSpeedStartAtPlayheadButton", "StudioSpeedEndText", "StudioSpeedEndEarlierButton",
             "StudioSpeedEndLaterButton", "StudioSpeedEndAtPlayheadButton", "StudioSpeedLengthText", "StudioSpeedSilentNote", "StudioDeleteSpeedButton");
         Add(StudioInspectorPanel.Audio, CropGroup.None,
-            "StudioMuteCheckBox");
+            "StudioMuteCheckBox", "StudioVolumeSlider");
         Add(StudioInspectorPanel.Project, CropGroup.None,
             "StudioBrandingCheckBox", "StudioKeepProjectCheckBox", "StudioKeepProjectNote", "StudioSaveDefaultLookButton", "StudioDefaultLookNote",
             "StudioDefaultLookStatus", "StudioSaveProjectButton", "StudioSaveProjectNote", "StudioDeleteProjectButton", "StudioDeleteProjectNote");

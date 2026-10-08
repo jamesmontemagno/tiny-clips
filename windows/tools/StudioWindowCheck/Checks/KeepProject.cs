@@ -68,18 +68,18 @@ internal sealed partial class WindowChecks
         var (badge, keep, look) = (walked.FindIndex(e => e.Id == "StudioBrandingCheckBox"), walked.FindIndex(e => e.Id == KeepBox), walked.FindIndex(e => e.Id == "StudioSaveDefaultLookButton"));
         var heading = badge < 0 ? -1 : walked.FindIndex(badge, e => e.ControlType == ControlTypeNames.Text && e.Name == "Storage");
 
-        // The Tab key, with each panel on show in turn: Mute is the Audio panel's one stop, and Project is the panel after it.
+        // The Tab key, with each panel on show in turn: Mute and Volume are the Audio panel's two stops, and Project is the panel after it.
         var order = TabStops(editor);
         File.WriteAllLines(Path.Combine(_output, "tab-order-project.txt"), order);
-        var (muteStop, badgeStop, keepStop, lookStop) = (order.IndexOf("StudioMuteCheckBox"), order.IndexOf("StudioBrandingCheckBox"), order.IndexOf(KeepBox), order.IndexOf("StudioSaveDefaultLookButton"));
+        var (muteStop, volumeStop, badgeStop, keepStop, lookStop) = (order.IndexOf("StudioMuteCheckBox"), order.IndexOf(VolumeSliderId), order.IndexOf("StudioBrandingCheckBox"), order.IndexOf(KeepBox), order.IndexOf("StudioSaveDefaultLookButton"));
         _report.Check(
-            "Keep this project is a check box of the Project panel, under a heading Storage, after Tiny Clips badge and before Save as default look, both in what a screen reader walks and in the order of the Tab key, where the Project panel comes after Mute; it is off for a project whose file says it is not kept, and it says what keeping means",
+            "Keep this project is a check box of the Project panel, under a heading Storage, after Tiny Clips badge and before Save as default look, both in what a screen reader walks and in the order of the Tab key, where the Project panel comes after Mute and Volume; it is off for a project whose file says it is not kept, and it says what keeping means",
             box is { ControlType: ControlTypeNames.CheckBox, Name: "Keep this project", IsEnabled: true, IsKeyboardFocusable: true, IsToggledOn: false } && box.HelpText == KeepHelp && tip == KeepTip
                 && inFile == false && title == "Project" && badge >= 0 && badge < heading && heading < keep && keep < look
-                && muteStop >= 0 && badgeStop == muteStop + 1 && keepStop == badgeStop + 1 && lookStop == keepStop + 1,
+                && muteStop >= 0 && volumeStop == muteStop + 1 && badgeStop == volumeStop + 1 && keepStop == badgeStop + 1 && lookStop == keepStop + 1,
             $"{box}, {OnOff(box?.IsToggledOn)}, enabled {box?.IsEnabled}, can take the focus {box?.IsKeyboardFocusable}; described as \"{box?.HelpText}\"; its tooltip: \"{tip}\"; the file says {KeptText(inFile)}; "
                 + $"the panel is called \"{title}\"; of the {walked.Count} elements a screen reader walks, Tiny Clips badge is number {badge}, the heading Storage {heading}, the check box {keep} and Save as default look {look}; "
-                + $"of the {order.Count} stops of the Tab key, Mute is number {muteStop}, Tiny Clips badge {badgeStop}, the check box {keepStop} and Save as default look {lookStop} (saved as tab-order-project.txt)");
+                + $"of the {order.Count} stops of the Tab key, Mute is number {muteStop}, Volume {volumeStop}, Tiny Clips badge {badgeStop}, the check box {keepStop} and Save as default look {lookStop} (saved as tab-order-project.txt)");
 
         // An edit first, and its save, so that there is something to undo and nothing waiting to be written.
         Timeline.Mark("3: Keep this project, switched on");

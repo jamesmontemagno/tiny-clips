@@ -342,23 +342,31 @@ internal sealed partial class HeadlessChecks
         // The switch every other check runs with: both players muted and at volume zero, whatever the project says.
         var session = OpenSession(TestMedia.Camera);
         var forced = new List<string>();
-        foreach (var muted in new[] { false, true, false })
+        foreach (var (muted, volume) in new[] { (false, 1.0), (true, 0.5), (false, 0.5), (false, 0.0), (true, 1.0), (false, 0.25) })
         {
-            session.Update(session.Project with { Audio = new StudioAudio { Muted = muted } });
+            session.Update(session.Project with { Audio = new StudioAudio { Muted = muted, Volume = volume } });
             session.WaitForIdle();
             var state = session.Engine.GetDiagnostics();
-            if (!state.PlayerMuted[0] || !state.PlayerMuted[1] || state.PlayerVolume[0] != 0 || state.PlayerVolume[1] != 0 || state.ProjectMuted != muted)
+            if (!state.PlayerMuted[0] || !state.PlayerMuted[1] || state.PlayerVolume[0] != 0 || state.PlayerVolume[1] != 0 || state.ProjectMuted != muted || state.ProjectVolume != volume)
             {
-                forced.Add($"project muted {muted}: IsMuted screen {state.PlayerMuted[0]}, camera {state.PlayerMuted[1]}; volume {F(state.PlayerVolume[0])}/{F(state.PlayerVolume[1])}; engine saw muted {state.ProjectMuted}");
+                forced.Add($"project muted {muted}, volume {F(volume)}: IsMuted screen {state.PlayerMuted[0]}, camera {state.PlayerMuted[1]}; volume {F(state.PlayerVolume[0])}/{F(state.PlayerVolume[1])}; engine saw muted {state.ProjectMuted}, volume {F(state.ProjectVolume)}");
             }
         }
 
+        // The volume changed while it plays, as a slider that is dragged does.
         session.Engine.Play();
-        Thread.Sleep(300);
+        Thread.Sleep(150);
+        session.Update(session.Project with { Audio = new StudioAudio { Volume = 0.8 } });
+        Thread.Sleep(150);
         var playing = session.Engine.GetDiagnostics();
         session.Engine.Pause();
         session.WaitForIdle();
-        _report.Check("with the checks' force-mute both players are muted and at volume zero whatever the project says, also while playing", forced.Count == 0 && playing.PlayerMuted[0] && playing.PlayerMuted[1] && playing.PlayerVolume[0] == 0, string.Join(" | ", forced));
+        _report.Check(
+            "with the checks' force-mute both players are muted and at volume zero whatever the project says of mute and of its volume, also while playing and while the volume changes; the engine is told each volume",
+            forced.Count == 0 && playing.PlayerMuted[0] && playing.PlayerMuted[1] && playing.PlayerVolume[0] == 0 && playing.PlayerVolume[1] == 0 && playing.ProjectVolume == 0.8,
+            forced.Count == 0
+                ? $"six projects, then while playing: volume {F(playing.PlayerVolume[0])}/{F(playing.PlayerVolume[1])}, muted {playing.PlayerMuted[0]}/{playing.PlayerMuted[1]}, the engine saw volume {F(playing.ProjectVolume)}"
+                : string.Join(" | ", forced));
         Close(session);
 
         // The project's flag reaching the screen player can only be seen on a player that is not
@@ -382,20 +390,22 @@ internal sealed partial class HeadlessChecks
                 wrong.Add($"after open with muted {startMuted}: screen IsMuted {open.PlayerMuted[0]}, camera IsMuted {open.PlayerMuted[1]}, volume {F(open.PlayerVolume[0])}");
             }
 
-            foreach (var muted in new[] { !startMuted, startMuted, !startMuted })
+            // The project's volume changes with it. The players stay at zero: that is what
+            // this option is for, and with it the volume is the engine's to know, not theirs.
+            foreach (var (muted, volume) in new[] { (!startMuted, 0.5), (startMuted, 1.0), (!startMuted, 0.25) })
             {
-                session.Update(session.Project with { Audio = new StudioAudio { Muted = muted } });
+                session.Update(session.Project with { Audio = new StudioAudio { Muted = muted, Volume = volume } });
                 session.WaitForIdle();
                 var state = session.Engine.GetDiagnostics();
-                if (state.PlayerMuted[0] != muted || !state.PlayerMuted[1] || state.PlayerVolume[0] != 0)
+                if (state.PlayerMuted[0] != muted || !state.PlayerMuted[1] || state.PlayerVolume[0] != 0 || state.PlayerVolume[1] != 0 || state.ProjectVolume != volume)
                 {
-                    wrong.Add($"project muted {muted}: screen IsMuted {state.PlayerMuted[0]}, camera IsMuted {state.PlayerMuted[1]}, volume {F(state.PlayerVolume[0])}");
+                    wrong.Add($"project muted {muted}, volume {F(volume)}: screen IsMuted {state.PlayerMuted[0]}, camera IsMuted {state.PlayerMuted[1]}, volume {F(state.PlayerVolume[0])}/{F(state.PlayerVolume[1])}, the engine saw volume {F(state.ProjectVolume)}");
                 }
             }
 
             var shown = session.ReadShown();
             _report.Check(
-                $"project.Audio.Muted reaches the screen player's IsMuted and the camera player stays muted (opened with muted = {startMuted}; screen file without an audio track, volume zero)",
+                $"project.Audio.Muted reaches the screen player's IsMuted and the camera player stays muted, and both players stay at volume zero while the project's volume changes, which the engine is told (opened with muted = {startMuted}; screen file without an audio track, volume zero)",
                 wrong.Count == 0 && shown.Screen == 0,
                 wrong.Count == 0 ? null : string.Join(" | ", wrong));
             Close(session);

@@ -440,14 +440,15 @@ internal sealed partial class WindowChecks
         // top to bottom: the two buttons that step, Layout, Split scene, Transition and its
         // Duration, the three Start buttons, and Delete scene. Then the first stops of the
         // panels after it, in the order of the rail: Show background, Click highlights, the
-        // three buttons that add a zoom, a cut and a speed change, and Mute. And the timeline:
+        // three buttons that add a zoom, a cut and a speed change, and Mute with the volume
+        // after it. And the timeline:
         // its row from left to right, then the four lanes from top to bottom, each one stop,
         // and the trim bar.
         string[] wanted =
         [
             InspectorRailId, "StudioPreviousSceneButton", "StudioNextSceneButton", "StudioLayoutChoice", "StudioSceneSectionSplitButton", "StudioSceneEntryChoice", "StudioSceneMoveSlider",
             "StudioSceneStartEarlierButton", "StudioSceneStartLaterButton", "StudioSceneStartAtPlayheadButton", "StudioDeleteSceneButton",
-            "StudioShowBackgroundCheckBox", "StudioClickRingsCheckBox", "StudioZoomSectionAddButton", "StudioCutSectionAddButton", "StudioSpeedSectionAddButton", "StudioMuteCheckBox",
+            "StudioShowBackgroundCheckBox", "StudioClickRingsCheckBox", "StudioZoomSectionAddButton", "StudioCutSectionAddButton", "StudioSpeedSectionAddButton", "StudioMuteCheckBox", "StudioVolumeSlider",
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
             SceneLane, ZoomLane, CutLane, SpeedLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];

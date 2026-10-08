@@ -100,6 +100,43 @@ internal static class ExportChecks
             ExpectNumbers(context, reading, 180, index => index, null);
         });
 
+        await harness.Check("exports", "export (c2): the volume at 100%, at 50% and at 0%", async context =>
+        {
+            // The same recording three times, which differ in audio.volume only. The sound is read
+            // back from each file as samples; nothing is played.
+            var readings = new List<(double Volume, DecodedAudio Audio, double Rms, int Peak)>();
+            foreach (var (label, volume) in new[] { ("c2-100", 1.0), ("c2-50", 0.5), ("c2-0", 0.0) })
+            {
+                var project = Projects.Create(clips.Screen, null) with { Audio = new StudioAudio { Volume = volume } };
+                var (result, _, _) = await Exporting.ExportAndVerify(context, label, project, clips.Screen, null, 1920, 1080, 30, 1, expectAudio: true, verify: false);
+                context.Expect(result.HasAudio, $"{label}: the result says the export has no sound");
+                if (Media.ReadAudio(result.OutputPath) is not { } audio)
+                {
+                    context.Fail($"{label}: the export has no sound track that can be read back");
+                    return;
+                }
+
+                var rms = Math.Sqrt(audio.Left.Sum(sample => (double)sample * sample) / Math.Max(1, audio.Length));
+                var peak = audio.Left.Max(sample => Math.Abs((int)sample));
+                readings.Add((volume, audio, rms, peak));
+                context.Note(string.Create(CultureInfo.InvariantCulture, $"{label}: {audio.Length} samples at {audio.SampleRate} Hz, {audio.Channels} channel(s); loudness (RMS) {rms:0.0}, peak {peak} of 32768"));
+            }
+
+            var (full, half, none) = (readings[0], readings[1], readings[2]);
+            context.Expect(full.Rms > 100, $"the recording's sound is too quiet to measure a volume by (RMS {full.Rms:0.0})");
+            context.Expect(half.Audio.Length == full.Audio.Length && none.Audio.Length == full.Audio.Length, $"the three sound tracks are {full.Audio.Length}, {half.Audio.Length} and {none.Audio.Length} samples long");
+
+            // Half the samples is 20 log 0.5 = -6.02 dB. The AAC encoder between here and there is given a tenth of a decibel either way.
+            var decibels = 20 * Math.Log10(half.Rms / Math.Max(full.Rms, 1e-9));
+            context.Expect(Math.Abs(decibels + 6.02) <= 0.1, string.Create(CultureInfo.InvariantCulture, $"at 50% the sound is {decibels:0.00} dB against the one at 100%, and should be -6.02"));
+            var peaks = 20 * Math.Log10(half.Peak / (double)Math.Max(full.Peak, 1));
+            context.Expect(Math.Abs(peaks + 6.02) <= 0.5, string.Create(CultureInfo.InvariantCulture, $"at 50% the loudest sample is {peaks:0.00} dB against the one at 100%, and should be about -6.02"));
+
+            // At 0% the video has a sound track, and it is silent: the encoder is given zeros.
+            context.Expect(none.Peak <= 1, $"at 0% the sound track is not silent (peak {none.Peak} of 32768)");
+            context.Note(string.Create(CultureInfo.InvariantCulture, $"50% against 100%: {decibels:0.00} dB by loudness, {peaks:0.00} dB by the loudest sample; 0%: peak {none.Peak}"));
+        });
+
         await harness.Check("exports", "export (d): side by side", async context =>
         {
             var project = Projects.Create(clips.Screen, clips.Camera) with { Scenes = [new StudioScene { Layout = StudioLayout.SideBySide }] };

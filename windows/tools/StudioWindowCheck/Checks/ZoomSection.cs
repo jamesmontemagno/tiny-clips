@@ -383,7 +383,7 @@ internal sealed partial class WindowChecks
             "StudioScreenShadowSlider", "StudioClickRingsCheckBox", "StudioScreenCropGroup", "StudioScreenCropLeftSlider", "StudioScreenCropTopSlider", "StudioScreenCropRightSlider", "StudioScreenCropBottomSlider",
             "StudioNextZoomButton", "StudioZoomSectionAddButton", "StudioZoomScaleSlider", "StudioZoomFocusChoice", "StudioZoomFocusXSlider", "StudioZoomFocusYSlider",
             "StudioZoomStartEarlierButton", "StudioZoomStartLaterButton", "StudioZoomStartAtPlayheadButton", "StudioZoomEndEarlierButton", "StudioZoomEndLaterButton", "StudioZoomEndAtPlayheadButton",
-            "StudioZoomEaseInSlider", "StudioZoomEaseOutSlider", "StudioDeleteZoomButton", "StudioMuteCheckBox",
+            "StudioZoomEaseInSlider", "StudioZoomEaseOutSlider", "StudioDeleteZoomButton", "StudioMuteCheckBox", "StudioVolumeSlider",
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioStartHereButton", "StudioEndHereButton", "StudioZoomLane", "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         var places = wanted.Select(id => order.IndexOf(id)).ToArray();
@@ -391,7 +391,7 @@ internal sealed partial class WindowChecks
         var outOfOrder = places.Where(place => place >= 0).ToArray() is var found && !found.SequenceEqual(found.Order());
         var unexpected = order.Where(id => id is "StudioZoomFocusPad" or "StudioZoom_0" or "StudioZoom_1" or "StudioZoom_2").ToArray();
         _report.Check(
-            "the keyboard focus, moved from stop to stop with each panel on show in turn, reaches Click highlights, the Crop group's header and its four sliders after the screen's shadow, then every control of the Zoom panel in the order they are shown, then Mute; in the timeline Add zoom comes before Start here, and the lane is one stop between End here and the trim bar; the focus pad and the single zooms are not stops",
+            "the keyboard focus, moved from stop to stop with each panel on show in turn, reaches Click highlights, the Crop group's header and its four sliders after the screen's shadow, then every control of the Zoom panel in the order they are shown, then Mute and Volume; in the timeline Add zoom comes before Start here, and the lane is one stop between End here and the trim bar; the focus pad and the single zooms are not stops",
             missing.Length == 0 && !outOfOrder && unexpected.Length == 0,
             missing.Length == 0 && !outOfOrder && unexpected.Length == 0
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"
