@@ -112,7 +112,9 @@ The owner, about the Windows editor: "The only thing I could think of adding is 
 | What the project says | A new property of the shared format, `audio.volume`: a number, 1 when missing, clamped to 0 to 1 when used. It is in the gain of every sound track, a `mixed` one too, which `audio.systemVolume` and `audio.microphoneVolume` do not reach. `audio.muted` still silences everything. Section 7 of the format has the rule |
 | Preview and export | The preview plays at that volume and the export has it, and the two are to agree |
 
-On Windows it was built the same day: "The volume on Windows (8 October)" under "Implementation status" has what was run and what nobody has heard. The Mac side is compiled and unit tested in CI, and has not been run on a Mac.
+On Windows it was built the same day: "The volume on Windows (8 October)" under "Implementation status" has what was run and what nobody has heard. The Mac side was written the same hour by the Windows lead, on the PC (`2809ebd`): the property, the gain of every track times it in `StudioSound.trackGains`, which the Mac's preview and export both take their mix from, and the slider. Its Foundation-only part was compiled and tested on Linux in the Swift container, and the whole of it by the Mac build in CI (362 tests, none failing). **It has not been run on a Mac: nobody has moved that slider or heard the result.**
+
+Checked on the PC after both sides were in: the folder the owner saved on his Mac, exported by the Windows exporter at 100% and with `audio.volume` at 0.5. The sound of the second is 6.0 dB below the first (mean −42.9 and −48.9 dB, peak −17.0 and −23.0), and its picture is the same bytes as a second export at 100%.
 
 ## Where the code is today
 
@@ -358,7 +360,7 @@ A recording can have the computer's sound and the microphone in one file. Where 
 
 **What the project says.** `sources.screen.audioTracks` lists what each sound track of the screen file holds, in the file's order: `system`, `microphone`, or `mixed`. `audio.systemVolume` and `audio.microphoneVolume` are the two volumes. A track that holds both, a track the project says nothing about, and every track of a file the list does not fit play as recorded. Mute still takes all sound away.
 
-**Audio panel in the inspector.** Mute, and under it a slider for each kind of sound the recording has in a track of its own: System audio and Microphone, in steps of 5 percent. A recording with one mixed track, or one made before the list existed, shows Mute alone. A drag is one undo step. The preview plays with the volumes as they are set, without rebuilding anything.
+**Audio panel in the inspector.** Mute, and under it **Volume**, the volume of the whole video's sound, which every recording has (since 8 October, on both platforms). On the Mac, under that, a slider for each kind of sound the recording has in a track of its own: System audio and Microphone. All in steps of 5 percent. A recording with one mixed track, or one made before the list existed, shows Mute and Volume. While Mute is on the sliders are switched off. A drag is one undo step. The preview plays with the volumes as they are set, without rebuilding anything.
 
 **macOS.** The recorder already writes the computer's sound and the microphone as two tracks. It now tells the project which is which, and only when the file really has one track for each sound it set out to record. Preview and export play each track at its volume through an audio mix. Since 7 October the export is always given a mix when it has more than one sound track, which is what makes an export session write them as one.
 
@@ -1260,7 +1262,7 @@ First with the switch off, against the released build: no `Application Support/T
 3. Scenes: the corner move from the recording should be a second scene on the lane. Press S to split, give the new scene another layout, and switch how it is entered between a cut and a move. Drag a scene's start on the lane.
 4. Cuts: press X, drag the cut and its ends, and play over it. A few frames of the cut may show before the jump.
 5. Speed: press R, pick each rate, and play over the stretch. It should be silent there and the playhead should keep up. Try 8× and 0.25×.
-6. Volumes: record with the computer's sound and the microphone, and move each slider while playing. Then mute.
+6. Volumes: record with the computer's sound and the microphone, and move each slider while playing. Then mute. **Volume** (8 October, never run on a Mac): it should be under Mute for every recording, also one with a single sound track; at 50% the preview should be quieter at once, and with System audio or Microphone turned down as well, quieter still; an export at 50% should sound like the preview at 50%; while Mute is on it should be dimmed; one drag should be one Undo.
 7. Camera background: Blur, then Remove, in each layout and each camera shape, paused and playing, and right after a seek. This is the code most likely to need work.
 8. Export a project with all of these and compare it with the preview. Check that the sound is in step after a stretch at another speed.
 9. What the two reviewers could not settle by reading, most likely first:
