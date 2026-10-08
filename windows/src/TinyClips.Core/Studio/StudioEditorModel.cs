@@ -152,6 +152,17 @@ public readonly record struct StudioZoomEditResult(bool Changed, int? Index);
 /// <param name="FocusY">Where the zoom looks, from 0 at the pad's top edge to 1 at its bottom.</param>
 public readonly record struct StudioZoomPad(double AspectRatio, StudioFrameRect Window, double FocusX, double FocusY);
 
+/// <summary>
+/// What a press on a block of the zoom, cut, or speed lane takes hold of: the whole block, to
+/// move it, or one of its ends, to change when it starts or stops.
+/// </summary>
+public enum StudioLaneBlockPart
+{
+    Body,
+    Start,
+    End,
+}
+
 /// <summary>An edge of a crop.</summary>
 public enum StudioCropEdge
 {
@@ -1176,6 +1187,57 @@ public sealed partial class StudioEditorModel
     }
 
     // Geometry
+
+    /// <summary>How wide the handle at each end of a lane block is.</summary>
+    public const double LaneHandleWidth = 8;
+
+    /// <summary>
+    /// The narrowest block with room for a handle inside each end and something to move it by
+    /// between them.
+    /// </summary>
+    public const double LaneHandleMinimumBlockWidth = 28;
+
+    /// <summary>Whether a block has its handles inside its ends.</summary>
+    public static bool LaneBlockHasInsideHandles(double blockWidth) =>
+        double.IsFinite(blockWidth) && blockWidth >= LaneHandleMinimumBlockWidth;
+
+    /// <summary>
+    /// How far a block's handles stand out past each of its ends. A block with room has them
+    /// inside. A narrower one gets them outside while it is selected, so a cut of one second in
+    /// a long recording can still be made longer by dragging.
+    /// </summary>
+    public static double GetLaneHandleOutset(double blockWidth, bool isSelected) =>
+        isSelected && !LaneBlockHasInsideHandles(blockWidth) ? LaneHandleWidth : 0;
+
+    /// <summary>
+    /// What a press at <paramref name="x"/> takes hold of, with x measured from the block's left
+    /// edge: below 0 and past <paramref name="blockWidth"/> are the handles that stand outside a
+    /// narrow selected block.
+    /// </summary>
+    public static StudioLaneBlockPart GetLaneBlockPart(double x, double blockWidth, bool isSelected)
+    {
+        if (LaneBlockHasInsideHandles(blockWidth))
+        {
+            if (x <= LaneHandleWidth)
+            {
+                return StudioLaneBlockPart.Start;
+            }
+
+            return x >= blockWidth - LaneHandleWidth ? StudioLaneBlockPart.End : StudioLaneBlockPart.Body;
+        }
+
+        if (!(GetLaneHandleOutset(blockWidth, isSelected) > 0))
+        {
+            return StudioLaneBlockPart.Body;
+        }
+
+        if (x < 0)
+        {
+            return StudioLaneBlockPart.Start;
+        }
+
+        return x > blockWidth ? StudioLaneBlockPart.End : StudioLaneBlockPart.Body;
+    }
 
     /// <summary>The canvas aspect-fitted and centered in a view.</summary>
     public static StudioEditorCanvasGeometry GetCanvasGeometry(double viewWidth, double viewHeight, double canvasWidth, double canvasHeight)
