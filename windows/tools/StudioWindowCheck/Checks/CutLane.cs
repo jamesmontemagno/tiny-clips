@@ -762,10 +762,35 @@ internal sealed partial class WindowChecks
         var granted = Until(Start, value => Same(value, 11.7), 1.5);
         Thread.Sleep(300);
         var grantedApart = Apart().Start;
+
+        // In one run of four on 7 October 2026 the handle was read 188.6 px from its place here.
+        // What was read then is not known, so when it is off, everything that goes into the
+        // number is written down, with what the bar itself holds, and it is read once more.
+        var grantedWords = string.Empty;
+        if (grantedApart > 2)
+        {
+            string Read()
+            {
+                var bar = Find(editor, "StudioTrimBar");
+                var start = Find(editor, "StudioTrimStart");
+                var held = OnUi(() =>
+                {
+                    var thumb = Descendant<FrameworkElement>(editor.Window.Content, "StudioTrimStart");
+                    var trimBar = Descendant<FrameworkElement>(editor.Window.Content, "StudioTrimBar");
+                    return $"the bar is {F(trimBar?.ActualWidth ?? double.NaN, "0.#")} wide and has the handle at {F(thumb is null ? double.NaN : Microsoft.UI.Xaml.Controls.Canvas.GetLeft(thumb), "0.#")}; the editor holds {Seconds(editor.Window.ViewModel.TrimStart)} to {Seconds(editor.Window.ViewModel.TrimEnd)} s of {Seconds(editor.Window.ViewModel.SourceDuration)} s";
+                });
+                return $"UI Automation has the bar in {bar?.Bounds} and the handle in {start?.Bounds} with the value {(start?.Range is { } range ? F(range.Value) : "none")}; {held}";
+            }
+
+            grantedWords = $"; when it was read: {Read()}";
+            Thread.Sleep(700);
+            grantedWords += $"; a second later it is drawn {F(Apart().Start, "0.#")} px from where that is: {Read()}";
+        }
+
         _report.Check(
             "once the cut at the end is deleted, the same request is granted: Start goes to 11.7 s, and is drawn there",
             Same(granted, 11.7) && grantedApart <= 2,
-            $"Start reports {Seconds(granted)} s and is drawn {F(grantedApart, "0.#")} px from where that is");
+            $"Start reports {Seconds(granted)} s and is drawn {F(grantedApart, "0.#")} px from where that is{grantedWords}");
         CloseQuietly(editor);
     }
 }

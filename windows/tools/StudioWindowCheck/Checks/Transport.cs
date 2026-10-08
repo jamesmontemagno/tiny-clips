@@ -148,12 +148,36 @@ internal sealed partial class WindowChecks
         var offersPause = Until(() => NameOf(editor, "StudioPlayPauseButton", 0), name => name == "Pause", 2) == "Pause";
 
         // Three looks while it plays: the picture, then at once the playhead and the time.
+        // "At once" is the tool's doing, and on a PC that is busy with something else a look
+        // can take a second: the playhead is then read that much later than the picture was
+        // taken, and is that many frames ahead of it. In a run of 7 October 2026 the three
+        // looks were 16 and 43 frames apart where they are 8 or 9, and the playhead was 18
+        // frames ahead of the picture. So looks that took too long are made again, twice at
+        // most, while the preview plays on, and the note says so.
+        const double SlowLook = 0.45;
         var looks = new List<(int Picture, int Playhead, string Time)>();
-        for (var look = 0; look < 3; look++)
+        var slowest = 0.0;
+        var heldUp = new List<string>();
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            Thread.Sleep(160);
-            var picture = Look(editor)?.Shown.Screen ?? FrameCode.Unreadable;
-            looks.Add((picture, FrameOf(Playhead(editor)), TimeText(editor)));
+            looks.Clear();
+            slowest = 0;
+            for (var look = 0; look < 3; look++)
+            {
+                var began = Stopwatch.GetTimestamp();
+                Thread.Sleep(160);
+                var picture = Look(editor)?.Shown.Screen ?? FrameCode.Unreadable;
+                looks.Add((picture, FrameOf(Playhead(editor)), TimeText(editor)));
+                slowest = Math.Max(slowest, Stopwatch.GetElapsedTime(began).TotalSeconds);
+            }
+
+            if (slowest <= SlowLook)
+            {
+                break;
+            }
+
+            heldUp.Add($"{string.Join("; ", looks.Select(l => $"{l.Picture} / {l.Playhead}"))}, the slowest look {F(slowest * 1000, "0")} ms");
+            before = looks[^1].Picture;
         }
 
         var advancing = looks.Select(l => l.Picture).Prepend(before).SequenceEqual(looks.Select(l => l.Picture).Prepend(before).Order())
@@ -165,7 +189,9 @@ internal sealed partial class WindowChecks
             "Play: the button offers Pause, and the picture, the playhead and the time all move on together",
             invoked && offersPause && advancing && apart <= 6,
             $"picture / playhead frame / time, about 160 ms apart: {string.Join("; ", looks.Select(l => $"{l.Picture} / {l.Playhead} / \"{l.Time}\""))}");
-        _report.Note($"while playing, the playhead the window reported was at most {apart} frame(s) from the frame in the screenshot taken just before it");
+        _report.Note(
+            $"while playing, the playhead the window reported was at most {apart} frame(s) from the frame in the screenshot taken just before it; the slowest of the three looks took {F(slowest * 1000, "0")} ms"
+            + (heldUp.Count == 0 ? string.Empty : $"; looked again because the tool was held up, {heldUp.Count} time(s): {string.Join(" | ", heldUp)}"));
 
         var paused = Invoke(editor, "StudioPlayPauseButton");
         var offersPlay = Until(() => NameOf(editor, "StudioPlayPauseButton", 0), name => name == "Play", 2) == "Play";

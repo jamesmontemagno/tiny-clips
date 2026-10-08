@@ -14,7 +14,8 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 // itself and what does not, where the keyboard focus goes when the panel that held it goes
 // away, a recording without a camera, and the two crop groups.
 //
-// WRITTEN ON 6 OCTOBER 2026 IN QUIET MODE AND NOT RUN. Everything here reads the window as it
+// Written on 6 October 2026 without a check tool, and first run on 7 October: see "The first
+// runs, on 7 October 2026" in the README. Everything here reads the window as it
 // is: it looks with FindAsItIs and never has a panel shown for it, except where it says so.
 // The rail is the framework's list, and its Up, Down, Home and End are the list's own. The
 // tool presses no keys, so those four are not checked here: what is checked is that the list

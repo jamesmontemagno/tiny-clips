@@ -9,6 +9,10 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 internal sealed partial class WindowChecks
 {
     // The controls a person operates. Each needs an automation id as well as a name.
+    // The sliders of a window that is exporting with the Camera panel on show: the camera's own,
+    // and the trim bar's three.
+    private const int ExportingSliders = 8;
+
     private static readonly int[] Operated =
     [
         ControlTypeNames.Button, ControlTypeNames.CheckBox, ControlTypeNames.ComboBox, ControlTypeNames.RadioButton, ControlTypeNames.Slider, ControlTypeNames.ListItem,
@@ -83,11 +87,13 @@ internal sealed partial class WindowChecks
     /// <summary>
     /// Audits the window in the state it is in now, with each panel of its inspector on show in
     /// turn and both crop groups open, saves the trees next to the report, and records one check.
-    /// See <see cref="ReadEveryPanel"/>.
+    /// See <see cref="ReadEveryPanel"/>. With <paramref name="asItIs"/> the window is read once,
+    /// with the panel that is on show: for a state that does not last through a reading of
+    /// every panel, and in which a person cannot bring up another panel either.
     /// </summary>
-    private void AuditState(Editor editor, string state, string fileName, int slidersWanted, Func<List<(int Depth, UiaElement Element)>, string?>? also = null)
+    private void AuditState(Editor editor, string state, string fileName, int slidersWanted, Func<List<(int Depth, UiaElement Element)>, string?>? also = null, bool asItIs = false)
     {
-        var (tree, problems, elements, sliders, panes, saved) = ReadEveryPanel(editor, fileName);
+        var (tree, problems, elements, sliders, panes, saved) = asItIs ? ReadAsItIs(editor, fileName) : ReadEveryPanel(editor, fileName);
         var extra = also?.Invoke(tree);
         if (extra is not null)
         {
@@ -103,6 +109,14 @@ internal sealed partial class WindowChecks
             $"{state}: every control has a name, every control a person operates has an automation id, and every slider reports its value inside its range, its step and its value as text",
             elements > 0 && problems.Count == 0,
             problems.Count == 0 ? $"{elements} elements, {sliders} sliders; {panes} pane(s) without a name, none of which can take the focus; saved as {saved}" : string.Join("; ", problems));
+    }
+
+    private (List<(int Depth, UiaElement Element)> Tree, List<string> Problems, int Elements, int Sliders, int Panes, string Saved) ReadAsItIs(Editor editor, string fileName)
+    {
+        var tree = Content(editor);
+        SaveTree(fileName, tree);
+        var (problems, elements, sliders, panes) = Audit(tree);
+        return (tree, problems, elements, sliders, panes, fileName);
     }
 
     private void Accessibility()
@@ -171,18 +185,31 @@ internal sealed partial class WindowChecks
         Find(editor, "StudioLayoutBubble")?.Select();
         Until(() => editor.Root.Find("StudioCameraSizeSlider"), found => found is not null, 2);
 
-        // While exporting: the overlay is what there is to read, and everything under it is disabled.
+        // While exporting: the overlay is what there is to read, and everything under it is
+        // disabled. The window is read once, as it is, with the Camera panel on show, where
+        // the look for the camera's size slider just above has left it: the rail is disabled
+        // with the rest, so no other panel can be brought up, and an export of this recording
+        // is over before nine panels have been read.
         Timeline.Mark("8: the export overlay");
         Invoke(editor, "StudioExportButton");
-        Find(editor, "StudioCancelExportButton", 3);
-        AuditState(editor, "while exporting", "tree-exporting.txt", 19, tree =>
+        var overlayShown = editor.Root.FindAsItIs("StudioCancelExportButton") is not null || Until(() => editor.Root.FindAsItIs("StudioCancelExportButton"), found => found is not null, 3) is not null;
+        var whileExporting = PanelShown(editor);
+
+        // A list that is disabled tells UI Automation of no selected item, so which item the
+        // rail has selected is read from the list itself.
+        var chosenOnRail = OnUi(() => Descendant<Microsoft.UI.Xaml.Controls.ListView>(editor.Window.Content, InspectorRailId)?.SelectedItem is Microsoft.UI.Xaml.DependencyObject item ? Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(item) : string.Empty);
+        AuditState(editor, "while exporting", "tree-exporting.txt", ExportingSliders, tree =>
         {
             var enabled = tree.Where(e => Operated.Contains(e.Element.ControlType) && e.Element.IsEnabled && e.Element.Id != "StudioCancelExportButton").Select(e => e.Element.Id).ToArray();
-            var bar = Find(editor, "StudioExportProgressBar", 0.5);
-            return enabled.Length > 0 ? $"still enabled under the overlay: {string.Join(", ", enabled)}"
+            var bar = editor.Root.FindAsItIs("StudioExportProgressBar");
+            var rail = tree.Select(e => e.Element).FirstOrDefault(element => element.Id == InspectorRailId);
+            return !overlayShown ? "the export did not start"
+                : !IsExporting(editor) ? "the export had ended before the window was read through"
+                : enabled.Length > 0 ? $"still enabled under the overlay: {string.Join(", ", enabled)}"
                 : bar?.Range is not { Minimum: 0, Maximum: 100 } ? "the progress bar reports no range from 0 to 100"
+                : rail is null || whileExporting.Title != "Camera" || chosenOnRail != $"{InspectorRailId}_Camera" ? $"the Camera panel is not the one on show, or not the rail's chosen item: {PanelWords(whileExporting)}, and the list itself has \"{chosenOnRail}\" selected"
                 : null;
-        });
+        }, asItIs: true);
         Invoke(editor, "StudioCancelExportButton");
         Gone(editor, "StudioCancelExportButton", 15);
 

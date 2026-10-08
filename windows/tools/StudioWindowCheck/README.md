@@ -1353,6 +1353,31 @@ rail (`--only inspector`, 88 checks).
   That the Tab key coming into the rail lands on the chosen item after a jump has changed
   the panel is still for a person to try: the tool presses no keys.
 
+Then the whole tool ran, for the first time since 5 October. Three checks failed that had
+nothing to do with what they are about, and each was the check's:
+
+- *While exporting, every control is disabled* (`accessibility`). Reading the window with
+  each of the nine panels on show in turn takes longer than the export of that recording
+  lasts: the first reading was taken as the export ended, with its progress at 100 and half
+  the window enabled again. And a list that is disabled tells UI Automation of no selected
+  item, so the step that waits for the rail to say which panel is on show waited its two
+  seconds out nine times. The export then ended where the check goes on to cancel it, the
+  project counted as exported, and the question on closing, which the next check reads, was
+  not asked: that one failed with it. The window is now read once while it exports, as it
+  is, with the Camera panel on show: the rail is disabled with the rest, so a person cannot
+  bring up another panel either. The check says so if the export has ended before the
+  reading has, and which item the rail has selected is read from the list itself. What a
+  screen reader is told of the rail while an export runs is therefore: a disabled list of
+  nine items, none of them selected. That is the framework's doing for a disabled list.
+- *Play: the picture, the playhead and the time move on together* (`transport`). The
+  playhead was 18 frames ahead of the picture, where 6 are allowed. The tool takes the
+  picture and reads the playhead right after, and in that run its three looks were 16 and
+  43 frames apart where they are 8 or 9: the PC was busy with something else, and the
+  playhead was read late. Looks that took longer than 450 ms are now made again, twice at
+  most, and a note says when that happened.
+- *The Project panel in the dark theme* (`themes`). Tiny Clips badge was reported as not
+  whole in the picture, in a picture that shows it whole: UI Automation did not give the
+  check box at that moment. It is waited for now, up to two seconds.
 
 ## Three checks on a smaller preview
 

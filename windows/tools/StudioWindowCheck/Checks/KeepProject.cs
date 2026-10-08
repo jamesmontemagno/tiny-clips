@@ -264,7 +264,8 @@ internal sealed partial class WindowChecks
         saved.Add(path);
         var box = InShot(editor, shot, view);
         string[] ids = ["StudioBrandingCheckBox", KeepBox, "StudioSaveDefaultLookButton"];
-        var places = ids.Select(id => editor.Root.Find(id) is { IsOffscreen: false } found ? found.Bounds : default).ToArray();
+        // Each is waited for: in one run the first of them was not read here, in a picture that shows it whole.
+        var places = ids.Select(id => Until(() => editor.Root.Find(id), found => found is { IsOffscreen: false, Bounds: { Width: > 0, Height: > 0 } }, 2) is { IsOffscreen: false } found ? found.Bounds : default).ToArray();
         var outside = ids.Where((_, index) => places[index] is not { Width: > 0, Height: > 0 } at
             || at.X - shot.ScreenX < box.X - 1 || at.Y - shot.ScreenY < box.Y - 1
             || at.X - shot.ScreenX + at.Width > box.X + box.Width + 1 || at.Y - shot.ScreenY + at.Height > box.Y + box.Height + 1).ToArray();
