@@ -171,8 +171,8 @@ dotnet build windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:Platform
 
 The app launches **tray-only** (no window). Left- or right-click the tray icon for the Fluent
 menu: **Screenshot**, **Capture Region**, **Record Video**, **Record GIF**, **Settings**,
-**Guide**, **Exit**, and, while Tiny Clips Studio is switched on, **Studio recording** under the
-three capture buttons. Capture items first show the **Region / Screen / Window** picker.
+**Guide**, **Exit**, and, while Tiny Clips Studio is switched on, **Studio** as a fourth capture
+button, between Video and GIF. Capture items first show the **Region / Screen / Window** picker.
 Video/GIF captures then show a setup panel before countdown and recording. Recording items toggle
 to **Stop Recording** (also `Ctrl+Shift+S`) while active, and a floating recording indicator shows
 the elapsed time. Global hotkeys work app-wide.
@@ -209,9 +209,11 @@ said before, and decides what an ordinary recording does with Studio on or off.
 
 With the switch on:
 
-- **The tray menu** has **Studio recording**, under Screenshot, Video, and GIF. It starts a
-  video recording that is saved as a project (a clean screen track, a camera track, and click
-  and cursor data) and opens in the editor when it ends. The recording setup panel says
+- **The tray menu** has a fourth capture button, **Studio**: Screenshot, Video, Studio, GIF.
+  It is the Studio recording command: it starts a video recording that is saved as a project
+  (a clean screen track, a camera track, and click and cursor data) and opens in the editor
+  when it ends. While a recording runs it is greyed, and the Video button, which says Stop
+  then, stops a Studio recording as it stops any video. The recording setup panel says
   **Studio** for such a recording, and nothing for any other. **Record video**, from the tray
   menu or with its hotkey, is always an ordinary recording, and Studio recording has no hotkey
   yet. A capture picker that comes back after a Studio recording is for another one, until a

@@ -1,8 +1,11 @@
 # Studio: a command of its own to start a Studio recording (Windows handoff)
 
 **Status:** built on macOS on 7 October 2026, and on Windows the same day from this brief
-(#431). On Windows it is compiled and unit tested and has never been run: nobody has opened the
-tray menu with the command in it, pressed it, or seen the label in the recording setup panel.
+(#431). On the evening of 7 October the owner decided where the command sits in the Windows
+tray menu: a fourth tile, **Studio**, between Video and GIF, where a wide button under the
+tiles had been built. On Windows it is compiled and unit tested and has never been run: nobody
+has opened the tray menu with the command in it, pressed it, or seen the label in the
+recording setup panel.
 What to try by hand is step 20 of the Windows hands-on checklist in
 [`plans/video-studio-plan.md`](../../plans/video-studio-plan.md). "What Windows has now" below
 says where each part is.
@@ -68,7 +71,8 @@ and that video then does what the trimmer switch says.
 
 | What | Where |
 |---|---|
-| **Studio recording**, a button under Screenshot, Video, and GIF in the tray menu, built only while Studio is switched on. The menu is built anew each time it opens, so the button follows the switch while the app runs. It is disabled while a recording runs | `App.xaml.cs`: `BuildTrayPopupContent`, `StartStudioRecordingAsync`, `UpdateRecordingState` |
+| **Studio**, a fourth capture tile in the tray menu, between Video and GIF, made only while Studio is switched on: Screenshot, Video, Studio, GIF. With Studio off the tiles are the three there always were, laid out as before. The menu is built anew each time it opens, so the tile follows the switch while the app runs. Its accessible name is "Studio recording", it keeps the automation id `TrayStudioRecordingButton`, and it has no hotkey. It only starts a recording: while a video or a GIF recording runs it is greyed, and the Video tile, which says Stop for a Studio recording as for any video, stops it | `App.xaml.cs`: `BuildTrayPopupContent`, `StartStudioRecordingAsync`, `UpdateRecordingState` |
+| The popup's width. Three tiles have the 344 they always had. With four, each label has 65.5 where it had 92; "Screenshot" needs about 61 at the usual text size, so the width stays 344. The labels are measured when the menu opens, and with four tiles the popup is made wider when one would wrap, as with a larger text size in Windows | `Infrastructure/TrayPopupLayout.cs`, tested in `TrayPopupLayoutTests`; `App.xaml.cs`: `ShowTrayPopup`, `WidestCaptureTileLabel` |
 | The flag, and the whole decision of whether a recording is one for Studio. `Begin` takes the command the recording was asked for with: Studio recording sets the flag if Studio is on, Record video and its hotkey clear it, and a capture picker that comes back by itself leaves it. `IsForStudio` and `CreateOptions` ask `StudioPreviewEnabled` when the recording is set up, and `OptionsAtStart` asks again where it starts, after the countdown and for a restart | `TinyClips.Core/Capture/StudioRecordingIntent.cs`, tested in `StudioRecordingIntentTests` |
 | Where the app tells it: `BeginCaptureAsync` calls `Begin` once the capture flow really begins, so a command that is ignored because a capture is being set up changes nothing | `App.xaml.cs`: `BeginCaptureAsync`, `ToggleVideoAsync`, `ReopenPickerAfterCaptureAsync`, `RestartActiveRecordingAsync` |
 | The recording setup panel has no toggle and decides nothing. For a Studio recording it shows a label, "Studio", read as "Studio recording", which is not a control, and Record's help text says the editor opens afterwards | `Views/RecordingSetupWindow.xaml`, `.xaml.cs`: `StudioRecordingLabel` |
@@ -80,7 +84,24 @@ has the trimmer switch as it was before that choice, because the choice left the
 until Studio was switched off.
 
 Where Windows differs from the Mac: the tray menu is a panel of buttons and not a list, so
-"under Record Video" became a wide button under the row of Screenshot, Video, and GIF.
+"under Record Video" became a tile next to Video. It was first built as a wide button under
+the row of Screenshot, Video, and GIF; the owner chose the fourth tile on the evening of
+7 October ("Decided on 7 October" in the plan has his words).
+
+What the four tiles show:
+
+| | Screenshot | Video | Studio | GIF |
+|---|---|---|---|---|
+| Nothing is recording | Screenshot | Video | Studio | GIF |
+| An ordinary video is recording | Screenshot | **Stop** | Studio, greyed | GIF, greyed |
+| A Studio recording is recording | Screenshot | **Stop** | Studio, greyed | GIF, greyed |
+| A GIF is recording | Screenshot | Video, greyed | Studio, greyed | **Stop** |
+
+Not looked at by anyone, and worked out from the font's figures and the popup's numbers:
+whether "Screenshot" really has room in a tile a quarter narrower, and what the popup looks
+like when a larger text size makes it wider. At twice the text size the popup's fixed height
+is too low for what is under the tiles, with three tiles as much as with four; that is as it
+is on `main`, and was not changed.
 
 ## How the Mac was checked
 

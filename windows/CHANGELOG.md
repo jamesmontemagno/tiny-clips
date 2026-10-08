@@ -60,8 +60,9 @@ own `CHANGELOG.md` at the repository root.
   - Studio has a page of its own in Settings, **Studio**, after Video: the switch, how a
     Studio recording is started, project storage, and the drafts.
     To try it, switch on **Tiny Clips Studio (Preview)** in Settings › Studio. Then choose
-    **Studio recording** in the tray menu, which is there while Studio is switched on. The
-    recording setup panel says **Studio** for such a recording. **Record video**, from the
+    **Studio** in the tray menu, a fourth button between Video and GIF that is there while
+    Studio is switched on. The recording setup panel says **Studio** for such a recording.
+    **Record video**, from the
     tray menu or with its hotkey, always makes an ordinary recording, and **Open trimmer after
     recording** in Settings › Video decides what that one does, as before. Studio recording
     has no hotkey yet. Switching Studio off again hides it and deletes nothing. Projects are
