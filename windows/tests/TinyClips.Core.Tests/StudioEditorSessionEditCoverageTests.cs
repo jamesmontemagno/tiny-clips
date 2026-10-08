@@ -36,6 +36,7 @@ public sealed class StudioEditorSessionEditCoverageTests : StudioEditorSessionTe
             p => p.Scenes[0].Split.CameraSide == StudioCameraSide.Leading && Near(p.Scenes[0].Split.CameraFraction, 0.45)
         },
         { "mute", s => s.SetMuted(true), p => p.Audio.Muted },
+        { "volume", s => s.SetVolume(0.5), p => Near(p.Audio.Volume, 0.5) },
         { "click rings", s => s.SetClickRingsEnabled(false), p => !p.Overlays.Clicks.Enabled },
         { "branding", s => s.SetBrandingEnabled(true), p => p.Overlays.Branding },
         { "trim start", s => s.SetTrimStart(2), p => Near(p.Edits.TrimStart, 2) },

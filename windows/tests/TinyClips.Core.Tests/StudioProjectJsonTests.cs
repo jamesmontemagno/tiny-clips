@@ -103,7 +103,7 @@ public sealed class StudioProjectJsonTests
                 }
               ],
               "zooms": [ { "scale": null, "focus": { "mode": null, "x": null, "y": null }, "origin": null } ],
-              "audio": { "systemVolume": null, "microphoneVolume": null },
+              "audio": { "volume": null, "systemVolume": null, "microphoneVolume": null },
               "overlays": { "clicks": { "enabled": null, "color": null, "size": null, "strokeWidth": null, "opacity": null, "duration": null } },
               "exports": [ { "path": null, "exportedAt": null } ]
             }
@@ -139,6 +139,7 @@ public sealed class StudioProjectJsonTests
         Assert.Equal(0.5, project.Zooms[0].Focus.X);
         Assert.Equal(0.5, project.Zooms[0].Focus.Y);
         Assert.Equal(StudioZoomOrigin.Manual, project.Zooms[0].Origin);
+        Assert.Equal(1, project.Audio.Volume);
         Assert.Equal(1, project.Audio.SystemVolume);
         Assert.Equal(1, project.Audio.MicrophoneVolume);
         Assert.True(project.Overlays.Clicks.Enabled);
@@ -374,7 +375,8 @@ public sealed class StudioProjectJsonTests
               "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } },
               "canvas": { "padding": 99 },
               "screen": { "cornerRadius": -3 },
-              "scenes": [ { "bubble": { "size": 42 } } ]
+              "scenes": [ { "bubble": { "size": 42 } } ],
+              "audio": { "volume": 7 }
             }
             """);
 
@@ -383,6 +385,7 @@ public sealed class StudioProjectJsonTests
         Assert.Equal(99, roundTripped.Canvas.Padding);
         Assert.Equal(-3, roundTripped.Screen.CornerRadius);
         Assert.Equal(42, roundTripped.Scenes[0].Bubble.Size);
+        Assert.Equal(7, roundTripped.Audio.Volume);
     }
 
     [Fact]
@@ -470,7 +473,7 @@ public sealed class StudioProjectJsonTests
                 Cuts = [new StudioTimeRange { Start = 2, End = 3 }],
                 Speed = [new StudioSpeedRange { Start = 4, End = 5, Rate = 2 }],
             },
-            Audio = new StudioAudio { Muted = true, SystemVolume = 0.5, MicrophoneVolume = 0.25 },
+            Audio = new StudioAudio { Muted = true, Volume = 0.75, SystemVolume = 0.5, MicrophoneVolume = 0.25 },
             Overlays = new StudioOverlays
             {
                 Clicks = new StudioClickOverlay { Enabled = false, Color = "#123456", Size = 20, StrokeWidth = 4, Opacity = 0.4, Duration = 0.2 },

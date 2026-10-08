@@ -538,4 +538,42 @@ public sealed class StudioPreviewAudioTests
     {
         Assert.Equal(expected, StudioPreviewAudio.IsMuted(isCamera, projectMuted, forceMuted));
     }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(0.5, 0.5)]
+    [InlineData(0.05, 0.05)]
+    [InlineData(0, 0)]
+    [InlineData(2, 1)]
+    [InlineData(-1, 0)]
+    [InlineData(double.NaN, 1)]
+    public void TheScreenPlayer_PlaysAtTheProjectsVolume_AsItIsUsed(double projectVolume, double expected)
+    {
+        Assert.Equal(expected, StudioPreviewAudio.Volume(isCamera: false, projectVolume, zeroVolume: false));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0.5)]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void APlayerACheckKeepsAtZero_StaysAtZeroWhateverTheProjectsVolume_AndSoDoesTheCameras(double projectVolume)
+    {
+        Assert.Equal(0, StudioPreviewAudio.Volume(isCamera: false, projectVolume, zeroVolume: true));
+        Assert.Equal(0, StudioPreviewAudio.Volume(isCamera: true, projectVolume, zeroVolume: true));
+        Assert.Equal(0, StudioPreviewAudio.Volume(isCamera: true, projectVolume, zeroVolume: false));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0.5)]
+    [InlineData(0)]
+    public void AMutedProject_IsMutedAtEveryVolume(double projectVolume)
+    {
+        // Mute is the player's IsMuted and the volume is its Volume: neither rule asks about the other.
+        Assert.True(StudioPreviewAudio.IsMuted(isCamera: false, projectMuted: true, forceMuted: false));
+        Assert.Equal(StudioSound.Volume(projectVolume), StudioPreviewAudio.Volume(isCamera: false, projectVolume, zeroVolume: false));
+    }
 }

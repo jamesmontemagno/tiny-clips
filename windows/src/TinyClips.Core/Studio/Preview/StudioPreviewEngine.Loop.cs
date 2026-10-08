@@ -68,6 +68,7 @@ public sealed partial class StudioPreviewEngine
     // Render thread only, apart from the volatile ones, which other threads read.
     private StudioProject _renderProject;
     private bool _appliedProjectMuted;
+    private double _appliedProjectVolume = 1;
     private int _landingCount;
 
     // The timeline frame the scene was last looked at for. Render thread only.
@@ -733,19 +734,34 @@ public sealed partial class StudioPreviewEngine
         }
     }
 
-    /// <summary>The screen clip plays its sound unless the project is muted. The camera's player never does.</summary>
+    /// <summary>
+    /// The screen clip plays its sound unless the project is muted, at the project's volume. The
+    /// camera's player never does.
+    /// </summary>
     private void ApplyAudio(StudioProject project)
     {
         var muted = project.Audio.Muted;
-        if (muted == _appliedProjectMuted)
+        var volume = StudioSound.Volume(project.Audio);
+        var muteChanged = muted != _appliedProjectMuted;
+        var volumeChanged = volume != _appliedProjectVolume;
+        if (!muteChanged && !volumeChanged)
         {
             return;
         }
 
         _appliedProjectMuted = muted;
+        _appliedProjectVolume = volume;
         foreach (var clip in _clips)
         {
-            clip.Player.IsMuted = StudioPreviewAudio.IsMuted(isCamera: clip.Index != 0, muted, _forceMuted);
+            if (muteChanged)
+            {
+                clip.Player.IsMuted = StudioPreviewAudio.IsMuted(isCamera: clip.Index != 0, muted, _forceMuted);
+            }
+
+            if (volumeChanged)
+            {
+                clip.Player.Volume = StudioPreviewAudio.Volume(isCamera: clip.Index != 0, volume, _zeroVolume);
+            }
         }
     }
 

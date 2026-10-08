@@ -465,6 +465,163 @@ public sealed class StudioExportAudioTests
         Assert.True(sink.Count < 10_000);
     }
 
+    // The volume: every sample times audio.volume, on its way to the encoder
+
+    [Fact]
+    public void Gain_AtVolumeOne_HandsOnTheVeryBytesItWasGiven()
+    {
+        short[] samples = [0, 1, -1, 12_345, -12_345, short.MaxValue, short.MinValue];
+        var pcm = MemoryMarshal.AsBytes(samples.AsSpan());
+
+        foreach (var volume in new[] { 1, 1.5, double.NaN, double.PositiveInfinity })
+        {
+            var gain = new StudioPcmGain(volume);
+            var written = gain.Apply(pcm);
+
+            Assert.True(gain.LeavesSamplesAlone);
+            Assert.True(written == pcm, $"volume {volume}: the samples were copied");
+        }
+    }
+
+    [Fact]
+    public void Gain_AtVolumeZero_IsSilence_OfTheSameLength()
+    {
+        short[] samples = [0, 1, -1, 12_345, -12_345, short.MaxValue, short.MinValue];
+
+        foreach (var volume in new[] { 0, -3, double.NegativeInfinity })
+        {
+            var written = Scaled(samples, volume);
+
+            Assert.Equal(new short[samples.Length], written);
+        }
+    }
+
+    [Fact]
+    public void Gain_AtHalfVolume_HalvesEverySample_AndASampleAndItsNegativeStayOpposite()
+    {
+        short[] samples = [0, 2, -2, 1000, -1000, 12_346, -12_346, 1, -1, 3, -3, short.MaxValue, short.MinValue, -short.MaxValue];
+
+        var written = Scaled(samples, 0.5);
+
+        // Half of an odd sample lies between two steps and goes away from zero.
+        Assert.Equal([0, 1, -1, 500, -500, 6173, -6173, 1, -1, 2, -2, 16_384, -16_384, -16_384], written);
+    }
+
+    [Theory]
+    [InlineData(0.999999)]
+    [InlineData(0.95)]
+    [InlineData(0.5)]
+    [InlineData(0.05)]
+    [InlineData(0.000001)]
+    public void Gain_NeverMakesASampleLouder_AndNeverTurnsItsSign(double volume)
+    {
+        var samples = new short[65_536];
+        for (var index = 0; index < samples.Length; index++)
+        {
+            samples[index] = (short)(index + short.MinValue);
+        }
+
+        var written = Scaled(samples, volume);
+
+        for (var index = 0; index < samples.Length; index++)
+        {
+            var before = (int)samples[index];
+            var after = (int)written[index];
+            Assert.True(Math.Abs(after) <= Math.Abs(before), $"{before} became {after}");
+            Assert.True(after == 0 || Math.Sign(after) == Math.Sign(before), $"{before} became {after}");
+            Assert.True(Math.Abs(after - (before * volume)) <= 0.5, $"{before} became {after}");
+        }
+    }
+
+    [Fact]
+    public void Scale_PastSixteenBits_StopsAtTheLargestSample_AndDoesNotWrapAround()
+    {
+        // A volume is never above 1, so the exporter never asks for this. The arithmetic is
+        // made safe all the same: twice the largest sample is the largest sample, not -2.
+        short[] samples = [short.MaxValue, short.MinValue, 20_000, -20_000, 100];
+        var written = new short[samples.Length];
+
+        StudioPcmGain.Scale(MemoryMarshal.AsBytes(samples.AsSpan()), MemoryMarshal.AsBytes(written.AsSpan()), 2);
+        Assert.Equal([short.MaxValue, short.MinValue, short.MaxValue, short.MinValue, 200], written);
+
+        StudioPcmGain.Scale(MemoryMarshal.AsBytes(samples.AsSpan()), MemoryMarshal.AsBytes(written.AsSpan()), 1);
+        Assert.Equal(samples, written);
+    }
+
+    [Fact]
+    public void Gain_KeepsTheLengthOfWhatItIsGiven_BlockAfterBlock()
+    {
+        var gain = new StudioPcmGain(0.5);
+
+        Assert.Equal([50, -50, 5], MemoryMarshal.Cast<byte, short>(gain.Apply(MemoryMarshal.AsBytes(new short[] { 100, -100, 10 }.AsSpan()))).ToArray());
+        Assert.Equal([4], MemoryMarshal.Cast<byte, short>(gain.Apply(MemoryMarshal.AsBytes(new short[] { 8 }.AsSpan()))).ToArray());
+        Assert.Equal(20_000, gain.Apply(new byte[20_000]).Length);
+        Assert.True(gain.Apply([]).IsEmpty);
+    }
+
+    [Fact]
+    public void Gain_IsForSixteenBitSamplesOnly()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new StudioPcmGain(0.5, bitsPerSample: 32));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new StudioPcmGain(1, bitsPerSample: 8));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0.5)]
+    [InlineData(0)]
+    public void Pump_ThroughTheGain_WritesTheKeptSamplesAtTheVolume_AndSilenceStaysSilence(double volume)
+    {
+        // The track starts late, so the range begins with silence the pump writes itself.
+        var source = new FakeSource(total: 9_000, blockSamples: 1024, runIn: 2048, firstSample: 3_000);
+        var gain = new StudioPcmGain(volume);
+        var written = new List<short>();
+        var pump = new StudioAudioPump(
+            source,
+            [new StudioAudioSampleRange(2_000, 8_000, 0)],
+            2,
+            (pcm, start) =>
+            {
+                Assert.Equal(written.Count, start);
+                written.AddRange(MemoryMarshal.Cast<byte, short>(gain.Apply(pcm)).ToArray());
+            });
+
+        pump.PumpToEnd(CancellationToken.None);
+
+        var expected = Enumerable.Range(2_000, 6_000)
+            .Select(sample => sample < 3_000 ? (short)0 : (short)Math.Round(sample * volume, MidpointRounding.AwayFromZero));
+        Assert.Equal(expected, written);
+    }
+
+    [Fact]
+    public void AMutedProject_HasNoSoundAtAnyVolume()
+    {
+        foreach (var volume in new[] { 1, 0.5, 0 })
+        {
+            var plan = StudioRenderingMath.BuildAudioPlan(Project() with { Audio = new StudioAudio { Muted = true, Volume = volume } }, 48000);
+
+            Assert.Empty(plan.Ranges);
+            Assert.Equal(0, plan.TotalSamples);
+        }
+    }
+
+    [Fact]
+    public void TheVolume_ChangesNoneOfTheSamplesAnExportKeeps()
+    {
+        var project = Project() with { Edits = new StudioEdits { TrimStart = 1.25, TrimEnd = 4.75 } };
+
+        var asRecorded = StudioRenderingMath.BuildAudioPlan(project, 48000);
+        var quiet = StudioRenderingMath.BuildAudioPlan(project with { Audio = new StudioAudio { Volume = 0.2 } }, 48000);
+        var silent = StudioRenderingMath.BuildAudioPlan(project with { Audio = new StudioAudio { Volume = 0 } }, 48000);
+
+        Assert.Equal(asRecorded.Ranges, quiet.Ranges);
+        Assert.Equal(asRecorded.Ranges, silent.Ranges);
+        Assert.Equal(asRecorded.TotalSamples, silent.TotalSamples);
+    }
+
+    private static short[] Scaled(short[] samples, double volume) =>
+        MemoryMarshal.Cast<byte, short>(new StudioPcmGain(volume).Apply(MemoryMarshal.AsBytes(samples.AsSpan()))).ToArray();
+
     private static StudioProject Project() =>
         new()
         {

@@ -417,6 +417,7 @@ public static class StudioProjectJson
         return audio with
         {
             Muted = HasNonNull(root, "audio", "muted") && audio.Muted,
+            Volume = HasNonNull(root, "audio", "volume") ? audio.Volume : 1,
             SystemVolume = HasNonNull(root, "audio", "systemVolume") ? audio.SystemVolume : 1,
             MicrophoneVolume = HasNonNull(root, "audio", "microphoneVolume") ? audio.MicrophoneVolume : 1,
         };

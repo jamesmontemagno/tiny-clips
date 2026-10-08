@@ -439,11 +439,12 @@ internal sealed class StudioExportJob
                 var audioPlan = StudioRenderingMath.BuildAudioPlan(_project, audioFormat.SampleRate);
                 var samples = StudioRenderingMath.AudioSampleCount(audioPlan.TotalSamples, plan.Count, rate, audioFormat.SampleRate);
                 var sink = encoder;
+                var gain = new StudioPcmGain(_project.Audio.Volume, audioFormat.BitsPerSample);
                 pump = new StudioAudioPump(
                     audio,
                     StudioRenderingMath.LimitAudioRanges(audioPlan.Ranges, samples),
                     audioFormat.BlockAlign,
-                    (pcm, start) => WriteAudio(sink, pcm, start, audioFormat),
+                    (pcm, start) => WriteAudio(sink, gain.Apply(pcm), start, audioFormat),
                     samples);
             }
 

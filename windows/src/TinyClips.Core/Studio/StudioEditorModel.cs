@@ -1140,6 +1140,18 @@ public sealed partial class StudioEditorModel
     public void SetMuted(bool isMuted) =>
         Mutate(project => project with { Audio = project.Audio with { Muted = isMuted } });
 
+    /// <summary>
+    /// How loud the video's sound is, from 0 (silent) to 1 (as recorded). Mute is left as it is,
+    /// and a muted video stays silent. A value that is not a number changes nothing.
+    /// </summary>
+    public void SetVolume(double volume)
+    {
+        if (double.IsFinite(volume))
+        {
+            Mutate(project => project with { Audio = project.Audio with { Volume = StudioSound.Volume(volume) } });
+        }
+    }
+
     public void SetClickRingsEnabled(bool isEnabled) =>
         Mutate(project => project with
         {

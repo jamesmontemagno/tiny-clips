@@ -320,6 +320,13 @@ public sealed record StudioSpeedRange
 public sealed record StudioAudio
 {
     public bool Muted { get; init; }
+
+    /// <summary>
+    /// How loud the video's sound is, as it is stored. <see cref="StudioSound.Volume(StudioAudio)"/>
+    /// is the value in use, between 0 and 1.
+    /// </summary>
+    public double Volume { get; init; } = 1;
+
     public double SystemVolume { get; init; } = 1;
     public double MicrophoneVolume { get; init; } = 1;
 

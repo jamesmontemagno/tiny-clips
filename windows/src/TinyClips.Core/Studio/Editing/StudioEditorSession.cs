@@ -535,6 +535,8 @@ public sealed partial class StudioEditorSession
 
     public void SetMuted(bool isMuted) => Edit(model => model.SetMuted(isMuted));
 
+    public void SetVolume(double value) => Edit(model => model.SetVolume(value));
+
     public void SetClickRingsEnabled(bool isEnabled) => Edit(model => model.SetClickRingsEnabled(isEnabled));
 
     public void SetBrandingEnabled(bool isEnabled) => Edit(model => model.SetBrandingEnabled(isEnabled));

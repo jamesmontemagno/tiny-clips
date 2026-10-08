@@ -22,6 +22,12 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
 
     private const string IdInTheMacsFile = "c12c76bc-d410-44d5-9db4-00c166b6bc34";
 
+    /// <summary>
+    /// What the comparison says of <c>audio.volume</c> where the Mac's file does not have it:
+    /// Windows writes every property it knows, this one at its default.
+    /// </summary>
+    private const string VolumeWindowsAdds = "audio.volume: only the Windows file has it: 1";
+
     private static string MacsProjectFile =>
         Path.Combine(AppContext.BaseDirectory, "StudioFixtures", "folder", "saved-on-macos-1.9.0.tinyclips");
 
@@ -78,7 +84,7 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
     }
 
     [Fact]
-    public void WhatWindowsWritesOfAMacsProject_SaysWhatTheMacsFileSays_ButForTheId()
+    public void WhatWindowsWritesOfAMacsProject_SaysWhatTheMacsFileSays_ButForTheId_AndTheVolumeItAdds()
     {
         var folder = MakeFolderAroundTheMacsFile("From A Mac");
         var opened = Open(folder);
@@ -88,10 +94,15 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
 
         var comparison = ProjectFileComparison.Of(File.ReadAllBytes(MacsProjectFile), File.ReadAllBytes(Path.Combine(again, "And Back.tinyclips")));
 
-        // Nothing the Mac wrote is dropped or changed and nothing is added: the one value that
-        // differs is the id the project got when it was opened.
-        var id = Assert.Single(comparison.Values);
-        Assert.Equal($"id: the Mac's file has \"{IdInTheMacsFile}\", the Windows file has \"{opened.Id}\"", id);
+        // Nothing the Mac wrote is dropped or changed. One value differs, the id the project
+        // got when it was opened, and one is added: the volume, which macOS 1.9.0 does not
+        // write, at what a project without it has.
+        Assert.Equal(
+            [
+                VolumeWindowsAdds,
+                $"id: the Mac's file has \"{IdInTheMacsFile}\", the Windows file has \"{opened.Id}\"",
+            ],
+            comparison.Values);
 
         // Every number and every text is written with the same characters.
         Assert.DoesNotContain(comparison.Writing, line => line.Contains("written differently", StringComparison.Ordinal));
@@ -175,7 +186,11 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
             File.WriteAllLines(findingsFile, findings);
         }
 
-        Assert.Equal([$"id: the Mac's file has \"{macId}\", the Windows file has \"{fromFile.Id}\""], comparison.Values);
+        // The id, and the volume where the Mac that saved the folder did not write one.
+        string[] expected = macProject["audio"]?["volume"] is null
+            ? [VolumeWindowsAdds, $"id: the Mac's file has \"{macId}\", the Windows file has \"{fromFile.Id}\""]
+            : [$"id: the Mac's file has \"{macId}\", the Windows file has \"{fromFile.Id}\""];
+        Assert.Equal(expected.Order(StringComparer.Ordinal), comparison.Values.Order(StringComparer.Ordinal));
     }
 
     /// <summary>A folder with the Mac's project file under the folder's name and a few bytes for each file it names.</summary>

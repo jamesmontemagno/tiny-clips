@@ -13,7 +13,8 @@ internal sealed record StudioPreviewOptions
 
     /// <summary>
     /// Keeps every player at volume zero and lets <c>IsMuted</c> follow the project. For the one
-    /// check that has to see the project's mute flag arrive at a player.
+    /// check that has to see the project's mute flag arrive at a player. The project's volume
+    /// does not reach a player then either.
     /// </summary>
     public bool ZeroVolume { get; init; }
 
@@ -176,6 +177,17 @@ internal static class StudioPreviewAudio
     /// </summary>
     public static bool IsMuted(bool isCamera, bool projectMuted, bool forceMuted) =>
         isCamera || forceMuted || projectMuted;
+
+    /// <summary>
+    /// A player's volume. The screen clip plays at the project's volume
+    /// (<see cref="StudioSound.Volume(double)"/>), which is what the export multiplies its
+    /// samples by. A check that must not be heard keeps every player at zero
+    /// (<see cref="StudioPreviewOptions.ForceMuted"/>, <see cref="StudioPreviewOptions.ZeroVolume"/>),
+    /// whatever the project says, and the camera's player, which is never heard, is at zero too.
+    /// </summary>
+    /// <param name="zeroVolume">Either of the two options is set.</param>
+    public static double Volume(bool isCamera, double projectVolume, bool zeroVolume) =>
+        isCamera || zeroVolume ? 0 : StudioSound.Volume(projectVolume);
 }
 
 /// <summary>Counters and states of a preview engine, for the check tool and for logging.</summary>
@@ -221,6 +233,13 @@ internal sealed record StudioPreviewDiagnostics
 
     /// <summary>What the project asked for the last time it was applied.</summary>
     public bool ProjectMuted { get; init; }
+
+    /// <summary>
+    /// The project's volume the last time it was applied, between 0 and 1. A player's own
+    /// <see cref="PlayerVolume"/> is this for the screen clip, and 0 where a check keeps the
+    /// players at zero.
+    /// </summary>
+    public double ProjectVolume { get; init; } = 1;
 
     public long SeeksIssued { get; init; }
 

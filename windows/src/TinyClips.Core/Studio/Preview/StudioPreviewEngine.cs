@@ -236,11 +236,11 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         var clips = new List<StudioPreviewClip>(tracks.Count);
         try
         {
-            clips.Add(CreateClip(0, "screen", screenPath, screenSource.Width, screenSource.Height, tracks[0], project.Audio.Muted));
+            clips.Add(CreateClip(0, "screen", screenPath, screenSource.Width, screenSource.Height, tracks[0], project.Audio));
             if (tracks.Count > 1)
             {
                 var camera = project.Sources.Camera!;
-                clips.Add(CreateClip(1, "camera", cameraPath!, camera.Width, camera.Height, tracks[1], project.Audio.Muted));
+                clips.Add(CreateClip(1, "camera", cameraPath!, camera.Width, camera.Height, tracks[1], project.Audio));
             }
         }
         catch
@@ -256,6 +256,7 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
 
         _clips = [.. clips];
         _appliedProjectMuted = project.Audio.Muted;
+        _appliedProjectVolume = StudioSound.Volume(project.Audio);
     }
 
     /// <summary>
@@ -646,21 +647,18 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         return thread;
     }
 
-    private StudioPreviewClip CreateClip(int index, string name, string path, int width, int height, StudioPreviewClipTiming timing, bool projectMuted)
+    private StudioPreviewClip CreateClip(int index, string name, string path, int width, int height, StudioPreviewClipTiming timing, StudioAudio audio)
     {
         var player = new MediaPlayer
         {
             AutoPlay = false,
-            IsMuted = StudioPreviewAudio.IsMuted(isCamera: index != 0, projectMuted, _forceMuted),
+            IsMuted = StudioPreviewAudio.IsMuted(isCamera: index != 0, audio.Muted, _forceMuted),
             IsVideoFrameServerEnabled = true,
         };
         MediaSource? source = null;
         try
         {
-            if (_zeroVolume)
-            {
-                player.Volume = 0;
-            }
+            player.Volume = StudioPreviewAudio.Volume(isCamera: index != 0, audio.Volume, _zeroVolume);
 
             // The engine drives the transport itself: no system media controls.
             player.CommandManager.IsEnabled = false;

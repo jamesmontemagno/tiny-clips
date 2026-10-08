@@ -1267,6 +1267,7 @@ public sealed partial class StudioPreviewEngine
             PlayerMuted = muted,
             PlayerVolume = volume,
             ProjectMuted = _appliedProjectMuted,
+            ProjectVolume = _appliedProjectVolume,
             SeeksIssued = _policy.SeeksIssued,
             StepsIssued = _policy.StepsIssued,
             StepFallbacks = _policy.StepFallbacks,
