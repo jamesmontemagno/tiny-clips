@@ -203,7 +203,7 @@ public sealed class StudioInspectorPanelTests
     [InlineData(StudioInspectorPanel.Zoom, "Zoom", "Zooms")]
     [InlineData(StudioInspectorPanel.Cut, "Cut", "Cuts")]
     [InlineData(StudioInspectorPanel.Speed, "Speed", "Speed changes")]
-    [InlineData(StudioInspectorPanel.Audio, "Audio", "Audio: mute")]
+    [InlineData(StudioInspectorPanel.Audio, "Audio", "Audio: mute and volume")]
     [InlineData(StudioInspectorPanel.Project, "Project", "Project: badge, storage, and default look")]
     public void APanel_IsCalledWhatItsRailItemSays_AndItsHelpSaysWhatItHoldsOnWindows(
         StudioInspectorPanel panel,

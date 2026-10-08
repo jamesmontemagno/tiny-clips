@@ -139,6 +139,26 @@ public sealed class StudioSoundTests : StudioEditorSessionTestBase
         Assert.False(model.CanUndo);
     }
 
+    [Fact]
+    public void SetVolume_StoresAPlainNumber_WhereASliderHandsOverStepsAddedUp()
+    {
+        var model = new StudioEditorModel(Read($$"""{ {{Minimal}} }"""));
+
+        // Seven steps of 5%, as the slider's row counts them.
+        model.SetVolume(7 * 0.05);
+
+        Assert.NotEqual(0.35, 7 * 0.05);
+        Assert.Equal(0.35, model.Project.Audio.Volume);
+        Assert.Contains("\"volume\": 0.35,", StudioProjectJson.WriteProject(model.Project), StringComparison.Ordinal);
+
+        // The same value again, with or without the noise, is no edit.
+        model.SetVolume(0.35);
+        model.SetVolume(7 * 0.05);
+        model.Undo();
+        Assert.Equal(1, model.Project.Audio.Volume);
+        Assert.False(model.CanUndo);
+    }
+
     [Theory]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]

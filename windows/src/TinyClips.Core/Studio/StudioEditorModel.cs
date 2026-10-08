@@ -1144,11 +1144,16 @@ public sealed partial class StudioEditorModel
     /// How loud the video's sound is, from 0 (silent) to 1 (as recorded). Mute is left as it is,
     /// and a muted video stays silent. A value that is not a number changes nothing.
     /// </summary>
+    /// <remarks>
+    /// Kept to a millionth, which nobody hears: a slider that counts in steps hands over 7 times
+    /// 0.05, which is 0.35000000000000003, and the project file should say 0.35.
+    /// </remarks>
     public void SetVolume(double volume)
     {
         if (double.IsFinite(volume))
         {
-            Mutate(project => project with { Audio = project.Audio with { Volume = StudioSound.Volume(volume) } });
+            var stored = Math.Round(StudioSound.Volume(volume), 6, MidpointRounding.AwayFromZero);
+            Mutate(project => project with { Audio = project.Audio with { Volume = stored } });
         }
     }
 

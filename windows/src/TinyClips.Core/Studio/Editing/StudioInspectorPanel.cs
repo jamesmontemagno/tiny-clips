@@ -121,7 +121,7 @@ public static class StudioInspectorPanels
 
     /// <summary>
     /// What the panel holds, for the help of its rail item. On Windows a recording has its sound
-    /// in one track, so the Audio panel holds Mute and no volumes.
+    /// in one track, so the Audio panel holds Mute and one volume, of the whole video.
     /// </summary>
     public static string GetSummary(StudioInspectorPanel panel) => panel switch
     {
@@ -132,7 +132,7 @@ public static class StudioInspectorPanels
         StudioInspectorPanel.Zoom => "Zooms",
         StudioInspectorPanel.Cut => "Cuts",
         StudioInspectorPanel.Speed => "Speed changes",
-        StudioInspectorPanel.Audio => "Audio: mute",
+        StudioInspectorPanel.Audio => "Audio: mute and volume",
         StudioInspectorPanel.Project => "Project: badge, storage, and default look",
         _ => string.Empty,
     };
