@@ -22,8 +22,9 @@ own `CHANGELOG.md` at the repository root.
   the Clips Library, from Recent captures, or from the drafts list in Settings › Studio, which
   also sets how long projects are kept and how much disk space they may use.
   - **Zooms.** Press **Z** or choose **Add zoom** to zoom in on the screen recording at the
-    playhead. Zooms sit on a lane above the trim bar: drag one to move it, or drag one of its ends
-    to change when it starts or stops. The **Zoom** panel of the inspector steps through the
+    playhead. Zooms sit on a lane above the trim bar: drag one to move it, or drag the handle at
+    one of its ends to change when it starts or stops. The **Zoom** panel of the inspector
+    steps through the
     zooms and sets each one's zoom level, whether its focus is a fixed point or follows the
     pointer, when it starts and ends, and how long it takes to zoom in and out. **Suggest zooms** adds
     zooms where you clicked during the recording, and **Remove suggestions** takes away the
@@ -44,19 +45,28 @@ own `CHANGELOG.md` at the repository root.
     removes that scene, and the scene before it then lasts until the next one.
   - **Cuts.** Press **X** or choose **Cut** to take a second out of the video at the playhead.
     Cuts sit on a lane above the trim bar, and the trim bar shows a gap where each one is: drag
-    a cut to move it, or drag one of its ends to change where it starts or stops. The **Cut**
+    a cut to move it, or drag the handle at one of its ends to change where it starts or
+    stops. The **Cut**
     panel of the inspector steps through the cuts and sets where each one starts and ends.
     **Delete** or **Delete cut** puts the stretch back into the video. The time above the
     timeline counts the video as it will be exported, without what is cut out.
   - **Speed.** Press **R** or choose **Speed** to have the video play the two seconds from the
     playhead twice as fast. Speed changes sit on a lane between the cuts and the trim bar: drag
-    one to move it, or drag one of its ends to change where it starts or stops. The **Speed**
+    one to move it, or drag the handle at one of its ends to change where it starts or stops.
+    The **Speed**
     panel of the inspector steps through them and sets how fast each stretch plays (0.25×,
     0.5×, 1.5×, 2×, 4×, or 8×) and where it starts and ends, and says how long the stretch then
     takes. A stretch at another speed plays without sound. **Delete** or **Delete speed change**
     makes the stretch play at the recording's own speed again. The time above the timeline
     counts the video as it will be exported, so a faster stretch makes it shorter and a slower
     one longer.
+  - **Handles on the lanes.** A zoom, a cut, and a speed change show a handle at each end, 8
+    pixels wide, with the resize pointer over it: drag it to make the stretch longer or
+    shorter. The handles are faint until the pointer is over the block or the block is
+    selected. A block too narrow to hold them, under 28 pixels, such as a new cut in a long
+    recording, could not be resized by dragging before: select it, and it gets a handle
+    outside each end. The **Start** and **End** rows of the Zoom, Cut, and Speed panels do the
+    same from the keyboard and with a screen reader, which is not given the handles. (#427)
   - Studio has a page of its own in Settings, **Studio**, after Video: the switch, how a
     Studio recording is started, project storage, and the drafts.
     To try it, switch on **Tiny Clips Studio (Preview)** in Settings › Studio. Then choose

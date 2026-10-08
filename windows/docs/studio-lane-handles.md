@@ -1,7 +1,11 @@
 # Studio lanes: handles to resize a zoom, a cut, or a speed change (Windows handoff)
 
-**Status:** built on macOS on 7 October 2026. Not started on Windows. Nothing under
-`windows/src`, `windows/tests`, or `windows/tools` was changed for it.
+**Status:** built on macOS on 7 October 2026, and on Windows the same day (#427). On Windows
+the rule and its five tests are in `TinyClips.Core`, the three lanes ask it what a press takes
+hold of, the three kinds of block draw the handles, and `StudioWindowCheck` checks both
+through the lanes' own methods. Nobody has dragged a handle with a pointer on Windows, seen
+the pointer change over one, or looked at the handles in a contrast theme: see "How Windows
+was checked" at the end.
 
 ## Why
 
@@ -65,3 +69,26 @@ limits, one undo step.
   on a new recording and reported that it worked. The project saved from that run has a cut
   from 2.570 to 4.511 and a speed change from 6.279 to 7.860, ends that no button gives.
 - Not asked about: the pointer changing over a handle.
+
+## How Windows was checked
+
+Built on 7 October 2026 from this brief (#427).
+
+- **The rule.** `StudioEditorModel.GetLaneBlockPart`, `GetLaneHandleOutset` and
+  `LaneBlockHasInsideHandles` in `TinyClips.Core`, with the Mac's five tests and the Mac's
+  numbers (`StudioLaneHandleTests`). They pass.
+- **The lanes.** `StudioRangeLane` asks the rule what a press takes hold of, with whether the
+  block was selected before the press, and looks at the selected block first, as far out as
+  its handles reach. `StudioWindowCheck` presses and drags through the lanes' own methods, on
+  each of the three lanes: a block of 28 or more taken 8 and 8.5 in from each end, a
+  narrower block that is not selected, and the same block selected, by the handles outside
+  it. Those checks pass, with the older lane checks.
+- **The handles.** `StudioLaneBlockHandles`, on `StudioZoomBlock`, `StudioCutBlock` and
+  `StudioSpeedBlock` through `StudioRangeBlock`. The check tool reads where they are laid
+  out, which of their three strengths they are in, the block's tooltip, that the selected
+  block is drawn over the others, and that UI Automation is given no handle. A cut is
+  hatched and not filled, so its handles stand on a plate of the window's color, as its
+  scissors do; the Mac's cut is filled and has no plate.
+- **Not checked by a person at the controls on Windows:** dragging a handle with a pointer,
+  the pointer changing over a handle, the look of a block with the pointer over it, the
+  handles in a contrast theme, and the handles of a block whose neighbor is right next to it.
