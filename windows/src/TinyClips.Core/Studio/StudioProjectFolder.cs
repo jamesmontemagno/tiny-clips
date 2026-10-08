@@ -187,8 +187,11 @@ public static class StudioProjectFolder
 
     /// <summary>
     /// The <c>.tinyclips</c> file that was chosen: itself, or the only one in a folder that was.
-    /// A folder counts every entry with that extension, hidden ones too, and has to have exactly
-    /// one, which has to be a file.
+    /// A folder has to have exactly one entry with that extension, which has to be a file. An
+    /// entry whose name starts with a dot is not counted: a Mac writes <c>._Name.tinyclips</c>
+    /// beside the file on a volume that is not its own, and does not count such names itself.
+    /// A file that is only hidden counts like any other, and a file that is chosen itself is
+    /// taken whatever its name.
     /// </summary>
     /// <returns>The full path of the file.</returns>
     /// <exception cref="StudioProjectFolderException">
@@ -222,7 +225,7 @@ public static class StudioProjectFolder
             throw StudioProjectFolderException.NotAProjectFile();
         }
 
-        var found = Directory.EnumerateFileSystemEntries(fullPath).Where(HasProjectFileExtension).Take(2).ToArray();
+        var found = Directory.EnumerateFileSystemEntries(fullPath).Where(IsCountedProjectFile).Take(2).ToArray();
         return found.Length == 1 && File.Exists(found[0]) ? found[0] : throw StudioProjectFolderException.NotAProjectFile();
     }
 
@@ -325,6 +328,10 @@ public static class StudioProjectFolder
 
     private static bool HasProjectFileExtension(string path) =>
         string.Equals(Path.GetExtension(path), ProjectFileExtension, StringComparison.OrdinalIgnoreCase);
+
+    // What a folder is searched for: not a name that starts with a dot.
+    private static bool IsCountedProjectFile(string path) =>
+        HasProjectFileExtension(path) && !Path.GetFileName(path).StartsWith('.');
 
     private static bool IsDeviceName(string name) => DeviceNames.Contains(name[..DeviceNameLength(name)].TrimEnd(' '));
 

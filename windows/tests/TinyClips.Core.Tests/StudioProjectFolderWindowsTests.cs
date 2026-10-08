@@ -385,22 +385,71 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
         Assert.Equal("Test", Open(second).Name);
     }
 
-    [Theory]
-    [InlineData("._Counted.tinyclips", false)]
-    [InlineData("Other.tinyclips", true)]
-    public void AProjectFileThatIsHidden_IsCountedLikeAnyOther(string name, bool hide)
+    [Fact]
+    public void AProjectFileThatIsOnlyHidden_IsCountedLikeAnyOther()
     {
         var (folder, file) = SaveNewProject("Counted");
-        var hidden = Path.Combine(folder, name);
-        File.WriteAllText(hidden, "what a Mac keeps beside a file on a disk that is not its own");
-        if (hide)
-        {
-            File.SetAttributes(hidden, FileAttributes.Hidden);
-        }
+        var hidden = Path.Combine(folder, "Other.tinyclips");
+        File.Copy(file, hidden);
+        File.SetAttributes(hidden, FileAttributes.Hidden);
+
+        AssertRefused(StudioProjectFolderProblem.NotAProjectFile, () => StudioProjectFolder.FindProjectFile(folder));
+        AssertRefused(StudioProjectFolderProblem.NotAProjectFile, () => Open(folder));
+        Assert.False(StudioProjectFolder.IsSavedProjectFolder(folder));
+        Assert.Equal(file, StudioProjectFolder.FindProjectFile(file));
+
+        // Hidden and the only one: it is the project file.
+        File.Delete(file);
+
+        Assert.Equal(hidden, StudioProjectFolder.FindProjectFile(folder));
+        Assert.True(StudioProjectFolder.IsSavedProjectFolder(folder));
+    }
+
+    [Theory]
+    [InlineData("._Counted.tinyclips")]
+    [InlineData(".Counted.tinyclips")]
+    [InlineData(".tinyclips")]
+    [InlineData("._COUNTED.TINYCLIPS")]
+    public void AProjectFileWhoseNameStartsWithADot_IsNotCountedWhenAFolderIsSearched(string name)
+    {
+        var (folder, file) = SaveNewProject("Counted");
+        var dotted = Path.Combine(folder, name);
+        File.WriteAllText(dotted, "what a Mac keeps beside a file on a disk that is not its own");
+
+        Assert.Equal(file, StudioProjectFolder.FindProjectFile(folder));
+        Assert.True(StudioProjectFolder.IsSavedProjectFolder(folder));
+
+        // Chosen itself, it is the file that was chosen, whatever its name.
+        Assert.Equal(dotted, StudioProjectFolder.FindProjectFile(dotted));
+
+        // And a folder that has no other is not a saved project.
+        File.Delete(file);
 
         AssertRefused(StudioProjectFolderProblem.NotAProjectFile, () => StudioProjectFolder.FindProjectFile(folder));
         Assert.False(StudioProjectFolder.IsSavedProjectFolder(folder));
-        Assert.Equal(file, StudioProjectFolder.FindProjectFile(file));
+    }
+
+    [Fact]
+    public void AFolderWithWhatAMacWritesBesideAFileOnAVolumeNotItsOwn_OpensFromTheFolder()
+    {
+        var (folder, file) = SaveNewProject("From A Stick", camera: true);
+        var id = Assert.Single(Names(StoreRoot));
+        foreach (var name in new[] { "._From A Stick.tinyclips", "._screen.mp4", "._camera.mp4", ".DS_Store" })
+        {
+            File.WriteAllBytes(Path.Combine(folder, name), [0, 5, 22, 7, 0, 2, 0, 0]);
+        }
+
+        var opened = Open(folder);
+
+        Assert.NotEqual(id, opened.Id);
+        Assert.Equal("Test", opened.Name);
+
+        // Only what the project names is copied.
+        Assert.Equal(["camera.mp4", "project.json", "screen.mp4"], Names(Store.GetPaths(opened.Id).ProjectDirectory));
+
+        // The file a Mac wrote beside the project file is not a project, chosen by itself.
+        AssertRefused(StudioProjectFolderProblem.Unreadable, () => Open(Path.Combine(folder, "._From A Stick.tinyclips")));
+        Assert.Equal(file, StudioProjectFolder.FindProjectFile(folder));
     }
 
     [Fact]
