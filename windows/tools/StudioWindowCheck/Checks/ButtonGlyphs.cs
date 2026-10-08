@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using TinyClips.App.Controls.Studio;
+using TinyClips.Core.Studio.Editing;
 using TinyClips.Tools.StudioWindowCheck.Host;
 using Windows.Foundation;
 
@@ -11,7 +12,8 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 // room for them, as at a large text size. The text size is a setting of Windows this tool does
 // not change, so the room is taken away instead: the timeline, the two buttons side by side in
 // the Zoom panel and one button of a panel are each given less width than their glyphs need.
-// And a note says, as a sum, how wide the timeline's row would be at a text size of 200%.
+// A note says, as a sum, how wide the timeline's row would be at a text size of 200%. And the
+// buttons with a glyph that no other picture shows are pictured, for a person to look at.
 internal sealed partial class WindowChecks
 {
     private static readonly (string Id, string Name)[] RowButtons =
@@ -133,6 +135,90 @@ internal sealed partial class WindowChecks
                 + $"Add speed change: {F(aloneWide.Width, "0.#")} wide with its glyph {(aloneWide.Shown ? "drawn" : "not drawn")}; allowed {F(aloneWide.Width - (aloneWide.Glyph / 2), "0.#")}: {F(aloneNarrow.Width, "0.#")} wide, its glyph {(aloneNarrow.Shown ? "drawn" : "not drawn")}, named \"{aloneName}\"; allowed any width again: {F(aloneBack.Width, "0.#")}, its glyph {(aloneBack.Shown ? "drawn" : "not drawn")}");
 
         static string Widths(double[] widths) => string.Join(" + ", widths.Select(width => F(width, "0.#")));
+    }
+
+    /// <summary>
+    /// Pictures, for a person to look at, of the buttons with a glyph that no picture of a panel
+    /// from its top shows: Delete scene and Delete speed change, at the end of their panels;
+    /// Reset crop, in a group that is closed while nothing is cropped; and Show scene, which the
+    /// Camera panel has only in a scene that hides the camera. The check says that each is in
+    /// its picture: whole in the part of the panel that shows, with its glyph drawn.
+    /// </summary>
+    private void ButtonPictures(Editor editor, string name, List<string> saved)
+    {
+        Timeline.Mark($"9: the buttons the panels' pictures do not show, {name}");
+        var (pictured, wrong) = (new List<string>(), new List<string>());
+        void Picture(string id, string words, string file)
+        {
+            Until(() => editor.Root.FindAsItIs(id), found => found is not null, 2);
+            OnUi(() => DescendantIn<Button>(editor.Window.Content, id)?.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0.5 }));
+            Thread.Sleep(450);
+            var read = OnUi(() =>
+            {
+                if (DescendantIn<Button>(editor.Window.Content, id) is not { Content: StudioButtonLabel label } button)
+                {
+                    return (Found: false, Whole: false, Glyph: false, Words: string.Empty);
+                }
+
+                ScrollViewer? scroller = null;
+                for (DependencyObject? at = button; at is not null && scroller is null; at = VisualTreeHelper.GetParent(at))
+                {
+                    scroller = at as ScrollViewer;
+                }
+
+                var place = scroller is null ? default : button.TransformToVisual(scroller).TransformBounds(new Rect(0, 0, button.ActualWidth, button.ActualHeight));
+                var whole = scroller is not null && place.Width > 0 && place.Left >= -0.5 && place.Top >= -0.5 && place.Right <= scroller.ActualWidth + 0.5 && place.Bottom <= scroller.ActualHeight + 0.5;
+                return (Found: true, Whole: whole, Glyph: label.IsGlyphShown, Words: label.Text);
+            });
+            var said = editor.Root.FindAsItIs(id)?.Name ?? string.Empty;
+            var fileName = $"button-{file}-{name}.png";
+            if (editor.Camera.Take() is { } shot)
+            {
+                var path = Path.Combine(_output, fileName);
+                shot.Save(path);
+                saved.Add(path);
+                pictured.Add(words);
+            }
+            else
+            {
+                wrong.Add($"{words}: no screenshot");
+            }
+
+            if (!read.Found || !read.Whole || !read.Glyph || read.Words != words || said != words)
+            {
+                wrong.Add($"{words} ({fileName}): {(read.Found ? "there" : "not there")}, {(read.Whole ? "whole in what the panel shows" : "not whole in what the panel shows")}, its glyph {(read.Glyph ? "drawn" : "not drawn")}, showing \"{read.Words}\", named \"{said}\"");
+            }
+        }
+
+        // The playhead is in the second of three scenes, which shows the camera.
+        ShowPanel(editor, StudioInspectorPanel.Scene);
+        Picture("StudioDeleteSceneButton", "Delete scene", "delete-scene");
+
+        // Selecting a speed change shows the Speed panel with its controls.
+        var selected = LaneItems(editor, SpeedLane) is { Count: > 0 } speeds && speeds[0].Select();
+        Picture("StudioDeleteSpeedButton", "Delete speed change", "delete-speed-change");
+
+        ShowPanel(editor, StudioInspectorPanel.Screen);
+        var screenOpen = editor.Root.FindAsItIs("StudioScreenCropGroup")?.Expand() ?? false;
+        Thread.Sleep(450);
+        Picture("StudioScreenCropResetButton", "Reset crop", "reset-screen-crop");
+
+        ShowPanel(editor, StudioInspectorPanel.Camera);
+        var cameraOpen = editor.Root.FindAsItIs("StudioCameraCropGroup")?.Expand() ?? false;
+        Thread.Sleep(450);
+        Picture("StudioCameraCropResetButton", "Reset crop", "reset-camera-crop");
+
+        // In a scene that is the screen alone the Camera panel says so, and offers the Scene panel.
+        var screenOnly = Find(editor, "StudioLayoutScreen")?.Select() ?? false;
+        ShowPanel(editor, StudioInspectorPanel.Camera);
+        Picture("StudioShowSceneButton", "Show scene", "show-scene");
+
+        _report.Check(
+            $"the buttons with a glyph that no picture of a panel from its top shows, in the {name} theme, are each pictured whole in its panel with its glyph drawn and its words as its name, for a person to look at: Delete scene, Delete speed change, Reset crop of the screen and of the camera, and Show scene",
+            pictured.Count == 5 && wrong.Count == 0 && selected && screenOpen && cameraOpen && screenOnly,
+            wrong.Count == 0
+                ? $"{string.Join(", ", pictured)}; saved as button-<button>-{name}.png"
+                : $"{string.Join("; ", wrong)}; a speed change was selected: {selected}; the crop groups were opened: {screenOpen}, {cameraOpen}; the scene was made the screen alone: {screenOnly}");
     }
 
     /// <summary>The row a button is in: what holds it. UI thread.</summary>

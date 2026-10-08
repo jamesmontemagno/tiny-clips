@@ -72,6 +72,7 @@ internal sealed partial class WindowChecks
         Timeline.Mark($"9: the smallest window, {name}");
         PictureOfTimeline(editor, name, "its smallest size", $"window-timeline-{name}-smallest.png", 400, 300, SmallestWindowWidth, SmallestWindowHeight, Frame, cut, saved);
         GlyphsGiveWay(editor, name, saved);
+        ButtonPictures(editor, name, saved);
         CloseQuietly(editor);
     }
 
