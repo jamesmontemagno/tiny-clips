@@ -776,6 +776,50 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
     }
 
     [Fact]
+    public void AReplacementThatCannotPutAFileInPlace_GivesTheSavedProjectItsNameBack()
+    {
+        var first = MakeProject(camera: true, events: true);
+        var second = MakeProject(camera: true);
+        var folder = Path.Combine(Outside, "Given Back");
+        Save(first, folder);
+        var before = Names(folder);
+        var fileBefore = File.ReadAllBytes(Path.Combine(folder, "Given Back.tinyclips"));
+
+        // Something has the second file of the new copy open, and does not let it be renamed:
+        // the first file is put in place, and then the save cannot go on. It takes hold when
+        // the copy says for the second time that it is done, which is when every file is closed.
+        FileStream? held = null;
+        var done = 0;
+        var progress = new Told(value =>
+        {
+            if (value >= 1 && ++done == 2)
+            {
+                var filling = Assert.Single(Directory.EnumerateDirectories(Outside), directory => directory.Contains(".saving-", StringComparison.Ordinal));
+                held = new FileStream(Path.Combine(filling, "camera.mp4"), FileMode.Open, FileAccess.Read, FileShare.Read);
+            }
+        });
+
+        try
+        {
+            Assert.ThrowsAny<IOException>(() => Save(second, folder, replaceSavedProject: true, progress));
+
+            Assert.NotNull(held);
+            Assert.Equal(before, Names(folder));
+            Assert.Equal(fileBefore, File.ReadAllBytes(Path.Combine(folder, "Given Back.tinyclips")));
+        }
+        finally
+        {
+            held?.Dispose();
+        }
+
+        // What could not be renamed could not be deleted either, as long as it was held: the
+        // folder the copy was filled in is still there, with that one file. Nothing else is.
+        var left = Assert.Single(Names(Outside), name => name != "Given Back");
+        Assert.StartsWith("Given Back.saving-", left);
+        Assert.Equal(["camera.mp4"], Names(Path.Combine(Outside, left)));
+    }
+
+    [Fact]
     public void ASavedProjectThatIsInUse_IsNotReplaced_AndIsLeftAsItWas()
     {
         var first = MakeProject(camera: true);
