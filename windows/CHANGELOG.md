@@ -16,6 +16,9 @@ own `CHANGELOG.md` at the repository root.
   while a save, export, or delete is running. (#396)
 
 ### Fixed
+- **Region-selection outlines no longer remain stuck after canceling or exiting.** The active
+  capture flow now owns and cancels every region-selector window, including selectors shown on
+  multiple monitors, and avoids closing the selected window twice. (#425)
 - **A video recording that fails to start no longer deletes the previous one.** The cleanup after
   a failed start deleted the file the recorder had last written. Until the new recording had a
   file of its own, that was the video of the recording before it, saved and finished. The same

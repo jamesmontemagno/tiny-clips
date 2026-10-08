@@ -919,7 +919,8 @@ public partial class App : Application
                 : new EarlyBackdrop(earlyBackdropMonitors!, earlyBackdrops, earlyBackdropStarted);
             var resolved = await ResolveTargetAsync(
                 isTextRecognition || isScrolling ? CapturePickerMode.Region : pick.Mode,
-                earlyBackdrop);
+                earlyBackdrop,
+                captureFlowCts.Token);
             CaptureFlowTrace.Mark($"target: {(resolved is null ? "cancelled" : "resolved")}");
             if (resolved is not { } selection)
             {
@@ -1572,7 +1573,10 @@ public partial class App : Application
         settings.WebcamCornerRadius = setup.WebcamCornerRadius;
     }
 
-    private async Task<TargetSelection?> ResolveTargetAsync(CapturePickerMode mode, EarlyBackdrop? earlyBackdrop = null)
+    private async Task<TargetSelection?> ResolveTargetAsync(
+        CapturePickerMode mode,
+        EarlyBackdrop? earlyBackdrop = null,
+        CancellationToken cancellationToken = default)
     {
         var monitors = Services.GetRequiredService<IMonitorService>();
         var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -1598,7 +1602,7 @@ public partial class App : Application
                     : null;
                 CaptureFlowTrace.Mark(backdrops is null ? "region: capturing fresh backdrop" : "region: reusing early backdrop");
 
-                var result = await RegionSelectController.RunAsync(overlayMonitors, backdrops);
+                var result = await RegionSelectController.RunAsync(overlayMonitors, backdrops, cancellationToken);
                 if (result is not { } selection)
                 {
                     return null;
@@ -3274,6 +3278,7 @@ public partial class App : Application
         }
 
         _isExiting = true;
+        CancelCaptureFlow();
         try
         {
             Services.GetRequiredService<IScrollingCaptureService>().Cancel();
