@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed macOS video recordings made with both system audio and the microphone being saved with two audio tracks, which players that play only the first one (browsers, VLC, Windows players) played without the voice. Saved videos now have one audio track with both sounds in it, and the video trimmer no longer drops the microphone when it exports such a recording.
+- Fixed the macOS video trimmer doing nothing when an export failed. It now says what went wrong, and the original recording is kept.
 - Fixed Esc doing nothing in the macOS screenshot editor unless one of its controls had keyboard focus. Esc now closes the editor it is pressed in without quitting Tiny Clips.
 - Fixed Esc closing the macOS screenshot editor while typing in one of its text fields, such as the custom emoji field. Esc now leaves the field, and a second press closes the editor.
 - Fixed Command-W doing nothing in macOS Tiny Clips windows because the File menu had no Close item. Close is back in the File menu, and in the screenshot editor it still asks before discarding unsaved changes.

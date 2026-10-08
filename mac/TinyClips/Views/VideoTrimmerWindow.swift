@@ -1038,19 +1038,15 @@ private class TrimmerViewModel: ObservableObject {
                 )
 
                 // A recording with system audio and the microphone has a track for each. Every
-                // one is kept, and the export mixes them into a single track.
+                // one is kept, and the export mixes them into a single track. A track that cannot
+                // be added fails the export: the source is deleted after a successful one, and a
+                // video missing one of its sounds must not take its place.
                 if !removeAudio {
-                    let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
-                    for audioTrack in audioTracks {
+                    for audioTrack in try await asset.loadTracks(withMediaType: .audio) {
                         guard let compositionAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
-                            continue
+                            throw CaptureError.saveFailed
                         }
-                        do {
-                            try compositionAudio.insertTimeRange(timeRange, of: audioTrack, at: .zero)
-                        } catch {
-                            composition.removeTrack(compositionAudio)
-                            continue
-                        }
+                        try compositionAudio.insertTimeRange(timeRange, of: audioTrack, at: .zero)
                         compositionAudio.scaleTimeRange(
                             CMTimeRange(start: .zero, duration: timeRange.duration),
                             toDuration: targetDuration
@@ -1079,7 +1075,11 @@ private class TrimmerViewModel: ObservableObject {
                 self.isExporting = false
                 completion(outputURL)
             } catch {
+                try? FileManager.default.removeItem(at: outputURL)
                 self.isExporting = false
+                await MainActor.run {
+                    SaveService.shared.showError("Could not export the video: \(error.localizedDescription) The original recording was kept.")
+                }
                 completion(nil)
             }
         }

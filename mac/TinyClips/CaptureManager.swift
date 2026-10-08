@@ -1545,7 +1545,9 @@ class CaptureManager: ObservableObject {
                 // neither is still the recorder's own file, with a track for each sound.
                 if let recordedURL = savedVideoURL {
                     updateProcessingProgress(0.97, status: "Finalizing...")
-                    await Self.mixDownAudioOffMain(at: recordedURL)
+                    if await Self.mixDownAudioOffMain(at: recordedURL) == .failed {
+                        SaveService.shared.showError("The system audio and microphone could not be combined into one audio track. The recording was kept with two audio tracks, so some players may play it without the microphone.")
+                    }
                 }
             }
 
@@ -2616,9 +2618,9 @@ class CaptureManager: ObservableObject {
         }.value
     }
 
-    nonisolated private static func mixDownAudioOffMain(at url: URL) async {
+    nonisolated private static func mixDownAudioOffMain(at url: URL) async -> RecordingAudioMixdown.Outcome {
         await Task.detached(priority: .userInitiated) {
-            _ = await RecordingAudioMixdown.mixDownIfNeeded(at: url)
+            await RecordingAudioMixdown.mixDownIfNeeded(at: url)
         }.value
     }
 
