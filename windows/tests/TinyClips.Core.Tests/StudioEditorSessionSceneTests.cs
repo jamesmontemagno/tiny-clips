@@ -483,9 +483,10 @@ public sealed class StudioEditorSessionSceneTests : StudioEditorSessionTestBase
     {
         Assert.Equal(StudioShortcutAction.SplitScene, StudioShortcuts.Resolve(Press(StudioShortcutKey.S)));
 
-        // Held down, with a modifier, or while text is being typed it does nothing.
+        // Held down, with Shift or Alt, or while text is being typed it does nothing. With
+        // Ctrl it is another command, Save project, and splits nothing.
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(StudioShortcutKey.S) with { IsRepeat = true }));
-        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(StudioShortcutKey.S) with { IsControlDown = true }));
+        Assert.Equal(StudioShortcutAction.SaveProject, StudioShortcuts.Resolve(Press(StudioShortcutKey.S) with { IsControlDown = true }));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(StudioShortcutKey.S) with { IsShiftDown = true }));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(StudioShortcutKey.S) with { IsAltDown = true }));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(StudioShortcutKey.S) with { IsTextInputFocused = true }));
