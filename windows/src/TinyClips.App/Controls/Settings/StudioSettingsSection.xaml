@@ -62,7 +62,7 @@
                 <controls:SettingsCard
                     AutomationProperties.AutomationId="StudioRecordingHowToCard"
                     Description="Studio recording keeps the screen and camera as separate layers and opens the editor when the recording ends. Record video, from the tray menu or with its hotkey, is always an ordinary recording."
-                    Header="Choose Studio recording in the tray menu"
+                    Header="Choose Studio in the tray menu"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE81E;}" />
 
                 <!--

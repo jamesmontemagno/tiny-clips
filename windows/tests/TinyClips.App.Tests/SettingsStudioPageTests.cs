@@ -144,7 +144,7 @@ public sealed partial class SettingsStudioPageTests
             .ToList();
         var card = Assert.Single(under);
         Assert.Equal("SettingsCard", card.Name.LocalName);
-        Assert.Equal("Choose Studio recording in the tray menu", card.Attr("Header"));
+        Assert.Equal("Choose Studio in the tray menu", card.Attr("Header"));
         Assert.Contains("Record video, from the tray menu or with its hotkey, is always an ordinary recording.", card.Attr("Description"));
         Assert.Empty(card.Elements());
         Assert.Null(card.Attr("IsClickEnabled"));
