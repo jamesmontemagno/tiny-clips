@@ -97,13 +97,15 @@ public partial class App : Application
     private bool _recordingStopAnnounced;
     private CaptureTile? _videoTile;
     private CaptureTile? _gifTile;
-    private Button? _studioRecordingButton;
+
+    // The fourth capture tile, between Video and GIF. Only there while Studio is switched on.
+    private CaptureTile? _studioTile;
+
+    // The tiles of the popup as it was last built, in their order.
+    private IReadOnlyList<CaptureTile> _captureTiles = [];
     private TrayPopupWindow? _trayPopup;
     private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
-    private const double TrayPopupWidth = 344;
     private const double TrayPopupHeight = 242;
-    // What the Studio recording command adds to the popup's height: its button and the gap above it.
-    private const double TrayPopupStudioRowHeight = 44;
     private const double TrayPopupFooterHeight = 48;
     private const double TrayPopupFooterButtonSize = 32;
     // Shell_NotifyIcon(NIM_ADD) fails while Explorer's taskbar is not yet up (fresh sign-in,
@@ -530,23 +532,53 @@ public partial class App : Application
             return;
         }
 
-        // Built anew each time it is shown, so the Studio recording command comes and goes
-        // with the Studio switch in Settings while the app runs.
-        _trayPopup.Content = BuildTrayPopupContent(Services.GetRequiredService<IHotKeyService>());
+        // Built anew each time it is shown, so the Studio tile comes and goes with the Studio
+        // switch in Settings while the app runs.
+        var layout = BuildTrayPopupContent(Services.GetRequiredService<IHotKeyService>());
+        _trayPopup.Content = layout;
         UpdateRecordingState();
-        var height = TrayPopupHeight + (_studioRecordingButton is null ? 0 : TrayPopupStudioRowHeight);
-        _trayPopup.ShowNearCursor(TrayPopupWidth, height);
+
+        // Three tiles have the width they always had, and nothing is measured for them. Four
+        // are given more when a label would wrap in it, as with a larger text size in Windows.
+        var widestLabel = _captureTiles.Count > 3 ? WidestCaptureTileLabel() : 0;
+        var width = TrayPopupLayout.WidthFor(_captureTiles.Count, widestLabel);
+        layout.Width = width;
+        _trayPopup.ShowNearCursor(width, TrayPopupHeight);
+    }
+
+    /// <summary>
+    /// How wide the widest label of the capture tiles is on one line, as text is drawn now:
+    /// a text block is measured with the text size chosen in Windows. Zero when it cannot be told.
+    /// </summary>
+    private double WidestCaptureTileLabel()
+    {
+        var widest = 0.0;
+        try
+        {
+            foreach (var tile in _captureTiles)
+            {
+                tile.Label.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+                widest = Math.Max(widest, tile.Label.DesiredSize.Width);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"The tray popup's tile labels could not be measured: {ex}");
+            return 0;
+        }
+
+        return widest;
     }
 
     // PowerToys-style "quick access" popup: capture actions on a layered acrylic content
     // surface with a separate acrylic command bar along the bottom.
-    private UIElement BuildTrayPopupContent(IHotKeyService hotKeys)
+    private Grid BuildTrayPopupContent(IHotKeyService hotKeys)
     {
         void Dismiss() => _trayPopup?.Hide();
 
         var content = new StackPanel
         {
-            Padding = new Thickness(16),
+            Padding = new Thickness(TrayPopupLayout.ContentPadding),
             Spacing = 12,
         };
 
@@ -557,20 +589,12 @@ public partial class App : Application
             Style = ResourceStyle("BodyStrongTextBlockStyle"),
         });
 
-        var tiles = new Grid { ColumnSpacing = 6 };
-        for (var i = 0; i < 3; i++)
-        {
-            tiles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        }
-
         var screenshot = CreateCaptureTile(
             "Screenshot",
             GlyphScreenshot,
             hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString,
             new AsyncRelayCommand(CaptureScreenshotAsync),
             Dismiss);
-        Grid.SetColumn(screenshot.Button, 0);
-        tiles.Children.Add(screenshot.Button);
 
         _videoTile = CreateCaptureTile(
             "Video",
@@ -578,8 +602,28 @@ public partial class App : Application
             hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString,
             new AsyncRelayCommand(ToggleVideoAsync),
             Dismiss);
-        Grid.SetColumn(_videoTile.Button, 1);
-        tiles.Children.Add(_videoTile.Button);
+
+        // Only while Studio is switched on. Video is always an ordinary recording; this tile
+        // is the one way to record for Studio. It has no hotkey, so its tooltip names none.
+        _studioTile = null;
+        if (Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        {
+            _studioTile = CreateCaptureTile(
+                "Studio",
+                GlyphStudio,
+                accelerator: null,
+                new AsyncRelayCommand(StartStudioRecordingAsync),
+                Dismiss);
+
+            // "Studio" is enough beside its picture, and too little for a screen reader.
+            var studioButton = _studioTile.Button;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(studioButton, "TrayStudioRecordingButton");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(studioButton, "Studio recording");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+                studioButton,
+                "Starts a video recording that opens in Tiny Clips Studio, with the screen and camera kept as separate layers.");
+            ToolTipService.SetToolTip(studioButton, "Record a video that opens in Tiny Clips Studio");
+        }
 
         _gifTile = CreateCaptureTile(
             "GIF",
@@ -587,28 +631,21 @@ public partial class App : Application
             hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString,
             new AsyncRelayCommand(ToggleGifAsync),
             Dismiss);
-        Grid.SetColumn(_gifTile.Button, 2);
-        tiles.Children.Add(_gifTile.Button);
+
+        // Screenshot, Video, Studio, GIF: three columns, or four with Studio, each as wide as
+        // the others.
+        _captureTiles = _studioTile is null
+            ? [screenshot, _videoTile, _gifTile]
+            : [screenshot, _videoTile, _studioTile, _gifTile];
+        var tiles = new Grid { ColumnSpacing = TrayPopupLayout.TileSpacing };
+        for (var column = 0; column < _captureTiles.Count; column++)
+        {
+            tiles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(_captureTiles[column].Button, column);
+            tiles.Children.Add(_captureTiles[column].Button);
+        }
 
         content.Children.Add(tiles);
-
-        // Only while Studio is switched on. Video above is always an ordinary recording; this
-        // is the one way to record for Studio. It has no hotkey.
-        _studioRecordingButton = null;
-        if (Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
-        {
-            _studioRecordingButton = CreateQuickAccessButton(
-                "Studio recording",
-                GlyphStudio,
-                new AsyncRelayCommand(StartStudioRecordingAsync),
-                Dismiss);
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_studioRecordingButton, "TrayStudioRecordingButton");
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
-                _studioRecordingButton,
-                "Starts a video recording that opens in Tiny Clips Studio, with the screen and camera kept as separate layers.");
-            ToolTipService.SetToolTip(_studioRecordingButton, "Record a video that opens in Tiny Clips Studio");
-            content.Children.Add(_studioRecordingButton);
-        }
 
         var quickAccess = new Grid { ColumnSpacing = 6 };
         quickAccess.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -692,7 +729,7 @@ public partial class App : Application
             Dismiss));
         footer.Children.Add(footerActions);
 
-        var layout = new Grid { Width = TrayPopupWidth };
+        var layout = new Grid { Width = TrayPopupLayout.Width };
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TrayPopupFooterHeight) });
         layout.Children.Add(contentArea);
@@ -889,7 +926,7 @@ public partial class App : Application
             Command = command,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
-            Padding = new Thickness(4, 14, 4, 14),
+            Padding = new Thickness(TrayPopupLayout.TileSidePadding, 14, TrayPopupLayout.TileSidePadding, 14),
             Background = new SolidColorBrush(Colors.Transparent),
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(8),
@@ -2886,9 +2923,11 @@ public partial class App : Application
             _gifTile.Button.IsEnabled = !video.IsRecording;
         }
 
-        if (_studioRecordingButton is not null)
+        // The Studio tile only starts a recording. While one runs, of either kind, it is
+        // greyed: a Studio recording is a video recording, and the Video tile says Stop for it.
+        if (_studioTile is not null)
         {
-            _studioRecordingButton.IsEnabled = !video.IsRecording && !gif.IsRecording;
+            _studioTile.Button.IsEnabled = !video.IsRecording && !gif.IsRecording;
         }
     }
 

@@ -19,6 +19,8 @@
     <Compile Include="..\..\src\TinyClips.App\Settings\SettingsSectionKind.cs" Link="SettingsSectionKind.cs" />
     <Compile Include="..\..\src\TinyClips.App\Settings\TeleprompterTranscriptSaveScheduler.cs" Link="TeleprompterTranscriptSaveScheduler.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\ClipboardService.cs" Link="ClipboardService.cs" />
+    <!-- How wide the tray popup is for three capture tiles and for four. -->
+    <Compile Include="..\..\src\TinyClips.App\Infrastructure\TrayPopupLayout.cs" Link="TrayPopupLayout.cs" />
     <!--
       The Studio editor's view model. The one app class it needs that cannot be compiled here,
       the background swatches, which are the screenshot editor's presets, has a stand-in next to
