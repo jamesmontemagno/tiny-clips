@@ -154,6 +154,10 @@ own `CHANGELOG.md` at the repository root.
     the speed.
 
 ### Fixed
+- **Starting Tiny Clips again while it is running, or opening a file with it, no longer does
+  nothing now and then.** The running app read what the second launch handed over only after
+  that launch had ended, and when it was a moment late there was nothing left to read: no tray
+  menu came up, and a picture chosen with "Open with" did not open. It is read at once now.
 - **A video recording that fails to start no longer deletes the previous one.** The cleanup after
   a failed start deleted the file the recorder had last written. Until the new recording had a
   file of its own, that was the video of the recording before it, saved and finished. The same

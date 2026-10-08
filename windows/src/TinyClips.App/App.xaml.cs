@@ -309,7 +309,11 @@ public partial class App : Application
     {
         try
         {
-            TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs());
+            var activation = SingleInstance.Read(Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs());
+            if (activation.Kind == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File)
+            {
+                TryOpenActivatedFile(activation.FilePaths);
+            }
         }
         catch (Exception ex)
         {
@@ -321,15 +325,9 @@ public partial class App : Application
     /// Opens the first file of a file activation that the app has an editor for: an image in
     /// the screenshot editor, a Studio project file in Studio. No other window is shown with it.
     /// </summary>
-    private bool TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppActivationArguments? activation)
+    private bool TryOpenActivatedFile(IEnumerable<string?> paths)
     {
-        if (activation?.Kind != Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File ||
-            activation.Data is not Windows.ApplicationModel.Activation.IFileActivatedEventArgs fileArgs)
-        {
-            return false;
-        }
-
-        if (ActivatedFile.FirstSupported(fileArgs.Files.Select(static item => (item as StorageFile)?.Path)) is not { } file)
+        if (ActivatedFile.FirstSupported(paths) is not { } file)
         {
             return false;
         }
@@ -406,10 +404,11 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Receives the activation of a later launch that <see cref="SingleInstance"/> forwarded here.
-    /// Runs on a background thread, so the work is queued to the UI thread.
+    /// Receives the activation of a later launch that <see cref="SingleInstance"/> forwarded here,
+    /// already read: the launch itself is gone by the time the UI thread gets to it. Runs on a
+    /// background thread, so the work is queued to the UI thread.
     /// </summary>
-    private void OnRedirectedActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments activation)
+    private void OnRedirectedActivation(ForwardedActivation activation)
     {
         var queued = _dispatcher?.TryEnqueue(() =>
         {
@@ -430,7 +429,7 @@ public partial class App : Application
         }
     }
 
-    private void HandleRedirectedActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments activation)
+    private void HandleRedirectedActivation(ForwardedActivation activation)
     {
         if (_isExiting)
         {
@@ -440,7 +439,7 @@ public partial class App : Application
         switch (activation.Kind)
         {
             case Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File:
-                TryOpenActivatedFile(activation);
+                TryOpenActivatedFile(activation.FilePaths);
                 break;
 
             case Microsoft.Windows.AppLifecycle.ExtendedActivationKind.Launch:
