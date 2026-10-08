@@ -45,6 +45,7 @@ public sealed partial class StudioInspector : UserControl
     {
         ViewModel = viewModel;
         InitializeComponent();
+        StudioGlyphRow.Attach(ZoomAddRow);
 
         // The names come from the editor model, so the lists and what screen readers hear agree.
         foreach (var shape in Enum.GetValues<StudioCameraShape>())

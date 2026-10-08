@@ -8,7 +8,7 @@
     IsTabStop="False">
 
     <StackPanel Padding="16,12" Spacing="12">
-        <Grid ColumnSpacing="8">
+        <Grid x:Name="TransportRow" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -48,22 +48,29 @@
                 <FontIcon FontSize="14" Glyph="&#xE76C;" />
             </Button>
 
-            <!--  Output time: where the playhead is in the exported video, and how long that is.  -->
-            <TextBlock
-                Grid.Column="3"
-                Margin="4,0,0,0"
-                VerticalAlignment="Center"
-                AutomationProperties.AutomationId="StudioTimeText"
-                AutomationProperties.Name="{x:Bind ViewModel.TimeAccessibleName, Mode=OneWay}"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="{x:Bind ViewModel.TimeText, Mode=OneWay}"
-                Typography.NumeralAlignment="Tabular" />
+            <!--
+                Output time: where the playhead is in the exported video, and how long that is.
+                It has the room the buttons leave. The stack around it lets it be as wide as
+                its text also where that room is less, so that the row knows what it needs.
+            -->
+            <StackPanel Grid.Column="3" Orientation="Horizontal">
+                <TextBlock
+                    Margin="4,0,0,0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioTimeText"
+                    AutomationProperties.Name="{x:Bind ViewModel.TimeAccessibleName, Mode=OneWay}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.TimeText, Mode=OneWay}"
+                    Typography.NumeralAlignment="Tabular" />
+            </StackPanel>
 
             <!--
                 Scenes are for a recording with a camera: without one every layout is the screen alone.
 
                 Each of the six buttons that edit has a glyph before its words, one of
-                StudioGlyphs, and says its words as its name.
+                StudioGlyphs, and says its words as its name. Where the row has no room for
+                the six glyphs, as at a large text size, they give way and the words stay
+                (StudioGlyphRow, in the code behind).
             -->
             <Button
                 x:Name="SplitSceneButton"

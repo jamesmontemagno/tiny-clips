@@ -10,6 +10,8 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 // the window opens with and at the smallest size it can be given. The pictures are saved for a
 // person to look at; the checks make sure that nothing of the transport row or the timeline is
 // cut off or lies over something else, and that the preview is still large enough to work with.
+// What the row does without room for the glyphs of its buttons, and how wide it would be at a
+// text size of 200%, is in ButtonGlyphs.cs.
 internal sealed partial class WindowChecks
 {
     // The window's sizes, in effective pixels: what it opens with, and the smallest it can be given.
@@ -69,6 +71,7 @@ internal sealed partial class WindowChecks
         // Asked to be far smaller than it may be, the window takes its smallest size.
         Timeline.Mark($"9: the smallest window, {name}");
         PictureOfTimeline(editor, name, "its smallest size", $"window-timeline-{name}-smallest.png", 400, 300, SmallestWindowWidth, SmallestWindowHeight, Frame, cut, saved);
+        GlyphsGiveWay(editor, name, saved);
         CloseQuietly(editor);
     }
 
@@ -165,5 +168,12 @@ internal sealed partial class WindowChecks
             $"the window is {F(width, "0")} × {F(height, "0")} effective pixels; the canvas {F(canvas.Width, "0")} × {F(canvas.Height, "0")}; "
                 + (wrong.Count == 0 ? $"the row runs from x {inRow[0].X} to x {inRow[^1].X + inRow[^1].Width} and the lanes from y {stacked[0].Y} to y {stacked[^1].Y + stacked[^1].Height}, in a window from ({window.X:0},{window.Y:0}) to ({window.Right:0},{window.Bottom:0})" : string.Join("; ", wrong))
                 + $"; {layout ?? "the preview shows " + sight.Reading}; scenes: {sceneLane}; zooms: {zoomLane}; cuts: {cutLane}; speed changes: {speedLane}; saved as {fileName} ({sight.Shot.Width}x{sight.Shot.Height})");
+
+        // The sums are the same in both themes: once, at the smallest size.
+        if (wantedWidth == SmallestWindowWidth && !_rowWidthsNoted)
+        {
+            _rowWidthsNoted = true;
+            _report.Note(RowWidths(editor, row, width));
+        }
     }
 }

@@ -21,6 +21,7 @@ public sealed partial class StudioTimeline : UserControl
         ZoomLaneHost.Child = new StudioZoomLane(viewModel);
         CutLaneHost.Child = new StudioCutLane(viewModel);
         SpeedLaneHost.Child = new StudioSpeedLane(viewModel);
+        StudioGlyphRow.Attach(TransportRow);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
