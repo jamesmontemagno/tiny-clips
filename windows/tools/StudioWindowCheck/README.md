@@ -27,9 +27,9 @@ Every result is read back by the tool itself, in one of these ways:
 **Last run on 7 October 2026.** Everything below that says it was written on 5 or 6 October
 "and not run" has run now, for the first time that day: see "The first runs, on 7 October
 2026" under "The inspector as a rail with one panel on show", and "Three checks on a smaller
-preview". Six full runs were made that day. The first, of the checks as they had been
-written, had 7 of 551 fail (two parts ended early). The checks were mended, and of the five
-runs after that four had one check fail, a different one in three of them, and one had none:
+preview". Seven full runs were made that day. The first, of the checks as they had been
+written, had 7 of 551 fail (two parts ended early). The checks were mended, and of the six
+runs after that four had one check fail, a different one in three of them, and two had none:
 
 - 1 of 559: the trim bar's Start handle was read 188.6 px from its place. Not explained; the
   check has said more about itself since, and has not failed again.
@@ -41,6 +41,8 @@ runs after that four had one check fail, a different one in three of them, and o
   how "A closed window that stays in memory" describes a window that is closed while a
   tooltip waits, which is the framework's. It was not looked into further, and it is the
   first time a full run ended on it.
+- all 573 passed, in 355 s: the last run of the day, of the tool and the editor as they
+  were committed.
 
 None of the checks that failed on 7 October was failed by a fault of the editor's: each was
 the check's, or the PC being busy, except the first of the four above, which is open. The
@@ -126,9 +128,9 @@ Groups: `open transport inspector trim export close windows accessibility themes
   narrow for handles inside its ends selected on that lane, so that its two handles stand
   outside it. For a person to look at; nothing reads them.
 - `out\panel-scene-light.png` and so on, one for each of the nine panels of the inspector in
-  each theme: the window with that panel on show, from its top, with the middle one of three
-  zooms selected. Each panel is first laid out when it is first shown, and these are for a
-  person to look at each of them once.
+  each theme: the window with that panel on show, from its top, with one of three zooms
+  selected. Each panel is first laid out when it is first shown, and these are for a person
+  to look at each of them once.
 - `out\failed-<name>.png`, and for most of them `out\failed-<name>.txt`, only when a check
   that reads a picture did not hold: the screenshot the check read, and beside it every line
   that was read across an edge with what it found there, or the numbers of the points that
@@ -1713,6 +1715,23 @@ printed it with one of the two ways of making the copy, 20 edges and the same fi
 found, and leaves no picture of either play-through right but for an edge. It changes what
 is read in every picture of every group, so it is for after a run.
 ## Faults that were tried
+
+**On 7 October 2026 the rail's twenty-five were tried** (R1 to R25 of `faults-evening.ps1`),
+each put into the tree by itself, built, and run against `inspector`: twenty-three failed at
+least one check, and two failed none. One of the two, the sliders of the selected zoom
+handing back what they are shown, says of itself that it fails nothing where the arithmetic
+gives the same number back, and the fault next to it, which is the whole of that mend put
+back, was caught. The other is *a focus that is in the rail does not go with the choice*:
+with the inspector's rule for it taken out, the focus still went from the rail's Zoom item
+to its Cut item when what X runs showed the Cut panel. The framework's list moves the focus
+with its selection, at least in a window that has not the keyboard, so no check can fail for
+that half of the rule. Seven more were written and tried that day for the handles on the
+lanes, against `zoom`, `cut` and `speed`: six failed between three and thirteen checks, and
+the seventh, a block that gives a screen reader what is inside it, failed none, because the
+handles are nothing to UI Automation in the first place. And two for checks that had been
+mended that day, both caught: the editor left enabled while it exports (`accessibility`),
+and a zoom's block that does not follow its start (`zoom`). The other eighty-nine of the
+paragraph below are still as it says.
 
 **For speed changes, the Background choice and the trim bar, for what was written on
 5 October 2026, and for what was written on 6 October, none was tried.** Eighty-nine are
