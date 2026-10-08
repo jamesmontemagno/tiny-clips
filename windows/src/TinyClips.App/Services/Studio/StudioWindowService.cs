@@ -8,15 +8,56 @@ using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
 using TinyClips.Core.Studio.Rendering;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace TinyClips.App.Services.Studio;
 
+/// <summary>What came of opening a project from its <c>.tinyclips</c> file.</summary>
+/// <param name="Window">The editor on the copy that was made, when one was opened.</param>
+/// <param name="Failure">
+/// Why none was, as a sentence for the user. Null where there is nothing to say: the editor
+/// is open, the app is exiting, or the same file was being opened already.
+/// </param>
+public sealed record StudioProjectOpenResult(Window? Window, string? Failure);
+
+/// <summary>
+/// What an editor window asks of the app for the project as a whole: another project opened,
+/// the system's pickers, and a folder shown in Explorer. <see cref="StudioWindowService"/> is
+/// the one that answers.
+/// </summary>
+public interface IStudioProjectHost
+{
+    /// <summary>Opens the editor for a project in the store, or brings its window to the front.</summary>
+    Window? Open(string projectId);
+
+    /// <summary>Asks for a <c>.tinyclips</c> file. Null when none was chosen.</summary>
+    Task<string?> ChooseProjectFileAsync(Window owner);
+
+    /// <summary>Asks for the folder a project is to be saved in. Null when none was chosen.</summary>
+    Task<string?> ChooseSaveFolderAsync(Window owner);
+
+    /// <summary>Copies a saved project into the store as a new draft and opens the editor on the copy.</summary>
+    Task<StudioProjectOpenResult> OpenProjectFileAsync(string path);
+
+    /// <summary>Shows a file in Explorer, selected in its folder.</summary>
+    void Reveal(string path);
+
+    /// <summary>Says a sentence to the user where no window is left to show it.</summary>
+    void Tell(string message);
+}
+
 /// <summary>
 /// Opens Studio editor windows, one per project, and looks after what follows from one closing:
-/// the project stops counting as open, and storage cleanup gets a turn. Used on the UI thread.
+/// the project stops counting as open, and storage cleanup gets a turn. It also opens a project
+/// that was saved as a folder. Used on the UI thread.
 /// </summary>
-public sealed class StudioWindowService
+public sealed class StudioWindowService : IStudioProjectHost
 {
+    // A copy that is still running after this long is said to be running: nothing else shows
+    // that a project file was opened until its editor is there.
+    private static readonly TimeSpan OpeningNoticeDelay = TimeSpan.FromSeconds(2);
+
     // Exit does not wait for a poster image. The edits are on disk before the wait starts.
     private static readonly TimeSpan ExitWait = TimeSpan.FromSeconds(3);
 
@@ -31,6 +72,9 @@ public sealed class StudioWindowService
     private readonly Dictionary<string, StudioWindow> _windows = new(StringComparer.Ordinal);
     private readonly HashSet<string> _deletingProjectIds = new(StringComparer.Ordinal);
     private readonly List<Task> _teardowns = [];
+
+    // The project files that are being copied into the store right now, by their full path.
+    private readonly HashSet<string> _openingProjectFiles = new(StringComparer.OrdinalIgnoreCase);
     private bool _isExiting;
 
     public StudioWindowService(
@@ -51,6 +95,9 @@ public sealed class StudioWindowService
         _storage = storage;
         _tracker = tracker;
         _cleanup = cleanup;
+
+        // An editor that opened or closed changes what the others list under Open recent.
+        _tracker.Changed += OnOpenProjectsChanged;
     }
 
     /// <summary>Raised once an export has finished, with the path of the video that was written.</summary>
@@ -84,6 +131,28 @@ public sealed class StudioWindowService
     public Func<bool> CanFindPeople { get; set; } = static () => StudioPersonFinders.IsAvailable;
 
     /// <summary>
+    /// How a <c>.tinyclips</c> file is asked for: the system's open picker, owned by the window
+    /// that asks. Returns the file's path, or null when none was chosen.
+    /// </summary>
+    public Func<Window, Task<string?>> ChooseProjectFile { get; set; } = PickProjectFileAsync;
+
+    /// <summary>
+    /// How the folder a project is saved in is asked for: the system's folder picker, owned by
+    /// the window that asks. Returns the folder's path, or null when none was chosen.
+    /// </summary>
+    public Func<Window, Task<string?>> ChooseSaveFolder { get; set; } = PickFolderAsync;
+
+    /// <summary>How a file is shown in its folder: an Explorer window with the file selected.</summary>
+    public Action<string> RevealFile { get; set; } = RevealInExplorer;
+
+    /// <summary>
+    /// How a sentence is said to the user where no window shows it: that a project is being
+    /// copied, or that it could not be opened when the editor that asked has closed. The app
+    /// replaces this with a notification.
+    /// </summary>
+    public Action<string> Notify { get; set; } = static message => Debug.WriteLine(message);
+
+    /// <summary>
     /// Opens the editor for a project, or brings the window that already has it open to the front.
     /// There is one window per project.
     /// </summary>
@@ -113,13 +182,123 @@ public sealed class StudioWindowService
             viewModel.Exported += OnExported;
             viewModel.ScreenRecordingSaved += OnScreenRecordingSaved;
             viewModel.ErrorReported += OnErrorReported;
-            window = new StudioWindow(viewModel, _previewViews, _settings, OnWindowClosed);
+            window = new StudioWindow(viewModel, _previewViews, _settings, this, OnWindowClosed);
             _windows[projectId] = window;
             _tracker.MarkOpened(projectId);
         }
 
         ActivateWindow(window);
         return window;
+    }
+
+    /// <summary>
+    /// Opens a project that was saved as a folder, from its <c>.tinyclips</c> file or from the
+    /// folder that holds one: the project is copied into the store as a new draft, and the
+    /// editor opens on the copy. What was chosen is only read. With Studio switched off
+    /// nothing is copied, and the result says so. Never fails.
+    /// </summary>
+    /// <remarks>
+    /// The copy runs off the UI thread and takes as long as the recordings are large. Nothing
+    /// of the app shows meanwhile, as on the Mac, so a copy that is still running after two
+    /// seconds is said to be running (<see cref="Notify"/>), and the same file asked for again
+    /// in that time is not copied twice.
+    /// </remarks>
+    public async Task<StudioProjectOpenResult> OpenProjectFileAsync(string path)
+    {
+        if (_isExiting)
+        {
+            return new StudioProjectOpenResult(null, null);
+        }
+
+        if (!_settings.StudioPreviewEnabled)
+        {
+            return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
+        }
+
+        string key;
+        try
+        {
+            key = Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            key = path;
+        }
+
+        if (!_openingProjectFiles.Add(key))
+        {
+            return new StudioProjectOpenResult(null, null);
+        }
+
+        try
+        {
+            var copy = Task.Run(() => _store.OpenProjectFolder(path));
+            if (await Task.WhenAny(copy, Task.Delay(OpeningNoticeDelay)) != copy)
+            {
+                Notify(StudioProjectFolderText.GetOpeningMessage(key));
+            }
+
+            var project = await copy;
+
+            // An app that is exiting opens nothing more. The copy stays in the store as a draft.
+            return new StudioProjectOpenResult(Open(project.Id), null);
+        }
+        catch (Exception ex)
+        {
+            return new StudioProjectOpenResult(null, StudioProjectFolderText.GetOpenFailure(ex));
+        }
+        finally
+        {
+            _openingProjectFiles.Remove(key);
+        }
+    }
+
+    Task<string?> IStudioProjectHost.ChooseProjectFileAsync(Window owner) => ChooseProjectFile(owner);
+
+    Task<string?> IStudioProjectHost.ChooseSaveFolderAsync(Window owner) => ChooseSaveFolder(owner);
+
+    void IStudioProjectHost.Reveal(string path) => RevealFile(path);
+
+    void IStudioProjectHost.Tell(string message) => Notify(message);
+
+    private static async Task<string?> PickProjectFileAsync(Window owner)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            ViewMode = PickerViewMode.List,
+        };
+        picker.FileTypeFilter.Add(StudioProjectFolder.ProjectFileExtension);
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(owner));
+        return (await picker.PickSingleFileAsync())?.Path;
+    }
+
+    private static async Task<string?> PickFolderAsync(Window owner)
+    {
+        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+        picker.FileTypeFilter.Add("*");
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(owner));
+        return (await picker.PickSingleFolderAsync())?.Path;
+    }
+
+    private static void RevealInExplorer(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio could not show {path} in Explorer: {ex.Message}");
+        }
+    }
+
+    private void OnOpenProjectsChanged(object? sender, EventArgs e)
+    {
+        foreach (var window in _windows.Values)
+        {
+            _ = window.ViewModel.RefreshRecentProjectsAsync();
+        }
     }
 
     /// <summary>

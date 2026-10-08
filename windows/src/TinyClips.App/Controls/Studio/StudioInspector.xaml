@@ -1466,6 +1466,46 @@
                                 Text="{x:Bind ViewModel.DefaultLookStatus, Mode=OneWay}"
                                 Visibility="{x:Bind ViewModel.HasDefaultLookStatus, Mode=OneWay}" />
                         </StackPanel>
+                        <!--  The project as a folder of its own (#429). Each button's name is its words; its picture says nothing.  -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Project folder" />
+                            <Button
+                                AutomationProperties.AcceleratorKey="Ctrl+Shift+S"
+                                AutomationProperties.AutomationId="StudioSaveProjectButton"
+                                AutomationProperties.Name="Save project&#x2026;"
+                                Click="{x:Bind ViewModel.RequestSaveProject}"
+                                ToolTipService.ToolTip="Save the recordings and a .tinyclips file to a folder you choose (Ctrl+Shift+S)">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon AutomationProperties.AccessibilityView="Raw" FontSize="14" Glyph="&#xE74E;" />
+                                    <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Save project&#x2026;" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock
+                                AutomationProperties.AutomationId="StudioSaveProjectNote"
+                                Style="{StaticResource StudioNoteStyle}"
+                                Text="Saves a copy of the recordings with a .tinyclips file that opens them in Studio again, on this PC or another." />
+                        </StackPanel>
+                        <StackPanel
+                            Padding="0,16,0,0"
+                            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                            BorderThickness="0,1,0,0"
+                            Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="StudioDeleteProjectButton"
+                                AutomationProperties.HelpText="Deletes the recording and every edit. Asks first."
+                                AutomationProperties.Name="Delete project&#x2026;"
+                                Click="{x:Bind ViewModel.RequestDeleteProject}"
+                                ToolTipService.ToolTip="Delete the recording and every edit. Asks first.">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon AutomationProperties.AccessibilityView="Raw" FontSize="14" Glyph="&#xE74D;" />
+                                    <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Delete project&#x2026;" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock
+                                AutomationProperties.AutomationId="StudioDeleteProjectNote"
+                                Style="{StaticResource StudioNoteStyle}"
+                                Text="Removes the recording and every edit from Studio. Exported videos and saved folders stay." />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </ScrollViewer>

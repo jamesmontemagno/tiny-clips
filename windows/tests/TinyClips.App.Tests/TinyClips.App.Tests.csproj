@@ -32,6 +32,7 @@
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.cs" Link="Studio\StudioViewModel.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Cut.cs" Link="Studio\StudioViewModel.Cut.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Inspector.cs" Link="Studio\StudioViewModel.Inspector.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Project.cs" Link="Studio\StudioViewModel.Project.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Scene.cs" Link="Studio\StudioViewModel.Scene.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Speed.cs" Link="Studio\StudioViewModel.Speed.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Zoom.cs" Link="Studio\StudioViewModel.Zoom.cs" />

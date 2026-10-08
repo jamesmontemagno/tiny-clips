@@ -66,6 +66,14 @@ internal sealed class ToolServices
             // The app asks whether the model that finds people is next to it. No such file is
             // next to the tool, and none is put there: the tool says what the answer is.
             CanFindPeople = () => PeopleCanBeFound,
+
+            // The app shows the system's pickers, an Explorer window and a notification. Each
+            // is a window of its own, in front of other windows, so the tool shows none: a
+            // check says what a picker answers, and what was shown and said is written down.
+            ChooseProjectFile = _ => Task.FromResult(Answer(ref _projectFileAnswer, _projectFilesAsked)),
+            ChooseSaveFolder = _ => Task.FromResult(Answer(ref _saveFolderAnswer, _saveFoldersAsked)),
+            RevealFile = path => Revealed.Enqueue(path),
+            Notify = message => Notices.Enqueue(message),
         };
         Windows.Exported += (_, e) => Exports.Enqueue(e);
         Windows.ScreenRecordingSaved += (_, e) => ScreenRecordingsSaved.Enqueue(e);
@@ -107,6 +115,48 @@ internal sealed class ToolServices
     /// camera's background is drawn as it was recorded.
     /// </summary>
     public bool PeopleCanBeFound { get; set; }
+
+    private readonly List<string?> _projectFilesAsked = [];
+    private readonly List<string?> _saveFoldersAsked = [];
+    private string? _projectFileAnswer;
+    private string? _saveFolderAnswer;
+
+    /// <summary>What the open picker answers the next time it is asked, once. Null: nothing was chosen.</summary>
+    public void AnswerProjectFilePicker(string? path) => Volatile.Write(ref _projectFileAnswer, path);
+
+    /// <summary>What the folder picker answers the next time it is asked, once. Null: nothing was chosen.</summary>
+    public void AnswerSaveFolderPicker(string? path) => Volatile.Write(ref _saveFolderAnswer, path);
+
+    /// <summary>How often a window asked for the open picker.</summary>
+    public int ProjectFilePickerAsked => Count(_projectFilesAsked);
+
+    /// <summary>How often a window asked for the folder picker.</summary>
+    public int SaveFolderPickerAsked => Count(_saveFoldersAsked);
+
+    /// <summary>Every file a window asked to have shown in Explorer.</summary>
+    public ConcurrentQueue<string> Revealed { get; } = new();
+
+    /// <summary>Every sentence the window service said where the app shows a notification.</summary>
+    public ConcurrentQueue<string> Notices { get; } = new();
+
+    private string? Answer(ref string? answer, List<string?> asked)
+    {
+        var given = Interlocked.Exchange(ref answer, null);
+        lock (_gate)
+        {
+            asked.Add(given);
+        }
+
+        return given;
+    }
+
+    private int Count(List<string?> asked)
+    {
+        lock (_gate)
+        {
+            return asked.Count;
+        }
+    }
 
     /// <summary>Every export the window service reported as finished.</summary>
     public ConcurrentQueue<StudioExportedEventArgs> Exports { get; } = new();

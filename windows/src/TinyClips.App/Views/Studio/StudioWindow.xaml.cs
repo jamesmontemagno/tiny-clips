@@ -40,6 +40,7 @@ public sealed partial class StudioWindow : Window
 
     private readonly IStudioPreviewViewFactory _previewViews;
     private readonly ICaptureSettings _settings;
+    private readonly IStudioProjectHost _projects;
     private readonly WindowChromeController _chromeController;
     private readonly StudioInspector _inspector;
     private readonly StudioTimeline _timeline;
@@ -48,7 +49,8 @@ public sealed partial class StudioWindow : Window
     private Task? _teardown;
     private FocusRequest _focusRequest;
     private bool _isActive;
-    private bool _wasExporting;
+    private bool _wasBusy;
+    private bool _wasSavingProject;
     private bool _isPromptOpen;
     private bool _closeConfirmed;
     private bool _deleteOnClose;
@@ -57,6 +59,7 @@ public sealed partial class StudioWindow : Window
     /// <param name="viewModel">The editor for the project this window shows.</param>
     /// <param name="previewViews">Makes the element the preview is drawn in.</param>
     /// <param name="settings">Where the app theme comes from, and whether Esc asks before it closes the window.</param>
+    /// <param name="projects">Opens another project, shows the system's pickers, and shows a saved folder in Explorer.</param>
     /// <param name="onClosed">
     /// Called once when the window is closing for good, with a task that finishes when the
     /// project's files have been let go of and, if the user chose to delete the project, it is
@@ -66,11 +69,13 @@ public sealed partial class StudioWindow : Window
         StudioViewModel viewModel,
         IStudioPreviewViewFactory previewViews,
         ICaptureSettings settings,
+        IStudioProjectHost projects,
         Action<StudioWindow, Task> onClosed)
     {
         ViewModel = viewModel;
         _previewViews = previewViews;
         _settings = settings;
+        _projects = projects;
         _onClosed = onClosed;
 
         InitializeComponent();
@@ -112,6 +117,10 @@ public sealed partial class StudioWindow : Window
         ViewModel.StateChanged += OnStateChanged;
         ViewModel.Announced += OnAnnounced;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        ViewModel.OpenProjectRequested += OnOpenProjectRequested;
+        ViewModel.SaveProjectRequested += OnSaveProjectRequested;
+        ViewModel.DeleteProjectRequested += OnDeleteProjectRequested;
+        ViewModel.ProjectSaved += OnProjectSaved;
         Activated += OnActivated;
         RootGrid.KeyDown += OnRootKeyDown;
         RootGrid.PreviewKeyDown += OnRootPreviewKeyDown;
@@ -130,7 +139,10 @@ public sealed partial class StudioWindow : Window
         /// <summary>The window has opened: on Play, or on the message when the project cannot be shown.</summary>
         Opened,
 
-        /// <summary>An export started or ended: on Cancel while it runs, on Export afterwards.</summary>
+        /// <summary>
+        /// An export or a save of the project as a folder started or ended: on its Cancel while
+        /// it runs; afterwards on Export, or where the save was asked for.
+        /// </summary>
         Export,
     }
 
@@ -258,11 +270,31 @@ public sealed partial class StudioWindow : Window
             // The editor under the overlay is disabled, so focus goes to the one thing that works.
             CancelExportButton.Focus(FocusState.Programmatic);
         }
+        else if (ViewModel.IsSavingProject)
+        {
+            CancelSaveProjectButton.Focus(FocusState.Programmatic);
+        }
         else if (ViewModel.IsEditable
-            && (request != FocusRequest.Export || !ExportButton.Focus(FocusState.Programmatic)))
+            && (request != FocusRequest.Export || !FocusAfterBusy()))
         {
             _timeline.FocusPlayButton();
         }
+    }
+
+    // Where the focus goes when the overlay has gone: after an export to Export, and after a
+    // save of the project to where it was asked for, or to the Project button when that
+    // cannot take it, as an item of a menu that has closed cannot.
+    private bool FocusAfterBusy()
+    {
+        if (!_wasSavingProject)
+        {
+            return ExportButton.Focus(FocusState.Programmatic);
+        }
+
+        var askedFrom = _saveAskedFrom;
+        _saveAskedFrom = null;
+        return (askedFrom is { IsLoaded: true } && askedFrom.Focus(FocusState.Programmatic))
+            || ProjectMenuButton.Focus(FocusState.Programmatic);
     }
 
     private void AttachPreviewView()
@@ -302,14 +334,30 @@ public sealed partial class StudioWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (_isClosed || ViewModel.IsExporting == _wasExporting)
+        if (_isClosed)
         {
             return;
         }
 
-        // Focus goes to Cancel while the export runs, and back to where an export is started
-        // when it is over.
-        _wasExporting = ViewModel.IsExporting;
+        if (e.PropertyName == nameof(StudioViewModel.RecentProjects))
+        {
+            FillOpenRecent();
+        }
+
+        var isBusy = ViewModel.IsExporting || ViewModel.IsSavingProject;
+        if (isBusy == _wasBusy)
+        {
+            return;
+        }
+
+        // Focus goes to Cancel while the export or the save runs, and back to where it was
+        // started when it is over.
+        _wasBusy = isBusy;
+        if (isBusy)
+        {
+            _wasSavingProject = ViewModel.IsSavingProject;
+        }
+
         RequestFocus(FocusRequest.Export);
     }
 
@@ -472,6 +520,7 @@ public sealed partial class StudioWindow : Window
             IsReady: ViewModel.IsReady,
             IsExporting: ViewModel.IsExporting)
         {
+            IsSavingProject = ViewModel.IsSavingProject,
             IsTypeToSearchFocused = focused is ComboBox or ComboBoxItem,
 
             // Esc is a drop-down's only while its list is open. An open list closes on Esc itself
@@ -500,7 +549,8 @@ public sealed partial class StudioWindow : Window
         if (action != StudioShortcutAction.None)
         {
             // What the key does may take away the control of the inspector that has the focus.
-            // An export has the focus put where it belongs by itself.
+            // An export has the focus put where it belongs by itself. Opening a project and
+            // saving this one come back here as requests, and the window asks what they need.
             var held = _inspector.AsPanelControl(focused);
             ViewModel.Run(action);
             if (!ViewModel.IsExporting)
@@ -553,6 +603,7 @@ public sealed partial class StudioWindow : Window
     private Task AskBeforeClosingAsync(StudioCloseQuestion question) => question switch
     {
         StudioCloseQuestion.RunningExport => AskAboutRunningExportAsync(),
+        StudioCloseQuestion.RunningProjectSave => AskAboutRunningProjectSaveAsync(),
         StudioCloseQuestion.Draft => AskAboutDraftAsync(),
         StudioCloseQuestion.Escape => AskWhetherEscapeWasMeantAsync(),
         _ => Task.CompletedTask,
@@ -761,6 +812,10 @@ public sealed partial class StudioWindow : Window
         ViewModel.StateChanged -= OnStateChanged;
         ViewModel.Announced -= OnAnnounced;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ViewModel.OpenProjectRequested -= OnOpenProjectRequested;
+        ViewModel.SaveProjectRequested -= OnSaveProjectRequested;
+        ViewModel.DeleteProjectRequested -= OnDeleteProjectRequested;
+        ViewModel.ProjectSaved -= OnProjectSaved;
 
         LetGoOfBindings();
         DetachPreviewView();

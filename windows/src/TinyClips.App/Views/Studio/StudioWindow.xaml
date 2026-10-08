@@ -133,6 +133,23 @@
                     TextAlignment="Center"
                     TextWrapping="Wrap"
                     Visibility="{x:Bind ViewModel.HasScreenRecordingStatus, Mode=OneWay}" />
+                <!--  What is left of a project that cannot be shown can be deleted from here. It asks first.  -->
+                <Button
+                    x:Name="DeleteUnavailableProjectButton"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="StudioDeleteUnavailableProjectButton"
+                    AutomationProperties.HelpText="Deletes what is left of this project. Asks first."
+                    AutomationProperties.Name="Delete project&#x2026;"
+                    Click="{x:Bind ViewModel.RequestDeleteProject}"
+                    ToolTipService.ToolTip="Delete what is left of this project. Asks first.">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon
+                            AutomationProperties.AccessibilityView="Raw"
+                            FontSize="14"
+                            Glyph="&#xE74D;" />
+                        <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Delete project&#x2026;" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </studio:StudioMessagePanel>
 
@@ -192,6 +209,74 @@
                         Grid.Column="1"
                         Orientation="Horizontal"
                         Spacing="4">
+                        <!--
+                            The project as a whole: opening another, saving this one as a folder,
+                            deleting it. One button with a menu, left of Undo, as on the Mac: four
+                            buttons more would take the preview's room at the window's smallest
+                            width. The picture and the word are the button's content and say
+                            nothing of their own to a screen reader, which reads the button's name.
+                            Ctrl+O and Ctrl+Shift+S are the window's keys, so the menu only shows them.
+                        -->
+                        <DropDownButton
+                            x:Name="ProjectMenuButton"
+                            Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="StudioProjectMenuButton"
+                            AutomationProperties.HelpText="Open another project, save this one as a folder, or delete it."
+                            AutomationProperties.Name="Project"
+                            ToolTipService.ToolTip="Open another project, save this one as a folder, or delete it">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    FontSize="14"
+                                    Glyph="&#xE8B7;" />
+                                <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Project" />
+                            </StackPanel>
+                            <DropDownButton.Flyout>
+                                <MenuFlyout Opening="OnProjectMenuOpening" Placement="BottomEdgeAlignedLeft">
+                                    <MenuFlyoutSubItem
+                                        x:Name="OpenRecentItem"
+                                        AutomationProperties.AutomationId="StudioOpenRecentItem"
+                                        Text="Open recent">
+                                        <MenuFlyoutSubItem.Icon>
+                                            <FontIcon Glyph="&#xE81C;" />
+                                        </MenuFlyoutSubItem.Icon>
+                                    </MenuFlyoutSubItem>
+                                    <MenuFlyoutItem
+                                        x:Name="OpenProjectItem"
+                                        AutomationProperties.AcceleratorKey="Ctrl+O"
+                                        AutomationProperties.AutomationId="StudioOpenProjectItem"
+                                        Click="{x:Bind ViewModel.RequestOpenProject}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+O"
+                                        Text="Open project&#x2026;">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE8E5;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="SaveProjectItem"
+                                        AutomationProperties.AcceleratorKey="Ctrl+Shift+S"
+                                        AutomationProperties.AutomationId="StudioSaveProjectItem"
+                                        Click="{x:Bind ViewModel.RequestSaveProject}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+S"
+                                        Text="Save project&#x2026;">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE74E;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="DeleteProjectItem"
+                                        AutomationProperties.AutomationId="StudioDeleteProjectItem"
+                                        Click="{x:Bind ViewModel.RequestDeleteProject}"
+                                        Text="Delete project&#x2026;">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE74D;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
                         <Button
                             AutomationProperties.AcceleratorKey="Ctrl+Z"
                             AutomationProperties.AutomationId="StudioUndoButton"
@@ -340,6 +425,54 @@
                         Click="{x:Bind ViewModel.CancelExport}"
                         Content="Cancel"
                         ToolTipService.ToolTip="Stop the export (Esc)" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!--  Over the disabled editor while the project's recordings are copied into a folder.  -->
+        <Grid
+            x:Name="SaveProjectOverlay"
+            Grid.Row="1"
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Visibility="{x:Bind ViewModel.IsSavingProject, Mode=OneWay}">
+            <Border
+                Padding="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource OverlayCornerRadius}">
+                <StackPanel Width="240" Spacing="12">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AutomationId="StudioSavingProjectText"
+                        AutomationProperties.HeadingLevel="Level1"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="{x:Bind ViewModel.SavingProjectText}" />
+                    <ProgressBar
+                        AutomationProperties.AutomationId="StudioSaveProjectProgressBar"
+                        AutomationProperties.Name="Save progress"
+                        Maximum="100"
+                        Minimum="0"
+                        Value="{x:Bind ViewModel.SaveProjectProgressPercent, Mode=OneWay}" />
+                    <!--  The progress bar already reports this number.  -->
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AccessibilityView="Raw"
+                        AutomationProperties.AutomationId="StudioSaveProjectPercentText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.SaveProjectPercentText, Mode=OneWay}"
+                        Typography.NumeralAlignment="Tabular" />
+                    <Button
+                        x:Name="CancelSaveProjectButton"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AutomationId="StudioCancelSaveProjectButton"
+                        AutomationProperties.Name="Cancel save"
+                        Click="{x:Bind ViewModel.CancelProjectSave}"
+                        Content="Cancel"
+                        ToolTipService.ToolTip="Stop saving the project (Esc)" />
                 </StackPanel>
             </Border>
         </Grid>

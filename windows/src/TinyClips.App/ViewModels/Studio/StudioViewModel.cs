@@ -71,6 +71,7 @@ public sealed partial class StudioViewModel : ObservableObject
     ];
 
     private readonly StudioEditorSession _session;
+    private readonly IStudioProjectStore _store;
     private readonly ICaptureSettings _settings;
     private readonly IClipStorageService _storage;
 
@@ -117,6 +118,7 @@ public sealed partial class StudioViewModel : ObservableObject
         bool canFindPeople,
         TimeProvider? timeProvider = null)
     {
+        _store = store;
         _settings = settings;
         _storage = storage;
         _post = post;
@@ -251,7 +253,10 @@ public sealed partial class StudioViewModel : ObservableObject
             outcome == StudioScreenRecordingOutcome.Saved ? StudioAnnouncementKind.Completed : StudioAnnouncementKind.Stopped);
     }
 
-    /// <summary>False while loading, while exporting and after closing. The whole editor follows it.</summary>
+    /// <summary>
+    /// False while loading, while exporting, while the project is being saved as a folder,
+    /// and after closing. The whole editor follows it.
+    /// </summary>
     public bool IsEditable => _session.IsEditable;
 
     public bool IsExporting => _session.IsExporting;
@@ -412,6 +417,8 @@ public sealed partial class StudioViewModel : ObservableObject
     /// <summary>
     /// Runs what a key press means. A layout chosen this way is read out, and so is what came of a scene, a zoom, a cut or a speed change.
     /// Closing is the window's to do: <see cref="StudioShortcutAction.RequestClose"/> does nothing here.
+    /// Opening a project and saving this one ask something first, which is the window's to do as
+    /// well: here they only say that they were asked for.
     /// </summary>
     public void Run(StudioShortcutAction action)
     {
@@ -479,6 +486,15 @@ public sealed partial class StudioViewModel : ObservableObject
                 break;
             case StudioShortcutAction.CancelExport:
                 CancelExport();
+                break;
+            case StudioShortcutAction.OpenProject:
+                RequestOpenProject();
+                break;
+            case StudioShortcutAction.SaveProject:
+                RequestSaveProject();
+                break;
+            case StudioShortcutAction.CancelProjectSave:
+                CancelProjectSave();
                 break;
         }
     }
@@ -574,6 +590,11 @@ public sealed partial class StudioViewModel : ObservableObject
             if (e.Includes(StudioEditorChanges.Inspector))
             {
                 Raise(InspectorPropertyNames);
+            }
+
+            if (e.Includes(StudioEditorChanges.ProjectFolder))
+            {
+                Raise(ProjectFolderPropertyNames);
             }
         }
 
