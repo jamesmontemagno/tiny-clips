@@ -343,8 +343,14 @@ public sealed class StudioProjectFolderReplacementTests : StudioProjectFolderTes
         }
         finally
         {
-            security.RemoveAccessRule(rule);
-            closed.SetAccessControl(security);
+            // Opened again wherever it is by now: a save that wrongly went ahead would have
+            // moved it aside, and what is closed could then not be cleared away.
+            foreach (var directory in new DirectoryInfo(Outside).EnumerateDirectories())
+            {
+                var its = directory.GetAccessControl();
+                its.RemoveAccessRule(rule);
+                directory.SetAccessControl(its);
+            }
         }
 
         Assert.Equal(["Closed.tinyclips", "camera.mp4", "events.json", "poster.jpg", "screen.mp4"], Names(folder));
