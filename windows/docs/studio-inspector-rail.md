@@ -53,7 +53,7 @@ In rail order. A recording without a camera has neither Scene nor Camera.
 | Timeline | **Zoom** | Previous/next, Add Zoom, Suggest Zooms; for the selected zoom: Zoom level, **Focus** (Fixed Point or Follow Pointer, the pad, Horizontal, Vertical), **Timing** (Start, End, Zoom-in time, Zoom-out time), Delete Zoom |
 | Timeline | **Cut** | Previous/next, Add Cut; for the selected cut: **Timing** (Start, End, its length), Delete Cut |
 | Timeline | **Speed** | Previous/next, Add Speed Change; for the selected one: the rate, **Timing** (Start, End, its length), the note about sound, Delete Speed Change |
-| Rest | **Audio** | Mute, and the volume sliders a recording has |
+| Rest | **Audio** | Mute, and the volume sliders a recording has. On Windows: Mute and one **Volume**, of the whole video (8 October 2026) |
 | Rest | **Project** | **Export** (Tiny Clips badge); **Storage** (Keep this project, with its reason written under it); **New Recordings** (Save as Default Look, with what it saves written under it) |
 
 What moved, so nothing is lost:
@@ -155,6 +155,10 @@ Mac strings, in title case as the Mac writes buttons. Windows keeps its own sent
 - **Audio.** Windows has Mute and no volume sliders (one mixed track). The Audio panel then has
   one check box. Keep the panel so both platforms have the same nine, or put Mute in Project
   until volumes exist: ask the owner.
+  *Since 8 October 2026 the panel has a second control:* a **Volume** slider under Mute, for
+  the whole video (`audio.volume`), which the owner asked for. It goes from 0% to 100% in steps
+  of 5%, is switched off while Mute is on, and the rail describes the panel as "Audio: mute
+  and volume". A volume for a part of the sound still needs two sound tracks.
 - **The time rows** on Windows have −0.1 s and +0.1 s buttons where the Mac has a stepper. Keep
   them.
 - **Lane blocks take the keyboard focus on Windows.** Moving focus onto a block with the

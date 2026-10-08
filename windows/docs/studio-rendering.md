@@ -19,7 +19,7 @@ to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineS
 - `StudioExporter`: `ExportAsync` writes an MP4 (H.264 or HEVC), `WritePosterAsync` a JPEG.
   `StudioExportService` adapts it to `IStudioExportService`.
 - Internal: `StudioVideoSource`, `StudioAudioSource`, `StudioSinkWriterEncoder`, `StudioAudioPump`,
-  `StudioBackgroundImage`. `StudioRenderingMath` holds the unit-tested rules, and
+  `StudioPcmGain`, `StudioBackgroundImage`. `StudioRenderingMath` holds the unit-tested rules, and
   `DeleteStaleTemporaryFiles(folder, age)` for what an export that was killed leaves behind.
 
 ## How an export runs
@@ -37,6 +37,9 @@ to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineS
    within the first two seconds of video starts the export again with the next.
 5. Sound is the screen file's first track decoded to PCM, cut by sample count, encoded as AAC.
    44.1 and 48 kHz in mono or stereo keep their shape; other rates become 48 kHz, more channels stereo.
+   Each 16-bit sample is multiplied by the project's volume (`audio.volume`, 0 to 1) on its way
+   to the encoder and rounded to the nearest step; at 1 the samples are handed on as they are.
+   At 0 the video keeps a sound track, of silence; a muted project has none.
 6. Media Foundation encodes with BT.601 up to 576 lines and BT.709 above; the file is tagged so.
 7. The video is written as `.<name>.<guid>.tcexport` beside the output and moved into place last.
    A failed or cancelled export leaves nothing new and leaves an earlier file at that path alone.
@@ -85,6 +88,9 @@ files; `--help` lists the groups.
 - One frame drawn: 0.5–1.1 ms linear, 1.6–3.4 ms high-quality; on WARP 2.7–8.2 ms and 45–83 ms.
 - Every frame of every export shows the screen and camera frames worked out by hand. Sound starts
   with the picture and ends within 11 ms of it; tone bursts are within 0.02 ms, lag 0 samples.
+- The volume (8 October 2026): the same recording exported at 100%, 50% and 0%. At 50% the sound
+  is 6.03 dB below the one at 100% by loudness and 5.99 dB by the loudest sample (half is 6.02);
+  at 0% every sample is 0.
 - Colour, export against source: 1.0–1.6 of 255 with the hardware encoder, 4.7–5.2 in software.
 - Picture edges within 0.32 px of the layout. Cancellation stops the export in 170–230 ms.
 - Zooms: the pattern's edges are within 0.08 px of where the zoom window puts them in a drawn frame

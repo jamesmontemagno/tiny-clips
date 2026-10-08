@@ -269,7 +269,10 @@ with them and said in the check of the scenes.
 
 - **No sound.** Every player is forced mute and to volume zero. One check has to see
   `project.Audio.Muted` arrive at the screen player's `IsMuted`; it runs with a screen file that
-  has no audio track, still at volume zero. Audible playback and audio sync are therefore not
+  has no audio track, still at volume zero. The project's volume (`audio.volume`) is changed in
+  both, also while playing: the players have to stay at volume zero, and the engine's
+  diagnostics say which volume it was told (`ProjectVolume`). So no check of this tool sees a
+  player at the project's volume. Audible playback and audio sync are therefore not
   checked by this tool.
 - The window is shown without being activated, behind every other window, and not in the taskbar
   or Alt+Tab. Screenshots are taken with Windows.Graphics.Capture of that window only. No input is

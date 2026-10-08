@@ -204,8 +204,10 @@ Someone may be working on the machine while the tool runs, so:
   activation. Whether it shows in front of anything is read while it is open, and fails a
   check if it does. No run has made that check yet.
 - **No input is sent**: no keys, no pointer. See "What stands in for a person".
-- **No sound.** The preview is created with `StudioPreviewOptions.ForceMuted`. Audible playback is
-  not checked.
+- **No sound.** The preview is created with `StudioPreviewOptions.ForceMuted`, which keeps every
+  player muted and at volume zero whatever the project says of mute and of its volume; the
+  check of the Volume slider reads that back from the players after it has set the volume.
+  Audible playback is not checked.
 - No system, display, theme or power setting is changed. The theme is the app's own setting,
   held in memory.
 
@@ -2143,3 +2145,27 @@ the inspector is high as the window opens.
 Not checked by this group, because it is not in the window: the `.tinyclips` file type and a
 file opened from Explorer, the tray's recent captures, and the Studio page of Settings. Those
 are in the app, which the tool never starts.
+
+## The volume (8 October 2026)
+
+The inspector group has three checks of the **Volume** slider of the Audio panel (`Checks\Volume.cs`),
+between the canvas shapes and the check boxes:
+
+- what a screen reader is given of it: a slider called Volume, from 0 to 1 in steps of 0.05,
+  at 100% for a project that says nothing else, its percent as its value and beside its name,
+  its tooltip, under Mute, and the stop of the Tab key after Mute;
+- set to 0.35 through UI Automation: the slider says 35%, the project file has `audio.volume`
+  0.35, written once, the preview's engine says it was told 0.35 (`ProjectVolume` of its
+  diagnostics) while both players are muted and at volume zero, and Undo and Redo;
+- with Mute on: the slider is not enabled, cannot be set, is no stop of the Tab key, keeps
+  35%, and its name and its value are drawn in another colour; with Mute off it is back.
+
+The first run found 0.35000000000000003 in the project file, which is what seven steps of
+0.05 add up to; the editor now keeps the volume to a millionth. A full run is 604 checks,
+where there were 601. The slider is one more in "every slider of the inspector can be set to
+its lowest and to its highest value" (19) and in the count of sliders of each audit of the
+tree, and it follows Mute in the lists of tab stops.
+
+Not checked here, because it cannot be without sound: that the preview is quieter. The
+recordings of this tool have no sound, and its players are at volume zero whatever the
+project says. `StudioRenderCheck` measures an export at 100%, 50% and 0%.

@@ -101,6 +101,19 @@ The owner, at the PC, asked one question at a time. The first four are the open 
 
 Not asked, and standing as built unless he says otherwise: a stored **After recording** choice is not carried over on Windows (no build with that setting was released); the setup bar goes on saying Studio when Studio is switched off while it is up; and the headings of the Studio page of Settings.
 
+### Decided on 8 October
+
+The owner, about the Windows editor: "The only thing I could think of adding is maybe adding a volume slider for the audio so they can adjust the audio output that they have in the app. I think that would be a nice touch". He was not asked further. Nineteen minutes later, while the Windows side was being built: "can you implement on mac too". What was decided from the first sentence, by the lead of this work and not by him:
+
+| Question | Decision |
+|---|---|
+| Where | Windows first, where the inspector's Audio panel held one check box, Mute. Then the Mac as well, when he asked for it |
+| What the slider sets | One slider, **Volume**, for the sound of the whole video: 0% (silent) to 100% (as recorded), and 100% until it is moved. Never louder than recorded: that needs a limiter, as "Volumes" says of every volume |
+| What the project says | A new property of the shared format, `audio.volume`: a number, 1 when missing, clamped to 0 to 1 when used. It is in the gain of every sound track, a `mixed` one too, which `audio.systemVolume` and `audio.microphoneVolume` do not reach. `audio.muted` still silences everything. Section 7 of the format has the rule |
+| Preview and export | The preview plays at that volume and the export has it, and the two are to agree |
+
+On Windows it was built the same day: "The volume on Windows (8 October)" under "Implementation status" has what was run and what nobody has heard. The Mac side is compiled and unit tested in CI, and has not been run on a Mac.
+
 ## Where the code is today
 
 | | macOS | Windows |
@@ -351,6 +364,8 @@ A recording can have the computer's sound and the microphone in one file. Where 
 
 **Windows.** The recorder mixes both into one track while recording, so a Windows recording has nothing to set apart and the window shows no volumes. Separate volumes there need three things: the recorder writing two sound tracks in a Studio recording, the exporter mixing two tracks, and the preview playing two. The first of these changes the sound path of the recorder that ships today, and none of it can be tried on the machine this is written on without recording its user's sound and microphone. It is left until that can be done with the user. Decided on 5 October: Windows has Mute only in this pull request, and two sound tracks are a follow-up of their own, made with the owner at the PC to record.
 
+Since 8 October the Windows Audio panel has one slider all the same: **Volume**, under Mute, for the sound of the whole video (`audio.volume`; "Decided on 8 October"). It needs none of the three: the one track is played and exported at that volume. The preview sets its player's volume and the exporter multiplies the samples on their way to the encoder, and leaves them as they are at 100%. A volume for the computer's sound apart from the microphone's still waits for two sound tracks.
+
 ### Scenes from the recording (Milestone 3)
 
 Both apps let the camera be moved to another corner while a recording runs, and both already wrote those moves into the project's events. A regular recording has the camera drawn into it, so the move is simply in the video. A Studio recording kept the camera apart and then showed it in its first corner from start to end, whatever was done while recording.
@@ -529,7 +544,7 @@ The Windows window has the zoom lane, the Zoom section and the crop sliders. `St
 | Editing operations for speed changes, with undo: adding, moving, and deleting one, its rate, and one selection shared with the zooms and the cuts | Done in the editor model, which is unit tested, and the view model | Done in the editor model and session, with the R key and Delete on a speed change in the key rules. Unit tested |
 | Speed in the preview | The player is set to the rate of the stretch it is in, and is silent there. Run on 7 October: see "Run on a Mac (7 October)" | Not started. The preview plays every stretch at the recording's own speed |
 | Speed lane, Speed section in the inspector, the Speed button | Done. Used by the owner on 7 October | Done. Written on 5 October while no check tool could be run on the PC, and worked by `StudioWindowCheck` since that evening (71 checks), without a person at the controls |
-| Volumes for the computer's sound and the microphone | Done: the recorder lists its sound tracks, the Audio section has a slider for each, and preview and export play them through an audio mix. The rules are unit tested. The microphone's volume and mute were run in the export on 7 October; the sliders, and the computer's sound with something playing, were not | Not started, and not in this pull request (decided on 5 October). A Windows recording has one mixed sound track; see "Volumes" above |
+| Volumes for the computer's sound and the microphone | Done: the recorder lists its sound tracks, the Audio section has a slider for each, and preview and export play them through an audio mix. The rules are unit tested. The microphone's volume and mute were run in the export on 7 October; the sliders, and the computer's sound with something playing, were not | Not started, and not in this pull request (decided on 5 October). A Windows recording has one mixed sound track; see "Volumes" above. One volume for the whole video is there since 8 October: "The volume on Windows (8 October)" |
 | Moves of the camera while recording become scenes (section 9.1 of the format) | Done. 16 fixtures. The recorder hands the moves to the new project. Never run: no recording made on a Mac has moved the camera | Done. The same fixtures. The recorder hands the moves to the new project; that hand-over is two lines that no test reaches, and no recording has been made with it |
 | Choosing a layout while recording | Not built, and taken out of the plan on 5 October. The format and the rule are in, with fixtures, and nothing writes a marker | The same |
 
@@ -634,6 +649,17 @@ Until that evening the Tiny Clips app had never been started with this branch's 
 - **Not explained:** in the first start the capture picker was a visible window before any tile had been pressed. Nothing was captured. A click of the owner's on the menu, which comes up at the pointer, would do it.
 - **Seen and not looked into:** in the Mac project's first scene the camera's bubble is black in the preview at the first frames; in its second scene the camera shows. What the Mac shows there was not compared.
 - **What it cost the owner:** the copy's windows took the foreground some thirty times in all, it held the global hotkeys while it ran, and it wrote ten entries into `%LOCALAPPDATA%\TinyClips\Logs\crash.log`, the log his own Tiny Clips writes too.
+
+### The volume on Windows (8 October)
+
+The owner asked for it that day ("Decided on 8 October"). It is built, unit tested, and worked in the real editor window by the window check through UI Automation. **Nobody has heard it**, and the app was not started.
+
+- **What a person gets.** In the Audio panel, under Mute: **Volume**, with its percent beside the name, from 0% to 100% in steps of 5% (an arrow key moves it one step, and a drag stops on the same steps), and the tooltip "How loud the video's sound is". While Mute is on it is switched off, dimmed, and keeps its value, as on the Mac. A drag is one undo step. The rail describes the panel as "Audio: mute and volume".
+- **The project.** `audio.volume`, which Windows writes always, as it writes every property. So a Mac's folder saved again by Windows has that one property more than the Mac wrote, at 1; the test of the Mac's project file expects exactly that. The editor stores the volume to a millionth: the slider's steps add up to 0.35000000000000003, which the first run of the window check found in the project file.
+- **Export.** Each 16-bit sample is multiplied on its way to the encoder and rounded to the nearest step; nothing can wrap, because nothing gets louder. At 100% the samples are handed on as they are, the same bytes. At 0% the video keeps a sound track, of silence; a muted project has none, as before. Measured by `StudioRenderCheck` on its tone bursts ("export (c2)"): at 50% the sound is 6.03 dB below the one at 100% by loudness and 5.99 dB by the loudest sample, where half is 6.02; at 0% every sample is 0. ffmpeg's `volumedetect` on the same three files: mean −24.2 dB, −30.3 dB, and −91.0 dB.
+- **Preview.** The screen clip's player is given the same number as its volume when the preview opens and whenever the project changes, also while it plays. **Whether that number means to the player what it means to the samples was read, not measured.** The page of `MediaPlayer.Volume` says only that it goes from 0 to 1. The Media Foundation engine documents its volume as an attenuation, from silence at 0 to none at 1, and Windows documents the volumes of a sound session and of a stream as linear in the signal, which is what a multiplier is. Nothing documents which of these the player sits on. A measurement needs the sound to come out of the PC, which was not allowed while this was built.
+- **What no check sees.** Every check tool keeps its players muted and at volume zero (`ForceMuted`, `ZeroVolume`), and the rule for a player's volume keeps them there whatever the project says; the checks read that back from the players, also while playing and while the volume changes. So no tool has seen a player at the project's volume: with the two lines that give a player its volume taken out, every check still passed. Every other rule of the new code was taken out once, and a test or a check failed for it.
+- **Run that day:** the Core tests (2,336, 4 skipped on purpose), the app tests (170), the window check (604 checks in a full run, where there were 601), the mute group of the preview check, and the export above. Step 23 of the hands-on checklist is what a person should do.
 
 ### Known problems on Windows
 
@@ -1216,6 +1242,14 @@ First with the switch off, against the released build, since this is what every 
    - Settings › Studio › **Projects** › **Open project…**: the open picker, then the editor; a file that cannot be opened should give **The project was not opened** with the reason.
    - Between a Mac and a PC. Open the folder the owner saved on his Mac in the app (the store opened it; the app has not). A folder saved on Windows, opened on a Mac: nobody has tried that.
    - Keyboard and Narrator: rows A11Y-35 to A11Y-39 of the accessibility gate.
+23. The volume (built on 8 October). The slider was worked by the window check through UI Automation and the export was measured; nothing has been heard, because every check keeps its players at volume zero, and no check has seen a player at the project's volume:
+   - Look first. Choose Audio on the rail: **Volume** should be under **Mute**, at 100%, with its percent beside its name.
+   - Hear it. Play a recording that has sound and drag Volume to 50% while it plays: the sound should get quieter at once, with no hitch in the picture. At 0% it should be silent, and at 100% as it was. With the arrow keys, each press should be 5%.
+   - Close the editor at 50% and open the project again: the slider should say 50%, and playing should start at that volume. No check has seen a preview open at anything but zero.
+   - Export at 50%, then set 100% and export again. Play both in the same player without touching the system's volume: the first should be clearly quieter (the exporter's check measured 6.03 dB), and the preview at 50% should sound like the export at 50%. That last comparison is the one nobody could make: that the player's volume and the exporter's multiplier are the same scale is read from the documentation and not measured.
+   - Mute: tick it. The slider should dim, keep its percent, and not move, and the preview should be silent. Untick it: the volume it had. Export while muted: a video with no sound track. Export at 0%: a video with a silent one.
+   - Undo: after one drag, one Ctrl+Z should give the volume from before the drag, in the slider and by ear, and Ctrl+Y the one after it.
+   - Keyboard and Narrator: row A11Y-40 of the accessibility gate.
 
 **macOS**
 

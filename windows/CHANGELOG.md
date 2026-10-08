@@ -75,6 +75,11 @@ own `CHANGELOG.md` at the repository root.
     makes the stretch play at the recording's own speed again. The time above the timeline
     counts the video as it will be exported, so a faster stretch makes it shorter and a slower
     one longer.
+  - **Volume.** The **Audio** panel of the inspector has a **Volume** slider under **Mute**,
+    from 0% (silent) to 100% (as recorded), in steps of 5%. The preview plays at that volume
+    and the exported video has it; a video is never louder than its recording. While **Mute**
+    is on, the slider is switched off and keeps its value. A drag is one step to undo. The
+    volume is saved with the project as `audio.volume`.
   - **Handles on the lanes.** A zoom, a cut, and a speed change show a handle at each end, 8
     pixels wide, with the resize pointer over it: drag it to make the stretch longer or
     shorter. The handles are faint until the pointer is over the block or the block is

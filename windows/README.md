@@ -249,6 +249,9 @@ With the switch on:
   The Camera panel has a **Camera background** choice: keep, blur, or remove what is behind you. The
   people are found on this PC with the MediaPipe Selfie Segmentation model, which ships with the
   app under the Apache License 2.0 (**Settings › About › Third-party notices**).
+  The Audio panel has **Mute** and a **Volume** slider for the whole video, from 0% to 100% in
+  steps of 5%: the preview plays at that volume and the export has it. The slider is switched
+  off while Mute is on.
   **Keep this project**, in the Project panel, pins a project against the storage
   cleanup; it is written at once and is not undone by `Ctrl+Z`.
   A project the editor cannot show says why, and where its screen recording is still there,

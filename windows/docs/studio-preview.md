@@ -40,6 +40,9 @@ The picture in the Studio editor: both clips of a project decoded and drawn live
 - `UpdateProject` swaps the project and asks for a redraw; calls are coalesced. Sources and
   `Edits` are ignored: the caller applies the trim. The camera is hidden outside its own time
   range. The screen clip plays its sound unless `project.Audio.Muted`; the camera never does.
+  The screen clip's player is at the project's volume (`audio.volume`, as it is used: 0 to 1),
+  set when the preview opens and whenever the project changes, also while it plays. The
+  options a check runs with (`ForceMuted`, `ZeroVolume`) keep every player at zero instead.
 - A camera whose background is blurred or removed (`camera.cutout`) has its people found by the
   renderer, with the model the app ships. The engine gives the renderer every frame without
   saying which picture it is (`StudioGpuVideoFrame.Stamp` is 0), so the people are looked for
@@ -259,7 +262,9 @@ Not verified, because this PC cannot produce it:
   show what such a PC does.
 - **A real device loss**, and a device rebuilt on another adapter than the one that was lost.
 
-Also not measured: audible playback and audio sync (every check runs muted), a real display
+Also not measured: audible playback and audio sync (every check runs muted), so also a player
+at the project's volume, and whether the player's volume and the exporter's multiplier are
+the same scale (the plan's "The volume on Windows" has what was read about it), a real display
 scale change, the app's own recordings, the packaged app.
 
 ## Which frame a texture holds
