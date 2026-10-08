@@ -1,4 +1,6 @@
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Tests;
@@ -318,6 +320,35 @@ public sealed class StudioProjectFolderReplacementTests : StudioProjectFolderTes
         // Two project files: no saved project, so not a matter of what else is in it.
         File.Copy(Path.Combine(folder, "Asked.tinyclips"), Path.Combine(folder, "Second.tinyclips"));
         Assert.Equal(StudioProjectFolderProblem.DestinationExists, StudioProjectFolder.WhyASaveWouldNotReplace(folder)?.Problem);
+    }
+
+    [Fact]
+    public void AFolderThatCannotBeLookedInto_IsNotReplaced()
+    {
+        var folder = SavedFolder("Closed");
+        var closed = new DirectoryInfo(folder);
+        var rule = new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.ListDirectory, AccessControlType.Deny);
+        var security = closed.GetAccessControl();
+        security.AddAccessRule(rule);
+        closed.SetAccessControl(security);
+        try
+        {
+            var asked = StudioProjectFolder.WhyASaveWouldNotReplace(folder);
+
+            Assert.Equal(StudioProjectFolderProblem.DestinationExists, asked?.Problem);
+            Assert.IsType<UnauthorizedAccessException>(asked?.InnerException);
+            AssertRefused(
+                StudioProjectFolderProblem.DestinationExists,
+                () => Save(MakeProject(camera: false), folder, replaceSavedProject: true));
+        }
+        finally
+        {
+            security.RemoveAccessRule(rule);
+            closed.SetAccessControl(security);
+        }
+
+        Assert.Equal(["Closed.tinyclips", "camera.mp4", "events.json", "poster.jpg", "screen.mp4"], Names(folder));
+        Assert.Equal(["Closed"], Names(Outside));
     }
 
     /// <summary>A project saved as a folder with everything a save writes: both recordings, the events and the poster.</summary>

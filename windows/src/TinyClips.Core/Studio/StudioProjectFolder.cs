@@ -358,7 +358,6 @@ public static class StudioProjectFolder
                 .Where(entry => !IsPlainFile(entry) || !(written.Contains(Path.GetFileName(entry)) || IsSystemLitter(Path.GetFileName(entry))))
                 .Select(entry => Path.GetFileName(entry))
                 .Order(StringComparer.OrdinalIgnoreCase)
-                .ThenBy(static name => name, StringComparer.Ordinal)
                 .FirstOrDefault();
             return other is null ? null : StudioProjectFolderException.DestinationHasOtherFiles(other);
         }

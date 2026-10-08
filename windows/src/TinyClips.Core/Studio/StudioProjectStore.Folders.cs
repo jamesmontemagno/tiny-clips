@@ -232,15 +232,19 @@ public sealed partial class StudioProjectStore
     }
 
     /// <summary>
-    /// Refuses a save where something is at the target that may not be replaced: anything
-    /// that is not a saved project, a saved project when replacing was not asked for, and one
-    /// that holds something a save does not write
-    /// (<see cref="StudioProjectFolder.WhyASaveWouldNotReplace"/>).
+    /// Refuses a save where something is at the target that may not be replaced: anything at
+    /// all when replacing was not asked for, and when it was, whatever
+    /// <see cref="StudioProjectFolder.WhyASaveWouldNotReplace"/> names: a file, a folder that
+    /// is not a saved project, and a saved project that holds something a save does not write.
     /// </summary>
     private static void RefuseWhatMayNotBeReplaced(string target, bool replaceSavedProject)
     {
-        if (File.Exists(target)
-            || (Directory.Exists(target) && !(replaceSavedProject && StudioProjectFolder.IsSavedProjectFolder(target))))
+        if (!File.Exists(target) && !Directory.Exists(target))
+        {
+            return;
+        }
+
+        if (!replaceSavedProject)
         {
             throw StudioProjectFolderException.DestinationExists();
         }
