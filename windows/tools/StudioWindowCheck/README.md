@@ -24,32 +24,28 @@ Every result is read back by the tool itself, in one of these ways:
 - what an editor asks its preview to play at, and when, written down on its way to the preview
   engine: see "Speed changes".
 
-**Last run on 5 October 2026, before what is named below was written.** In three full runs of
-that evening 451 of 454 checks passed, and the same three failed in each: see "Three checks on
-a smaller preview". The `speed` group, which had been written while no check tool could be
-run, ran for the first time that evening and passed all 76 of its checks.
+**Last run on 7 October 2026.** Everything below that says it was written on 5 or 6 October
+"and not run" has run now, for the first time that day: see "The first runs, on 7 October
+2026" under "The inspector as a rail with one panel on show", and "Three checks on a smaller
+preview". Five full runs were made that day. The first, of the checks as they had been
+written, had 7 of 551 fail (two parts ended early). The checks were mended, and of the four
+runs after that three had one check fail, and one had none:
 
-**Not run yet.** Written after those runs, again while no check tool could be run: what is
-dragged while the preview plays (`scene`), Keep this project (`inspector`), a project that
-cannot be shown (`open`), a save that fails as a window closes (`close`), an export whose name
-is taken (`export`), their four pictures (`themes`), what is kept of a picture check that
-fails, and what was prepared for the three failures, which the tool does only when it is told
-to (`--as-prepared`). They compile, and that is all that is known of them: see "Written on
-5 October 2026 and not run" and "Three checks on a smaller preview".
+- 1 of 559: the trim bar's Start handle was read 188.6 px from its place. Not explained; the
+  check has said more about itself since, and has not failed again.
+- 1 of 559, twice: the zoom's block was read between getting its place and getting its
+  width. The check's; its mend comes with the handles on the lanes (#427).
+- all 559 passed.
 
-**Not run either.** Written on 6 October 2026, still without a check tool: what Esc does in
-the window, and an export that ends behind the question about it, with the close button and
-the keyboard focus then (both in `close`, with two checks of the focus more in `export`); a
-window that is closed while its screen recording is being saved (`open`); and two windows
-more for `--memory`. One of the checks opens a
-drop-down list, which the tool had never done, and two have a recording read from a pipe, so
-that its copy lasts until they let it end. See "Written on 6 October 2026 and not run".
 
-**Nor this.** Written later on 6 October 2026, without a check tool as before: the button
-that saves the screen recording is no longer disabled while it works, so that it keeps the
-keyboard focus, and a copy that fails after its window has closed is told to the app. In
-`open`, four checks judge something else than they did and two are new, both with a recording
-read from a pipe. See "A button that is not disabled while it works".
+None of the checks that failed on 7 October was failed by a fault of the editor's: each was
+the check's, or the PC being busy, except the first of the four above, which is open. The
+one fault of the editor's that the day found came before any check: the window could not be
+made (e40ad26).
+
+Where a section below says "not run", "has not run" or "no run has made that check yet", it
+was written before 7 October and is left as it was written, as the record of what was
+expected. What the runs then showed is in the two places named above.
 
 ## Needs
 
@@ -122,6 +118,11 @@ Groups: `open transport inspector trim export close windows accessibility themes
   on show, where Tiny Clips badge, Keep this project and Save as default look are.
   `out\cannot-be-shown-light.png`, `-dark.png`: the window of a project whose file cannot be
   read, with the button that saves its screen recording.
+
+- `out\panel-scene-light.png` and so on, one for each of the nine panels of the inspector in
+  each theme: the window with that panel on show, from its top, with the middle one of three
+  zooms selected. Each panel is first laid out when it is first shown, and these are for a
+  person to look at each of them once.
 - `out\failed-<name>.png`, and for most of them `out\failed-<name>.txt`, only when a check
   that reads a picture did not hold: the screenshot the check read, and beside it every line
   that was read across an edge with what it found there, or the numbers of the points that
@@ -330,7 +331,12 @@ Someone may be working on the machine while the tool runs, so:
   after everything else it has to do, is read once the UI thread has come to what waits at
   that priority. What is given the focus under a question that is open is noted by a handler
   for `GotFocus` on the window's content: a question is drawn in a layer of its own, so its
-  own buttons are not among what is noted.
+  own buttons are not among what is noted. **That handler has never been called:** the two
+  checks that use it (`close`) do not tell the window that it has the keyboard, so "nothing
+  under the question was given the focus" is true of every run whatever the window does.
+  What those checks show is where the focus is, read from the focus manager, once the window
+  has done what it had waiting. Telling the window for them was not tried: whether a
+  question behaves the same in a window that has been told is not known.
 - **No screen reader runs.** What one would be told is heard by a listener for UI Automation
   events inside the tool. It hears every event twice, a few milliseconds apart on two threads,
   including those of the framework's own controls, so the checks hold what the window's zoom
@@ -397,8 +403,10 @@ Someone may be working on the machine while the tool runs, so:
   row in their order, the four lanes and the trim bar are one above the other and equally wide,
   all of it whole inside the window, and the canvas is at least 400 × 225. For the Project
   panel: Tiny Clips badge, Keep this project and Save as default look are whole in the picture,
-  one under the other. For a project that cannot be shown: the button is whole in the picture,
-  under the message, and enabled.
+  one under the other. For each panel of the inspector: its name is over the inspector and a
+  control it always has is in the window, which says the picture is of that panel and
+  nothing about what it looks like. For a project that cannot be shown: the button is whole
+  in the picture, under the message, and enabled.
 - `zoom`: the lane above the trim bar, Add zoom, what Z and Delete run, the lane's keys, its
   blocks as list items, Previous and Next, the Zoom panel with every control of the selected
   zoom, the focus pad, the Start and End buttons, presses and drags on the lane, a zoom that
@@ -1378,6 +1386,25 @@ nothing to do with what they are about, and each was the check's:
 - *The Project panel in the dark theme* (`themes`). Tiny Clips badge was reported as not
   whole in the picture, in a picture that shows it whole: UI Automation did not give the
   check box at that moment. It is waited for now, up to two seconds.
+
+Four full runs followed on the mended checks, for whether the tool reads the same each
+time. Each counted 559 checks. One passed them all, and three had one check fail:
+
+- *The Start handle of the trim bar, set to 11.7 s after a cut was deleted* (`cut`), once:
+  it was read 188.6 px from where that is. In every other run it is 0.4 px. The bar gives
+  the handle its place in the same call in which it takes the value (read), and nothing
+  else moves it. Not explained. When it is off, the check writes down what the number is
+  made of and reads it again a second later; it has not failed since.
+- *The Start and End buttons move the zoom's two times, and its block follows* (`zoom`),
+  twice: the block's start had moved and its end with it. The lane gives a block its place
+  at once and its width when the window is next laid out, and the check had read the
+  block's rectangle on the screen between the two. What a person sees is drawn after the
+  layout. The check reads where the lane itself has the block now, and separately waits
+  for the rectangle a screen reader is given. That mend comes with the handles on the
+  lanes (#427), because it uses what they added, and is not in this commit.
+
+A picture of each panel of the inspector is saved since then, in both themes, for a person
+to look at each of them once: see "What it leaves behind".
 
 ## Three checks on a smaller preview
 

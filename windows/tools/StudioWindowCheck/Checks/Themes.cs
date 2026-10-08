@@ -86,6 +86,7 @@ internal sealed partial class WindowChecks
 
         ZoomPictures(editor, name, isLight, Frame, saved);
         ProjectSectionPicture(editor, name, isLight, saved);
+        PanelPictures(editor, name, saved);
         TimelinePictures(name, isLight, saved);
         CannotBeShownPicture(name, isLight, saved);
 
@@ -121,6 +122,51 @@ internal sealed partial class WindowChecks
         question?.Find("CloseButton")?.Invoke();
         Until(() => !HasDialog(editor), gone => gone, 3);
         CloseQuietly(editor);
+    }
+
+    /// <summary>
+    /// A picture of the window with each panel of the inspector on show in turn, from its top,
+    /// for a person to look at: every panel is laid out for the first time when it is first
+    /// shown. The check only says that each picture is of the panel its name says: the panel's
+    /// name is over the inspector, and a control the panel always has is in the window. What a
+    /// panel looks like is not judged.
+    /// </summary>
+    private void PanelPictures(Editor editor, string name, List<string> saved)
+    {
+        Timeline.Mark($"9: each panel of the inspector, {name}");
+        var was = OnUi(() => editor.Window.ViewModel.InspectorPanel);
+        var panels = OnUi(() => StudioInspectorPanels.GetAvailable(editor.Window.ViewModel.HasCamera).ToArray());
+        var (pictured, wrong) = (new List<string>(), new List<string>());
+        foreach (var panel in panels)
+        {
+            var title = StudioInspectorPanels.GetTitle(panel);
+            ShowPanel(editor, panel);
+
+            // A crop group that has just come on show is still opening.
+            Thread.Sleep(450);
+            var shown = PanelShown(editor);
+            var anchor = editor.Root.FindAsItIs(PanelAnchors.First(entry => entry.Panel == panel).Id);
+            if (editor.Camera.Take() is not { } shot)
+            {
+                wrong.Add($"{title}: no screenshot");
+                continue;
+            }
+
+            var path = Path.Combine(_output, $"panel-{panel.ToString().ToLowerInvariant()}-{name}.png");
+            shot.Save(path);
+            saved.Add(path);
+            pictured.Add(title);
+            if (!IsShown(shown, title) || anchor is not { IsOffscreen: false })
+            {
+                wrong.Add($"{title}: {PanelWords(shown)}; a control it always has is {(anchor is null ? "not there" : anchor.IsOffscreen ? "out of view" : "there")}");
+            }
+        }
+
+        ShowPanel(editor, was);
+        _report.Check(
+            $"each panel of the inspector in the {name} theme is pictured with its own name over it and a control it always has in the window, for a person to look at",
+            pictured.Count == panels.Length && wrong.Count == 0,
+            wrong.Count == 0 ? $"{string.Join(", ", pictured)}; saved as panel-<panel>-{name}.png" : string.Join("; ", wrong));
     }
 
     /// <summary>
