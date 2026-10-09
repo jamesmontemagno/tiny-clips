@@ -6,6 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Text box styles** — Screenshot text annotations can use Plain, Light, Dark, or Accent
+  presets and custom background, border, padding, and corner settings. The choice applies to the
+  selected text or the next text annotation and resets with each editor window. (#435)
 - **Direct screenshot screen hotkey** — An optional global shortcut can now skip the capture picker
   and capture a screen directly. It is unbound by default and configurable in Settings → Keyboard
   shortcuts. (#440)
@@ -25,6 +28,8 @@ own `CHANGELOG.md` at the repository root.
 - The **Screenshot Region**, **Screenshot Screen**, and **Screenshot Window** shortcuts now use the same icons in Settings as in the capture picker.
 
 ### Fixed
+- Text controls in the screenshot editor now clear when Select has no text annotation selected,
+  so changing text defaults cannot unexpectedly affect unrelated editor or export state. (#435)
 - **Keyboard shortcuts can be deleted, and changing one no longer fails because another shortcut is
   unavailable.** Every shortcut now has a **Delete** action that leaves it unbound; **Reset** still
   restores its default. Settings evaluates Windows registration errors for the shortcut being

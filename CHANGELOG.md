@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- The macOS screenshot editor Text tool now includes Plain, Light, Dark, and Accent text-box styles plus custom background, border, padding, and corner controls. Styles apply to the selected text or the next text annotation and reset with each editor window. (#435)
 - macOS adds an optional global **Screenshot Screen** shortcut that skips the capture picker and captures the selected screen. It is unassigned by default and can be configured in Settings > Shortcuts. (#440)
 - The macOS screenshot editor can now switch between **Fit** and **Actual Size (1:1)**, and remembers the selected mode for the next editor. (#436)
 - macOS users can now choose between a quick bug report and feature request from the in-app feedback form. Both prefill the matching GitHub template with app and OS details.

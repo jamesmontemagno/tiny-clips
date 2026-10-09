@@ -3,6 +3,71 @@ import XCTest
 @testable import TinyClips
 
 final class CaptureMathTests: XCTestCase {
+    func testTextBoxStyleDecoratesClampsAndScalesBounds() {
+        let style = TextBoxStyle(
+            preset: .dark,
+            backgroundColor: .black,
+            borderColor: .white,
+            borderWidth: 4,
+            padding: 8,
+            cornerRadius: 6
+        )
+
+        XCTAssertEqual(
+            TextBoxStyle.decoratedRect(
+                for: CGRect(x: 10, y: 20, width: 30, height: 40),
+                scale: 1,
+                style: style
+            ),
+            CGRect(x: 0, y: 10, width: 50, height: 60)
+        )
+
+        let scaled = style.scaled(by: 2)
+        XCTAssertEqual(scaled.preset, .custom)
+        XCTAssertEqual(scaled.borderWidth, 8)
+        XCTAssertEqual(scaled.padding, 16)
+        XCTAssertEqual(scaled.cornerRadius, 12)
+
+        var clamped = style
+        clamped.borderWidth = 100
+        clamped.padding = -10
+        clamped.cornerRadius = 100
+        clamped.markCustom()
+        XCTAssertEqual(clamped.borderWidth, TextBoxStyle.borderWidthRange.upperBound)
+        XCTAssertEqual(clamped.padding, 0)
+        XCTAssertEqual(clamped.cornerRadius, TextBoxStyle.cornerRadiusRange.upperBound)
+    }
+
+    func testTextBoxStyleNormalizesVerticalInsetForNonSquareImages() {
+        let style = TextBoxStyle(
+            preset: .dark,
+            backgroundColor: .black,
+            borderColor: .white,
+            borderWidth: 4,
+            padding: 8,
+            cornerRadius: 6
+        )
+        let content = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        let imageSize = CGSize(width: 1600, height: 800)
+
+        let decorated = TextBoxStyle.normalizedDecoratedRect(
+            for: content,
+            imageSize: imageSize,
+            style: style
+        )
+
+        XCTAssertEqual(decorated.minX, 0.2375, accuracy: 0.0001)
+        XCTAssertEqual(decorated.minY, 0.225, accuracy: 0.0001)
+        XCTAssertEqual(
+            TextBoxStyle.normalizedContentRect(
+                for: decorated,
+                imageSize: imageSize,
+                style: style
+            ),
+            content
+        )
+    }
+
     func testHostedAppDetectsUnitTestRuntime() {
         XCTAssertTrue(TinyClipsRuntime.isRunningUnitTests)
     }
