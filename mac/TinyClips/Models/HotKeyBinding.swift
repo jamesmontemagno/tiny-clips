@@ -39,8 +39,11 @@ struct HotKeyBinding: Hashable {
     let keyCode: Int
     let carbonModifiers: Int
 
+    // Carbon key code zero is the A key, so optional bindings need a negative sentinel.
+    private static let unboundKeyCode = -1
+
     var isUnbound: Bool {
-        keyCode == 0 && carbonModifiers == 0
+        keyCode == Self.unboundKeyCode && carbonModifiers == 0
     }
 
     // MARK: - Defaults
@@ -67,7 +70,7 @@ struct HotKeyBinding: Hashable {
         case .screenshotWindow:
             return HotKeyBinding(keyCode: 19, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘2
         case .screenshotScreen:
-            return HotKeyBinding(keyCode: 0, carbonModifiers: 0)
+            return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
         }
     }
 

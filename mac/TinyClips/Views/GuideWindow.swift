@@ -70,10 +70,7 @@ private struct GuideWindowView: View {
     }
 
     private var screenshotScreenShortcut: String {
-        HotKeyBinding(
-            keyCode: settings.screenshotScreenHotKeyCode,
-            carbonModifiers: settings.screenshotScreenHotKeyModifiers
-        ).displayString
+        settings.hotKeyBinding(for: .screenshotScreen).displayString
     }
 
     var body: some View {

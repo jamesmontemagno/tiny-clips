@@ -24,7 +24,7 @@ final class HotKeyBindingTests: XCTestCase {
         )
         XCTAssertEqual(
             HotKeyBinding.defaultBinding(for: .screenshotScreen),
-            HotKeyBinding(keyCode: 0, carbonModifiers: 0)
+            HotKeyBinding(keyCode: -1, carbonModifiers: 0)
         )
     }
 

@@ -90,7 +90,7 @@ final class HotKeyManager {
             HotKeyRegistration(
                 id: $0.action.rawValue,
                 name: $0.action.displayName,
-                keyCode: UInt32($0.binding.keyCode),
+                keyCode: UInt32($0.binding.isUnbound ? 0 : $0.binding.keyCode),
                 modifiers: UInt32($0.binding.carbonModifiers),
                 isEnabled: !$0.binding.isUnbound,
                 action: $0.handler
