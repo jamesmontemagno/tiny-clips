@@ -141,12 +141,6 @@ struct TextBoxStyle {
     }
 }
 
-private extension CGFloat {
-    func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
-        min(max(self, range.lowerBound), range.upperBound)
-    }
-}
-
 // Number tool rendering constants
 let numberCircleMinPixels: CGFloat = 20
 let numberCircleMaxPixels: CGFloat = 80
