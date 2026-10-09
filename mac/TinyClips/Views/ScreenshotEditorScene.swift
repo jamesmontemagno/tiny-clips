@@ -15,6 +15,7 @@ struct ScreenshotEditorCommandActions {
     let zoomIn: () -> Void
     let zoomOut: () -> Void
     let fitZoom: () -> Void
+    let nativeSizeZoom: () -> Void
     let canUndo: Bool
     let canRedo: Bool
     let hasAnnotations: Bool
@@ -160,6 +161,11 @@ private struct ScreenshotEditorMenuCommands: Commands {
             }
             .disabled(editor == nil)
             .keyboardShortcut("0", modifiers: .command)
+
+            Button("Actual Size (1:1)") {
+                editor?.nativeSizeZoom()
+            }
+            .disabled(editor == nil)
         }
     }
 
