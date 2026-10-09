@@ -311,18 +311,12 @@ public sealed partial class HotkeysSettingsSection : UserControl
         ViewModel.SetHotKey(action, previous.Modifiers, previous.VirtualKey);
         var rollbackResult = app.ReapplyGlobalHotKeys();
 
-        var rejectedNames = string.Join(", ", applyFailures.Select(failure => failure.Name));
-        errorMessage =
-            $"Windows could not register {rejectedNames}. Another app may already use this shortcut. " +
-            "Choose a different combination.";
+        errorMessage = GlobalHotKeyFailureFormatter.FormatApply(applyFailures);
 
         var rollbackFailures = rollbackResult.BlockingFailuresFor(action);
         if (rollbackFailures.Count > 0)
         {
-            var rollbackNames = string.Join(", ", rollbackFailures.Select(failure => failure.Name));
-            errorMessage +=
-                $" The previous shortcut was restored in Settings, but Windows could not reactivate {rollbackNames}. " +
-                "Close the competing app or restart TinyClips.";
+            errorMessage += GlobalHotKeyFailureFormatter.FormatRollback(rollbackFailures);
         }
 
         return false;
