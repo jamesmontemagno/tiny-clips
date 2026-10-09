@@ -9,6 +9,7 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
     case copyTextFromRegion = 4
     case screenshotRegion = 5
     case screenshotWindow = 6
+    case screenshotScreen = 7
 
     var displayName: String {
         switch self {
@@ -24,6 +25,8 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
             return "Screenshot Region"
         case .screenshotWindow:
             return "Screenshot Window"
+        case .screenshotScreen:
+            return "Screenshot Screen"
         }
     }
 }
@@ -35,6 +38,10 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
 struct HotKeyBinding: Hashable {
     let keyCode: Int
     let carbonModifiers: Int
+
+    var isUnbound: Bool {
+        keyCode == 0 && carbonModifiers == 0
+    }
 
     // MARK: - Defaults
 
@@ -59,6 +66,8 @@ struct HotKeyBinding: Hashable {
             return HotKeyBinding(keyCode: 18, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘1
         case .screenshotWindow:
             return HotKeyBinding(keyCode: 19, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘2
+        case .screenshotScreen:
+            return HotKeyBinding(keyCode: 0, carbonModifiers: 0)
         }
     }
 
@@ -69,6 +78,10 @@ struct HotKeyBinding: Hashable {
         action: HotKeyAction,
         bindings: [HotKeyAction: HotKeyBinding]
     ) -> String? {
+        if proposedBinding.isUnbound {
+            return nil
+        }
+
         guard proposedBinding.carbonModifiers & supportedModifierMask != 0 else {
             return "Add at least one modifier key (Control, Option, Shift, or Command)."
         }
@@ -90,7 +103,7 @@ struct HotKeyBinding: Hashable {
 
     /// Human-readable shortcut string, e.g. "⌃⌥⌘5".
     var displayString: String {
-        modifiersString + keyString
+        isUnbound ? "Not set" : modifiersString + keyString
     }
 
     var modifiersString: String {
@@ -110,7 +123,8 @@ struct HotKeyBinding: Hashable {
 
     /// Returns the `Character` used by SwiftUI's `KeyboardShortcut`, if convertible.
     var swiftUICharacter: Character? {
-        guard let str = Self.keyCodeToDisplayString(keyCode),
+        guard !isUnbound,
+              let str = Self.keyCodeToDisplayString(keyCode),
               let first = str.lowercased().first else { return nil }
         return first
     }

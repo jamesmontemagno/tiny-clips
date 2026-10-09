@@ -345,6 +345,8 @@ class CaptureManager: ObservableObject {
                         self.takeScreenshotInMode(.region)
                     case .screenshotWindow:
                         self.takeScreenshotInMode(.window)
+                    case .screenshotScreen:
+                        self.takeScreenshotInMode(.screen)
                     }
                 }
             )
@@ -370,7 +372,7 @@ class CaptureManager: ObservableObject {
     }
 
     /// Takes a screenshot in the given mode without showing the capture picker.
-    /// Used by the dedicated region/window screenshot hotkeys.
+    /// Used by the dedicated region/screen/window screenshot hotkeys.
     func takeScreenshotInMode(_ mode: CapturePickerMode) {
         beginScreenshot(directMode: mode)
     }

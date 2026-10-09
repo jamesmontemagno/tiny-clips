@@ -469,11 +469,13 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 6400
     @AppStorage("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = 28 // kVK_ANSI_8
     @AppStorage("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 6400
-    // Direct-to-mode screenshot shortcuts (skip the capture picker): ⌃⌥⌘1 / ⌃⌥⌘2
+    // Direct-to-mode screenshot shortcuts (skip the capture picker); screen is unbound by default.
     @AppStorage("screenshotRegionHotKeyCode") var screenshotRegionHotKeyCode: Int = 18 // kVK_ANSI_1
     @AppStorage("screenshotRegionHotKeyModifiers") var screenshotRegionHotKeyModifiers: Int = 6400
     @AppStorage("screenshotWindowHotKeyCode") var screenshotWindowHotKeyCode: Int = 19 // kVK_ANSI_2
     @AppStorage("screenshotWindowHotKeyModifiers") var screenshotWindowHotKeyModifiers: Int = 6400
+    @AppStorage("screenshotScreenHotKeyCode") var screenshotScreenHotKeyCode: Int = 0
+    @AppStorage("screenshotScreenHotKeyModifiers") var screenshotScreenHotKeyModifiers: Int = 0
 
     func resolvedSaveDirectory(for captureType: CaptureType) -> URL {
         URL(fileURLWithPath: saveDirectoryPath(for: captureType), isDirectory: true)
@@ -620,6 +622,8 @@ class CaptureSettings: ObservableObject {
             return ("screenshotRegionHotKeyCode", "screenshotRegionHotKeyModifiers")
         case .screenshotWindow:
             return ("screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers")
+        case .screenshotScreen:
+            return ("screenshotScreenHotKeyCode", "screenshotScreenHotKeyModifiers")
         }
     }
 
@@ -812,7 +816,8 @@ class CaptureSettings: ObservableObject {
         "gifHotKeyCode", "gifHotKeyModifiers",
         "copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers",
         "screenshotRegionHotKeyCode", "screenshotRegionHotKeyModifiers",
-        "screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers"
+        "screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers",
+        "screenshotScreenHotKeyCode", "screenshotScreenHotKeyModifiers"
     ]
 
 #if APPSTORE

@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- macOS adds an optional global **Screenshot Screen** shortcut that skips the capture picker and captures the selected screen. It is unassigned by default and can be configured in Settings > Shortcuts. (#440)
 - macOS General settings have a new **Confirm before closing editors with Esc** option, on by default, covering the screenshot editor, video trimmer, and GIF trimmer. Turn it off to close them with a single Esc press, which discards anything unsaved.
 
 ### Changed

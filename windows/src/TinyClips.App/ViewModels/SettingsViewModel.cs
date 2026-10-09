@@ -772,6 +772,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string ScreenshotWindowHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.ScreenshotWindow).DisplayString;
 
+    public string ScreenshotScreenHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.ScreenshotScreen).DisplayString;
+
     public HotKeyDefinition GetHotKey(HotKeyAction action) => _hotKeys.GetBinding(action);
 
     public HotKeyDefinition GetDefaultHotKey(HotKeyAction action) => _hotKeys.DefaultFor(action);
@@ -801,6 +803,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(OcrHotKeyDisplay));
         OnPropertyChanged(nameof(ScreenshotRegionHotKeyDisplay));
         OnPropertyChanged(nameof(ScreenshotWindowHotKeyDisplay));
+        OnPropertyChanged(nameof(ScreenshotScreenHotKeyDisplay));
     }
 
     /// <summary>

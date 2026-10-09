@@ -22,11 +22,16 @@ final class HotKeyBindingTests: XCTestCase {
             HotKeyBinding.defaultBinding(for: .screenshotWindow),
             HotKeyBinding(keyCode: 19, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
         )
+        XCTAssertEqual(
+            HotKeyBinding.defaultBinding(for: .screenshotScreen),
+            HotKeyBinding(keyCode: 0, carbonModifiers: 0)
+        )
     }
 
     func testDirectScreenshotActionsHaveDisplayNamesAndUniqueDefaults() {
         XCTAssertEqual(HotKeyAction.screenshotRegion.displayName, "Screenshot Region")
         XCTAssertEqual(HotKeyAction.screenshotWindow.displayName, "Screenshot Window")
+        XCTAssertEqual(HotKeyAction.screenshotScreen.displayName, "Screenshot Screen")
 
         let defaults = Dictionary(
             uniqueKeysWithValues: HotKeyAction.allCases.map {
@@ -45,6 +50,16 @@ final class HotKeyBindingTests: XCTestCase {
             HotKeyBinding.validationError(
                 for: HotKeyBinding.defaultBinding(for: .screenshotWindow),
                 action: .screenshotWindow,
+                bindings: defaults
+            )
+        )
+        let screenBinding = HotKeyBinding.defaultBinding(for: .screenshotScreen)
+        XCTAssertTrue(screenBinding.isUnbound)
+        XCTAssertEqual(screenBinding.displayString, "Not set")
+        XCTAssertNil(
+            HotKeyBinding.validationError(
+                for: screenBinding,
+                action: .screenshotScreen,
                 bindings: defaults
             )
         )

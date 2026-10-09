@@ -6,6 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- **Direct screenshot screen hotkey** — An optional global shortcut can now skip the capture picker
+  and capture a screen directly. It is unbound by default and configurable in Settings → Keyboard
+  shortcuts. (#440)
 - **Esc closes the screenshot editor, video trimmer, and GIF trimmer.** A new General setting,
   **Confirm before closing editors with Esc** (on by default), asks first: "Discard changes?"
   when edits or trim changes are unsaved, and a plain close confirmation otherwise. Turn it off
