@@ -47,7 +47,12 @@ internal sealed class EditorController : IDisposable
     private bool _isDisposed;
 
     private readonly List<Annotation> _annotations = new();
+    private readonly Stack<TextStyleUndoEntry> _textStyleUndo = new();
     private int _counterValue = 1;
+    private bool _textStyleEditGroupActive;
+    private bool _textStyleEditGroupRecorded;
+
+    private sealed record TextStyleUndoEntry(Annotation Annotation, AnnotationSnapshot Snapshot);
 
     public static readonly BackgroundPreset[] SolidPresets =
     {
@@ -392,6 +397,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } selectedText)
         {
+            RecordTextStyleUndo(selectedText);
             selectedText.Color = color;
             if (selectedText.TextBoxStyle.Preset != TextBoxPreset.Plain)
             {
@@ -503,6 +509,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
+            RecordTextStyleUndo(ann);
             ann.FontFamily = font;
             UpdateTextBounds(ann);
             MarkDirty();
@@ -518,6 +525,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
+            RecordTextStyleUndo(ann);
             ann.FontSize = size;
             UpdateTextBounds(ann);
             MarkDirty();
@@ -596,6 +604,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
+            RecordTextStyleUndo(ann);
             var resolved = TextBoxStyle.Resolve(preset, ann.Color, accentColor);
             ann.TextBoxStyle = resolved.Style;
             ann.Color = resolved.TextColor;
@@ -634,6 +643,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
+            RecordTextStyleUndo(ann);
             ann.TextBoxStyle = update(ann.TextBoxStyle).AsCustom();
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
@@ -647,6 +657,37 @@ internal sealed class EditorController : IDisposable
 
         TextBoxStyleDefault = update(TextBoxStyleDefault).AsCustom();
         TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void BeginSelectedTextStyleEdit()
+    {
+        _textStyleEditGroupActive = SelectedAnnotation is { Tool: EditTool.Text };
+        _textStyleEditGroupRecorded = false;
+    }
+
+    public void EndSelectedTextStyleEdit()
+    {
+        _textStyleEditGroupActive = false;
+        _textStyleEditGroupRecorded = false;
+    }
+
+    private void RecordTextStyleUndo(Annotation annotation)
+    {
+        if (_textStyleEditGroupActive)
+        {
+            if (_textStyleEditGroupRecorded)
+            {
+                return;
+            }
+            _textStyleEditGroupRecorded = true;
+        }
+        _textStyleUndo.Push(new TextStyleUndoEntry(annotation, annotation.CaptureSnapshot()));
+    }
+
+    private void ClearTextStyleUndo()
+    {
+        _textStyleUndo.Clear();
+        EndSelectedTextStyleEdit();
     }
 
     public static double CounterRadius(double scale) => Math.Max(12, 22 * scale);
@@ -687,6 +728,7 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
+        ClearTextStyleUndo();
         ann.Rotation = normalized;
         MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
@@ -720,6 +762,7 @@ internal sealed class EditorController : IDisposable
         Point pixelPoint,
         bool snap)
     {
+        ClearTextStyleUndo();
         var center = ToRectD(originalBounds).Center;
         var angle = RotatableAnnotationGeometry.AngleDegrees(center, new PointD(pixelPoint.X, pixelPoint.Y));
         var snapped = RotatableAnnotationGeometry.NormalizeDegrees(RotatableAnnotationGeometry.Snap(angle, 15, snap));
@@ -744,6 +787,7 @@ internal sealed class EditorController : IDisposable
 
     public Annotation AddEmojiAnnotation(Point pixelCenter)
     {
+        ClearTextStyleUndo();
         var imageWidth = _bitmap?.PixelWidth ?? 1000;
         var imageHeight = _bitmap?.PixelHeight ?? 1000;
         var side = EmojiAnnotationMath.DefaultSidePixels(imageWidth, imageHeight);
@@ -1037,6 +1081,7 @@ internal sealed class EditorController : IDisposable
 
         if (significant)
         {
+            ClearTextStyleUndo();
             _annotations.Add(ann);
             MarkDirty();
             AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
@@ -1064,6 +1109,7 @@ internal sealed class EditorController : IDisposable
 
     public Annotation AddCounterAnnotation(Point pixelCenter)
     {
+        ClearTextStyleUndo();
         var radius = CounterRadius(NumberScale);
         var ann = new Annotation
         {
@@ -1085,6 +1131,7 @@ internal sealed class EditorController : IDisposable
         Point pixelPoint, string text, string fontFamily, double fontSize, Color color,
         bool bold, bool italic, bool underline, bool strikethrough, TextBoxStyle textBoxStyle)
     {
+        ClearTextStyleUndo();
         var ann = new Annotation
         {
             Tool = EditTool.Text,
@@ -1114,6 +1161,7 @@ internal sealed class EditorController : IDisposable
     {
         if (string.IsNullOrWhiteSpace(text))
         {
+            ClearTextStyleUndo();
             _annotations.Remove(ann);
             if (ReferenceEquals(SelectedAnnotation, ann))
             {
@@ -1124,6 +1172,7 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
+        RecordTextStyleUndo(ann);
         ann.Text = text;
         ann.FontFamily = fontFamily;
         ann.FontSize = fontSize;
@@ -1140,6 +1189,7 @@ internal sealed class EditorController : IDisposable
 
     public void MoveAnnotationBy(Annotation ann, double dx, double dy)
     {
+        ClearTextStyleUndo();
         ann.Bounds = new Rect(ann.Bounds.X + dx, ann.Bounds.Y + dy, ann.Bounds.Width, ann.Bounds.Height);
         for (var i = 0; i < ann.Points.Count; i++)
         {
@@ -1159,6 +1209,7 @@ internal sealed class EditorController : IDisposable
         AnnotationResizeHandle handle,
         Point pixelPoint)
     {
+        ClearTextStyleUndo();
         if (ann.Tool == EditTool.Emoji || ann.IsRotated)
         {
             ResizeRotatedAboutCenter(
@@ -1231,16 +1282,23 @@ internal sealed class EditorController : IDisposable
             var scale = resized.Width / Math.Max(originalBounds.Width, 1);
             ann.FontSize = Math.Max(8, originalFontSize * scale);
             ann.TextBoxStyle = originalTextBoxStyle.Scale(scale);
-            ann.Bounds = new Rect(resized.X, resized.Y, resized.Width, resized.Height);
+            ann.Bounds = new Rect(0, 0, 0, 0);
             UpdateTextBounds(ann);
             var measured = ann.Bounds;
-            ann.Bounds = new Rect(
+            var measuredOuter = ann.TextBoxStyle.DecoratedBounds(measured);
+            var outer = new Rect(
                 handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.BottomLeft
-                    ? oppositeX - measured.Width
+                    ? oppositeX - measuredOuter.Width
                     : oppositeX,
                 handle is AnnotationResizeHandle.TopLeft or AnnotationResizeHandle.TopRight
-                    ? oppositeY - measured.Height
+                    ? oppositeY - measuredOuter.Height
                     : oppositeY,
+                measuredOuter.Width,
+                measuredOuter.Height);
+            var content = ann.TextBoxStyle.ContentBounds(outer);
+            ann.Bounds = new Rect(
+                content.X,
+                content.Y,
                 measured.Width,
                 measured.Height);
         }
@@ -1302,10 +1360,18 @@ internal sealed class EditorController : IDisposable
                 ann.FontSize = originalFontSize * scale;
                 ann.TextBoxStyle = originalTextBoxStyle.Scale(scale);
                 // Re-measure so the box matches the new glyph size, then keep the center fixed.
-                ann.Bounds = new Rect(original.X, original.Y, 0, 0);
+                ann.Bounds = new Rect(0, 0, 0, 0);
                 UpdateTextBounds(ann);
                 var measured = ann.Bounds;
-                resized = new RectD(center.X - measured.Width / 2, center.Y - measured.Height / 2, measured.Width, measured.Height);
+                var measuredOuter = ann.TextBoxStyle.DecoratedBounds(measured);
+                var outer = new Rect(
+                    center.X - measuredOuter.Width / 2,
+                    center.Y - measuredOuter.Height / 2,
+                    measuredOuter.Width,
+                    measuredOuter.Height);
+                var content = ann.TextBoxStyle.ContentBounds(outer);
+                ann.Bounds = new Rect(content.X, content.Y, measured.Width, measured.Height);
+                resized = new RectD(ann.Bounds.X, ann.Bounds.Y, ann.Bounds.Width, ann.Bounds.Height);
                 break;
             }
             default:
@@ -1326,6 +1392,7 @@ internal sealed class EditorController : IDisposable
 
     public void MoveAnnotationEndpoint(Annotation ann, bool start, Point pixelPoint)
     {
+        ClearTextStyleUndo();
         var (segmentStart, segmentEnd) = Segment(ann);
         if (ann.Points.Count < 2)
         {
@@ -1347,6 +1414,22 @@ internal sealed class EditorController : IDisposable
 
     public void Undo()
     {
+        while (_textStyleUndo.Count > 0)
+        {
+            var entry = _textStyleUndo.Pop();
+            if (!_annotations.Contains(entry.Annotation))
+            {
+                continue;
+            }
+
+            RestoreAnnotation(entry.Annotation, entry.Snapshot);
+            SelectedAnnotation = entry.Annotation;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, entry.Annotation);
+            SelectionChanged?.Invoke(this, entry.Annotation);
+            return;
+        }
+
         if (_annotations.Count == 0)
         {
             return;
@@ -1371,11 +1454,38 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
+        ClearTextStyleUndo();
         CancelRedactPreview(SelectedAnnotation);
         _annotations.Remove(SelectedAnnotation);
         SelectedAnnotation = null;
         MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static void RestoreAnnotation(Annotation annotation, AnnotationSnapshot snapshot)
+    {
+        annotation.Tool = snapshot.Tool;
+        annotation.Bounds = snapshot.Bounds;
+        annotation.Color = snapshot.Color;
+        annotation.FillColor = snapshot.FillColor;
+        annotation.Thickness = snapshot.Thickness;
+        annotation.Text = snapshot.Text;
+        annotation.Number = snapshot.Number;
+        annotation.SizeScale = snapshot.SizeScale;
+        annotation.Redaction = snapshot.Redaction;
+        annotation.RedactStyle = snapshot.RedactStyle;
+        annotation.ArrowStyle = snapshot.ArrowStyle;
+        annotation.Points.Clear();
+        annotation.Points.AddRange(snapshot.Points);
+        annotation.TextColor = snapshot.TextColor;
+        annotation.FontSize = snapshot.FontSize;
+        annotation.FontFamily = snapshot.FontFamily;
+        annotation.Bold = snapshot.Bold;
+        annotation.Italic = snapshot.Italic;
+        annotation.Underline = snapshot.Underline;
+        annotation.Strikethrough = snapshot.Strikethrough;
+        annotation.TextBoxStyle = snapshot.TextBoxStyle;
+        annotation.Rotation = snapshot.Rotation;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -1988,10 +2098,17 @@ internal sealed class EditorController : IDisposable
                 }
                 if (ann.TextBoxStyle.BorderWidth > 0 && ann.TextBoxStyle.BorderColor.A > 0)
                 {
+                    var halfBorder = ann.TextBoxStyle.BorderWidth / 2;
+                    var strokeBox = new Rect(
+                        box.X + halfBorder,
+                        box.Y + halfBorder,
+                        Math.Max(0, box.Width - ann.TextBoxStyle.BorderWidth),
+                        Math.Max(0, box.Height - ann.TextBoxStyle.BorderWidth));
+                    var strokeRadius = (float)Math.Max(0, cornerRadius - halfBorder);
                     ds.DrawRoundedRectangle(
-                        box,
-                        cornerRadius,
-                        cornerRadius,
+                        strokeBox,
+                        strokeRadius,
+                        strokeRadius,
                         ann.TextBoxStyle.BorderColor,
                         (float)ann.TextBoxStyle.BorderWidth);
                 }

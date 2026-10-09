@@ -5,6 +5,7 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
@@ -476,9 +477,11 @@ public sealed partial class EditorInspector : UserControl
             ? color
             : Color.FromArgb(255, 0, 120, 212);
         _controller.ApplyTextBoxPreset(preset, accent);
+        _inspectorInitializing = true;
         AnnotationColorPicker.Color = _controller.SelectedAnnotation is { Tool: EditTool.Text } ann
             ? ann.Color
             : _controller.StrokeColor;
+        _inspectorInitializing = false;
         SyncTextBoxStyle(_controller.SelectedAnnotation is { Tool: EditTool.Text } selected
             ? selected.TextBoxStyle
             : _controller.TextBoxStyleDefault);
@@ -533,6 +536,15 @@ public sealed partial class EditorInspector : UserControl
         _controller.SetTextBoxCornerRadius(e.NewValue);
         SyncTextBoxStyle(CurrentTextBoxStyle());
     }
+
+    private void OnTextStyleSliderPointerPressed(object sender, PointerRoutedEventArgs e) =>
+        _controller.BeginSelectedTextStyleEdit();
+
+    private void OnTextStyleSliderPointerReleased(object sender, PointerRoutedEventArgs e) =>
+        _controller.EndSelectedTextStyleEdit();
+
+    private void OnTextStyleSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
+        _controller.EndSelectedTextStyleEdit();
 
     private TextBoxStyle CurrentTextBoxStyle() =>
         _controller.SelectedAnnotation is { Tool: EditTool.Text } ann

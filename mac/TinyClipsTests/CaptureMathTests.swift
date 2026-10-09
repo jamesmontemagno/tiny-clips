@@ -38,6 +38,36 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(clamped.cornerRadius, TextBoxStyle.cornerRadiusRange.upperBound)
     }
 
+    func testTextBoxStyleNormalizesVerticalInsetForNonSquareImages() {
+        let style = TextBoxStyle(
+            preset: .dark,
+            backgroundColor: .black,
+            borderColor: .white,
+            borderWidth: 4,
+            padding: 8,
+            cornerRadius: 6
+        )
+        let content = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        let imageSize = CGSize(width: 1600, height: 800)
+
+        let decorated = TextBoxStyle.normalizedDecoratedRect(
+            for: content,
+            imageSize: imageSize,
+            style: style
+        )
+
+        XCTAssertEqual(decorated.minX, 0.2375, accuracy: 0.0001)
+        XCTAssertEqual(decorated.minY, 0.225, accuracy: 0.0001)
+        XCTAssertEqual(
+            TextBoxStyle.normalizedContentRect(
+                for: decorated,
+                imageSize: imageSize,
+                style: style
+            ),
+            content
+        )
+    }
+
     func testHostedAppDetectsUnitTestRuntime() {
         XCTAssertTrue(TinyClipsRuntime.isRunningUnitTests)
     }

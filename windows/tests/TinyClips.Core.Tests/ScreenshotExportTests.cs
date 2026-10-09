@@ -129,6 +129,9 @@ public sealed class ScreenshotExportTests
             6);
 
         Assert.Equal(new Rect(0, 10, 50, 60), style.DecoratedBounds(new Rect(10, 20, 30, 40)));
+        Assert.Equal(
+            new Rect(10, 20, 30, 40),
+            style.ContentBounds(style.DecoratedBounds(new Rect(10, 20, 30, 40))));
 
         var scaled = style.Scale(2);
         Assert.Equal(TextBoxPreset.Custom, scaled.Preset);

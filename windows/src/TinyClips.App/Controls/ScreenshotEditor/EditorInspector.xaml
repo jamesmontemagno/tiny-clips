@@ -164,6 +164,9 @@
                         Header="Border width"
                         Maximum="12"
                         Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
                         StepFrequency="1"
                         ValueChanged="OnTextBorderWidthChanged" />
                     <Slider
@@ -173,6 +176,9 @@
                         Header="Padding"
                         Maximum="48"
                         Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
                         StepFrequency="1"
                         ValueChanged="OnTextPaddingChanged" />
                     <Slider
@@ -182,6 +188,9 @@
                         Header="Corner radius"
                         Maximum="32"
                         Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
                         StepFrequency="1"
                         ValueChanged="OnTextCornerRadiusChanged" />
                 </StackPanel>

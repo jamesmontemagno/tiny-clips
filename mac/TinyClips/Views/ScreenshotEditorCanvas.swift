@@ -219,7 +219,12 @@ struct ScreenshotEditorCanvasView: View {
                             .italic(annotation.isItalic)
                             .underline(annotation.isUnderlined)
                             .foregroundColor(annotation.color)
-                            .padding(boxPadding)
+                            .frame(
+                                width: max(1, scaledRect.width),
+                                height: max(1, scaledRect.height),
+                                alignment: .center
+                            )
+                            .padding(boxPadding + boxBorderWidth / 2)
                             .background {
                                 RoundedRectangle(cornerRadius: boxCornerRadius)
                                     .fill(boxStyle.backgroundColor)

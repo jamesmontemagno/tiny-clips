@@ -164,6 +164,16 @@ public readonly record struct TextBoxStyle(
             contentBounds.Height + inset * 2);
     }
 
+    public Rect ContentBounds(Rect decoratedBounds)
+    {
+        var inset = Math.Max(0, Padding) + Math.Max(0, BorderWidth) / 2;
+        return new Rect(
+            decoratedBounds.X + inset,
+            decoratedBounds.Y + inset,
+            Math.Max(0, decoratedBounds.Width - inset * 2),
+            Math.Max(0, decoratedBounds.Height - inset * 2));
+    }
+
     public static Color ContrastTextColor(Color color)
     {
         static double Linearize(byte channel)

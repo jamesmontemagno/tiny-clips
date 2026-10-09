@@ -1070,7 +1070,7 @@ public sealed partial class EditorCanvas : UserControl
         text.TextDecorations = decorations;
         border.Width = Math.Max(1, decorated.Width * scale);
         border.Height = Math.Max(1, decorated.Height * scale);
-        border.Padding = new Thickness(Math.Max(0, ann.TextBoxStyle.Padding * scale));
+        border.Padding = new Thickness(0);
         border.BorderThickness = new Thickness(Math.Max(0, ann.TextBoxStyle.BorderWidth * scale));
         border.CornerRadius = new CornerRadius(Math.Max(0, ann.TextBoxStyle.CornerRadius * scale));
         ApplyRotation(border, ann.Rotation);
@@ -1377,7 +1377,7 @@ public sealed partial class EditorCanvas : UserControl
                 if (IsRotationHandleAt(p, selected))
                 {
                     _rotatingAnnotation = selected;
-                    _resizeOriginalBounds = EditorController.NormalizedBounds(selected);
+                    _resizeOriginalBounds = EditorController.InteractionBounds(selected);
                     _resizeOriginalPoints = new List<Vector2>(selected.Points);
                     OverlayCanvas.CapturePointer(e.Pointer);
                     _capturedPointer = e.Pointer;
@@ -1388,7 +1388,7 @@ public sealed partial class EditorCanvas : UserControl
                     _resizingAnnotation = selected;
                     _movingAnnotation = selected;
                     _resizeHandle = handle;
-                    _resizeOriginalBounds = EditorController.NormalizedBounds(selected);
+                    _resizeOriginalBounds = EditorController.InteractionBounds(selected);
                     _resizeOriginalPoints = new List<Vector2>(selected.Points);
                     _resizeOriginalFontSize = selected.FontSize;
                     _resizeOriginalSizeScale = selected.SizeScale;

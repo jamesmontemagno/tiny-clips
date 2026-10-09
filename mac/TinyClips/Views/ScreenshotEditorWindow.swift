@@ -676,6 +676,14 @@ struct ScreenshotEditorView: View {
         )
     }
 
+    private func handleTextBoxSliderEditing(_ isEditing: Bool) {
+        if isEditing {
+            viewModel.beginSelectedTextBoxStyleEdit()
+        } else {
+            viewModel.endSelectedTextBoxStyleEdit()
+        }
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
             sidebar
@@ -1088,7 +1096,11 @@ struct ScreenshotEditorView: View {
 
                 LabeledContent("Border width") {
                     HStack(spacing: 8) {
-                        Slider(value: textBoxBorderWidthBinding, in: TextBoxStyle.borderWidthRange)
+                        Slider(
+                            value: textBoxBorderWidthBinding,
+                            in: TextBoxStyle.borderWidthRange,
+                            onEditingChanged: handleTextBoxSliderEditing
+                        )
                         Text("\(Int(textBoxBorderWidthBinding.wrappedValue)) px")
                             .font(.caption)
                             .monospacedDigit()
@@ -1099,7 +1111,11 @@ struct ScreenshotEditorView: View {
 
                 LabeledContent("Padding") {
                     HStack(spacing: 8) {
-                        Slider(value: textBoxPaddingBinding, in: TextBoxStyle.paddingRange)
+                        Slider(
+                            value: textBoxPaddingBinding,
+                            in: TextBoxStyle.paddingRange,
+                            onEditingChanged: handleTextBoxSliderEditing
+                        )
                         Text("\(Int(textBoxPaddingBinding.wrappedValue)) px")
                             .font(.caption)
                             .monospacedDigit()
@@ -1110,7 +1126,11 @@ struct ScreenshotEditorView: View {
 
                 LabeledContent("Corner radius") {
                     HStack(spacing: 8) {
-                        Slider(value: textBoxCornerRadiusBinding, in: TextBoxStyle.cornerRadiusRange)
+                        Slider(
+                            value: textBoxCornerRadiusBinding,
+                            in: TextBoxStyle.cornerRadiusRange,
+                            onEditingChanged: handleTextBoxSliderEditing
+                        )
                         Text("\(Int(textBoxCornerRadiusBinding.wrappedValue)) px")
                             .font(.caption)
                             .monospacedDigit()

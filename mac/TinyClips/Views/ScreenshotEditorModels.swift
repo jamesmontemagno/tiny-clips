@@ -84,6 +84,32 @@ struct TextBoxStyle {
         return contentRect.insetBy(dx: -inset, dy: -inset)
     }
 
+    static func normalizedDecoratedRect(
+        for contentRect: CGRect,
+        imageSize: CGSize,
+        style: TextBoxStyle
+    ) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return contentRect }
+        let pixelInset = (style.padding + style.borderWidth / 2) * (imageSize.width / 800)
+        return contentRect.insetBy(
+            dx: -(pixelInset / imageSize.width),
+            dy: -(pixelInset / imageSize.height)
+        )
+    }
+
+    static func normalizedContentRect(
+        for decoratedRect: CGRect,
+        imageSize: CGSize,
+        style: TextBoxStyle
+    ) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return decoratedRect }
+        let pixelInset = (style.padding + style.borderWidth / 2) * (imageSize.width / 800)
+        return decoratedRect.insetBy(
+            dx: pixelInset / imageSize.width,
+            dy: pixelInset / imageSize.height
+        )
+    }
+
     mutating func markCustom() {
         preset = .custom
         borderWidth = borderWidth.clamped(to: Self.borderWidthRange)

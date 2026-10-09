@@ -79,6 +79,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var imagePixelSize: CGSize = .zero
     private var dragOffset: CGPoint = .zero
     private var dragOriginalRect: CGRect = .zero
+    private var dragOriginalAnnotationRect: CGRect = .zero
     private var dragOriginalPoints: [CGPoint] = []
     private var dragOriginalFontSize: CGFloat = 0
     private var dragOriginalTextBoxStyle: TextBoxStyle = .plain
@@ -94,6 +95,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var redoStack: [EditorCanvasState] = []
     private var pendingDragHistoryState: EditorCanvasState?
     private var didChangePendingDrag = false
+    private var isGroupingTextBoxStyleEdit = false
 
     private var initialBackgroundStyle: ExportBackgroundStyle
     private var initialBackgroundColor: Color
@@ -263,7 +265,11 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     private func normalizedTextDecoratedRect(for annotation: ScreenshotAnnotation) -> CGRect {
-        TextBoxStyle.decoratedRect(for: annotation.rect, scale: 1 / 800, style: annotation.textBoxStyle)
+        TextBoxStyle.normalizedDecoratedRect(
+            for: annotation.rect,
+            imageSize: hitTestImageSize,
+            style: annotation.textBoxStyle
+        )
     }
 
     // Find which annotation is at a normalized point
@@ -700,9 +706,21 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
     }
 
+    func beginSelectedTextBoxStyleEdit() {
+        guard !isGroupingTextBoxStyleEdit, selectedAnnotationIsText else { return }
+        recordHistory()
+        isGroupingTextBoxStyleEdit = true
+    }
+
+    func endSelectedTextBoxStyleEdit() {
+        isGroupingTextBoxStyleEdit = false
+    }
+
     private func updateTextBoxStyle(_ mutation: (inout TextBoxStyle) -> Void) {
         if selectedAnnotationIsText, let index = selectedAnnotationIndex {
-            recordHistory()
+            if !isGroupingTextBoxStyleEdit {
+                recordHistory()
+            }
             mutation(&annotations[index].textBoxStyle)
             markDirty()
         } else if selectedTool == .text {
@@ -779,9 +797,15 @@ class ScreenshotEditorViewModel: ObservableObject {
                 if let idx = selectedIndex ?? annotationIndex(at: start) {
                     beginDragHistory()
                     selectedAnnotationIndex = idx
-                    dragOriginalRect = annotations[idx].tool == .pencil
-                        ? pencilBounds(for: annotations[idx]) ?? annotations[idx].rect
-                        : annotations[idx].rect
+                    let annotation = annotations[idx]
+                    dragOriginalAnnotationRect = annotation.rect
+                    if annotation.tool == .pencil {
+                        dragOriginalRect = pencilBounds(for: annotation) ?? annotation.rect
+                    } else if annotation.tool == .text {
+                        dragOriginalRect = normalizedTextDecoratedRect(for: annotation)
+                    } else {
+                        dragOriginalRect = annotation.rect
+                    }
                     dragOriginalPoints = annotations[idx].points
                     dragOriginalFontSize = annotations[idx].fontSize
                     dragOriginalTextBoxStyle = annotations[idx].textBoxStyle
@@ -960,10 +984,10 @@ class ScreenshotEditorViewModel: ObservableObject {
             ann.rect = directedRect(from: moved)
         } else {
             ann.rect = CGRect(
-                x: dragOriginalRect.origin.x + dx,
-                y: dragOriginalRect.origin.y + dy,
-                width: dragOriginalRect.width,
-                height: dragOriginalRect.height
+                x: dragOriginalAnnotationRect.origin.x + dx,
+                y: dragOriginalAnnotationRect.origin.y + dy,
+                width: dragOriginalAnnotationRect.width,
+                height: dragOriginalAnnotationRect.height
             )
         }
         annotations[index] = ann
@@ -975,7 +999,14 @@ class ScreenshotEditorViewModel: ObservableObject {
         if annotation.tool == .emoji || annotation.isRotated {
             return rotatedResizeHandle(at: point, for: annotation)
         }
-        let bounds = annotation.tool == .pencil ? pencilBounds(for: annotation) : annotation.rect
+        let bounds: CGRect?
+        if annotation.tool == .pencil {
+            bounds = pencilBounds(for: annotation)
+        } else if annotation.tool == .text {
+            bounds = normalizedTextDecoratedRect(for: annotation)
+        } else {
+            bounds = annotation.rect
+        }
         guard let bounds else { return nil }
         let threshold: CGFloat = 0.025
         let handles: [(AnnotationResizeHandle, CGPoint)] = [
@@ -992,7 +1023,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     private func rotatedResizeHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> AnnotationResizeHandle? {
         let size = hitTestImageSize
         let pixelPoint = CGPoint(x: point.x * size.width, y: point.y * size.height)
-        let corners = RotatableAnnotationGeometry.corners(of: annotation.rect, rotation: annotation.rotation, in: size)
+        let frame = annotation.tool == .text ? normalizedTextDecoratedRect(for: annotation) : annotation.rect
+        let corners = RotatableAnnotationGeometry.corners(of: frame, rotation: annotation.rotation, in: size)
         let handles: [AnnotationResizeHandle] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
         var best: (handle: AnnotationResizeHandle, distance: CGFloat)?
         for (handle, corner) in zip(handles, corners) {
@@ -1092,6 +1124,13 @@ class ScreenshotEditorViewModel: ObservableObject {
                 width: width,
                 height: height
             )
+            if annotation.tool == .text {
+                annotation.rect = TextBoxStyle.normalizedContentRect(
+                    for: annotation.rect,
+                    imageSize: size,
+                    style: annotation.textBoxStyle
+                )
+            }
         }
         annotations[index] = annotation
         markDirty()
@@ -1166,11 +1205,17 @@ class ScreenshotEditorViewModel: ObservableObject {
                 )
             }
         } else {
-            annotation.rect = resizedBounds
             if annotation.tool == .text {
                 let scale = resizedBounds.width / max(originalBounds.width, 0.001)
                 annotation.fontSize = max(8, dragOriginalFontSize * scale)
                 annotation.textBoxStyle = dragOriginalTextBoxStyle.scaled(by: scale)
+                annotation.rect = TextBoxStyle.normalizedContentRect(
+                    for: resizedBounds,
+                    imageSize: hitTestImageSize,
+                    style: annotation.textBoxStyle
+                )
+            } else {
+                annotation.rect = resizedBounds
             }
         }
         annotations[index] = annotation
@@ -2048,9 +2093,17 @@ class ScreenshotEditorViewModel: ObservableObject {
                 }
                 let borderWidth = boxStyle.borderWidth * styleScale
                 if borderWidth > 0, NSColor(boxStyle.borderColor).alphaComponent > 0 {
+                    let strokeRect = boxRect.insetBy(dx: borderWidth / 2, dy: borderWidth / 2)
+                    let strokeRadius = max(0, cornerRadius - borderWidth / 2)
+                    let strokePath = CGPath(
+                        roundedRect: strokeRect,
+                        cornerWidth: strokeRadius,
+                        cornerHeight: strokeRadius,
+                        transform: nil
+                    )
                     ctx.setStrokeColor(NSColor(boxStyle.borderColor).cgColor)
                     ctx.setLineWidth(borderWidth)
-                    ctx.addPath(boxPath)
+                    ctx.addPath(strokePath)
                     ctx.strokePath()
                 }
                 let drawPoint = CGPoint(

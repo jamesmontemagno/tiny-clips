@@ -106,6 +106,10 @@ public sealed partial class TextEntryDialog : ContentDialog
 
     private void OnColorChanged(ColorPicker sender, ColorChangedEventArgs args)
     {
+        if (_initializing || args.NewColor == ResultColor)
+        {
+            return;
+        }
         ResultColor = args.NewColor;
         ColorSwatch.Background = new SolidColorBrush(args.NewColor);
         if (_textBoxStyle.Preset != TextBoxPreset.Plain)
@@ -131,8 +135,10 @@ public sealed partial class TextEntryDialog : ContentDialog
         var resolved = TextBoxStyle.Resolve(preset, ResultColor, accent);
         _textBoxStyle = resolved.Style;
         ResultColor = resolved.TextColor;
+        _initializing = true;
         TextColorPicker.Color = ResultColor;
         ColorSwatch.Background = new SolidColorBrush(ResultColor);
+        _initializing = false;
         SyncTextBoxControls();
         UpdatePreview();
     }
