@@ -155,6 +155,8 @@ internal sealed class EditorController : IDisposable
 
     public bool TextStrikethrough { get; private set; }
 
+    public TextBoxStyle TextBoxStyleDefault { get; private set; } = TextBoxStyle.Plain;
+
     public RedactionLevel RedactionLevelDefault { get; private set; } = RedactionLevel.Medium;
 
     public RedactionStyle RedactionStyleDefault { get; private set; } = RedactionStyle.Blur;
@@ -204,6 +206,8 @@ internal sealed class EditorController : IDisposable
     public event EventHandler<EditTool>? ToolChanged;
 
     public event EventHandler<Annotation?>? SelectionChanged;
+
+    public event EventHandler? TextDefaultsChanged;
 
     /// <summary>The default emoji (or the selected sticker's emoji) changed via <see cref="SetEmoji"/>.</summary>
     public event EventHandler<string>? EmojiChanged;
@@ -357,7 +361,7 @@ internal sealed class EditorController : IDisposable
             {
                 if (RotatableAnnotationGeometry.Contains(
                         new PointD(pixelPoint.X, pixelPoint.Y),
-                        ToRectD(NormalizedBounds(ann)),
+                        ToRectD(InteractionBounds(ann)),
                         ann.Rotation,
                         padding: ann.Thickness + 6))
                 {
@@ -366,7 +370,7 @@ internal sealed class EditorController : IDisposable
                 continue;
             }
 
-            var b = NormalizedBounds(ann);
+            var b = InteractionBounds(ann);
             var pad = ann.Thickness + 6;
             var inflated = new Rect(b.X - pad, b.Y - pad, b.Width + pad * 2, b.Height + pad * 2);
             if (inflated.Contains(pixelPoint))
@@ -386,12 +390,35 @@ internal sealed class EditorController : IDisposable
 
     public void SetStrokeColor(Color color)
     {
+        if (SelectedAnnotation is { Tool: EditTool.Text } selectedText)
+        {
+            selectedText.Color = color;
+            if (selectedText.TextBoxStyle.Preset != TextBoxPreset.Plain)
+            {
+                selectedText.TextBoxStyle = selectedText.TextBoxStyle with
+                {
+                    Preset = TextBoxPreset.Custom,
+                };
+            }
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, selectedText);
+            return;
+        }
+
         StrokeColor = color;
         if (SelectedAnnotation is not null)
         {
             SelectedAnnotation.Color = color;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, SelectedAnnotation);
+        }
+        else if (Tool == EditTool.Text)
+        {
+            if (TextBoxStyleDefault.Preset != TextBoxPreset.Plain)
+            {
+                TextBoxStyleDefault = TextBoxStyleDefault with { Preset = TextBoxPreset.Custom };
+            }
+            TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -474,24 +501,32 @@ internal sealed class EditorController : IDisposable
 
     public void SetFontFamily(string font)
     {
-        TextFontFamily = font;
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
             ann.FontFamily = font;
+            UpdateTextBounds(ann);
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
+            return;
         }
+        if (Tool != EditTool.Text) return;
+        TextFontFamily = font;
+        TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetFontSize(double size)
     {
-        TextFontSize = size;
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
             ann.FontSize = size;
+            UpdateTextBounds(ann);
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
+            return;
         }
+        if (Tool != EditTool.Text) return;
+        TextFontSize = size;
+        TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetNumberSize(double scale)
@@ -536,7 +571,15 @@ internal sealed class EditorController : IDisposable
     /// Remembers the styling chosen in the text-entry dialog as the new tool defaults for the
     /// next text annotation (mirrors the dialog also doubling as the "current" stroke color).
     /// </summary>
-    public void UpdateTextDefaults(string fontFamily, double fontSize, Color color, bool bold, bool italic, bool underline, bool strikethrough)
+    public void UpdateTextDefaults(
+        string fontFamily,
+        double fontSize,
+        Color color,
+        bool bold,
+        bool italic,
+        bool underline,
+        bool strikethrough,
+        TextBoxStyle textBoxStyle)
     {
         TextFontFamily = fontFamily;
         TextFontSize = fontSize;
@@ -545,6 +588,65 @@ internal sealed class EditorController : IDisposable
         TextItalic = italic;
         TextUnderline = underline;
         TextStrikethrough = strikethrough;
+        TextBoxStyleDefault = textBoxStyle;
+        TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ApplyTextBoxPreset(TextBoxPreset preset, Color accentColor)
+    {
+        if (SelectedAnnotation is { Tool: EditTool.Text } ann)
+        {
+            var resolved = TextBoxStyle.Resolve(preset, ann.Color, accentColor);
+            ann.TextBoxStyle = resolved.Style;
+            ann.Color = resolved.TextColor;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+            return;
+        }
+
+        if (Tool != EditTool.Text)
+        {
+            return;
+        }
+
+        var defaults = TextBoxStyle.Resolve(preset, StrokeColor, accentColor);
+        TextBoxStyleDefault = defaults.Style;
+        StrokeColor = defaults.TextColor;
+        TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetTextBoxBackground(Color color) =>
+        UpdateTextBoxStyle(style => style with { BackgroundColor = color });
+
+    public void SetTextBoxBorderColor(Color color) =>
+        UpdateTextBoxStyle(style => style with { BorderColor = color });
+
+    public void SetTextBoxBorderWidth(double width) =>
+        UpdateTextBoxStyle(style => style with { BorderWidth = width });
+
+    public void SetTextBoxPadding(double padding) =>
+        UpdateTextBoxStyle(style => style with { Padding = padding });
+
+    public void SetTextBoxCornerRadius(double radius) =>
+        UpdateTextBoxStyle(style => style with { CornerRadius = radius });
+
+    private void UpdateTextBoxStyle(Func<TextBoxStyle, TextBoxStyle> update)
+    {
+        if (SelectedAnnotation is { Tool: EditTool.Text } ann)
+        {
+            ann.TextBoxStyle = update(ann.TextBoxStyle).AsCustom();
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+            return;
+        }
+
+        if (Tool != EditTool.Text)
+        {
+            return;
+        }
+
+        TextBoxStyleDefault = update(TextBoxStyleDefault).AsCustom();
+        TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public static double CounterRadius(double scale) => Math.Max(12, 22 * scale);
@@ -603,7 +705,7 @@ internal sealed class EditorController : IDisposable
         }
         return ann.Tool == EditTool.Pen
             ? (NormalizedBounds(ann), 0)
-            : (NormalizedBounds(ann), ann.Rotation);
+            : (InteractionBounds(ann), ann.Rotation);
     }
 
     /// <summary>
@@ -981,7 +1083,7 @@ internal sealed class EditorController : IDisposable
 
     public Annotation AddTextAnnotation(
         Point pixelPoint, string text, string fontFamily, double fontSize, Color color,
-        bool bold, bool italic, bool underline, bool strikethrough)
+        bool bold, bool italic, bool underline, bool strikethrough, TextBoxStyle textBoxStyle)
     {
         var ann = new Annotation
         {
@@ -995,6 +1097,7 @@ internal sealed class EditorController : IDisposable
             Italic = italic,
             Underline = underline,
             Strikethrough = strikethrough,
+            TextBoxStyle = textBoxStyle,
             Bounds = new Rect(pixelPoint.X, pixelPoint.Y, 0, 0),
         };
         UpdateTextBounds(ann);
@@ -1007,7 +1110,7 @@ internal sealed class EditorController : IDisposable
     /// <summary>Updates an existing text annotation, or removes it if the new text is blank.</summary>
     public void UpdateOrRemoveTextAnnotation(
         Annotation ann, string text, string fontFamily, double fontSize, Color color,
-        bool bold, bool italic, bool underline, bool strikethrough)
+        bool bold, bool italic, bool underline, bool strikethrough, TextBoxStyle textBoxStyle)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -1029,6 +1132,7 @@ internal sealed class EditorController : IDisposable
         ann.Italic = italic;
         ann.Underline = underline;
         ann.Strikethrough = strikethrough;
+        ann.TextBoxStyle = textBoxStyle;
         UpdateTextBounds(ann);
         MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
@@ -1051,12 +1155,19 @@ internal sealed class EditorController : IDisposable
         IReadOnlyList<Vector2> originalPoints,
         double originalFontSize,
         double originalSizeScale,
+        TextBoxStyle originalTextBoxStyle,
         AnnotationResizeHandle handle,
         Point pixelPoint)
     {
         if (ann.Tool == EditTool.Emoji || ann.IsRotated)
         {
-            ResizeRotatedAboutCenter(ann, originalBounds, originalFontSize, handle, pixelPoint);
+            ResizeRotatedAboutCenter(
+                ann,
+                originalBounds,
+                originalFontSize,
+                originalTextBoxStyle,
+                handle,
+                pixelPoint);
             return;
         }
 
@@ -1117,7 +1228,9 @@ internal sealed class EditorController : IDisposable
         }
         else if (ann.Tool == EditTool.Text)
         {
-            ann.FontSize = Math.Max(8, originalFontSize * resized.Width / Math.Max(originalBounds.Width, 1));
+            var scale = resized.Width / Math.Max(originalBounds.Width, 1);
+            ann.FontSize = Math.Max(8, originalFontSize * scale);
+            ann.TextBoxStyle = originalTextBoxStyle.Scale(scale);
             ann.Bounds = new Rect(resized.X, resized.Y, resized.Width, resized.Height);
             UpdateTextBounds(ann);
             var measured = ann.Bounds;
@@ -1154,6 +1267,7 @@ internal sealed class EditorController : IDisposable
         Annotation ann,
         Rect originalBounds,
         double originalFontSize,
+        TextBoxStyle originalTextBoxStyle,
         AnnotationResizeHandle handle,
         Point pixelPoint)
     {
@@ -1186,6 +1300,7 @@ internal sealed class EditorController : IDisposable
             {
                 scale = Math.Clamp(scale, 10 / Math.Max(originalFontSize, 1), 200 / Math.Max(originalFontSize, 1));
                 ann.FontSize = originalFontSize * scale;
+                ann.TextBoxStyle = originalTextBoxStyle.Scale(scale);
                 // Re-measure so the box matches the new glyph size, then keep the center fixed.
                 ann.Bounds = new Rect(original.X, original.Y, 0, 0);
                 UpdateTextBounds(ann);
@@ -1776,7 +1891,9 @@ internal sealed class EditorController : IDisposable
         var previousTransform = ds.Transform;
         if (ann.IsRotated)
         {
-            var b = NormalizedBounds(ann);
+            var b = ann.Tool == EditTool.Text
+                ? ann.TextBoxStyle.DecoratedBounds(ann.Bounds)
+                : NormalizedBounds(ann);
             var center = new Vector2((float)(b.X + b.Width / 2), (float)(b.Y + b.Height / 2));
             ds.Transform = Matrix3x2.CreateRotation((float)(ann.Rotation * Math.PI / 180.0), center) * previousTransform;
         }
@@ -1861,6 +1978,23 @@ internal sealed class EditorController : IDisposable
             }
             case EditTool.Text:
             {
+                var box = ann.TextBoxStyle.DecoratedBounds(ann.Bounds);
+                var cornerRadius = (float)Math.Min(
+                    ann.TextBoxStyle.CornerRadius,
+                    Math.Min(box.Width, box.Height) / 2);
+                if (ann.TextBoxStyle.BackgroundColor.A > 0)
+                {
+                    ds.FillRoundedRectangle(box, cornerRadius, cornerRadius, ann.TextBoxStyle.BackgroundColor);
+                }
+                if (ann.TextBoxStyle.BorderWidth > 0 && ann.TextBoxStyle.BorderColor.A > 0)
+                {
+                    ds.DrawRoundedRectangle(
+                        box,
+                        cornerRadius,
+                        cornerRadius,
+                        ann.TextBoxStyle.BorderColor,
+                        (float)ann.TextBoxStyle.BorderWidth);
+                }
                 var fontSize = (float)ann.FontSize;
                 using var format = new CanvasTextFormat
                 {
@@ -1947,6 +2081,11 @@ internal sealed class EditorController : IDisposable
     public static Rect NormalizedBounds(Annotation ann) => NormalizeBounds(ann.Bounds);
 
     private static Rect NormalizedBounds(AnnotationSnapshot ann) => NormalizeBounds(ann.Bounds);
+
+    public static Rect InteractionBounds(Annotation ann) =>
+        ann.Tool == EditTool.Text
+            ? ann.TextBoxStyle.DecoratedBounds(NormalizedBounds(ann))
+            : NormalizedBounds(ann);
 
     private static Rect NormalizeBounds(Rect b)
     {

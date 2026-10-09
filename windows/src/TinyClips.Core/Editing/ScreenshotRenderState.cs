@@ -72,6 +72,117 @@ public enum ExportVerticalAlignment
     Bottom,
 }
 
+public enum TextBoxPreset
+{
+    Plain,
+    Light,
+    Dark,
+    Accent,
+    Custom,
+}
+
+public readonly record struct TextBoxStyle(
+    TextBoxPreset Preset,
+    Color BackgroundColor,
+    Color BorderColor,
+    double BorderWidth,
+    double Padding,
+    double CornerRadius)
+{
+    public const double MaximumBorderWidth = 12;
+    public const double MaximumPadding = 48;
+    public const double MaximumCornerRadius = 32;
+
+    public static TextBoxStyle Plain => new(
+        TextBoxPreset.Plain,
+        Color.FromArgb(0, 0, 0, 0),
+        Color.FromArgb(0, 0, 0, 0),
+        0,
+        0,
+        0);
+
+    public static (TextBoxStyle Style, Color TextColor) Resolve(
+        TextBoxPreset preset,
+        Color currentTextColor,
+        Color accentColor) =>
+        preset switch
+        {
+            TextBoxPreset.Plain => (Plain, currentTextColor),
+            TextBoxPreset.Light => (
+                new TextBoxStyle(
+                    TextBoxPreset.Light,
+                    Color.FromArgb(245, 243, 243, 245),
+                    Color.FromArgb(46, 31, 31, 36),
+                    1,
+                    8,
+                    4),
+                Color.FromArgb(255, 20, 20, 23)),
+            TextBoxPreset.Dark => (
+                new TextBoxStyle(
+                    TextBoxPreset.Dark,
+                    Color.FromArgb(240, 30, 30, 34),
+                    Color.FromArgb(56, 255, 255, 255),
+                    1,
+                    8,
+                    4),
+                Color.FromArgb(255, 255, 255, 255)),
+            TextBoxPreset.Accent => (
+                new TextBoxStyle(
+                    TextBoxPreset.Accent,
+                    accentColor,
+                    Color.FromArgb(0, 0, 0, 0),
+                    0,
+                    8,
+                    4),
+                ContrastTextColor(accentColor)),
+            _ => (Plain with { Preset = TextBoxPreset.Custom }, currentTextColor),
+        };
+
+    public TextBoxStyle AsCustom() => this with
+    {
+        Preset = TextBoxPreset.Custom,
+        BorderWidth = Math.Clamp(BorderWidth, 0, MaximumBorderWidth),
+        Padding = Math.Clamp(Padding, 0, MaximumPadding),
+        CornerRadius = Math.Clamp(CornerRadius, 0, MaximumCornerRadius),
+    };
+
+    public TextBoxStyle Scale(double factor) => this with
+    {
+        Preset = Preset == TextBoxPreset.Plain ? TextBoxPreset.Plain : TextBoxPreset.Custom,
+        BorderWidth = Math.Clamp(BorderWidth * factor, 0, MaximumBorderWidth),
+        Padding = Math.Clamp(Padding * factor, 0, MaximumPadding),
+        CornerRadius = Math.Clamp(CornerRadius * factor, 0, MaximumCornerRadius),
+    };
+
+    public Rect DecoratedBounds(Rect contentBounds)
+    {
+        var inset = Math.Max(0, Padding) + Math.Max(0, BorderWidth) / 2;
+        return new Rect(
+            contentBounds.X - inset,
+            contentBounds.Y - inset,
+            contentBounds.Width + inset * 2,
+            contentBounds.Height + inset * 2);
+    }
+
+    public static Color ContrastTextColor(Color color)
+    {
+        static double Linearize(byte channel)
+        {
+            var value = channel / 255.0;
+            return value <= 0.04045
+                ? value / 12.92
+                : Math.Pow((value + 0.055) / 1.055, 2.4);
+        }
+
+        var luminance = 0.2126 * Linearize(color.R)
+            + 0.7152 * Linearize(color.G)
+            + 0.0722 * Linearize(color.B);
+        return luminance > 0.179
+            ? Color.FromArgb(255, 0, 0, 0)
+            : Color.FromArgb(255, 255, 255, 255);
+    }
+}
+
 public static class EditToolExtensions
 {
     public static bool SupportsRotation(this EditTool tool) =>
@@ -102,13 +213,14 @@ public class ScreenshotAnnotation
     public bool Italic { get; set; }
     public bool Underline { get; set; }
     public bool Strikethrough { get; set; }
+    public TextBoxStyle TextBoxStyle { get; set; } = TextBoxStyle.Plain;
     public double Rotation { get; set; }
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 
     public AnnotationSnapshot CaptureSnapshot() => new(
         Tool, Bounds, Color, FillColor, Thickness, Text, Number, SizeScale,
         Redaction, RedactStyle, ArrowStyle, Points.ToImmutableArray(), TextColor,
-        FontSize, FontFamily, Bold, Italic, Underline, Strikethrough, Rotation);
+        FontSize, FontFamily, Bold, Italic, Underline, Strikethrough, TextBoxStyle, Rotation);
 }
 
 /// <summary>Immutable image-pixel annotation data; deliberately excludes live XAML previews.</summary>
@@ -132,6 +244,7 @@ public sealed record AnnotationSnapshot(
     bool Italic,
     bool Underline,
     bool Strikethrough,
+    TextBoxStyle TextBoxStyle,
     double Rotation)
 {
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;

@@ -105,6 +105,24 @@
 
                 <!--  Text  -->
                 <StackPanel x:Name="TextSection" Spacing="10">
+                    <StackPanel Spacing="6">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Style" />
+                        <Grid ColumnSpacing="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ToggleButton x:Name="PlainTextPreset" Grid.Column="0" MinWidth="0" Padding="4" AutomationProperties.Name="Plain text style" Click="OnTextPresetClick" Content="Plain" Tag="Plain" />
+                            <ToggleButton x:Name="LightTextPreset" Grid.Column="1" MinWidth="0" Padding="4" AutomationProperties.Name="Light text box style" Click="OnTextPresetClick" Content="Light" Tag="Light" />
+                            <ToggleButton x:Name="DarkTextPreset" Grid.Column="2" MinWidth="0" Padding="4" AutomationProperties.Name="Dark text box style" Click="OnTextPresetClick" Content="Dark" Tag="Dark" />
+                            <ToggleButton x:Name="AccentTextPreset" Grid.Column="3" MinWidth="0" Padding="4" AutomationProperties.Name="Accent text box style" Click="OnTextPresetClick" Content="Accent" Tag="Accent" />
+                        </Grid>
+                    </StackPanel>
                     <ComboBox
                         x:Name="FontFamilyCombo"
                         HorizontalAlignment="Stretch"
@@ -121,6 +139,51 @@
                         Minimum="10"
                         StepFrequency="1"
                         ValueChanged="OnFontSizeChanged" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Box" />
+                    <local:SwatchColorPicker
+                        x:Name="TextBackgroundColorPicker"
+                        AutomationProperties.AutomationId="EditorTextBackgroundColorButton"
+                        AutomationProperties.Name="Text box background color"
+                        AllowTransparent="True"
+                        ColorChanged="OnTextBackgroundColorChanged"
+                        IsAlphaEnabled="True" />
+                    <local:SwatchColorPicker
+                        x:Name="TextBorderColorPicker"
+                        AutomationProperties.AutomationId="EditorTextBorderColorButton"
+                        AutomationProperties.Name="Text box border color"
+                        AllowTransparent="True"
+                        ColorChanged="OnTextBorderColorChanged"
+                        IsAlphaEnabled="True" />
+                    <Slider
+                        x:Name="TextBorderWidthSlider"
+                        AutomationProperties.AutomationId="EditorTextBorderWidthSlider"
+                        AutomationProperties.Name="Text box border width"
+                        Header="Border width"
+                        Maximum="12"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnTextBorderWidthChanged" />
+                    <Slider
+                        x:Name="TextPaddingSlider"
+                        AutomationProperties.AutomationId="EditorTextPaddingSlider"
+                        AutomationProperties.Name="Text box padding"
+                        Header="Padding"
+                        Maximum="48"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnTextPaddingChanged" />
+                    <Slider
+                        x:Name="TextCornerRadiusSlider"
+                        AutomationProperties.AutomationId="EditorTextCornerRadiusSlider"
+                        AutomationProperties.Name="Text box corner radius"
+                        Header="Corner radius"
+                        Maximum="32"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnTextCornerRadiusChanged" />
                 </StackPanel>
 
                 <!--  Number badge  -->

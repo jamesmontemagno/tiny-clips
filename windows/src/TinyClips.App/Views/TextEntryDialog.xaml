@@ -12,6 +12,24 @@
     mc:Ignorable="d">
 
     <StackPanel MinWidth="380" Spacing="12">
+        <StackPanel Spacing="6">
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Style" />
+            <Grid ColumnSpacing="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ToggleButton x:Name="PlainPreset" Grid.Column="0" AutomationProperties.Name="Plain text style" Click="OnPresetClick" Content="Plain" Tag="Plain" />
+                <ToggleButton x:Name="LightPreset" Grid.Column="1" AutomationProperties.Name="Light text box style" Click="OnPresetClick" Content="Light" Tag="Light" />
+                <ToggleButton x:Name="DarkPreset" Grid.Column="2" AutomationProperties.Name="Dark text box style" Click="OnPresetClick" Content="Dark" Tag="Dark" />
+                <ToggleButton x:Name="AccentPreset" Grid.Column="3" AutomationProperties.Name="Accent text box style" Click="OnPresetClick" Content="Accent" Tag="Accent" />
+            </Grid>
+        </StackPanel>
 
         <!--  Formatting toolbar  -->
         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -100,6 +118,85 @@
                 ValueChanged="OnSizeChanged" />
         </Grid>
 
+        <Expander Header="Box">
+            <StackPanel Padding="0,8,0,0" Spacing="10">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="BackgroundColorButton"
+                        Grid.Column="0"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Background color"
+                        Content="Background">
+                        <Button.Flyout>
+                            <Flyout>
+                                <ColorPicker
+                                    x:Name="BackgroundColorPicker"
+                                    ColorChanged="OnBackgroundColorChanged"
+                                    IsAlphaEnabled="True"
+                                    IsAlphaSliderVisible="True"
+                                    IsHexInputVisible="True" />
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button
+                        x:Name="BorderColorButton"
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Border color"
+                        Content="Border">
+                        <Button.Flyout>
+                            <Flyout>
+                                <ColorPicker
+                                    x:Name="BorderColorPicker"
+                                    ColorChanged="OnBorderColorChanged"
+                                    IsAlphaEnabled="True"
+                                    IsAlphaSliderVisible="True"
+                                    IsHexInputVisible="True" />
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </Grid>
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <NumberBox
+                        x:Name="BorderWidthBox"
+                        Grid.Column="0"
+                        AutomationProperties.Name="Border width"
+                        Header="Border"
+                        Maximum="12"
+                        Minimum="0"
+                        SmallChange="1"
+                        ValueChanged="OnBoxMetricChanged" />
+                    <NumberBox
+                        x:Name="PaddingBox"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Padding"
+                        Header="Padding"
+                        Maximum="48"
+                        Minimum="0"
+                        SmallChange="1"
+                        ValueChanged="OnBoxMetricChanged" />
+                    <NumberBox
+                        x:Name="CornerRadiusBox"
+                        Grid.Column="2"
+                        AutomationProperties.Name="Corner radius"
+                        Header="Radius"
+                        Maximum="32"
+                        Minimum="0"
+                        SmallChange="1"
+                        ValueChanged="OnBoxMetricChanged" />
+                </Grid>
+            </StackPanel>
+        </Expander>
+
         <!--  Text entry  -->
         <TextBox
             x:Name="EntryBox"
@@ -120,11 +217,14 @@
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
             CornerRadius="{StaticResource ControlCornerRadius}">
-            <TextBlock
-                x:Name="PreviewText"
+            <Border
+                x:Name="PreviewBox"
                 HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                TextWrapping="Wrap" />
+                VerticalAlignment="Center">
+                <TextBlock
+                    x:Name="PreviewText"
+                    TextWrapping="Wrap" />
+            </Border>
         </Border>
     </StackPanel>
 </ContentDialog>

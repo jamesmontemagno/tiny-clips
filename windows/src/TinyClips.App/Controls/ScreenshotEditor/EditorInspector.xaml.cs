@@ -58,15 +58,23 @@ public sealed partial class EditorInspector : UserControl
             }
         };
         controller.BackgroundChanged += (_, _) => UpdateExportFrameControls();
+        controller.TextDefaultsChanged += (_, _) =>
+        {
+            if (_controller.Tool == EditTool.Text && _controller.SelectedAnnotation is null)
+            {
+                ShowForTool(EditTool.Text);
+            }
+        };
         controller.ImageChanged += (_, _) => UpdateExportFrameControls();
         controller.SelectionChanged += (_, ann) =>
         {
-            // Matches the original behavior: deselecting (clicking empty space with the Select
-            // tool) leaves whichever panel was last shown rather than clearing it — tool changes
-            // already reset the panel via ToolChanged/ShowForTool.
             if (ann is not null)
             {
                 ShowForSelection(ann);
+            }
+            else
+            {
+                ShowForTool(_controller.Tool);
             }
         };
 
@@ -88,6 +96,7 @@ public sealed partial class EditorInspector : UserControl
         StrokeSlider.Value = _controller.StrokeThickness;
         NumberSizeSlider.Value = _controller.NumberScale;
         FontSizeSlider.Value = _controller.TextFontSize;
+        SyncTextBoxStyle(_controller.TextBoxStyleDefault);
         FillCheck.IsChecked = _controller.FillEnabled;
         FillColorPicker.Color = _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
         UpdateInspectorHeaders();
@@ -225,6 +234,13 @@ public sealed partial class EditorInspector : UserControl
             RedactStyleCombo.SelectedIndex = (int)_controller.RedactionStyleDefault;
             RedactionCombo.SelectedIndex = (int)_controller.RedactionLevelDefault;
         }
+        if (showsText)
+        {
+            AnnotationColorPicker.Color = _controller.StrokeColor;
+            FontSizeSlider.Value = _controller.TextFontSize;
+            SelectFontInCombo(_controller.TextFontFamily);
+            SyncTextBoxStyle(_controller.TextBoxStyleDefault);
+        }
 
         InspectorTitle.Text = tool switch
         {
@@ -306,6 +322,7 @@ public sealed partial class EditorInspector : UserControl
         {
             FontSizeSlider.Value = ann.FontSize;
             SelectFontInCombo(ann.FontFamily);
+            SyncTextBoxStyle(ann.TextBoxStyle);
         }
         if (isCounter)
         {
@@ -334,11 +351,42 @@ public sealed partial class EditorInspector : UserControl
         }
     }
 
+    private void SyncTextBoxStyle(TextBoxStyle style)
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+        PlainTextPreset.IsChecked = style.Preset == TextBoxPreset.Plain;
+        LightTextPreset.IsChecked = style.Preset == TextBoxPreset.Light;
+        DarkTextPreset.IsChecked = style.Preset == TextBoxPreset.Dark;
+        AccentTextPreset.IsChecked = style.Preset == TextBoxPreset.Accent;
+        TextBackgroundColorPicker.Color = style.BackgroundColor;
+        TextBorderColorPicker.Color = style.BorderColor;
+        TextBorderWidthSlider.Value = style.BorderWidth;
+        TextPaddingSlider.Value = style.Padding;
+        TextCornerRadiusSlider.Value = style.CornerRadius;
+        TextBorderWidthSlider.Header = $"Border width — {(int)style.BorderWidth} px";
+        TextPaddingSlider.Header = $"Padding — {(int)style.Padding} px";
+        TextCornerRadiusSlider.Header = $"Corner radius — {(int)style.CornerRadius} px";
+        _inspectorInitializing = wasInitializing;
+    }
+
     // -- Style handlers ----------------------------------------------------------------------
 
-    private void OnColorChanged(object? sender, Color color) => _controller.SetStrokeColor(color);
+    private void OnColorChanged(object? sender, Color color)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.SetStrokeColor(color);
+        }
+    }
 
-    private void OnNumberColorChanged(object? sender, Color color) => _controller.SetNumberColor(color);
+    private void OnNumberColorChanged(object? sender, Color color)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.SetNumberColor(color);
+        }
+    }
 
     private void OnStrokeChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
@@ -414,6 +462,82 @@ public sealed partial class EditorInspector : UserControl
         _controller.SetFontSize(e.NewValue);
         UpdateInspectorHeaders();
     }
+
+    private void OnTextPresetClick(object sender, RoutedEventArgs e)
+    {
+        if (_inspectorInitializing || sender is not ToggleButton { Tag: string tag }
+            || !Enum.TryParse<TextBoxPreset>(tag, out var preset))
+        {
+            return;
+        }
+
+        var accent = Application.Current.Resources.TryGetValue("SystemAccentColor", out var resource)
+            && resource is Color color
+            ? color
+            : Color.FromArgb(255, 0, 120, 212);
+        _controller.ApplyTextBoxPreset(preset, accent);
+        AnnotationColorPicker.Color = _controller.SelectedAnnotation is { Tool: EditTool.Text } ann
+            ? ann.Color
+            : _controller.StrokeColor;
+        SyncTextBoxStyle(_controller.SelectedAnnotation is { Tool: EditTool.Text } selected
+            ? selected.TextBoxStyle
+            : _controller.TextBoxStyleDefault);
+    }
+
+    private void OnTextBackgroundColorChanged(object? sender, Color color)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+        _controller.SetTextBoxBackground(color);
+        SyncTextBoxStyle(CurrentTextBoxStyle());
+    }
+
+    private void OnTextBorderColorChanged(object? sender, Color color)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+        _controller.SetTextBoxBorderColor(color);
+        SyncTextBoxStyle(CurrentTextBoxStyle());
+    }
+
+    private void OnTextBorderWidthChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+        _controller.SetTextBoxBorderWidth(e.NewValue);
+        SyncTextBoxStyle(CurrentTextBoxStyle());
+    }
+
+    private void OnTextPaddingChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+        _controller.SetTextBoxPadding(e.NewValue);
+        SyncTextBoxStyle(CurrentTextBoxStyle());
+    }
+
+    private void OnTextCornerRadiusChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+        _controller.SetTextBoxCornerRadius(e.NewValue);
+        SyncTextBoxStyle(CurrentTextBoxStyle());
+    }
+
+    private TextBoxStyle CurrentTextBoxStyle() =>
+        _controller.SelectedAnnotation is { Tool: EditTool.Text } ann
+            ? ann.TextBoxStyle
+            : _controller.TextBoxStyleDefault;
 
     private void OnNumberSizeChanged(object sender, RangeBaseValueChangedEventArgs e)
     {

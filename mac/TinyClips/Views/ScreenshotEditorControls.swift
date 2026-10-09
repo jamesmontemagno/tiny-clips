@@ -424,6 +424,8 @@ struct InlineTextEditor: View {
     let isItalic: Bool
     let isUnderlined: Bool
     let color: Color
+    let textBoxStyle: TextBoxStyle
+    let boxScale: CGFloat
     let onCommit: () -> Void
 
     @FocusState private var isFocused: Bool
@@ -436,9 +438,19 @@ struct InlineTextEditor: View {
                 .italic(isItalic)
                 .underline(isUnderlined)
                 .foregroundColor(color)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(max(4, textBoxStyle.padding * boxScale))
                 .frame(width: 180)
+                .background {
+                    RoundedRectangle(cornerRadius: textBoxStyle.cornerRadius * boxScale)
+                        .fill(textBoxStyle.backgroundColor)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: textBoxStyle.cornerRadius * boxScale)
+                        .strokeBorder(
+                            textBoxStyle.borderColor,
+                            lineWidth: textBoxStyle.borderWidth * boxScale
+                        )
+                }
                 .focused($isFocused)
                 .onAppear { isFocused = true }
                 .onSubmit { onCommit() }

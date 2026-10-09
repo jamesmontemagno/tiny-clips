@@ -86,6 +86,13 @@ public sealed class ScreenshotExportTests
             Italic = true,
             Underline = true,
             Strikethrough = true,
+            TextBoxStyle = new TextBoxStyle(
+                TextBoxPreset.Dark,
+                Color.FromArgb(240, 30, 30, 34),
+                Color.FromArgb(56, 255, 255, 255),
+                2,
+                9,
+                5),
             Rotation = 45,
         };
         annotation.Points.Add(new Vector2(12, 34));
@@ -93,7 +100,8 @@ public sealed class ScreenshotExportTests
         var expected = new AnnotationSnapshot(EditTool.Text, new Rect(10, 20, 30, 40),
             Color.FromArgb(255, 1, 2, 3), Color.FromArgb(96, 4, 5, 6), 7, "synthetic text",
             8, 1.5, RedactionLevel.Heavy, RedactionStyle.Pixelate, ArrowStyle.Curved2,
-            snapshot.Points, Color.FromArgb(255, 9, 10, 11), 42, "Arial", true, true, true, true, 45);
+            snapshot.Points, Color.FromArgb(255, 9, 10, 11), 42, "Arial", true, true, true, true,
+            annotation.TextBoxStyle, 45);
         Assert.Equal(expected, snapshot);
 
         annotation.Points[0] = Vector2.Zero;
@@ -107,6 +115,44 @@ public sealed class ScreenshotExportTests
         Assert.Equal(expected, snapshot);
         Assert.Equal(new Vector2(12, 34), Assert.Single(snapshot.Points));
         Assert.True(snapshot.IsRotated);
+    }
+
+    [Fact]
+    public void TextBoxStyle_DecoratesClampsAndScalesBounds()
+    {
+        var style = new TextBoxStyle(
+            TextBoxPreset.Dark,
+            Color.FromArgb(255, 0, 0, 0),
+            Color.FromArgb(255, 255, 255, 255),
+            4,
+            8,
+            6);
+
+        Assert.Equal(new Rect(0, 10, 50, 60), style.DecoratedBounds(new Rect(10, 20, 30, 40)));
+
+        var scaled = style.Scale(2);
+        Assert.Equal(TextBoxPreset.Custom, scaled.Preset);
+        Assert.Equal(8, scaled.BorderWidth);
+        Assert.Equal(16, scaled.Padding);
+        Assert.Equal(12, scaled.CornerRadius);
+
+        var clamped = (style with { BorderWidth = 100, Padding = -10, CornerRadius = 100 }).AsCustom();
+        Assert.Equal(TextBoxStyle.MaximumBorderWidth, clamped.BorderWidth);
+        Assert.Equal(0, clamped.Padding);
+        Assert.Equal(TextBoxStyle.MaximumCornerRadius, clamped.CornerRadius);
+    }
+
+    [Theory]
+    [InlineData(255, 255, 255, 0, 0, 0)]
+    [InlineData(0, 0, 0, 255, 255, 255)]
+    [InlineData(0, 120, 215, 0, 0, 0)]
+    public void TextBoxStyle_ChoosesContrastForeground(
+        byte red, byte green, byte blue,
+        byte expectedRed, byte expectedGreen, byte expectedBlue)
+    {
+        var result = TextBoxStyle.ContrastTextColor(Color.FromArgb(255, red, green, blue));
+
+        Assert.Equal(Color.FromArgb(255, expectedRed, expectedGreen, expectedBlue), result);
     }
 
     [Fact]
