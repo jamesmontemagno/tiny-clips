@@ -305,6 +305,7 @@ class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
     static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
     static let confirmEditorEscapeKey = CaptureSettingsDefaultsKey.confirmEditorEscape
+    static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
     static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
@@ -390,6 +391,7 @@ class CaptureSettings: ObservableObject {
     // Negative values indicate no explicit corner radius/factor is set.
     @AppStorage("webcamCornerRadius") var webcamCornerRadius: Double = -1
     @AppStorage("showScreenshotEditor") var showScreenshotEditor: Bool = true
+    @AppStorage("screenshotEditorNativeSize") var screenshotEditorNativeSize: Bool = false
     @AppStorage(CaptureSettingsDefaultsKey.confirmEditorEscape) var confirmEditorEscape: Bool = true
     @AppStorage("showGifTrimmer") var showGifTrimmer: Bool = true
     @AppStorage("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
@@ -800,7 +802,7 @@ class CaptureSettings: ObservableObject {
         "showTrimmer",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
-        "showScreenshotEditor", confirmEditorEscapeKey, "showGifTrimmer",
+        "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",
         "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
         "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
         "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",

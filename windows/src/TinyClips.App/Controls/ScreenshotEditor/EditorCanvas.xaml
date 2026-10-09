@@ -149,6 +149,14 @@
                     Click="OnFit"
                     Content="Fit"
                     ToolTipService.ToolTip="Fit screenshot to viewport (Ctrl+0)" />
+                <ToggleButton
+                    x:Name="NativeSizeToggleButton"
+                    AutomationProperties.AutomationId="ScreenshotEditorNativeSizeButton"
+                    AutomationProperties.HelpText="Displays one captured pixel per physical display pixel."
+                    AutomationProperties.Name="Show screenshot at actual size"
+                    Click="OnNativeSize"
+                    Content="1:1"
+                    ToolTipService.ToolTip="Display one captured pixel per physical display pixel" />
             </StackPanel>
         </Border>
 

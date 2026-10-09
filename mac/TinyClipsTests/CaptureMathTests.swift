@@ -428,8 +428,18 @@ final class CaptureMathTests: XCTestCase {
     func testScreenshotEditorZoomClampsAndStepsThroughPresets() {
         XCTAssertEqual(ScreenshotEditorZoomMath.clamp(0.1), 0.25)
         XCTAssertEqual(ScreenshotEditorZoomMath.clamp(8), 4)
+        XCTAssertEqual(ScreenshotEditorZoomMath.clamp(6, maximumScale: 6), 6)
         XCTAssertEqual(ScreenshotEditorZoomMath.steppedScale(from: 1, direction: 1), 1.25)
         XCTAssertEqual(ScreenshotEditorZoomMath.steppedScale(from: 1, direction: -1), 0.75)
+        XCTAssertEqual(ScreenshotEditorZoomMath.steppedScale(from: 4, direction: 1, maximumScale: 6), 6)
+        XCTAssertEqual(ScreenshotEditorZoomMath.steppedScale(from: 6, direction: -1, maximumScale: 6), 4)
+    }
+
+    func testScreenshotEditorNativeSizeZoomUsesBackingScale() {
+        XCTAssertEqual(ScreenshotEditorZoomMath.nativeSizeScale(fitScale: 0.25, backingScale: 2), 2)
+        XCTAssertEqual(ScreenshotEditorZoomMath.nativeSizeScale(fitScale: 0.5, backingScale: 2), 1)
+        XCTAssertNil(ScreenshotEditorZoomMath.nativeSizeScale(fitScale: 0, backingScale: 2))
+        XCTAssertNil(ScreenshotEditorZoomMath.nativeSizeScale(fitScale: .infinity, backingScale: 2))
     }
 
     func testScreenshotEditorZoomPreservesFocalPointAndClampsPan() {

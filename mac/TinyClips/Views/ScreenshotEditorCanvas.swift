@@ -116,12 +116,17 @@ struct ScreenshotEditorCanvasView: View {
     @ObservedObject var viewModel: ScreenshotEditorViewModel
     let containerSize: CGSize
     let zoomScale: CGFloat
+    let backingScale: CGFloat
     let panOffset: CGSize
 
     @State private var cropHover: CropDragMode?
 
     var body: some View {
-        let exportLayout = viewModel.displayLayout(in: containerSize, zoomScale: zoomScale)
+        let exportLayout = viewModel.displayLayout(
+            in: containerSize,
+            zoomScale: zoomScale,
+            backingScale: backingScale
+        )
         let imageSize = exportLayout.imageRect.size
         let frameSize = exportLayout.frameSize
         let frameOrigin = CGPoint(

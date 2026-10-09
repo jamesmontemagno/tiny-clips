@@ -191,7 +191,11 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    func displayLayout(in containerSize: CGSize, zoomScale: CGFloat = 1) -> ExportFrameLayout {
+    func displayLayout(
+        in containerSize: CGSize,
+        zoomScale: CGFloat = 1,
+        backingScale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2.0
+    ) -> ExportFrameLayout {
         guard originalImage != nil, imagePixelSize.width > 0, imagePixelSize.height > 0 else {
             return ExportFrameLayout.make(
                 imageSize: .zero,
@@ -209,14 +213,13 @@ class ScreenshotEditorViewModel: ObservableObject {
             horizontalAlignment: horizontalExportAlignment,
             verticalAlignment: verticalExportAlignment
         )
-        let screenScale = NSScreen.main?.backingScaleFactor ?? 2.0
         let maxFrameWidth = max(1, containerSize.width * 0.95)
         let maxFrameHeight = max(1, containerSize.height * 0.95)
         let displayScale = min(
-            1 / screenScale,
+            1 / backingScale,
             maxFrameWidth / pixelLayout.frameSize.width,
             maxFrameHeight / pixelLayout.frameSize.height
-        ) * ScreenshotEditorZoomMath.clamp(zoomScale)
+        ) * max(ScreenshotEditorZoomMath.minimumScale, zoomScale)
 
         return ExportFrameLayout.make(
             imageSize: CGSize(
@@ -228,6 +231,21 @@ class ScreenshotEditorViewModel: ObservableObject {
             horizontalAlignment: horizontalExportAlignment,
             verticalAlignment: verticalExportAlignment
         )
+    }
+
+    func nativeSizeZoomScale(in containerSize: CGSize, backingScale: CGFloat) -> CGFloat? {
+        guard imagePixelSize.width > 0,
+              imagePixelSize.height > 0,
+              containerSize.width > 0,
+              containerSize.height > 0 else {
+            return nil
+        }
+
+        let fitScale = displayLayout(
+            in: containerSize,
+            backingScale: backingScale
+        ).imageRect.width / imagePixelSize.width
+        return ScreenshotEditorZoomMath.nativeSizeScale(fitScale: fitScale, backingScale: backingScale)
     }
 
     /// Returns the text size for an image rendered at `renderedImageWidth`.

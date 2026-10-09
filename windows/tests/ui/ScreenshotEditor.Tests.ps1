@@ -123,6 +123,16 @@ if (-not $first) {
 }
 $firstTarget = @("-w", "$($first.hwnd)")
 
+Test-UI "Fit clears the remembered actual-size mode" {
+    Invoke-UI invoke "Fit screenshot to viewport" @firstTarget
+    Invoke-UI wait-for "ScreenshotEditorNativeSizeButton" @firstTarget --value "Off" -t 3000 | Out-Null
+}
+Test-UI "Actual-size zoom can be selected" {
+    Invoke-UI invoke "ScreenshotEditorNativeSizeButton" @firstTarget
+    Invoke-UI wait-for "ScreenshotEditorNativeSizeButton" @firstTarget --value "On" -t 3000 | Out-Null
+}
+Shot "actual-size-mode"
+
 Test-UI "Output-resolution name matches visible dimensions with flyout closed" {
     Invoke-UI wait-for "EditorOutputScaleSlider" -a $AppPid --gone -t 3000
     $script:initialOutputResolution = Assert-OutputResolution
@@ -180,6 +190,27 @@ Test-UI "Capture second screen" {
 }
 Test-UI "Second editor opens" {
     [void](Wait-EditorCount -Expected 2)
+}
+
+$nativeSizeEditor = @(Get-EditorWindows | Where-Object { $_.hwnd -ne $first.hwnd })
+if ($nativeSizeEditor.Count -eq 1) {
+    $nativeSizeTarget = @("-w", "$($nativeSizeEditor[0].hwnd)")
+    Test-UI "New editor remembers actual-size mode" {
+        Invoke-UI wait-for "ScreenshotEditorNativeSizeButton" @nativeSizeTarget --value "On" -t 5000 | Out-Null
+    }
+}
+else {
+    $fail++
+    $results += @{
+        name = "New editor remembers actual-size mode"
+        status = "FAIL"
+        detail = "Expected one second editor, found $($nativeSizeEditor.Count)"
+    }
+}
+
+Test-UI "Fit returns the preference to its default mode" {
+    Invoke-UI invoke "Fit screenshot to viewport" @firstTarget
+    Invoke-UI wait-for "ScreenshotEditorNativeSizeButton" @firstTarget --value "Off" -t 3000 | Out-Null
 }
 
 $editors = Get-EditorWindows

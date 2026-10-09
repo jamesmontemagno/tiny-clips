@@ -487,6 +487,23 @@ public sealed class CaptureSettingsTests
     }
 
     [Fact]
+    public void ScreenshotEditorNativeSize_DefaultsFalse_RoundTrips_AndResetRestoresDefault()
+    {
+        var settingsService = new TestSettingsService();
+        var settings = new CaptureSettings(settingsService);
+
+        Assert.False(settings.ScreenshotEditorNativeSize);
+
+        settings.ScreenshotEditorNativeSize = true;
+        Assert.True(settings.ScreenshotEditorNativeSize);
+        Assert.True(settingsService.Get("screenshotEditorNativeSize", false));
+
+        settings.ResetToDefaults();
+        Assert.False(settings.ScreenshotEditorNativeSize);
+        Assert.False(settingsService.Get("screenshotEditorNativeSize", true));
+    }
+
+    [Fact]
     public void ConfirmEditorEscape_DefaultsTrue_RoundTrips_AndResetRestoresDefault()
     {
         var settingsService = new TestSettingsService();

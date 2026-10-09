@@ -90,12 +90,14 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
 
         WindowOpenDiagnostics.Observe(this, RootGrid, _openTrace);
+        ICaptureSettings settings;
         using (_openTrace?.Measure(WindowOpenPhase.ControllerAndBindings))
         {
+            settings = App.Services.GetRequiredService<ICaptureSettings>();
             _controller = new EditorController(DispatcherQueue);
             Toolbar.Attach(_controller);
             Inspector.Attach(_controller);
-            Canvas.Attach(_controller);
+            Canvas.Attach(_controller, settings);
 
             _controller.ImageChanged += OnControllerImageChanged;
             // Padding, corner radius, shadow and frame presets change the exported frame size without
@@ -122,7 +124,6 @@ public sealed partial class ScreenshotEditorWindow : Window
 
         using (_openTrace?.Measure(WindowOpenPhase.ThemeAndSubscriptions))
         {
-            var settings = App.Services.GetRequiredService<ICaptureSettings>();
             RootGrid.RequestedTheme = settings.Theme switch
             {
                 AppTheme.Light => ElementTheme.Light,

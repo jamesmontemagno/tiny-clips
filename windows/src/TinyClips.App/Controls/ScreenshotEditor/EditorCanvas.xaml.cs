@@ -13,6 +13,7 @@ using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.UI;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Services;
 using ShapesPath = Microsoft.UI.Xaml.Shapes.Path;
 
 namespace TinyClips.App.ScreenshotEditor;
@@ -62,6 +63,8 @@ public sealed partial class EditorCanvas : UserControl
     }
 
     private EditorController _controller = null!;
+    private ICaptureSettings? _settings;
+    private XamlRoot? _observedXamlRoot;
     private readonly Dictionary<Annotation, AnnotationVisual> _visuals = new();
 
     private bool _dragging;
@@ -92,6 +95,8 @@ public sealed partial class EditorCanvas : UserControl
     public EditorCanvas()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     /// <summary>Raised when the crop-selection rectangle becomes big enough (or too small) to
@@ -141,9 +146,11 @@ public sealed partial class EditorCanvas : UserControl
     /// <summary>Wires this control to the shared editor state. Called once by the window right
     /// after construction (mirrors the constructor-injected shared view model used by the Settings
     /// sections, but this control is declared in XAML so it can't take a constructor argument).</summary>
-    internal void Attach(EditorController controller)
+    internal void Attach(EditorController controller, ICaptureSettings settings)
     {
         _controller = controller;
+        _settings = settings;
+        NativeSizeToggleButton.IsChecked = settings.ScreenshotEditorNativeSize;
         _controller.ImageChanged += OnControllerImageChanged;
         _controller.AnnotationsStructureChanged += (_, _) => FullRebuild();
         _controller.AnnotationVisualInvalidated += OnControllerAnnotationVisualInvalidated;
@@ -156,6 +163,37 @@ public sealed partial class EditorCanvas : UserControl
         OnControllerToolChanged(this, _controller.Tool);
     }
 
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (!ReferenceEquals(_observedXamlRoot, XamlRoot))
+        {
+            if (_observedXamlRoot is not null)
+            {
+                _observedXamlRoot.Changed -= OnXamlRootChanged;
+            }
+
+            _observedXamlRoot = XamlRoot;
+            if (_observedXamlRoot is not null)
+            {
+                _observedXamlRoot.Changed += OnXamlRootChanged;
+            }
+        }
+
+        ApplyNativeSizeZoom();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_observedXamlRoot is not null)
+        {
+            _observedXamlRoot.Changed -= OnXamlRootChanged;
+            _observedXamlRoot = null;
+        }
+    }
+
+    private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) =>
+        ApplyNativeSizeZoom();
+
     // -- Controller reactions ----------------------------------------------------------------
 
     private void OnControllerImageChanged(object? sender, EventArgs e)
@@ -164,6 +202,7 @@ public sealed partial class EditorCanvas : UserControl
         ClearCropSelection();
         LayoutCanvas();
         FullRebuild();
+        ApplyNativeSizeZoom();
     }
 
     private void OnControllerAnnotationVisualInvalidated(object? sender, Annotation ann)
@@ -296,6 +335,7 @@ public sealed partial class EditorCanvas : UserControl
     {
         LayoutCanvas();
         RepositionAll();
+        ApplyNativeSizeZoom();
     }
 
     // -- Layout ------------------------------------------------------------------------------
@@ -311,10 +351,19 @@ public sealed partial class EditorCanvas : UserControl
 
         LayoutCanvas();
         RepositionAll();
+        ApplyNativeSizeZoom();
     }
 
     private void OnViewportViewChanged(ScrollView sender, object args)
     {
+        if (Math.Abs(sender.ZoomFactor - _zoomFactor) > 0.001f
+            && _settings?.ScreenshotEditorNativeSize == true)
+        {
+            _settings.ScreenshotEditorNativeSize = false;
+            NativeSizeToggleButton.IsChecked = false;
+            SetZoomBounds(MinZoomFactor, MaxZoomFactor);
+        }
+
         _zoomFactor = sender.ZoomFactor;
         ZoomPercentageButton.Content = $"{Math.Round(sender.ZoomFactor * 100):0}%";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
@@ -328,6 +377,24 @@ public sealed partial class EditorCanvas : UserControl
 
     private void OnFit(object sender, RoutedEventArgs e) => Fit();
 
+    private void OnNativeSize(object sender, RoutedEventArgs e)
+    {
+        var useNativeSize = NativeSizeToggleButton.IsChecked == true;
+        if (_settings is not null)
+        {
+            _settings.ScreenshotEditorNativeSize = useNativeSize;
+        }
+
+        if (useNativeSize)
+        {
+            ApplyNativeSizeZoom();
+        }
+        else
+        {
+            Fit();
+        }
+    }
+
     private void OnZoomPreset(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string value }
@@ -337,22 +404,55 @@ public sealed partial class EditorCanvas : UserControl
         }
     }
 
-    private void SetZoom(float zoom, Point? focalPoint = null)
+    private void SetZoom(float zoom, Point? focalPoint = null, bool keepNativeSizeMode = false)
     {
-        var clamped = Math.Clamp(zoom, MinZoomFactor, MaxZoomFactor);
-        _zoomFactor = clamped;
-        // ZoomTo's centerPoint is expressed in content coordinates, not viewport
-        // coordinates. Once the user has panned away from the origin, the viewport's
-        // fixed midpoint no longer corresponds to the content point under the visible
-        // center, so convert through the current scroll offsets and zoom factor to
-        // keep the currently-centered content point stable across zoom changes.
+        var minimumZoomFactor = keepNativeSizeMode ? Math.Min(MinZoomFactor, zoom) : MinZoomFactor;
+        var maximumZoomFactor = keepNativeSizeMode ? Math.Max(MaxZoomFactor, zoom) : MaxZoomFactor;
+        var clamped = Math.Clamp(zoom, minimumZoomFactor, maximumZoomFactor);
+        var currentZoomFactor = Math.Max(0.001f, ViewportScrollView.ZoomFactor);
         var focal = focalPoint ?? new Point(
-            (ViewportScrollView.HorizontalOffset + ViewportScrollView.ViewportWidth / 2.0) / ViewportScrollView.ZoomFactor,
-            (ViewportScrollView.VerticalOffset + ViewportScrollView.ViewportHeight / 2.0) / ViewportScrollView.ZoomFactor);
+            (ViewportScrollView.HorizontalOffset + ViewportScrollView.ViewportWidth / 2.0) / currentZoomFactor,
+            (ViewportScrollView.VerticalOffset + ViewportScrollView.ViewportHeight / 2.0) / currentZoomFactor);
+
+        if (_settings is not null)
+        {
+            _settings.ScreenshotEditorNativeSize = keepNativeSizeMode;
+        }
+
+        NativeSizeToggleButton.IsChecked = keepNativeSizeMode;
+        _zoomFactor = clamped;
+        SetZoomBounds(minimumZoomFactor, maximumZoomFactor);
         ViewportScrollView.ZoomTo(
             clamped,
             new Vector2((float)focal.X, (float)focal.Y),
             ZoomOptions);
+    }
+
+    private void SetZoomBounds(float minimumZoomFactor, float maximumZoomFactor)
+    {
+        ViewportScrollView.MinZoomFactor = minimumZoomFactor;
+        ViewportScrollView.MaxZoomFactor = maximumZoomFactor;
+    }
+
+    private void ApplyNativeSizeZoom()
+    {
+        if (_settings?.ScreenshotEditorNativeSize != true
+            || _controller?.Bitmap is null
+            || ImageHost.ActualWidth <= 0
+            || ImageHost.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        var layout = HostLayout();
+        var rasterizationScale = XamlRoot?.RasterizationScale ?? 1.0;
+        var nativeZoomFactor = ScreenshotEditorZoomMath.NativeSizeZoomFactor(layout.Scale, rasterizationScale);
+        if (nativeZoomFactor is not { } zoomFactor || zoomFactor > float.MaxValue)
+        {
+            return;
+        }
+
+        SetZoom((float)zoomFactor, keepNativeSizeMode: true);
     }
 
     private (double Scale, double OffsetX, double OffsetY) HostLayout() =>

@@ -556,16 +556,28 @@ enum ScreenshotEditorZoomMath {
     static let maximumScale: CGFloat = 4
     static let presets: [CGFloat] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
 
-    static func clamp(_ scale: CGFloat) -> CGFloat {
+    static func clamp(_ scale: CGFloat, maximumScale: CGFloat = ScreenshotEditorZoomMath.maximumScale) -> CGFloat {
         min(maximumScale, max(minimumScale, scale))
     }
 
-    static func steppedScale(from scale: CGFloat, direction: Int) -> CGFloat {
-        let current = clamp(scale)
+    static func steppedScale(
+        from scale: CGFloat,
+        direction: Int,
+        maximumScale: CGFloat = ScreenshotEditorZoomMath.maximumScale
+    ) -> CGFloat {
+        let current = clamp(scale, maximumScale: maximumScale)
         if direction > 0 {
             return presets.first(where: { $0 > current + 0.001 }) ?? maximumScale
         }
         return presets.reversed().first(where: { $0 < current - 0.001 }) ?? minimumScale
+    }
+
+    static func nativeSizeScale(fitScale: CGFloat, backingScale: CGFloat) -> CGFloat? {
+        guard fitScale.isFinite, fitScale > 0, backingScale.isFinite, backingScale > 0 else {
+            return nil
+        }
+        let scale = 1 / (fitScale * backingScale)
+        return scale.isFinite && scale > 0 ? scale : nil
     }
 
     static func focalAdjustedPan(
