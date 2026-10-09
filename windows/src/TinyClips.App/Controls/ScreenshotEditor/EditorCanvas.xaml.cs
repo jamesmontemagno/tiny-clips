@@ -82,6 +82,7 @@ public sealed partial class EditorCanvas : UserControl
     private Annotation? _rotatingAnnotation;
     private bool _spacePressed;
     private bool _panning;
+    private bool _nativeSizeSelected;
     private float _zoomFactor = 1.0f;
     private Point _panStart;
     private double _panStartHorizontalOffset;
@@ -150,7 +151,8 @@ public sealed partial class EditorCanvas : UserControl
     {
         _controller = controller;
         _settings = settings;
-        NativeSizeToggleButton.IsChecked = settings.ScreenshotEditorNativeSize;
+        _nativeSizeSelected = settings.ScreenshotEditorNativeSize;
+        NativeSizeToggleButton.IsChecked = _nativeSizeSelected;
         _controller.ImageChanged += OnControllerImageChanged;
         _controller.AnnotationsStructureChanged += (_, _) => FullRebuild();
         _controller.AnnotationVisualInvalidated += OnControllerAnnotationVisualInvalidated;
@@ -357,10 +359,9 @@ public sealed partial class EditorCanvas : UserControl
     private void OnViewportViewChanged(ScrollView sender, object args)
     {
         if (Math.Abs(sender.ZoomFactor - _zoomFactor) > 0.001f
-            && _settings?.ScreenshotEditorNativeSize == true)
+            && _nativeSizeSelected)
         {
-            _settings.ScreenshotEditorNativeSize = false;
-            NativeSizeToggleButton.IsChecked = false;
+            SetNativeSizeMode(false);
             SetZoomBounds(MinZoomFactor, MaxZoomFactor);
         }
 
@@ -380,10 +381,7 @@ public sealed partial class EditorCanvas : UserControl
     private void OnNativeSize(object sender, RoutedEventArgs e)
     {
         var useNativeSize = NativeSizeToggleButton.IsChecked == true;
-        if (_settings is not null)
-        {
-            _settings.ScreenshotEditorNativeSize = useNativeSize;
-        }
+        SetNativeSizeMode(useNativeSize);
 
         if (useNativeSize)
         {
@@ -414,18 +412,23 @@ public sealed partial class EditorCanvas : UserControl
             (ViewportScrollView.HorizontalOffset + ViewportScrollView.ViewportWidth / 2.0) / currentZoomFactor,
             (ViewportScrollView.VerticalOffset + ViewportScrollView.ViewportHeight / 2.0) / currentZoomFactor);
 
-        if (_settings is not null)
-        {
-            _settings.ScreenshotEditorNativeSize = keepNativeSizeMode;
-        }
-
-        NativeSizeToggleButton.IsChecked = keepNativeSizeMode;
+        SetNativeSizeMode(keepNativeSizeMode);
         _zoomFactor = clamped;
         SetZoomBounds(minimumZoomFactor, maximumZoomFactor);
         ViewportScrollView.ZoomTo(
             clamped,
             new Vector2((float)focal.X, (float)focal.Y),
             ZoomOptions);
+    }
+
+    private void SetNativeSizeMode(bool selected)
+    {
+        _nativeSizeSelected = selected;
+        NativeSizeToggleButton.IsChecked = selected;
+        if (_settings is not null)
+        {
+            _settings.ScreenshotEditorNativeSize = selected;
+        }
     }
 
     private void SetZoomBounds(float minimumZoomFactor, float maximumZoomFactor)
@@ -436,7 +439,7 @@ public sealed partial class EditorCanvas : UserControl
 
     private void ApplyNativeSizeZoom()
     {
-        if (_settings?.ScreenshotEditorNativeSize != true
+        if (!_nativeSizeSelected
             || _controller?.Bitmap is null
             || ImageHost.ActualWidth <= 0
             || ImageHost.ActualHeight <= 0)

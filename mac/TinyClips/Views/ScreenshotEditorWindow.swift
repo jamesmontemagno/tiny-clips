@@ -467,7 +467,7 @@ struct ScreenshotEditorView: View {
     @State private var showExitConfirmation = false
     @State private var closePrompt: ScreenshotEditorClosePrompt = .discardChanges
     @AppStorage(CaptureSettings.confirmEditorEscapeKey) private var confirmOnEscape = true
-    @AppStorage(CaptureSettings.screenshotEditorNativeSizeKey) private var nativeSizeSelected = false
+    @State private var nativeSizeSelected: Bool
     @State private var showDeleteConfirmation = false
     @State private var showClearAnnotationsConfirmation = false
     @State private var currentSaveURL: URL
@@ -492,6 +492,9 @@ struct ScreenshotEditorView: View {
         _viewModel = StateObject(wrappedValue: ScreenshotEditorViewModel(url: imageURL))
         _currentSaveURL = State(initialValue: initialSaveURL)
         _lastSavedURL = State(initialValue: nil)
+        _nativeSizeSelected = State(
+            initialValue: UserDefaults.standard.bool(forKey: CaptureSettings.screenshotEditorNativeSizeKey)
+        )
     }
 
     private var inspectorTool: EditTool {
@@ -707,6 +710,7 @@ struct ScreenshotEditorView: View {
                 zoomIn: zoomIn,
                 zoomOut: zoomOut,
                 fitZoom: fitZoom,
+                nativeSizeZoom: nativeSizeZoom,
                 canUndo: viewModel.canUndo,
                 canRedo: viewModel.canRedo,
                 hasAnnotations: viewModel.hasAnnotations,
@@ -1391,19 +1395,24 @@ struct ScreenshotEditorView: View {
     }
 
     private func fitZoom() {
-        nativeSizeSelected = false
+        setNativeSizeSelected(false)
         zoomScale = 1
         panOffset = .zero
     }
 
     private func setZoom(_ requestedScale: CGFloat, focalPoint: CGPoint? = nil) {
-        nativeSizeSelected = false
+        setNativeSizeSelected(false)
         applyZoom(requestedScale, focalPoint: focalPoint, maximumScale: ScreenshotEditorZoomMath.maximumScale)
     }
 
     private func nativeSizeZoom() {
-        nativeSizeSelected = true
+        setNativeSizeSelected(true)
         applyNativeSizeZoom()
+    }
+
+    private func setNativeSizeSelected(_ selected: Bool) {
+        nativeSizeSelected = selected
+        UserDefaults.standard.set(selected, forKey: CaptureSettings.screenshotEditorNativeSizeKey)
     }
 
     private func applyNativeSizeZoom() {
