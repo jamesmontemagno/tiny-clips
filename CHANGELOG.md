@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- macOS users can now choose between a quick bug report and feature request from the in-app feedback form. Both prefill the matching GitHub template with app and OS details.
 - macOS General settings have a new **Confirm before closing editors with Esc** option, on by default, covering the screenshot editor, video trimmer, and GIF trimmer. Turn it off to close them with a single Esc press, which discards anything unsaved.
 
 ### Changed

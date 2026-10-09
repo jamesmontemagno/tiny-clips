@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- The quick in-app feedback form now lets you choose a bug report or feature request and opens the matching GitHub template with app and Windows details.
 - **Esc closes the screenshot editor, video trimmer, and GIF trimmer.** A new General setting,
   **Confirm before closing editors with Esc** (on by default), asks first: "Discard changes?"
   when edits or trim changes are unsaved, and a plain close confirmation otherwise. Turn it off

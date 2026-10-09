@@ -1,0 +1,59 @@
+name: Quick feature request
+description: Suggest a feature quickly from the app
+title: "[Feature]: "
+labels:
+  - enhancement
+assignees: []
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: What feature would you like to see?
+      description: Briefly describe the idea.
+      placeholder: I would like the app to...
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "### App information (auto-filled when opened from TinyClips)"
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: macOS or Windows
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: e.g. 1.5.0
+    validations:
+      required: false
+
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      placeholder: e.g. 123
+    validations:
+      required: false
+
+  - type: input
+    id: distribution
+    attributes:
+      label: Distribution
+      placeholder: Mac App Store, Direct Download, Microsoft Store, or Winget
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: OS version
+      placeholder: e.g. macOS 15.0 or Windows 11 24H2
+    validations:
+      required: false

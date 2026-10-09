@@ -124,10 +124,11 @@ struct SettingsView: View {
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 720, minHeight: 460)
         .sheet(isPresented: $showQuickBugReportForm) {
-            QuickBugReportFormView(context: quickBugReportContext) { title, happened in
+            QuickBugReportFormView(context: quickBugReportContext) { type, title, description in
                 let url = QuickBugReportURLBuilder.makeURL(
+                    type: type,
                     title: title,
-                    happened: happened,
+                    description: description,
                     context: quickBugReportContext
                 )
                 NSWorkspace.shared.open(url)
