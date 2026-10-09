@@ -52,6 +52,26 @@ public sealed class HotKeyTests
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Alt | HotKeyModifiers.Control, 0x42), service.GetBinding(HotKeyAction.RecognizeText));
     }
 
+    [Fact]
+    public void SetBinding_Unbound_ClearsDefaultChordUntilReset()
+    {
+        var service = CreateService();
+        var unbound = new HotKeyDefinition(HotKeyModifiers.None, 0);
+
+        service.SetBinding(HotKeyAction.RecordVideo, unbound);
+
+        Assert.Equal(unbound, service.GetBinding(HotKeyAction.RecordVideo));
+        Assert.True(service.GetBinding(HotKeyAction.RecordVideo).IsUnbound);
+
+        service.SetBinding(
+            HotKeyAction.RecordVideo,
+            service.DefaultFor(HotKeyAction.RecordVideo));
+
+        Assert.Equal(
+            new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36),
+            service.GetBinding(HotKeyAction.RecordVideo));
+    }
+
     [Theory]
     [InlineData(HotKeyModifiers.None, 0x41, HotKeyValidationError.ModifierRequired)]
     [InlineData(HotKeyModifiers.Control, 0, HotKeyValidationError.KeyRequired)]
