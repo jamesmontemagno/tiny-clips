@@ -83,6 +83,31 @@ public sealed partial class HotkeysSettingsSection : UserControl
         }
     }
 
+    private void OnDeleteHotKey(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+        {
+            return;
+        }
+
+        var action = ActionFromTag(element.Tag);
+        var unbound = new HotKeyDefinition(HotKeyModifiers.None, 0);
+        if (ViewModel.GetHotKey(action).IsUnbound)
+        {
+            ShowSectionStatus($"{ActionName(action)} shortcut is already cleared.", InfoBarSeverity.Informational);
+            return;
+        }
+
+        if (TryApplyCandidate(action, unbound, out var errorMessage))
+        {
+            ShowSectionStatus($"{ActionName(action)} shortcut cleared.", InfoBarSeverity.Success);
+        }
+        else
+        {
+            ShowSectionStatus(errorMessage, InfoBarSeverity.Error);
+        }
+    }
+
     private async Task RecordShortcutAsync(HotKeyAction action)
     {
         var instructions = new TextBlock
@@ -276,7 +301,8 @@ public sealed partial class HotkeysSettingsSection : UserControl
         }
 
         var applyResult = app.ReapplyGlobalHotKeys();
-        if (applyResult.IsSuccess)
+        var applyFailures = applyResult.BlockingFailuresFor(action);
+        if (applyFailures.Count == 0)
         {
             errorMessage = string.Empty;
             return true;
@@ -285,17 +311,12 @@ public sealed partial class HotkeysSettingsSection : UserControl
         ViewModel.SetHotKey(action, previous.Modifiers, previous.VirtualKey);
         var rollbackResult = app.ReapplyGlobalHotKeys();
 
-        var rejectedNames = string.Join(", ", applyResult.Failures.Select(failure => failure.Name));
-        errorMessage =
-            $"Windows could not register {rejectedNames}. Another app may already use this shortcut. " +
-            "Choose a different combination.";
+        errorMessage = GlobalHotKeyFailureFormatter.FormatApply(applyFailures);
 
-        if (!rollbackResult.IsSuccess)
+        var rollbackFailures = rollbackResult.BlockingFailuresFor(action);
+        if (rollbackFailures.Count > 0)
         {
-            var rollbackNames = string.Join(", ", rollbackResult.Failures.Select(failure => failure.Name));
-            errorMessage +=
-                $" The previous shortcut was restored in Settings, but Windows could not reactivate {rollbackNames}. " +
-                "Close the competing app or restart TinyClips.";
+            errorMessage += GlobalHotKeyFailureFormatter.FormatRollback(rollbackFailures);
         }
 
         return false;
