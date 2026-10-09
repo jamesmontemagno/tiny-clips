@@ -96,11 +96,11 @@
                     </controls:SettingsCard>
 
                     <controls:SettingsCard
-                        x:Name="AboutFileBugButton"
-                        AutomationProperties.AutomationId="AboutFileBugButton"
-                        AutomationProperties.Name="Open quick bug report form"
+                        x:Name="AboutFeedbackButton"
+                        AutomationProperties.AutomationId="AboutFeedbackButton"
+                        AutomationProperties.Name="Open quick feedback form"
                         Click="OnFileBugClick"
-                        Header="File a bug"
+                        Header="Send feedback"
                         IsClickEnabled="True">
                         <controls:SettingsCard.ActionIcon>
                             <FontIcon Glyph="&#xE8A7;" />

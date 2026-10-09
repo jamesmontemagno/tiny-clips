@@ -3,7 +3,7 @@
     x:Class="TinyClips.App.QuickBugReportWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Tiny Clips — File a Bug">
+    Title="Tiny Clips — Send Feedback">
     <Window.SystemBackdrop>
         <MicaBackdrop />
     </Window.SystemBackdrop>
@@ -19,9 +19,9 @@
         <TitleBar
             x:Name="AppTitleBar"
             Grid.Row="0"
-            AutomationProperties.AutomationId="QuickBugReportTitleBar"
+            AutomationProperties.AutomationId="QuickFeedbackTitleBar"
             IsPaneToggleButtonVisible="False"
-            Title="File a Bug">
+            Title="Send Feedback">
             <TitleBar.IconSource>
                 <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
             </TitleBar.IconSource>
@@ -38,30 +38,42 @@
                 HorizontalAlignment="Stretch"
                 Spacing="16">
                 <StackPanel Spacing="4">
-                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Tell us what happened" />
+                    <TextBlock
+                        x:Name="HeadingText"
+                        Style="{StaticResource TitleTextBlockStyle}"
+                        Text="Tell us what happened" />
                     <TextBlock
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Style="{StaticResource BodyTextBlockStyle}"
-                        Text="Describe the problem and Tiny Clips will prepare a GitHub issue with your Windows and app details."
+                        Text="Choose a report type. Tiny Clips will prepare a GitHub issue with your Windows and app details."
                         TextWrapping="Wrap" />
                 </StackPanel>
 
+                <RadioButtons
+                    x:Name="FeedbackTypeButtons"
+                    AutomationProperties.AutomationId="QuickFeedbackTypeRadioButtons"
+                    AutomationProperties.Name="Feedback type"
+                    Header="Feedback type">
+                    <x:String>Bug report</x:String>
+                    <x:String>Feature request</x:String>
+                </RadioButtons>
+
                 <TextBox
                     x:Name="TitleBox"
-                    AutomationProperties.AutomationId="BugReportTitleTextBox"
-                    AutomationProperties.Name="Bug title"
+                    AutomationProperties.AutomationId="FeedbackTitleTextBox"
+                    AutomationProperties.Name="Feedback title"
                     Header="Title"
-                    PlaceholderText="A short summary of the problem"
+                    PlaceholderText="A short summary"
                     TextChanged="OnReportTextChanged" />
 
                 <TextBox
                     x:Name="HappenedBox"
                     MinHeight="200"
-                    AutomationProperties.AutomationId="BugReportDescriptionTextBox"
-                    AutomationProperties.Name="What happened"
+                    AutomationProperties.AutomationId="FeedbackDescriptionTextBox"
+                    AutomationProperties.Name="Feedback details"
                     AcceptsReturn="True"
                     Header="What happened?"
-                    PlaceholderText="What did you expect, and what happened instead?"
+                    PlaceholderText="Describe the issue or feature you would like to see."
                     TextChanged="OnReportTextChanged"
                     TextWrapping="Wrap" />
 
@@ -101,16 +113,16 @@
             <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                 <Button
                     x:Name="CancelButton"
-                    AutomationProperties.AutomationId="CancelBugReportButton"
-                    AutomationProperties.Name="Cancel bug report"
+                    AutomationProperties.AutomationId="CancelFeedbackButton"
+                    AutomationProperties.Name="Cancel feedback"
                     Click="OnCancelClicked"
                     Content="Cancel" />
                 <Button
-                    x:Name="FileBugButton"
-                    AutomationProperties.AutomationId="FileBugOnGitHubButton"
-                    AutomationProperties.Name="File bug on GitHub"
-                    Click="OnFileBugClicked"
-                    Content="File on GitHub"
+                    x:Name="SubmitFeedbackButton"
+                    AutomationProperties.AutomationId="SubmitFeedbackButton"
+                    AutomationProperties.Name="Submit feedback on GitHub"
+                    Click="OnSubmitFeedbackClicked"
+                    Content="Continue to GitHub"
                     IsEnabled="False"
                     Style="{StaticResource AccentButtonStyle}" />
             </StackPanel>

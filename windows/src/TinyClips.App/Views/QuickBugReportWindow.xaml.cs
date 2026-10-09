@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 
@@ -14,12 +16,14 @@ public sealed partial class QuickBugReportWindow : Window
 	private const int MinimumHeightDip = 500;
 
 	private readonly string _version;
+	private readonly string _build;
 	private readonly string _distribution;
 	private readonly WindowChromeController _chromeController;
 
-	public QuickBugReportWindow(string version, string distribution)
+	public QuickBugReportWindow(string version, string build, string distribution)
 	{
 		_version = version;
+		_build = build;
 		_distribution = distribution;
 
 		InitializeComponent();
@@ -43,12 +47,49 @@ public sealed partial class QuickBugReportWindow : Window
 		};
 
 		AppInfoText.Text =
-			$"Automatically included: Windows, Tiny Clips v{version}, {distribution}, {System.Runtime.InteropServices.RuntimeInformation.OSDescription}";
+			$"Automatically included: Windows, Tiny Clips v{version} (build {build}), {distribution}, {System.Runtime.InteropServices.RuntimeInformation.OSDescription}";
+
+		FeedbackTypeButtons.SelectedIndex = 0;
+		FeedbackTypeButtons.SelectionChanged += OnFeedbackTypeChanged;
+		UpdateFeedbackType();
 	}
 
 	private void OnReportTextChanged(object sender, Microsoft.UI.Xaml.Controls.TextChangedEventArgs e)
 	{
-		FileBugButton.IsEnabled =
+		UpdateSubmitState();
+	}
+
+	private void OnFeedbackTypeChanged(object sender, SelectionChangedEventArgs e)
+	{
+		UpdateFeedbackType();
+	}
+
+	private void UpdateFeedbackType()
+	{
+		var isFeatureRequest = FeedbackTypeButtons.SelectedIndex == 1;
+		HeadingText.Text = isFeatureRequest ? "Suggest a feature" : "Tell us what happened";
+		TitleBox.Header = isFeatureRequest ? "Feature title" : "Bug title";
+		TitleBox.PlaceholderText = isFeatureRequest ? "A short summary of your idea" : "A short summary of the problem";
+		AutomationProperties.SetName(TitleBox, isFeatureRequest ? "Feature request title" : "Bug title");
+		HappenedBox.Header = isFeatureRequest ? "What feature would you like to see?" : "What happened?";
+		HappenedBox.PlaceholderText = isFeatureRequest
+			? "Describe the feature you would like to see."
+			: "What did you expect, and what happened instead?";
+		AutomationProperties.SetName(
+			HappenedBox,
+			isFeatureRequest ? "Feature request details" : "What happened");
+		SubmitFeedbackButton.Content = isFeatureRequest ? "Request feature on GitHub" : "File bug on GitHub";
+		AutomationProperties.SetName(
+			SubmitFeedbackButton,
+			isFeatureRequest ? "Request feature on GitHub" : "File bug on GitHub");
+		Title = isFeatureRequest ? "Tiny Clips — Request a Feature" : "Tiny Clips — File a Bug";
+		AppTitleBar.Title = isFeatureRequest ? "Request a Feature" : "File a Bug";
+		UpdateSubmitState();
+	}
+
+	private void UpdateSubmitState()
+	{
+		SubmitFeedbackButton.IsEnabled =
 			!string.IsNullOrWhiteSpace(TitleBox.Text) &&
 			!string.IsNullOrWhiteSpace(HappenedBox.Text);
 	}
@@ -58,16 +99,20 @@ public sealed partial class QuickBugReportWindow : Window
 		Close();
 	}
 
-	private void OnFileBugClicked(object sender, RoutedEventArgs e)
+	private void OnSubmitFeedbackClicked(object sender, RoutedEventArgs e)
 	{
-		var bugUri = QuickBugReport.BuildQuickBugRequestUri(
+		var type = FeedbackTypeButtons.SelectedIndex == 1
+			? QuickFeedbackType.FeatureRequest
+			: QuickFeedbackType.Bug;
+		var issueUri = QuickBugReport.BuildQuickRequestUri(
+			type,
 			TitleBox.Text.Trim(),
 			HappenedBox.Text.Trim(),
 			_version,
-			_version,
+			_build,
 			_distribution);
 
-		Process.Start(new ProcessStartInfo(bugUri.ToString()) { UseShellExecute = true });
+		Process.Start(new ProcessStartInfo(issueUri.ToString()) { UseShellExecute = true });
 		Close();
 	}
 }

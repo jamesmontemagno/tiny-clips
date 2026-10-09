@@ -88,7 +88,7 @@ struct QuickBugReportFormView: View {
                     )
             }
 
-            Text("App info will be auto-filled: \(context.platform), v\(context.version) (\(context.build)), \(context.distribution), \(context.osVersion)")
+            Text("App info will be auto-filled: \(context.platform), v\(context.version) (build \(context.build)), \(context.distribution), \(context.osVersion)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
