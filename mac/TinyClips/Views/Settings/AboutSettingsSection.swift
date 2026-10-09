@@ -55,8 +55,8 @@ struct AboutSettingsSection: View {
         Section {
             Link("GitHub Repository", destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips")!)
                 .accessibilityHint("Opens the TinyClips GitHub repository in your browser.")
-            Button("File a Bug…", action: onFileBug)
-                .accessibilityHint("Opens a quick bug form, then starts a pre-filled issue on GitHub.")
+            Button("Send Feedback…", action: onFileBug)
+                .accessibilityHint("Choose a bug report or feature request, then open a pre-filled GitHub issue.")
             Link("Report Detailed Issue", destination: reportIssueURL)
                 .accessibilityHint("Opens the detailed issue reporter in your browser.")
             if let privacyURL = URL(string: "https://tinyclips.app/privacy.html") {

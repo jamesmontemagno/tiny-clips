@@ -586,8 +586,8 @@ public partial class App : Application
             Dismiss));
         footerActions.Children.Add(CreateFooterButton(
             GlyphBug,
-            "File a Bug",
-            "TrayFileBugButton",
+            "Send Feedback",
+            "TrayFeedbackButton",
             new RelayCommand(OpenQuickBugReportWindow),
             Dismiss));
 		footerActions.Children.Add(CreateFooterButton(
@@ -3201,7 +3201,8 @@ public partial class App : Application
         if (_quickBugReportWindow is null)
         {
             _quickBugReportWindow = new QuickBugReportWindow(
-                QuickBugReport.GetAppVersion(),
+                QuickBugReport.GetAppFeedbackVersion(),
+                QuickBugReport.GetAppBuild(),
                 QuickBugReport.GetDistributionChannel());
             _quickBugReportWindow.Closed += (_, _) => _quickBugReportWindow = null;
         }
