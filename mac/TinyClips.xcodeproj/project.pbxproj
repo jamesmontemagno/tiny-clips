@@ -136,6 +136,7 @@
 		B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* CaptureSettingsTests.swift */; };
 		B30000000000000000000004 /* SaveServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SaveServiceTests.swift */; };
 		B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */; };
+		B30000000000000000000006 /* QuickFeedbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000007 /* QuickFeedbackTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -222,6 +223,7 @@
 		A30000000000000000000004 /* SaveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveServiceTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAnalyticsStoreTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000006 /* TinyClipsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinyClipsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000007 /* QuickFeedbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickFeedbackTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -391,6 +393,7 @@
 				A30000000000000000000003 /* CaptureSettingsTests.swift */,
 				A30000000000000000000004 /* SaveServiceTests.swift */,
 				A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */,
+				A30000000000000000000007 /* QuickFeedbackTests.swift */,
 			);
 			path = TinyClipsTests;
 			sourceTree = "<group>";
@@ -663,6 +666,7 @@
 				B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */,
 				B30000000000000000000004 /* SaveServiceTests.swift in Sources */,
 				B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */,
+				B30000000000000000000006 /* QuickFeedbackTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -3,27 +3,23 @@ using System.Runtime.InteropServices;
 
 namespace TinyClips.App;
 
+internal enum QuickFeedbackType
+{
+    Bug,
+    FeatureRequest,
+}
+
 internal static class QuickBugReport
 {
-    public static string GetAppVersion()
-    {
-        var version = "1.0.0";
-        try
-        {
-            var v = Windows.ApplicationModel.Package.Current.Id.Version;
-            version = $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or COMException)
-        {
-            var asmVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-            if (asmVersion is not null)
-            {
-                version = asmVersion.ToString();
-            }
-        }
+    public static string GetAppVersion() => GetPackageVersion().ToString();
 
-        return version;
+    public static string GetAppFeedbackVersion()
+    {
+        var version = GetPackageVersion();
+        return $"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}";
     }
+
+    public static string GetAppBuild() => Math.Max(GetPackageVersion().Revision, 0).ToString();
 
     public static string GetDistributionChannel() => BuildFlavor.IsStoreBuild ? "Microsoft Store" : "Direct Download / Winget";
 
@@ -44,14 +40,21 @@ internal static class QuickBugReport
         return new Uri($"{repositoryIssuesNewUrl}?{query}");
     }
 
-    public static Uri BuildQuickBugRequestUri(string title, string happened, string version, string build, string distribution)
+    public static Uri BuildQuickRequestUri(
+        QuickFeedbackType type,
+        string title,
+        string description,
+        string version,
+        string build,
+        string distribution)
     {
+        var isFeatureRequest = type == QuickFeedbackType.FeatureRequest;
         var components = new UriBuilder("https://github.com/jamesmontemagno/tiny-clips/issues/new");
         var query =
-            $"template={Uri.EscapeDataString("quick_bug_report.yml")}" +
-            $"&labels={Uri.EscapeDataString("bug")}" +
-            $"&title={Uri.EscapeDataString("[Bug]: " + title)}" +
-            $"&happened={Uri.EscapeDataString(happened)}" +
+            $"template={Uri.EscapeDataString(isFeatureRequest ? "quick_feature_request.yml" : "quick_bug_report.yml")}" +
+            $"&labels={Uri.EscapeDataString(isFeatureRequest ? "enhancement" : "bug")}" +
+            $"&title={Uri.EscapeDataString((isFeatureRequest ? "[Feature]: " : "[Bug]: ") + title)}" +
+            $"&{Uri.EscapeDataString(isFeatureRequest ? "request" : "happened")}={Uri.EscapeDataString(description)}" +
             $"&platform={Uri.EscapeDataString("Windows")}" +
             $"&version={Uri.EscapeDataString(version)}" +
             $"&build={Uri.EscapeDataString(build)}" +
@@ -59,6 +62,19 @@ internal static class QuickBugReport
             $"&os={Uri.EscapeDataString(RuntimeInformation.OSDescription)}";
         components.Query = query;
         return components.Uri;
+    }
+
+    private static Version GetPackageVersion()
+    {
+        try
+        {
+            var version = Windows.ApplicationModel.Package.Current.Id.Version;
+            return new Version(version.Major, version.Minor, version.Build, version.Revision);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException)
+        {
+            return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0, 0);
+        }
     }
 
 }
