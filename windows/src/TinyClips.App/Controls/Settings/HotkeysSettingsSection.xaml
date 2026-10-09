@@ -72,7 +72,7 @@
                 <controls:SettingsCard
                     Description="Optional. Skips the capture picker and goes straight to region selection. Not set by default."
                     Header="Screenshot region"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7A8;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                     <Border
                         MinWidth="120"
@@ -109,7 +109,7 @@
                 <controls:SettingsCard
                     Description="Optional. Skips the capture picker and goes straight to window selection. Not set by default."
                     Header="Screenshot window"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xEF20;}">
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE737;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                     <Border
                         MinWidth="120"
@@ -146,7 +146,7 @@
                 <controls:SettingsCard
                     Description="Optional. Skips the capture picker and captures a screen. Not set by default."
                     Header="Screenshot screen"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7F4;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                     <Border
                         MinWidth="120"

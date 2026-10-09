@@ -21,6 +21,9 @@ own `CHANGELOG.md` at the repository root.
   "Remove audio" count as unsaved for video, frame range and speed for GIFs. Esc is ignored
   while a save, export, or delete is running. (#396)
 
+### Changed
+- The **Screenshot Region**, **Screenshot Screen**, and **Screenshot Window** shortcuts now use the same icons in Settings as in the capture picker.
+
 ### Fixed
 - **Keyboard shortcuts can be deleted, and changing one no longer fails because another shortcut is
   unavailable.** Every shortcut now has a **Delete** action that leaves it unbound; **Reset** still
