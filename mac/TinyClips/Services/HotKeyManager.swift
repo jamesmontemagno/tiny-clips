@@ -148,7 +148,7 @@ final class HotKeyManager {
 
         let failures = hotKeys.compactMap { hotKey -> RegistrationFailure? in
             guard hotKey.isEnabled else { return nil }
-            register(hotKey) ? nil : RegistrationFailure(name: hotKey.name, status: lastRegistrationStatus)
+            return register(hotKey) ? nil : RegistrationFailure(name: hotKey.name, status: lastRegistrationStatus)
         }
         guard failures.isEmpty else {
             ids.forEach(unregister)
