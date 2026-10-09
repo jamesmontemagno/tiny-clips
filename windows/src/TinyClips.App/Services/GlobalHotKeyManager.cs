@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
+using TinyClips.Core.Models;
 
 namespace TinyClips.App;
 
@@ -36,6 +37,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 
     private delegate nint WndProcDelegate(nint hWnd, uint msg, nint wParam, nint lParam);
     private sealed record PendingHotKey(
+        HotKeyAction Action,
         int Id,
         string Name,
         int Modifiers,
@@ -47,7 +49,12 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
     }
 
     /// <summary>Queues a hotkey to register when <see cref="Start"/> is called.</summary>
-    public void Add(string name, int modifiers, uint virtualKey, Action callback)
+    public void Add(
+        HotKeyAction action,
+        string name,
+        int modifiers,
+        uint virtualKey,
+        Action callback)
     {
         if (virtualKey == 0)
         {
@@ -56,7 +63,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 
         var id = _nextId++;
         _callbacks[id] = callback;
-        _pending.Add(new PendingHotKey(id, name, modifiers, virtualKey));
+        _pending.Add(new PendingHotKey(action, id, name, modifiers, virtualKey));
     }
 
     public GlobalHotKeyRegistrationResult Start()
@@ -82,6 +89,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
         {
             var timeoutResult = GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
+                    null,
                     "TinyClips hotkey service",
                     0,
                     "Timed out while starting the Windows hotkey service."));
@@ -117,7 +125,10 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
         if (RegisterClassW(ref wndClass) == 0)
         {
             _startResult = GlobalHotKeyRegistrationResult.Failed(
-                CreateNativeFailure("TinyClips hotkey service", "Could not create the hotkey window class."));
+                CreateNativeFailure(
+                    null,
+                    "TinyClips hotkey service",
+                    "Could not create the hotkey window class."));
             _ready.Set();
             return;
         }
@@ -126,7 +137,10 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
         if (_hwnd == 0)
         {
             _startResult = GlobalHotKeyRegistrationResult.Failed(
-                CreateNativeFailure("TinyClips hotkey service", "Could not create the hotkey window."));
+                CreateNativeFailure(
+                    null,
+                    "TinyClips hotkey service",
+                    "Could not create the hotkey window."));
             _ready.Set();
             return;
         }
@@ -145,6 +159,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
             else
             {
                 failures.Add(CreateNativeFailure(
+                    hotKey.Action,
                     hotKey.Name,
                     "Windows rejected this shortcut, usually because another app already uses it."));
             }
@@ -187,8 +202,11 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
         return DefWindowProcW(hWnd, msg, wParam, lParam);
     }
 
-    private static GlobalHotKeyRegistrationFailure CreateNativeFailure(string name, string message)
-        => new(name, Marshal.GetLastWin32Error(), message);
+    private static GlobalHotKeyRegistrationFailure CreateNativeFailure(
+        HotKeyAction? action,
+        string name,
+        string message)
+        => new(action, name, Marshal.GetLastWin32Error(), message);
 
     private void UnregisterAll()
     {
@@ -341,6 +359,7 @@ internal sealed partial class GlobalHotKeyManager : IDisposable
 }
 
 internal sealed record GlobalHotKeyRegistrationFailure(
+    HotKeyAction? Action,
     string Name,
     int NativeErrorCode,
     string Message);
@@ -349,6 +368,11 @@ internal sealed record GlobalHotKeyRegistrationResult(
     IReadOnlyList<GlobalHotKeyRegistrationFailure> Failures)
 {
     public bool IsSuccess => Failures.Count == 0;
+
+    public IReadOnlyList<GlobalHotKeyRegistrationFailure> BlockingFailuresFor(HotKeyAction action)
+        => Failures
+            .Where(failure => failure.Action is null || failure.Action == action)
+            .ToArray();
 
     public static GlobalHotKeyRegistrationResult Success { get; } = new([]);
 

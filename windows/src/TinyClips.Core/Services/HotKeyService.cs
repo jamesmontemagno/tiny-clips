@@ -13,14 +13,13 @@ public sealed class HotKeyService : IHotKeyService
 
     public HotKeyDefinition GetBinding(HotKeyAction action)
     {
-        var modifiers = GetStoredModifiers(action);
-        var virtualKey = GetStoredVirtualKey(action);
-
-        if (modifiers == 0 && virtualKey == 0)
+        if (action == HotKeyAction.StopRecording)
         {
             return DefaultFor(action);
         }
 
+        var modifiers = GetStoredModifiers(action);
+        var virtualKey = GetStoredVirtualKey(action);
         return new HotKeyDefinition((HotKeyModifiers)modifiers, virtualKey);
     }
 

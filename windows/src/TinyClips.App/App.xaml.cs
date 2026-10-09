@@ -2947,6 +2947,7 @@ public partial class App : Application
         {
             return GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
+                    null,
                     "TinyClips hotkey service",
                     0,
                     "The UI dispatcher is not available."));
@@ -2962,6 +2963,7 @@ public partial class App : Application
 
             var screenshot = hotKeys.GetBinding(HotKeyAction.Screenshot);
             manager.Add(
+                HotKeyAction.Screenshot,
                 $"Screenshot ({screenshot.DisplayString})",
                 screenshot.ModifiersValue,
                 screenshot.VirtualKey,
@@ -2971,6 +2973,7 @@ public partial class App : Application
             if (!screenshotRegion.IsUnbound)
             {
                 manager.Add(
+                    HotKeyAction.ScreenshotRegion,
                     $"Screenshot region ({screenshotRegion.DisplayString})",
                     screenshotRegion.ModifiersValue,
                     screenshotRegion.VirtualKey,
@@ -2981,6 +2984,7 @@ public partial class App : Application
             if (!screenshotWindow.IsUnbound)
             {
                 manager.Add(
+                    HotKeyAction.ScreenshotWindow,
                     $"Screenshot window ({screenshotWindow.DisplayString})",
                     screenshotWindow.ModifiersValue,
                     screenshotWindow.VirtualKey,
@@ -2989,6 +2993,7 @@ public partial class App : Application
 
             var videoBinding = hotKeys.GetBinding(HotKeyAction.RecordVideo);
             manager.Add(
+                HotKeyAction.RecordVideo,
                 $"Record video ({videoBinding.DisplayString})",
                 videoBinding.ModifiersValue,
                 videoBinding.VirtualKey,
@@ -2996,6 +3001,7 @@ public partial class App : Application
 
             var gifBinding = hotKeys.GetBinding(HotKeyAction.RecordGif);
             manager.Add(
+                HotKeyAction.RecordGif,
                 $"Record GIF ({gifBinding.DisplayString})",
                 gifBinding.ModifiersValue,
                 gifBinding.VirtualKey,
@@ -3003,6 +3009,7 @@ public partial class App : Application
 
             var ocrBinding = hotKeys.GetBinding(HotKeyAction.RecognizeText);
             manager.Add(
+                HotKeyAction.RecognizeText,
                 $"Recognize text ({ocrBinding.DisplayString})",
                 ocrBinding.ModifiersValue,
                 ocrBinding.VirtualKey,
@@ -3010,6 +3017,7 @@ public partial class App : Application
 
             var stopBinding = hotKeys.GetStopBinding();
             manager.Add(
+                HotKeyAction.StopRecording,
                 $"Stop recording ({stopBinding.DisplayString})",
                 stopBinding.ModifiersValue,
                 stopBinding.VirtualKey,
@@ -3039,6 +3047,7 @@ public partial class App : Application
             Debug.WriteLine($"Global hotkey registration failed: {ex}");
             return GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
+                    null,
                     "TinyClips hotkey service",
                     ex.HResult,
                     ex.Message));
@@ -3052,6 +3061,7 @@ public partial class App : Application
         {
             return GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
+                    null,
                     "TinyClips hotkey service",
                     0,
                     "Hotkeys can only be updated from the TinyClips UI thread."));

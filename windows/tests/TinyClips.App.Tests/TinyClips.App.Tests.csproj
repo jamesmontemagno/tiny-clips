@@ -14,6 +14,7 @@
     <Compile Include="..\..\src\TinyClips.App\Settings\SettingsSectionKind.cs" Link="SettingsSectionKind.cs" />
     <Compile Include="..\..\src\TinyClips.App\Settings\TeleprompterTranscriptSaveScheduler.cs" Link="TeleprompterTranscriptSaveScheduler.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\ClipboardService.cs" Link="ClipboardService.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\GlobalHotKeyManager.cs" Link="GlobalHotKeyManager.cs" />
   </ItemGroup>
 
   <ItemGroup>
