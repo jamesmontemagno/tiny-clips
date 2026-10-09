@@ -17,6 +17,12 @@ own `CHANGELOG.md` at the repository root.
   while a save, export, or delete is running. (#396)
 
 ### Fixed
+- **Keyboard shortcuts can be deleted, and changing one no longer fails because another shortcut is
+  unavailable.** Every shortcut now has a **Delete** action that leaves it unbound; **Reset** still
+  restores its default. Settings evaluates Windows registration errors for the shortcut being
+  edited, while still rejecting a genuine conflict for that shortcut or a failure of the global
+  hotkey service. Pre-existing conflicts on other shortcuts remain reported in diagnostics without
+  rolling back an unrelated edit. (#437)
 - **Region-selection outlines no longer remain stuck after canceling or exiting.** The active
   capture flow now owns and cancels every region-selector window, including selectors shown on
   multiple monitors, and avoids closing the selected window twice. (#425)

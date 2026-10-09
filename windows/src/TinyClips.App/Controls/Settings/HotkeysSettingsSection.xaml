@@ -23,7 +23,7 @@
                 AutomationProperties.AutomationId="HotKeyInstructionsInfoBar"
                 IsClosable="False"
                 IsOpen="True"
-                Message="Choose Edit, press a shortcut with Ctrl, Alt, Shift, or Win, then choose Save."
+                Message="Choose Edit to set a shortcut, Delete to remove it, or Reset to restore its default."
                 Severity="Informational" />
 
             <InfoBar
@@ -60,6 +60,12 @@
                         Click="OnResetHotKey"
                         Content="Reset"
                         Tag="Screenshot" />
+                    <Button
+                        AutomationProperties.AutomationId="DeleteScreenshotHotKeyButton"
+                        AutomationProperties.Name="Delete screenshot shortcut"
+                        Click="OnDeleteHotKey"
+                        Content="Delete"
+                        Tag="Screenshot" />
                     </StackPanel>
                 </controls:SettingsCard>
 
@@ -90,6 +96,12 @@
                         AutomationProperties.Name="Reset screenshot region shortcut"
                         Click="OnResetHotKey"
                         Content="Reset"
+                        Tag="ScreenshotRegion" />
+                    <Button
+                        AutomationProperties.AutomationId="DeleteScreenshotRegionHotKeyButton"
+                        AutomationProperties.Name="Delete screenshot region shortcut"
+                        Click="OnDeleteHotKey"
+                        Content="Delete"
                         Tag="ScreenshotRegion" />
                     </StackPanel>
                 </controls:SettingsCard>
@@ -122,6 +134,12 @@
                         Click="OnResetHotKey"
                         Content="Reset"
                         Tag="ScreenshotWindow" />
+                    <Button
+                        AutomationProperties.AutomationId="DeleteScreenshotWindowHotKeyButton"
+                        AutomationProperties.Name="Delete screenshot window shortcut"
+                        Click="OnDeleteHotKey"
+                        Content="Delete"
+                        Tag="ScreenshotWindow" />
                     </StackPanel>
                 </controls:SettingsCard>
 
@@ -151,6 +169,12 @@
                         AutomationProperties.Name="Reset record video shortcut"
                         Click="OnResetHotKey"
                         Content="Reset"
+                        Tag="Video" />
+                    <Button
+                        AutomationProperties.AutomationId="DeleteVideoHotKeyButton"
+                        AutomationProperties.Name="Delete record video shortcut"
+                        Click="OnDeleteHotKey"
+                        Content="Delete"
                         Tag="Video" />
                     </StackPanel>
                 </controls:SettingsCard>
@@ -182,6 +206,12 @@
                         Click="OnResetHotKey"
                         Content="Reset"
                         Tag="Gif" />
+                    <Button
+                        AutomationProperties.AutomationId="DeleteGifHotKeyButton"
+                        AutomationProperties.Name="Delete record GIF shortcut"
+                        Click="OnDeleteHotKey"
+                        Content="Delete"
+                        Tag="Gif" />
                     </StackPanel>
                 </controls:SettingsCard>
 
@@ -211,6 +241,12 @@
                         AutomationProperties.Name="Reset recognize text shortcut"
                         Click="OnResetHotKey"
                         Content="Reset"
+                        Tag="RecognizeText" />
+                    <Button
+                        AutomationProperties.AutomationId="DeleteOcrHotKeyButton"
+                        AutomationProperties.Name="Delete recognize text shortcut"
+                        Click="OnDeleteHotKey"
+                        Content="Delete"
                         Tag="RecognizeText" />
                     </StackPanel>
                 </controls:SettingsCard>
