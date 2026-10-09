@@ -14,11 +14,17 @@ public sealed partial class QuickBugReportWindow : Window
 	// visible at any display density. Form opens at 620×640 by default.
 	private const int MinimumWidthDip  = 480;
 	private const int MinimumHeightDip = 500;
+	private const int FeatureRequestSelectionIndex = 1;
 
 	private readonly string _version;
 	private readonly string _build;
 	private readonly string _distribution;
 	private readonly WindowChromeController _chromeController;
+	private QuickFeedbackType _activeFeedbackType = QuickFeedbackType.Bug;
+	private string _bugTitle = string.Empty;
+	private string _bugDescription = string.Empty;
+	private string _featureTitle = string.Empty;
+	private string _featureDescription = string.Empty;
 
 	public QuickBugReportWindow(string version, string build, string distribution)
 	{
@@ -54,29 +60,32 @@ public sealed partial class QuickBugReportWindow : Window
 		UpdateFeedbackType();
 	}
 
-	private void OnReportTextChanged(object sender, Microsoft.UI.Xaml.Controls.TextChangedEventArgs e)
+	private void OnFeedbackTextChanged(object sender, Microsoft.UI.Xaml.Controls.TextChangedEventArgs e)
 	{
 		UpdateSubmitState();
 	}
 
 	private void OnFeedbackTypeChanged(object sender, SelectionChangedEventArgs e)
 	{
+		StoreActiveDraft();
+		_activeFeedbackType = SelectedFeedbackType;
+		LoadActiveDraft();
 		UpdateFeedbackType();
 	}
 
 	private void UpdateFeedbackType()
 	{
-		var isFeatureRequest = FeedbackTypeButtons.SelectedIndex == 1;
+		var isFeatureRequest = SelectedFeedbackType == QuickFeedbackType.FeatureRequest;
 		HeadingText.Text = isFeatureRequest ? "Suggest a feature" : "Tell us what happened";
 		TitleBox.Header = isFeatureRequest ? "Feature title" : "Bug title";
 		TitleBox.PlaceholderText = isFeatureRequest ? "A short summary of your idea" : "A short summary of the problem";
 		AutomationProperties.SetName(TitleBox, isFeatureRequest ? "Feature request title" : "Bug title");
-		HappenedBox.Header = isFeatureRequest ? "What feature would you like to see?" : "What happened?";
-		HappenedBox.PlaceholderText = isFeatureRequest
+		DescriptionBox.Header = isFeatureRequest ? "What feature would you like to see?" : "What happened?";
+		DescriptionBox.PlaceholderText = isFeatureRequest
 			? "Describe the feature you would like to see."
 			: "What did you expect, and what happened instead?";
 		AutomationProperties.SetName(
-			HappenedBox,
+			DescriptionBox,
 			isFeatureRequest ? "Feature request details" : "What happened");
 		SubmitFeedbackButton.Content = isFeatureRequest ? "Request feature on GitHub" : "File bug on GitHub";
 		AutomationProperties.SetName(
@@ -91,7 +100,35 @@ public sealed partial class QuickBugReportWindow : Window
 	{
 		SubmitFeedbackButton.IsEnabled =
 			!string.IsNullOrWhiteSpace(TitleBox.Text) &&
-			!string.IsNullOrWhiteSpace(HappenedBox.Text);
+			!string.IsNullOrWhiteSpace(DescriptionBox.Text);
+	}
+
+	private void StoreActiveDraft()
+	{
+		if (_activeFeedbackType == QuickFeedbackType.Bug)
+		{
+			_bugTitle = TitleBox.Text;
+			_bugDescription = DescriptionBox.Text;
+		}
+		else
+		{
+			_featureTitle = TitleBox.Text;
+			_featureDescription = DescriptionBox.Text;
+		}
+	}
+
+	private void LoadActiveDraft()
+	{
+		if (_activeFeedbackType == QuickFeedbackType.Bug)
+		{
+			TitleBox.Text = _bugTitle;
+			DescriptionBox.Text = _bugDescription;
+		}
+		else
+		{
+			TitleBox.Text = _featureTitle;
+			DescriptionBox.Text = _featureDescription;
+		}
 	}
 
 	private void OnCancelClicked(object sender, RoutedEventArgs e)
@@ -101,13 +138,10 @@ public sealed partial class QuickBugReportWindow : Window
 
 	private void OnSubmitFeedbackClicked(object sender, RoutedEventArgs e)
 	{
-		var type = FeedbackTypeButtons.SelectedIndex == 1
-			? QuickFeedbackType.FeatureRequest
-			: QuickFeedbackType.Bug;
 		var issueUri = QuickBugReport.BuildQuickRequestUri(
-			type,
+			SelectedFeedbackType,
 			TitleBox.Text.Trim(),
-			HappenedBox.Text.Trim(),
+			DescriptionBox.Text.Trim(),
 			_version,
 			_build,
 			_distribution);
@@ -115,4 +149,9 @@ public sealed partial class QuickBugReportWindow : Window
 		Process.Start(new ProcessStartInfo(issueUri.ToString()) { UseShellExecute = true });
 		Close();
 	}
+
+	private QuickFeedbackType SelectedFeedbackType =>
+		FeedbackTypeButtons.SelectedIndex == FeatureRequestSelectionIndex
+			? QuickFeedbackType.FeatureRequest
+			: QuickFeedbackType.Bug;
 }

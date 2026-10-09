@@ -54,12 +54,40 @@ struct QuickBugReportFormView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var feedbackType: QuickFeedbackType = .bug
-    @State private var title = ""
-    @State private var happened = ""
+    @State private var bugTitle = ""
+    @State private var bugDescription = ""
+    @State private var featureTitle = ""
+    @State private var featureDescription = ""
+
+    private var titleBinding: Binding<String> {
+        Binding(
+            get: { feedbackType == .bug ? bugTitle : featureTitle },
+            set: { newValue in
+                if feedbackType == .bug {
+                    bugTitle = newValue
+                } else {
+                    featureTitle = newValue
+                }
+            }
+        )
+    }
+
+    private var descriptionBinding: Binding<String> {
+        Binding(
+            get: { feedbackType == .bug ? bugDescription : featureDescription },
+            set: { newValue in
+                if feedbackType == .bug {
+                    bugDescription = newValue
+                } else {
+                    featureDescription = newValue
+                }
+            }
+        )
+    }
 
     private var canSubmit: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !happened.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !titleBinding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !descriptionBinding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -75,12 +103,12 @@ struct QuickBugReportFormView: View {
             }
             .pickerStyle(.segmented)
 
-            TextField(feedbackType == .bug ? "Bug title" : "Feature title", text: $title)
+            TextField(feedbackType == .bug ? "Bug title" : "Feature title", text: titleBinding)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(feedbackType == .bug ? "What happened?" : "What feature would you like to see?")
                     .font(.subheadline)
-                TextEditor(text: $happened)
+                TextEditor(text: descriptionBinding)
                     .frame(minHeight: 140)
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
@@ -100,8 +128,8 @@ struct QuickBugReportFormView: View {
                 Button("File on GitHub…") {
                     onSubmit(
                         feedbackType,
-                        title.trimmingCharacters(in: .whitespacesAndNewlines),
-                        happened.trimmingCharacters(in: .whitespacesAndNewlines)
+                        titleBinding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                        descriptionBinding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
                     )
                     dismiss()
                 }

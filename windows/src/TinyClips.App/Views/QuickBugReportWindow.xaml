@@ -64,17 +64,17 @@
                     AutomationProperties.Name="Feedback title"
                     Header="Title"
                     PlaceholderText="A short summary"
-                    TextChanged="OnReportTextChanged" />
+                    TextChanged="OnFeedbackTextChanged" />
 
                 <TextBox
-                    x:Name="HappenedBox"
+                    x:Name="DescriptionBox"
                     MinHeight="200"
                     AutomationProperties.AutomationId="FeedbackDescriptionTextBox"
                     AutomationProperties.Name="Feedback details"
                     AcceptsReturn="True"
                     Header="What happened?"
                     PlaceholderText="Describe the issue or feature you would like to see."
-                    TextChanged="OnReportTextChanged"
+                    TextChanged="OnFeedbackTextChanged"
                     TextWrapping="Wrap" />
 
                 <Border
