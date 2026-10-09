@@ -700,6 +700,18 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("screenshotWindowHotKeyModifiers", value);
     }
 
+    public int ScreenshotScreenHotKeyCode
+    {
+        get => _settings.Get("screenshotScreenHotKeyCode", 0);
+        set => _settings.Set("screenshotScreenHotKeyCode", value);
+    }
+
+    public int ScreenshotScreenHotKeyModifiers
+    {
+        get => _settings.Get("screenshotScreenHotKeyModifiers", 0);
+        set => _settings.Set("screenshotScreenHotKeyModifiers", value);
+    }
+
     public ImageFormat ImageFormat
     {
         get => ScreenshotFormat.ToLowerInvariant() switch
@@ -880,6 +892,8 @@ public sealed class CaptureSettings : ICaptureSettings
         ScreenshotRegionHotKeyModifiers = 0;
         ScreenshotWindowHotKeyCode = 0;
         ScreenshotWindowHotKeyModifiers = 0;
+        ScreenshotScreenHotKeyCode = 0;
+        ScreenshotScreenHotKeyModifiers = 0;
         _analytics?.Clear();
     }
 

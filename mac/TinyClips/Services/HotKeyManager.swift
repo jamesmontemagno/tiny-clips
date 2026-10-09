@@ -59,6 +59,7 @@ final class HotKeyManager {
         let name: String
         let keyCode: UInt32
         let modifiers: UInt32
+        let isEnabled: Bool
         let action: () -> Void
     }
 
@@ -89,8 +90,9 @@ final class HotKeyManager {
             HotKeyRegistration(
                 id: $0.action.rawValue,
                 name: $0.action.displayName,
-                keyCode: UInt32($0.binding.keyCode),
+                keyCode: UInt32($0.binding.isUnbound ? 0 : $0.binding.keyCode),
                 modifiers: UInt32($0.binding.carbonModifiers),
+                isEnabled: !$0.binding.isUnbound,
                 action: $0.handler
             )
         }
@@ -105,6 +107,7 @@ final class HotKeyManager {
                     name: "Stop Recording",
                     keyCode: UInt32(HotKeyBinding.stopRecording.keyCode),
                     modifiers: UInt32(HotKeyBinding.stopRecording.carbonModifiers),
+                    isEnabled: true,
                     action: onStopRecording
                 )
             ]
@@ -135,6 +138,7 @@ final class HotKeyManager {
                     name: $0.name,
                     keyCode: $0.keyCode,
                     modifiers: $0.modifiers,
+                    isEnabled: true,
                     action: $0.action
                 )
             }
@@ -143,7 +147,8 @@ final class HotKeyManager {
         ids.forEach(unregister)
 
         let failures = hotKeys.compactMap { hotKey -> RegistrationFailure? in
-            register(hotKey) ? nil : RegistrationFailure(name: hotKey.name, status: lastRegistrationStatus)
+            guard hotKey.isEnabled else { return nil }
+            return register(hotKey) ? nil : RegistrationFailure(name: hotKey.name, status: lastRegistrationStatus)
         }
         guard failures.isEmpty else {
             ids.forEach(unregister)

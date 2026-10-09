@@ -35,6 +35,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
         "RecognizeText" => HotKeyAction.RecognizeText,
         "ScreenshotRegion" => HotKeyAction.ScreenshotRegion,
         "ScreenshotWindow" => HotKeyAction.ScreenshotWindow,
+        "ScreenshotScreen" => HotKeyAction.ScreenshotScreen,
         _ => HotKeyAction.Screenshot,
     };
 
@@ -378,6 +379,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
         HotKeyAction.RecognizeText => "Recognize text",
         HotKeyAction.ScreenshotRegion => "Screenshot region",
         HotKeyAction.ScreenshotWindow => "Screenshot window",
+        HotKeyAction.ScreenshotScreen => "Screenshot screen",
         _ => "Screenshot",
     };
 }

@@ -144,6 +144,43 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Description="Optional. Skips the capture picker and captures a screen. Not set by default."
+                    Header="Screenshot screen"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border
+                        MinWidth="120"
+                        Padding="10,4"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            FontFamily="Consolas"
+                            Text="{x:Bind ViewModel.ScreenshotScreenHotKeyDisplay, Mode=OneWay}" />
+                    </Border>
+                    <Button
+                        AutomationProperties.AutomationId="EditScreenshotScreenHotKeyButton"
+                        AutomationProperties.Name="Edit screenshot screen shortcut"
+                        Click="OnEditHotKey"
+                        Content="Edit"
+                        Tag="ScreenshotScreen" />
+                    <Button
+                        AutomationProperties.AutomationId="ResetScreenshotScreenHotKeyButton"
+                        AutomationProperties.Name="Reset screenshot screen shortcut"
+                        Click="OnResetHotKey"
+                        Content="Reset"
+                        Tag="ScreenshotScreen" />
+                    <Button
+                        AutomationProperties.AutomationId="DeleteScreenshotScreenHotKeyButton"
+                        AutomationProperties.Name="Delete screenshot screen shortcut"
+                        Click="OnDeleteHotKey"
+                        Content="Delete"
+                        Tag="ScreenshotScreen" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
                     Header="Record video"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">

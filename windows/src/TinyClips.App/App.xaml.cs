@@ -847,6 +847,8 @@ public partial class App : Application
 
     private Task CaptureScreenshotWindowAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.Window);
 
+    private Task CaptureScreenshotScreenAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.Screen);
+
     private Task RecognizeTextAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.RecognizeText);
 
     /// <summary>
@@ -2989,6 +2991,17 @@ public partial class App : Application
                     screenshotWindow.ModifiersValue,
                     screenshotWindow.VirtualKey,
                     () => _ = CaptureScreenshotWindowAsync());
+            }
+
+            var screenshotScreen = hotKeys.GetBinding(HotKeyAction.ScreenshotScreen);
+            if (!screenshotScreen.IsUnbound)
+            {
+                manager.Add(
+                    HotKeyAction.ScreenshotScreen,
+                    $"Screenshot screen ({screenshotScreen.DisplayString})",
+                    screenshotScreen.ModifiersValue,
+                    screenshotScreen.VirtualKey,
+                    () => _ = CaptureScreenshotScreenAsync());
             }
 
             var videoBinding = hotKeys.GetBinding(HotKeyAction.RecordVideo);

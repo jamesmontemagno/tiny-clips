@@ -177,4 +177,14 @@ final class CaptureSettingsTests: XCTestCase {
             )
         }
     }
+
+    func testScreenshotScreenHotKeyTreatsLegacyZeroPairAsUnbound() {
+        defaults.set(0, forKey: "screenshotScreenHotKeyCode")
+        defaults.set(0, forKey: "screenshotScreenHotKeyModifiers")
+
+        XCTAssertEqual(
+            CaptureSettings.hotKeyBinding(for: .screenshotScreen, defaults: defaults),
+            HotKeyBinding.defaultBinding(for: .screenshotScreen)
+        )
+    }
 }
