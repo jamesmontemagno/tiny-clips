@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - A crop selection in the macOS screenshot editor now only changes the image once it is applied, matching Windows. Save, Copy, and the output size ignore an unapplied selection, and switching tools clears it.
 
 ### Fixed
+- Fixed Swift 6 concurrency warnings in the macOS capture, save, and video overlay paths, including weak-capture issues and `AVVideoCompositing` protocol compatibility.
 - Resolved macOS build warnings for thumbnail generation, recording callbacks, audio mixdown, video overlays, StoreKit, and settings.
 - Fixed macOS video recordings made with both system audio and the microphone being saved with two audio tracks, which players that play only the first one (browsers, VLC, Windows players) played without the voice. Saved videos now have one audio track with both sounds in it, and the video trimmer no longer drops the microphone when it exports such a recording.
 - Fixed the macOS video trimmer doing nothing when an export failed. It now says what went wrong, and the original recording is kept.

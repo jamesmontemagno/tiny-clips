@@ -33,6 +33,8 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
 Rules:
 - WinUI 3 does not support `AnyCPU`; use `x64` or `ARM64`.
 - For Store flavor validation, add `-p:TinyClipsStoreBuild=true` to `dotnet build`.
+- Treat compile warnings as build blockers: inspect warnings from restore/build/test, fix them in the same patch, and only leave a warning behind intentionally with a documented justification.
+- For concurrency or analyzer warnings in Windows code, fix them before completion instead of deferring them to a later cleanup pass.
 
 ## Behavior and UX Rules
 
