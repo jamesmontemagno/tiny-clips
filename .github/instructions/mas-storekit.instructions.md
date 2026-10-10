@@ -23,6 +23,24 @@ These files are **entirely** wrapped in `#if APPSTORE ... #endif`. All new code 
 
 `ProPlan` enumerates all plan tiers: `.monthly`, `.yearly`, `.lifetime`. Each case's `rawValue` is its App Store product identifier. Add new tiers here if needed — keep in sync with App Store Connect.
 
+## Build and Warning Checks
+
+Any change in a Mac App Store or StoreKit-related file must compile the app for both direct and MAS targets before completion.
+
+Run at least:
+
+```bash
+xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClipsMAS -configuration Debug \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+```
+
+Rules:
+- Check the build output for warnings and fix them before finishing the change.
+- Swift 6 concurrency issues such as `Sendability`, capture-list errors, and `self` ownership warnings are not optional cleanup; resolve them in the same patch.
+- If the environment blocks the build, rerun unsandboxed before concluding the code is ready.
+
 ## Pro-Gating
 
 - Gate Pro features on `StoreService.shared.isPro` (a `@Published Bool`).
