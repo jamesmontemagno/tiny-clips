@@ -10,6 +10,7 @@ struct ScreenshotEditorCommandActions {
     let undo: () -> Void
     let redo: () -> Void
     let copy: () -> Void
+    let deleteSelectedAnnotation: () -> Void
     let clearAnnotations: () -> Void
     let applyCrop: () -> Void
     let zoomIn: () -> Void
@@ -18,6 +19,7 @@ struct ScreenshotEditorCommandActions {
     let nativeSizeZoom: () -> Void
     let canUndo: Bool
     let canRedo: Bool
+    let canDeleteSelectedAnnotation: Bool
     let hasAnnotations: Bool
     let canApplyCrop: Bool
     let isEditingText: Bool
@@ -129,6 +131,11 @@ private struct ScreenshotEditorMenuCommands: Commands {
             .keyboardShortcut("v", modifiers: .command)
 
             Divider()
+
+            Button("Delete Annotation", role: .destructive) {
+                editor?.deleteSelectedAnnotation()
+            }
+            .disabled(editor?.canDeleteSelectedAnnotation != true || editor?.isEditingText == true)
 
             Button("Clear Annotations…") {
                 editor?.clearAnnotations()
