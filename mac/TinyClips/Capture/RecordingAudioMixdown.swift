@@ -180,24 +180,32 @@ enum RecordingAudioMixdown {
 
     /// Moves every sample from each reader output to its writer input. The writer takes the
     /// streams interleaved, so each input is fed whenever it is ready and none is waited for.
+    // The reader, writer, and streams are used only on the copy queue until the continuation resumes.
+    private struct SampleCopyJob: @unchecked Sendable {
+        let reader: AVAssetReader
+        let writer: AVAssetWriter
+        let streams: [(output: AVAssetReaderOutput, input: AVAssetWriterInput)]
+    }
+
     private static func copySamples(
         reader: AVAssetReader,
         writer: AVAssetWriter,
         streams: [(output: AVAssetReaderOutput, input: AVAssetWriterInput)]
     ) async throws {
+        let job = SampleCopyJob(reader: reader, writer: writer, streams: streams)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                var finished = Array(repeating: false, count: streams.count)
+                var finished = Array(repeating: false, count: job.streams.count)
                 while finished.contains(false) {
-                    guard writer.status == .writing else {
-                        continuation.resume(throwing: writer.error ?? MixdownError.incompleteOutput)
+                    guard job.writer.status == .writing else {
+                        continuation.resume(throwing: job.writer.error ?? MixdownError.incompleteOutput)
                         return
                     }
                     var didAppend = false
-                    for (index, stream) in streams.enumerated() where !finished[index] && stream.input.isReadyForMoreMediaData {
+                    for (index, stream) in job.streams.enumerated() where !finished[index] && stream.input.isReadyForMoreMediaData {
                         if let sampleBuffer = stream.output.copyNextSampleBuffer() {
                             guard stream.input.append(sampleBuffer) else {
-                                continuation.resume(throwing: writer.error ?? MixdownError.incompleteOutput)
+                                continuation.resume(throwing: job.writer.error ?? MixdownError.incompleteOutput)
                                 return
                             }
                             didAppend = true
@@ -211,10 +219,10 @@ enum RecordingAudioMixdown {
                     }
                 }
                 // A reader that stops early also returns nil, so the end is only good if it completed.
-                if reader.status == .completed {
+                if job.reader.status == .completed {
                     continuation.resume()
                 } else {
-                    continuation.resume(throwing: reader.error ?? MixdownError.incompleteOutput)
+                    continuation.resume(throwing: job.reader.error ?? MixdownError.incompleteOutput)
                 }
             }
         }

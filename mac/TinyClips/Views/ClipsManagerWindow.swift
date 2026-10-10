@@ -693,7 +693,7 @@ private class ClipsViewModel: ObservableObject {
                     publicKey: publicKey,
                     secretKey: secretKey,
                     onProgress: { [weak self] progress in
-                        Task { @MainActor in
+                        Task { @MainActor [weak self] in
                             self?.uploadProgressByPath[clipPath] = progress
                             self?.uploadStatusByPath[clipPath] = "Uploading… \(Int(progress * 100))%"
                         }

@@ -193,7 +193,7 @@ class StoreService: ObservableObject {
                     await self?.updatePurchaseStatus()
                     await transaction.finish()
                 } catch {
-                    await MainActor.run {
+                    await MainActor.run { [weak self] in
                         self?.purchaseError = error.localizedDescription
                     }
                 }
