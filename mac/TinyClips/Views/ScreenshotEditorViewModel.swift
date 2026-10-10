@@ -1251,13 +1251,17 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var canDeleteSelectedAnnotation: Bool {
-        guard let index = selectedAnnotationIndex else { return false }
+        guard selectedTool == .move, let index = selectedAnnotationIndex else { return false }
         return annotations.indices.contains(index)
     }
 
     @discardableResult
     func deleteSelectedAnnotation() -> Bool {
-        guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return false }
+        guard selectedTool == .move,
+              let index = selectedAnnotationIndex,
+              annotations.indices.contains(index) else {
+            return false
+        }
 
         recordHistory()
         annotations.remove(at: index)
