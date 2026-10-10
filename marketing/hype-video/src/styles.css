@@ -674,7 +674,7 @@ kbd {
   display: inline-flex; align-items: center; gap: 16px; padding: 16px 36px; border-radius: 999px; font-size: 46px; font-weight: 800; color: #fff;
   background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.3);
 }
-.apple::before { content: "\f8ff"; font-family: "SF Pro Display", system-ui, -apple-system; font-size: 50px; line-height: 1; position: relative; top: -3px; }
+.apple-logo { position: relative; top: -2px; width: 42px; height: 42px; flex: 0 0 42px; fill: currentColor; }
 .winlogo { display: inline-grid; grid-template-columns: 19px 19px; gap: 4px; }
 .winlogo i { width: 19px; height: 19px; background: #fff; }
 .url { position: absolute; left: 0; right: 0; top: 706px; text-align: center; }

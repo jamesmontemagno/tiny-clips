@@ -458,13 +458,13 @@
     document.body.appendChild(bar);
     const [button, range, readout] = bar.children;
     const audio = new Audio();
-    if (creative.musicStyle !== 'silent') audio.src = '../out/hype-beat.wav';
     let hasAudio = false;
-    audio.addEventListener('canplaythrough', () => { hasAudio = true; }, { once: true });
 
     let t = 0;
     let playing = false;
     let last = 0;
+    let audioClock = false;
+    let playRequest = 0;
     const show = () => {
       t = seek(t);
       range.value = t / DURATION;
@@ -472,25 +472,53 @@
     };
     const tick = (now) => {
       if (!playing) return;
-      t = hasAudio ? audio.currentTime : t + (now - last) / 1000;
+      t = audioClock ? audio.currentTime : t + (now - last) / 1000;
       last = now;
       if (t >= DURATION - 0.02) { toggle(false); t = DURATION; }
       show();
       requestAnimationFrame(tick);
+    };
+    const startAudio = () => {
+      if (!hasAudio || !playing) return;
+      const request = ++playRequest;
+      const failed = () => {
+        if (!playing || request !== playRequest) return;
+        hasAudio = false;
+        audioClock = false;
+        audio.pause();
+        last = performance.now();
+      };
+      audio.currentTime = Math.min(t, DURATION - 0.01);
+      try {
+        Promise.resolve(audio.play()).then(() => {
+          if (!playing || request !== playRequest) return;
+          audio.currentTime = Math.min(t, DURATION - 0.01);
+          audioClock = true;
+        }, failed);
+      } catch {
+        failed();
+      }
     };
     const toggle = (on = !playing) => {
       playing = on;
       button.textContent = playing ? 'Pause' : 'Play';
       if (playing) {
         if (t >= DURATION - 0.05) t = 0;
-        if (hasAudio) { audio.currentTime = t; audio.play(); }
+        startAudio();
         last = performance.now();
         requestAnimationFrame(tick);
       } else {
+        playRequest++;
+        audioClock = false;
         audio.pause();
       }
     };
     const jump = (to) => { t = to; if (hasAudio) audio.currentTime = Math.min(t, DURATION - 0.01); show(); };
+    audio.addEventListener('canplaythrough', () => {
+      hasAudio = true;
+      startAudio();
+    }, { once: true });
+    if (creative.musicStyle !== 'silent') audio.src = '../out/hype-beat.wav';
     button.addEventListener('click', () => toggle());
     range.addEventListener('input', () => jump(range.value * DURATION));
     addEventListener('keydown', (e) => {

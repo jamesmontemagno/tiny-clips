@@ -135,7 +135,8 @@ without audio.
 npm run render     # out/tiny-clips-hype.mp4, about three minutes
 ```
 
-Confirm the result: 45.0 s, 1920×1080, 60 fps, H.264 video with AAC audio.
+Confirm the result: 45.0 s, 1920×1080, 60 fps, H.264 video; expect AAC audio for music-enabled
+profiles and no audio stream for `silent`.
 
 ```bash
 ffprobe -v error -show_entries stream=codec_name,width,height,r_frame_rate:format=duration -of default=nw=1 out/tiny-clips-hype.mp4
