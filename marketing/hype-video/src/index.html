@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tiny Clips — hype video</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="tc-grad" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#5A3FE0"/><stop offset="1" stop-color="#3468F5"/>
+    </linearGradient>
+    <symbol id="tc-icon" viewBox="0 0 100 100">
+      <rect x="1" y="1" width="98" height="98" rx="24" fill="url(#tc-grad)"/>
+      <g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19.5 41V19.5H41"/><path d="M59 19.5H80.5V41"/><path d="M19.5 59V80.5H41"/><path d="M80.5 59V80.5H59"/>
+      </g>
+      <g stroke="#fff" stroke-width="1.7" stroke-linecap="round" opacity=".5">
+        <path d="M50 37.5V40M50 60V62.5M37.5 50H40M60 50H62.5"/>
+      </g>
+      <circle cx="50" cy="50" r="9.8" fill="#fff"/>
+    </symbol>
+    <g id="stroke-icons" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+      <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></symbol>
+      <symbol id="i-gif" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 10.5H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h2v-1.5M13 10v4M16 14v-4h2.5M16 12h2"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+      <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/></symbol>
+      <symbol id="i-region" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="1.5" stroke-dasharray="3 3"/></symbol>
+      <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+      <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M6 6.5h.01M8.5 6.5h.01"/></symbol>
+    </g>
+  </defs>
+</svg>
+
+<div id="stage">
+  <div class="bg">
+    <i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i>
+  </div>
+
+  <div class="camera">
+
+    <!-- 0–2  Intro: a region selection becomes the app icon -->
+    <section class="scene s-intro" data-bar="0" data-bars="2">
+      <div class="intro-icon">
+        <div class="sel"><span data-count="sq" data-from="0" data-to="460" data-at="0.5" data-len="2" data-ease="inout">460 × 460</span></div>
+        <svg class="build" viewBox="0 0 100 100">
+          <rect class="build-bg" x="1" y="1" width="98" height="98" rx="24" fill="url(#tc-grad)"/>
+          <g class="build-brackets" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+            <path pathLength="1" d="M41 19.5H19.5V41"/><path pathLength="1" d="M59 19.5H80.5V41"/>
+            <path pathLength="1" d="M41 80.5H19.5V59"/><path pathLength="1" d="M59 80.5H80.5V59"/>
+          </g>
+          <g class="build-ticks" stroke="#fff" stroke-width="1.7" stroke-linecap="round" opacity=".5">
+            <path d="M50 37.5V40M50 60V62.5M37.5 50H40M60 50H62.5"/>
+          </g>
+          <circle class="build-dot" cx="50" cy="50" r="9.8" fill="#fff"/>
+        </svg>
+        <i class="ring"></i>
+      </div>
+      <svg class="crosshair" viewBox="0 0 48 48"><path d="M24 2v16M24 30v16M2 24h16M30 24h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+      <h1 class="wordmark" data-split="a-slam" data-at="4" data-stagger="0.035s">Tiny Clips</h1>
+      <p class="tagline" id="campaign-tagline"></p>
+    </section>
+
+    <!-- 2–3  Screenshot -->
+    <section class="scene mode s-shot" data-bar="2" data-bars="1" style="--accent: var(--cyan)">
+      <div class="tint"></div>
+      <div class="marquee"><span>SCREENSHOT SCREENSHOT SCREENSHOT</span></div>
+      <div class="copy">
+        <span class="kicker a-up">01 · Capture</span>
+        <h2 data-split="a-slam">Screenshot</h2>
+        <p class="a-up" data-at="1">Pixel-perfect, straight to your clipboard.</p>
+        <div class="chips" data-at="1.5" data-stagger-children="0.25"><b class="a-pop">PNG</b><b class="a-pop">JPEG</b><b class="a-pop">WebP</b></div>
+      </div>
+      <div class="mode-visual a-rise">
+        <div class="win" data-mock="app"></div>
+        <div class="shot-mask"><div class="shot-sel"></div></div>
+        <div class="shot-flash"></div>
+        <div class="shot-card" data-crop="230,130,900,580"></div>
+        <div class="toast a-pop" data-at="2.75">✓ Copied to clipboard</div>
+      </div>
+    </section>
+
+    <!-- 3–4  Video -->
+    <section class="scene mode s-video" data-bar="3" data-bars="1" style="--accent: var(--red)">
+      <div class="tint"></div>
+      <div class="marquee"><span>VIDEO VIDEO VIDEO VIDEO VIDEO</span></div>
+      <div class="copy">
+        <span class="kicker a-up">02 · Record</span>
+        <h2 data-split="a-slam">Video</h2>
+        <p class="a-up" data-at="1">Smooth MP4 with mic, system audio, and webcam.</p>
+        <div class="chips" data-at="1.5" data-stagger-children="0.25"><b class="a-pop">MP4</b><b class="a-pop">H.264</b><b class="a-pop">H.265</b><b class="a-pop">60 fps</b></div>
+      </div>
+      <div class="mode-visual a-rise">
+        <div class="win" data-mock="app"></div>
+        <div class="rec-outline"></div>
+        <i class="click-ring" data-at="1.5"></i>
+        <i class="click-ring c2" data-at="3"></i>
+        <div class="webcam a-pop" data-at="1"><i></i></div>
+        <div class="rec-bar a-down" data-at="0.25">
+          <span class="rec-dot"></span>
+          <span class="rec-time" data-count="timer" data-from="0" data-to="1.875" data-len="4" data-ease="linear">0:00.0</span>
+          <span class="sep"></span>
+          <svg class="ic"><use href="#i-mic"/></svg>
+          <span class="meter" data-repeat="6"><i style="--i:{i}"></i></span>
+          <svg class="ic"><use href="#i-speaker"/></svg>
+          <span class="meter alt" data-repeat="6"><i style="--i:{i}"></i></span>
+          <span class="sep"></span>
+          <span class="stop"><i></i>Stop</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4–5  GIF -->
+    <section class="scene mode s-gif" data-bar="4" data-bars="1" style="--accent: var(--green)">
+      <div class="tint"></div>
+      <div class="marquee"><span>GIF GIF GIF GIF GIF GIF GIF GIF</span></div>
+      <div class="copy">
+        <span class="kicker a-up">03 · Loop</span>
+        <h2 data-split="a-slam">GIF</h2>
+        <p class="a-up" data-at="1">Tiny loops that play anywhere you paste them.</p>
+        <div class="chips" data-at="1.5" data-stagger-children="0.25"><b class="a-pop">5–30 fps</b><b class="a-pop">Up to 1920 px</b></div>
+      </div>
+      <div class="mode-visual a-rise">
+        <div class="win" data-mock="app"></div>
+        <div class="gif-badge a-pop" data-at="0.5">GIF</div>
+        <div class="filmstrip a-up" data-at="1"><span data-repeat="8"><i style="--i:{i}"></i></span><b class="film-head"></b></div>
+      </div>
+    </section>
+
+    <!-- 5–6  Capture picker -->
+    <section class="scene s-picker" data-bar="5" data-bars="1" style="--accent: var(--violet)">
+      <div class="tint center"></div>
+      <h2 class="a-slam">Pick your target.</h2>
+      <div class="targets">
+        <div class="target a-pop" data-at="0"><i class="hl" data-at="1"></i><svg><use href="#i-region"/></svg><strong>Region</strong><kbd>R</kbd></div>
+        <div class="target a-pop" data-at="0.25"><i class="hl" data-at="2"></i><svg><use href="#i-screen"/></svg><strong>Screen</strong><kbd>S</kbd></div>
+        <div class="target a-pop" data-at="0.5"><i class="hl" data-at="3"></i><svg><use href="#i-window"/></svg><strong>Window</strong><kbd>W</kbd></div>
+      </div>
+      <p class="a-up" data-at="1">One picker for screenshots, video, and GIFs.</p>
+    </section>
+
+    <!-- 6–8  Menu bar + tray -->
+    <section class="scene split s-menu" data-bar="6" data-bars="2" style="--accent: var(--blue)">
+      <div class="tint"></div>
+      <div class="copy">
+        <span class="kicker a-up">Always ready</span>
+        <h2><span class="line" data-split="a-slam">One click</span><span class="line" data-split="a-slam" data-at="0.5">away.</span></h2>
+        <p class="a-up" data-at="1.5">Lives in your menu bar and system tray.</p>
+        <div class="hotkeys">
+          <div class="keys" data-at="4" data-stagger-children="0.25"><kbd class="a-key">⌃</kbd><kbd class="a-key">⌥</kbd><kbd class="a-key">⌘</kbd><kbd class="a-key">5</kbd></div>
+          <div class="keys" data-at="5" data-stagger-children="0.25"><kbd class="a-key">Ctrl</kbd><kbd class="a-key">Shift</kbd><kbd class="a-key">5</kbd></div>
+        </div>
+        <p class="small a-up" data-at="6">Global hotkeys for every capture mode.</p>
+      </div>
+      <div class="mac-menu a-rise">
+        <div class="menubar"><i></i><i></i><i></i><span class="mb-tc"><svg viewBox="0 0 100 100"><g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 38V14H38M62 14H86V38M14 62V86H38M86 62V86H62"/></g><circle cx="50" cy="50" r="12" fill="#fff"/></svg></span><i></i><i></i></div>
+        <ul class="menu">
+          <li><svg><use href="#i-camera"/></svg>Screenshot…<kbd>⌃⌥⌘5</kbd></li>
+          <li><svg><use href="#i-video"/></svg>Record Video…<kbd>⌃⌥⌘6</kbd></li>
+          <li><svg><use href="#i-gif"/></svg>Record GIF…<kbd>⌃⌥⌘7</kbd></li>
+          <li class="rule"></li>
+          <li class="plain">Recent Captures<kbd>›</kbd></li>
+          <li class="plain">Clips Manager…</li>
+          <li class="plain">Settings…<kbd>⌘,</kbd></li>
+        </ul>
+        <span class="tag">macOS menu bar</span>
+      </div>
+      <figure class="tray a-rise" data-at="2"><div><img src="/docs/windows-art/tray.png" alt=""></div><span class="tag">Windows system tray</span></figure>
+    </section>
+
+    <!-- 8–9  Editor reveal -->
+    <section class="scene split s-editor-a" data-bar="8" data-bars="1" style="--accent: var(--pink)">
+      <div class="tint"></div>
+      <div class="copy">
+        <span class="kicker a-up">Built-in editor</span>
+        <h2><span class="line" data-split="a-slam">Mark it</span><span class="line" data-split="a-slam" data-at="0.5">up.</span></h2>
+        <p class="a-up" data-at="1.5">Annotate, redact, and frame every capture.</p>
+      </div>
+      <figure class="shot editor-shot a-rise"><img src="/docs/windows-art/editor.png" alt=""></figure>
+    </section>
+
+    <!-- 9–11  Editor tools, one per beat -->
+    <section class="scene s-editor-b" data-bar="9" data-bars="2" style="--accent: var(--pink)">
+      <div class="tint"></div>
+      <ol class="tool-list">
+        <li data-at="0">Arrows</li>
+        <li data-at="1">Numbered steps</li>
+        <li data-at="2">Redact &amp; blur</li>
+        <li data-at="3">Emoji stickers</li>
+        <li data-at="4">Text &amp; shapes</li>
+        <li data-at="5" class="long">Backgrounds</li>
+      </ol>
+      <div class="canvas">
+        <i class="canvas-bg g1"></i><i class="canvas-bg g2 a-fade" data-at="5"></i><i class="canvas-bg g3 a-fade" data-at="6"></i><i class="canvas-bg g4 a-fade" data-at="7"></i>
+        <div class="canvas-card">
+          <div class="win" data-mock="app"></div>
+          <svg class="anno" viewBox="0 0 900 580">
+            <path class="arrow" pathLength="1" d="M300 420 C 400 400 520 330 588 232" />
+            <path class="arrow-head a-pop" data-at="0.55" d="M560 244 L596 218 L600 262" />
+          </svg>
+          <span class="badge n1 a-pop" data-at="1">1</span>
+          <span class="badge n2 a-pop" data-at="1.33">2</span>
+          <span class="badge n3 a-pop" data-at="1.66">3</span>
+          <div class="redact a-wipe" data-at="2" data-d="0.6"></div>
+          <span class="sticker a-drop" data-at="3">🎉</span>
+          <span class="anno-text a-pop" data-at="4">Ship it!</span>
+          <i class="anno-rect a-pop" data-at="4.4"></i>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11–13  Trimmers -->
+    <section class="scene split s-trim" data-bar="11" data-bars="2" style="--accent: var(--orange)">
+      <div class="tint"></div>
+      <div class="copy">
+        <span class="kicker a-up">Trimmers</span>
+        <h2><span class="line" data-split="a-slam">Trim the</span><span class="line" data-split="a-slam" data-at="0.5">fat.</span></h2>
+        <p class="a-up" data-at="1.5">Video and GIF trimmers open the moment you stop recording.</p>
+      </div>
+      <figure class="shot trim-mac a-rise"><img src="/docs/tinyclips.png" alt=""></figure>
+      <figure class="shot trim-win a-rise" data-at="1"><img src="/docs/windows-art/video-editor.png" alt=""></figure>
+      <div class="trimbar a-up" data-at="2">
+        <div class="track">
+          <span class="waves" data-repeat="56"><i style="--i:{i}"></i></span>
+          <div class="range"><i class="handle l"></i><i class="handle r"></i></div>
+        </div>
+        <div class="trim-meta">
+          <span>Duration <b data-count="dur" data-from="9.7" data-to="5.5" data-at="3" data-len="2">0:09.7</b></span>
+          <span class="save">Save Trimmed</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 13–16  Rapid fire: six cards, two beats each -->
+    <section class="scene rf" data-bar="13" data-bars="0.5" style="--accent: var(--cyan)">
+      <div class="tint strong"></div>
+      <div class="rf-copy"><span class="rf-n">01</span><h2 class="a-slam">Webcam<br>overlay</h2><p class="a-up" data-at="0.4">Picture-in-picture, in any corner.</p></div>
+      <div class="rf-vis v-webcam a-pop">
+        <div class="mini-screen"><span class="l"></span><span class="l"></span><span class="l"></span><div class="bubble"><i></i></div></div>
+      </div>
+    </section>
+
+    <section class="scene rf" data-bar="13.5" data-bars="0.5" style="--accent: var(--green)">
+      <div class="tint strong"></div>
+      <div class="rf-copy"><span class="rf-n">02</span><h2 class="a-slam">Mic +<br>system audio</h2><p class="a-up" data-at="0.4">Your voice and your computer, together.</p></div>
+      <div class="rf-vis v-audio a-pop">
+        <div class="lane"><svg><use href="#i-mic"/></svg><span data-repeat="14"><i style="--i:{i}"></i></span></div>
+        <div class="lane alt"><svg><use href="#i-speaker"/></svg><span data-repeat="14"><i style="--i:{i}"></i></span></div>
+      </div>
+    </section>
+
+    <section class="scene rf" data-bar="14" data-bars="0.5" style="--accent: var(--orange)">
+      <div class="tint strong"></div>
+      <div class="rf-copy"><span class="rf-n">03</span><h2 class="a-slam">Tele&shy;prompter</h2><p class="a-up" data-at="0.4">Read your script while you record.</p></div>
+      <div class="rf-vis v-prompter a-pop">
+        <div class="script-mask"><div class="script"><span>Hey everyone —</span><span>today I’m showing</span><span>the fastest way to</span><span>capture your screen</span><span>on Mac and Windows.</span><span>Let’s jump in.</span></div></div>
+      </div>
+    </section>
+
+    <section class="scene rf" data-bar="14.5" data-bars="0.5" style="--accent: var(--violet)">
+      <div class="tint strong"></div>
+      <div class="rf-copy"><span class="rf-n">04</span><h2 class="a-slam">Scrolling<br>capture</h2><p class="a-up" data-at="0.4">Stitch a whole page into one image.</p></div>
+      <div class="rf-vis v-scroll a-pop">
+        <div class="page"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="viewport"></div>
+        <div class="stitched"><i></i></div>
+      </div>
+    </section>
+
+    <section class="scene rf" data-bar="15" data-bars="0.5" style="--accent: var(--pink)">
+      <div class="tint strong"></div>
+      <div class="rf-copy"><span class="rf-n">05</span><h2 class="a-slam">Copy text<br>from pixels</h2><p class="a-up" data-at="0.4">OCR any region to your clipboard.</p></div>
+      <div class="rf-vis v-ocr a-pop">
+        <div class="ocr-text">Error 0x80070005:<br>Access is denied.<br>See log for details.<i class="ocr-sel"></i></div>
+        <span class="toast a-pop" data-at="1">✓ Text copied</span>
+      </div>
+    </section>
+
+    <section class="scene rf" data-bar="15.5" data-bars="0.5" style="--accent: var(--blue)">
+      <div class="tint strong"></div>
+      <div class="rf-copy"><span class="rf-n">06</span><h2 class="a-slam">Clips<br>library</h2><p class="a-up" data-at="0.4">Search, tag, and share every capture.</p></div>
+      <div class="rf-vis v-library a-pop">
+        <div class="search"><span></span>tag:demo</div>
+        <div class="thumbs" data-stagger-children="0.12"><i class="a-pop"></i><i class="a-pop"></i><i class="a-pop"></i><i class="a-pop"></i><i class="a-pop"></i><i class="a-pop"></i></div>
+      </div>
+    </section>
+
+    <!-- 16–17  Breakdown (text comes from content.js) -->
+    <section class="scene s-break" data-bar="16" data-bars="1">
+      <p id="break-lead" data-stagger="0.016s"></p>
+      <h2 id="break-title" data-at="2"></h2>
+    </section>
+
+    <!-- 17–21  What's new (header and tiles come from content.js) -->
+    <section class="scene s-new" id="whats-new" data-bar="17" data-bars="4" style="--accent: var(--violet)">
+      <div class="tint center"></div>
+      <header>
+        <span class="new-pill a-pop" id="new-pill"></span>
+        <h2 class="a-up" data-at="0.25" id="new-heading"></h2>
+        <span class="plat a-up" data-at="0.5" id="new-platforms"></span>
+      </header>
+      <div class="bento slots a-fade" id="new-slots"></div>
+      <div class="bento" id="new-tiles"></div>
+    </section>
+
+    <!-- 21–24  Outro -->
+    <section class="scene s-outro" data-bar="21" data-bars="3" style="--accent: var(--violet)">
+      <div class="tint center strong"></div>
+      <div class="rings"><i></i><i></i><i></i></div>
+      <div class="lockup">
+        <svg class="outro-icon a-pop"><use href="#tc-icon"/></svg>
+        <h1 data-split="a-slam" data-at="0.5" data-stagger="0.03s">Tiny Clips</h1>
+        <div class="avail">
+          <span class="a-up" data-at="2">Available on</span>
+          <b class="plat-pill a-pop" data-at="2.5">
+            <svg class="apple-logo" viewBox="10 7 31 36" aria-hidden="true">
+              <path d="M24 18.5c-2.6-2-6-1.8-8.6.1-4.1 3-4.8 8.7-2 14.2 2.3 4.7 4.9 7.4 7.8 7.4 1.2 0 2.2-.5 3.2-.9s2-.8 3.2-.8 2 .4 3.1.8 2 .9 3.2.9c2.9 0 5.5-2.7 7.8-7.4 2.8-5.5 2.1-11.2-2-14.2-2.6-1.9-6-2.1-8.6-.1-1 .8-2 1.2-3.5 1.2s-2.6-.4-3.6-1.2z"/>
+              <path d="M25.1 17.6c-.8-3.7.5-6.7 3.8-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+              <path d="M28.5 11.7c2.1-2.5 5-3.4 8-2.9-.4 3.5-3.1 5.9-7.7 6.3z"/>
+            </svg>
+            macOS
+          </b>
+          <b class="plat-pill a-pop" data-at="3"><span class="winlogo"><i></i><i></i><i></i><i></i></span>Windows</b>
+        </div>
+        <div class="url a-slam" data-at="4"><span>tinyclips.app</span><i class="shine"></i></div>
+        <p class="free a-up" data-at="8">Free and open source</p>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="bug" data-bar="2" data-bars="14"><svg><use href="#tc-icon"/></svg>Tiny Clips</div>
+  <div id="flashes"></div>
+  <div id="grain"></div>
+  <div class="vignette"></div>
+</div>
+
+<script src="creative.js"></script>
+<script src="content.js"></script>
+<script src="player.js"></script>
+</body>
+</html>
