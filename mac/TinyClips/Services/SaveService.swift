@@ -216,6 +216,15 @@ final class AccessibilityAnnouncementService {
     }
 }
 
+private final class WeakSaveService: @unchecked Sendable {
+    // The weak reference is only dereferenced on the main actor.
+    weak var value: SaveService?
+
+    init(_ value: SaveService) {
+        self.value = value
+    }
+}
+
 class SaveService: NSObject, UNUserNotificationCenterDelegate {
     static let shared = SaveService()
     private let notificationURLKey = "savedFileURL"
@@ -657,15 +666,16 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     func showNotice(_ message: String) {
         AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
 
+        let service = WeakSaveService(self)
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized ||
                     settings.authorizationStatus == .provisional else {
-                Task { @MainActor in SaveService.shared.showInAppNotice(message) }
+                Task { @MainActor in service.value?.showInAppNotice(message) }
                 return
             }
             let showsBanner = settings.authorizationStatus == .authorized && settings.alertStyle != .none
             if !showsBanner {
-                Task { @MainActor in SaveService.shared.showInAppNotice(message) }
+                Task { @MainActor in service.value?.showInAppNotice(message) }
             }
 
             let content = UNMutableNotificationContent()
@@ -679,7 +689,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
             )
             UNUserNotificationCenter.current().add(request) { error in
                 if error != nil && showsBanner {
-                    Task { @MainActor in SaveService.shared.showInAppNotice(message) }
+                    Task { @MainActor in service.value?.showInAppNotice(message) }
                 }
             }
         }
