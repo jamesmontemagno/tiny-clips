@@ -7,7 +7,7 @@ struct TeleprompterSettingsSection: View {
     @State private var transcriptLoadGeneration = 0
 
     // Keeps the AppStorage-backed transcript small enough for UserDefaults.
-    private static let maximumTranscriptByteCount = 1_000_000
+    nonisolated private static let maximumTranscriptByteCount = 1_000_000
 
     private var fontSize: TeleprompterDisplaySize {
         TeleprompterDisplaySize(rawValue: settings.teleprompterFontSize) ?? .medium

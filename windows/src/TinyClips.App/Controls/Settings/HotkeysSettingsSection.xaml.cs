@@ -23,7 +23,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
     public HotkeysSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel;
-        _realizationScope = viewModel.BeginSectionRealization();
+        _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.Hotkeys);
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
     }
@@ -35,6 +35,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
         "RecognizeText" => HotKeyAction.RecognizeText,
         "ScreenshotRegion" => HotKeyAction.ScreenshotRegion,
         "ScreenshotWindow" => HotKeyAction.ScreenshotWindow,
+        "ScreenshotScreen" => HotKeyAction.ScreenshotScreen,
         _ => HotKeyAction.Screenshot,
     };
 
@@ -76,6 +77,31 @@ public sealed partial class HotkeysSettingsSection : UserControl
                     ? $"{ActionName(action)} shortcut cleared."
                     : $"{ActionName(action)} shortcut reset to {defaultBinding.DisplayString}.",
                 InfoBarSeverity.Success);
+        }
+        else
+        {
+            ShowSectionStatus(errorMessage, InfoBarSeverity.Error);
+        }
+    }
+
+    private void OnDeleteHotKey(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+        {
+            return;
+        }
+
+        var action = ActionFromTag(element.Tag);
+        var unbound = new HotKeyDefinition(HotKeyModifiers.None, 0);
+        if (ViewModel.GetHotKey(action).IsUnbound)
+        {
+            ShowSectionStatus($"{ActionName(action)} shortcut is already cleared.", InfoBarSeverity.Informational);
+            return;
+        }
+
+        if (TryApplyCandidate(action, unbound, out var errorMessage))
+        {
+            ShowSectionStatus($"{ActionName(action)} shortcut cleared.", InfoBarSeverity.Success);
         }
         else
         {
@@ -276,7 +302,8 @@ public sealed partial class HotkeysSettingsSection : UserControl
         }
 
         var applyResult = app.ReapplyGlobalHotKeys();
-        if (applyResult.IsSuccess)
+        var applyFailures = applyResult.BlockingFailuresFor(action);
+        if (applyFailures.Count == 0)
         {
             errorMessage = string.Empty;
             return true;
@@ -285,17 +312,12 @@ public sealed partial class HotkeysSettingsSection : UserControl
         ViewModel.SetHotKey(action, previous.Modifiers, previous.VirtualKey);
         var rollbackResult = app.ReapplyGlobalHotKeys();
 
-        var rejectedNames = string.Join(", ", applyResult.Failures.Select(failure => failure.Name));
-        errorMessage =
-            $"Windows could not register {rejectedNames}. Another app may already use this shortcut. " +
-            "Choose a different combination.";
+        errorMessage = GlobalHotKeyFailureFormatter.FormatApply(applyFailures);
 
-        if (!rollbackResult.IsSuccess)
+        var rollbackFailures = rollbackResult.BlockingFailuresFor(action);
+        if (rollbackFailures.Count > 0)
         {
-            var rollbackNames = string.Join(", ", rollbackResult.Failures.Select(failure => failure.Name));
-            errorMessage +=
-                $" The previous shortcut was restored in Settings, but Windows could not reactivate {rollbackNames}. " +
-                "Close the competing app or restart TinyClips.";
+            errorMessage += GlobalHotKeyFailureFormatter.FormatRollback(rollbackFailures);
         }
 
         return false;
@@ -357,6 +379,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
         HotKeyAction.RecognizeText => "Recognize text",
         HotKeyAction.ScreenshotRegion => "Screenshot region",
         HotKeyAction.ScreenshotWindow => "Screenshot window",
+        HotKeyAction.ScreenshotScreen => "Screenshot screen",
         _ => "Screenshot",
     };
 }

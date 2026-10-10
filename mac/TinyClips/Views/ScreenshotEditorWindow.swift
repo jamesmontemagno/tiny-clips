@@ -2,6 +2,28 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+private final class ScreenshotEditorViewportMonitorView: NSView {
+    var onBackingScaleChange: ((CGFloat) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        reportBackingScaleChange()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        reportBackingScaleChange()
+    }
+
+    func reportBackingScaleChange() {
+        guard window != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let scale = self.window?.backingScaleFactor, scale.isFinite, scale > 0 else { return }
+            self.onBackingScaleChange?(scale)
+        }
+    }
+}
+
 struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
     let isEnabled: Bool
     let onZoom: (CGFloat, CGPoint) -> Void
@@ -12,13 +34,15 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
     /// says whether a text field has focus. Returns whether Esc was acted on; when it was not, the
     /// focused text field just gives up focus.
     let onEscape: (Bool) -> Bool
+    let onBackingScaleChange: (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(isEnabled: isEnabled, onZoom: onZoom, onPan: onPan, onReturn: onReturn, onEscape: onEscape)
     }
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView()
+        let view = ScreenshotEditorViewportMonitorView()
+        view.onBackingScaleChange = onBackingScaleChange
         context.coordinator.install(for: view)
         return view
     }
@@ -32,6 +56,9 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         context.coordinator.onPan = onPan
         context.coordinator.onReturn = onReturn
         context.coordinator.onEscape = onEscape
+        if let view = nsView as? ScreenshotEditorViewportMonitorView {
+            view.onBackingScaleChange = onBackingScaleChange
+        }
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -440,6 +467,7 @@ struct ScreenshotEditorView: View {
     @State private var showExitConfirmation = false
     @State private var closePrompt: ScreenshotEditorClosePrompt = .discardChanges
     @AppStorage(CaptureSettings.confirmEditorEscapeKey) private var confirmOnEscape = true
+    @State private var nativeSizeSelected: Bool
     @State private var showDeleteConfirmation = false
     @State private var showClearAnnotationsConfirmation = false
     @State private var currentSaveURL: URL
@@ -447,6 +475,7 @@ struct ScreenshotEditorView: View {
     @State private var zoomScale: CGFloat = 1
     @State private var panOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
+    @State private var backingScaleFactor: CGFloat = 1
     @State private var isEmojiTextEntryFocused = false
     @State private var isScalePopoverPresented = false
 
@@ -463,6 +492,9 @@ struct ScreenshotEditorView: View {
         _viewModel = StateObject(wrappedValue: ScreenshotEditorViewModel(url: imageURL))
         _currentSaveURL = State(initialValue: initialSaveURL)
         _lastSavedURL = State(initialValue: nil)
+        _nativeSizeSelected = State(
+            initialValue: UserDefaults.standard.bool(forKey: CaptureSettings.screenshotEditorNativeSizeKey)
+        )
     }
 
     private var inspectorTool: EditTool {
@@ -493,10 +525,12 @@ struct ScreenshotEditorView: View {
     private var primaryColorBinding: Binding<Color> {
         Binding(
             get: {
-                viewModel.selectedNumberBadgeColor() ?? viewModel.selectedColor
+                viewModel.selectedTextColor() ?? viewModel.selectedNumberBadgeColor() ?? viewModel.selectedColor
             },
             set: { newValue in
-                if !viewModel.updateSelectedNumberBadgeColor(newValue) {
+                if viewModel.inspectorTool == .text {
+                    _ = viewModel.updateTextColor(newValue)
+                } else if !viewModel.updateSelectedNumberBadgeColor(newValue) {
                     viewModel.selectedColor = newValue
                 }
             }
@@ -607,6 +641,49 @@ struct ScreenshotEditorView: View {
         )
     }
 
+    private var textBoxBackgroundBinding: Binding<Color> {
+        Binding(
+            get: { viewModel.textBoxStyleForInspector().backgroundColor },
+            set: viewModel.updateTextBoxBackgroundColor
+        )
+    }
+
+    private var textBoxBorderColorBinding: Binding<Color> {
+        Binding(
+            get: { viewModel.textBoxStyleForInspector().borderColor },
+            set: viewModel.updateTextBoxBorderColor
+        )
+    }
+
+    private var textBoxBorderWidthBinding: Binding<CGFloat> {
+        Binding(
+            get: { viewModel.textBoxStyleForInspector().borderWidth },
+            set: viewModel.updateTextBoxBorderWidth
+        )
+    }
+
+    private var textBoxPaddingBinding: Binding<CGFloat> {
+        Binding(
+            get: { viewModel.textBoxStyleForInspector().padding },
+            set: viewModel.updateTextBoxPadding
+        )
+    }
+
+    private var textBoxCornerRadiusBinding: Binding<CGFloat> {
+        Binding(
+            get: { viewModel.textBoxStyleForInspector().cornerRadius },
+            set: viewModel.updateTextBoxCornerRadius
+        )
+    }
+
+    private func handleTextBoxSliderEditing(_ isEditing: Bool) {
+        if isEditing {
+            viewModel.beginSelectedTextBoxStyleEdit()
+        } else {
+            viewModel.endSelectedTextBoxStyleEdit()
+        }
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
             sidebar
@@ -619,6 +696,7 @@ struct ScreenshotEditorView: View {
                             viewModel: viewModel,
                             containerSize: geo.size,
                             zoomScale: zoomScale,
+                            backingScale: backingScaleFactor,
                             panOffset: panOffset
                         )
 
@@ -629,7 +707,8 @@ struct ScreenshotEditorView: View {
                             },
                             onPan: panCanvas,
                             onReturn: applyCropFromKeyboard,
-                            onEscape: handleEscape
+                            onEscape: handleEscape,
+                            onBackingScaleChange: updateBackingScaleFactor
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
@@ -676,6 +755,7 @@ struct ScreenshotEditorView: View {
                 zoomIn: zoomIn,
                 zoomOut: zoomOut,
                 fitZoom: fitZoom,
+                nativeSizeZoom: nativeSizeZoom,
                 canUndo: viewModel.canUndo,
                 canRedo: viewModel.canRedo,
                 hasAnnotations: viewModel.hasAnnotations,
@@ -799,12 +879,12 @@ struct ScreenshotEditorView: View {
                 .accessibilityHint("Permanently deletes the original screenshot after confirmation.")
             }
         }
-        .onChange(of: viewModel.canvasPadding) { _, _ in constrainPan() }
+        .onChange(of: viewModel.canvasPadding) { _, _ in updateZoomForLayoutChange() }
         // Applying, undoing, or redoing a crop swaps the image, so the old zoom and pan no longer fit.
-        .onChange(of: viewModel.originalImage) { _, _ in fitZoom() }
-        .onChange(of: viewModel.exportFramePreset) { _, _ in constrainPan() }
-        .onChange(of: viewModel.horizontalExportAlignment) { _, _ in constrainPan() }
-        .onChange(of: viewModel.verticalExportAlignment) { _, _ in constrainPan() }
+        .onChange(of: viewModel.originalImage) { _, _ in updateZoomAfterImageChange() }
+        .onChange(of: viewModel.exportFramePreset) { _, _ in updateZoomForLayoutChange() }
+        .onChange(of: viewModel.horizontalExportAlignment) { _, _ in updateZoomForLayoutChange() }
+        .onChange(of: viewModel.verticalExportAlignment) { _, _ in updateZoomForLayoutChange() }
         .disabled(isSaving)
         .overlay {
             if isSaving {
@@ -935,6 +1015,54 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsTextStyleControls {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Style")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if viewModel.textBoxStyleForInspector().preset == .custom {
+                            Text("Custom")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    HStack(spacing: 6) {
+                        ForEach([TextBoxPreset.plain, .light, .dark, .accent]) { preset in
+                            let resolved = TextBoxStyle.resolved(
+                                preset,
+                                currentTextColor: viewModel.selectedTextColor() ?? viewModel.selectedColor
+                            )
+                            let selected = viewModel.textBoxStyleForInspector().preset == preset
+                            Button {
+                                viewModel.applyTextBoxPreset(preset)
+                            } label: {
+                                Text("Aa")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(resolved.textColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: max(3, resolved.style.cornerRadius))
+                                            .fill(resolved.style.backgroundColor)
+                                    }
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: max(3, resolved.style.cornerRadius))
+                                            .stroke(
+                                                selected ? Color.accentColor : resolved.style.borderColor,
+                                                lineWidth: selected ? 2 : max(1, resolved.style.borderWidth)
+                                            )
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                            .help("\(preset.label) text style")
+                            .accessibilityLabel("\(preset.label) text style")
+                            .accessibilityValue(selected ? "Selected" : "Not selected")
+                        }
+                    }
+                }
+
                 Picker("Font", selection: textFontFamilyBinding) {
                     ForEach(viewModel.availableTextFontFamilies, id: \.self) { family in
                         Text(family).tag(family)
@@ -946,6 +1074,70 @@ struct ScreenshotEditorView: View {
                     TextStyleToggleButton(title: "Italic", systemImage: "italic", isOn: textItalicBinding)
                     TextStyleToggleButton(title: "Underline", systemImage: "underline", isOn: textUnderlineBinding)
                 }
+
+                Divider()
+
+                Text("Box")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                SwatchColorPicker(
+                    label: "Background",
+                    color: textBoxBackgroundBinding,
+                    supportsOpacity: true,
+                    allowsTransparent: true
+                )
+                SwatchColorPicker(
+                    label: "Border",
+                    color: textBoxBorderColorBinding,
+                    supportsOpacity: true,
+                    allowsTransparent: true
+                )
+
+                LabeledContent("Border width") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: textBoxBorderWidthBinding,
+                            in: TextBoxStyle.borderWidthRange,
+                            onEditingChanged: handleTextBoxSliderEditing
+                        )
+                        Text("\(Int(textBoxBorderWidthBinding.wrappedValue)) px")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+
+                LabeledContent("Padding") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: textBoxPaddingBinding,
+                            in: TextBoxStyle.paddingRange,
+                            onEditingChanged: handleTextBoxSliderEditing
+                        )
+                        Text("\(Int(textBoxPaddingBinding.wrappedValue)) px")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+
+                LabeledContent("Corner radius") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: textBoxCornerRadiusBinding,
+                            in: TextBoxStyle.cornerRadiusRange,
+                            onEditingChanged: handleTextBoxSliderEditing
+                        )
+                        Text("\(Int(textBoxCornerRadiusBinding.wrappedValue)) px")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+                .accessibilityElement(children: .combine)
             }
 
             if viewModel.showsLineWidthControl {
@@ -1215,6 +1407,19 @@ struct ScreenshotEditorView: View {
             .help("Fit to Window (Command-0)")
             .accessibilityLabel("Fit canvas to window")
 
+            Button(action: nativeSizeZoom) {
+                HStack(spacing: 4) {
+                    if nativeSizeSelected {
+                        Image(systemName: "checkmark")
+                    }
+                    Text("1:1")
+                }
+            }
+            .controlSize(.small)
+            .help("Display one captured pixel per screen pixel")
+            .accessibilityLabel("Display screenshot at actual size")
+            .accessibilityValue(nativeSizeSelected ? "Selected" : "Not selected")
+
             Spacer()
 
             Button {
@@ -1322,7 +1527,7 @@ struct ScreenshotEditorView: View {
     private func applyCrop() {
         let croppedSize = viewModel.cropSelectionPixelSize
         guard viewModel.applyCrop() else { return }
-        fitZoom()
+        updateZoomAfterImageChange()
         if let croppedSize {
             AccessibilityAnnouncementService.shared.announce(
                 "Cropped to \(Int(croppedSize.width)) by \(Int(croppedSize.height)) pixels.",
@@ -1347,12 +1552,47 @@ struct ScreenshotEditorView: View {
     }
 
     private func fitZoom() {
+        setNativeSizeSelected(false)
         zoomScale = 1
         panOffset = .zero
     }
 
     private func setZoom(_ requestedScale: CGFloat, focalPoint: CGPoint? = nil) {
-        let newScale = ScreenshotEditorZoomMath.clamp(requestedScale)
+        setNativeSizeSelected(false)
+        applyZoom(requestedScale, focalPoint: focalPoint, maximumScale: ScreenshotEditorZoomMath.maximumScale)
+    }
+
+    private func nativeSizeZoom() {
+        setNativeSizeSelected(true)
+        applyNativeSizeZoom()
+    }
+
+    private func setNativeSizeSelected(_ selected: Bool) {
+        nativeSizeSelected = selected
+        UserDefaults.standard.set(selected, forKey: CaptureSettings.screenshotEditorNativeSizeKey)
+    }
+
+    private func applyNativeSizeZoom() {
+        guard nativeSizeSelected,
+              let requestedScale = viewModel.nativeSizeZoomScale(
+                  in: viewportSize,
+                  backingScale: backingScaleFactor
+              ) else {
+            return
+        }
+
+        applyZoom(
+            requestedScale,
+            maximumScale: max(ScreenshotEditorZoomMath.maximumScale, requestedScale)
+        )
+    }
+
+    private func applyZoom(
+        _ requestedScale: CGFloat,
+        focalPoint: CGPoint? = nil,
+        maximumScale: CGFloat
+    ) {
+        let newScale = ScreenshotEditorZoomMath.clamp(requestedScale, maximumScale: maximumScale)
         guard abs(newScale - zoomScale) > 0.0001 else { return }
         let focalPoint = focalPoint ?? CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2)
         let adjustedPan = ScreenshotEditorZoomMath.focalAdjustedPan(
@@ -1384,7 +1624,29 @@ struct ScreenshotEditorView: View {
 
     private func updateViewportSize(_ size: CGSize) {
         viewportSize = size
-        constrainPan()
+        updateZoomForLayoutChange()
+    }
+
+    private func updateBackingScaleFactor(_ scale: CGFloat) {
+        guard scale.isFinite, scale > 0, abs(backingScaleFactor - scale) > 0.001 else { return }
+        backingScaleFactor = scale
+        updateZoomForLayoutChange()
+    }
+
+    private func updateZoomAfterImageChange() {
+        if nativeSizeSelected {
+            applyNativeSizeZoom()
+        } else {
+            fitZoom()
+        }
+    }
+
+    private func updateZoomForLayoutChange() {
+        if nativeSizeSelected {
+            applyNativeSizeZoom()
+        } else {
+            constrainPan()
+        }
     }
 
     private func constrainPan() {
@@ -1396,7 +1658,11 @@ struct ScreenshotEditorView: View {
     }
 
     private func zoomContentSize(in size: CGSize, scale: CGFloat? = nil) -> CGSize {
-        viewModel.displayLayout(in: size, zoomScale: scale ?? zoomScale).frameSize
+        viewModel.displayLayout(
+            in: size,
+            zoomScale: scale ?? zoomScale,
+            backingScale: backingScaleFactor
+        ).frameSize
     }
 
     private func saveCurrentImage() {

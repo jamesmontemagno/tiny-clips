@@ -4,10 +4,13 @@
 
 .DESCRIPTION
     Run this on the machine that shows the problem (x64 or ARM64). It never uploads anything; it
-    writes a folder and a zip to the Desktop. It gathers:
+    writes a folder and a zip to the Desktop. Run from a repository checkout: the shared
+    src\TinyClips.Core\Services\ProcessArchitectureClassifier.cs source must be present.
+    It gathers:
 
       - system.txt        OS build, CPU, native architecture, VM/model, GPU adapters and drivers,
-                          displays, power state.
+                          displays, power state, storage, memory pressure, busiest processes,
+                          antivirus, and how long small file writes take.
       - package.txt       Installed Tiny Clips packages, the running process (native or emulated,
                           memory, threads, start time) and bundled-runtime architecture.
       - logs\             crash.log, crash.previous.log, capture-flow-trace.log and
@@ -15,7 +18,8 @@
       - events.txt        Application event log entries for Tiny Clips (crashes, hangs, .NET).
       - wer\              Windows Error Reporting summaries (Report.wer) for Tiny Clips.
       - responsiveness.*  Only with -LiveSeconds: how long the app's UI thread took to answer,
-                          sampled while you reproduce the lag.
+                          sampled while you reproduce the lag, plus system-load.csv with
+                          whole-machine CPU, free memory, paging and disk activity each second.
 
     Settings, captures, credentials and memory dumps are not collected.
 
@@ -75,7 +79,7 @@ if ($EnableTrace -or $DisableTrace) {
     return
 }
 
-Add-Type -TypeDefinition @'
+$diagnosticSource = @'
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -96,6 +100,16 @@ public static class TinyClipsDiag
     private static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessMachineInformation
+    {
+        public ushort ProcessMachine;
+        public ushort Reserved;
+        public uint Attributes;
+    }
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetProcessInformation(IntPtr process, int informationClass,
+        out ProcessMachineInformation information, uint size);
 
     public sealed class WindowInfo
     {
@@ -143,7 +157,7 @@ public static class TinyClipsDiag
     {
         switch (machine)
         {
-            case 0x0000: return "native";
+            case 0x0000: return "unspecified (not a runtime architecture)";
             case 0x014c: return "x86";
             case 0x8664: return "x64";
             case 0xAA64: return "ARM64";
@@ -155,11 +169,26 @@ public static class TinyClipsDiag
     public static string ProcessArchitecture(IntPtr processHandle)
     {
         ushort processMachine, nativeMachine;
-        if (!IsWow64Process2(processHandle, out processMachine, out nativeMachine)) { return "unknown"; }
-        return "process=" + DescribeMachine(processMachine) + " os=" + DescribeMachine(nativeMachine);
+        bool wowOk = IsWow64Process2(processHandle, out processMachine, out nativeMachine);
+        int wowError = wowOk ? 0 : Marshal.GetLastWin32Error();
+        ProcessMachineInformation info;
+        bool infoOk = GetProcessInformation(processHandle, 9 /* ProcessMachineTypeInfo */, out info,
+            (uint)Marshal.SizeOf(typeof(ProcessMachineInformation)));
+        int infoError = infoOk ? 0 : Marshal.GetLastWin32Error();
+        ushort? target = infoOk ? (ushort?)info.ProcessMachine : (wowOk && processMachine != 0 ? (ushort?)processMachine : null);
+        string classification = wowOk
+            ? TinyClips.Core.Services.ProcessArchitectureClassifier.Classify(nativeMachine, processMachine, infoOk ? (ushort?)info.ProcessMachine : null)
+            : "unknown";
+        return "targetProcess=" + (target.HasValue ? TinyClips.Core.Services.ProcessArchitectureClassifier.Machine(target.Value) : "unknown")
+            + " os=" + (wowOk ? DescribeMachine(nativeMachine) : "unknown")
+            + " execution=" + classification
+            + " evidence: IsWow64Process2=" + (wowOk ? "processMachine=0x" + processMachine.ToString("X4") + ",nativeMachine=0x" + nativeMachine.ToString("X4") : "failed Win32=" + wowError)
+            + "; ProcessMachineTypeInfo=" + (infoOk ? "0x" + info.ProcessMachine.ToString("X4") : "failed Win32=" + infoError);
     }
 }
 '@
+$classifierPath = Join-Path $PSScriptRoot '..\src\TinyClips.Core\Services\ProcessArchitectureClassifier.cs'
+Add-Type -TypeDefinition ($diagnosticSource + (Get-Content -LiteralPath $classifierPath -Raw -ErrorAction Stop)) -ErrorAction Stop
 
 function Write-Section([string] $Path, [string] $Title, [scriptblock] $Body) {
     "===== $Title =====" | Out-File $Path -Append -Encoding utf8
@@ -194,7 +223,11 @@ $since = (Get-Date).AddDays(-[Math]::Abs($Days))
 
 # ---- Live UI-thread responsiveness (run first so the rest of the collection reflects it) -----
 if ($LiveSeconds -gt 0) {
-    $app = Get-Process $processName -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1
+    $running = @(Get-Process $processName -ErrorAction SilentlyContinue | Sort-Object StartTime -Descending)
+    $app = $running | Select-Object -First 1
+    if ($running.Count -gt 1) {
+        Write-Host "Note: $($running.Count) Tiny Clips processes are running; watching the newest (PID $($app.Id))." -ForegroundColor Yellow
+    }
     if (-not $app) {
         Write-Host "Tiny Clips is not running; start it and run again with -LiveSeconds." -ForegroundColor Yellow
         "Tiny Clips was not running, so no responsiveness data was recorded." | Out-File (Join-Path $result 'responsiveness.txt') -Encoding utf8
@@ -205,6 +238,27 @@ if ($LiveSeconds -gt 0) {
         Write-Host "Reproduce the slowdown now: open the tray menu, take a screenshot, open the editor..." -ForegroundColor Cyan
         $csv = Join-Path $result 'responsiveness.csv'
         'time,elapsedSeconds,uiThreadDelayMs,cpuPercentOfOneCore,workingSetMB,threads,visibleWindows' | Out-File $csv -Encoding utf8
+        $loadCsv = Join-Path $result 'system-load.csv'
+        'time,systemCpuPercent,availableMemoryMB,pagesPerSecond,diskActivePercent,diskQueueLength' | Out-File $loadCsv -Encoding utf8
+        # Whole-machine load about once a second, so a stall can be matched to a busy disk,
+        # memory paging or a saturated CPU instead of to the app itself. The counter queries are
+        # slow, so they run on their own thread and never delay the UI-thread sampling below.
+        $loadState = [hashtable]::Synchronized(@{ Stop = $false })
+        $loadSampler = [powershell]::Create()
+        [void] $loadSampler.AddScript({
+            param($state, $path)
+            while (-not $state.Stop) {
+                try {
+                    $cpuAll = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'" -ErrorAction Stop
+                    $memory = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory -ErrorAction Stop
+                    $disk = Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk -Filter "Name='_Total'" -ErrorAction Stop
+                    ('{0:HH:mm:ss.fff},{1},{2},{3},{4},{5}' -f (Get-Date), $cpuAll.PercentProcessorTime, $memory.AvailableMBytes, $memory.PagesPersec, $disk.PercentDiskTime, $disk.CurrentDiskQueueLength) | Out-File $path -Append -Encoding utf8
+                }
+                catch { }
+                Start-Sleep -Milliseconds 1000
+            }
+        }).AddArgument($loadState).AddArgument($loadCsv)
+        $loadHandle = $loadSampler.BeginInvoke()
         $stalls = New-Object System.Collections.Generic.List[string]
         $samples = New-Object System.Collections.Generic.List[double]
         $windowLog = New-Object System.Collections.Generic.HashSet[string]
@@ -249,9 +303,13 @@ if ($LiveSeconds -gt 0) {
             Start-Sleep -Milliseconds 100
         }
 
+        $loadState.Stop = $true
+        try { [void] $loadHandle.AsyncWaitHandle.WaitOne(5000); $loadSampler.Dispose() } catch { }
+
         $summary = Join-Path $result 'responsiveness.txt'
         $sorted = @($samples | Sort-Object)
         "Tiny Clips PID $($app.Id), watched for $([int]$watch.Elapsed.TotalSeconds) s, $($samples.Count) samples." | Out-File $summary -Encoding utf8
+        if ($running.Count -gt 1) { "$($running.Count) Tiny Clips processes were running (PIDs $(($running | ForEach-Object Id) -join ', ')); only the newest was watched." | Out-File $summary -Append -Encoding utf8 }
         if ($exited) { "The process EXITED during the watch (exit code $($app.ExitCode))." | Out-File $summary -Append -Encoding utf8 }
         if ($sorted.Count -gt 0) {
             $p50 = $sorted[[int][Math]::Floor(($sorted.Count - 1) * 0.50)]
@@ -306,6 +364,48 @@ Write-Section $system 'Session' {
     "Transparency effects enabled: $((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -ErrorAction SilentlyContinue).EnableTransparency)"
     "PowerShell: $($PSVersionTable.PSVersion) ($([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) process)"
 }
+Write-Section $system 'Storage' {
+    Get-PhysicalDisk -ErrorAction SilentlyContinue | Select-Object FriendlyName, MediaType, BusType, @{ n = 'SizeGB'; e = { [int]($_.Size / 1GB) } }, HealthStatus, OperationalStatus | Format-Table -AutoSize
+    Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, FileSystem, @{ n = 'SizeGB'; e = { [int]($_.Size / 1GB) } }, @{ n = 'FreeGB'; e = { [int]($_.FreeSpace / 1GB) } } | Format-Table -AutoSize
+}
+Write-Section $system 'Memory pressure and machine load (snapshot)' {
+    Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory | Select-Object AvailableMBytes, @{ n = 'CommittedMB'; e = { [int]($_.CommittedBytes / 1MB) } }, @{ n = 'CommitLimitMB'; e = { [int]($_.CommitLimit / 1MB) } }, PercentCommittedBytesInUse, PagesPersec, PageFaultsPersec | Format-List
+    Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'" | Select-Object PercentProcessorTime, PercentIdleTime | Format-List
+    Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk -Filter "Name='_Total'" | Select-Object PercentDiskTime, CurrentDiskQueueLength, AvgDisksecPerWrite, AvgDisksecPerRead, DiskWriteBytesPersec | Format-List
+}
+Write-Section $system 'Busiest processes' {
+    'By CPU time:'
+    Get-Process | Sort-Object CPU -Descending | Select-Object -First 12 Name, Id, @{ n = 'CpuSeconds'; e = { [int]$_.CPU } }, @{ n = 'WorkingSetMB'; e = { [int]($_.WorkingSet64 / 1MB) } } | Format-Table -AutoSize
+    'By memory:'
+    Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 12 Name, Id, @{ n = 'WorkingSetMB'; e = { [int]($_.WorkingSet64 / 1MB) } }, @{ n = 'PrivateMB'; e = { [int]($_.PrivateMemorySize64 / 1MB) } } | Format-Table -AutoSize
+}
+Write-Section $system 'Antivirus' {
+    Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName AntiVirusProduct -ErrorAction SilentlyContinue | Select-Object displayName, productState | Format-Table -AutoSize
+    Get-MpComputerStatus -ErrorAction SilentlyContinue | Select-Object AMRunningMode, RealTimeProtectionEnabled, OnAccessProtectionEnabled, BehaviorMonitorEnabled, AntivirusSignatureLastUpdated | Format-List
+}
+Write-Section $system 'Small file write timing (the app appends to its logs the same way)' {
+    # A healthy machine appends a line in about a millisecond. Tens or hundreds of milliseconds
+    # here means storage, antivirus scanning or memory paging is slowing every app on the machine.
+    $targets = @($env:TEMP) + @(
+        (Join-Path $env:LOCALAPPDATA 'TinyClips\Temp'),
+        (Join-Path $env:LOCALAPPDATA "Packages\$packageFamilyName\LocalCache\Local\TinyClips\Temp")) | Where-Object { Test-Path $_ }
+    foreach ($folder in $targets) {
+        $probe = Join-Path $folder ("tinyclips-write-probe-{0}.tmp" -f [Guid]::NewGuid().ToString('N'))
+        $times = New-Object System.Collections.Generic.List[double]
+        try {
+            for ($i = 0; $i -lt 30; $i++) {
+                $timer = [Diagnostics.Stopwatch]::StartNew()
+                [IO.File]::AppendAllText($probe, "probe line $i`r`n")
+                $times.Add($timer.Elapsed.TotalMilliseconds)
+            }
+            $ordered = @($times | Sort-Object)
+            '{0}' -f $folder
+            '   30 appends: median {0:F1} ms, slowest {1:F1} ms, total {2:F0} ms' -f $ordered[15], $ordered[-1], ($times | Measure-Object -Sum).Sum
+        }
+        catch { "$folder  (could not write: $($_.Exception.Message))" }
+        finally { Remove-Item $probe -Force -ErrorAction SilentlyContinue }
+    }
+}
 
 # ---- Package and process --------------------------------------------------------------------
 $packageReport = Join-Path $result 'package.txt'
@@ -330,10 +430,17 @@ Write-Section $packageReport 'Running Tiny Clips processes' {
     $running = @(Get-Process $processName -ErrorAction SilentlyContinue)
     if ($running.Count -eq 0) { 'Tiny Clips is not running.' }
     foreach ($p in $running) {
+        $runtimeEvidence = 'unknown (loaded coreclr module unavailable)'
+        try {
+            $runtimeModule = $p.Modules | Where-Object { $_.ModuleName -ieq 'coreclr.dll' } | Select-Object -First 1
+            if ($runtimeModule) { $runtimeEvidence = "$(Get-PeMachine $runtimeModule.FileName) (loaded coreclr.dll PE machine; hybrid execution unverified; not collector architecture)" }
+        }
+        catch { $runtimeEvidence = "unknown (module query failed: $($_.Exception.Message))" }
         [pscustomobject]@{
             Id = $p.Id
             Path = $p.Path
             Architecture = [TinyClipsDiag]::ProcessArchitecture($p.Handle)
+            RuntimeArchitectureEvidence = $runtimeEvidence
             StartTime = $p.StartTime
             Responding = $p.Responding
             CpuSeconds = [Math]::Round($p.TotalProcessorTime.TotalSeconds, 1)

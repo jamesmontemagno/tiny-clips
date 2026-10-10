@@ -308,7 +308,7 @@ public sealed partial class RegionSelectWindow : Window
 
     internal void CloseFromController()
     {
-        if (_closedByController)
+        if (_closedByController || _completed)
         {
             return;
         }

@@ -48,6 +48,15 @@ internal static partial class WgcInterop
     private static readonly object SharedDeviceGate = new();
     private static ID3D11Device? _sharedD3DDevice;
     private static IDirect3DDevice? _sharedDirect3DDevice;
+    private static string _sharedDriver = "unknown";
+
+    internal static string GetDeviceDriver(ID3D11Device device)
+    {
+        lock (SharedDeviceGate)
+        {
+            return device == _sharedD3DDevice ? _sharedDriver : "unknown";
+        }
+    }
 
     /// <summary>
     /// Returns a process-wide shared Direct3D 11 device pair for WGC capture. Creating a D3D11
@@ -74,7 +83,7 @@ internal static partial class WgcInterop
                 _sharedD3DDevice = null;
             }
 
-            var d3d = CreateD3D11Device()
+            var d3d = CreateD3D11Device(out var driver)
                 ?? throw new InvalidOperationException("Failed to create a Direct3D 11 device.");
 
             // The device is shared across concurrent WGC sessions whose frame-pool callbacks run
@@ -105,6 +114,7 @@ internal static partial class WgcInterop
 
             _sharedD3DDevice = d3d;
             _sharedDirect3DDevice = winrt;
+            _sharedDriver = driver;
             return (d3d, winrt);
         }
     }
@@ -122,8 +132,11 @@ internal static partial class WgcInterop
         }
     }
 
-    internal static ID3D11Device? CreateD3D11Device()
+    internal static ID3D11Device? CreateD3D11Device() => CreateD3D11Device(out _);
+
+    private static ID3D11Device? CreateD3D11Device(out string driver)
     {
+        driver = "unknown";
         var featureLevels = new[]
         {
             FeatureLevel.Level_11_1,
@@ -152,6 +165,7 @@ internal static partial class WgcInterop
 
                 if (result.Success)
                 {
+                    driver = driverType == DriverType.Warp ? "warp" : "hardware";
                     return device;
                 }
             }

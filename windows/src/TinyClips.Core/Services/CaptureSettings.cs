@@ -366,6 +366,18 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("showScreenshotEditor", value);
     }
 
+    public bool ScreenshotEditorNativeSize
+    {
+        get => _settings.Get("screenshotEditorNativeSize", false);
+        set => _settings.Set("screenshotEditorNativeSize", value);
+    }
+
+    public bool ConfirmEditorEscape
+    {
+        get => _settings.Get("confirmEditorEscape", true);
+        set => _settings.Set("confirmEditorEscape", value);
+    }
+
     public bool ScreenshotUsesLiveCapture
     {
         get => _settings.Get("screenshotUsesLiveCapture", false);
@@ -581,6 +593,11 @@ public sealed class CaptureSettings : ICaptureSettings
         }
     }
 
+    public string GetTeleprompterTranscriptForEditing() =>
+        _settings is ILargeTextSettingsService largeTextSettings
+            ? largeTextSettings.GetLargeTextForEditing("teleprompterTranscript", string.Empty)
+            : _settings.Get("teleprompterTranscript", string.Empty);
+
     public double TeleprompterScrollSpeed
     {
         get => _settings.Get("teleprompterScrollSpeed", 50.0);
@@ -687,6 +704,18 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         get => _settings.Get("screenshotWindowHotKeyModifiers", 0);
         set => _settings.Set("screenshotWindowHotKeyModifiers", value);
+    }
+
+    public int ScreenshotScreenHotKeyCode
+    {
+        get => _settings.Get("screenshotScreenHotKeyCode", 0);
+        set => _settings.Set("screenshotScreenHotKeyCode", value);
+    }
+
+    public int ScreenshotScreenHotKeyModifiers
+    {
+        get => _settings.Get("screenshotScreenHotKeyModifiers", 0);
+        set => _settings.Set("screenshotScreenHotKeyModifiers", value);
     }
 
     public ImageFormat ImageFormat
@@ -818,6 +847,8 @@ public sealed class CaptureSettings : ICaptureSettings
         WebcamCornerPosition = WebcamCornerPosition.BottomRight;
         WebcamCornerRadius = null;
         ShowScreenshotEditor = true;
+        ScreenshotEditorNativeSize = false;
+        ConfirmEditorEscape = true;
         ScreenshotUsesLiveCapture = false;
         ShowGifTrimmer = true;
         SaveImmediatelyScreenshot = true;
@@ -868,6 +899,8 @@ public sealed class CaptureSettings : ICaptureSettings
         ScreenshotRegionHotKeyModifiers = 0;
         ScreenshotWindowHotKeyCode = 0;
         ScreenshotWindowHotKeyModifiers = 0;
+        ScreenshotScreenHotKeyCode = 0;
+        ScreenshotScreenHotKeyModifiers = 0;
         _analytics?.Clear();
     }
 

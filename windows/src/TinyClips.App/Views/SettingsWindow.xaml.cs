@@ -31,41 +31,67 @@ public sealed partial class SettingsWindow : Window
     private const ulong MaximumTranscriptSizeInBytes = 1_000_000;
 
     private readonly Dictionary<SettingsSectionKind, UserControl> _sectionCache = new();
+    private readonly WindowOpenTrace? _openTrace;
     private XamlRoot? _xamlRoot;
+    private bool _closed;
 
     public SettingsViewModel ViewModel { get; }
 
     public SettingsWindow()
+        : this(WindowOpenTrace.Start(WindowOpenKind.Settings))
     {
-        ViewModel = new SettingsViewModel(
-            App.Services.GetRequiredService<ICaptureSettings>(),
-            App.Services.GetRequiredService<IHotKeyService>(),
-            App.Services.GetRequiredService<ILaunchAtLoginService>(),
-            App.Services.GetRequiredService<IAudioDeviceService>(),
-            App.Services.GetRequiredService<IWebcamDeviceEnumerator>(),
-            App.Services.GetRequiredService<IClipStorageService>(),
-            App.Services.GetRequiredService<IClipAnalyticsService>(),
-            App.Services.GetRequiredService<IUploadcareCredentialStore>());
+    }
 
-        InitializeComponent();
+    private SettingsWindow(WindowOpenTrace? openTrace)
+    {
+        _openTrace = openTrace;
+        _openTrace?.Mark(WindowOpenMilestone.ConstructorEntered);
+        using var construction = _openTrace?.Measure(WindowOpenPhase.ConstructorBody);
+        using (_openTrace?.Measure(WindowOpenPhase.ServicesAndViewModel))
+        {
+            ViewModel = new SettingsViewModel(
+                App.Services.GetRequiredService<ICaptureSettings>(),
+                App.Services.GetRequiredService<IHotKeyService>(),
+                App.Services.GetRequiredService<ILaunchAtLoginService>(),
+                App.Services.GetRequiredService<IAudioDeviceService>(),
+                App.Services.GetRequiredService<IWebcamDeviceEnumerator>(),
+                App.Services.GetRequiredService<IClipStorageService>(),
+                App.Services.GetRequiredService<IClipAnalyticsService>(),
+                App.Services.GetRequiredService<IUploadcareCredentialStore>());
+        }
 
-        Activated += OnActivatedSetIcon;
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
+        using (_openTrace?.Measure(WindowOpenPhase.Xaml))
+        {
+            InitializeComponent();
+        }
+
+        WindowOpenDiagnostics.Observe(this, RootGrid, _openTrace);
+        using (_openTrace?.Measure(WindowOpenPhase.ChromeAndPlacement))
+        {
+            Activated += OnActivatedSetIcon;
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(AppTitleBar);
+        }
 
         // Triggers OnSettingsNavigationSelectionChanged, which lazily constructs and shows the
         // General section — the only section realized at startup.
         SettingsNavigation.SelectedItem = GeneralNavigationItem;
 
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        UpdatePreferredMinimumSize(AppWindowPlacement.GetScaleForWindow(hwnd));
+        using (_openTrace?.Measure(WindowOpenPhase.ChromeAndPlacement))
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            UpdatePreferredMinimumSize(AppWindowPlacement.GetScaleForWindow(hwnd));
+            AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 1200, 860);
+        }
 
-        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 1200, 860);
-
-        RootGrid.Loaded += OnRootGridLoaded;
-        ApplyTheme();
-        ViewModel.ThemeChanged += ApplyTheme;
-        Closed += OnClosed;
+        using (_openTrace?.Measure(WindowOpenPhase.ThemeAndSubscriptions))
+        {
+            RootGrid.Loaded += OnRootGridLoaded;
+            ApplyTheme();
+            ViewModel.ThemeChanged += ApplyTheme;
+            Closed += OnClosed;
+        }
+        _openTrace?.Mark(WindowOpenMilestone.ConstructorCompleted);
     }
 
     private void OnActivatedSetIcon(object sender, WindowActivatedEventArgs args)
@@ -116,6 +142,7 @@ public sealed partial class SettingsWindow : Window
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        _closed = true;
         RootGrid.Loaded -= OnRootGridLoaded;
         if (_xamlRoot is not null)
         {
@@ -175,6 +202,7 @@ public sealed partial class SettingsWindow : Window
             return existing;
         }
 
+        using var realization = _openTrace?.Measure(WindowOpenPhase.SettingsSection);
         UserControl section = kind switch
         {
             SettingsSectionKind.General => CreateGeneralSection(),
@@ -229,7 +257,7 @@ public sealed partial class SettingsWindow : Window
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
         StorageFolder? folder = await picker.PickSingleFolderAsync();
-        if (folder is not null)
+        if (!_closed && folder is not null)
         {
             switch (type)
             {
@@ -262,19 +290,28 @@ public sealed partial class SettingsWindow : Window
         try
         {
             var file = await picker.PickSingleFileAsync();
-            if (file is null)
+            if (_closed || file is null)
             {
                 return;
             }
 
             var properties = await file.GetBasicPropertiesAsync();
+            if (_closed)
+            {
+                return;
+            }
+
             if (properties.Size > MaximumTranscriptSizeInBytes)
             {
                 await ShowTranscriptLoadErrorAsync("The selected transcript is larger than 1 MB.");
                 return;
             }
 
-            ViewModel.TeleprompterTranscript = await FileIO.ReadTextAsync(file);
+            var transcript = await FileIO.ReadTextAsync(file);
+            if (!_closed)
+            {
+                ViewModel.ImportTeleprompterTranscript(transcript);
+            }
         }
         catch (Exception)
         {
@@ -285,6 +322,11 @@ public sealed partial class SettingsWindow : Window
 
     private async Task ShowTranscriptLoadErrorAsync(string message)
     {
+        if (_closed)
+        {
+            return;
+        }
+
         var dialog = new ContentDialog
         {
             CloseButtonText = "Close",

@@ -685,30 +685,33 @@ private class ClipsViewModel: ObservableObject {
         let secretKey = credentials.secretKey
         let clipPath = item.filePath
 
-        Task {
-            defer { uploadingClipIDs.remove(item.id) }
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.uploadingClipIDs.remove(item.id) }
             do {
                 let result = try await UploadcareService.shared.upload(
                     fileURL: item.url,
                     publicKey: publicKey,
                     secretKey: secretKey,
                     onProgress: { [weak self] progress in
-                        Task { @MainActor in
-                            self?.uploadProgressByPath[clipPath] = progress
-                            self?.uploadStatusByPath[clipPath] = "Uploading… \(Int(progress * 100))%"
+                        guard let self else { return }
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            self.uploadProgressByPath[clipPath] = progress
+                            self.uploadStatusByPath[clipPath] = "Uploading… \(Int(progress * 100))%"
                         }
                     }
                 )
-                metadataStore.upsert(path: clipPath) { metadata in
+                self.metadataStore.upsert(path: clipPath) { metadata in
                     metadata.uploadcareURL = result.fileURL.absoluteString
                 }
-                metadataByPath = metadataStore.metadataMap()
-                uploadStatusByPath[clipPath] = "Uploaded"
-                uploadProgressByPath.removeValue(forKey: clipPath)
-                copyTextToClipboard(result.fileURL.absoluteString)
+                self.metadataByPath = self.metadataStore.metadataMap()
+                self.uploadStatusByPath[clipPath] = "Uploaded"
+                self.uploadProgressByPath.removeValue(forKey: clipPath)
+                self.copyTextToClipboard(result.fileURL.absoluteString)
             } catch {
-                uploadStatusByPath[clipPath] = "Upload failed"
-                uploadProgressByPath.removeValue(forKey: clipPath)
+                self.uploadStatusByPath[clipPath] = "Upload failed"
+                self.uploadProgressByPath.removeValue(forKey: clipPath)
                 SaveService.shared.showError("Uploadcare upload failed: \(error.localizedDescription)")
             }
         }

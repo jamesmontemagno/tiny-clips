@@ -29,7 +29,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
 - **Recording indicator** — a floating always-on-top panel shows the elapsed time and a Stop button
   (with the stop hotkey) while recording.
 - **Editor & trimmers** — an optional post-capture **screenshot editor** (crop, copy, save / save-a-copy),
-  a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture.
+  a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture. `Esc`
+  closes each of them, asking first unless **Confirm before closing editors with Esc** is turned
+  off in General settings; in the editor it clears a crop selection first.
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
@@ -45,7 +47,8 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   auto-refresh, archive-old-clips). Metadata is stored in `clip-metadata.json` in the app's local
   data folder; the files themselves are never modified.
 - **Global hotkeys** — Screenshot `Ctrl+Shift+5`, Video `Ctrl+Shift+6`, GIF `Ctrl+Shift+7`,
-  Stop recording `Ctrl+Shift+S`.
+  Stop recording `Ctrl+Shift+S`. Optional direct Screenshot region, screen, and window shortcuts
+  can be set in Settings → Keyboard shortcuts; they are unbound by default.
 - **Launch at login** — optionally start TinyClips when you sign in to Windows.
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
 - **System-tray** Fluent menu (rounded/acrylic), light/dark/system theming, full **Settings** window.
@@ -76,6 +79,7 @@ windows/
     ui/                         winapp ui automation scripts (run against a live app by PID)
   tools/
     RecordingBenchmark/         Headless CPU-vs-GPU recording benchmark (manual; see docs)
+    Collect-Diagnostics.ps1     Zips logs, system details and UI-stall timings from any machine
   packaging/
     msix/  winget/              Packaging artifacts (later phases)
   spikes/                       Throwaway de-risking prototypes (not in the solution/CI)
@@ -97,7 +101,48 @@ dotnet run --project windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:
 
 # Test
 dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Debug
+dotnet test windows/tests/TinyClips.App.Tests/TinyClips.App.Tests.csproj -c Debug -p:Platform=x64
 ```
+
+The App tests compile the shipping Settings view model with fake services and a controllable
+transcript-save scheduler, without launching XAML or querying devices, credentials, or real
+transcripts. They cover lazy lookup counts, initial TwoWay-binding write-backs, overlapping
+realization, edits/imports/reset, reopening, and late results after closure.
+
+Settings restores persisted scalar preferences at construction and repairs only the newly
+realized section after its first layout pass (or the rapid-navigation dispatcher fallback).
+Realization suppression is reference-counted per section; already-loaded sections can still
+persist edits while another section is realizing. Uploadcare credential status and teleprompter
+text are loaded only on their relevant section's first realization and cached for that window.
+Save/clear/import/reset update those caches without rereading external state; a pending
+transcript edit takes precedence over older persisted text and is flushed on close. Reopening
+Settings creates fresh caches. Analytics and media-device initialization remain lazy.
+Settings uses the strict large-text editing read: an inaccessible transcript produces an inline
+error and disables its text editor rather than caching a misleading empty value. Existing
+non-editing readers retain their fallback behavior.
+
+### Pending native Settings responsiveness validation
+
+The automated Settings tests establish lookup counts and persistence correctness, not
+navigation responsiveness. The native ARM64 and native x64 comparison required by #405 remains
+unperformed; neither the tests nor a cross-compiled build satisfies that acceptance criterion.
+No navigation timing improvement is claimed.
+
+Before marking hardware validation complete, compare the baseline and this change on a native
+ARM64 device and a native x64 device, using the same build configuration and synthetic settings
+on each device. Do not use x64 emulation as the ARM64 result or profile concurrently on a shared
+host. Keep credentials, transcripts, settings, traces, and local measurements private.
+
+For each build/device pair, repeat a fixed navigation sequence through General, Screenshot,
+GIF, Uploadcare, and Teleprompter. Record first realization and cached revisits separately,
+including selection-to-first-layout latency and UI-thread stalls, using identical synthetic
+transcript sizes and credential fixtures. Also exercise rapid navigation, pending transcript
+edits, and closing during delayed initialization. Confirm unrelated sections perform zero
+credential/transcript lookups and relevant sections perform one initial lookup without
+repeated reads on revisits. Preserve keyboard access and light/dark/system theme behavior.
+Record the before/after comparison privately with the build revisions, native architectures,
+fixture sizes, repetition count, and measurement method; do not infer responsiveness from
+service-call counts alone.
 
 To build the **Microsoft Store** flavor (same feature set, Store distribution behavior), set:
 
@@ -115,6 +160,9 @@ the elapsed time. Global hotkeys work app-wide.
 For coordinate/DPI behaviour across mixed-DPI monitors, see
 [`docs/dpi-and-coordinates.md`](docs/dpi-and-coordinates.md).
 
+For opt-in window-construction phase diagnostics and the private cold/warm validation
+protocol, see [`docs/first-open-responsiveness.md`](docs/first-open-responsiveness.md).
+
 For how the screen, webcam, microphone, and system audio are kept in sync (shared timeline,
 WASAPI capture, drift/discontinuity correction, audio back-pressure, the *Audio offset* setting, and
 the end-of-recording sync report), see [`docs/audio-video-sync.md`](docs/audio-video-sync.md).
@@ -123,10 +171,16 @@ For the experimental **GPU recording pipeline** (zero-copy WGC → Direct2D over
 encoder), the per-recording performance report, and the `RecordingBenchmark` harness with measured
 CPU-vs-GPU numbers, see [`docs/gpu-recording-pipeline.md`](docs/gpu-recording-pipeline.md).
 
+For schema-2 timing/cadence/submission definitions, requested versus actual backends, unverified
+encoder selection, and the local collector's target-process architecture evidence and required
+helper source, see the [diagnostic contract](docs/gpu-recording-pipeline.md#41-diagnostic-contract-schema-2).
+Historical benchmark values are not verified encoder/output-frame measurements.
+
 ## CI
 
-`.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core tests on
-`windows-latest`. It is path-filtered to `windows/**`, so it only runs when Windows code changes.
+`.github/workflows/windows-build.yml` builds `x64` + `ARM64` and runs the Core and Settings
+view-model tests on `windows-latest`. It is path-filtered to `windows/**`, so it only runs when
+Windows code changes.
 
 ## Accessibility release gate
 

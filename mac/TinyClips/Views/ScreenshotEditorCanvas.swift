@@ -116,12 +116,17 @@ struct ScreenshotEditorCanvasView: View {
     @ObservedObject var viewModel: ScreenshotEditorViewModel
     let containerSize: CGSize
     let zoomScale: CGFloat
+    let backingScale: CGFloat
     let panOffset: CGSize
 
     @State private var cropHover: CropDragMode?
 
     var body: some View {
-        let exportLayout = viewModel.displayLayout(in: containerSize, zoomScale: zoomScale)
+        let exportLayout = viewModel.displayLayout(
+            in: containerSize,
+            zoomScale: zoomScale,
+            backingScale: backingScale
+        )
         let imageSize = exportLayout.imageRect.size
         let frameSize = exportLayout.frameSize
         let frameOrigin = CGPoint(
@@ -201,6 +206,10 @@ struct ScreenshotEditorCanvasView: View {
                     // Text annotations
                     ForEach(viewModel.annotations.filter { $0.tool == .text }) { annotation in
                         let scaledRect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
+                        let boxStyle = annotation.textBoxStyle
+                        let boxPadding = viewModel.textBoxMetric(boxStyle.padding, forRenderedImageWidth: imageSize.width)
+                        let boxBorderWidth = viewModel.textBoxMetric(boxStyle.borderWidth, forRenderedImageWidth: imageSize.width)
+                        let boxCornerRadius = viewModel.textBoxMetric(boxStyle.cornerRadius, forRenderedImageWidth: imageSize.width)
                         Text(annotation.text)
                             .font(textPreviewFont(
                                 family: annotation.fontFamily,
@@ -210,6 +219,20 @@ struct ScreenshotEditorCanvasView: View {
                             .italic(annotation.isItalic)
                             .underline(annotation.isUnderlined)
                             .foregroundColor(annotation.color)
+                            .frame(
+                                width: max(1, scaledRect.width),
+                                height: max(1, scaledRect.height),
+                                alignment: .center
+                            )
+                            .padding(boxPadding + boxBorderWidth / 2)
+                            .background {
+                                RoundedRectangle(cornerRadius: boxCornerRadius)
+                                    .fill(boxStyle.backgroundColor)
+                            }
+                            .overlay {
+                                RoundedRectangle(cornerRadius: boxCornerRadius)
+                                    .strokeBorder(boxStyle.borderColor, lineWidth: boxBorderWidth)
+                            }
                             .rotationEffect(.radians(annotation.rotation))
                             .position(x: scaledRect.midX, y: scaledRect.midY)
                             .allowsHitTesting(false)
@@ -277,6 +300,8 @@ struct ScreenshotEditorCanvasView: View {
                         isItalic: viewModel.textIsItalic,
                         isUnderlined: viewModel.textIsUnderlined,
                         color: viewModel.selectedColor,
+                        textBoxStyle: viewModel.textBoxStyle,
+                        boxScale: imageSize.width / 800,
                         onCommit: {
                             viewModel.commitTextAnnotation()
                         }

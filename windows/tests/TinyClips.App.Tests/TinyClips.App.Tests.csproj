@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <WindowsAppSDKBootstrapInitialize>false</WindowsAppSDKBootstrapInitialize>
+    <WindowsAppSDKDeploymentManagerInitialize>false</WindowsAppSDKDeploymentManagerInitialize>
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TinyClips.Core\TinyClips.Core.csproj" />
+    <!-- Compile the shipping view model without launching a packaged XAML application. -->
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\SettingsViewModel.cs" Link="SettingsViewModel.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Settings\SettingsSectionKind.cs" Link="SettingsSectionKind.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Settings\TeleprompterTranscriptSaveScheduler.cs" Link="TeleprompterTranscriptSaveScheduler.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\ClipboardService.cs" Link="ClipboardService.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\QuickBugReport.cs" Link="QuickBugReport.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Infrastructure\BuildFlavor.cs" Link="BuildFlavor.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\GlobalHotKeyFailureFormatter.cs" Link="GlobalHotKeyFailureFormatter.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\GlobalHotKeyManager.cs" Link="GlobalHotKeyManager.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260528001" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

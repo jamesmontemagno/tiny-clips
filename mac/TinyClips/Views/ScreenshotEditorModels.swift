@@ -3,6 +3,144 @@ import SwiftUI
 
 let textSystemFontFamily = "System"
 
+enum TextBoxPreset: String, CaseIterable, Identifiable {
+    case plain
+    case light
+    case dark
+    case accent
+    case custom
+
+    var id: String { rawValue }
+
+    var label: String {
+        rawValue.capitalized
+    }
+}
+
+struct TextBoxStyle {
+    static let borderWidthRange: ClosedRange<CGFloat> = 0...12
+    static let paddingRange: ClosedRange<CGFloat> = 0...48
+    static let cornerRadiusRange: ClosedRange<CGFloat> = 0...32
+
+    var preset: TextBoxPreset = .plain
+    var backgroundColor: Color = .clear
+    var borderColor: Color = .clear
+    var borderWidth: CGFloat = 0
+    var padding: CGFloat = 0
+    var cornerRadius: CGFloat = 0
+
+    static var plain: TextBoxStyle {
+        TextBoxStyle()
+    }
+
+    static func resolved(_ preset: TextBoxPreset, currentTextColor: Color) -> (style: TextBoxStyle, textColor: Color) {
+        switch preset {
+        case .plain:
+            return (.plain, currentTextColor)
+        case .light:
+            return (
+                TextBoxStyle(
+                    preset: .light,
+                    backgroundColor: Color(nsColor: NSColor(srgbRed: 0.95, green: 0.95, blue: 0.96, alpha: 0.96)),
+                    borderColor: Color(nsColor: NSColor(srgbRed: 0.12, green: 0.12, blue: 0.14, alpha: 0.18)),
+                    borderWidth: 1,
+                    padding: 8,
+                    cornerRadius: 6
+                ),
+                Color(nsColor: NSColor(srgbRed: 0.08, green: 0.08, blue: 0.09, alpha: 1))
+            )
+        case .dark:
+            return (
+                TextBoxStyle(
+                    preset: .dark,
+                    backgroundColor: Color(nsColor: NSColor(srgbRed: 0.10, green: 0.10, blue: 0.12, alpha: 0.94)),
+                    borderColor: Color(nsColor: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.22)),
+                    borderWidth: 1,
+                    padding: 8,
+                    cornerRadius: 6
+                ),
+                .white
+            )
+        case .accent:
+            let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? .controlAccentColor
+            return (
+                TextBoxStyle(
+                    preset: .accent,
+                    backgroundColor: Color(nsColor: accent),
+                    borderColor: .clear,
+                    borderWidth: 0,
+                    padding: 8,
+                    cornerRadius: 6
+                ),
+                contrastTextColor(for: accent)
+            )
+        case .custom:
+            return (TextBoxStyle(preset: .custom), currentTextColor)
+        }
+    }
+
+    static func decoratedRect(for contentRect: CGRect, scale: CGFloat, style: TextBoxStyle) -> CGRect {
+        let inset = (style.padding + style.borderWidth / 2) * scale
+        return contentRect.insetBy(dx: -inset, dy: -inset)
+    }
+
+    static func normalizedDecoratedRect(
+        for contentRect: CGRect,
+        imageSize: CGSize,
+        style: TextBoxStyle
+    ) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return contentRect }
+        let pixelInset = (style.padding + style.borderWidth / 2) * (imageSize.width / 800)
+        return contentRect.insetBy(
+            dx: -(pixelInset / imageSize.width),
+            dy: -(pixelInset / imageSize.height)
+        )
+    }
+
+    static func normalizedContentRect(
+        for decoratedRect: CGRect,
+        imageSize: CGSize,
+        style: TextBoxStyle
+    ) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return decoratedRect }
+        let pixelInset = (style.padding + style.borderWidth / 2) * (imageSize.width / 800)
+        return decoratedRect.insetBy(
+            dx: pixelInset / imageSize.width,
+            dy: pixelInset / imageSize.height
+        )
+    }
+
+    mutating func markCustom() {
+        preset = .custom
+        borderWidth = borderWidth.clamped(to: Self.borderWidthRange)
+        padding = padding.clamped(to: Self.paddingRange)
+        cornerRadius = cornerRadius.clamped(to: Self.cornerRadiusRange)
+    }
+
+    func scaled(by factor: CGFloat) -> TextBoxStyle {
+        var result = self
+        result.borderWidth = (borderWidth * factor).clamped(to: Self.borderWidthRange)
+        result.padding = (padding * factor).clamped(to: Self.paddingRange)
+        result.cornerRadius = (cornerRadius * factor).clamped(to: Self.cornerRadiusRange)
+        if result.preset != .plain {
+            result.preset = .custom
+        }
+        return result
+    }
+
+    private static func contrastTextColor(for color: NSColor) -> Color {
+        let converted = color.usingColorSpace(.sRGB) ?? color
+        let luminance = 0.2126 * linearized(converted.redComponent)
+            + 0.7152 * linearized(converted.greenComponent)
+            + 0.0722 * linearized(converted.blueComponent)
+        return luminance > 0.179 ? .black : .white
+    }
+
+    private static func linearized(_ value: CGFloat) -> CGFloat {
+        value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+    }
+}
+
 // Number tool rendering constants
 let numberCircleMinPixels: CGFloat = 20
 let numberCircleMaxPixels: CGFloat = 80
@@ -69,6 +207,7 @@ struct ScreenshotAnnotation: Identifiable {
     var isBold: Bool = false
     var isItalic: Bool = false
     var isUnderlined: Bool = false
+    var textBoxStyle: TextBoxStyle = .plain
     var redactionBlurPreset: RedactionBlurPreset = .medium
     var arrowStyle: ArrowStyle = .straight
     /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
@@ -556,16 +695,28 @@ enum ScreenshotEditorZoomMath {
     static let maximumScale: CGFloat = 4
     static let presets: [CGFloat] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
 
-    static func clamp(_ scale: CGFloat) -> CGFloat {
+    static func clamp(_ scale: CGFloat, maximumScale: CGFloat = ScreenshotEditorZoomMath.maximumScale) -> CGFloat {
         min(maximumScale, max(minimumScale, scale))
     }
 
-    static func steppedScale(from scale: CGFloat, direction: Int) -> CGFloat {
-        let current = clamp(scale)
+    static func steppedScale(
+        from scale: CGFloat,
+        direction: Int,
+        maximumScale: CGFloat = ScreenshotEditorZoomMath.maximumScale
+    ) -> CGFloat {
+        let current = clamp(scale, maximumScale: maximumScale)
         if direction > 0 {
             return presets.first(where: { $0 > current + 0.001 }) ?? maximumScale
         }
         return presets.reversed().first(where: { $0 < current - 0.001 }) ?? minimumScale
+    }
+
+    static func nativeSizeScale(fitScale: CGFloat, backingScale: CGFloat) -> CGFloat? {
+        guard fitScale.isFinite, fitScale > 0, backingScale.isFinite, backingScale > 0 else {
+            return nil
+        }
+        let scale = 1 / (fitScale * backingScale)
+        return scale.isFinite && scale > 0 ? scale : nil
     }
 
     static func focalAdjustedPan(

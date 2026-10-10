@@ -349,6 +349,7 @@ enum BrandingOverlayProcessor {
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
         exportSession.videoComposition = videoComposition
+        exportSession.audioMix = RecordingAudioMixdown.audioMix(for: composition)
         exportSession.shouldOptimizeForNetworkUse = true
 
         onProgress?(0.8)
@@ -595,7 +596,7 @@ enum BrandingOverlayProcessor {
         let mask: CIImage?
     }
 
-    private final class WebcamOverlayInstruction: NSObject, AVVideoCompositionInstructionProtocol {
+    private final class WebcamOverlayInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
         let timeRange: CMTimeRange
         let enablePostProcessing = false
         let containsTweening = false

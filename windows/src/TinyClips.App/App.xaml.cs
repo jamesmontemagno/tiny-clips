@@ -135,6 +135,8 @@ public partial class App : Application
         RunStartupStep(nameof(RegisterGlobalHotKeys), () => RegisterGlobalHotKeys());
         RunStartupStep(nameof(ShowOnboardingIfNeeded), ShowOnboardingIfNeeded);
         RunStartupStep(nameof(HandleFileActivation), HandleFileActivation);
+        // From here on, later launches are forwarded to this process instead of starting another.
+        RunStartupStep(nameof(SingleInstance), () => SingleInstance.SetActivationHandler(OnRedirectedActivation));
         // Create the shared D3D capture device off the UI thread so the first capture is instant.
         _ = Task.Run(() => RunStartupStep("ScreenCaptureWarmUp", () =>
             Services.GetRequiredService<IScreenCaptureService>().WarmUp()));
@@ -213,30 +215,90 @@ public partial class App : Application
     {
         try
         {
-            var activation = Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs();
-            if (activation?.Kind != Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File)
-            {
-                return;
-            }
-
-            if (activation.Data is not Windows.ApplicationModel.Activation.IFileActivatedEventArgs fileArgs)
-            {
-                return;
-            }
-
-            foreach (var item in fileArgs.Files)
-            {
-                if (item is StorageFile file && IsSupportedImage(file.Path))
-                {
-                    var path = file.Path;
-                    _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(path));
-                    break;
-                }
-            }
+            TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs());
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"File activation handling failed: {ex}");
+        }
+    }
+
+    /// <summary>Opens the first supported image of a file activation in the screenshot editor.</summary>
+    private bool TryOpenActivatedFile(Microsoft.Windows.AppLifecycle.AppActivationArguments? activation)
+    {
+        if (activation?.Kind != Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File ||
+            activation.Data is not Windows.ApplicationModel.Activation.IFileActivatedEventArgs fileArgs)
+        {
+            return false;
+        }
+
+        foreach (var item in fileArgs.Files)
+        {
+            if (item is StorageFile file && IsSupportedImage(file.Path))
+            {
+                var path = file.Path;
+                return _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(path)) == true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Receives the activation of a later launch that <see cref="SingleInstance"/> forwarded here.
+    /// Runs on a background thread, so the work is queued to the UI thread.
+    /// </summary>
+    private void OnRedirectedActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments activation)
+    {
+        var queued = _dispatcher?.TryEnqueue(() =>
+        {
+            try
+            {
+                HandleRedirectedActivation(activation);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Redirected activation failed: {ex}");
+                CrashDiagnostics.Log("Redirected activation", ex, handled: true);
+            }
+        });
+
+        if (queued != true)
+        {
+            Debug.WriteLine("Redirected activation dropped: the UI thread is not available.");
+        }
+    }
+
+    private void HandleRedirectedActivation(Microsoft.Windows.AppLifecycle.AppActivationArguments activation)
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+
+        switch (activation.Kind)
+        {
+            case Microsoft.Windows.AppLifecycle.ExtendedActivationKind.File:
+                TryOpenActivatedFile(activation);
+                break;
+
+            case Microsoft.Windows.AppLifecycle.ExtendedActivationKind.Launch:
+                // Tiny Clips has no main window, so launching it again while it is running used to
+                // look like nothing happened. Show where it lives instead.
+                if (_onboardingWindow is not null)
+                {
+                    ActivateWindowToForeground(_onboardingWindow);
+                }
+                else
+                {
+                    ShowTrayPopup();
+                }
+
+                break;
+
+            default:
+                // Startup-task and other activations need nothing when the app is already running.
+                break;
         }
     }
 
@@ -524,8 +586,8 @@ public partial class App : Application
             Dismiss));
         footerActions.Children.Add(CreateFooterButton(
             GlyphBug,
-            "File a Bug",
-            "TrayFileBugButton",
+            "Send Feedback",
+            "TrayFeedbackButton",
             new RelayCommand(OpenQuickBugReportWindow),
             Dismiss));
 		footerActions.Children.Add(CreateFooterButton(
@@ -785,6 +847,8 @@ public partial class App : Application
 
     private Task CaptureScreenshotWindowAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.Window);
 
+    private Task CaptureScreenshotScreenAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.Screen);
+
     private Task RecognizeTextAsync() => BeginCaptureAsync(CaptureType.Screenshot, CapturePickerMode.RecognizeText);
 
     /// <summary>
@@ -857,7 +921,8 @@ public partial class App : Application
                 : new EarlyBackdrop(earlyBackdropMonitors!, earlyBackdrops, earlyBackdropStarted);
             var resolved = await ResolveTargetAsync(
                 isTextRecognition || isScrolling ? CapturePickerMode.Region : pick.Mode,
-                earlyBackdrop);
+                earlyBackdrop,
+                captureFlowCts.Token);
             CaptureFlowTrace.Mark($"target: {(resolved is null ? "cancelled" : "resolved")}");
             if (resolved is not { } selection)
             {
@@ -1147,7 +1212,7 @@ public partial class App : Application
     /// <summary>
     /// Shared post-capture path for screenshots and scrolling captures: save (and copy to the
     /// clipboard) in the background, then open the editor from memory or from the saved file, or
-    /// reveal + toast when the editor is disabled (or <paramref name="allowEditor"/> is false).
+    /// optionally reveal + toast when the editor is disabled (or <paramref name="allowEditor"/> is false).
     /// </summary>
     private async Task PresentScreenshotFrameAsync(
         CapturedFrame frame,
@@ -1186,7 +1251,10 @@ public partial class App : Application
         }
 
         var path = await saveTask;
-        RevealInExplorer(path);
+        if (settings.ShowInExplorer)
+        {
+            RevealInExplorer(path);
+        }
         ShowSaveToast(path);
         ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
     }
@@ -1507,7 +1575,10 @@ public partial class App : Application
         settings.WebcamCornerRadius = setup.WebcamCornerRadius;
     }
 
-    private async Task<TargetSelection?> ResolveTargetAsync(CapturePickerMode mode, EarlyBackdrop? earlyBackdrop = null)
+    private async Task<TargetSelection?> ResolveTargetAsync(
+        CapturePickerMode mode,
+        EarlyBackdrop? earlyBackdrop = null,
+        CancellationToken cancellationToken = default)
     {
         var monitors = Services.GetRequiredService<IMonitorService>();
         var settings = Services.GetRequiredService<ICaptureSettings>();
@@ -1533,7 +1604,7 @@ public partial class App : Application
                     : null;
                 CaptureFlowTrace.Mark(backdrops is null ? "region: capturing fresh backdrop" : "region: reusing early backdrop");
 
-                var result = await RegionSelectController.RunAsync(overlayMonitors, backdrops);
+                var result = await RegionSelectController.RunAsync(overlayMonitors, backdrops, cancellationToken);
                 if (result is not { } selection)
                 {
                     return null;
@@ -2878,6 +2949,7 @@ public partial class App : Application
         {
             return GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
+                    null,
                     "TinyClips hotkey service",
                     0,
                     "The UI dispatcher is not available."));
@@ -2893,6 +2965,7 @@ public partial class App : Application
 
             var screenshot = hotKeys.GetBinding(HotKeyAction.Screenshot);
             manager.Add(
+                HotKeyAction.Screenshot,
                 $"Screenshot ({screenshot.DisplayString})",
                 screenshot.ModifiersValue,
                 screenshot.VirtualKey,
@@ -2902,6 +2975,7 @@ public partial class App : Application
             if (!screenshotRegion.IsUnbound)
             {
                 manager.Add(
+                    HotKeyAction.ScreenshotRegion,
                     $"Screenshot region ({screenshotRegion.DisplayString})",
                     screenshotRegion.ModifiersValue,
                     screenshotRegion.VirtualKey,
@@ -2912,14 +2986,27 @@ public partial class App : Application
             if (!screenshotWindow.IsUnbound)
             {
                 manager.Add(
+                    HotKeyAction.ScreenshotWindow,
                     $"Screenshot window ({screenshotWindow.DisplayString})",
                     screenshotWindow.ModifiersValue,
                     screenshotWindow.VirtualKey,
                     () => _ = CaptureScreenshotWindowAsync());
             }
 
+            var screenshotScreen = hotKeys.GetBinding(HotKeyAction.ScreenshotScreen);
+            if (!screenshotScreen.IsUnbound)
+            {
+                manager.Add(
+                    HotKeyAction.ScreenshotScreen,
+                    $"Screenshot screen ({screenshotScreen.DisplayString})",
+                    screenshotScreen.ModifiersValue,
+                    screenshotScreen.VirtualKey,
+                    () => _ = CaptureScreenshotScreenAsync());
+            }
+
             var videoBinding = hotKeys.GetBinding(HotKeyAction.RecordVideo);
             manager.Add(
+                HotKeyAction.RecordVideo,
                 $"Record video ({videoBinding.DisplayString})",
                 videoBinding.ModifiersValue,
                 videoBinding.VirtualKey,
@@ -2927,6 +3014,7 @@ public partial class App : Application
 
             var gifBinding = hotKeys.GetBinding(HotKeyAction.RecordGif);
             manager.Add(
+                HotKeyAction.RecordGif,
                 $"Record GIF ({gifBinding.DisplayString})",
                 gifBinding.ModifiersValue,
                 gifBinding.VirtualKey,
@@ -2934,6 +3022,7 @@ public partial class App : Application
 
             var ocrBinding = hotKeys.GetBinding(HotKeyAction.RecognizeText);
             manager.Add(
+                HotKeyAction.RecognizeText,
                 $"Recognize text ({ocrBinding.DisplayString})",
                 ocrBinding.ModifiersValue,
                 ocrBinding.VirtualKey,
@@ -2941,6 +3030,7 @@ public partial class App : Application
 
             var stopBinding = hotKeys.GetStopBinding();
             manager.Add(
+                HotKeyAction.StopRecording,
                 $"Stop recording ({stopBinding.DisplayString})",
                 stopBinding.ModifiersValue,
                 stopBinding.VirtualKey,
@@ -2970,6 +3060,7 @@ public partial class App : Application
             Debug.WriteLine($"Global hotkey registration failed: {ex}");
             return GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
+                    null,
                     "TinyClips hotkey service",
                     ex.HResult,
                     ex.Message));
@@ -2983,6 +3074,7 @@ public partial class App : Application
         {
             return GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
+                    null,
                     "TinyClips hotkey service",
                     0,
                     "Hotkeys can only be updated from the TinyClips UI thread."));
@@ -3109,7 +3201,8 @@ public partial class App : Application
         if (_quickBugReportWindow is null)
         {
             _quickBugReportWindow = new QuickBugReportWindow(
-                QuickBugReport.GetAppVersion(),
+                QuickBugReport.GetAppFeedbackVersion(),
+                QuickBugReport.GetAppBuild(),
                 QuickBugReport.GetDistributionChannel());
             _quickBugReportWindow.Closed += (_, _) => _quickBugReportWindow = null;
         }
@@ -3157,7 +3250,10 @@ public partial class App : Application
             }
             if (fallbackPath is not null)
             {
-                RevealInExplorer(fallbackPath);
+                if (Services.GetRequiredService<ICaptureSettings>().ShowInExplorer)
+                {
+                    RevealInExplorer(fallbackPath);
+                }
                 ShowSaveToast(fallbackPath);
             }
             if (reopenPickerAfterClose)
@@ -3206,6 +3302,7 @@ public partial class App : Application
         }
 
         _isExiting = true;
+        CancelCaptureFlow();
         try
         {
             Services.GetRequiredService<IScrollingCaptureService>().Cancel();
@@ -3239,6 +3336,8 @@ public partial class App : Application
         StopTrayIconRetry();
         _taskbarIcon?.Dispose();
         _taskbarIcon = null;
+        // The tray icon and hotkeys are gone; let a new launch start fresh from here on.
+        SingleInstance.Release();
         _automationNotificationAnnouncer?.Close();
         _automationNotificationAnnouncer = null;
         _settingsWindow?.Close();
@@ -3293,8 +3392,14 @@ public partial class App : Application
     {
         try
         {
-            window.Activate();
-            BringWindowToForeground(window);
+            using (WindowOpenDiagnostics.Measure(window, WindowOpenPhase.NativeActivation))
+            {
+                window.Activate();
+            }
+            using (WindowOpenDiagnostics.Measure(window, WindowOpenPhase.ForegroundRequest))
+            {
+                BringWindowToForeground(window);
+            }
             _ = ActivateWindowToForegroundDelayedAsync(window);
         }
         catch (Exception ex)
@@ -3313,6 +3418,7 @@ public partial class App : Application
 
         try
         {
+            using var activation = WindowOpenDiagnostics.Measure(window, WindowOpenPhase.DeferredActivation);
             window.Activate();
             BringWindowToForeground(window);
         }

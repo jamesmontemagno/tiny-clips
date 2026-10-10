@@ -88,6 +88,24 @@ Panels that need keyboard input must:
 - Install local + global event monitors (`NSEvent.addLocalMonitorForEvents` / `addGlobalMonitorForEvents`)
 - Remove monitors in the completion/cancel path
 
+## Build and Warning Checks
+
+Any change to a capture-time window, panel, or related macOS capture code must compile the affected app targets before completion.
+
+Run at least:
+
+```bash
+xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClipsMAS -configuration Debug \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+```
+
+Rules:
+- Treat compile warnings as required fixes, not optional follow-up work.
+- Swift 6 warnings such as capture-list mistakes, `Sendability` issues, and implicitly captured `self` problems must be fixed in the same patch.
+- If the sandbox blocks `xcodebuild`, rerun without sandboxing before concluding the change is valid.
+
 ## Lifecycle
 
 - `CaptureManager` holds strong refs to capture-time windows.

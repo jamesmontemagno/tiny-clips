@@ -23,8 +23,8 @@ public static class SectionLifecycle
     /// just-constructed section ever completes a layout pass in the live visual tree — in WinUI,
     /// an element detached before that point never raises <c>Loaded</c> at all. Without the
     /// fallback, that section's realization scope would stay open forever, permanently
-    /// suppressing persistence (and theme/launch-at-login changes) for every section, not just
-    /// the orphaned one, since the suppression counter is shared on the view model. The fallback
+    /// suppressing persistence for the orphaned section. The view model tracks overlapping
+    /// realization scopes per section, so edits in cached sections remain safe. The fallback
     /// guarantees the scope always completes exactly once, whether or not the element ever loads.
     /// </remarks>
     public static void HookFirstLoad(FrameworkElement element, SettingsViewModel viewModel, System.IDisposable realizationScope)
@@ -57,4 +57,3 @@ public static class SectionLifecycle
         }
     }
 }
-

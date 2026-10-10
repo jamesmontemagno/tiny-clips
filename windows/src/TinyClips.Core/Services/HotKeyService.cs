@@ -13,14 +13,13 @@ public sealed class HotKeyService : IHotKeyService
 
     public HotKeyDefinition GetBinding(HotKeyAction action)
     {
-        var modifiers = GetStoredModifiers(action);
-        var virtualKey = GetStoredVirtualKey(action);
-
-        if (modifiers == 0 && virtualKey == 0)
+        if (action == HotKeyAction.StopRecording)
         {
             return DefaultFor(action);
         }
 
+        var modifiers = GetStoredModifiers(action);
+        var virtualKey = GetStoredVirtualKey(action);
         return new HotKeyDefinition((HotKeyModifiers)modifiers, virtualKey);
     }
 
@@ -52,6 +51,10 @@ public sealed class HotKeyService : IHotKeyService
                 _settings.ScreenshotWindowHotKeyModifiers = (int)binding.Modifiers;
                 _settings.ScreenshotWindowHotKeyCode = (int)binding.VirtualKey;
                 break;
+            case HotKeyAction.ScreenshotScreen:
+                _settings.ScreenshotScreenHotKeyModifiers = (int)binding.Modifiers;
+                _settings.ScreenshotScreenHotKeyCode = (int)binding.VirtualKey;
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(action), action, null);
         }
@@ -69,6 +72,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecognizeText => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54),
         HotKeyAction.ScreenshotRegion => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.ScreenshotWindow => new HotKeyDefinition(HotKeyModifiers.None, 0),
+        HotKeyAction.ScreenshotScreen => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.StopRecording => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53),
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
@@ -83,6 +87,7 @@ public sealed class HotKeyService : IHotKeyService
             HotKeyAction.RecognizeText,
             HotKeyAction.ScreenshotRegion,
             HotKeyAction.ScreenshotWindow,
+            HotKeyAction.ScreenshotScreen,
         };
 
         // Skip the unbound sentinel (no modifiers, no key) so two unbound actions are not
@@ -103,6 +108,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecognizeText => _settings.OcrHotKeyModifiers,
         HotKeyAction.ScreenshotRegion => _settings.ScreenshotRegionHotKeyModifiers,
         HotKeyAction.ScreenshotWindow => _settings.ScreenshotWindowHotKeyModifiers,
+        HotKeyAction.ScreenshotScreen => _settings.ScreenshotScreenHotKeyModifiers,
         HotKeyAction.StopRecording => 0,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
@@ -115,6 +121,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.RecognizeText => (uint)_settings.OcrHotKeyCode,
         HotKeyAction.ScreenshotRegion => (uint)_settings.ScreenshotRegionHotKeyCode,
         HotKeyAction.ScreenshotWindow => (uint)_settings.ScreenshotWindowHotKeyCode,
+        HotKeyAction.ScreenshotScreen => (uint)_settings.ScreenshotScreenHotKeyCode,
         HotKeyAction.StopRecording => 0,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };

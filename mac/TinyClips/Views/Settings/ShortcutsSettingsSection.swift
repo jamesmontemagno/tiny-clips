@@ -8,7 +8,7 @@ struct ShortcutsSettingsSection: View {
 
     var body: some View {
         Section("Global Keyboard Shortcuts") {
-            Text("These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required. Screenshot Region and Screenshot Window skip the capture picker and go straight to selection.")
+            Text("These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required. Screenshot Region, Screenshot Screen, and Screenshot Window skip the capture picker.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -27,6 +27,7 @@ struct ShortcutsSettingsSection: View {
             ForEach(HotKeyAction.allCases, id: \.self) { action in
                 ShortcutRecorderField(
                     label: action.displayName,
+                    iconName: captureModeIconName(for: action),
                     binding: settings.hotKeyBinding(for: action),
                     defaultBinding: HotKeyBinding.defaultBinding(for: action),
                     onBindingRecorded: { apply($0, for: action) }
@@ -56,6 +57,19 @@ struct ShortcutsSettingsSection: View {
                 .padding(.vertical, 4)
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func captureModeIconName(for action: HotKeyAction) -> String? {
+        switch action {
+        case .screenshotRegion:
+            return "viewfinder.rectangular"
+        case .screenshotScreen:
+            return "display"
+        case .screenshotWindow:
+            return "macwindow"
+        default:
+            return nil
         }
     }
 

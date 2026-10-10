@@ -5,6 +5,100 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- **Text box styles** — Screenshot text annotations can use Plain, Light, Dark, or Accent
+  presets and custom background, border, padding, and corner settings. The choice applies to the
+  selected text or the next text annotation and resets with each editor window. (#435)
+- **Direct screenshot screen hotkey** — An optional global shortcut can now skip the capture picker
+  and capture a screen directly. It is unbound by default and configurable in Settings → Keyboard
+  shortcuts. (#440)
+- **Actual-size screenshot zoom** — The screenshot editor adds a 1:1 option beside Fit, displaying
+  one captured pixel per physical display pixel and remembering the chosen mode for the next editor. (#436)
+- The quick in-app feedback form now lets you choose a bug report or feature request and opens the matching GitHub template with app and Windows details.
+- **Esc closes the screenshot editor, video trimmer, and GIF trimmer.** A new General setting,
+  **Confirm before closing editors with Esc** (on by default), asks first: "Discard changes?"
+  when edits or trim changes are unsaved, and a plain close confirmation otherwise. Turn it off
+  and Esc closes right away, discarding anything unsaved. In the editor, Esc clears a crop
+  selection before it closes anything, and Esc in a text box never closes the window. In the
+  trimmers, a confirmed Esc behaves like **Cancel** and keeps the original; trim range and
+  "Remove audio" count as unsaved for video, frame range and speed for GIFs. Esc is ignored
+  while a save, export, or delete is running. (#396)
+
+### Changed
+- The **Screenshot Region**, **Screenshot Screen**, and **Screenshot Window** shortcuts now use the same icons in Settings as in the capture picker.
+
+### Fixed
+- Text controls in the screenshot editor now clear when Select has no text annotation selected,
+  so changing text defaults cannot unexpectedly affect unrelated editor or export state. (#435)
+- **Keyboard shortcuts can be deleted, and changing one no longer fails because another shortcut is
+  unavailable.** Every shortcut now has a **Delete** action that leaves it unbound; **Reset** still
+  restores its default. Settings evaluates Windows registration errors for the shortcut being
+  edited, while still rejecting a genuine conflict for that shortcut or a failure of the global
+  hotkey service. Pre-existing conflicts on other shortcuts remain reported in diagnostics without
+  rolling back an unrelated edit. (#437)
+- **Region-selection outlines no longer remain stuck after canceling or exiting.** The active
+  capture flow now owns and cancels every region-selector window, including selectors shown on
+  multiple monitors, and avoids closing the selected window twice. (#425)
+- **A video recording that fails to start no longer deletes the previous one.** The cleanup after
+  a failed start deleted the file the recorder had last written. Until the new recording had a
+  file of its own, that was the video of the recording before it, saved and finished. The same
+  cleanup runs when a countdown is cancelled while the recorder is still getting ready. A start
+  now forgets the previous file before it does anything else.
+- **Recording diagnostics distinguish requests from observed execution.** Schema-2 reports preserve
+  legacy JSON fields while adding actual capture/encoder backends, D3D hardware/WARP selection,
+  explicit unverified hardware encoding, preparation/active/pause/finalization timings, sample
+  submission accounting, separate CPU skipped-tick and GPU overrun event/slot counters, and normal
+  static-frame repeats. The benchmark establishes DPI awareness before monitor queries; both
+  capture paths report clipping and even-size crops consistently. Local process diagnostics use
+  target-process API and loaded-runtime evidence, leaving missing/conflicting evidence explicit.
+  Video and GIF click overlays use the clipped capture origin so negative-origin requests stay aligned.
+  CPU borrowed-frame integration retains fixed resize dimensions and counts processing-gate
+  contention without double submission; both encoder paths retain actual-acceptance accounting.
+  Added deterministic accounting, geometry, serialization and architecture tests. (#404)
+- **CPU video recording creates fewer full-frame pixel arrays.** The explicit CPU path and GPU
+  startup fallback reuse private capture/overlay buffers. The low-latency encoder copies directly
+  into its own bottom-up buffer, while the standard encoder retains one independent array instead
+  of three. GIF and scrolling snapshots remain safe to retain, and stopping waits for borrowed
+  frame processing before disposing the encoder. Resized windows keep the configured video
+  dimensions with black letterboxing instead of submitting short encoder samples. (#407)
+- **Settings navigation no longer reloads unrelated preferences or external state.** First
+  realization restores only that section's scalar settings, preserving protection against
+  initial TwoWay-binding write-backs. Uploadcare credential status and teleprompter text load
+  only when their sections are first realized and stay cached until relevant mutations or
+  reopening. Rapid navigation preserves edits in already-loaded sections and pending transcript
+  saves; late device, launch-at-login, and file-picker results are ignored after closing.
+  Unreadable transcripts show an inline error instead of being cached as empty text. (#405)
+- **Screenshot-editor exports no longer resample twice.** Save and Copy composite directly at
+  the requested output size, including 100%, with one explicit final bitmap readback. Rendering,
+  redaction-preview processing, and encoding run on workers using immutable document snapshots.
+  Superseded previews and clipboard results are discarded; Reset and closure cancel pending work
+  without disposing its source pixels early. Saving an older snapshot keeps newer edits dirty,
+  repeated output requests are coalesced, and canceled/failed saves preserve the previous file.
+  Background, frame, padding, shadow, corner, alignment, and scale changes now count as edits. (#406)
+  These implementation changes do not complete #406: native x64/ARM64 runtime, fidelity, and
+  responsiveness validation is still pending, and no measured speedup is claimed.
+- **Clips Library batches sidebar updates.** Loading or refreshing many distinct tags and
+  collections no longer synchronously rebuilds the entire navigation tree for each insertion.
+  One queued update uses the final entries and is skipped if the window closes first. (#409)
+- **Recording branding is prepared before the frame pump starts.** Badge font initialization and
+  rasterization now run on a worker; GPU upload finishes before capture callbacks start. CPU and
+  GPU recording draws use only prepared resources, preserving badge appearance and placement.
+  Cancellation waits for preparation before cleanup, failures remain best-effort, and separate
+  local preparation timings no longer get mixed into the first frame's branding work. (#408)
+- **Screenshots respect the File Explorer reveal setting.** With "Reveal in File Explorer after
+  capture" off, capturing a screenshot with the editor disabled no longer opens Explorer.
+  Scrolling captures and the saved-file fallback when the screenshot editor fails to open also
+  honor this setting; saving and clipboard copying are unchanged. (#397)
+- **Screenshot editor output resolution is accessible to screen readers.** The output-resolution
+  button now includes the current export dimensions in its accessible name, without opening the
+  scale flyout, and stays in sync when the image, crop, padding, frame, or output scale changes.
+  Closing during file loading, captured-frame copying, or Reset now discards late bitmap results
+  without restoring dimensions or previews on the closed editor.
+- **Only one copy of Tiny Clips runs at a time.** Starting Tiny Clips while it was already running
+  used to start a second copy with its own tray icon; the two competed for the global hotkeys.
+  A second launch now opens the tray menu of the copy that is already running, and
+  **Open with > Tiny Clips** opens the image in that same copy.
+
 ## [v1.8.2-windows] - 2026-10-03
 
 ### Changed

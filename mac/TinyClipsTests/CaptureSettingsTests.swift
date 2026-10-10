@@ -51,6 +51,14 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.videoCodec(in: defaults), .h264)
     }
 
+    func testScreenshotEditorNativeSizeIsResetWithStoredSettings() {
+        defaults.set(true, forKey: CaptureSettings.screenshotEditorNativeSizeKey)
+
+        CaptureSettings.resetStoredDefaults(defaults)
+
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.screenshotEditorNativeSizeKey))
+    }
+
     func testRecordingVideoCodecResolverDefaultsToH264() {
         let resolved = RecordingVideoCodecResolver.resolved(requested: .h264, hevcAvailable: true)
 
@@ -176,5 +184,15 @@ final class CaptureSettingsTests: XCTestCase {
                 custom
             )
         }
+    }
+
+    func testScreenshotScreenHotKeyTreatsLegacyZeroPairAsUnbound() {
+        defaults.set(0, forKey: "screenshotScreenHotKeyCode")
+        defaults.set(0, forKey: "screenshotScreenHotKeyModifiers")
+
+        XCTAssertEqual(
+            CaptureSettings.hotKeyBinding(for: .screenshotScreen, defaults: defaults),
+            HotKeyBinding.defaultBinding(for: .screenshotScreen)
+        )
     }
 }

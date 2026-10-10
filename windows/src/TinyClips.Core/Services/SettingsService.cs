@@ -88,28 +88,9 @@ public sealed class SettingsService : ISettingsService, ILargeTextSettingsServic
 
     public string GetLargeText(string key, string defaultValue)
     {
-        if (_fallbackValues.TryGetValue(key, out var fallbackValue) &&
-            fallbackValue is string fallbackText)
-        {
-            SetLargeText(key, fallbackText);
-            return fallbackText;
-        }
-
         try
         {
-            var path = GetLargeTextPath(key);
-            if (File.Exists(path))
-            {
-                return File.ReadAllText(path);
-            }
-
-            var legacyValue = Get(key, defaultValue);
-            if (!string.Equals(legacyValue, defaultValue, StringComparison.Ordinal))
-            {
-                SetLargeText(key, legacyValue);
-            }
-
-            return legacyValue;
+            return GetLargeTextForEditing(key, defaultValue);
         }
         catch (IOException)
         {
@@ -119,6 +100,37 @@ public sealed class SettingsService : ISettingsService, ILargeTextSettingsServic
         {
             return Get(key, defaultValue);
         }
+    }
+
+    public string GetLargeTextForEditing(string key, string defaultValue)
+    {
+        if (_fallbackValues.TryGetValue(key, out var fallbackValue) &&
+            fallbackValue is string fallbackText)
+        {
+            SetLargeText(key, fallbackText);
+            return fallbackText;
+        }
+
+        try
+        {
+            return File.ReadAllText(GetLargeTextPath(key));
+        }
+        catch (FileNotFoundException)
+        {
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
+
+        // Only a genuinely absent file may fall back to a legacy setting. Editing must not
+        // cache a blank transcript when the file exists but cannot be read.
+        var legacyValue = Get(key, defaultValue);
+        if (!string.Equals(legacyValue, defaultValue, StringComparison.Ordinal))
+        {
+            SetLargeText(key, legacyValue);
+        }
+
+        return legacyValue;
     }
 
     public void SetLargeText(string key, string value)

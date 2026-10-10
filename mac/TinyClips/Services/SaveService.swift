@@ -116,10 +116,10 @@ final class RecentCaptureStore: ObservableObject {
             let type = item.type
             let itemID = item.id
             let capturedAt = item.capturedAt
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                let image = Self.generateThumbnail(url: url, type: type)
+            Task.detached(priority: .utility) { [weak self] in
+                let image = await Self.generateThumbnail(url: url, type: type)
                 guard let image else { return }
-                DispatchQueue.main.async {
+                await MainActor.run {
                     guard let self,
                           self.items.prefix(Self.menuDisplayLimit).contains(where: {
                               $0.id == itemID && $0.type == type && $0.capturedAt == capturedAt
@@ -139,7 +139,7 @@ final class RecentCaptureStore: ObservableObject {
         thumbnails = thumbnails.filter { liveIDs.contains($0.key) }
     }
 
-    nonisolated private static func generateThumbnail(url: URL, type: CaptureType) -> NSImage? {
+    nonisolated private static func generateThumbnail(url: URL, type: CaptureType) async -> NSImage? {
         switch type {
         case .screenshot, .gif:
             return NSImage(contentsOf: url)
@@ -149,7 +149,12 @@ final class RecentCaptureStore: ObservableObject {
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: 96, height: 54)
             let time = CMTime(seconds: 0, preferredTimescale: 600)
-            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+            let cgImage = await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
+                generator.generateCGImageAsynchronously(for: time) { image, _, _ in
+                    continuation.resume(returning: image)
+                }
+            }
+            guard let cgImage else {
                 return nil
             }
             return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
@@ -211,6 +216,15 @@ final class AccessibilityAnnouncementService {
     }
 }
 
+private final class WeakSaveService: @unchecked Sendable {
+    // The weak reference is only dereferenced on the main actor.
+    weak var value: SaveService?
+
+    init(_ value: SaveService) {
+        self.value = value
+    }
+}
+
 class SaveService: NSObject, UNUserNotificationCenterDelegate {
     static let shared = SaveService()
     private let notificationURLKey = "savedFileURL"
@@ -218,7 +232,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 
     override init() {
         super.init()
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             UNUserNotificationCenter.current().delegate = self
         }
@@ -652,15 +666,16 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     func showNotice(_ message: String) {
         AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
 
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+        let service = WeakSaveService(self)
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized ||
                     settings.authorizationStatus == .provisional else {
-                Task { @MainActor in self?.showInAppNotice(message) }
+                Task { @MainActor in service.value?.showInAppNotice(message) }
                 return
             }
             let showsBanner = settings.authorizationStatus == .authorized && settings.alertStyle != .none
             if !showsBanner {
-                Task { @MainActor in self?.showInAppNotice(message) }
+                Task { @MainActor in service.value?.showInAppNotice(message) }
             }
 
             let content = UNMutableNotificationContent()
@@ -672,9 +687,9 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
                 content: content,
                 trigger: nil
             )
-            UNUserNotificationCenter.current().add(request) { [weak self] error in
+            UNUserNotificationCenter.current().add(request) { error in
                 if error != nil && showsBanner {
-                    Task { @MainActor in self?.showInAppNotice(message) }
+                    Task { @MainActor in service.value?.showInAppNotice(message) }
                 }
             }
         }

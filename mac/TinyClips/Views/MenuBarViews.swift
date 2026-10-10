@@ -149,7 +149,7 @@ struct MenuBarContentView: View {
             openWindow(id: "settings-window")
             bringSettingsWindowToFront()
         } label: {
-            Label("File a Bug…", systemImage: "ladybug")
+            Label("Send Feedback…", systemImage: "bubble.left.and.bubble.right")
         }
 
 #if APPSTORE

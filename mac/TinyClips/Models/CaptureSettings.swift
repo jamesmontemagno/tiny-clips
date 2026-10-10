@@ -305,6 +305,7 @@ class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
     static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
     static let confirmEditorEscapeKey = CaptureSettingsDefaultsKey.confirmEditorEscape
+    static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
     static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
@@ -390,6 +391,7 @@ class CaptureSettings: ObservableObject {
     // Negative values indicate no explicit corner radius/factor is set.
     @AppStorage("webcamCornerRadius") var webcamCornerRadius: Double = -1
     @AppStorage("showScreenshotEditor") var showScreenshotEditor: Bool = true
+    @AppStorage("screenshotEditorNativeSize") var screenshotEditorNativeSize: Bool = false
     @AppStorage(CaptureSettingsDefaultsKey.confirmEditorEscape) var confirmEditorEscape: Bool = true
     @AppStorage("showGifTrimmer") var showGifTrimmer: Bool = true
     @AppStorage("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
@@ -469,11 +471,13 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 6400
     @AppStorage("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = 28 // kVK_ANSI_8
     @AppStorage("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 6400
-    // Direct-to-mode screenshot shortcuts (skip the capture picker): ⌃⌥⌘1 / ⌃⌥⌘2
+    // Direct-to-mode screenshot shortcuts (skip the capture picker); screen is unbound by default.
     @AppStorage("screenshotRegionHotKeyCode") var screenshotRegionHotKeyCode: Int = 18 // kVK_ANSI_1
     @AppStorage("screenshotRegionHotKeyModifiers") var screenshotRegionHotKeyModifiers: Int = 6400
     @AppStorage("screenshotWindowHotKeyCode") var screenshotWindowHotKeyCode: Int = 19 // kVK_ANSI_2
     @AppStorage("screenshotWindowHotKeyModifiers") var screenshotWindowHotKeyModifiers: Int = 6400
+    @AppStorage("screenshotScreenHotKeyCode") var screenshotScreenHotKeyCode: Int = -1
+    @AppStorage("screenshotScreenHotKeyModifiers") var screenshotScreenHotKeyModifiers: Int = 0
 
     func resolvedSaveDirectory(for captureType: CaptureType) -> URL {
         URL(fileURLWithPath: saveDirectoryPath(for: captureType), isDirectory: true)
@@ -588,9 +592,16 @@ class CaptureSettings: ObservableObject {
     static func hotKeyBinding(for action: HotKeyAction, defaults: UserDefaults) -> HotKeyBinding {
         let fallback = HotKeyBinding.defaultBinding(for: action)
         let keys = hotKeyDefaultsKeys(for: action)
+        let keyCode = defaults.object(forKey: keys.keyCode) as? Int ?? fallback.keyCode
+        let carbonModifiers = defaults.object(forKey: keys.modifiers) as? Int ?? fallback.carbonModifiers
+
+        if action == .screenshotScreen, keyCode == 0, carbonModifiers == 0 {
+            return fallback
+        }
+
         return HotKeyBinding(
-            keyCode: defaults.object(forKey: keys.keyCode) as? Int ?? fallback.keyCode,
-            carbonModifiers: defaults.object(forKey: keys.modifiers) as? Int ?? fallback.carbonModifiers
+            keyCode: keyCode,
+            carbonModifiers: carbonModifiers
         )
     }
 
@@ -620,6 +631,8 @@ class CaptureSettings: ObservableObject {
             return ("screenshotRegionHotKeyCode", "screenshotRegionHotKeyModifiers")
         case .screenshotWindow:
             return ("screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers")
+        case .screenshotScreen:
+            return ("screenshotScreenHotKeyCode", "screenshotScreenHotKeyModifiers")
         }
     }
 
@@ -789,7 +802,7 @@ class CaptureSettings: ObservableObject {
         "showTrimmer",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
-        "showScreenshotEditor", confirmEditorEscapeKey, "showGifTrimmer",
+        "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",
         "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
         "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
         "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
@@ -812,7 +825,8 @@ class CaptureSettings: ObservableObject {
         "gifHotKeyCode", "gifHotKeyModifiers",
         "copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers",
         "screenshotRegionHotKeyCode", "screenshotRegionHotKeyModifiers",
-        "screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers"
+        "screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers",
+        "screenshotScreenHotKeyCode", "screenshotScreenHotKeyModifiers"
     ]
 
 #if APPSTORE

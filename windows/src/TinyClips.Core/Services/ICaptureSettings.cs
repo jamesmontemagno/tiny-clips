@@ -76,6 +76,14 @@ public interface ICaptureSettings
     WebcamCornerPosition WebcamCornerPosition { get; set; }
     double? WebcamCornerRadius { get; set; }
     bool ShowScreenshotEditor { get; set; }
+    /// <summary>Open the screenshot editor at native pixel size instead of fitting it to the viewport. Default false.</summary>
+    bool ScreenshotEditorNativeSize { get; set; }
+
+    /// <summary>
+    /// Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. When false, Esc
+    /// closes them straight away and discards anything unsaved. Default true.
+    /// </summary>
+    bool ConfirmEditorEscape { get; set; }
 
     /// <summary>
     /// When true, a region screenshot re-captures the screen after the selection overlay closes
@@ -110,6 +118,8 @@ public interface ICaptureSettings
     bool ShowBrandingOverlay { get; set; }
     bool TeleprompterEnabled { get; set; }
     string TeleprompterTranscript { get; set; }
+    /// <summary>Loads the transcript for editing, surfacing failures instead of caching an empty fallback.</summary>
+    string GetTeleprompterTranscriptForEditing() => TeleprompterTranscript;
     double TeleprompterScrollSpeed { get; set; }
     /// <summary>Overlay transcript text size preset. Default Medium (24 DIP).</summary>
     TeleprompterDisplaySize TeleprompterFontSize { get; set; }
@@ -134,6 +144,8 @@ public interface ICaptureSettings
     int ScreenshotRegionHotKeyModifiers { get; set; }
     int ScreenshotWindowHotKeyCode { get; set; }
     int ScreenshotWindowHotKeyModifiers { get; set; }
+    int ScreenshotScreenHotKeyCode { get; set; }
+    int ScreenshotScreenHotKeyModifiers { get; set; }
 
     ImageFormat ImageFormat { get; set; }
     bool ShouldCopyToClipboard(CaptureType type);

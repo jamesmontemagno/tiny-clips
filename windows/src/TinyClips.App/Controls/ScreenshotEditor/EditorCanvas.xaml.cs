@@ -13,6 +13,7 @@ using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.UI;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Services;
 using ShapesPath = Microsoft.UI.Xaml.Shapes.Path;
 
 namespace TinyClips.App.ScreenshotEditor;
@@ -62,6 +63,8 @@ public sealed partial class EditorCanvas : UserControl
     }
 
     private EditorController _controller = null!;
+    private ICaptureSettings? _settings;
+    private XamlRoot? _observedXamlRoot;
     private readonly Dictionary<Annotation, AnnotationVisual> _visuals = new();
 
     private bool _dragging;
@@ -74,11 +77,13 @@ public sealed partial class EditorCanvas : UserControl
     private List<Vector2> _resizeOriginalPoints = new();
     private double _resizeOriginalFontSize;
     private double _resizeOriginalSizeScale;
+    private TextBoxStyle _resizeOriginalTextBoxStyle;
     private Annotation? _endpointAnnotation;
     private bool _movingStartEndpoint;
     private Annotation? _rotatingAnnotation;
     private bool _spacePressed;
     private bool _panning;
+    private bool _nativeSizeSelected;
     private float _zoomFactor = 1.0f;
     private Point _panStart;
     private double _panStartHorizontalOffset;
@@ -92,6 +97,8 @@ public sealed partial class EditorCanvas : UserControl
     public EditorCanvas()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     /// <summary>Raised when the crop-selection rectangle becomes big enough (or too small) to
@@ -141,9 +148,12 @@ public sealed partial class EditorCanvas : UserControl
     /// <summary>Wires this control to the shared editor state. Called once by the window right
     /// after construction (mirrors the constructor-injected shared view model used by the Settings
     /// sections, but this control is declared in XAML so it can't take a constructor argument).</summary>
-    internal void Attach(EditorController controller)
+    internal void Attach(EditorController controller, ICaptureSettings settings)
     {
         _controller = controller;
+        _settings = settings;
+        _nativeSizeSelected = settings.ScreenshotEditorNativeSize;
+        NativeSizeToggleButton.IsChecked = _nativeSizeSelected;
         _controller.ImageChanged += OnControllerImageChanged;
         _controller.AnnotationsStructureChanged += (_, _) => FullRebuild();
         _controller.AnnotationVisualInvalidated += OnControllerAnnotationVisualInvalidated;
@@ -156,6 +166,37 @@ public sealed partial class EditorCanvas : UserControl
         OnControllerToolChanged(this, _controller.Tool);
     }
 
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (!ReferenceEquals(_observedXamlRoot, XamlRoot))
+        {
+            if (_observedXamlRoot is not null)
+            {
+                _observedXamlRoot.Changed -= OnXamlRootChanged;
+            }
+
+            _observedXamlRoot = XamlRoot;
+            if (_observedXamlRoot is not null)
+            {
+                _observedXamlRoot.Changed += OnXamlRootChanged;
+            }
+        }
+
+        ApplyNativeSizeZoom();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_observedXamlRoot is not null)
+        {
+            _observedXamlRoot.Changed -= OnXamlRootChanged;
+            _observedXamlRoot = null;
+        }
+    }
+
+    private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) =>
+        ApplyNativeSizeZoom();
+
     // -- Controller reactions ----------------------------------------------------------------
 
     private void OnControllerImageChanged(object? sender, EventArgs e)
@@ -164,6 +205,7 @@ public sealed partial class EditorCanvas : UserControl
         ClearCropSelection();
         LayoutCanvas();
         FullRebuild();
+        ApplyNativeSizeZoom();
     }
 
     private void OnControllerAnnotationVisualInvalidated(object? sender, Annotation ann)
@@ -296,6 +338,7 @@ public sealed partial class EditorCanvas : UserControl
     {
         LayoutCanvas();
         RepositionAll();
+        ApplyNativeSizeZoom();
     }
 
     // -- Layout ------------------------------------------------------------------------------
@@ -311,10 +354,18 @@ public sealed partial class EditorCanvas : UserControl
 
         LayoutCanvas();
         RepositionAll();
+        ApplyNativeSizeZoom();
     }
 
     private void OnViewportViewChanged(ScrollView sender, object args)
     {
+        if (Math.Abs(sender.ZoomFactor - _zoomFactor) > 0.001f
+            && _nativeSizeSelected)
+        {
+            SetNativeSizeMode(false);
+            SetZoomBounds(MinZoomFactor, MaxZoomFactor);
+        }
+
         _zoomFactor = sender.ZoomFactor;
         ZoomPercentageButton.Content = $"{Math.Round(sender.ZoomFactor * 100):0}%";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
@@ -328,6 +379,21 @@ public sealed partial class EditorCanvas : UserControl
 
     private void OnFit(object sender, RoutedEventArgs e) => Fit();
 
+    private void OnNativeSize(object sender, RoutedEventArgs e)
+    {
+        var useNativeSize = NativeSizeToggleButton.IsChecked == true;
+        SetNativeSizeMode(useNativeSize);
+
+        if (useNativeSize)
+        {
+            ApplyNativeSizeZoom();
+        }
+        else
+        {
+            Fit();
+        }
+    }
+
     private void OnZoomPreset(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string value }
@@ -337,22 +403,60 @@ public sealed partial class EditorCanvas : UserControl
         }
     }
 
-    private void SetZoom(float zoom, Point? focalPoint = null)
+    private void SetZoom(float zoom, Point? focalPoint = null, bool keepNativeSizeMode = false)
     {
-        var clamped = Math.Clamp(zoom, MinZoomFactor, MaxZoomFactor);
-        _zoomFactor = clamped;
-        // ZoomTo's centerPoint is expressed in content coordinates, not viewport
-        // coordinates. Once the user has panned away from the origin, the viewport's
-        // fixed midpoint no longer corresponds to the content point under the visible
-        // center, so convert through the current scroll offsets and zoom factor to
-        // keep the currently-centered content point stable across zoom changes.
+        var minimumZoomFactor = keepNativeSizeMode ? Math.Min(MinZoomFactor, zoom) : MinZoomFactor;
+        var maximumZoomFactor = keepNativeSizeMode ? Math.Max(MaxZoomFactor, zoom) : MaxZoomFactor;
+        var clamped = Math.Clamp(zoom, minimumZoomFactor, maximumZoomFactor);
+        var currentZoomFactor = Math.Max(0.001f, ViewportScrollView.ZoomFactor);
         var focal = focalPoint ?? new Point(
-            (ViewportScrollView.HorizontalOffset + ViewportScrollView.ViewportWidth / 2.0) / ViewportScrollView.ZoomFactor,
-            (ViewportScrollView.VerticalOffset + ViewportScrollView.ViewportHeight / 2.0) / ViewportScrollView.ZoomFactor);
+            (ViewportScrollView.HorizontalOffset + ViewportScrollView.ViewportWidth / 2.0) / currentZoomFactor,
+            (ViewportScrollView.VerticalOffset + ViewportScrollView.ViewportHeight / 2.0) / currentZoomFactor);
+
+        SetNativeSizeMode(keepNativeSizeMode);
+        _zoomFactor = clamped;
+        SetZoomBounds(minimumZoomFactor, maximumZoomFactor);
         ViewportScrollView.ZoomTo(
             clamped,
             new Vector2((float)focal.X, (float)focal.Y),
             ZoomOptions);
+    }
+
+    private void SetNativeSizeMode(bool selected)
+    {
+        _nativeSizeSelected = selected;
+        NativeSizeToggleButton.IsChecked = selected;
+        if (_settings is not null)
+        {
+            _settings.ScreenshotEditorNativeSize = selected;
+        }
+    }
+
+    private void SetZoomBounds(float minimumZoomFactor, float maximumZoomFactor)
+    {
+        ViewportScrollView.MinZoomFactor = minimumZoomFactor;
+        ViewportScrollView.MaxZoomFactor = maximumZoomFactor;
+    }
+
+    private void ApplyNativeSizeZoom()
+    {
+        if (!_nativeSizeSelected
+            || _controller?.Bitmap is null
+            || ImageHost.ActualWidth <= 0
+            || ImageHost.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        var layout = HostLayout();
+        var rasterizationScale = XamlRoot?.RasterizationScale ?? 1.0;
+        var nativeZoomFactor = ScreenshotEditorZoomMath.NativeSizeZoomFactor(layout.Scale, rasterizationScale);
+        if (nativeZoomFactor is not { } zoomFactor || zoomFactor > float.MaxValue)
+        {
+            return;
+        }
+
+        SetZoom((float)zoomFactor, keepNativeSizeMode: true);
     }
 
     private (double Scale, double OffsetX, double OffsetY) HostLayout() =>
@@ -469,7 +573,7 @@ public sealed partial class EditorCanvas : UserControl
             EnsureArrowShaft(ann, visual!);
         }
 
-        if (exists && ann.Tool == EditTool.Redact)
+        if (ann.Tool == EditTool.Redact)
         {
             var isMoving = ReferenceEquals(ann, _movingAnnotation);
             if (!isMoving)
@@ -477,7 +581,7 @@ public sealed partial class EditorCanvas : UserControl
                 _controller.EnsureRedactPreview(ann);
             }
             var wantsImage = !isMoving && !ReferenceEquals(ann, _controller.ActiveAnnotation) && ann.RedactPreview is not null;
-            var isImage = visual!.Primary is Image;
+            var isImage = exists && visual!.Primary is Image;
             if (wantsImage != isImage)
             {
                 RemoveVisual(ann);
@@ -648,10 +752,29 @@ public sealed partial class EditorCanvas : UserControl
             case EditTool.Text:
             {
                 var textBrush = new SolidColorBrush();
-                var text = new TextBlock { Foreground = textBrush };
-                MakeRotatable(text);
-                OverlayCanvas.Children.Add(text);
-                return new AnnotationVisual { Primary = text, TextBrush = textBrush };
+                var fillBrush = new SolidColorBrush();
+                var borderBrush = new SolidColorBrush();
+                var text = new TextBlock
+                {
+                    Foreground = textBrush,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var border = new Border
+                {
+                    Child = text,
+                    Background = fillBrush,
+                    BorderBrush = borderBrush,
+                };
+                MakeRotatable(border);
+                OverlayCanvas.Children.Add(border);
+                return new AnnotationVisual
+                {
+                    Primary = border,
+                    TextBrush = textBrush,
+                    FillBrush = fillBrush,
+                    StrokeBrush = borderBrush,
+                };
             }
             case EditTool.Counter:
             {
@@ -922,10 +1045,14 @@ public sealed partial class EditorCanvas : UserControl
 
     private static void PositionText(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
     {
-        var tl = ToCanvas(new Point(ann.Bounds.X, ann.Bounds.Y), scale, offX, offY);
-        var text = (TextBlock)visual.Primary;
+        var decorated = ann.TextBoxStyle.DecoratedBounds(ann.Bounds);
+        var tl = ToCanvas(new Point(decorated.X, decorated.Y), scale, offX, offY);
+        var border = (Border)visual.Primary;
+        var text = (TextBlock)border.Child;
         text.Text = ann.Text;
         visual.TextBrush!.Color = ann.Color;
+        visual.FillBrush!.Color = ann.TextBoxStyle.BackgroundColor;
+        visual.StrokeBrush!.Color = ann.TextBoxStyle.BorderColor;
         text.FontSize = ann.FontSize * scale;
         text.FontFamily = new FontFamily(ann.FontFamily);
         text.FontWeight = ann.Bold ? Microsoft.UI.Text.FontWeights.Bold : Microsoft.UI.Text.FontWeights.Normal;
@@ -941,15 +1068,20 @@ public sealed partial class EditorCanvas : UserControl
             decorations |= Windows.UI.Text.TextDecorations.Strikethrough;
         }
         text.TextDecorations = decorations;
-        ApplyRotation(text, ann.Rotation);
+        border.Width = Math.Max(1, decorated.Width * scale);
+        border.Height = Math.Max(1, decorated.Height * scale);
+        border.Padding = new Thickness(0);
+        border.BorderThickness = new Thickness(Math.Max(0, ann.TextBoxStyle.BorderWidth * scale));
+        border.CornerRadius = new CornerRadius(Math.Max(0, ann.TextBoxStyle.CornerRadius * scale));
+        ApplyRotation(border, ann.Rotation);
 
-        Canvas.SetLeft(text, tl.X);
-        Canvas.SetTop(text, tl.Y);
+        Canvas.SetLeft(border, tl.X);
+        Canvas.SetTop(border, tl.Y);
     }
 
     private static void PositionCounter(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
     {
-        var b = EditorController.NormalizedBounds(ann);
+        var b = EditorController.InteractionBounds(ann);
         var tl = ToCanvas(new Point(b.X, b.Y), scale, offX, offY);
         var diameter = b.Width * scale;
         var grid = (Grid)visual.Primary;
@@ -1111,7 +1243,7 @@ public sealed partial class EditorCanvas : UserControl
 
         if (ann.Tool == EditTool.Emoji || ann.IsRotated)
         {
-            var (stickerBounds, _) = CanvasStickerGeometry(EditorController.NormalizedBounds(ann), scale, offX, offY);
+            var (stickerBounds, _) = CanvasStickerGeometry(EditorController.InteractionBounds(ann), scale, offX, offY);
             var corners = RotatableAnnotationGeometry.Corners(stickerBounds, ann.Rotation);
             var order = new[]
             {
@@ -1128,7 +1260,7 @@ public sealed partial class EditorCanvas : UserControl
             return null;
         }
 
-        var b = EditorController.NormalizedBounds(ann);
+        var b = EditorController.InteractionBounds(ann);
         var tl = ToCanvas(new Point(b.Left, b.Top), scale, offX, offY);
         var br = ToCanvas(new Point(b.Right, b.Bottom), scale, offX, offY);
         var handles = new[]
@@ -1245,7 +1377,7 @@ public sealed partial class EditorCanvas : UserControl
                 if (IsRotationHandleAt(p, selected))
                 {
                     _rotatingAnnotation = selected;
-                    _resizeOriginalBounds = EditorController.NormalizedBounds(selected);
+                    _resizeOriginalBounds = EditorController.InteractionBounds(selected);
                     _resizeOriginalPoints = new List<Vector2>(selected.Points);
                     OverlayCanvas.CapturePointer(e.Pointer);
                     _capturedPointer = e.Pointer;
@@ -1256,10 +1388,11 @@ public sealed partial class EditorCanvas : UserControl
                     _resizingAnnotation = selected;
                     _movingAnnotation = selected;
                     _resizeHandle = handle;
-                    _resizeOriginalBounds = EditorController.NormalizedBounds(selected);
+                    _resizeOriginalBounds = EditorController.InteractionBounds(selected);
                     _resizeOriginalPoints = new List<Vector2>(selected.Points);
                     _resizeOriginalFontSize = selected.FontSize;
                     _resizeOriginalSizeScale = selected.SizeScale;
+                    _resizeOriginalTextBoxStyle = selected.TextBoxStyle;
                     OverlayCanvas.CapturePointer(e.Pointer);
                     _capturedPointer = e.Pointer;
                     return;
@@ -1374,6 +1507,7 @@ public sealed partial class EditorCanvas : UserControl
                     _resizeOriginalPoints,
                     _resizeOriginalFontSize,
                     _resizeOriginalSizeScale,
+                    _resizeOriginalTextBoxStyle,
                     handle,
                     pixel);
                 return;
@@ -1500,6 +1634,7 @@ public sealed partial class EditorCanvas : UserControl
             _controller.TextItalic,
             _controller.TextUnderline,
             _controller.TextStrikethrough,
+            _controller.TextBoxStyleDefault,
             isEdit: false)
         {
             XamlRoot = XamlRoot,
@@ -1513,19 +1648,21 @@ public sealed partial class EditorCanvas : UserControl
 
         _controller.UpdateTextDefaults(
             dialog.ResultFont, dialog.ResultSize, dialog.ResultColor,
-            dialog.ResultBold, dialog.ResultItalic, dialog.ResultUnderline, dialog.ResultStrikethrough);
+            dialog.ResultBold, dialog.ResultItalic, dialog.ResultUnderline, dialog.ResultStrikethrough,
+            dialog.ResultTextBoxStyle);
 
         var pixel = _controller.CanvasToPixel(canvasPoint, ImageHost.ActualWidth, ImageHost.ActualHeight);
         _controller.AddTextAnnotation(
             pixel, dialog.ResultText, dialog.ResultFont, dialog.ResultSize, dialog.ResultColor,
-            dialog.ResultBold, dialog.ResultItalic, dialog.ResultUnderline, dialog.ResultStrikethrough);
+            dialog.ResultBold, dialog.ResultItalic, dialog.ResultUnderline, dialog.ResultStrikethrough,
+            dialog.ResultTextBoxStyle);
     }
 
     private async void EditTextAnnotation(Annotation ann)
     {
         var dialog = new TextEntryDialog(
             EditorFonts.Choices, ann.Text, ann.FontFamily, ann.FontSize, ann.Color,
-            ann.Bold, ann.Italic, ann.Underline, ann.Strikethrough, isEdit: true)
+            ann.Bold, ann.Italic, ann.Underline, ann.Strikethrough, ann.TextBoxStyle, isEdit: true)
         {
             XamlRoot = XamlRoot,
         };
@@ -1538,6 +1675,7 @@ public sealed partial class EditorCanvas : UserControl
 
         _controller.UpdateOrRemoveTextAnnotation(
             ann, dialog.ResultText, dialog.ResultFont, dialog.ResultSize, dialog.ResultColor,
-            dialog.ResultBold, dialog.ResultItalic, dialog.ResultUnderline, dialog.ResultStrikethrough);
+            dialog.ResultBold, dialog.ResultItalic, dialog.ResultUnderline, dialog.ResultStrikethrough,
+            dialog.ResultTextBoxStyle);
     }
 }

@@ -86,8 +86,9 @@ struct AnalyticsSettingsSection: View {
                         .onContinuousHover { phase in
                             switch phase {
                             case .active(let location):
-                                let plotFrame = geometry[proxy.plotAreaFrame]
-                                let originX = plotFrame.origin.x
+                                guard let plotFrame = proxy.plotFrame else { return }
+                                let frame = geometry[plotFrame]
+                                let originX = frame.origin.x
                                 if let date: Date = proxy.value(atX: location.x - originX) {
                                     hoveredDate = date
                                 }

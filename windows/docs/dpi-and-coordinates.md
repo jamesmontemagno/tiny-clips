@@ -43,6 +43,17 @@ to a sub-rectangle. The pipeline:
 
 Because the crop is computed in pixels against a pixel frame, no rounding drift accumulates.
 
+Video/GIF sessions first intersect the requested rectangle with the initial WGC item in physical
+pixels, then crop the resulting width/height down to even encoder dimensions. Negative origins
+reduce the intersection rather than moving the rectangle; empty or sub-2-pixel intersections
+fail explicitly instead of inventing a 2x2 image. Both recording paths use `CaptureOutputGeometry`.
+The video performance report records `Requested`, `Clipped`, and `Encoded` rectangles and
+adjustment flags. A window target ignores a monitor-relative region and uses its own WGC size.
+Video and GIF click-overlay origins use that clipped rectangle plus the monitor's desktop origin,
+not the raw requested rectangle, including on monitors with negative desktop coordinates.
+The headless recording benchmark establishes Per-Monitor-V2 awareness before querying monitors;
+its requested dimensions are pixels, never scaled a second time.
+
 ## Window capture
 
 `CreateForWindow` captures a window's client area at physical resolution. We do **not** apply a
@@ -56,6 +67,47 @@ own DPI may differ from the monitor it's on; the captured frame reflects the win
 - Respect `RowPitch` when cropping or copying frame buffers.
 - Re-query scale on `XamlRoot.Changed` if an overlay can move between monitors mid-gesture.
 - Keep saved images at native pixel size; only the optional *scale* setting downsamples on save.
+
+## Screenshot-editor output
+
+The editor uses `ScreenshotExportSize` for both its accessible output-resolution label and
+Save/Copy. It truncates the logical export frame to integer pixels, then applies midpoint-to-even
+scale rounding with a one-pixel minimum. Padding, aspect-ratio frames, and image alignment are
+part of that frame; monitor rasterization scale is not. Crop pre-baking always uses native image
+dimensions and excludes export backgrounds, padding, corners, and shadows.
+
+The UI thread captures immutable annotation/style data and a lease on the immutable source
+image. Workers record list-order Win2D composition at 96 DPI and replay it directly into one
+final-size render target. At 100% there is no subsequent resample; other scales do not create an
+intermediate full-size bitmap. Each export has one explicit target pixel readback instead of the
+previous flatten-readback/upload/resample-readback sequence. Effects can still use internal GPU
+surfaces. The source upload is lazy, worker-owned, and reused until the image or shared device
+changes.
+
+Rendering/readback, redaction processing, PNG/JPEG encoding, JPEG alpha conversion, and WebP
+encoding run off the UI thread. Clipboard output remains a PNG bitmap data package with the
+existing flush contract; publication and XAML preview creation happen on the UI thread only.
+Redaction requests are deduplicated/canceled and validated again after the XAML pixel copy.
+Document replacement and closure cancel pending work, while source leases prevent premature
+disposal. Cancellation is cooperative: in-flight native work drains before its lease is released.
+Edits and undo invalidate pending preview/clipboard results. Saving a snapshot can
+finish while editing continues, but it clears dirty state only if its revision is still current.
+Output clicks/shortcuts during another output operation are coalesced, not queued; save staging
+preserves the prior destination on cancellation or encoding failure.
+
+Deterministic Core tests cover frame/scale dimensions, deep annotation snapshots, styling/order
+retention, revision/dirty behavior, late-worker ownership, and staged-save cancellation/failure.
+They do not establish native visual fidelity or UI latency. The pipeline implementation and
+deterministic tests are only part of issue #406; the issue must remain open until the required
+native runtime checks and before/after responsiveness comparison are completed and recorded.
+Neither architecture's native UI/fidelity checks have been performed for this implementation.
+
+To complete #406, use disposable synthetic images on **native x64 and native ARM64** to check
+PNG/JPEG/WebP output, transparent
+pixels, rotated/text/emoji/redaction ordering, backgrounds/frames/corners/shadows, crop, rapid
+style/geometry changes, undo, repeated output, Reset, and closure. Inspect clipboard PNG output
+only with consent. Compare UI-thread traces before/after separately from deterministic tests;
+do not infer responsiveness or a speedup from the reduced explicit operation count.
 
 ## Known limitations
 
