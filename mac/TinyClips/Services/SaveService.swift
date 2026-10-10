@@ -232,7 +232,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 
     override init() {
         super.init()
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             UNUserNotificationCenter.current().delegate = self
         }
