@@ -41,3 +41,10 @@ __pycache__/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Hype video tooling (marketing/hype-video): dependencies and rendered output
+node_modules/
+marketing/hype-video/out/
+
+# Local design-lint hook cache
+.impeccable/hook.cache.json

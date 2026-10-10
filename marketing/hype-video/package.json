@@ -1,0 +1,18 @@
+{
+  "name": "tiny-clips-hype-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Code-rendered hype video for Tiny Clips (HTML/CSS motion graphics + synthesized soundtrack).",
+  "type": "module",
+  "scripts": {
+    "audio": "node scripts/audio.mjs",
+    "preview": "node scripts/audio.mjs && node scripts/serve.mjs",
+    "review": "node scripts/render.mjs --review",
+    "still": "node scripts/render.mjs --still",
+    "draft": "node scripts/audio.mjs && node scripts/render.mjs --draft",
+    "render": "node scripts/audio.mjs && node scripts/render.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}
