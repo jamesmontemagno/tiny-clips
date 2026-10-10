@@ -1250,6 +1250,26 @@ class ScreenshotEditorViewModel: ObservableObject {
         markDirty()
     }
 
+    var canDeleteSelectedAnnotation: Bool {
+        guard selectedTool == .move, let index = selectedAnnotationIndex else { return false }
+        return annotations.indices.contains(index)
+    }
+
+    @discardableResult
+    func deleteSelectedAnnotation() -> Bool {
+        guard selectedTool == .move,
+              let index = selectedAnnotationIndex,
+              annotations.indices.contains(index) else {
+            return false
+        }
+
+        recordHistory()
+        annotations.remove(at: index)
+        selectedAnnotationIndex = nil
+        markDirty()
+        return true
+    }
+
     @discardableResult
     func applyCrop() -> Bool {
         guard canApplyCrop,

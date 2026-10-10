@@ -30,6 +30,8 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
     let onPan: (CGSize) -> Void
     /// Called for an unmodified Return/Enter outside text input; returns whether it was handled.
     let onReturn: () -> Bool
+    /// Called for an unmodified Delete outside text input; returns whether it was handled.
+    let onDelete: () -> Bool
     /// Called for an unmodified Esc unless a sheet, popover, or input method needs it. The argument
     /// says whether a text field has focus. Returns whether Esc was acted on; when it was not, the
     /// focused text field just gives up focus.
@@ -37,7 +39,14 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
     let onBackingScaleChange: (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(isEnabled: isEnabled, onZoom: onZoom, onPan: onPan, onReturn: onReturn, onEscape: onEscape)
+        Coordinator(
+            isEnabled: isEnabled,
+            onZoom: onZoom,
+            onPan: onPan,
+            onReturn: onReturn,
+            onDelete: onDelete,
+            onEscape: onEscape
+        )
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -55,6 +64,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         context.coordinator.onZoom = onZoom
         context.coordinator.onPan = onPan
         context.coordinator.onReturn = onReturn
+        context.coordinator.onDelete = onDelete
         context.coordinator.onEscape = onEscape
         if let view = nsView as? ScreenshotEditorViewportMonitorView {
             view.onBackingScaleChange = onBackingScaleChange
@@ -70,6 +80,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         var onZoom: (CGFloat, CGPoint) -> Void
         var onPan: (CGSize) -> Void
         var onReturn: () -> Bool
+        var onDelete: () -> Bool
         var onEscape: (Bool) -> Bool
 
         private weak var monitoredView: NSView?
@@ -83,12 +94,14 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             onZoom: @escaping (CGFloat, CGPoint) -> Void,
             onPan: @escaping (CGSize) -> Void,
             onReturn: @escaping () -> Bool,
+            onDelete: @escaping () -> Bool,
             onEscape: @escaping (Bool) -> Bool
         ) {
             self.isEnabled = isEnabled
             self.onZoom = onZoom
             self.onPan = onPan
             self.onReturn = onReturn
+            self.onDelete = onDelete
             self.onEscape = onEscape
         }
 
@@ -157,6 +170,15 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
                       event.modifierFlags.isDisjoint(with: [.command, .option, .control]),
                       !(view.window?.firstResponder is NSTextView),
                       onReturn() else {
+                    return event
+                }
+                return nil
+            case .keyDown where event.keyCode == 51 || event.keyCode == 117:
+                // Backspace / forward Delete. Text fields and modified shortcuts keep the key.
+                guard !event.isARepeat,
+                      event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]),
+                      !(view.window?.firstResponder is NSTextView),
+                      onDelete() else {
                     return event
                 }
                 return nil
@@ -707,6 +729,7 @@ struct ScreenshotEditorView: View {
                             },
                             onPan: panCanvas,
                             onReturn: applyCropFromKeyboard,
+                            onDelete: viewModel.deleteSelectedAnnotation,
                             onEscape: handleEscape,
                             onBackingScaleChange: updateBackingScaleFactor
                         )
@@ -750,6 +773,7 @@ struct ScreenshotEditorView: View {
                 undo: viewModel.undo,
                 redo: viewModel.redo,
                 copy: viewModel.copyToClipboard,
+                deleteSelectedAnnotation: { viewModel.deleteSelectedAnnotation() },
                 clearAnnotations: { showClearAnnotationsConfirmation = true },
                 applyCrop: applyCrop,
                 zoomIn: zoomIn,
@@ -758,6 +782,7 @@ struct ScreenshotEditorView: View {
                 nativeSizeZoom: nativeSizeZoom,
                 canUndo: viewModel.canUndo,
                 canRedo: viewModel.canRedo,
+                canDeleteSelectedAnnotation: viewModel.canDeleteSelectedAnnotation,
                 hasAnnotations: viewModel.hasAnnotations,
                 canApplyCrop: viewModel.canApplyCrop,
                 isEditingText: isTextInputActive,
