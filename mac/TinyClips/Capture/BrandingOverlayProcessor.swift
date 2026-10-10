@@ -596,7 +596,7 @@ enum BrandingOverlayProcessor {
         let mask: CIImage?
     }
 
-    private final class WebcamOverlayInstruction: NSObject, AVVideoCompositionInstructionProtocol {
+    private final class WebcamOverlayInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
         let timeRange: CMTimeRange
         let enablePostProcessing = false
         let containsTweening = false
@@ -636,15 +636,19 @@ enum BrandingOverlayProcessor {
         private let lock = NSLock()
 
         var sourcePixelBufferAttributes: [String: Any]? {
-            [
-                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-            ]
+            @Sendable get {
+                [
+                    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+                ]
+            }
         }
 
         var requiredPixelBufferAttributesForRenderContext: [String: Any] {
-            [
-                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-            ]
+            @Sendable get {
+                [
+                    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+                ]
+            }
         }
 
         func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {

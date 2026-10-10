@@ -657,15 +657,15 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     func showNotice(_ message: String) {
         AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
 
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized ||
                     settings.authorizationStatus == .provisional else {
-                Task { @MainActor [weak self] in self?.showInAppNotice(message) }
+                Task { @MainActor in SaveService.shared.showInAppNotice(message) }
                 return
             }
             let showsBanner = settings.authorizationStatus == .authorized && settings.alertStyle != .none
             if !showsBanner {
-                Task { @MainActor [weak self] in self?.showInAppNotice(message) }
+                Task { @MainActor in SaveService.shared.showInAppNotice(message) }
             }
 
             let content = UNMutableNotificationContent()
@@ -677,9 +677,9 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
                 content: content,
                 trigger: nil
             )
-            UNUserNotificationCenter.current().add(request) { [weak self] error in
+            UNUserNotificationCenter.current().add(request) { error in
                 if error != nil && showsBanner {
-                    Task { @MainActor [weak self] in self?.showInAppNotice(message) }
+                    Task { @MainActor in SaveService.shared.showInAppNotice(message) }
                 }
             }
         }

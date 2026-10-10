@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - A crop selection in the macOS screenshot editor now only changes the image once it is applied, matching Windows. Save, Copy, and the output size ignore an unapplied selection, and switching tools clears it.
 
 ### Fixed
+- Resolved macOS build warnings for thumbnail generation, recording callbacks, audio mixdown, video overlays, StoreKit, and settings.
 - Fixed macOS video recordings made with both system audio and the microphone being saved with two audio tracks, which players that play only the first one (browsers, VLC, Windows players) played without the voice. Saved videos now have one audio track with both sounds in it, and the video trimmer no longer drops the microphone when it exports such a recording.
 - Fixed the macOS video trimmer doing nothing when an export failed. It now says what went wrong, and the original recording is kept.
 - Fixed Esc doing nothing in the macOS screenshot editor unless one of its controls had keyboard focus. Esc now closes the editor it is pressed in without quitting Tiny Clips.
