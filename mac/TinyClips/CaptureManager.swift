@@ -901,46 +901,46 @@ class CaptureManager: ObservableObject {
                     self.activeRecordingSessionID = sessionID
                     self.didShowVideoCodecFallbackNotice = false
                     self.debugRecordingLifecycle("Starting video session \(sessionID)")
-                    let manager = self
-                    recorder.onStreamFailure = { [weak manager] error in
+                    let captureManager = self
+                    recorder.onStreamFailure = { [weak captureManager] error in
                         let message = error.localizedDescription
-                        Task { @MainActor [weak manager] in
-                            manager?.handleStreamFailure(
+                        Task { @MainActor [weak captureManager] in
+                            captureManager?.handleStreamFailure(
                                 for: sessionID,
                                 type: .video,
                                 message: message
                             )
                         }
                     }
-                    recorder.onMicrophoneLevel = { [weak manager] level in
-                        DispatchQueue.main.async { [weak manager] in
-                            manager?.microphoneLevel = level
+                    recorder.onMicrophoneLevel = { [weak captureManager] level in
+                        DispatchQueue.main.async { [weak captureManager] in
+                            captureManager?.microphoneLevel = level
                         }
                     }
-                    recorder.onMicrophoneWarning = { [weak manager] warning in
-                        DispatchQueue.main.async { [weak manager] in
-                            manager?.microphoneWarningMessage = warning
+                    recorder.onMicrophoneWarning = { [weak captureManager] warning in
+                        DispatchQueue.main.async { [weak captureManager] in
+                            captureManager?.microphoneWarningMessage = warning
                         }
                     }
-                    recorder.onMicrophoneDeviceName = { [weak manager] name in
-                        DispatchQueue.main.async { [weak manager] in
-                            manager?.activeMicrophoneName = name.isEmpty ? nil : name
+                    recorder.onMicrophoneDeviceName = { [weak captureManager] name in
+                        DispatchQueue.main.async { [weak captureManager] in
+                            captureManager?.activeMicrophoneName = name.isEmpty ? nil : name
                         }
                     }
-                    recorder.onMicrophoneError = { [weak manager] message in
-                        DispatchQueue.main.async { [weak manager] in
-                            manager?.microphoneWarningMessage = message
+                    recorder.onMicrophoneError = { [weak captureManager] message in
+                        DispatchQueue.main.async { [weak captureManager] in
+                            captureManager?.microphoneWarningMessage = message
                             SaveService.shared.showError("Microphone error: \(message)")
                         }
                     }
-                    recorder.onVideoCodecFallback = { [weak manager] message in
-                        Task { @MainActor [weak manager] in
-                            manager?.showVideoCodecFallbackNoticeOnce(message)
+                    recorder.onVideoCodecFallback = { [weak captureManager] message in
+                        Task { @MainActor [weak captureManager] in
+                            captureManager?.showVideoCodecFallbackNoticeOnce(message)
                         }
                     }
-                    webcamRecorder.onWebcamDeviceName = { [weak manager] name in
-                        DispatchQueue.main.async { [weak manager] in
-                            manager?.activeWebcamName = name.isEmpty ? nil : name
+                    webcamRecorder.onWebcamDeviceName = { [weak captureManager] name in
+                        DispatchQueue.main.async { [weak captureManager] in
+                            captureManager?.activeWebcamName = name.isEmpty ? nil : name
                         }
                     }
                     webcamRecorder.onWebcamError = { message in
@@ -948,9 +948,9 @@ class CaptureManager: ObservableObject {
                             SaveService.shared.showError("Webcam error: \(message)")
                         }
                     }
-                    webcamRecorder.onVideoCodecFallback = { [weak manager] message in
-                        Task { @MainActor [weak manager] in
-                            manager?.showVideoCodecFallbackNoticeOnce(message)
+                    webcamRecorder.onVideoCodecFallback = { [weak captureManager] message in
+                        Task { @MainActor [weak captureManager] in
+                            captureManager?.showVideoCodecFallbackNoticeOnce(message)
                         }
                     }
 
@@ -1135,11 +1135,11 @@ class CaptureManager: ObservableObject {
                     let sessionID = self.nextRecordingSessionID()
                     self.activeRecordingSessionID = sessionID
                     self.debugRecordingLifecycle("Starting GIF session \(sessionID)")
-                    let manager = self
-                    writer.onStreamFailure = { [weak manager] error in
+                    let captureManager = self
+                    writer.onStreamFailure = { [weak captureManager] error in
                         let message = error.localizedDescription
-                        Task { @MainActor [weak manager] in
-                            manager?.handleStreamFailure(
+                        Task { @MainActor [weak captureManager] in
+                            captureManager?.handleStreamFailure(
                                 for: sessionID,
                                 type: .gif,
                                 message: message
