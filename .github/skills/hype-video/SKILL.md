@@ -1,6 +1,6 @@
 ---
 name: hype-video
-description: Produce the Tiny Clips hype video for a new release — pick the newest features from the changelogs, update the "What's new" tiles, render the 45-second 1080p MP4, and draft a social post to go with it. Use when asked to hype, promote, announce, or make a video or tweet about new Tiny Clips features or a release.
+description: Produce the Tiny Clips hype video for a new release — ask about the campaign angle, energy, motion, music, and visual theme, then update the "What's new" tiles, render the 45-second 1080p MP4, and draft a social post. Use when asked to hype, promote, announce, or make a video or tweet about new Tiny Clips features or a release.
 argument-hint: "[what to hype] (e.g., 'the 1.9 release', 'scrolling capture and OCR', 'latest Windows features')"
 user-invocable: true
 ---
@@ -23,7 +23,44 @@ file: `marketing/hype-video/src/content.js`.
 
 ## Procedure
 
-### 1. Choose what to hype
+### 1. Confirm the creative brief
+
+Before editing or rendering, confirm the creative direction. Read the user's request first and
+skip any choice they already specified. For every missing choice, use `ask_user` and ask **one
+question at a time**, waiting for the answer before asking the next. The defaults below are
+recommendations, not consent: ask about a setting even if `src/creative.js` currently has its
+default.
+
+Ask in this order:
+
+1. **Campaign angle** — “What should this cut lead with?”
+   - `All-in-one (Recommended)` → `all-in-one`: core Tiny Clips capture toolkit.
+   - `New release / what's new` → `new-release`: the newest shipped features.
+   - `Creator workflow` → `creator`: capture, make, and share.
+   - `Developer workflow` → `developer`: record, explain, and ship.
+2. **Hype level** — “How energetic should the overall spot feel?”
+   - `Upbeat (Recommended)` → `upbeat`: balanced, close to the original.
+   - `Polished and restrained` → `polished`: a calmer, more refined soundtrack.
+   - `Full-send / maximum excitement` → `full-send`: bigger drums, fills, and musical lift.
+3. **Motion intensity** — “How bold should the movement and transitions be?”
+   - `Punchy (Recommended)` → `punchy`: crisp, energetic movement.
+   - `Subtle` → `subtle`: softer travel, smaller impacts, and gentler flashes.
+   - `High-impact` → `high-impact`: faster-feeling movement, larger hits, and stronger flashes.
+4. **Music style** — “Which locally synthesized soundtrack direction should it use?”
+   - `Electronic (Recommended)` → `electronic`: the original bright, beat-driven arrangement.
+   - `Cinematic` → `cinematic`: sustained, orchestral-feeling pads and half-time drums.
+   - `Funk` → `funk`: syncopated bass, clipped chords, and a looser groove.
+   - `Lo-fi` → `lofi`: softened drums, warm keys, and subtle vinyl texture.
+   - `Silent` → `silent`: no soundtrack.
+5. **Visual theme** — “Which color palette should lead the look?”
+   - `Neon (Recommended)` → `neon`: the original blue-violet palette.
+   - `Sunset` → `sunset`: warm orange, coral, and pink.
+   - `Ice` → `ice`: cool cyan, blue, and violet.
+
+After the brief is clear, update the matching values in `marketing/hype-video/src/creative.js`.
+Keep the existing 16:9, 1920×1080, 45-second format unless the user asks to change it.
+
+### 2. Choose what to hype
 
 Read the newest released sections of both changelogs:
 
@@ -42,7 +79,7 @@ Pick 3 to 6 features. Six fills the grid best.
 If the user named the features, use those and skip the selection. If it is unclear which platform
 or release they mean, ask.
 
-### 2. Edit `src/content.js`
+### 3. Edit `src/content.js`
 
 Replace the tiles. The file's header comment lists every field; the short version:
 
@@ -74,7 +111,7 @@ Copy rules:
 - Shortcuts must match the current defaults in `README.md` and `windows/README.md`.
 - Plain words, no exclamation marks; the motion carries the energy.
 
-### 3. Check it
+### 4. Check it
 
 ```bash
 cd marketing/hype-video
@@ -88,10 +125,11 @@ title wraps, a blurb runs past two lines, a visual is clipped by its tile, the h
 with the platform label, or a visual type or accent is unknown. Fix `content.js` and run it again
 until it passes and the sheets look right.
 
-`npm run preview` opens the composition in a browser with a scrubber and the soundtrack, for
-checking motion and timing.
+`npm run preview` regenerates the selected soundtrack, then opens the composition in a browser
+with a scrubber for checking motion and timing. For `silent`, it removes any old WAV and previews
+without audio.
 
-### 4. Render
+### 5. Render
 
 ```bash
 npm run render     # out/tiny-clips-hype.mp4, about three minutes
@@ -106,7 +144,7 @@ ffprobe -v error -show_entries stream=codec_name,width,height,r_frame_rate:forma
 Tell the user the full path of the MP4. `out/` is not tracked by git, so the file stays local
 until they upload it.
 
-### 5. Draft the post
+### 6. Draft the post
 
 Write the post in the reply; do not publish it anywhere.
 
@@ -117,11 +155,12 @@ Write the post in the reply; do not publish it anywhere.
 - One or two emoji at most, and no more than two hashtags.
 - Offer one alternative with a different angle (for example, feature list versus one-line pitch).
 
-### 6. Commit
+### 7. Commit
 
-Commit the source changes only, normally just `marketing/hype-video/src/content.js`. Never commit
-`marketing/hype-video/out/` or `node_modules/`; both are ignored. Do not push or open a pull
-request unless asked.
+Commit source changes only, normally `marketing/hype-video/src/content.js`. Include
+`marketing/hype-video/src/creative.js` only when the user asked to change the reusable defaults.
+Never commit `marketing/hype-video/out/` or `node_modules/`; both are ignored. Do not push or open
+a pull request unless asked.
 
 ## Changing more than the tiles
 
@@ -134,8 +173,9 @@ request unless asked.
 - **App screenshots**: the video reads `docs/windows-art/editor.png`, `docs/windows-art/tray.png`,
   `docs/windows-art/video-editor.png`, and `docs/tinyclips.png`. Replace those files to refresh
   them. Do not use screenshots that show personal data.
-- **Music**: `scripts/audio.mjs`. If the tempo or length changes, change `BPM` and `BARS` in both
-  `audio.mjs` and `player.js`.
+- **Music**: `scripts/audio.mjs`; style and hype profiles are selected in `src/creative.js`.
+  `silent` removes a stale generated WAV and the renderer will not mux one. If the tempo or length
+  changes, change `BPM` and `BARS` in both `audio.mjs` and `player.js`.
 - **Other cuts**: `npm run draft` for a fast 30 fps pass, `node scripts/render.mjs --no-audio` for
   picture only, `--from` and `--to` (seconds) for a section.
 

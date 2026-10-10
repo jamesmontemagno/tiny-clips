@@ -14,7 +14,7 @@ npm run render     # out/tiny-clips-hype.mp4
 ```
 
 The `hype-video` skill (`.github/skills/hype-video/SKILL.md`) walks through the whole flow,
-including choosing features from the changelogs and drafting the post.
+including a short creative brief, choosing features from the changelogs, and drafting the post.
 
 ## Render it
 
@@ -27,7 +27,7 @@ npm install
 npm run render     # out/tiny-clips-hype.mp4  (60 fps, about three minutes)
 npm run draft      # out/tiny-clips-hype-draft.mp4  (30 fps, under a minute)
 npm run review     # one frame per scene as contact sheets -> out/review/
-npm run preview    # live preview with a scrubber and the soundtrack
+npm run preview    # live preview with a scrubber and the selected soundtrack
 ```
 
 `out/` is ignored by git. Useful extras:
@@ -59,6 +59,22 @@ Everything is cut to a 128 BPM grid: one bar is 1.875 s and the piece is 24 bars
 
 - `src/content.js` holds the release-specific copy: the “What’s new” tiles (3 to 6), their
   visuals, and the breakdown line. This is the only file a new release normally touches.
+- `src/creative.js` holds the selected campaign angle, hype level, motion intensity, music style,
+  and visual palette. The `hype-video` skill asks about any choices not specified in the request.
+  Supported values are:
+
+  | Setting | Values |
+  | --- | --- |
+  | `campaign` | `all-in-one`, `new-release`, `creator`, `developer` |
+  | `hypeLevel` | `polished`, `upbeat`, `full-send` |
+  | `motionIntensity` | `subtle`, `punchy`, `high-impact` |
+  | `musicStyle` | `electronic`, `cinematic`, `funk`, `lofi`, `silent` |
+  | `visualTheme` | `neon`, `sunset`, `ice` |
+
+  Defaults preserve the original video. All music is synthesized locally; `silent` removes any
+  previously generated soundtrack and renders without muxing audio. `npm run preview` regenerates
+  the selected soundtrack first, so it cannot accidentally use one from an earlier profile. The
+  timeline stays at 128 BPM, 24 bars, and 45 seconds for every profile.
 - `src/index.html` holds the scenes. A scene is a `<section class="scene" data-bar="8" data-bars="1">`;
   elements inside are timed with `data-at` in beats from the start of their scene (`data-at="1.5"`)
   or in seconds (`data-at="0.3s"`).

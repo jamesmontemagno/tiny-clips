@@ -10,6 +10,28 @@
   const BAR = BEAT * 4;
   const BARS = 24;
   const DURATION = BARS * BAR;
+  const CREATIVE_DEFAULTS = {
+    campaign: 'all-in-one',
+    hypeLevel: 'upbeat',
+    motionIntensity: 'punchy',
+    musicStyle: 'electronic',
+    visualTheme: 'neon',
+  };
+  const CREATIVE_OPTIONS = {
+    campaign: ['all-in-one', 'new-release', 'creator', 'developer'],
+    hypeLevel: ['polished', 'upbeat', 'full-send'],
+    motionIntensity: ['subtle', 'punchy', 'high-impact'],
+    musicStyle: ['electronic', 'cinematic', 'funk', 'lofi', 'silent'],
+    visualTheme: ['neon', 'sunset', 'ice'],
+  };
+  const creative = { ...CREATIVE_DEFAULTS, ...(window.HYPE_CREATIVE ?? {}) };
+  const creativeProblems = [];
+  for (const [setting, choices] of Object.entries(CREATIVE_OPTIONS)) {
+    if (!choices.includes(creative[setting])) {
+      creativeProblems.push(`creative.js: "${setting}" must be one of ${choices.join(', ')}.`);
+      creative[setting] = CREATIVE_DEFAULTS[setting];
+    }
+  }
   const rendering = new URLSearchParams(location.search).has('render');
   const stage = document.getElementById('stage');
 
@@ -17,12 +39,61 @@
   document.documentElement.style.setProperty('--bar', `${BAR}s`);
   document.documentElement.classList.toggle('render', rendering);
 
+  const CAMPAIGN_TAGLINES = {
+    'all-in-one': ['Screenshots.', 'Video.', 'GIFs.'],
+    'new-release': ['New features.', 'Fresh captures.', 'One tiny app.'],
+    creator: ['Capture.', 'Create.', 'Share.'],
+    developer: ['Record it.', 'Explain it.', 'Ship it.'],
+  };
+  const MOTION = {
+    subtle: { speed: 1.25, distance: '0.55', slam: '1.35', drop: '1.4', blur: '8px', camera: '1.003', flash: '0.45', pop: '0.7', tile: '0.82' },
+    punchy: { speed: 1, distance: '1', slam: '2.1', drop: '1.8', blur: '16px', camera: '1.014', flash: '1', pop: '0.4', tile: '0.6' },
+    'high-impact': { speed: 0.82, distance: '1.3', slam: '2.6', drop: '2.6', blur: '22px', camera: '1.024', flash: '1.35', pop: '0.25', tile: '0.35' },
+  };
+  const THEMES = {
+    neon: {},
+    sunset: {
+      '--bg': '#100910', '--ink': '#fffaf5', '--lav': '#ffd7c2', '--dim': 'rgba(255, 215, 195, 0.55)',
+      '--blue': '#ef693c', '--violet': '#dc497d', '--pink': '#ff6b91', '--orange': '#ffab3d',
+      '--green': '#c6e778', '--cyan': '#57d7cb', '--red': '#ef4f50', '--accent': '#ef693c',
+      '--surface': '#1d1321', '--surface-2': '#342032', '--line': 'rgba(255, 210, 170, 0.16)',
+      '--glow-a': 'rgba(234, 91, 68, 0.36)', '--glow-b': 'rgba(241, 125, 64, 0.32)', '--glow-c': 'rgba(255, 110, 145, 0.15)',
+    },
+    ice: {
+      '--bg': '#060e1a', '--ink': '#f3fbff', '--lav': '#cce8ff', '--dim': 'rgba(190, 225, 255, 0.55)',
+      '--blue': '#31b8f5', '--violet': '#567dff', '--pink': '#af8fff', '--orange': '#ffb55e',
+      '--green': '#65e5d2', '--cyan': '#61e8ff', '--red': '#ff657b', '--accent': '#31b8f5',
+      '--surface': '#0d1c30', '--surface-2': '#152b45', '--line': 'rgba(160, 215, 255, 0.17)',
+      '--glow-a': 'rgba(49, 184, 245, 0.32)', '--glow-b': 'rgba(86, 125, 255, 0.35)', '--glow-c': 'rgba(97, 232, 255, 0.12)',
+    },
+  };
+  const motion = MOTION[creative.motionIntensity];
+  const theme = THEMES[creative.visualTheme];
+  for (const [name, value] of Object.entries(theme)) document.documentElement.style.setProperty(name, value);
+  document.documentElement.style.setProperty('--motion-speed', motion.speed);
+  document.documentElement.style.setProperty('--motion-distance', motion.distance);
+  document.documentElement.style.setProperty('--motion-slam', motion.slam);
+  document.documentElement.style.setProperty('--motion-drop', motion.drop);
+  document.documentElement.style.setProperty('--motion-blur', motion.blur);
+  document.documentElement.style.setProperty('--motion-camera', motion.camera);
+  document.documentElement.style.setProperty('--motion-pop', motion.pop);
+  document.documentElement.style.setProperty('--motion-tile', motion.tile);
+
+  const tagline = document.getElementById('campaign-tagline');
+  for (const [i, text] of CAMPAIGN_TAGLINES[creative.campaign].entries()) {
+    const word = document.createElement('span');
+    word.className = 'a-pop';
+    word.dataset.at = String(5.5 + i * 0.5);
+    word.textContent = text;
+    tagline.append(word);
+  }
+
   // "2" = 2 beats, "0.3s" = seconds.
   const time = (v) => (String(v).trim().endsWith('s') ? parseFloat(v) : parseFloat(v) * BEAT);
 
   // ---- Release content (content.js) ----------------------------------------------------------
 
-  const problems = [];
+  const problems = creativeProblems;
   const ACCENTS = ['blue', 'violet', 'pink', 'orange', 'green', 'cyan', 'red'];
   const TILE_STEP = { 3: 4, 4: 3, 5: 2, 6: 2 }; // beats between tiles, so the grid is full by beat 12
   const el = (tag, cls, text) => {
@@ -234,7 +305,7 @@
     if (bar === 0) continue;
     const flash = document.createElement('i');
     flash.style.setProperty('--start', `${bar * BAR}s`);
-    flash.style.setProperty('--peak', DROPS.has(bar) ? 0.55 : 0.14);
+    flash.style.setProperty('--peak', (DROPS.has(bar) ? 0.55 : 0.14) * motion.flash);
     flashes.appendChild(flash);
   }
 
@@ -386,7 +457,8 @@
     bar.innerHTML = '<button type="button" aria-label="Play or pause">Play</button><input type="range" min="0" max="1" step="0.0005" value="0" aria-label="Scrub"><output></output>';
     document.body.appendChild(bar);
     const [button, range, readout] = bar.children;
-    const audio = new Audio('../out/hype-beat.wav');
+    const audio = new Audio();
+    if (creative.musicStyle !== 'silent') audio.src = '../out/hype-beat.wav';
     let hasAudio = false;
     audio.addEventListener('canplaythrough', () => { hasAudio = true; }, { once: true });
 

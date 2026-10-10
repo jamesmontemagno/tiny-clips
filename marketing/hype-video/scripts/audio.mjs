@@ -1,8 +1,28 @@
 // Synthesizes the original soundtrack for the hype video: 128 BPM, 24 bars = 45.0 s, F minor.
 // Everything is generated from oscillators and noise here, so there is nothing to license.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
+
+const CONFIG_SANDBOX = { window: {} };
+runInNewContext(readFileSync(new URL('../src/creative.js', import.meta.url), 'utf8'), CONFIG_SANDBOX);
+const CREATIVE = CONFIG_SANDBOX.window.HYPE_CREATIVE ?? {};
+const MUSIC_STYLE = CREATIVE.musicStyle ?? 'electronic';
+const HYPE_LEVEL = CREATIVE.hypeLevel ?? 'upbeat';
+const HYPE_PROFILES = {
+  polished: { drums: 0.62, hats: 0.55, fills: 0.6, music: 0.85 },
+  upbeat: { drums: 1, hats: 1, fills: 1, music: 1 },
+  'full-send': { drums: 1.12, hats: 1.25, fills: 1.4, music: 1.05 },
+};
+if (!['electronic', 'cinematic', 'funk', 'lofi', 'silent'].includes(MUSIC_STYLE)) {
+  throw new Error(`Unknown musicStyle "${MUSIC_STYLE}". Choose electronic, cinematic, funk, lofi, or silent.`);
+}
+if (!HYPE_PROFILES[HYPE_LEVEL]) {
+  throw new Error(`Unknown hypeLevel "${HYPE_LEVEL}". Choose polished, upbeat, or full-send.`);
+}
+const HYPE = HYPE_PROFILES[HYPE_LEVEL];
+const OUT_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../out/hype-beat.wav');
 
 const SR = 44100;
 const BPM = 128;
@@ -11,6 +31,13 @@ const BAR = BEAT * 4;
 const S16 = BEAT / 4;
 const BARS = 24;
 const N = Math.round(BARS * BAR * SR);
+
+if (MUSIC_STYLE === 'silent') {
+  mkdirSync(dirname(OUT_PATH), { recursive: true });
+  rmSync(OUT_PATH, { force: true });
+  console.log('Music style is silent; removed the generated soundtrack.');
+  process.exit(0);
+}
 
 const bus = () => [new Float32Array(N), new Float32Array(N)];
 const drums = bus();
@@ -68,6 +95,26 @@ function sawOsc(freq, phase = Math.abs(rnd())) {
   const dt = freq / SR;
   return () => {
     const v = 2 * phase - 1 - polyblep(phase, dt);
+    phase += dt;
+    if (phase >= 1) phase -= 1;
+    return v;
+  };
+}
+
+function sineOsc(freq, phase = 0) {
+  const dt = freq / SR;
+  return () => {
+    const v = Math.sin(2 * Math.PI * phase);
+    phase += dt;
+    if (phase >= 1) phase -= 1;
+    return v;
+  };
+}
+
+function triangleOsc(freq, phase = Math.abs(rnd())) {
+  const dt = freq / SR;
+  return () => {
+    const v = 1 - 4 * Math.abs(phase - 0.5);
     phase += dt;
     if (phase >= 1) phase -= 1;
     return v;
@@ -155,13 +202,14 @@ function bassNote(t0, midi, dur, gain = 1) {
 
 // Detuned saw stack through a lowpass. cutoffFn(t, dur) returns Hz.
 function synthNote(target, t0, midi, dur, gain, cutoffFn, opts = {}) {
-  const { pan = 0, release = 0.12, attack = 0.004, q = 1.1, voices = 3, detune = 0.11, send = 0, rev = 0 } = opts;
+  const { pan = 0, release = 0.12, attack = 0.004, q = 1.1, voices = 3, detune = 0.11, send = 0, rev = 0, waveform = 'saw' } = opts;
   const start = Math.round(t0 * SR);
   const len = Math.round((dur + release * 4) * SR);
   const oscs = [];
   for (let v = 0; v < voices; v++) {
     const spread = voices === 1 ? 0 : (v / (voices - 1) - 0.5) * 2;
-    oscs.push(sawOsc(mtof(midi + spread * detune)));
+    const frequency = mtof(midi + spread * detune);
+    oscs.push(waveform === 'sine' ? sineOsc(frequency) : waveform === 'triangle' ? triangleOsc(frequency) : sawOsc(frequency));
   }
   const lp = svf();
   for (let n = 0; n < len; n++) {
@@ -250,31 +298,97 @@ for (let b = 0; b < BARS; b++) {
   const t = at(b);
   const last = b === BARS - 1;
 
-  // Drums
-  if (isMain(b) || (isOutro(b) && !last)) {
-    for (let q = 0; q < 4; q++) { kick(t + q * BEAT); kickTimes.push(t + q * BEAT); }
-    clap(t + BEAT, isOutro(b) ? 0.7 : 1);
-    clap(t + 3 * BEAT, isOutro(b) ? 0.7 : 1);
+  const active = isMain(b) || (isOutro(b) && !last);
+  const cinematic = MUSIC_STYLE === 'cinematic';
+  const lofi = MUSIC_STYLE === 'lofi';
+  const funk = MUSIC_STYLE === 'funk';
+
+  // Electronic keeps the original four-on-the-floor pattern. The other styles use
+  // half-time, syncopated, or softened patterns while sharing the same 128 BPM cut grid.
+  if (active) {
+    const kickBeats = cinematic || lofi ? [0, 2] : funk ? [0, 1.5, 2.75] : [0, 1, 2, 3];
+    for (const q of kickBeats) {
+      const gain = (cinematic ? 0.9 : lofi ? 0.72 : 1) * HYPE.drums;
+      kick(t + q * BEAT, gain);
+      kickTimes.push(t + q * BEAT);
+    }
+    const clapGain = isOutro(b) ? 0.7 : 1;
+    if (!cinematic) {
+      if (lofi) clap(t + 2 * BEAT, 0.4 * clapGain * HYPE.drums);
+      else {
+        clap(t + BEAT, clapGain * HYPE.drums);
+        clap(t + 3 * BEAT, clapGain * HYPE.drums);
+      }
+    }
   }
   if (isMain(b)) {
-    const busy = b >= 13;
-    for (let s = 0; s < 16; s++) {
-      const off = s % 4 === 2;
-      if (off) hat(t + s * S16, 0.9, b >= 6 && s % 8 === 6, 0.15);
-      else if (busy || s % 2 === 1) hat(t + s * S16, busy ? 0.45 : 0.28, false, s % 2 ? -0.25 : 0.25);
+    const busy = b >= 13 || HYPE_LEVEL === 'full-send' && b >= 8;
+    if (MUSIC_STYLE === 'electronic') {
+      for (let s = 0; s < 16; s++) {
+        const off = s % 4 === 2;
+        if (off) hat(t + s * S16, 0.9 * HYPE.hats, b >= 6 && s % 8 === 6, 0.15);
+        else if ((busy || s % 2 === 1) && (HYPE_LEVEL !== 'polished' || off || s % 4 === 1)) {
+          hat(t + s * S16, (busy ? 0.45 : 0.28) * HYPE.hats, false, s % 2 ? -0.25 : 0.25);
+        }
+      }
+    } else if (funk) {
+      for (let s = 0; s < 16; s += 2) {
+        const accent = s % 4 === 2;
+        hat(t + s * S16, (accent ? 0.7 : 0.28) * HYPE.hats, accent && s === 14, accent ? 0.2 : -0.2);
+      }
+    } else if (lofi) {
+      for (const s of [2, 6, 10, 14]) hat(t + s * S16, 0.22 * HYPE.hats, false, s % 4 ? -0.15 : 0.15);
     }
-    if (SECTION_STARTS.includes(b + 1)) snareRoll(t + 3 * BEAT, t + 4 * BEAT, 0.18, 0.5);
-    if (busy) { kick(t + 3.5 * BEAT, 0.7); kickTimes.push(t + 3.5 * BEAT); }
+    if (SECTION_STARTS.includes(b + 1)) {
+      snareRoll(t + 3 * BEAT, t + 4 * BEAT, 0.18 * HYPE.fills, 0.5 * HYPE.fills);
+    }
+    if (busy && MUSIC_STYLE === 'electronic') {
+      kick(t + 3.5 * BEAT, 0.7 * HYPE.drums);
+      kickTimes.push(t + 3.5 * BEAT);
+    }
   }
 
-  // Bass: offbeat pump with a 16th pickup.
-  if (isMain(b) || (isOutro(b) && !last)) {
-    for (let q = 0; q < 4; q++) bassNote(t + (q + 0.5) * BEAT, chord.root, BEAT * 0.42);
-    bassNote(t + 3.75 * BEAT, chord.root + 12, S16 * 0.8, 0.7);
+  // Bass: pumping electronic, syncopated funk, or sustained half-time notes.
+  if (active) {
+    if (MUSIC_STYLE === 'electronic') {
+      for (let q = 0; q < 4; q++) bassNote(t + (q + 0.5) * BEAT, chord.root, BEAT * 0.42);
+      bassNote(t + 3.75 * BEAT, chord.root + 12, S16 * 0.8, 0.7);
+    } else if (funk) {
+      const notes = [0, 0, 7, 0, 12, 7];
+      [0, 3, 6, 8, 11, 14].forEach((step, i) => bassNote(t + step * S16, chord.root + notes[i], S16 * 1.7, 0.85));
+    } else if (cinematic) {
+      bassNote(t, chord.root, BAR * 0.85, 0.75);
+    } else if (lofi) {
+      bassNote(t, chord.root, BEAT * 1.4, 0.72);
+      bassNote(t + 2 * BEAT, chord.root + 7, BEAT * 1.2, 0.55);
+    }
   }
 
-  // Chords
-  if (isIntro(b)) {
+  // Chords: keep the original bright electronic stabs; reshape them into score-like pads,
+  // warm lo-fi keys, or clipped funk chords for the other soundtrack styles.
+  if (MUSIC_STYLE === 'cinematic' || MUSIC_STYLE === 'lofi') {
+    const isCinematic = cinematic;
+    const waveform = isCinematic ? 'triangle' : 'sine';
+    const attack = isCinematic ? 0.48 : 0.12;
+    const release = isCinematic ? 0.55 : 0.2;
+    for (const m of chord.notes) {
+      const cutoff = isCinematic
+        ? (tt) => 900 + 1500 * Math.exp(-tt * 0.7)
+        : (tt) => 700 + 500 * Math.exp(-tt * 1.5);
+      synthNote(music, t, m, BAR * 0.92, isCinematic ? 0.14 : 0.1, cutoff, {
+        release, attack, waveform, voices: isCinematic ? 3 : 1, detune: 0.045, rev: isCinematic ? 0.8 : 0.3,
+        pan: (m % 3 - 1) * 0.28,
+      });
+    }
+  } else if (funk && !last) {
+    for (const step of [2, 6, 10, 14]) {
+      for (const m of chord.notes) {
+        synthNote(music, t + step * S16, m + 12, S16 * 1.35, 0.11,
+          (tt) => 1300 + 2400 * Math.exp(-tt * 28),
+          { release: 0.055, attack: 0.002, waveform: 'triangle', voices: 2, detune: 0.025, pan: (m % 3 - 1) * 0.25 });
+      }
+    }
+  } else if (isIntro(b)) {
     const open = (tt) => 220 + 2600 * (((b * BAR + tt) / (2 * BAR)) ** 2);
     for (const m of chord.notes) synthNote(music, t, m, BAR * 0.98, 0.13, open, { release: 0.25, attack: 0.3, rev: 0.3, pan: (m % 3 - 1) * 0.3 });
   } else if (isBreak(b)) {
@@ -294,7 +408,7 @@ for (let b = 0; b < BARS; b++) {
   }
 
   // Arp
-  if (!last) {
+  if (!last && MUSIC_STYLE === 'electronic') {
     const level = isIntro(b) ? lerp(0.035, 0.08, (b + 0.5) / 2) : isBreak(b) ? 0.05 : 0.075;
     for (let s = 0; s < 16; s++) {
       const m = chord.notes[ARP_ORDER[s]] + 12;
@@ -304,23 +418,36 @@ for (let b = 0; b < BARS; b++) {
   }
 
   // Lead on the second drop
-  if (b >= 17 && b < 21) {
+  if (b >= 17 && b < 21 && MUSIC_STYLE === 'electronic') {
     LEAD[b % 4].forEach((m, i) => {
       if (m) synthNote(music, t + i * BEAT / 2, m, BEAT * 0.42, 0.1, (tt) => 1200 + 5200 * Math.exp(-tt * 9), { release: 0.1, voices: 5, detune: 0.16, send: 0.45, rev: 0.3 });
     });
   }
 }
 
-riser(at(0), at(2), 0.5);
-snareRoll(at(1, 2), at(2), 0.1, 0.5);
-riser(at(16), at(17), 0.75);
-snareRoll(at(16), at(17), 0.12, 0.6);
-for (const b of SECTION_STARTS) crash(at(b), b === 2 || b === 17 || b === 21 ? 1.3 : 0.8);
-impact(at(2), 0.9);
-impact(at(17), 1);
-impact(at(21), 1);
-impact(at(23), 1.15);
-kick(at(23)); kickTimes.push(at(23));
+if (MUSIC_STYLE === 'lofi') {
+  const vinyl = svf();
+  for (let n = 0; n < N; n++) add(fx, n, vinyl(rnd(), 2600, 0.8, 'lp') * 0.006, 0.12);
+  for (let i = 0; i < 90; i++) {
+    const start = Math.floor(Math.abs(rnd()) * N);
+    const length = Math.round((0.003 + Math.abs(rnd()) * 0.008) * SR);
+    const polarity = Math.sign(rnd());
+    for (let n = 0; n < length; n++) {
+      add(fx, start + n, polarity * Math.exp(-n / (SR * 0.0018)) * 0.035, (i % 2 ? -1 : 1) * 0.2);
+    }
+  }
+}
+
+riser(at(0), at(2), 0.5 * HYPE.fills);
+snareRoll(at(1, 2), at(2), 0.1 * HYPE.fills, 0.5 * HYPE.fills);
+riser(at(16), at(17), 0.75 * HYPE.fills);
+snareRoll(at(16), at(17), 0.12 * HYPE.fills, 0.6 * HYPE.fills);
+for (const b of SECTION_STARTS) crash(at(b), (b === 2 || b === 17 || b === 21 ? 1.3 : 0.8) * HYPE.fills);
+impact(at(2), 0.9 * HYPE.fills);
+impact(at(17), HYPE.fills);
+impact(at(21), HYPE.fills);
+impact(at(23), 1.15 * HYPE.fills);
+kick(at(23), HYPE.drums); kickTimes.push(at(23));
 
 // ---- Mixdown ---------------------------------------------------------------------------------
 
@@ -403,7 +530,7 @@ if (process.argv.includes('--stats')) {
 }
 
 // Bus balance, then a gentle tanh limiter driven just hard enough to round off the kick peaks.
-const GAIN = { drums: 0.72, music: 1.9, fx: 0.9, delayed: 3.2, wet: 1.0 };
+const GAIN = { drums: 0.72, music: 1.9 * HYPE.music, fx: 0.9, delayed: 3.2, wet: 1.0 };
 const dry = bus();
 let dryPeak = 0;
 for (let ch = 0; ch < 2; ch++) {
@@ -440,7 +567,6 @@ for (let n = 0; n < N; n++) {
   pcm.writeInt16LE(Math.round(clamp(mix[1][n] * norm, -1, 1) * 32767), 46 + n * 4);
 }
 
-const outPath = resolve(dirname(fileURLToPath(import.meta.url)), '../out/hype-beat.wav');
-mkdirSync(dirname(outPath), { recursive: true });
-writeFileSync(outPath, pcm);
-console.log(`Wrote ${outPath} (${(N / SR).toFixed(2)} s, ${BPM} BPM, dry peak ${dryPeak.toFixed(2)}, limited peak ${peak.toFixed(2)})`);
+mkdirSync(dirname(OUT_PATH), { recursive: true });
+writeFileSync(OUT_PATH, pcm);
+console.log(`Wrote ${OUT_PATH} (${(N / SR).toFixed(2)} s, ${BPM} BPM, dry peak ${dryPeak.toFixed(2)}, limited peak ${peak.toFixed(2)})`);

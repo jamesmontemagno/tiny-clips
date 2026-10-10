@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "audio": "node scripts/audio.mjs",
-    "preview": "node scripts/serve.mjs",
+    "preview": "node scripts/audio.mjs && node scripts/serve.mjs",
     "review": "node scripts/render.mjs --review",
     "still": "node scripts/render.mjs --still",
     "draft": "node scripts/audio.mjs && node scripts/render.mjs --draft",

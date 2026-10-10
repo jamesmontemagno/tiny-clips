@@ -19,6 +19,17 @@
   --surface: #11162b;
   --surface-2: #1a2040;
   --line: rgba(160, 175, 255, 0.16);
+  --glow-a: rgba(96, 62, 230, 0.5);
+  --glow-b: rgba(40, 96, 240, 0.42);
+  --glow-c: rgba(255, 77, 143, 0.13);
+  --motion-speed: 1;
+  --motion-distance: 1;
+  --motion-slam: 2.1;
+  --motion-drop: 1.8;
+  --motion-blur: 16px;
+  --motion-camera: 1.014;
+  --motion-pop: 0.4;
+  --motion-tile: 0.6;
   --out: cubic-bezier(0.16, 1, 0.3, 1);
   --snap: cubic-bezier(0.19, 1, 0.22, 1);
   --font: "SF Pro Display", system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
@@ -46,35 +57,35 @@ svg:has(> use[href^="#i-"]) { fill: none; stroke: currentColor; stroke-width: 1.
 @keyframes scene-in { from { scale: 1.05; } }
 
 [class*="a-"] {
-  animation-duration: var(--d, 0.5s);
+  animation-duration: calc(var(--d, 0.5s) * var(--motion-speed));
   animation-timing-function: var(--ease, var(--out));
   animation-fill-mode: both;
   animation-delay: calc(var(--start) + var(--at, 0s) + var(--i, 0) * var(--stagger, 0s));
 }
 .a-up { animation-name: a-up; }
-@keyframes a-up { from { opacity: 0; translate: 0 48px; } }
+@keyframes a-up { from { opacity: 0; translate: 0 calc(48px * var(--motion-distance)); } }
 .a-down { animation-name: a-down; }
-@keyframes a-down { from { opacity: 0; translate: 0 -60px; } }
+@keyframes a-down { from { opacity: 0; translate: 0 calc(-60px * var(--motion-distance)); } }
 .a-fade { animation-name: a-fade; --d: 0.3s; }
 @keyframes a-fade { from { opacity: 0; } }
 .a-pop { animation-name: a-pop; --ease: var(--snap); --d: 0.4s; }
-@keyframes a-pop { from { opacity: 0; scale: 0.4; } }
+@keyframes a-pop { from { opacity: 0; scale: var(--motion-pop); } }
 .a-slam { animation-name: a-slam; --d: 0.34s; }
-@keyframes a-slam { from { opacity: 0; scale: 2.1; filter: blur(16px); } }
+@keyframes a-slam { from { opacity: 0; scale: var(--motion-slam); filter: blur(var(--motion-blur)); } }
 .a-rise { animation-name: a-rise; --d: 0.7s; }
-@keyframes a-rise { from { opacity: 0; translate: 0 140px; scale: 0.9; } }
+@keyframes a-rise { from { opacity: 0; translate: 0 calc(140px * var(--motion-distance)); scale: 0.9; } }
 .a-wipe { animation-name: a-wipe; --ease: cubic-bezier(0.6, 0, 0.2, 1); }
 @keyframes a-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 .a-drop { animation-name: a-drop; --ease: var(--snap); --d: 0.45s; }
-@keyframes a-drop { from { opacity: 0; translate: 0 -160px; scale: 1.8; rotate: -40deg; } }
+@keyframes a-drop { from { opacity: 0; translate: 0 calc(-160px * var(--motion-distance)); scale: var(--motion-drop); rotate: -40deg; } }
 .a-key { animation-name: a-key; --d: 0.4s; }
 @keyframes a-key {
-  from { opacity: 0; translate: 0 -26px; }
-  55% { opacity: 1; translate: 0 6px; box-shadow: 0 0 0 #0b0e1d, 0 0 34px var(--accent); }
+  from { opacity: 0; translate: 0 calc(-26px * var(--motion-distance)); }
+  55% { opacity: 1; translate: 0 calc(6px * var(--motion-distance)); box-shadow: 0 0 0 #0b0e1d, 0 0 34px var(--accent); }
 }
 .a-tile { animation-name: a-tile; --ease: var(--snap); --d: 0.5s; }
 @keyframes a-tile {
-  from { opacity: 0; scale: 0.6; translate: 0 60px; }
+  from { opacity: 0; scale: var(--motion-tile); translate: 0 calc(60px * var(--motion-distance)); }
 }
 .word { display: inline-block; white-space: nowrap; }
 .ch { display: inline-block; }
@@ -85,17 +96,17 @@ svg:has(> use[href^="#i-"]) { fill: none; stroke: currentColor; stroke-width: 1.
 .blob { position: absolute; border-radius: 50%; }
 .b1 {
   left: -420px; top: 380px; width: 1300px; height: 1300px;
-  background: radial-gradient(closest-side, rgba(96, 62, 230, 0.5), transparent);
+  background: radial-gradient(closest-side, var(--glow-a), transparent);
   animation: drift 9s ease-in-out infinite alternate;
 }
 .b2 {
   right: -380px; top: -520px; width: 1400px; height: 1400px;
-  background: radial-gradient(closest-side, rgba(40, 96, 240, 0.42), transparent);
+  background: radial-gradient(closest-side, var(--glow-b), transparent);
   animation: drift 11s ease-in-out -4s infinite alternate-reverse;
 }
 .b3 {
   left: 620px; top: 200px; width: 900px; height: 900px;
-  background: radial-gradient(closest-side, rgba(255, 77, 143, 0.13), transparent);
+  background: radial-gradient(closest-side, var(--glow-c), transparent);
   animation: drift 7s ease-in-out -2s infinite alternate;
 }
 @keyframes drift { from { translate: -70px 40px; scale: 0.94; } to { translate: 90px -60px; scale: 1.08; } }
@@ -104,7 +115,7 @@ svg:has(> use[href^="#i-"]) { fill: none; stroke: currentColor; stroke-width: 1.
   animation: kick var(--beat) cubic-bezier(0.2, 0.7, 0.2, 1) calc(var(--bar) * 2) 56,
              kick var(--beat) cubic-bezier(0.2, 0.7, 0.2, 1) calc(var(--bar) * 17) 16;
 }
-@keyframes kick { from { scale: 1.014; } to { scale: 1; } }
+@keyframes kick { from { scale: var(--motion-camera); } to { scale: 1; } }
 
 .tint {
   position: absolute; inset: 0;

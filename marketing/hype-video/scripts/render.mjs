@@ -9,10 +9,11 @@
 //          --draft   quick look: 30 fps, JPEG frame capture, faster encode
 // Set BROWSER_PATH to use a specific Chromium-based browser.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { once } from 'node:events';
 import { cpus } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import puppeteer from 'puppeteer-core';
 import { compositionPath, projectDir, startServer } from './static-server.mjs';
 
@@ -25,6 +26,9 @@ const opt = (name, fallback) => {
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
+const configSandbox = { window: {} };
+runInNewContext(readFileSync(new URL('../src/creative.js', import.meta.url), 'utf8'), configSandbox);
+const musicStyle = configSandbox.window.HYPE_CREATIVE?.musicStyle ?? 'electronic';
 const draft = flag('draft');
 const fps = Number(opt('fps', draft ? 30 : 60));
 const workers = Number(opt('workers', Math.max(2, Math.min(6, Math.floor(cpus().length / 2)))));
@@ -211,8 +215,8 @@ try {
 
     const list = join(chunkDir, 'chunks.txt');
     writeFileSync(list, chunks.map((f) => `file '${f.replaceAll("'", "'\\''")}'`).join('\n'));
-    const withAudio = !flag('no-audio') && existsSync(audioFile);
-    if (!withAudio && !flag('no-audio')) console.warn('No soundtrack found (run "npm run audio"); rendering silent.');
+    const withAudio = !flag('no-audio') && musicStyle !== 'silent' && existsSync(audioFile);
+    if (!withAudio && !flag('no-audio') && musicStyle !== 'silent') console.warn('No soundtrack found (run "npm run audio"); rendering silent.');
     await run('ffmpeg', [
       '-hide_banner', '-loglevel', 'error', '-y',
       '-f', 'concat', '-safe', '0', '-i', list,
