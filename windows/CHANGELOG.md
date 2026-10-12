@@ -5,6 +5,10 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- **Capture picker parity** — Removed the Text action and its `T` shortcut from the picker to match
+  macOS. Text recognition remains available from the taskbar menu and its global hotkey. (#452)
+
 ## [v1.8.3-windows] - 2026-10-12
 
 ### Added
