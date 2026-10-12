@@ -64,11 +64,11 @@ struct HotKeyBinding: Hashable {
         case .recordGif:
             return HotKeyBinding(keyCode: 26, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘7
         case .copyTextFromRegion:
-            return HotKeyBinding(keyCode: 28, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘8
+            return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
         case .screenshotRegion:
-            return HotKeyBinding(keyCode: 18, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘1
+            return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
         case .screenshotWindow:
-            return HotKeyBinding(keyCode: 19, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘2
+            return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
         case .screenshotScreen:
             return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
         }

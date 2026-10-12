@@ -672,13 +672,13 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public int OcrHotKeyCode
     {
-        get => _settings.Get("ocrHotKeyCode", 84);
+        get => _settings.Get("ocrHotKeyCode", 0);
         set => _settings.Set("ocrHotKeyCode", value);
     }
 
     public int OcrHotKeyModifiers
     {
-        get => _settings.Get("ocrHotKeyModifiers", 6);
+        get => _settings.Get("ocrHotKeyModifiers", 0);
         set => _settings.Set("ocrHotKeyModifiers", value);
     }
 
@@ -893,8 +893,8 @@ public sealed class CaptureSettings : ICaptureSettings
         VideoHotKeyModifiers = 6;
         GifHotKeyCode = 55;
         GifHotKeyModifiers = 6;
-        OcrHotKeyCode = 84;
-        OcrHotKeyModifiers = 6;
+        OcrHotKeyCode = 0;
+        OcrHotKeyModifiers = 0;
         ScreenshotRegionHotKeyCode = 0;
         ScreenshotRegionHotKeyModifiers = 0;
         ScreenshotWindowHotKeyCode = 0;

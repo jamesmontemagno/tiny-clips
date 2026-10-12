@@ -186,6 +186,23 @@ final class CaptureSettingsTests: XCTestCase {
         }
     }
 
+    func testPreviouslySavedOptionalHotKeysRemainAssigned() {
+        let savedBindings: [(HotKeyAction, HotKeyBinding)] = [
+            (.copyTextFromRegion, HotKeyBinding(keyCode: 28, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)),
+            (.screenshotRegion, HotKeyBinding(keyCode: 18, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)),
+            (.screenshotWindow, HotKeyBinding(keyCode: 19, carbonModifiers: HotKeyBinding.defaultCaptureModifiers))
+        ]
+        for (action, binding) in savedBindings {
+            CaptureSettings.setHotKeyBinding(binding, for: action, defaults: defaults)
+        }
+
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+
+        for (action, binding) in savedBindings {
+            XCTAssertEqual(settings.hotKeyBinding(for: action), binding)
+        }
+    }
+
     func testScreenshotScreenHotKeyTreatsLegacyZeroPairAsUnbound() {
         defaults.set(0, forKey: "screenshotScreenHotKeyCode")
         defaults.set(0, forKey: "screenshotScreenHotKeyModifiers")

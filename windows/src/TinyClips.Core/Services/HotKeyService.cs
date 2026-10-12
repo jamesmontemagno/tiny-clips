@@ -69,7 +69,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.Screenshot => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35),
         HotKeyAction.RecordVideo => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36),
         HotKeyAction.RecordGif => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37),
-        HotKeyAction.RecognizeText => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x54),
+        HotKeyAction.RecognizeText => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.ScreenshotRegion => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.ScreenshotWindow => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.ScreenshotScreen => new HotKeyDefinition(HotKeyModifiers.None, 0),

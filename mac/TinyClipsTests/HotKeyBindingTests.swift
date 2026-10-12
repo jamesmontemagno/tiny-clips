@@ -11,16 +11,24 @@ final class HotKeyBindingTests: XCTestCase {
             HotKeyBinding(keyCode: 23, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
         )
         XCTAssertEqual(
+            HotKeyBinding.defaultBinding(for: .recordVideo),
+            HotKeyBinding(keyCode: 22, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+        )
+        XCTAssertEqual(
+            HotKeyBinding.defaultBinding(for: .recordGif),
+            HotKeyBinding(keyCode: 26, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+        )
+        XCTAssertEqual(
             HotKeyBinding.defaultBinding(for: .copyTextFromRegion),
-            HotKeyBinding(keyCode: 28, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+            HotKeyBinding(keyCode: -1, carbonModifiers: 0)
         )
         XCTAssertEqual(
             HotKeyBinding.defaultBinding(for: .screenshotRegion),
-            HotKeyBinding(keyCode: 18, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+            HotKeyBinding(keyCode: -1, carbonModifiers: 0)
         )
         XCTAssertEqual(
             HotKeyBinding.defaultBinding(for: .screenshotWindow),
-            HotKeyBinding(keyCode: 19, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+            HotKeyBinding(keyCode: -1, carbonModifiers: 0)
         )
         XCTAssertEqual(
             HotKeyBinding.defaultBinding(for: .screenshotScreen),
@@ -28,7 +36,7 @@ final class HotKeyBindingTests: XCTestCase {
         )
     }
 
-    func testDirectScreenshotActionsHaveDisplayNamesAndUniqueDefaults() {
+    func testDirectScreenshotActionsHaveDisplayNamesAndAreUnboundByDefault() throws {
         XCTAssertEqual(HotKeyAction.screenshotRegion.displayName, "Screenshot Region")
         XCTAssertEqual(HotKeyAction.screenshotWindow.displayName, "Screenshot Window")
         XCTAssertEqual(HotKeyAction.screenshotScreen.displayName, "Screenshot Screen")
@@ -38,31 +46,18 @@ final class HotKeyBindingTests: XCTestCase {
                 ($0, HotKeyBinding.defaultBinding(for: $0))
             }
         )
-        XCTAssertEqual(Set(defaults.values).count, HotKeyAction.allCases.count)
-        XCTAssertNil(
-            HotKeyBinding.validationError(
-                for: HotKeyBinding.defaultBinding(for: .screenshotRegion),
-                action: .screenshotRegion,
-                bindings: defaults
+        for action in [HotKeyAction.screenshotRegion, .screenshotWindow, .screenshotScreen] {
+            let binding = try XCTUnwrap(defaults[action])
+            XCTAssertTrue(binding.isUnbound)
+            XCTAssertEqual(binding.displayString, "Not set")
+            XCTAssertNil(
+                HotKeyBinding.validationError(
+                    for: binding,
+                    action: action,
+                    bindings: defaults
+                )
             )
-        )
-        XCTAssertNil(
-            HotKeyBinding.validationError(
-                for: HotKeyBinding.defaultBinding(for: .screenshotWindow),
-                action: .screenshotWindow,
-                bindings: defaults
-            )
-        )
-        let screenBinding = HotKeyBinding.defaultBinding(for: .screenshotScreen)
-        XCTAssertTrue(screenBinding.isUnbound)
-        XCTAssertEqual(screenBinding.displayString, "Not set")
-        XCTAssertNil(
-            HotKeyBinding.validationError(
-                for: screenBinding,
-                action: .screenshotScreen,
-                bindings: defaults
-            )
-        )
+        }
     }
 
     func testCarbonAndSwiftUIModifierConversions() {

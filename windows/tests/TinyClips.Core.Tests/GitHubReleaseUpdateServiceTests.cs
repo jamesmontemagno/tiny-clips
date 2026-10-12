@@ -17,7 +17,7 @@ public sealed class GitHubReleaseUpdateServiceTests
             """;
         var service = CreateService(json);
 
-        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2));
+        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2), TestContext.Current.CancellationToken);
 
         Assert.Equal(AppUpdateStatus.UpdateAvailable, result.Status);
         Assert.Equal(new Version(1, 6, 0), result.LatestVersion);
@@ -34,7 +34,7 @@ public sealed class GitHubReleaseUpdateServiceTests
             """;
         var service = CreateService(json);
 
-        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2));
+        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2), TestContext.Current.CancellationToken);
 
         Assert.Equal(AppUpdateStatus.UpToDate, result.Status);
         Assert.Equal(new Version(1, 5, 2), result.LatestVersion);
@@ -51,7 +51,7 @@ public sealed class GitHubReleaseUpdateServiceTests
             """;
         var service = CreateService(json);
 
-        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2));
+        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2), TestContext.Current.CancellationToken);
 
         Assert.Equal(AppUpdateStatus.UpdateAvailable, result.Status);
         Assert.Equal(new Version(1, 6, 0), result.LatestVersion);
@@ -62,7 +62,7 @@ public sealed class GitHubReleaseUpdateServiceTests
     {
         var service = CreateService("[]", HttpStatusCode.Forbidden);
 
-        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2));
+        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2), TestContext.Current.CancellationToken);
 
         Assert.Equal(AppUpdateStatus.CheckFailed, result.Status);
         Assert.Contains("403", result.Message);
@@ -87,7 +87,7 @@ public sealed class GitHubReleaseUpdateServiceTests
             """;
         var service = CreateService(json);
 
-        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2));
+        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2), TestContext.Current.CancellationToken);
 
         Assert.Equal(AppUpdateStatus.UpdateAvailable, result.Status);
         Assert.Equal(new Version(1, 6, 0), result.LatestVersion);
@@ -105,7 +105,7 @@ public sealed class GitHubReleaseUpdateServiceTests
             """;
         var service = CreateService(json);
 
-        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2));
+        var result = await service.CheckForUpdatesAsync(new Version(1, 5, 2), TestContext.Current.CancellationToken);
 
         Assert.Equal(AppUpdateStatus.UpdateAvailable, result.Status);
         Assert.Equal(new Version(1, 6, 0), result.LatestVersion);

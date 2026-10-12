@@ -461,7 +461,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("teleprompterFontSize") var teleprompterFontSize: String = TeleprompterDisplaySize.medium.rawValue
     @AppStorage("teleprompterPanelHeight") var teleprompterPanelHeight: String = TeleprompterDisplaySize.medium.rawValue
     // Custom global hotkeys (stored as Carbon keyCode + modifiers bitmask).
-    // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7 / ⌃⌥⌘8
+    // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7
     // 6400 = controlKey (4096) | optionKey (2048) | cmdKey (256)
     @AppStorage("screenshotHotKeyCode") var screenshotHotKeyCode: Int = 23      // kVK_ANSI_5
     @AppStorage("screenshotHotKeyModifiers") var screenshotHotKeyModifiers: Int = 6400
@@ -469,13 +469,13 @@ class CaptureSettings: ObservableObject {
     @AppStorage("videoHotKeyModifiers") var videoHotKeyModifiers: Int = 6400
     @AppStorage("gifHotKeyCode") var gifHotKeyCode: Int = 26                    // kVK_ANSI_7
     @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 6400
-    @AppStorage("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = 28 // kVK_ANSI_8
-    @AppStorage("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 6400
-    // Direct-to-mode screenshot shortcuts (skip the capture picker); screen is unbound by default.
-    @AppStorage("screenshotRegionHotKeyCode") var screenshotRegionHotKeyCode: Int = 18 // kVK_ANSI_1
-    @AppStorage("screenshotRegionHotKeyModifiers") var screenshotRegionHotKeyModifiers: Int = 6400
-    @AppStorage("screenshotWindowHotKeyCode") var screenshotWindowHotKeyCode: Int = 19 // kVK_ANSI_2
-    @AppStorage("screenshotWindowHotKeyModifiers") var screenshotWindowHotKeyModifiers: Int = 6400
+    @AppStorage("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = -1
+    @AppStorage("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 0
+    // Direct-to-mode screenshot shortcuts (skip the capture picker) are unbound by default.
+    @AppStorage("screenshotRegionHotKeyCode") var screenshotRegionHotKeyCode: Int = -1
+    @AppStorage("screenshotRegionHotKeyModifiers") var screenshotRegionHotKeyModifiers: Int = 0
+    @AppStorage("screenshotWindowHotKeyCode") var screenshotWindowHotKeyCode: Int = -1
+    @AppStorage("screenshotWindowHotKeyModifiers") var screenshotWindowHotKeyModifiers: Int = 0
     @AppStorage("screenshotScreenHotKeyCode") var screenshotScreenHotKeyCode: Int = -1
     @AppStorage("screenshotScreenHotKeyModifiers") var screenshotScreenHotKeyModifiers: Int = 0
 

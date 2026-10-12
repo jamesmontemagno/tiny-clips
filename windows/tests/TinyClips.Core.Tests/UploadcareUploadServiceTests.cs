@@ -23,7 +23,7 @@ public sealed class UploadcareUploadServiceTests : IDisposable
         using var client = new HttpClient(handler);
         var service = CreateService(client, publicKey: "public-key", secretKey: "secret-key");
 
-        var result = await service.UploadAsync(path);
+        var result = await service.UploadAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal("22222222-2222-2222-2222-222222222222", result.FileId);
         Assert.Equal("https://ucarecdn.com/22222222-2222-2222-2222-222222222222/", result.DeliveryUri.AbsoluteUri);
@@ -59,7 +59,7 @@ public sealed class UploadcareUploadServiceTests : IDisposable
             secretKey: "secret-key",
             directUploadLimitBytes: 1);
 
-        var result = await service.UploadAsync(path);
+        var result = await service.UploadAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal("33333333-3333-3333-3333-333333333333", result.FileId);
         Assert.Equal(
@@ -80,7 +80,7 @@ public sealed class UploadcareUploadServiceTests : IDisposable
         var service = CreateService(client, publicKey: string.Empty);
 
         var exception = await Assert.ThrowsAsync<UploadcareUploadException>(
-            () => service.UploadAsync(WriteFile("capture.gif", "file")));
+            () => service.UploadAsync(WriteFile("capture.gif", "file"), TestContext.Current.CancellationToken));
 
         Assert.Equal("Enter an Uploadcare public key before uploading.", exception.Message);
         Assert.Empty(handler.RequestBodies);
