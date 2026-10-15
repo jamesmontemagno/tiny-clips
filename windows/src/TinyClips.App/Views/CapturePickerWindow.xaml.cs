@@ -11,17 +11,6 @@ using Windows.System;
 
 namespace TinyClips.App;
 
-/// <summary>How the user chose to scope a capture.</summary>
-public enum CapturePickerMode
-{
-    Region,
-    Screen,
-    Window,
-    RecognizeText,
-    /// <summary>Screenshot only: select a region, scroll, and stitch the frames into one tall image.</summary>
-    Scrolling,
-}
-
 /// <summary>The user's choice from the capture picker bar.</summary>
 public sealed record CapturePickerResult(CapturePickerMode Mode, bool CountdownEnabled, int CountdownDuration, double VideoTimeLimitMinutes);
 
@@ -257,23 +246,15 @@ public sealed partial class CapturePickerWindow : Window
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        switch (e.Key)
+        if (e.Key == VirtualKey.Escape)
         {
-            case VirtualKey.Escape:
-                Complete(null);
-                break;
-            case VirtualKey.R:
-                Complete(CapturePickerMode.Region);
-                break;
-            case VirtualKey.S:
-                Complete(CapturePickerMode.Screen);
-                break;
-            case VirtualKey.W:
-                Complete(CapturePickerMode.Window);
-                break;
-            case VirtualKey.P when IsScrollingAvailable:
-                Complete(CapturePickerMode.Scrolling);
-                break;
+            Complete(null);
+            return;
+        }
+
+        if (CapturePickerKeyboardShortcuts.ModeForKey(e.Key, IsScrollingAvailable) is { } mode)
+        {
+            Complete(mode);
         }
     }
 

@@ -18,6 +18,7 @@
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\BuildFlavor.cs" Link="BuildFlavor.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\GlobalHotKeyFailureFormatter.cs" Link="GlobalHotKeyFailureFormatter.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\GlobalHotKeyManager.cs" Link="GlobalHotKeyManager.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Views\CapturePickerKeyboardShortcuts.cs" Link="CapturePickerKeyboardShortcuts.cs" />
   </ItemGroup>
 
   <ItemGroup>
