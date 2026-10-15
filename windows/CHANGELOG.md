@@ -14,6 +14,10 @@ own `CHANGELOG.md` at the repository root.
 - Only the **Screenshot**, **Record Video**, and **Record GIF** global shortcuts are assigned by
   default. **Recognize Text (OCR)** now starts unbound, alongside the direct Screenshot region,
   window, and screen shortcuts, and can be set in Settings → Keyboard shortcuts. (#451)
+- **Screenshot editor first open** now lets window activation return before beginning the initial
+  image load. File access or captured-frame copying starts from a low-priority UI-thread callback
+  after activation, while close/reset race protection and image-loading behavior remain unchanged.
+  This removes demonstrated constructor work without claiming unmeasured native latency gains. (#409)
 
 ## [v1.8.3-windows] - 2026-10-12
 

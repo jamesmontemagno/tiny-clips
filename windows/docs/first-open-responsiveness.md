@@ -19,10 +19,12 @@ With no listener, no per-window trace or diagnostic event subscriptions are crea
   latest entries. Initial navigation is still built synchronously. Count bindings,
   automation names/IDs and final selection synchronization are unchanged.
   Closing unsubscribes the notifications and suppresses queued rebuilds.
-- The editor constructs its toolbar, inspector and canvas synchronously, then starts
-  asynchronous image loading. Inspector attachment also initializes color, font,
-  emoji and background controls. This is a profiling candidate, **not** evidence that
-  those controls should be deferred. Image decode/preview and export are separate costs.
+- The editor constructs its toolbar, inspector and canvas synchronously. Its initial
+  image load is queued at low priority after the first active-window event, allowing
+  native activation to return before file access or captured-frame copying begins.
+  Inspector attachment also initializes color, font, emoji and background controls.
+  This is a profiling candidate, **not** evidence that those controls should be deferred.
+  Image decode/preview and export are separate costs.
 - Placement still uses the existing DPI-safe helpers and minimum sizes. No XAML,
   theme, title-bar, keyboard, or accessibility structure is changed.
 
@@ -92,7 +94,7 @@ as a successful ready sample.
 | RootLoaded | First root `Loaded` callback, not an isolated measure/arrange duration or proof of paint |
 | FirstActivated | First non-deactivated event, not proof that every action/content item is ready |
 | LoadedDispatcherTurn / ActivatedDispatcherTurn | A single low-priority dispatcher callback after each milestone; a responsiveness proxy, **not** measured input/presentation latency |
-| ContentLoad / ContentReady | Inclusive async wall time and availability of loaded data/bitmap, including I/O waits; not CPU time or proof of presentation |
+| ContentLoad / ContentReady | Inclusive async wall time and availability of loaded data/bitmap, including I/O waits; the editor's initial load begins from a low-priority dispatcher callback after first activation, but this is not proof of presentation |
 | Closed | Ends the trace; later load/queued callback timing is suppressed and diagnostic handlers are removed |
 
 Do not sum inclusive scopes. Subtracting constructor milestones is not a pure

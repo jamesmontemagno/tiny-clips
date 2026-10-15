@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -58,6 +59,8 @@ public sealed partial class ScreenshotEditorWindow : Window
     private int _outputScalePercent = 100;
     private bool _isOutputBusy;
     private long _loadRequest;
+    private bool _initialLoadQueued;
+    private bool _initialLoadStarted;
 
     public ScreenshotEditorWindow(string filePath)
         : this(filePath, initialFrame: null, pendingSave: null, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
@@ -138,7 +141,6 @@ public sealed partial class ScreenshotEditorWindow : Window
             AppWindow.Closing += OnAppWindowClosing;
         }
 
-        _ = LoadAsync();
         _openTrace?.Mark(WindowOpenMilestone.ConstructorCompleted);
     }
 
@@ -287,6 +289,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     private async Task LoadAsync()
     {
         if (_isClosed) return;
+        _initialLoadStarted = true;
         var request = ++_loadRequest;
         using var loading = _openTrace?.Measure(WindowOpenPhase.ContentLoad);
         try
@@ -478,6 +481,26 @@ public sealed partial class ScreenshotEditorWindow : Window
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
             Canvas.SetSpacePressed(false);
+            return;
+        }
+
+        if (_initialLoadQueued || _initialLoadStarted || _isClosed)
+        {
+            return;
+        }
+
+        _initialLoadQueued = true;
+        if (!DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            _initialLoadQueued = false;
+            if (!_isClosed && !_initialLoadStarted)
+            {
+                _ = LoadAsync();
+            }
+        }))
+        {
+            _initialLoadQueued = false;
+            _ = LoadAsync();
         }
     }
 
