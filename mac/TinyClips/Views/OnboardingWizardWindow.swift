@@ -293,7 +293,7 @@ private struct OnboardingWizardView: View {
                 copyBinding: $settings.copyScreenshotToClipboard,
                 openHelp: "Open the screenshot editor after capture so you can annotate or crop before finishing.",
                 saveHelp: "When enabled, screenshots save right away instead of waiting for editor actions.",
-                copyHelp: "Copy saved screenshots to the clipboard as an image."
+                copyHelp: "Copy screenshots to the clipboard as an image, even before saving in the editor."
             )
 
             capturePreferenceCard(

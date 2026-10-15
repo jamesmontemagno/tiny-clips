@@ -728,6 +728,8 @@ class CaptureManager: ObservableObject {
                 if settings.showScreenshotEditor {
                     if shouldSaveImmediately {
                         SaveService.shared.handleSavedFile(url: url, type: .screenshot)
+                    } else {
+                        SaveService.shared.copyToClipboardIfEnabled(url: url, type: .screenshot)
                     }
                     let initialSaveURL = shouldSaveImmediately
                         ? url
@@ -792,6 +794,8 @@ class CaptureManager: ObservableObject {
                     if settings.showScreenshotEditor {
                         if shouldSaveImmediately {
                             SaveService.shared.handleSavedFile(url: url, type: .screenshot)
+                        } else {
+                            SaveService.shared.copyToClipboardIfEnabled(url: url, type: .screenshot)
                         }
                         let initialSaveURL = shouldSaveImmediately
                             ? url

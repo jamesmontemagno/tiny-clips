@@ -61,7 +61,7 @@ struct ScreenshotSettingsSection: View {
                 .disabled(!settings.showScreenshotEditor)
 
             Toggle("Copy to clipboard", isOn: $settings.copyScreenshotToClipboard)
-                .help("Copy saved screenshots to the clipboard as an image.")
+                .help("Copy screenshots to the clipboard as an image, even before saving in the editor.")
         }
 
         Section("Countdown") {

@@ -499,9 +499,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         )
 #endif
 
-        if settings.shouldCopyToClipboard(for: type) {
-            copyToClipboard(url: url, type: type)
-        }
+        copyToClipboardIfEnabled(url: url, type: type)
 
         AccessibilityAnnouncementService.shared.announceSaveSuccess(for: type, url: url)
 
@@ -514,6 +512,12 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         }
 
         startAutomaticUploadIfNeeded(for: url)
+    }
+
+    @MainActor
+    func copyToClipboardIfEnabled(url: URL, type: CaptureType) {
+        guard CaptureSettings.shared.shouldCopyToClipboard(for: type) else { return }
+        copyToClipboard(url: url, type: type)
     }
 
     @MainActor
