@@ -6,9 +6,9 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Changed
-- Only Screenshot, Record Video, and Record GIF have configurable capture shortcuts assigned by default.
-  Recognize Text and direct Screenshot Region/Window/Screen shortcuts are unbound by default and
-  remain configurable in Settings → Keyboard shortcuts; existing saved bindings are preserved. (#451)
+- Only the **Screenshot**, **Record Video**, and **Record GIF** global shortcuts are assigned by
+  default. **Recognize Text (OCR)** now starts unbound, alongside the direct Screenshot region,
+  window, and screen shortcuts, and can be set in Settings → Keyboard shortcuts. (#451)
 
 ## [v1.8.3-windows] - 2026-10-12
 

@@ -461,7 +461,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("teleprompterFontSize") var teleprompterFontSize: String = TeleprompterDisplaySize.medium.rawValue
     @AppStorage("teleprompterPanelHeight") var teleprompterPanelHeight: String = TeleprompterDisplaySize.medium.rawValue
     // Custom global hotkeys (stored as Carbon keyCode + modifiers bitmask).
-    // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7
+    // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7; every other action is unbound (-1 / 0) by default.
     // 6400 = controlKey (4096) | optionKey (2048) | cmdKey (256)
     @AppStorage("screenshotHotKeyCode") var screenshotHotKeyCode: Int = 23      // kVK_ANSI_5
     @AppStorage("screenshotHotKeyModifiers") var screenshotHotKeyModifiers: Int = 6400
@@ -471,7 +471,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 6400
     @AppStorage("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = -1
     @AppStorage("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 0
-    // Direct-to-mode screenshot shortcuts (skip the capture picker) are unbound by default.
+    // Direct-to-mode screenshot shortcuts (skip the capture picker); all unbound by default.
     @AppStorage("screenshotRegionHotKeyCode") var screenshotRegionHotKeyCode: Int = -1
     @AppStorage("screenshotRegionHotKeyModifiers") var screenshotRegionHotKeyModifiers: Int = 0
     @AppStorage("screenshotWindowHotKeyCode") var screenshotWindowHotKeyCode: Int = -1
@@ -595,7 +595,7 @@ class CaptureSettings: ObservableObject {
         let keyCode = defaults.object(forKey: keys.keyCode) as? Int ?? fallback.keyCode
         let carbonModifiers = defaults.object(forKey: keys.modifiers) as? Int ?? fallback.carbonModifiers
 
-        if action == .screenshotScreen, keyCode == 0, carbonModifiers == 0 {
+        if fallback.isUnbound, keyCode == 0, carbonModifiers == 0 {
             return fallback
         }
 

@@ -203,13 +203,22 @@ final class CaptureSettingsTests: XCTestCase {
         }
     }
 
-    func testScreenshotScreenHotKeyTreatsLegacyZeroPairAsUnbound() {
-        defaults.set(0, forKey: "screenshotScreenHotKeyCode")
-        defaults.set(0, forKey: "screenshotScreenHotKeyModifiers")
+    func testUnboundDefaultHotKeysTreatLegacyZeroPairAsUnbound() {
+        let legacyZeroActions: [(HotKeyAction, String)] = [
+            (.screenshotScreen, "screenshotScreen"),
+            (.screenshotRegion, "screenshotRegion"),
+            (.screenshotWindow, "screenshotWindow"),
+            (.copyTextFromRegion, "copyTextFromRegion"),
+        ]
 
-        XCTAssertEqual(
-            CaptureSettings.hotKeyBinding(for: .screenshotScreen, defaults: defaults),
-            HotKeyBinding.defaultBinding(for: .screenshotScreen)
-        )
+        for (action, prefix) in legacyZeroActions {
+            defaults.set(0, forKey: "\(prefix)HotKeyCode")
+            defaults.set(0, forKey: "\(prefix)HotKeyModifiers")
+
+            XCTAssertTrue(
+                CaptureSettings.hotKeyBinding(for: action, defaults: defaults).isUnbound,
+                "\(action.displayName) should resolve a legacy zero pair as unbound"
+            )
+        }
     }
 }

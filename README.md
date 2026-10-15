@@ -74,12 +74,12 @@ TinyClips requires **Screen Recording** permission. On first launch, macOS will 
 | Action | Shortcut |
 |--------|----------|
 | Screenshot | ⌃⌥⌘5 |
-| Copy Text from Region | Not set by default; configure in Settings > Shortcuts |
+| Record Video | ⌃⌥⌘6 |
+| Record GIF | ⌃⌥⌘7 |
 | Screenshot Region (no picker) | Not set by default; configure in Settings > Shortcuts |
 | Screenshot Window (no picker) | Not set by default; configure in Settings > Shortcuts |
 | Screenshot Screen (no picker) | Not set by default; configure in Settings > Shortcuts |
-| Record Video | ⌃⌥⌘6 |
-| Record GIF | ⌃⌥⌘7 |
+| Copy Text from Region | Not set by default; configure in Settings > Shortcuts |
 | Picker: Region / Screen / Window | R / S / W |
 | Picker: Cancel | Esc |
 | Screenshot editor: Close | Esc / ⌘W |

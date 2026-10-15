@@ -17,6 +17,19 @@ class SettingsWindowManager: ObservableObject {
 
 // MARK: - Menu Bar Content
 
+/// Applies a keyboard shortcut only when the action has a bound key, so menu items for
+/// unassigned shortcuts do not pick up a bare key equivalent.
+private extension View {
+    @ViewBuilder
+    func captureKeyboardShortcut(_ key: KeyEquivalent?, modifiers: SwiftUI.EventModifiers) -> some View {
+        if let key {
+            keyboardShortcut(key, modifiers: modifiers)
+        } else {
+            self
+        }
+    }
+}
+
 struct MenuBarContentView: View {
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var sparkleController: SparkleController
@@ -36,7 +49,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Screenshot…", systemImage: "camera")
             }
-            .keyboardShortcut(key(for: .screenshot, fallback: "5"), modifiers: modifiers(for: .screenshot))
+            .captureKeyboardShortcut(key(for: .screenshot, fallback: "5"), modifiers: modifiers(for: .screenshot))
             .accessibilityHint("Starts screenshot capture.")
             .disabled(captureManager.isCaptureActionInProgress)
 
@@ -45,7 +58,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Copy Text from Region…", systemImage: "text.viewfinder")
             }
-            .keyboardShortcut(key(for: .copyTextFromRegion, fallback: "8"), modifiers: modifiers(for: .copyTextFromRegion))
+            .captureKeyboardShortcut(key(for: .copyTextFromRegion, fallback: "8"), modifiers: modifiers(for: .copyTextFromRegion))
             .accessibilityHint("Selects a screen region and copies recognized text to the clipboard.")
             .disabled(captureManager.isCaptureActionInProgress)
 
@@ -54,7 +67,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Record Video...", systemImage: "video")
             }
-            .keyboardShortcut(key(for: .recordVideo, fallback: "6"), modifiers: modifiers(for: .recordVideo))
+            .captureKeyboardShortcut(key(for: .recordVideo, fallback: "6"), modifiers: modifiers(for: .recordVideo))
             .accessibilityHint("Starts video recording.")
             .disabled(captureManager.isCaptureActionInProgress)
 
@@ -63,7 +76,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Record GIF...", systemImage: "photo.on.rectangle")
             }
-            .keyboardShortcut(key(for: .recordGif, fallback: "7"), modifiers: modifiers(for: .recordGif))
+            .captureKeyboardShortcut(key(for: .recordGif, fallback: "7"), modifiers: modifiers(for: .recordGif))
             .accessibilityHint("Starts GIF recording.")
             .disabled(captureManager.isCaptureActionInProgress)
 
@@ -284,8 +297,10 @@ struct MenuBarContentView: View {
 
     // MARK: - Dynamic Shortcut Keys
 
-    private func key(for action: HotKeyAction, fallback: Character) -> KeyEquivalent {
-        keyEquivalent(for: settings.hotKeyBinding(for: action).keyCode, fallback: fallback)
+    private func key(for action: HotKeyAction, fallback: Character) -> KeyEquivalent? {
+        let binding = settings.hotKeyBinding(for: action)
+        guard !binding.isUnbound else { return nil }
+        return keyEquivalent(for: binding.keyCode, fallback: fallback)
     }
 
     private func modifiers(for action: HotKeyAction) -> EventModifiers {

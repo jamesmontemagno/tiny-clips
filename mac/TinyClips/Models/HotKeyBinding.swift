@@ -63,13 +63,9 @@ struct HotKeyBinding: Hashable {
             return HotKeyBinding(keyCode: 22, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘6
         case .recordGif:
             return HotKeyBinding(keyCode: 26, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘7
-        case .copyTextFromRegion:
-            return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
-        case .screenshotRegion:
-            return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
-        case .screenshotWindow:
-            return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
-        case .screenshotScreen:
+        // Only Screenshot, Record Video, and Record GIF ship with a default shortcut.
+        // Every other action starts unbound so users opt in from Settings.
+        case .copyTextFromRegion, .screenshotRegion, .screenshotWindow, .screenshotScreen:
             return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
         }
     }
