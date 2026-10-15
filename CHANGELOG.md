@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 - The macOS screenshot editor now lets you set gradient backgrounds to any direction from 0° to 360°, with the preview and exported image staying in sync. (#463)
 
 ### Fixed
+- macOS screenshots copied to the clipboard now preserve the capture display's pixel density, so Retina captures paste at their logical size instead of appearing twice as large.
 - macOS Settings > Shortcuts now has a **Clear** button to unassign a shortcut without resetting it to its default. (#450)
 - macOS GitHub releases and Sparkle update notes now use the matching changelog section instead of falling back to commit messages. Older release descriptions can be repaired with the manual **Backfill macOS release notes** workflow, without rebuilding or replacing downloads; preview with **Dry run** before applying.
 

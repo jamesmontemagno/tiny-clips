@@ -9,6 +9,41 @@ struct CaptureDisplayGeometry {
     let scaleFactor: CGFloat
 }
 
+enum ImagePixelDensity {
+    static let pointsPerInch: CGFloat = 72
+
+    static func normalizedScaleFactor(_ scaleFactor: CGFloat) -> CGFloat {
+        guard scaleFactor.isFinite, scaleFactor > 0 else { return 1 }
+        return scaleFactor
+    }
+
+    static func dpi(for scaleFactor: CGFloat) -> CGFloat {
+        pointsPerInch * normalizedScaleFactor(scaleFactor)
+    }
+
+    static func logicalSize(pixelWidth: Int, pixelHeight: Int, scaleFactor: CGFloat) -> NSSize {
+        let scaleFactor = normalizedScaleFactor(scaleFactor)
+        return NSSize(
+            width: CGFloat(pixelWidth) / scaleFactor,
+            height: CGFloat(pixelHeight) / scaleFactor
+        )
+    }
+
+    static func scaleFactor(for image: NSImage) -> CGFloat {
+        guard image.size.width.isFinite, image.size.width > 0,
+              image.size.height.isFinite, image.size.height > 0,
+              let representation = image.representations.max(by: {
+                  $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh
+              }) else {
+            return 1
+        }
+
+        let widthScale = CGFloat(representation.pixelsWide) / image.size.width
+        let heightScale = CGFloat(representation.pixelsHigh) / image.size.height
+        return normalizedScaleFactor(max(widthScale, heightScale))
+    }
+}
+
 enum CaptureCoordinateMath {
     /// Height of the display that anchors global coordinates: ScreenCaptureKit measures Y down from
     /// the top-left of the display whose AppKit origin is (0, 0), which is not guaranteed to be the
@@ -107,14 +142,19 @@ enum CaptureCoordinateMath {
 }
 
 struct ScreenshotCapture {
+    private struct CaptureResult {
+        let image: CGImage
+        let scaleFactor: CGFloat
+    }
+
     static func capture(region: CaptureRegion) async throws -> URL {
         let destinationURL = SaveService.shared.generateURL(for: .screenshot)
         return try await capture(region: region, outputURL: destinationURL)
     }
 
     static func capture(region: CaptureRegion, outputURL: URL) async throws -> URL {
-        let image = try await captureImage(region: region)
-        return try saveImage(image, to: outputURL)
+        let result = try await captureResult(region: region)
+        return try saveImage(result.image, to: outputURL, scaleFactor: result.scaleFactor)
     }
 
     /// Captures the whole display natively and crops, because `SCStreamConfiguration.sourceRect`
@@ -122,6 +162,10 @@ struct ScreenshotCapture {
     /// Measured against a lossless crop of the same frame it loses ~5% gradient energy and leaves
     /// only ~86% of pixels identical. `CGImage.cropping(to:)` is a pure pixel copy.
     static func captureImage(region: CaptureRegion) async throws -> CGImage {
+        (try await captureResult(region: region)).image
+    }
+
+    private static func captureResult(region: CaptureRegion) async throws -> CaptureResult {
         let filter = try await region.makeFilter()
         let region = region.resolvingPixelScale(from: filter)
         let scaleFactor = region.scaleFactor
@@ -146,7 +190,7 @@ struct ScreenshotCapture {
         guard !cropRect.isNull, let cropped = fullImage.cropping(to: cropRect) else {
             throw CaptureError.regionCropFailed
         }
-        return cropped
+        return CaptureResult(image: cropped, scaleFactor: scaleFactor)
     }
 
     static func captureWindow(_ window: SCWindow) async throws -> URL {
@@ -171,15 +215,23 @@ struct ScreenshotCapture {
         config.showsCursor = false
 
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-        return try saveImage(image, to: outputURL)
+        return try saveImage(image, to: outputURL, scaleFactor: scaleFactor)
     }
 
     // MARK: - Helpers
 
-    static func saveImage(_ image: CGImage, to outputURL: URL) throws -> URL {
+    static func saveImage(
+        _ image: CGImage,
+        to outputURL: URL,
+        scaleFactor: CGFloat = 1
+    ) throws -> URL {
         let settings = CaptureSettings.shared
         let imageType = settings.imageFormat.utType
-        var destinationProperties: [CFString: Any] = [:]
+        let dpi = ImagePixelDensity.dpi(for: scaleFactor)
+        var destinationProperties: [CFString: Any] = [
+            kCGImagePropertyDPIWidth: dpi,
+            kCGImagePropertyDPIHeight: dpi
+        ]
         if settings.imageFormat == .jpeg {
             destinationProperties[kCGImageDestinationLossyCompressionQuality] = settings.jpegQuality
         }

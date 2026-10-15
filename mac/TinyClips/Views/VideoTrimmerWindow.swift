@@ -966,9 +966,7 @@ private class TrimmerViewModel: ObservableObject {
                 let didCopy = await MainActor.run { () -> Bool in
                     self.seek(to: frameCapture.actualTime.seconds)
                     let image = NSImage(cgImage: frameCapture.image, size: .zero)
-                    let pasteboard = NSPasteboard.general
-                    pasteboard.clearContents()
-                    return pasteboard.writeObjects([image])
+                    return SaveService.shared.copyImageToClipboard(image)
                 }
 
                 await MainActor.run {

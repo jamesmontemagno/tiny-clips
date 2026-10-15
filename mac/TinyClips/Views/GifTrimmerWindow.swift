@@ -511,9 +511,7 @@ private struct GifTrimmerView: View {
         }
 
         let image = NSImage(cgImage: frame, size: .zero)
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        if !pasteboard.writeObjects([image]) {
+        if !SaveService.shared.copyImageToClipboard(image) {
             SaveService.shared.showError("Could not copy the current frame to the clipboard.")
         }
     }

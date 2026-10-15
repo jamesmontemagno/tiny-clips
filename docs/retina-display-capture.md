@@ -101,6 +101,13 @@ Note that macOS's own `screencapture` (⇧⌘4) and ScreenCaptureKit can disagre
 
 macOS renders the UI at 2× into a 2880 × 1800 framebuffer, then the display engine scales that down to the 2560 × 1600 panel. TinyClips captures the framebuffer, so its screenshots are *larger and carry more detail* than the built-in tool's. This size difference is expected and is not a quality problem.
 
+### Clipboard image density
+
+Saved PNG and JPEG screenshots include resolution metadata derived from ScreenCaptureKit's
+authoritative point-to-pixel scale (72 DPI at 1×, 144 DPI at 2×). Clipboard copies publish both PNG
+and TIFF representations with the same logical point size. This keeps a 2× capture sharp while
+preventing apps that honor image density from inserting it at twice its on-screen dimensions.
+
 ### Pixel alignment
 
 Region selections come from raw mouse coordinates, so `sourceRect` is almost always fractional in point space. A `minX` of `412.3 pt` on a 2× display lands at pixel `824.6`, and a fractional size such as `100.25 pt → 201 px` implies an effective scale of 2.005 rather than 2.0. That produced off-by-one output dimensions and a size readout that disagreed with the saved file.

@@ -646,14 +646,18 @@ private class ClipsViewModel: ObservableObject {
     }
 
     func copyToClipboard(_ item: ClipItem) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
         switch item.type {
         case .screenshot:
-            if let image = NSImage(contentsOf: item.url) {
-                pasteboard.writeObjects([image])
+            guard let image = NSImage(contentsOf: item.url) else {
+                SaveService.shared.showError("Could not prepare the screenshot for the clipboard.")
+                return
+            }
+            if !SaveService.shared.copyImageToClipboard(image) {
+                SaveService.shared.showError("Could not copy the screenshot to the clipboard.")
             }
         case .video, .gif:
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
             pasteboard.writeObjects([item.url as NSURL])
         }
     }

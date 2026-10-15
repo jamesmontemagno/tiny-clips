@@ -518,33 +518,62 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 
     @MainActor
     private func copyToClipboard(url: URL, type: CaptureType) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-
         switch type {
         case .screenshot:
-            guard let image = NSImage(contentsOf: url),
-                  let tiffData = image.tiffRepresentation,
-                  let bitmap = NSBitmapImageRep(data: tiffData) else {
+            guard let image = NSImage(contentsOf: url) else {
                 showError("Could not prepare the screenshot for the clipboard.")
                 return
             }
 
-            let pngData = (url.pathExtension.lowercased() == "png" ? try? Data(contentsOf: url) : nil)
-                ?? bitmap.representation(using: .png, properties: [:])
-            guard let pngData else {
-                showError("Could not prepare the screenshot for the clipboard.")
-                return
-            }
-
-            let didWritePNG = pasteboard.setData(pngData, forType: .png)
-            let didWriteTIFF = pasteboard.setData(tiffData, forType: .tiff)
-            if !didWritePNG || !didWriteTIFF {
+            if !copyImageToClipboard(image) {
                 showError("Could not copy the screenshot to the clipboard.")
             }
         case .video, .gif:
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
             pasteboard.writeObjects([url as NSURL])
         }
+    }
+
+    static func clipboardRepresentations(
+        for image: NSImage
+    ) -> (pngData: Data, tiffData: Data)? {
+        guard let sourceTIFF = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: sourceTIFF) else {
+            return nil
+        }
+
+        let scaleFactor = ImagePixelDensity.scaleFactor(for: image)
+        bitmap.size = ImagePixelDensity.logicalSize(
+            pixelWidth: bitmap.pixelsWide,
+            pixelHeight: bitmap.pixelsHigh,
+            scaleFactor: scaleFactor
+        )
+
+        let normalizedImage = NSImage(size: bitmap.size)
+        normalizedImage.addRepresentation(bitmap)
+        guard let pngData = bitmap.representation(using: .png, properties: [:]),
+              let tiffData = normalizedImage.tiffRepresentation else {
+            return nil
+        }
+        return (pngData, tiffData)
+    }
+
+    @MainActor
+    func copyImageToClipboard(_ image: NSImage) -> Bool {
+        guard let representations = Self.clipboardRepresentations(for: image) else {
+            return false
+        }
+
+        let item = NSPasteboardItem()
+        guard item.setData(representations.pngData, forType: .png),
+              item.setData(representations.tiffData, forType: .tiff) else {
+            return false
+        }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        return pasteboard.writeObjects([item])
     }
 
     @MainActor

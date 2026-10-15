@@ -78,6 +78,7 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     private var pencilPoints: [CGPoint] = []
     private var imagePixelSize: CGSize = .zero
+    private var sourcePixelScale: CGFloat = 1
     private var dragOffset: CGPoint = .zero
     private var dragOriginalRect: CGRect = .zero
     private var dragOriginalAnnotationRect: CGRect = .zero
@@ -120,6 +121,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         self.saveJpegQuality = settings.jpegQuality
         if let image = NSImage(contentsOf: url) {
             self.originalImage = image
+            self.sourcePixelScale = ImagePixelDensity.scaleFactor(for: image)
             if let rep = image.representations.first {
                 self.imagePixelSize = CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
             }
@@ -1296,8 +1298,13 @@ class ScreenshotEditorViewModel: ObservableObject {
         recordHistory()
 
         let croppedImage = NSImage(
-            size: NSSize(width: flattenedCrop.pixelsWide, height: flattenedCrop.pixelsHigh)
+            size: ImagePixelDensity.logicalSize(
+                pixelWidth: flattenedCrop.pixelsWide,
+                pixelHeight: flattenedCrop.pixelsHigh,
+                scaleFactor: sourcePixelScale
+            )
         )
+        flattenedCrop.size = croppedImage.size
         croppedImage.addRepresentation(flattenedCrop)
         originalImage = croppedImage
         imagePixelSize = CGSize(width: flattenedCrop.pixelsWide, height: flattenedCrop.pixelsHigh)
@@ -1410,9 +1417,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     func copyToClipboard() {
         guard let output = buildOutputImage() else { return }
 
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.writeObjects([output.image])
+        if !SaveService.shared.copyImageToClipboard(output.image) {
+            SaveService.shared.showError("Could not copy the edited image to the clipboard.")
+        }
     }
 
     func save(to destinationURL: URL? = nil) -> URL? {
@@ -1518,6 +1525,12 @@ class ScreenshotEditorViewModel: ObservableObject {
         guard let renderedBitmap = renderFinalImage() else { return nil }
 
         let outputBitmap = scaleBitmap(renderedBitmap, to: saveScale)
+        let outputScaleFactor = sourcePixelScale * CGFloat(saveScale) / 100
+        outputBitmap.size = ImagePixelDensity.logicalSize(
+            pixelWidth: outputBitmap.pixelsWide,
+            pixelHeight: outputBitmap.pixelsHigh,
+            scaleFactor: outputScaleFactor
+        )
 
         let imageData: Data?
         switch saveFormat {
@@ -1531,7 +1544,7 @@ class ScreenshotEditorViewModel: ObservableObject {
 
         guard let data = imageData else { return nil }
 
-        let outputImage = NSImage(size: NSSize(width: outputBitmap.pixelsWide, height: outputBitmap.pixelsHigh))
+        let outputImage = NSImage(size: outputBitmap.size)
         outputImage.addRepresentation(outputBitmap)
 
         return (outputImage, data)

@@ -110,6 +110,41 @@ final class SaveServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testClipboardRepresentationsPreserveTwoXLogicalSize() throws {
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 200,
+            pixelsHigh: 100,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        bitmap.size = NSSize(width: 100, height: 50)
+        let image = NSImage(size: bitmap.size)
+        image.addRepresentation(bitmap)
+
+        let representations = try XCTUnwrap(SaveService.clipboardRepresentations(for: image))
+        let tiff = try XCTUnwrap(NSBitmapImageRep(data: representations.tiffData))
+        XCTAssertEqual(tiff.pixelsWide, 200)
+        XCTAssertEqual(tiff.pixelsHigh, 100)
+        XCTAssertEqual(tiff.size.width, 100, accuracy: 0.01)
+        XCTAssertEqual(tiff.size.height, 50, accuracy: 0.01)
+
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(representations.pngData as CFData, nil))
+        let properties = try XCTUnwrap(
+            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        )
+        let dpiWidth = try XCTUnwrap(properties[kCGImagePropertyDPIWidth] as? NSNumber)
+        let dpiHeight = try XCTUnwrap(properties[kCGImagePropertyDPIHeight] as? NSNumber)
+        XCTAssertEqual(dpiWidth.doubleValue, 144, accuracy: 0.01)
+        XCTAssertEqual(dpiHeight.doubleValue, 144, accuracy: 0.01)
+    }
+
+    @MainActor
     func testRecentCaptureRemovalByURLRemovesMatchingCapture() {
         let captureURL = directoryURL.appendingPathComponent("capture.png")
         XCTAssertTrue(FileManager.default.createFile(atPath: captureURL.path, contents: Data()))
