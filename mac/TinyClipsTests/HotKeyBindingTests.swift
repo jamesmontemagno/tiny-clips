@@ -104,7 +104,7 @@ final class HotKeyBindingTests: XCTestCase {
             )?.contains("Record Video") == true
         )
 
-        let regionDuplicate = HotKeyBinding.defaultBinding(for: .screenshotRegion)
+        let regionDuplicate = HotKeyBinding(keyCode: 18, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
         XCTAssertTrue(
             HotKeyBinding.validationError(
                 for: regionDuplicate,
