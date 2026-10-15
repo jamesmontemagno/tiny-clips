@@ -109,6 +109,33 @@ final class SaveServiceTests: XCTestCase {
         XCTAssertEqual(decoded.height, 2)
     }
 
+    func testWebPEncoderPreservesTwoXPixelDensity() throws {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        let image = try XCTUnwrap(context.makeImage())
+        let data = try XCTUnwrap(
+            WebPImageEncoder.encode(image, quality: 0.85, scaleFactor: 2)
+        )
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+        let properties = try XCTUnwrap(
+            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        )
+        let dpiWidth = try XCTUnwrap(properties[kCGImagePropertyDPIWidth] as? NSNumber)
+        let dpiHeight = try XCTUnwrap(properties[kCGImagePropertyDPIHeight] as? NSNumber)
+        XCTAssertEqual(dpiWidth.doubleValue, 144, accuracy: 0.01)
+        XCTAssertEqual(dpiHeight.doubleValue, 144, accuracy: 0.01)
+
+        let url = directoryURL.appendingPathComponent("retina.webp")
+        try data.write(to: url)
+        let loaded = try XCTUnwrap(ImagePixelDensity.loadImage(contentsOf: url))
+        XCTAssertEqual(loaded.size.width, 100, accuracy: 0.01)
+        XCTAssertEqual(loaded.size.height, 50, accuracy: 0.01)
+        XCTAssertEqual(ImagePixelDensity.scaleFactor(for: loaded), 2, accuracy: 0.01)
+    }
+
     @MainActor
     func testClipboardRepresentationsPreserveTwoXLogicalSize() throws {
         let bitmap = try XCTUnwrap(NSBitmapImageRep(

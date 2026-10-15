@@ -103,7 +103,7 @@ macOS renders the UI at 2× into a 2880 × 1800 framebuffer, then the display en
 
 ### Clipboard image density
 
-Saved PNG and JPEG screenshots include resolution metadata derived from ScreenCaptureKit's
+Saved PNG, JPEG, and WebP screenshots include resolution metadata derived from ScreenCaptureKit's
 authoritative point-to-pixel scale (72 DPI at 1×, 144 DPI at 2×). Clipboard copies publish both PNG
 and TIFF representations with the same logical point size. This keeps a 2× capture sharp while
 preventing apps that honor image density from inserting it at twice its on-screen dimensions.

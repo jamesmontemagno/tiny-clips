@@ -648,7 +648,7 @@ private class ClipsViewModel: ObservableObject {
     func copyToClipboard(_ item: ClipItem) {
         switch item.type {
         case .screenshot:
-            guard let image = NSImage(contentsOf: item.url) else {
+            guard let image = ImagePixelDensity.loadImage(contentsOf: item.url) else {
                 SaveService.shared.showError("Could not prepare the screenshot for the clipboard.")
                 return
             }

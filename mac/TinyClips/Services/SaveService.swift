@@ -520,7 +520,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     private func copyToClipboard(url: URL, type: CaptureType) {
         switch type {
         case .screenshot:
-            guard let image = NSImage(contentsOf: url) else {
+            guard let image = ImagePixelDensity.loadImage(contentsOf: url) else {
                 showError("Could not prepare the screenshot for the clipboard.")
                 return
             }

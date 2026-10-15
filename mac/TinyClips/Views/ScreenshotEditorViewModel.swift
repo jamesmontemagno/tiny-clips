@@ -119,7 +119,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         self.saveFormat = settings.imageFormat
         self.saveScale = settings.screenshotScale
         self.saveJpegQuality = settings.jpegQuality
-        if let image = NSImage(contentsOf: url) {
+        if let image = ImagePixelDensity.loadImage(contentsOf: url) {
             self.originalImage = image
             self.sourcePixelScale = ImagePixelDensity.scaleFactor(for: image)
             if let rep = image.representations.first {
@@ -1539,7 +1539,13 @@ class ScreenshotEditorViewModel: ObservableObject {
         case .jpeg:
             imageData = outputBitmap.representation(using: .jpeg, properties: [.compressionFactor: saveJpegQuality])
         case .webp:
-            imageData = outputBitmap.cgImage.flatMap { WebPImageEncoder.encode($0, quality: saveJpegQuality) }
+            imageData = outputBitmap.cgImage.flatMap {
+                WebPImageEncoder.encode(
+                    $0,
+                    quality: saveJpegQuality,
+                    scaleFactor: outputScaleFactor
+                )
+            }
         }
 
         guard let data = imageData else { return nil }
