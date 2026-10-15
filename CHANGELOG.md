@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Only the **Screenshot**, **Record Video**, and **Record GIF** global shortcuts are assigned by default on macOS. **Copy Text from Region**, **Screenshot Region**, **Screenshot Window**, and **Screenshot Screen** now start unassigned and can be set in Settings > Shortcuts. (#451)
+
 ## v1.8.3-mac - 2026-10-13
 
 ### Added
@@ -14,7 +17,6 @@ All notable changes to this project will be documented in this file.
 - macOS General settings have a new **Confirm before closing editors with Esc** option, on by default, covering the screenshot editor, video trimmer, and GIF trimmer. Turn it off to close them with a single Esc press, which discards anything unsaved.
 
 ### Changed
-- Only the **Screenshot**, **Record Video**, and **Record GIF** global shortcuts are assigned by default on macOS. **Copy Text from Region**, **Screenshot Region**, **Screenshot Window**, and **Screenshot Screen** now start unassigned and can be set in Settings > Shortcuts. (#451)
 - The macOS **Screenshot Region**, **Screenshot Screen**, and **Screenshot Window** shortcuts now use the same icons in Settings as in the capture picker.
 - Pressing Esc in the macOS screenshot editor now asks before closing it, and warns when closing would discard a capture that has not been saved yet.
 - Pressing Esc in the macOS video and GIF trimmers now asks before closing them too, and warns when closing would discard a recording that has not been saved yet or trim changes that have not been exported.

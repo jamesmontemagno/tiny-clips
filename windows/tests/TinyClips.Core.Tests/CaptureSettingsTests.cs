@@ -79,6 +79,8 @@ public sealed class CaptureSettingsTests
         settingsService.Set("videoHotKeyModifiers", 5);
         settingsService.Set("gifHotKeyCode", 82);
         settingsService.Set("gifHotKeyModifiers", 7);
+        settingsService.Set("ocrHotKeyCode", 84);
+        settingsService.Set("ocrHotKeyModifiers", 6);
         settingsService.Set("screenshotScreenHotKeyCode", 65);
         settingsService.Set("screenshotScreenHotKeyModifiers", 6);
 
@@ -90,6 +92,8 @@ public sealed class CaptureSettingsTests
         Assert.Equal(5, settings.VideoHotKeyModifiers);
         Assert.Equal(82, settings.GifHotKeyCode);
         Assert.Equal(7, settings.GifHotKeyModifiers);
+        Assert.Equal(84, settings.OcrHotKeyCode);
+        Assert.Equal(6, settings.OcrHotKeyModifiers);
         Assert.Equal(65, settings.ScreenshotScreenHotKeyCode);
         Assert.Equal(6, settings.ScreenshotScreenHotKeyModifiers);
 
@@ -101,6 +105,8 @@ public sealed class CaptureSettingsTests
         Assert.Equal(6, settings.VideoHotKeyModifiers);
         Assert.Equal(55, settings.GifHotKeyCode);
         Assert.Equal(6, settings.GifHotKeyModifiers);
+        Assert.Equal(0, settings.OcrHotKeyCode);
+        Assert.Equal(0, settings.OcrHotKeyModifiers);
         Assert.Equal(0, settings.ScreenshotScreenHotKeyCode);
         Assert.Equal(0, settings.ScreenshotScreenHotKeyModifiers);
         Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Screenshot), settings.ScreenshotSaveDirectory);
