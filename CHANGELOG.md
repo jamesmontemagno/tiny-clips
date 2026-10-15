@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- macOS Settings > Shortcuts now has a **Clear** button to unassign a shortcut without resetting it to its default. (#450)
+
 ## v1.8.3-mac - 2026-10-13
 
 ### Added

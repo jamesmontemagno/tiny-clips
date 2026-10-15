@@ -34,6 +34,21 @@ final class HotKeyBindingTests: XCTestCase {
         XCTAssertEqual(Set(boundActions), [.screenshot, .recordVideo, .recordGif])
     }
 
+    func testUnboundBindingRepresentsAClearedShortcut() {
+        XCTAssertTrue(HotKeyBinding.unbound.isUnbound)
+        XCTAssertEqual(HotKeyBinding.unbound.displayString, "Not set")
+
+        for action in HotKeyAction.allCases {
+            XCTAssertNil(
+                HotKeyBinding.validationError(
+                    for: .unbound,
+                    action: action,
+                    bindings: [:]
+                )
+            )
+        }
+    }
+
     func testDirectScreenshotActionsHaveDisplayNamesAndUniqueDefaults() {
         XCTAssertEqual(HotKeyAction.screenshotRegion.displayName, "Screenshot Region")
         XCTAssertEqual(HotKeyAction.screenshotWindow.displayName, "Screenshot Window")

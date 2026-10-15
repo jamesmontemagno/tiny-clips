@@ -183,6 +183,12 @@ final class CaptureSettingsTests: XCTestCase {
                 settings.hotKeyBinding(for: action),
                 custom
             )
+
+            settings.setHotKeyBinding(.unbound, for: action)
+            XCTAssertEqual(
+                settings.hotKeyBinding(for: action),
+                .unbound
+            )
         }
     }
 

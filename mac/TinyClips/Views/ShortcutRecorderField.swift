@@ -61,6 +61,14 @@ struct ShortcutRecorderField: View {
                 .accessibilityHint("Click to record a new keyboard shortcut.")
                 .help("Record a new shortcut.")
 
+                Button("Clear") {
+                    onBindingRecorded(.unbound)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityHint("Clears this shortcut so it no longer triggers an action.")
+                .help("Clear this shortcut.")
+                .disabled(binding.isUnbound)
+
                 if isCustom {
                     Button("Reset") {
                         onBindingRecorded(defaultBinding)

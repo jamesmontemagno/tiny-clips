@@ -42,6 +42,8 @@ struct HotKeyBinding: Hashable {
     // Carbon key code zero is the A key, so optional bindings need a negative sentinel.
     private static let unboundKeyCode = -1
 
+    static let unbound = HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
+
     var isUnbound: Bool {
         keyCode == Self.unboundKeyCode && carbonModifiers == 0
     }
@@ -66,7 +68,7 @@ struct HotKeyBinding: Hashable {
         // Only Screenshot, Record Video, and Record GIF ship with a default shortcut.
         // Every other action starts unbound so users opt in from Settings.
         case .copyTextFromRegion, .screenshotRegion, .screenshotWindow, .screenshotScreen:
-            return HotKeyBinding(keyCode: unboundKeyCode, carbonModifiers: 0)
+            return .unbound
         }
     }
 
