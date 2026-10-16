@@ -6,6 +6,12 @@ using TinyClips.Core.Services;
 namespace TinyClips.App;
 
 /// <summary>
+/// What a later launch handed to the running app: its kind, and for a file activation the paths
+/// of its files. Read from the activation while the launch that forwarded it is still running.
+/// </summary>
+internal readonly record struct ForwardedActivation(ExtendedActivationKind Kind, IReadOnlyList<string?> FilePaths);
+
+/// <summary>
 /// Keeps Tiny Clips to one process per user. A second launch (Start menu, "Open with", the
 /// startup task, or the executable itself) hands its activation to the process that is already
 /// running and exits, instead of starting another tray icon that competes for the global hotkeys.
@@ -20,8 +26,8 @@ internal static class SingleInstance
     private static readonly TimeSpan RedirectTimeout = TimeSpan.FromSeconds(10);
 
     private static readonly object Gate = new();
-    private static readonly ConcurrentQueue<AppActivationArguments> Pending = new();
-    private static Action<AppActivationArguments>? _handler;
+    private static readonly ConcurrentQueue<ForwardedActivation> Pending = new();
+    private static Action<ForwardedActivation>? _handler;
 
     /// <summary>
     /// Registers this process as the single instance, or forwards its activation to the one that
@@ -85,7 +91,7 @@ internal static class SingleInstance
     /// Sets the callback that receives activations forwarded by later launches, and delivers any
     /// that arrived before the app was ready. The callback runs on a background thread.
     /// </summary>
-    public static void SetActivationHandler(Action<AppActivationArguments> handler)
+    public static void SetActivationHandler(Action<ForwardedActivation> handler)
     {
         lock (Gate)
         {
@@ -121,7 +127,41 @@ internal static class SingleInstance
 
     private static void OnActivated(object? sender, AppActivationArguments activation)
     {
-        Action<AppActivationArguments>? handler;
+        // The activation lives in the process that forwarded it, which exits as soon as this
+        // returns. Whatever is read from it later, on another thread, can find it gone ("The
+        // RPC server is unavailable"), and the launch then does nothing. So it is read here.
+        ForwardedActivation forwarded;
+        try
+        {
+            forwarded = Read(activation);
+        }
+        catch (Exception ex)
+        {
+            CrashDiagnostics.Log(nameof(SingleInstance), ex, handled: true);
+            return;
+        }
+
+        Deliver(forwarded);
+    }
+
+    /// <summary>The kind of an activation and, for a file activation, the paths of its files.</summary>
+    internal static ForwardedActivation Read(AppActivationArguments? activation)
+    {
+        if (activation is null)
+        {
+            return new ForwardedActivation(ExtendedActivationKind.Launch, []);
+        }
+
+        var kind = activation.Kind;
+        var paths = kind == ExtendedActivationKind.File && activation.Data is Windows.ApplicationModel.Activation.IFileActivatedEventArgs fileArgs
+            ? fileArgs.Files.Select(static item => (item as Windows.Storage.IStorageItem)?.Path).ToArray()
+            : [];
+        return new ForwardedActivation(kind, paths);
+    }
+
+    private static void Deliver(ForwardedActivation activation)
+    {
+        Action<ForwardedActivation>? handler;
         lock (Gate)
         {
             handler = _handler;

@@ -117,6 +117,17 @@
                             <FontIcon Glyph="&#xE8A7;" />
                         </controls:SettingsCard.ActionIcon>
                     </controls:SettingsCard>
+
+                    <!--  What Tiny Clips passes on that others made, and under which licence. Shown where the notices ship.  -->
+                    <controls:SettingsCard
+                        x:Name="ThirdPartyNoticesCard"
+                        AutomationProperties.AutomationId="AboutThirdPartyNoticesButton"
+                        AutomationProperties.Name="Show third-party notices"
+                        Click="OnShowThirdPartyNoticesClicked"
+                        Description="The person cutout in Tiny Clips Studio uses MediaPipe Selfie Segmentation (Apache License 2.0)."
+                        Header="Third-party notices"
+                        IsClickEnabled="True"
+                        Visibility="Collapsed" />
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
         </StackPanel>

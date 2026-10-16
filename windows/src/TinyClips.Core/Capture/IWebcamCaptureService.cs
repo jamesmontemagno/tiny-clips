@@ -50,6 +50,12 @@ public interface IWebcamCaptureService : IAsyncDisposable
 
     event EventHandler<WebcamCaptureFailedEventArgs>? CaptureFailed;
 
+    /// <summary>
+    /// Raised for every captured webcam frame. Handlers that need the frame after returning must copy
+    /// or encode it immediately because implementations may reuse the underlying buffer or surface.
+    /// </summary>
+    event EventHandler<WebcamFrameArrivedEventArgs>? FrameArrived;
+
     Task StartAsync(string? deviceId, BitmapSize bitmapSize, CancellationToken cancellationToken = default);
 
     Task StopAsync();
@@ -62,6 +68,15 @@ public interface IWebcamCaptureService : IAsyncDisposable
     /// CPU delivery. Implementations may ignore this and keep delivering CPU frames.
     /// </summary>
     void SetPreferredDirect3DDevice(IDirect3DDevice? device)
+    {
+    }
+
+    /// <summary>
+    /// Asks the next <see cref="StartAsync"/> to treat its size as a bounding box: frames keep the
+    /// camera's own aspect ratio and are never scaled up. By default frames are scaled to exactly
+    /// the requested size. Implementations may ignore this.
+    /// </summary>
+    void SetPreserveSourceAspect(bool preserve)
     {
     }
 }
@@ -80,4 +95,14 @@ public sealed class WebcamCaptureFailedEventArgs : EventArgs
     public uint Code { get; }
 
     public string Message { get; }
+}
+
+public sealed class WebcamFrameArrivedEventArgs : EventArgs
+{
+    public WebcamFrameArrivedEventArgs(WebcamFrame frame)
+    {
+        Frame = frame;
+    }
+
+    public WebcamFrame Frame { get; }
 }

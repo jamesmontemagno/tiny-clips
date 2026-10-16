@@ -1,0 +1,142 @@
+{
+  "description": "A change of layout made while recording starts a scene with that layout. The bubble and the split stay as they were.",
+  "duration": 30,
+  "first": {
+    "start": 0,
+    "layout": "bubble",
+    "bubble": {
+      "anchor": "topRight",
+      "size": 0.2,
+      "offsetX": 0,
+      "offsetY": 0
+    },
+    "split": {
+      "cameraSide": "leading",
+      "cameraFraction": 0.4
+    },
+    "transition": {
+      "kind": "cut",
+      "duration": 0.35
+    }
+  },
+  "cameraCorners": [
+    {
+      "t": 0,
+      "corner": "topRight"
+    }
+  ],
+  "markers": [
+    {
+      "t": 4,
+      "layout": "camera"
+    },
+    {
+      "t": 9.5,
+      "layout": "sideBySide"
+    },
+    {
+      "t": 15,
+      "layout": "sideBySide"
+    },
+    {
+      "t": 21,
+      "layout": "bubble"
+    },
+    {
+      "t": 26,
+      "layout": "screen"
+    }
+  ],
+  "expected": [
+    {
+      "start": 0,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "topRight",
+        "size": 0.2,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "leading",
+        "cameraFraction": 0.4
+      },
+      "transition": {
+        "kind": "cut",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 4,
+      "layout": "camera",
+      "bubble": {
+        "anchor": "topRight",
+        "size": 0.2,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "leading",
+        "cameraFraction": 0.4
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 9.5,
+      "layout": "sideBySide",
+      "bubble": {
+        "anchor": "topRight",
+        "size": 0.2,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "leading",
+        "cameraFraction": 0.4
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 21,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "topRight",
+        "size": 0.2,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "leading",
+        "cameraFraction": 0.4
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 26,
+      "layout": "screen",
+      "bubble": {
+        "anchor": "topRight",
+        "size": 0.2,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "leading",
+        "cameraFraction": 0.4
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    }
+  ]
+}

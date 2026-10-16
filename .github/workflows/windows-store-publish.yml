@@ -94,9 +94,23 @@ jobs:
           $packageDir = Join-Path (Resolve-Path ".") "artifacts/store/"
           New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstallRoot = & $vswhere -latest -products '*' `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $vsInstallRoot) {
+            throw "Visual Studio C++ tools are required to generate Store crash symbols."
+          }
+          $pdbCmf = & $vswhere -latest -products '*' `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\mspdbcmf.exe'
+          if ($LASTEXITCODE -ne 0 -or -not $pdbCmf) {
+            throw "The Store symbol tool mspdbcmf.exe is missing."
+          }
+
           dotnet build $env:APP_PROJECT `
             -c Release `
             -p:Platform=x64 `
+            -p:VsInstallRoot="$vsInstallRoot" `
             -p:TinyClipsStoreBuild=true `
             -p:TinyClipsDirectReleaseBuild=false `
             -p:PublishAot=false `
@@ -110,7 +124,9 @@ jobs:
             -p:AppxBundlePlatforms="x64|ARM64" `
             -p:UapAppxPackageBuildMode=StoreUpload `
             -p:AppxPackageSigningEnabled=false `
-            -p:AppxSymbolPackageEnabled=false `
+            -p:DebugSymbols=true `
+            -p:DebugType=portable `
+            -p:AppxSymbolPackageEnabled=true `
             -v:minimal
           if ($LASTEXITCODE -ne 0) { throw "Microsoft Store package build failed." }
 
@@ -119,6 +135,7 @@ jobs:
             throw "The Store build did not produce an .msixupload package."
           }
 
+          .\windows\packaging\Assert-StoreUpload.ps1 -UploadPath $upload.FullName
           Copy-Item $upload.FullName "artifacts/store/TinyClips-$env:PACKAGE_VERSION.msixupload" -Force
 
       - name: Upload Store package
@@ -144,6 +161,15 @@ jobs:
         with:
           name: windows-store-package
           path: artifacts/store
+
+      - name: Validate Store crash symbols
+        shell: pwsh
+        run: |
+          $upload = Get-ChildItem artifacts/store -Filter *.msixupload | Select-Object -First 1
+          if (-not $upload) {
+            throw "The downloaded Store package is missing."
+          }
+          .\windows\packaging\Assert-StoreUpload.ps1 -UploadPath $upload.FullName
 
       - name: Validate publishing configuration
         shell: pwsh

@@ -1,0 +1,207 @@
+using TinyClips.Core.Capture;
+using TinyClips.Core.Studio.Rendering;
+using TinyClips.Tools.StudioPreviewCheck;
+using TinyClips.Tools.StudioPreviewCheck.Media;
+using Windows.Graphics;
+using Windows.Graphics.Capture;
+using Windows.Graphics.DirectX;
+using Windows.Graphics.DirectX.Direct3D11;
+
+namespace TinyClips.Tools.StudioWindowCheck.Capture;
+
+/// <summary>A screenshot of one of the tool's windows: tightly packed top-down BGRA.</summary>
+/// <param name="ScreenX">The screen position, in pixels, of the screenshot's left edge.</param>
+/// <param name="ScreenY">The screen position of its top edge.</param>
+/// <param name="Serial">Counts the frames the system has delivered for the window.</param>
+internal sealed record Shot(byte[] Bgra, int Width, int Height, int ScreenX, int ScreenY, long Serial)
+{
+    /// <summary>The average colour around a point of the screenshot, or (-1,-1,-1) outside it.</summary>
+    public Rgb Color(double x, double y, int radius = 1) => FrameCode.Color(Bgra, Width, Height, x, y, radius);
+
+    public void Save(string path) => PngWriter.WriteBgra(path, Bgra, Width, Height);
+}
+
+/// <summary>
+/// Screenshots of one window of the tool through Windows.Graphics.Capture, which returns what the
+/// system composes for the window, also while it is behind other windows. The system delivers a
+/// frame whenever the window's picture changes; the newest one is kept, and read back on a device
+/// of its own only when a check asks for it.
+/// </summary>
+internal sealed class WindowCamera : IDisposable
+{
+    private const int Buffers = 3;
+    private static int _notClosedInTime;
+
+    private readonly object _sync = new();
+    private readonly nint _window;
+    private readonly StudioGraphicsDevice _graphics;
+    private readonly IDirect3DDevice _device;
+    private readonly GraphicsCaptureItem _item;
+    private readonly Direct3D11CaptureFramePool _pool;
+    private readonly GraphicsCaptureSession _session;
+    private Direct3D11CaptureFrame? _latest;
+    private SizeInt32 _poolSize;
+    private long _serial;
+    private bool _disposed;
+
+    public WindowCamera(nint window)
+    {
+        _window = window;
+        _graphics = StudioGraphicsDevice.CreateHardware();
+        _device = WgcInterop.CreateDirect3DDevice(_graphics.Device) ?? throw new InvalidOperationException("Could not wrap the capture device for Windows.Graphics.Capture.");
+        _item = WgcInterop.CreateCaptureItemForWindow(window);
+        _poolSize = _item.Size;
+        _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, Buffers, _poolSize);
+        _pool.FrameArrived += OnFrameArrived;
+        _session = _pool.CreateCaptureSession(_item);
+        WgcInterop.TryConfigureSession(_session, includeCursor: false);
+        _session.StartCapture();
+    }
+
+    /// <summary>How many screenshots were read back.</summary>
+    public int Taken { get; private set; }
+
+    /// <summary>The newest picture of the window, or null when the system has not delivered one yet.</summary>
+    public Shot? Take()
+    {
+        byte[]? fresh = null;
+        return Take(ref fresh);
+    }
+
+    /// <summary>
+    /// The newest picture of the window, read into a buffer that is used again when it has the
+    /// right size: the picture is good until the next one is taken with the same buffer. For
+    /// taking many pictures while something is timed, without work for the garbage collector.
+    /// </summary>
+    public Shot? Take(ref byte[]? buffer)
+    {
+        lock (_sync)
+        {
+            if (_disposed || _latest is not { } frame)
+            {
+                return null;
+            }
+
+            var content = frame.ContentSize;
+            using var texture = WgcInterop.GetTextureFromSurface(frame.Surface);
+            byte[] whole;
+            int stride;
+            lock (_graphics.Gate)
+            {
+                stride = (int)texture.Description.Width * 4;
+                var length = stride * (int)texture.Description.Height;
+                if (buffer is null || buffer.Length != length)
+                {
+                    buffer = new byte[length];
+                }
+
+                whole = buffer;
+                _graphics.ReadTexture(texture, 0, whole);
+            }
+
+            var width = Math.Min(content.Width, (int)texture.Description.Width);
+            var height = Math.Min(content.Height, (int)texture.Description.Height);
+
+            // The texture is larger than the window only after the window has shrunk.
+            var pixels = whole;
+            if (width * 4 != stride || whole.Length != width * height * 4)
+            {
+                pixels = new byte[width * height * 4];
+                for (var row = 0; row < height; row++)
+                {
+                    whole.AsSpan(row * stride, width * 4).CopyTo(pixels.AsSpan(row * width * 4));
+                }
+            }
+
+            var bounds = Native.FrameBounds(_window);
+            Taken++;
+            return new Shot(pixels, width, height, bounds.Left, bounds.Top, _serial);
+        }
+    }
+
+    /// <summary>How many cameras the system did not finish closing in time. See <see cref="Dispose"/>.</summary>
+    public static int NotClosedInTime => Volatile.Read(ref _notClosedInTime);
+
+    public void Dispose()
+    {
+        Direct3D11CaptureFrame? latest;
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            // From here on a frame that arrives is ignored.
+            _disposed = true;
+            latest = _latest;
+            _latest = null;
+        }
+
+        // Ending a capture session is a call into the system, and it has been seen never to
+        // return: a run stood still in it for six minutes. So it is made on a thread of its own,
+        // and the checks go on without it when it takes too long. What is left of the session
+        // ends with the process.
+        var closing = new Thread(() =>
+        {
+            try
+            {
+                _pool.FrameArrived -= OnFrameArrived;
+                latest?.Dispose();
+                _session.Dispose();
+                _pool.Dispose();
+                _device.Dispose();
+                _graphics.Dispose();
+            }
+            catch (Exception)
+            {
+                // The window is gone, and with it what there was to close.
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "StudioWindowCheck.CameraClose",
+        };
+        closing.Start();
+        if (!closing.Join(TimeSpan.FromSeconds(5)))
+        {
+            Interlocked.Increment(ref _notClosedInTime);
+        }
+    }
+
+    // On a thread of the frame pool.
+    private void OnFrameArrived(Direct3D11CaptureFramePool pool, object args)
+    {
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            Direct3D11CaptureFrame? newest = null;
+            while (pool.TryGetNextFrame() is { } frame)
+            {
+                newest?.Dispose();
+                newest = frame;
+            }
+
+            if (newest is null)
+            {
+                return;
+            }
+
+            _latest?.Dispose();
+            _latest = newest;
+            _serial++;
+
+            // A window that grew needs larger buffers. The frame at hand stays valid until it is replaced.
+            var content = newest.ContentSize;
+            if (content.Width > _poolSize.Width || content.Height > _poolSize.Height)
+            {
+                _poolSize = new SizeInt32(Math.Max(content.Width, _poolSize.Width), Math.Max(content.Height, _poolSize.Height));
+                pool.Recreate(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, Buffers, _poolSize);
+            }
+        }
+    }
+}

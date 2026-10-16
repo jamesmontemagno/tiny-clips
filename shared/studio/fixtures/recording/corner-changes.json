@@ -1,0 +1,93 @@
+{
+  "description": "Each move of the camera to another corner starts a scene that is entered by moving. The offsets a look gave the bubble belong to the first corner only.",
+  "duration": 20,
+  "first": {
+    "start": 0,
+    "layout": "bubble",
+    "bubble": {
+      "anchor": "bottomRight",
+      "size": 0.3,
+      "offsetX": 0.04,
+      "offsetY": -0.02
+    },
+    "split": {
+      "cameraSide": "trailing",
+      "cameraFraction": 0.3
+    },
+    "transition": {
+      "kind": "cut",
+      "duration": 0.35
+    }
+  },
+  "cameraCorners": [
+    {
+      "t": 0,
+      "corner": "bottomRight"
+    },
+    {
+      "t": 5,
+      "corner": "topLeft"
+    },
+    {
+      "t": 12.5,
+      "corner": "bottomLeft"
+    }
+  ],
+  "markers": [],
+  "expected": [
+    {
+      "start": 0,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "bottomRight",
+        "size": 0.3,
+        "offsetX": 0.04,
+        "offsetY": -0.02
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "cut",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 5,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "topLeft",
+        "size": 0.3,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 12.5,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "bottomLeft",
+        "size": 0.3,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    }
+  ]
+}

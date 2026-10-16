@@ -1,0 +1,57 @@
+{
+  "description": "A recording too short for a second scene: a change in its first 0.3 s changes the one scene, and a later one is left out.",
+  "duration": 0.5,
+  "first": {
+    "start": 0,
+    "layout": "bubble",
+    "bubble": {
+      "anchor": "bottomRight",
+      "size": 0.24,
+      "offsetX": 0,
+      "offsetY": 0
+    },
+    "split": {
+      "cameraSide": "trailing",
+      "cameraFraction": 0.3
+    },
+    "transition": {
+      "kind": "cut",
+      "duration": 0.35
+    }
+  },
+  "cameraCorners": [
+    {
+      "t": 0,
+      "corner": "bottomRight"
+    },
+    {
+      "t": 0.1,
+      "corner": "topLeft"
+    },
+    {
+      "t": 0.4,
+      "corner": "topRight"
+    }
+  ],
+  "markers": [],
+  "expected": [
+    {
+      "start": 0,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "topLeft",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "cut",
+        "duration": 0.35
+      }
+    }
+  ]
+}

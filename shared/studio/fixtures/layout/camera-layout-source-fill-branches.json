@@ -1,0 +1,186 @@
+{
+  "description": "Camera layout covers both camera source fill branches with destination wider and narrower than the camera.",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-4000-8000-000000000046",
+    "name": "Camera layout source branches",
+    "createdAt": "2026-10-02T22:41:00Z",
+    "modifiedAt": "2026-10-02T22:41:00Z",
+    "lastOpenedAt": "2026-10-02T22:41:00Z",
+    "app": {
+      "platform": "windows",
+      "version": "1.9.0"
+    },
+    "keepSources": false,
+    "sources": {
+      "screen": {
+        "file": "screen.mp4",
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "duration": 20,
+        "external": false
+      },
+      "camera": {
+        "file": "camera.mp4",
+        "width": 1600,
+        "height": 900,
+        "duration": 20,
+        "startOffset": 0
+      },
+      "events": "events.json"
+    },
+    "canvas": {
+      "aspect": "auto",
+      "padding": 0.06,
+      "background": {
+        "style": "gradient",
+        "preset": "ocean",
+        "primary": "#2687E8",
+        "secondary": "#2EE0BF",
+        "image": null
+      }
+    },
+    "screen": {
+      "cornerRadius": 0.02,
+      "shadow": 0.5,
+      "crop": null
+    },
+    "camera": {
+      "shape": "circle",
+      "cornerRadius": 0.12,
+      "mirror": true,
+      "borderWidth": 0,
+      "borderColor": "#FFFFFF",
+      "shadow": 0.35,
+      "crop": null,
+      "cutout": "none"
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "camera",
+        "bubble": {
+          "anchor": "bottomRight",
+          "size": 0.24,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "split": {
+          "cameraSide": "trailing",
+          "cameraFraction": 0.3
+        },
+        "transition": {
+          "kind": "cut",
+          "duration": 0.35
+        }
+      }
+    ],
+    "zooms": [],
+    "edits": {
+      "trimStart": 0,
+      "trimEnd": null,
+      "cuts": [],
+      "speed": []
+    },
+    "audio": {
+      "muted": false,
+      "systemVolume": 1,
+      "microphoneVolume": 1
+    },
+    "overlays": {
+      "clicks": {
+        "enabled": true,
+        "color": "#0A84FF",
+        "size": 40,
+        "strokeWidth": 3,
+        "opacity": 0.85,
+        "duration": 0.45
+      },
+      "branding": false
+    },
+    "exports": []
+  },
+  "naturalCanvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "cases": [
+    {
+      "time": 0,
+      "canvas": {
+        "width": 2000,
+        "height": 900
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "camera",
+        "screen": null,
+        "camera": {
+          "rect": {
+            "x": 54.0,
+            "y": 54.0,
+            "width": 1892.0,
+            "height": 792.0
+          },
+          "source": {
+            "x": 0,
+            "y": 0.12790697674418605,
+            "width": 1,
+            "height": 0.7441860465116279
+          },
+          "shape": "roundedRectangle",
+          "cornerRadius": 18.0,
+          "mirror": true,
+          "borderWidth": 0,
+          "shadow": {
+            "blur": 12.599999999999998,
+            "offsetY": 3.78,
+            "opacity": 0.175
+          },
+          "sourceTime": 0,
+          "visible": true,
+          "opacity": 1
+        }
+      }
+    },
+    {
+      "time": 0,
+      "canvas": {
+        "width": 720,
+        "height": 1280
+      },
+      "expected": {
+        "sceneIndex": 0,
+        "layout": "camera",
+        "screen": null,
+        "camera": {
+          "rect": {
+            "x": 43.199999999999996,
+            "y": 43.199999999999996,
+            "width": 633.6,
+            "height": 1193.6
+          },
+          "source": {
+            "x": 0.3507037533512064,
+            "y": 0,
+            "width": 0.29859249329758714,
+            "height": 1
+          },
+          "shape": "roundedRectangle",
+          "cornerRadius": 14.4,
+          "mirror": true,
+          "borderWidth": 0,
+          "shadow": {
+            "blur": 10.079999999999998,
+            "offsetY": 3.024,
+            "opacity": 0.175
+          },
+          "sourceTime": 0,
+          "visible": true,
+          "opacity": 1
+        }
+      }
+    }
+  ]
+}

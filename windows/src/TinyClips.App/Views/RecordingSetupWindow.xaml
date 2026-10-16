@@ -53,6 +53,31 @@
                         Glyph="&#xE962;" />
                 </ToggleButton>
 
+                <!--
+                    Shown for a recording that was started with Studio recording. It is not a
+                    control: it says which of the two tray commands this recording came from.
+                -->
+                <StackPanel
+                    x:Name="StudioRecordingLabel"
+                    Margin="4,0"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    ToolTipService.ToolTip="A Studio recording: the screen and camera are kept as separate layers, and Tiny Clips Studio opens when recording ends."
+                    Visibility="Collapsed">
+                    <FontIcon
+                        AutomationProperties.AccessibilityView="Raw"
+                        FontFamily="Segoe Fluent Icons"
+                        FontSize="16"
+                        Glyph="&#xE81E;" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="SetupStudioRecordingLabel"
+                        AutomationProperties.Name="Studio recording"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="Studio" />
+                </StackPanel>
+
                 <Rectangle
                     Width="1"
                     Height="24"

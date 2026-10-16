@@ -1,0 +1,75 @@
+{
+  "description": "A bubble that was moved off its corner, sent to another corner and back at once: it is in the corner now and not where it was, so the scene stays.",
+  "duration": 20,
+  "first": {
+    "start": 0,
+    "layout": "bubble",
+    "bubble": {
+      "anchor": "bottomRight",
+      "size": 0.24,
+      "offsetX": 0.04,
+      "offsetY": -0.02
+    },
+    "split": {
+      "cameraSide": "trailing",
+      "cameraFraction": 0.3
+    },
+    "transition": {
+      "kind": "cut",
+      "duration": 0.35
+    }
+  },
+  "cameraCorners": [
+    {
+      "t": 0,
+      "corner": "bottomRight"
+    },
+    {
+      "t": 5,
+      "corner": "topLeft"
+    },
+    {
+      "t": 5.1,
+      "corner": "bottomRight"
+    }
+  ],
+  "markers": [],
+  "expected": [
+    {
+      "start": 0,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "bottomRight",
+        "size": 0.24,
+        "offsetX": 0.04,
+        "offsetY": -0.02
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "cut",
+        "duration": 0.35
+      }
+    },
+    {
+      "start": 5,
+      "layout": "bubble",
+      "bubble": {
+        "anchor": "bottomRight",
+        "size": 0.24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "split": {
+        "cameraSide": "trailing",
+        "cameraFraction": 0.3
+      },
+      "transition": {
+        "kind": "morph",
+        "duration": 0.35
+      }
+    }
+  ]
+}

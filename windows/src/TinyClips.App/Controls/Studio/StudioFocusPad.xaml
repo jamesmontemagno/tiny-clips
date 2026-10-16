@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="TinyClips.App.Controls.Studio.StudioFocusPad"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    HorizontalAlignment="Center"
+    AutomationProperties.AccessibilityView="Raw"
+    FlowDirection="LeftToRight"
+    IsTabStop="False"
+    ToolTipService.ToolTip="Drag to choose where this zoom looks">
+
+    <!--
+        The pad stands for the screen, so it is never mirrored. It is for the pointer only: the
+        Horizontal and Vertical sliders under it make the same change from the keyboard, and are
+        what a screen reader gets.
+    -->
+    <Grid
+        x:Name="Root"
+        AutomationProperties.AccessibilityView="Raw"
+        Background="Transparent"
+        PointerCanceled="OnPointerEnded"
+        PointerCaptureLost="OnPointerEnded"
+        PointerMoved="OnPointerMoved"
+        PointerPressed="OnPointerPressed"
+        PointerReleased="OnPointerEnded"
+        SizeChanged="OnRootSizeChanged">
+        <Border
+            Background="{ThemeResource ControlAltFillColorQuarternaryBrush}"
+            BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource ControlCornerRadius}"
+            IsHitTestVisible="False" />
+        <Canvas x:Name="Parts" IsHitTestVisible="False">
+            <!--  The part of the screen the zoom holds.  -->
+            <Rectangle
+                x:Name="WindowFill"
+                Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                Opacity="0.2" />
+            <Rectangle
+                x:Name="WindowOutline"
+                Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                StrokeThickness="1.5" />
+            <!--  The point the zoom looks at.  -->
+            <Ellipse
+                x:Name="FocusDot"
+                Width="10"
+                Height="10"
+                Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                Stroke="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                StrokeThickness="1" />
+        </Canvas>
+    </Grid>
+</UserControl>

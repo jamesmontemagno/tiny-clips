@@ -86,9 +86,11 @@ struct CaptureRegion: Sendable {
 
 struct CaptureTarget {
     let region: CaptureRegion
+    let studioCaptureKind: StudioCaptureKind
 
-    init(region: CaptureRegion) {
+    init(region: CaptureRegion, studioCaptureKind: StudioCaptureKind = .region) {
         self.region = region
+        self.studioCaptureKind = studioCaptureKind
     }
 
     func prepare(alwaysExcluding windows: [SCWindow] = []) async throws -> PreparedCaptureTarget {
@@ -304,6 +306,19 @@ extension NSColor {
 
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
+    // Bump when release highlights change, independently of the app version.
+    static let whatsNewContentRevision = 1
+    static let lastSeenWhatsNewRevisionKey = "lastSeenWhatsNewRevision"
+
+    static func shouldShowWhatsNew(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: "hasCompletedOnboarding")
+            && defaults.integer(forKey: lastSeenWhatsNewRevisionKey) < whatsNewContentRevision
+    }
+
+    static func markWhatsNewSeen(in defaults: UserDefaults = .standard) {
+        defaults.set(whatsNewContentRevision, forKey: lastSeenWhatsNewRevisionKey)
+    }
+
     static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
     static let confirmEditorEscapeKey = CaptureSettingsDefaultsKey.confirmEditorEscape
     static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
@@ -374,6 +389,26 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifMouseClickOpacity") var gifMouseClickOpacity: Double = 0.85
     @AppStorage("gifMouseClickDuration") var gifMouseClickDuration: Double = 0.45
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
+    /// Whether Tiny Clips Studio is switched on, while it is in preview. It is the
+    /// "Tiny Clips Studio (Preview)" switch in Studio settings; with it off, nothing else of
+    /// Studio is shown. Switched on, the menu has Studio Recording beside Record Video, and
+    /// that command is the one way to record for Studio: Record Video is always an ordinary
+    /// recording.
+    @AppStorage("studioPreviewEnabled") var studioPreviewEnabled: Bool = false
+    @AppStorage("studioDefaultLook") private var storedStudioDefaultLook: String = ""
+    /// The look new Studio recordings start with, or nil for the built-in one.
+    var studioDefaultLook: StudioLook? {
+        get { StudioLook(settingsText: storedStudioDefaultLook) }
+        set { storedStudioDefaultLook = newValue?.settingsText() ?? "" }
+    }
+    /// Days an exported Studio project is kept after it was last opened. Zero keeps it until deleted.
+    @AppStorage("studioSourceRetentionDays") var studioSourceRetentionDays: Int = 30
+    /// The most disk space the Studio projects that cleanup may remove can use before the ones
+    /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
+    @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
+    var studioCleanupOptions: StudioCleanupOptions {
+        StudioCleanupOptions(retentionDays: studioSourceRetentionDays, sizeCapGigabytes: studioStorageCapGigabytes)
+    }
     @AppStorage("recordAudio") var recordAudio: Bool = false
     @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
     @AppStorage("audioOffsetMs") private var storedAudioOffsetMs: Int = 0
@@ -804,7 +839,8 @@ class CaptureSettings: ObservableObject {
         "gifMouseClicksUseVideoSettings",
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
-        "showTrimmer",
+        "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
+        "studioSourceRetentionDays", "studioStorageCapGigabytes",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",

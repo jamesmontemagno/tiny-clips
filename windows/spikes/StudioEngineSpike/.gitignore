@@ -1,0 +1,16 @@
+# Build output
+bin/
+obj/
+
+# Generated test media (ffmpeg) and run output (exports, PNG dumps, reports)
+media/
+out/
+*.mp4
+*.m4a
+*.wav
+*.h264
+
+# User-specific files
+*.user
+*.suo
+.vs/

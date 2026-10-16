@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tiny Clips 2.0 — Meet Studio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="tc-grad" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#5A3FE0"/><stop offset="1" stop-color="#3468F5"/>
+    </linearGradient>
+    <symbol id="tc-icon" viewBox="0 0 100 100">
+      <rect x="1" y="1" width="98" height="98" rx="24" fill="url(#tc-grad)"/>
+      <g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19.5 41V19.5H41"/><path d="M59 19.5H80.5V41"/><path d="M19.5 59V80.5H41"/><path d="M80.5 59V80.5H59"/>
+      </g>
+      <g stroke="#fff" stroke-width="1.7" stroke-linecap="round" opacity=".5">
+        <path d="M50 37.5V40M50 60V62.5M37.5 50H40M60 50H62.5"/>
+      </g>
+      <circle cx="50" cy="50" r="9.8" fill="#fff"/>
+    </symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></symbol>
+    <symbol id="i-gif" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 10.5H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h2v-1.5M13 10v4M16 14v-4h2.5M16 12h2"/></symbol>
+  </defs>
+</svg>
+
+<div id="stage">
+  <div class="bg"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i></div>
+  <div class="camera">
+
+    <section class="scene s-studio-title" data-bar="0" data-bars="1">
+      <div class="tint center"></div>
+      <div class="release-lockup a-up"><svg><use href="#tc-icon"/></svg><span>Tiny Clips 2.0</span></div>
+      <p class="kicker a-up" data-at="0.25">A new way to create</p>
+      <h1 class="a-up" data-at="0.5">Hello, <span>Studio.</span></h1>
+      <p class="studio-platforms a-up" data-at="1">macOS + Windows <span>Studio Preview</span></p>
+    </section>
+
+    <section class="scene s-studio-layout" data-bar="1" data-bars="3" style="--accent: var(--cyan)">
+      <div class="tint"></div>
+      <div class="studio-copy">
+        <span class="kicker a-up">Meet Tiny Clips Studio</span>
+        <h2 class="a-up" data-at="0.5">One take.<br>More possibilities.</h2>
+        <p class="a-up" data-at="1">Record screen and camera<br>as separate layers.</p>
+        <div class="studio-labels">
+          <span class="a-up" data-at="3">Compose your shot.</span>
+          <span class="a-up" data-at="8">Switch up the layout.</span>
+          <span class="a-up" data-at="10">Make it yours.</span>
+        </div>
+      </div>
+      <div class="studio-demo a-rise" data-studio-demo></div>
+      <p class="studio-footnote a-up" data-at="2">Backgrounds · Padding · Rounded corners · Camera layouts</p>
+    </section>
+
+    <section class="scene s-studio-recorded" data-bar="4" data-bars="3">
+      <header class="studio-heading">
+        <div><span class="kicker a-up">Inside Studio</span><h2 class="a-up" data-at="0.5">Your recording. Your direction.</h2></div>
+      </header>
+      <figure class="studio-footage a-up" data-at="0.5">
+        <img id="studio-recording" src="../out/studio-frames/frame-000.jpg" alt="Recorded Studio editor controls and timeline">
+        <div class="recorded-canvas"><div class="studio-demo" data-studio-demo></div></div>
+      </figure>
+    </section>
+
+    <section class="scene s-studio-edit" data-bar="7" data-bars="2" style="--accent: var(--cyan)">
+      <div class="tint center"></div>
+      <span class="kicker a-up">From first take to final cut</span>
+      <h2 class="a-up" data-at="0.5">Keep the good parts.</h2>
+      <div class="edit-actions">
+        <div class="a-up" data-at="1"><kbd>Z</kbd><strong>Zoom in</strong><span>Focus the moment.</span></div>
+        <div class="a-up" data-at="2"><kbd>X</kbd><strong>Cut it</strong><span>Skip the extra.</span></div>
+        <div class="a-up" data-at="3"><kbd>R</kbd><strong>Change speed</strong><span>Set your pace.</span></div>
+      </div>
+      <div class="studio-timeline a-up" data-at="2">
+        <div class="demo-scenes"><span>Camera bubble</span><span>Side by side</span><span>Screen only</span></div>
+        <div class="demo-zooms"><span>Zoom</span></div>
+        <div class="demo-cuts"><span>Cut</span></div>
+        <div class="demo-speed"><span>2×</span></div>
+        <div class="demo-track"></div><i class="demo-playhead"></i>
+      </div>
+      <p class="studio-export a-up" data-at="6"><b>Export an MP4.</b> Keep an editable project.</p>
+      <p class="studio-enable a-up" data-at="7">Enable Studio Preview in Settings › Studio</p>
+    </section>
+
+    <section class="scene s-studio-result" data-bar="9" data-bars="3">
+      <div class="tint center"></div>
+      <div class="result-copy">
+        <span class="kicker a-up">The finished Studio video</span>
+        <h2 class="a-up" data-at="0.5">A little more<br>you in every frame.</h2>
+        <p class="result-prompt a-up" data-at="4"><span>Try it today in 2.0.</span><b>Turn on the Preview.</b></p>
+      </div>
+      <div class="result-preview a-rise" data-at="0.5">
+        <div class="studio-demo result-demo" data-studio-demo="result"></div>
+      </div>
+    </section>
+
+    <section class="scene s-toolkit" data-bar="12" data-bars="3">
+      <div class="tint center"></div>
+      <span class="kicker a-up">One tiny app</span>
+      <h2 class="a-up" data-at="0.5">Capture. Create. Share.</h2>
+      <div class="capture-formats">
+        <div class="a-up" data-at="1"><svg><use href="#i-camera"/></svg><strong>Screenshot</strong><span>PNG · JPEG · WebP</span></div>
+        <div class="a-up" data-at="1.5"><svg><use href="#i-video"/></svg><strong>Video</strong><span>Mic + system audio</span></div>
+        <div class="a-up" data-at="2"><svg><use href="#i-gif"/></svg><strong>GIF</strong><span>Record. Trim. Loop.</span></div>
+      </div>
+      <p class="a-up toolkit-note" data-at="4.5">And the capture toolkit you love.</p>
+    </section>
+
+    <section class="scene s-editor-b" data-bar="15" data-bars="2" style="--accent: var(--pink)">
+      <div class="tint"></div>
+      <ol class="tool-list">
+        <li data-at="0">Arrows</li>
+        <li data-at="0.75">Numbered steps</li>
+        <li data-at="1.5">Redact &amp; blur</li>
+        <li data-at="2.25">Emoji stickers</li>
+        <li data-at="3">Text &amp; shapes</li>
+        <li data-at="3.75" class="long">Backgrounds</li>
+      </ol>
+      <div class="canvas">
+        <i class="canvas-bg g1"></i><i class="canvas-bg g2 a-fade" data-at="3.5"></i><i class="canvas-bg g3 a-fade" data-at="4.25"></i>
+        <div class="canvas-card">
+          <div class="win" data-mock="app"></div>
+          <svg class="anno" viewBox="0 0 900 580"><path class="arrow" pathLength="1" d="M300 420 C 400 400 520 330 588 232"/><path class="arrow-head a-pop" data-at="0.3" d="M560 244 L596 218 L600 262"/></svg>
+          <span class="badge n1 a-pop" data-at="0.8">1</span><span class="badge n2 a-pop" data-at="1.05">2</span><span class="badge n3 a-pop" data-at="1.3">3</span>
+          <div class="redact a-wipe" data-at="1.75" data-d="0.45"></div>
+          <span class="sticker a-drop" data-at="2.5">🎉</span>
+          <span class="anno-text a-pop" data-at="3.25">Ready to share.</span><i class="anno-rect a-pop" data-at="3.5"></i>
+        </div>
+      </div>
+    </section>
+
+    <section class="scene s-new" id="whats-new" data-bar="17" data-bars="4" style="--accent: var(--violet)">
+      <div class="tint center"></div>
+      <header>
+        <span class="new-pill a-pop" id="new-pill"></span>
+        <h2 class="a-up" data-at="0.25" id="new-heading"></h2>
+        <span class="plat a-up" data-at="0.5" id="new-platforms"></span>
+      </header>
+      <div class="bento slots a-fade" id="new-slots"></div><div class="bento" id="new-tiles"></div>
+    </section>
+
+    <section class="scene s-outro" data-bar="21" data-bars="3" style="--accent: var(--violet)">
+      <div class="tint center strong"></div>
+      <div class="rings"><i></i><i></i><i></i></div>
+      <div class="lockup">
+        <svg class="outro-icon a-pop"><use href="#tc-icon"/></svg>
+        <h1 data-split="a-slam" data-at="0.5" data-stagger="0.03s">Tiny Clips</h1>
+        <div class="avail">
+          <span class="a-up" data-at="2">Available on</span>
+          <b class="plat-pill a-pop" data-at="2.5">
+            <svg class="apple-logo" viewBox="10 7 31 36" aria-hidden="true">
+              <path d="M24 18.5c-2.6-2-6-1.8-8.6.1-4.1 3-4.8 8.7-2 14.2 2.3 4.7 4.9 7.4 7.8 7.4 1.2 0 2.2-.5 3.2-.9s2-.8 3.2-.8 2 .4 3.1.8 2 .9 3.2.9c2.9 0 5.5-2.7 7.8-7.4 2.8-5.5 2.1-11.2-2-14.2-2.6-1.9-6-2.1-8.6-.1-1 .8-2 1.2-3.5 1.2s-2.6-.4-3.6-1.2z"/>
+              <path d="M25.1 17.6c-.8-3.7.5-6.7 3.8-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+              <path d="M28.5 11.7c2.1-2.5 5-3.4 8-2.9-.4 3.5-3.1 5.9-7.7 6.3z"/>
+            </svg>macOS
+          </b>
+          <b class="plat-pill a-pop" data-at="3"><span class="winlogo"><i></i><i></i><i></i><i></i></span>Windows</b>
+        </div>
+        <div class="url a-slam" data-at="4"><span>tinyclips.app</span><i class="shine"></i></div>
+        <p class="free a-up" data-at="8">Free and open source</p>
+      </div>
+    </section>
+  </div>
+  <div class="bug" data-bar="1" data-bars="3"><svg><use href="#tc-icon"/></svg>Tiny Clips 2.0</div>
+  <div id="flashes"></div><div id="grain"></div><div class="vignette"></div>
+</div>
+<script src="creative.js"></script><script src="content.js"></script><script src="player.js"></script>
+</body>
+</html>

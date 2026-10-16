@@ -7,10 +7,8 @@ using TinyClips.Core.Services;
 namespace TinyClips.App;
 
 /// <summary>
-/// Shown once after an update that changes how the app behaves (first time: the GPU recording
-/// pipeline and low-latency encoder becoming the defaults). Highlights the new features and
-/// points at the Video settings that revert to the previous behaviour. Dismissing records the
-/// current version in <see cref="ICaptureSettings.LastSeenWhatsNewVersion"/>.
+/// Shown once per content revision to introduce Studio and offer its saved preview switch.
+/// New installations see onboarding instead. Closing by any route marks this revision as seen.
 /// </summary>
 public sealed partial class WhatsNewWindow : Window
 {
@@ -20,16 +18,19 @@ public sealed partial class WhatsNewWindow : Window
     private readonly ICaptureSettings _settings;
     private readonly WindowChromeController _chromeController;
 
+    public WhatsNewViewModel ViewModel { get; }
+
     public WhatsNewWindow()
     {
         _settings = App.Services.GetRequiredService<ICaptureSettings>();
+        ViewModel = new WhatsNewViewModel(_settings);
 
         InitializeComponent();
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 720, 820);
+        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 760, 900);
         _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
 
         RootGrid.RequestedTheme = _settings.Theme switch
@@ -42,7 +43,30 @@ public sealed partial class WhatsNewWindow : Window
         var version = AppVersionInfo.GetCurrentVersion();
         VersionText.Text = $"Version {version.Major}.{version.Minor}{(version.Build > 0 ? $".{version.Build}" : string.Empty)}";
 
-        Closed += (_, _) => MarkSeen();
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        Activated += OnActivated;
+        Closed += (_, _) =>
+        {
+            ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            Activated -= OnActivated;
+            MarkSeen();
+        };
+    }
+
+    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState != WindowActivationState.Deactivated)
+        {
+            ViewModel.IsStudioEnabled = _settings.StudioPreviewEnabled;
+        }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(WhatsNewViewModel.IsStudioEnabled))
+        {
+            ((App)Application.Current).RefreshStudioPreviewSetting();
+        }
     }
 
     /// <summary>
@@ -51,7 +75,7 @@ public sealed partial class WhatsNewWindow : Window
     /// notes never re-shows stale ones, and the release's actual version number never needs to be
     /// known here (the displayed version comes from the package at runtime).
     /// </summary>
-    internal const int ContentRevision = 1;
+    internal const int ContentRevision = WhatsNewViewModel.ContentRevision;
 
     /// <summary>
     /// True when this content revision has not been dismissed yet. First-run users see onboarding
@@ -59,31 +83,19 @@ public sealed partial class WhatsNewWindow : Window
     /// on their second launch. Legacy values (a bare version string from before revisions existed)
     /// count as "seen nothing" — which is correct, since those users predate every revision.
     /// </summary>
-    public static bool ShouldShow(ICaptureSettings settings) => ParseSeenRevision(settings.LastSeenWhatsNewVersion) < ContentRevision;
+    public static bool ShouldShow(ICaptureSettings settings) => WhatsNewViewModel.ShouldShow(settings);
 
     /// <summary>Records the current content revision (and version, for diagnostics) as seen.</summary>
     public static void MarkSeenForCurrentVersion(ICaptureSettings settings) =>
-        settings.LastSeenWhatsNewVersion = $"rev{ContentRevision};{AppVersionInfo.GetCurrentVersionText()}";
-
-    internal static int ParseSeenRevision(string? stored)
-    {
-        if (string.IsNullOrEmpty(stored) || !stored.StartsWith("rev", StringComparison.Ordinal))
-        {
-            return 0;
-        }
-
-        var end = stored.IndexOf(';');
-        var number = end > 3 ? stored[3..end] : stored[3..];
-        return int.TryParse(number, out var revision) ? revision : 0;
-    }
+        WhatsNewViewModel.MarkSeen(settings, AppVersionInfo.GetCurrentVersionText());
 
     private void MarkSeen() => MarkSeenForCurrentVersion(_settings);
 
     private void OnDoneClicked(object sender, RoutedEventArgs e) => Close();
 
-    private void OnOpenVideoSettingsClicked(object sender, RoutedEventArgs e)
+    private void OnOpenStudioSettingsClicked(object sender, RoutedEventArgs e)
     {
-        ((App)Application.Current).OpenSettingsWindow(SettingsSectionKind.Video);
+        ((App)Application.Current).OpenSettingsWindow(SettingsSectionKind.Studio);
         Close();
     }
 }

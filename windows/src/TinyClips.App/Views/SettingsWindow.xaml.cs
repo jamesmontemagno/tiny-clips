@@ -4,12 +4,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.Settings.Sections;
 using TinyClips.App.ViewModels.ClipsLibrary;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
+using TinyClips.Core.Studio;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -57,7 +59,10 @@ public sealed partial class SettingsWindow : Window
                 App.Services.GetRequiredService<IWebcamDeviceEnumerator>(),
                 App.Services.GetRequiredService<IClipStorageService>(),
                 App.Services.GetRequiredService<IClipAnalyticsService>(),
-                App.Services.GetRequiredService<IUploadcareCredentialStore>());
+                App.Services.GetRequiredService<IUploadcareCredentialStore>(),
+                App.Services.GetRequiredService<IStudioProjectStore>(),
+                App.Services.GetRequiredService<StudioProjectCleanupService>(),
+                App.Services.GetRequiredService<StudioProjectTracker>());
         }
 
         using (_openTrace?.Measure(WindowOpenPhase.Xaml))
@@ -212,6 +217,7 @@ public sealed partial class SettingsWindow : Window
                 WinRT.Interop.WindowNative.GetWindowHandle(this)),
             SettingsSectionKind.Screenshot => new ScreenshotSettingsSection(ViewModel),
             SettingsSectionKind.Video => new VideoSettingsSection(ViewModel),
+            SettingsSectionKind.Studio => new StudioSettingsSection(ViewModel),
             SettingsSectionKind.Gif => new GifSettingsSection(ViewModel),
             SettingsSectionKind.MouseClicks => new MouseClicksSettingsSection(ViewModel),
             SettingsSectionKind.Teleprompter => CreateTeleprompterSection(),
@@ -333,9 +339,14 @@ public sealed partial class SettingsWindow : Window
             Content = message,
             DefaultButton = ContentDialogButton.Close,
             Title = "Unable to load transcript",
-            XamlRoot = RootGrid.XamlRoot,
         };
 
-        await dialog.ShowAsync();
+        // Shown after a file picker and a file read, so another dialog may have opened in the
+        // meantime. This is also called from a catch block of an async void handler, so it
+        // must not throw.
+        if (await SettingsDialog.TryShowAsync(dialog, RootGrid.XamlRoot) is null)
+        {
+            App.ShowMessageNotification($"The transcript was not loaded. {message}");
+        }
     }
 }

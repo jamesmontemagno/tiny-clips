@@ -29,6 +29,7 @@ jobs:
           filters: |
             windows:
               - 'windows/**'
+              - 'shared/studio/**'
               - '.github/workflows/windows-build.yml'
           base: ${{ github.ref }}
 

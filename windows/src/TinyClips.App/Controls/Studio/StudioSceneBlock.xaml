@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<local:StudioLaneBlock
+    x:Class="TinyClips.App.Controls.Studio.StudioSceneBlock"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TinyClips.App.Controls.Studio"
+    IsTabStop="False"
+    ToolTipService.ToolTip="Press to move the playhead here. Drag the start of a scene to change when it begins.">
+
+    <local:StudioLaneBlock.Resources>
+        <ResourceDictionary>
+            <!--
+                A scene is a faint tint of the text color, and the scene the playhead is in a tint
+                of the accent color. In a contrast theme a tint is not one of the theme's colors,
+                so there both take the window color, and the scene the playhead is in is told
+                apart by its border.
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush
+                        x:Key="StudioSceneBlockFillBrush"
+                        Opacity="0.07"
+                        Color="{ThemeResource TextFillColorPrimary}" />
+                    <SolidColorBrush
+                        x:Key="StudioSceneBlockCurrentFillBrush"
+                        Opacity="0.2"
+                        Color="{ThemeResource SystemAccentColorDark1}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush
+                        x:Key="StudioSceneBlockFillBrush"
+                        Opacity="0.09"
+                        Color="{ThemeResource TextFillColorPrimary}" />
+                    <SolidColorBrush
+                        x:Key="StudioSceneBlockCurrentFillBrush"
+                        Opacity="0.25"
+                        Color="{ThemeResource SystemAccentColorLight2}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="StudioSceneBlockFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="StudioSceneBlockCurrentFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </local:StudioLaneBlock.Resources>
+
+    <Grid x:Name="Root">
+        <VisualStateManager.VisualStateGroups>
+            <!--
+                The scene the playhead is in has a border twice as thick and its name in a heavier
+                weight, so it is not told apart by color alone.
+            -->
+            <VisualStateGroup x:Name="SelectionStates">
+                <VisualState x:Name="Unselected" />
+                <VisualState x:Name="Selected">
+                    <VisualState.Setters>
+                        <Setter Target="Fill.Background" Value="{ThemeResource StudioSceneBlockCurrentFillBrush}" />
+                        <Setter Target="Fill.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <Setter Target="Fill.BorderThickness" Value="2" />
+                        <Setter Target="NameText.FontWeight" Value="SemiBold" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <Border
+            x:Name="Fill"
+            Background="{ThemeResource StudioSceneBlockFillBrush}"
+            BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource ControlCornerRadius}" />
+
+        <!--  A mark at the start of every scene but the first: the start can be taken hold of.  -->
+        <Rectangle
+            x:Name="Grip"
+            Width="2"
+            Height="10"
+            Margin="4,0,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Center"
+            AutomationProperties.AccessibilityView="Raw"
+            Fill="{ThemeResource TextFillColorSecondaryBrush}"
+            IsHitTestVisible="False"
+            RadiusX="1"
+            RadiusY="1"
+            Visibility="Collapsed" />
+
+        <!--  The scene's layout. The list item says it in its name, so screen readers skip the text.  -->
+        <TextBlock
+            x:Name="NameText"
+            Margin="10,0,6,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Center"
+            AutomationProperties.AccessibilityView="Raw"
+            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+            IsHitTestVisible="False"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            TextTrimming="CharacterEllipsis"
+            TextWrapping="NoWrap"
+            Visibility="Collapsed" />
+    </Grid>
+</local:StudioLaneBlock>

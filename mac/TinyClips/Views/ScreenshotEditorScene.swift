@@ -296,11 +296,6 @@ final class ScreenshotEditorRegistry {
     }
 
     private func updateActivationPolicy() {
-        NSApplication.shared.setActivationPolicy(
-            TinyClipsActivationPolicy.resolve(
-                showInDock: CaptureSettings.shared.showInDock,
-                hasOpenScreenshotEditors: hasOpenSessions
-            )
-        )
+        TinyClipsActivationPolicy.applyCurrent()
     }
 }

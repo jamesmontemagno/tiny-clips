@@ -48,6 +48,7 @@ public sealed partial class WebcamCaptureService : IWebcamCaptureService
     // Direct2D draw still reads it.
     private const int GpuRingDepth = 3;
     private IDirect3DDevice? _preferredDevice;
+    private bool _preserveSourceAspect;
     private IDirect3DDevice? _activeGpuDevice;
     private readonly VideoFrame?[] _gpuRing = new VideoFrame?[GpuRingDepth];
     private int _gpuRingIndex;
@@ -76,7 +77,11 @@ public sealed partial class WebcamCaptureService : IWebcamCaptureService
 
     public event EventHandler<WebcamCaptureFailedEventArgs>? CaptureFailed;
 
+    public event EventHandler<WebcamFrameArrivedEventArgs>? FrameArrived;
+
     public void SetPreferredDirect3DDevice(IDirect3DDevice? device) => _preferredDevice = device;
+
+    public void SetPreserveSourceAspect(bool preserve) => _preserveSourceAspect = preserve;
 
     public async Task StartAsync(string? deviceId, BitmapSize bitmapSize, CancellationToken cancellationToken = default)
     {
@@ -141,8 +146,16 @@ public sealed partial class WebcamCaptureService : IWebcamCaptureService
                     ?? throw new InvalidOperationException("No color webcam frame source was available.");
                 WebcamDiagnostics.Log($"Selected frame source kind={source.Info.SourceKind} streamType={source.Info.MediaStreamType} id={source.Info.Id}");
 
+                var readerSize = bitmapSize;
+                if (_preserveSourceAspect)
+                {
+                    var sourceFormat = source.CurrentFormat?.VideoFormat;
+                    readerSize = WebcamFrameSizing.FitWithin(sourceFormat?.Width ?? 0, sourceFormat?.Height ?? 0, bitmapSize);
+                    WebcamDiagnostics.Log($"Camera format {sourceFormat?.Width ?? 0}x{sourceFormat?.Height ?? 0}; delivering {readerSize.Width}x{readerSize.Height}.");
+                }
+
                 var frameReader = await mediaCapture
-                    .CreateFrameReaderAsync(source, MediaEncodingSubtypes.Bgra8, bitmapSize)
+                    .CreateFrameReaderAsync(source, MediaEncodingSubtypes.Bgra8, readerSize)
                     .AsTask(cancellationToken)
                     .ConfigureAwait(false);
 
@@ -323,6 +336,7 @@ public sealed partial class WebcamCaptureService : IWebcamCaptureService
                 {
                     _latestFrame = frame;
                 }
+                FrameArrived?.Invoke(this, new WebcamFrameArrivedEventArgs(frame));
 
                 if (Interlocked.Exchange(ref _firstCacheLogged, 1) == 0)
                 {
@@ -540,6 +554,7 @@ public sealed partial class WebcamCaptureService : IWebcamCaptureService
             {
                 _latestFrame = frame;
             }
+            FrameArrived?.Invoke(this, new WebcamFrameArrivedEventArgs(frame));
 
             Interlocked.Increment(ref _framesArrived);
             if (Interlocked.Increment(ref _gpuFramesDelivered) == 1)

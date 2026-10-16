@@ -173,6 +173,29 @@ The locale manifest already includes:
 5. Complete the listing metadata, privacy, and screen-recording capability declarations.
    - Privacy policy URL: `https://tinyclips.app/privacy.html`
 
+### Crash-report symbols
+
+The **Windows Store Publish** workflow enables PDB generation and includes `.appxsym` symbol
+archives in the x64 + ARM64 `.msixupload` sent to Partner Center by `msstore publish`. The
+symbol archives travel inside the Store upload, not just as a separate GitHub artifact.
+The workflow locates the Visual Studio C++ tools and passes their installation root to
+MSBuild so that `mspdbcmf.exe` can be found; missing symbol prerequisites fail the build.
+
+Before saving the upload artifact and again before submission, the workflow runs:
+
+```pwsh
+.\windows\packaging\Assert-StoreUpload.ps1 -UploadPath <path-to.msixupload>
+```
+
+This check requires both x64 and ARM64 packages and the matching `TinyClips.App.pdb` and
+`TinyClips.Core.pdb` symbols. Missing or mismatched symbols stop publication rather than
+silently producing a Store submission without app symbols. The checks do not submit anything
+to Partner Center and can also be run against a downloaded `windows-store-package` artifact.
+
+Submit the complete `.msixupload`, not just its `.msixbundle`, to retain symbols for
+[Partner Center crash analytics](https://learn.microsoft.com/windows/msix/package/packaging-uwp-apps).
+Previously submitted releases without symbols are not repaired by rebuilding a later version.
+
 > ⚠️ Requires a Partner Center account; cannot be completed from the repo alone.
 
 ## Capabilities

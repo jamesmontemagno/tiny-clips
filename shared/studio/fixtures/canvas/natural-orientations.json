@@ -1,0 +1,49 @@
+{
+  "description": "Landscape, portrait, and square natural canvas export sizes, including a portrait case that rounds down.",
+  "cases": [
+    {
+      "natural": {
+        "width": 1920,
+        "height": 1080
+      },
+      "limit": 1280,
+      "expected": {
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "natural": {
+        "width": 1080,
+        "height": 1920
+      },
+      "limit": 1280,
+      "expected": {
+        "width": 720,
+        "height": 1280
+      }
+    },
+    {
+      "natural": {
+        "width": 1000,
+        "height": 1000
+      },
+      "limit": 512,
+      "expected": {
+        "width": 512,
+        "height": 512
+      }
+    },
+    {
+      "natural": {
+        "width": 1080,
+        "height": 1920
+      },
+      "limit": 1000,
+      "expected": {
+        "width": 562,
+        "height": 1000
+      }
+    }
+  ]
+}

@@ -11,6 +11,7 @@ internal sealed class RecordingTimeline
     private readonly object _gate = new();
     private TimeSpan _pausedDuration;
     private TimeSpan? _pauseStartedAt;
+    private readonly List<(TimeSpan StartedAt, TimeSpan EndedAt)> _completedPauses = [];
     private int _pauseCount;
 
     private RecordingTimeline(TimeSpan origin)
@@ -67,25 +68,33 @@ internal sealed class RecordingTimeline
         }
     }
 
-    public void Pause()
+    public void Pause() => Pause(GetSystemRelativeTime());
+
+    public void Resume() => Resume(GetSystemRelativeTime());
+
+    /// <summary>Pauses at an explicit system-relative time. Tests use this to avoid sleeping.</summary>
+    internal void Pause(TimeSpan now)
     {
         lock (_gate)
         {
             if (_pauseStartedAt is null)
             {
-                _pauseStartedAt = GetSystemRelativeTime();
+                _pauseStartedAt = now;
                 _pauseCount++;
             }
         }
     }
 
-    public void Resume()
+    /// <summary>Resumes at an explicit system-relative time. Tests use this to avoid sleeping.</summary>
+    internal void Resume(TimeSpan now)
     {
         lock (_gate)
         {
             if (_pauseStartedAt is { } pausedAt)
             {
-                _pausedDuration += GetSystemRelativeTime() - pausedAt;
+                var endedAt = now > pausedAt ? now : pausedAt;
+                _completedPauses.Add((pausedAt, endedAt));
+                _pausedDuration += endedAt - pausedAt;
                 _pauseStartedAt = null;
             }
         }
@@ -105,6 +114,50 @@ internal sealed class RecordingTimeline
         }
     }
 
+    /// <summary>
+    /// Maps a timestamp from any point of the recording onto the timeline. Unlike
+    /// <see cref="Normalize"/>, which assumes the timestamp is current, this subtracts only the
+    /// pauses that ended before it, so it is correct for events converted after the fact. Returns
+    /// false for a timestamp before the origin or inside a pause, where nothing was recorded.
+    /// </summary>
+    public bool TryNormalizeActive(TimeSpan sourceTimestamp, out TimeSpan normalized)
+    {
+        normalized = TimeSpan.Zero;
+        lock (_gate)
+        {
+            if (sourceTimestamp < Origin)
+            {
+                return false;
+            }
+
+            var pausedBefore = TimeSpan.Zero;
+            foreach (var pause in _completedPauses)
+            {
+                if (sourceTimestamp < pause.StartedAt)
+                {
+                    break;
+                }
+
+                if (sourceTimestamp < pause.EndedAt)
+                {
+                    return false;
+                }
+
+                pausedBefore += pause.EndedAt - pause.StartedAt;
+            }
+
+            if (_pauseStartedAt is { } pausedAt && sourceTimestamp >= pausedAt)
+            {
+                return false;
+            }
+
+            normalized = sourceTimestamp - Origin - pausedBefore;
+            return true;
+        }
+    }
+
     private static TimeSpan GetSystemRelativeTime() =>
         Stopwatch.GetElapsedTime(0, Stopwatch.GetTimestamp());
+
+    internal static TimeSpan SystemRelativeNow() => GetSystemRelativeTime();
 }

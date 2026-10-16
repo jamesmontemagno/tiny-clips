@@ -1,0 +1,71 @@
+import Foundation
+
+// MARK: - Cleanup
+
+struct StudioCleanupOptions: Equatable, Sendable {
+    var retentionDays: Int
+    var sizeCapBytes: Int64
+
+    init(retentionDays: Int = 30, sizeCapBytes: Int64 = 10 * 1_024 * 1_024 * 1_024) {
+        self.retentionDays = retentionDays
+        self.sizeCapBytes = sizeCapBytes
+    }
+
+    /// Builds the rules from the two Settings values. Zero or less turns that rule off.
+    init(retentionDays: Int, sizeCapGigabytes: Int) {
+        self.init(
+            retentionDays: max(0, retentionDays),
+            sizeCapBytes: Int64(max(0, sizeCapGigabytes)) * 1_024 * 1_024 * 1_024
+        )
+    }
+}
+
+enum StudioCleanupPolicy {
+    static func plan(
+        summaries: [StudioProjectSummary],
+        currentDate: Date,
+        options: StudioCleanupOptions = StudioCleanupOptions(),
+        inUseProjectIDs: Set<String> = []
+    ) -> [String] {
+        var ids: [String] = []
+        var deleted = Set<String>()
+
+        for summary in summaries where !inUseProjectIDs.contains(summary.id) && summary.isFlat && !summary.sourceExists {
+            ids.append(summary.id)
+            deleted.insert(summary.id)
+        }
+
+        if options.retentionDays > 0 {
+            let cutoff = currentDate.addingTimeInterval(-Double(options.retentionDays) * 24 * 60 * 60)
+            for summary in summaries where !deleted.contains(summary.id) && !inUseProjectIDs.contains(summary.id) {
+                if summary.isRemovableByCleanup, summary.lastOpenedAt < cutoff {
+                    ids.append(summary.id)
+                    deleted.insert(summary.id)
+                }
+            }
+        }
+
+        if options.sizeCapBytes > 0 {
+            // The limit is on what cleanup may remove. Drafts, pinned projects and the like are
+            // not counted: they are never removed, and counted they would use the room up, so
+            // that every exported project went the moment it was exported.
+            let removable = summaries
+                .filter { !deleted.contains($0.id) && $0.isRemovableByCleanup }
+                .sorted {
+                    if $0.lastOpenedAt == $1.lastOpenedAt { return $0.id < $1.id }
+                    return $0.lastOpenedAt < $1.lastOpenedAt
+                }
+            var totalBytes = removable.reduce(Int64(0)) { $0 + max(0, $1.sizeOnDisk) }
+            // The one opened last stays, whatever it weighs. With that one alone over the limit,
+            // the limit would otherwise take a project the moment its editor closed.
+            let candidates = removable.dropLast().filter { !inUseProjectIDs.contains($0.id) }
+            for summary in candidates where totalBytes > options.sizeCapBytes {
+                ids.append(summary.id)
+                deleted.insert(summary.id)
+                totalBytes -= max(0, summary.sizeOnDisk)
+            }
+        }
+
+        return ids
+    }
+}

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="260" viewBox="0 0 600 260">
+  <defs>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5554D9"/>
+      <stop offset="0.55" stop-color="#9273DE"/>
+      <stop offset="1" stop-color="#ED9AB5"/>
+    </linearGradient>
+    <linearGradient id="camera" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#53D7CF"/>
+      <stop offset="1" stop-color="#167D9D"/>
+    </linearGradient>
+    <clipPath id="canvasClip">
+      <rect x="46" y="4" width="508" height="196" rx="20"/>
+    </clipPath>
+  </defs>
+  <rect x="46" y="4" width="508" height="196" rx="20" fill="url(#canvas)"/>
+  <g clip-path="url(#canvasClip)">
+    <circle cx="498" cy="32" r="42" fill="#FFFFFF" opacity="0.08"/>
+    <circle cx="70" cy="166" r="60" fill="#FFFFFF" opacity="0.06"/>
+  </g>
+  <rect x="82" y="31" width="351" height="148" rx="12" fill="#262A47" opacity="0.2"/>
+  <rect x="78" y="25" width="351" height="148" rx="12" fill="#F6F5FF"/>
+  <path d="M90 25h327a12 12 0 0 1 12 12v14H78V37a12 12 0 0 1 12-12z" fill="#E8E6F5"/>
+  <circle cx="93" cy="38" r="3" fill="#EB8B98"/>
+  <circle cx="105" cy="38" r="3" fill="#E4BC6D"/>
+  <circle cx="117" cy="38" r="3" fill="#6DBCAD"/>
+  <rect x="96" y="67" width="63" height="90" rx="6" fill="#E9E7F6"/>
+  <rect x="106" y="78" width="43" height="6" rx="3" fill="#B5AEDE"/>
+  <rect x="106" y="93" width="32" height="5" rx="2.5" fill="#CAC5E6"/>
+  <rect x="106" y="106" width="38" height="5" rx="2.5" fill="#CAC5E6"/>
+  <rect x="177" y="68" width="142" height="10" rx="5" fill="#514B87"/>
+  <rect x="177" y="90" width="104" height="6" rx="3" fill="#ACA5D0"/>
+  <rect x="177" y="108" width="228" height="49" rx="8" fill="#DED9F7"/>
+  <path d="m190 145 43-16 41 6 42-17 37 10 40-9" fill="none" stroke="#8670D6" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="455" y="31" width="70" height="24" rx="12" fill="#FFFFFF" opacity="0.92"/>
+  <path d="m473 43 5-5 5 5-5 5z" fill="#7762CA"/>
+  <path d="m488 43 5-5 5 5-5 5z" fill="#B37ADB"/>
+  <circle cx="457" cy="143" r="49" fill="#302D61" opacity="0.2"/>
+  <circle cx="454" cy="139" r="49" fill="#F6F5FF"/>
+  <circle cx="454" cy="139" r="44" fill="url(#camera)"/>
+  <path d="M417 163c2-17 18-23 37-23s35 6 37 23a44 44 0 0 1-74 0z" fill="#244C67"/>
+  <ellipse cx="454" cy="129" rx="17" ry="21" fill="#F4C8AE"/>
+  <path d="M436 128c-3-29 35-32 37-5-13-2-16-11-19-11-3 8-11 12-18 16z" fill="#30344F"/>
+  <rect x="46" y="215" width="508" height="41" rx="12" fill="#292D4D"/>
+  <path d="m63 226 10 8-10 8z" fill="#FFFFFF"/>
+  <rect x="90" y="226" width="154" height="18" rx="5" fill="#8E7BE1"/>
+  <rect x="248" y="226" width="85" height="18" rx="5" fill="#B39BE8"/>
+  <rect x="337" y="226" width="118" height="18" rx="5" fill="#48C1BB"/>
+  <rect x="459" y="226" width="78" height="18" rx="5" fill="#EFABC1"/>
+  <path d="M310 211v49" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="m305 212 5 6 5-6z" fill="#FFFFFF"/>
+</svg>

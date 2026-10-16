@@ -1,0 +1,16 @@
+{
+  "description": "3440x1440 natural canvas at long-side limit 1920 exports to 1920x804.",
+  "cases": [
+    {
+      "natural": {
+        "width": 3440,
+        "height": 1440
+      },
+      "limit": 1920,
+      "expected": {
+        "width": 1920,
+        "height": 804
+      }
+    }
+  ]
+}

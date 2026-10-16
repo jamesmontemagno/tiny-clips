@@ -13,6 +13,7 @@ public enum SettingsSectionKind
     Analytics,
     Screenshot,
     Video,
+    Studio,
     Gif,
     MouseClicks,
     Teleprompter,

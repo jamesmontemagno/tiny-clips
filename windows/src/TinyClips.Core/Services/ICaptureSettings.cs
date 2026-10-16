@@ -1,4 +1,5 @@
 using TinyClips.Core.Models;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Services;
 
@@ -58,6 +59,41 @@ public interface ICaptureSettings
     double GifMouseClickOpacity { get; set; }
     double GifMouseClickDuration { get; set; }
     bool ShowTrimmer { get; set; }
+
+    /// <summary>
+    /// Whether Tiny Clips Studio is switched on, while it is in preview. Default false. It is the
+    /// "Tiny Clips Studio (Preview)" switch in Settings; with it off, nothing of Studio is shown
+    /// and a recording is made as it always was. With it on, a recording is one for Studio only
+    /// when it was started with the Studio recording command; see
+    /// <see cref="TinyClips.Core.Capture.StudioRecordingIntent"/>.
+    /// </summary>
+    bool StudioPreviewEnabled { get; set; }
+
+    /// <summary>
+    /// Days after an exported Studio project was last opened before its sources are deleted.
+    /// Default 30, clamped to 0 through 365. Zero keeps them until the project is deleted by hand.
+    /// </summary>
+    int StudioSourceRetentionDays { get; set; }
+
+    /// <summary>
+    /// Storage, in gigabytes, the Studio projects that cleanup may remove can use before the ones
+    /// opened longest ago are deleted. Drafts and pinned projects are not counted. Default 10,
+    /// clamped to 0 through 500. Zero means no limit.
+    /// </summary>
+    int StudioStorageCapGigabytes { get; set; }
+
+    /// <summary>
+    /// The look (canvas, screen style, camera style) new Studio projects start with, or null for the
+    /// built-in default. A look never carries a crop, because a crop belongs to one recording.
+    /// </summary>
+    StudioLook? StudioDefaultLook { get; set; }
+
+    /// <summary>
+    /// The folder a Studio project was last saved in as a folder, which is where Save project
+    /// starts the next time. Empty until one has been saved: the app then starts in Documents.
+    /// </summary>
+    string StudioProjectSaveFolder { get; set; }
+
     bool RecordAudio { get; set; }
     bool RecordMicrophone { get; set; }
     string SelectedMicrophoneId { get; set; }

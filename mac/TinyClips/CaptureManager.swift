@@ -111,7 +111,8 @@ private enum ActiveRecordingRequest {
         selectedMicrophoneID: String,
         webcamSelection: StartRecordingPanel.WebcamSelection,
         mouseClicksEnabled: Bool,
-        timeLimitMinutes: Int
+        timeLimitMinutes: Int,
+        studioModeEnabled: Bool
     )
     case gif(target: CaptureTarget, mouseClicksEnabled: Bool)
 }
@@ -182,6 +183,10 @@ class CaptureManager: ObservableObject {
     private var regionIndicatorPanel: RegionIndicatorPanel?
     private var pendingRecordingTarget: CaptureTarget?
     private var pendingRecordingType: CaptureType?
+    /// Whether the video recording being set up was started with Studio Recording. Set by
+    /// `startVideoRecording(forStudio:)` and kept through the picker, the Record panel, and a
+    /// picker that comes back after the recording, until a recording is asked for again.
+    private var pendingVideoIsForStudio = false
     private var pendingRecordingCountdownEnabled: Bool = true
     private var pendingRecordingCountdownDuration: Int = 3
     private var pendingVideoTimeLimitMinutes: Int = 0
@@ -205,12 +210,14 @@ class CaptureManager: ObservableObject {
     private var finalizingSessionID: UInt64?
     private var activeRecordingRequest: ActiveRecordingRequest?
     private var onboardingWindow: OnboardingWizardWindow?
+    private var whatsNewWindow: WhatsNewWindow?
     private var guideWindow: GuideWindow?
     @Published private var screenPickerWindow: ScreenPickerWindow?
     private var mouseClickMonitor: MouseClickMonitor?
     private var activeMouseClickRegion: CaptureRegion?
     private var activeMouseClickCaptureType: CaptureType?
     private var activeMouseClickCaptureEnabledOverride: Bool?
+    private var studioRecordingCoordinator: StudioRecordingCoordinator?
     private var activeWebcamOverlaySelection: StartRecordingPanel.WebcamSelection?
     private var webcamPositionEvents: [BrandingOverlayProcessor.WebcamPositionEvent] = []
     private let hotKeyManager = HotKeyManager()
@@ -236,6 +243,14 @@ class CaptureManager: ObservableObject {
 
         DispatchQueue.main.async { [weak self] in
             self?.showOnboardingIfNeeded()
+        }
+
+        if CaptureSettings.shared.studioPreviewEnabled {
+            // Old Studio project sources are removed by the storage settings, shortly after launch.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                StudioMaintenance.cleanUp()
+            }
         }
     }
 
@@ -842,8 +857,12 @@ class CaptureManager: ObservableObject {
         window.show()
     }
 
-    func startVideoRecording() {
+    /// Starts setting up a video recording. `forStudio` makes it a Studio recording: the screen
+    /// and the camera are kept as separate layers and the Studio editor opens when it ends. It
+    /// counts only while Studio is switched on.
+    func startVideoRecording(forStudio: Bool = false) {
         guard !isCaptureActionInProgress else { return }
+        pendingVideoIsForStudio = forStudio && CaptureSettings.shared.studioPreviewEnabled
 
         isCapturePreparationInProgress = true
         let cursorScreen = screenUnderMouseCursor()
@@ -878,9 +897,12 @@ class CaptureManager: ObservableObject {
         mouseClicksEnabled: Bool,
         timeLimitMinutes: Int,
         countdownEnabled: Bool,
-        countdownDuration: Int
+        countdownDuration: Int,
+        studioModeEnabled: Bool = false
     ) {
         let settings = CaptureSettings.shared
+        // Asked again here: Studio may have been switched off since the recording was set up.
+        let isStudioRecording = studioModeEnabled && settings.studioPreviewEnabled
 
         let doRecord = { [weak self] in
             guard let self else { return }
@@ -895,12 +917,39 @@ class CaptureManager: ObservableObject {
                         self.isRecordingSetupInProgress = false
                     }
                 }
-                let shouldSaveImmediately = !settings.showTrimmer || settings.saveImmediatelyVideo
-                let url = shouldSaveImmediately
-                    ? SaveService.shared.generateURL(for: .video)
-                    : TinyClipsTemporaryFiles.makeURL(fileExtension: CaptureType.video.fileExtension)
                 let webcamEnabled = webcamSelection.enabled
-                let webcamOutputURL = webcamEnabled ? self.webcamCompanionURL(for: url) : nil
+                let studioCoordinator: StudioRecordingCoordinator?
+                do {
+                    if isStudioRecording {
+                        studioCoordinator = try StudioRecordingCoordinator(
+                            captureRegion: target.region,
+                            captureKind: target.studioCaptureKind,
+                            initialCameraCorner: StudioRecordingCoordinator.studioAnchor(from: webcamSelection.corner),
+                            clickVisualsEnabled: mouseClicksEnabled,
+                            frameRate: settings.videoFrameRate
+                        )
+                    } else {
+                        studioCoordinator = nil
+                    }
+                } catch {
+                    SaveService.shared.showError("Studio project could not be created: \(error.localizedDescription)")
+                    // Nothing is being recorded, so the outline of the region must not stay up.
+                    self.dismissRegionIndicator()
+                    return
+                }
+
+                let shouldSaveImmediately = !settings.showTrimmer || settings.saveImmediatelyVideo
+                let url: URL
+                if let studioCoordinator {
+                    url = studioCoordinator.screenURL
+                } else if shouldSaveImmediately {
+                    url = SaveService.shared.generateURL(for: .video)
+                } else {
+                    url = TinyClipsTemporaryFiles.makeURL(fileExtension: CaptureType.video.fileExtension)
+                }
+                let webcamOutputURL = webcamEnabled
+                    ? (studioCoordinator?.cameraURL ?? self.webcamCompanionURL(for: url))
+                    : nil
                 self.activeWebcamOverlaySelection = webcamEnabled ? webcamSelection : nil
                 self.webcamPositionEvents = webcamEnabled
                     ? [.init(time: .zero, corner: webcamSelection.corner)]
@@ -968,6 +1017,7 @@ class CaptureManager: ObservableObject {
 
                     self.videoRecorder = recorder
                     self.webcamRecorder = nil
+                    self.studioRecordingCoordinator = studioCoordinator
                     self.activeRecordingRegion = target.region
                     self.isRecording = true
                     self.isRecordingSetupInProgress = false
@@ -979,10 +1029,16 @@ class CaptureManager: ObservableObject {
                         selectedMicrophoneID: selectedMicrophoneID,
                         webcamSelection: webcamSelection,
                         mouseClicksEnabled: mouseClicksEnabled,
-                        timeLimitMinutes: timeLimitMinutes
+                        timeLimitMinutes: timeLimitMinutes,
+                        studioModeEnabled: isStudioRecording
                     )
-                    self.activeMouseClickCaptureEnabledOverride = mouseClicksEnabled
+                    let shouldCollectStudioPointerEvents = isStudioRecording && target.studioCaptureKind != .window
+                    self.activeMouseClickCaptureEnabledOverride = isStudioRecording ? shouldCollectStudioPointerEvents : mouseClicksEnabled
                     self.startMouseClickMonitoringIfNeeded(for: .video, region: target.region)
+                    studioCoordinator?.startCursorSampling(
+                        timeProvider: { recorder.currentTimelineTimeIfStarted() },
+                        isPaused: { [weak self] in self?.isRecordingPaused ?? true }
+                    )
                     self.recordingMicrophoneEnabled = false
                     self.recordingSystemAudioEnabled = false
                     self.isRecordingSystemAudioMuted = false
@@ -1068,6 +1124,7 @@ class CaptureManager: ObservableObject {
                     self.scheduleVideoAutoStopIfNeeded(timeLimitMinutes: timeLimitMinutes, sessionID: sessionID)
                 } catch {
                     self.endIdleSleepAssertion()
+                    studioCoordinator?.deleteUnfinishedProject()
                     await recorder.cancel()
                     await webcamRecorder.cancel()
                     self.cancelVideoAutoStopTask()
@@ -1084,6 +1141,7 @@ class CaptureManager: ObservableObject {
                     self.activeRecordingSessionID = nil
                     self.videoRecorder = nil
                     self.webcamRecorder = nil
+                    self.studioRecordingCoordinator = nil
                     self.activeWebcamOverlaySelection = nil
                     self.webcamPositionEvents = []
                     self.debugRecordingLifecycle("Video session failed to start: \(error.localizedDescription)")
@@ -1295,7 +1353,7 @@ class CaptureManager: ObservableObject {
         Task {
             await discardRecording(clearActiveRequest: false)
             switch request {
-            case let .video(target, systemAudio, microphone, selectedMicrophoneID, webcamSelection, mouseClicksEnabled, timeLimitMinutes):
+            case let .video(target, systemAudio, microphone, selectedMicrophoneID, webcamSelection, mouseClicksEnabled, timeLimitMinutes, studioModeEnabled):
                 beginVideoRecording(
                     target: target,
                     systemAudio: systemAudio,
@@ -1305,7 +1363,8 @@ class CaptureManager: ObservableObject {
                     mouseClicksEnabled: mouseClicksEnabled,
                     timeLimitMinutes: timeLimitMinutes,
                     countdownEnabled: false,
-                    countdownDuration: 0
+                    countdownDuration: 0,
+                    studioModeEnabled: studioModeEnabled
                 )
             case let .gif(target, mouseClicksEnabled):
                 beginGifRecording(
@@ -1345,9 +1404,11 @@ class CaptureManager: ObservableObject {
         let recorder = videoRecorder
         let webcam = webcamRecorder
         let writer = gifWriter
+        let studioCoordinator = studioRecordingCoordinator
         videoRecorder = nil
         webcamRecorder = nil
         gifWriter = nil
+        studioRecordingCoordinator = nil
         lastVideoRecordingArtifacts = nil
 
         if clearActiveRequest {
@@ -1357,6 +1418,7 @@ class CaptureManager: ObservableObject {
         await recorder?.cancel()
         await webcam?.cancel()
         await writer?.cancel()
+        studioCoordinator?.deleteUnfinishedProject()
     }
 
     private func stopRecordingFlow(stoppingSessionID: UInt64?, streamFailureMessage: String? = nil) async {
@@ -1373,6 +1435,8 @@ class CaptureManager: ObservableObject {
         let videoRecorderAtStop = videoRecorder
         let webcamRecorderAtStop = webcamRecorder
         let gifWriterAtStop = gifWriter
+        let studioCoordinatorAtStop = studioRecordingCoordinator
+        studioCoordinatorAtStop?.stopCursorSampling()
 
         let capturedMouseClickData = stopMouseClickMonitoring()
         let shortVideoIndicatorBypassThreshold: TimeInterval = 120
@@ -1388,6 +1452,9 @@ class CaptureManager: ObservableObject {
 
         let shouldShowProcessingIndicator: Bool = {
             guard let videoRecorderAtStop, gifWriterAtStop == nil else { return true }
+            if studioCoordinatorAtStop != nil {
+                return true
+            }
             let mouseClicksEnabled = shouldCaptureMouseClicks(for: .video)
             if mouseClicksEnabled {
                 return true
@@ -1422,10 +1489,17 @@ class CaptureManager: ObservableObject {
 
         var savedVideoURL: URL?
         var savedWebcamURL: URL?
+        var completedStudioProjectID: String?
         var partialOutputSaveError: String?
         var noPartialFramesWereCaptured = false
 
-        if let recorder = webcamRecorderAtStop {
+        // A Studio recording's camera goes on until its screen track is finished. Outside the
+        // camera track's own time the camera is not drawn, so a camera that stopped first, as it
+        // does in an ordinary recording, would be missing from the last moments of every Studio
+        // recording, for as long as its file took to finish.
+        let stopsCameraAfterScreen = studioCoordinatorAtStop != nil && videoRecorderAtStop != nil
+
+        if !stopsCameraAfterScreen, let recorder = webcamRecorderAtStop {
             do {
                 savedWebcamURL = try await recorder.stop()
             } catch {
@@ -1447,7 +1521,10 @@ class CaptureManager: ObservableObject {
                         ? recorder.stop()
                         : recorder.finishAfterStreamFailure()
                 )
-                updateProcessingProgress(0.55, status: "Applying overlays...")
+                updateProcessingProgress(
+                    0.55,
+                    status: studioCoordinatorAtStop == nil ? "Applying overlays..." : "Saving Studio project..."
+                )
             } catch {
                 if streamFailureMessage == nil {
                     SaveService.shared.showError("Video save failed: \(error.localizedDescription)")
@@ -1458,7 +1535,8 @@ class CaptureManager: ObservableObject {
                 }
             }
 
-            if let currentURL = savedVideoURL,
+            if studioCoordinatorAtStop == nil,
+               let currentURL = savedVideoURL,
                let capturedMouseClickData,
                capturedMouseClickData.type == .video,
                !capturedMouseClickData.events.isEmpty {
@@ -1493,7 +1571,7 @@ class CaptureManager: ObservableObject {
                 }
             }
 
-            if let currentURL = savedVideoURL {
+            if studioCoordinatorAtStop == nil, let currentURL = savedVideoURL {
                 let webcamOverlayOptions: BrandingOverlayProcessor.WebcamOverlayOptions? = {
                     guard let savedWebcamURL, FileManager.default.fileExists(atPath: savedWebcamURL.path) else {
                         return nil
@@ -1567,7 +1645,9 @@ class CaptureManager: ObservableObject {
                 }
             }
 
-            updateProcessingProgress(1.0, status: "Done")
+            if studioCoordinatorAtStop == nil {
+                updateProcessingProgress(1.0, status: "Done")
+            }
             if videoRecorder === recorder {
                 videoRecorder = nil
             } else {
@@ -1575,7 +1655,72 @@ class CaptureManager: ObservableObject {
             }
         }
 
+        if stopsCameraAfterScreen, let recorder = webcamRecorderAtStop {
+            do {
+                savedWebcamURL = try await recorder.stop()
+            } catch {
+                SaveService.shared.showError("Webcam save failed: \(error.localizedDescription). The Studio project will have the screen only.")
+            }
+
+            if webcamRecorder === recorder {
+                webcamRecorder = nil
+            } else {
+                debugRecordingLifecycle("Skipped clearing stale webcam recorder reference")
+            }
+        }
+
+        if let studioCoordinatorAtStop {
+            if let studioScreenURL = savedVideoURL {
+                do {
+                    updateProcessingProgress(0.75, status: "Saving Studio project...")
+                    completedStudioProjectID = try await studioCoordinatorAtStop.completeRecording(
+                        screenURL: studioScreenURL,
+                        cameraURL: savedWebcamURL,
+                        screenFirstSampleTime: videoRecorderAtStop?.firstScreenSampleTime,
+                        cameraFirstSampleTime: webcamRecorderAtStop?.firstSampleTime,
+                        recordedAudioTracks: videoRecorderAtStop?.audioTrackKinds ?? [],
+                        mouseClicks: capturedMouseClickData?.events ?? [],
+                        cameraCornerChanges: webcamPositionEvents,
+                        clickOverlayStyle: videoOverlayStyle,
+                        branding: showBrandingOverlay,
+                        appVersion: Self.appVersionString(),
+                        look: CaptureSettings.shared.studioDefaultLook
+                    )
+                } catch {
+                    // Keep the screen recording as an ordinary video instead of losing it with the project.
+                    let rescueURL = videoShouldSaveImmediately
+                        ? SaveService.shared.generateURL(for: .video)
+                        : TinyClipsTemporaryFiles.makeURL(fileExtension: CaptureType.video.fileExtension)
+                    var wasRescued = false
+                    do {
+                        try FileManager.default.moveItem(at: studioScreenURL, to: rescueURL)
+                        savedVideoURL = rescueURL
+                        wasRescued = true
+                        SaveService.shared.showError("The Studio project could not be saved, so the recording was kept as a regular video. \(error.localizedDescription)")
+                    } catch {
+                        savedVideoURL = nil
+                        SaveService.shared.showError("Studio project save failed: \(error.localizedDescription) The screen recording is still at \(studioScreenURL.path), where it is kept for a day.")
+                    }
+                    savedWebcamURL = nil
+                    if wasRescued {
+                        studioCoordinatorAtStop.deleteUnfinishedProject()
+                    } else {
+                        // The recording could not be moved out either, so the project's folder
+                        // holds the only copy of it. Deleting the folder would lose the recording.
+                        studioCoordinatorAtStop.leaveUnfinishedProject()
+                    }
+                }
+            } else {
+                studioCoordinatorAtStop.deleteUnfinishedProject()
+            }
+            updateProcessingProgress(1.0, status: "Done")
+            if studioRecordingCoordinator === studioCoordinatorAtStop {
+                studioRecordingCoordinator = nil
+            }
+        }
+
         if streamFailureMessage != nil,
+           studioCoordinatorAtStop == nil,
            let currentURL = savedVideoURL,
            currentURL.deletingLastPathComponent().standardizedFileURL == TinyClipsTemporaryFiles.directoryURL.standardizedFileURL {
             let recoveryURL = SaveService.shared.generateURL(for: .video)
@@ -1588,7 +1733,21 @@ class CaptureManager: ObservableObject {
             }
         }
 
-        if let savedVideoURL {
+        if let completedStudioProjectID {
+            CaptureAnalyticsStore.shared.recordCapture(.video)
+            if let savedVideoURL {
+                lastVideoRecordingArtifacts = VideoRecordingArtifacts(
+                    screenRecordingURL: savedVideoURL,
+                    webcamRecordingURL: savedWebcamURL
+                )
+            } else {
+                lastVideoRecordingArtifacts = nil
+            }
+            openStudio(
+                projectID: completedStudioProjectID,
+                reopenPickerAfterClose: shouldReturnToPickerAfterRecording
+            )
+        } else if let savedVideoURL {
             CaptureAnalyticsStore.shared.recordCapture(.video)
             lastVideoRecordingArtifacts = VideoRecordingArtifacts(
                 screenRecordingURL: savedVideoURL,
@@ -1771,7 +1930,7 @@ class CaptureManager: ObservableObject {
         // AVAssetWriter for the same file.
         // The processing indicator is dismissed here, after trimmer/save calls,
         // so there is no blank gap between the indicator closing and the trimmer appearing.
-        if let savedVideoURL {
+        if completedStudioProjectID == nil, let savedVideoURL {
             if videoShowTrimmer {
                 if videoShouldSaveImmediately {
                     SaveService.shared.handleSavedFile(url: savedVideoURL, type: .video)
@@ -1904,6 +2063,10 @@ class CaptureManager: ObservableObject {
                 reopenPickerAfterClose: false
             )
         case .video:
+            // A video exported from Studio reopens its project, which is still editable.
+            if StudioWindowRegistry.shared.openProject(forExportedVideoAt: item.url) {
+                return
+            }
             showTrimmer(for: item.url, saveImmediately: true)
         case .gif:
             guard let gifData = try? GifCaptureData(contentsOf: item.url) else {
@@ -1954,6 +2117,15 @@ class CaptureManager: ObservableObject {
         }
     }
 
+    private func openStudio(projectID: String, reopenPickerAfterClose: Bool = false) {
+        StudioWindowRegistry.shared.open(projectID: projectID) { [weak self] in
+            if reopenPickerAfterClose,
+               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
+                self?.showRecordingPicker(for: .video)
+            }
+        }
+    }
+
     private func showGifTrimmer(
         gifData: GifCaptureData,
         outputURL: URL,
@@ -1986,6 +2158,7 @@ class CaptureManager: ObservableObject {
     private func showStartPanel() {
         let panel = StartRecordingPanel(
             captureType: pendingRecordingType ?? .video,
+            forStudio: pendingVideoIsForStudio,
             onStart: { [weak self] systemAudio, microphoneSelection, webcamSelection, mouseClicksEnabled, _ in
                 guard
                     let self,
@@ -2012,7 +2185,8 @@ class CaptureManager: ObservableObject {
                         mouseClicksEnabled: mouseClicksEnabled,
                         timeLimitMinutes: videoTimeLimitMinutes,
                         countdownEnabled: countdownEnabled,
-                        countdownDuration: countdownDuration
+                        countdownDuration: countdownDuration,
+                        studioModeEnabled: self.pendingVideoIsForStudio
                     )
                 case .gif:
                     self.beginGifRecording(
@@ -2283,7 +2457,14 @@ class CaptureManager: ObservableObject {
 
     private func showOnboardingIfNeeded() {
         let settings = CaptureSettings.shared
-        guard !settings.hasCompletedOnboarding, onboardingWindow == nil else { return }
+        if settings.hasCompletedOnboarding {
+            showWhatsNewIfNeeded()
+            return
+        }
+        guard onboardingWindow == nil else { return }
+
+        // New installations get the tour, not a second introduction on their next launch.
+        CaptureSettings.markWhatsNewSeen()
 
         let window = OnboardingWizardWindow { [weak self] completed in
             if completed {
@@ -2297,6 +2478,20 @@ class CaptureManager: ObservableObject {
 
         DispatchQueue.main.async {
             self.bringWindowToFront(window)
+        }
+    }
+
+    private func showWhatsNewIfNeeded() {
+        guard whatsNewWindow == nil, CaptureSettings.shouldShowWhatsNew() else { return }
+        let window = WhatsNewWindow { [weak self] in
+            CaptureSettings.markWhatsNewSeen()
+            DispatchQueue.main.async {
+                self?.whatsNewWindow = nil
+            }
+        }
+        whatsNewWindow = window
+        DispatchQueue.main.async { [weak self] in
+            self?.bringWindowToFront(window)
         }
     }
 
@@ -2427,19 +2622,19 @@ class CaptureManager: ObservableObject {
         switch mode {
         case .region:
             guard let region = await RegionSelector.selectRegion() else { return nil }
-            return CaptureTarget(region: region)
+            return CaptureTarget(region: region, studioCaptureKind: .region)
         case .screen:
             let screen = await chooseScreenForCapture(cursorScreen: cursorScreen)
             guard let screen else { return nil }
             guard let region = CaptureRegion.fullScreen(for: screen) else { return nil }
-            return CaptureTarget(region: region)
+            return CaptureTarget(region: region, studioCaptureKind: .display)
         case .window:
             guard let window = await WindowSelector.selectWindow(),
                   let region = captureRegion(for: window)
             else {
                 return nil
             }
-            return CaptureTarget(region: region)
+            return CaptureTarget(region: region, studioCaptureKind: .window)
         case .scrolling:
             return nil
         }
@@ -2534,6 +2729,7 @@ class CaptureManager: ObservableObject {
         if activeMouseClickRegion != nil {
             activeMouseClickRegion = region
         }
+        studioRecordingCoordinator?.updateCaptureRegion(region)
     }
 
     private func startMouseClickMonitoringIfNeeded(for type: CaptureType, region: CaptureRegion) {
@@ -2545,7 +2741,21 @@ class CaptureManager: ObservableObject {
         _ = stopMouseClickMonitoring()
 
         let monitor = MouseClickMonitor()
-        monitor.start()
+        // Studio stores clicks on the recording timeline, and drops the ones made while paused or
+        // before the first frame because nothing in the video corresponds to them.
+        var timelineTimeProvider: (() -> TimeInterval?)?
+        if type == .video, studioRecordingCoordinator != nil {
+            timelineTimeProvider = { [weak self] in
+                guard let self,
+                      !self.isRecordingPaused,
+                      let seconds = self.videoRecorder?.currentTimelineTimeIfStarted()?.seconds,
+                      seconds.isFinite else {
+                    return nil
+                }
+                return seconds
+            }
+        }
+        monitor.start(timelineTimeProvider: timelineTimeProvider)
         mouseClickMonitor = monitor
         activeMouseClickRegion = region
         activeMouseClickCaptureType = type
@@ -2588,6 +2798,10 @@ class CaptureManager: ObservableObject {
 #if DEBUG
         print("[CaptureManager] \(message)")
 #endif
+    }
+
+    nonisolated private static func appVersionString() -> String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
 
     // Bridges synchronous CPU-heavy work to a background queue so it does not

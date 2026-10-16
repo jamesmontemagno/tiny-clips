@@ -8,17 +8,22 @@ using TinyClips.Core.Services;
 
 namespace TinyClips.App.Settings.Sections;
 
-/// <summary>App version, update messaging, and GitHub links.</summary>
+/// <summary>App version, update messaging, GitHub links, and the notices for what others made.</summary>
 public sealed partial class AboutSettingsSection : UserControl
 {
     private const string WingetUpgradeCommand = "winget upgrade Refractored.TinyClips";
     private static readonly Uri RepositoryUri = new("https://github.com/jamesmontemagno/tiny-clips");
+
+    // Shipped next to the app, with the file it is about.
+    private static readonly string ThirdPartyNoticesPath =
+        System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "THIRD-PARTY-NOTICES.txt");
 
     private readonly IDisposable _realizationScope;
     private readonly IAppUpdateService _updateService;
     private Uri? _detailedIssueUri;
     private Uri? _latestReleaseUri;
     private string _appVersion = "1.0.0";
+    private bool _isShowingNotices;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -42,6 +47,72 @@ public sealed partial class AboutSettingsSection : UserControl
     {
         DirectBuildUpdatesCard.Visibility = IsDirectBuild ? Visibility.Visible : Visibility.Collapsed;
         StoreBuildUpdatesCard.Visibility = IsStoreBuild ? Visibility.Visible : Visibility.Collapsed;
+        ThirdPartyNoticesCard.Visibility = System.IO.File.Exists(ThirdPartyNoticesPath) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Shows the notices in a dialog: the app can always read its own files, which another app may not.</summary>
+    private async void OnShowThirdPartyNoticesClicked(object sender, RoutedEventArgs e)
+    {
+        // A second press while the file is being read would ask for a second dialog.
+        if (_isShowingNotices)
+        {
+            return;
+        }
+
+        _isShowingNotices = true;
+        try
+        {
+            string notices;
+            try
+            {
+                notices = await System.IO.File.ReadAllTextAsync(ThirdPartyNoticesPath);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Reading the third-party notices failed: {ex}");
+                notices = $"The notices could not be read: {ex.Message}";
+            }
+
+            // The section may have left the window while the file was read.
+            if (XamlRoot is not { } xamlRoot)
+            {
+                return;
+            }
+
+            var text = new ScrollViewer
+            {
+                MaxHeight = 420,
+
+                // A stop for the Tab key, so the arrow and Page keys scroll the text.
+                IsTabStop = true,
+                Content = new TextBlock
+                {
+                    Text = notices,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                },
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(text, "Third-party notices");
+            var dialog = new ContentDialog
+            {
+                Title = "Third-party notices",
+                Content = text,
+                CloseButtonText = "Close",
+            };
+
+            // Another dialog of Settings may have opened while the file was read. The notices
+            // are then not shown, and the button is there to be pressed again.
+            await SettingsDialog.TryShowAsync(dialog, xamlRoot);
+        }
+        catch (Exception ex)
+        {
+            // An async void handler: an exception that got out would end the app.
+            Debug.WriteLine($"Showing the third-party notices failed: {ex}");
+        }
+        finally
+        {
+            _isShowingNotices = false;
+        }
     }
 
     private void UpdateAboutInfo()

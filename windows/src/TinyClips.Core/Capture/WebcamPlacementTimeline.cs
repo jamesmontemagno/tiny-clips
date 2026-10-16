@@ -66,4 +66,4 @@ public sealed class WebcamPlacementTimeline
     }
 }
 
-internal readonly record struct WebcamPlacementEvent(TimeSpan Time, WebcamCornerPosition Corner);
+public readonly record struct WebcamPlacementEvent(TimeSpan Time, WebcamCornerPosition Corner);

@@ -1,0 +1,121 @@
+{
+  "description": "Speed entries out of order that overlap: the later one starts where the one before it ends, and one that lies inside another is dropped.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 8,
+        "end": 12,
+        "rate": 2
+      },
+      {
+        "start": 4,
+        "end": 9,
+        "rate": 4
+      },
+      {
+        "start": 5,
+        "end": 7,
+        "rate": 8
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 14.75,
+    "segments": [
+      {
+        "start": 0,
+        "end": 20
+      }
+    ],
+    "pieces": [
+      {
+        "start": 0,
+        "end": 4,
+        "rate": 1
+      },
+      {
+        "start": 4,
+        "end": 9,
+        "rate": 4
+      },
+      {
+        "start": 9,
+        "end": 12,
+        "rate": 2
+      },
+      {
+        "start": 12,
+        "end": 20,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 4,
+        "output": 4.0
+      },
+      {
+        "source": 6,
+        "output": 4.5
+      },
+      {
+        "source": 8,
+        "output": 5.0
+      },
+      {
+        "source": 9,
+        "output": 5.25
+      },
+      {
+        "source": 10,
+        "output": 5.75
+      },
+      {
+        "source": 12,
+        "output": 6.75
+      },
+      {
+        "source": 20,
+        "output": 14.75
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 4,
+        "source": 4
+      },
+      {
+        "output": 4.5,
+        "source": 6.0
+      },
+      {
+        "output": 5.25,
+        "source": 9.0
+      },
+      {
+        "output": 6,
+        "source": 10.5
+      },
+      {
+        "output": 6.75,
+        "source": 12.0
+      },
+      {
+        "output": 14.75,
+        "source": 20
+      }
+    ]
+  }
+}

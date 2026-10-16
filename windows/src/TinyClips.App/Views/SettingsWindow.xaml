@@ -62,6 +62,14 @@
                     Icon="Video"
                     Tag="Video" />
                 <NavigationViewItem
+                    AutomationProperties.AutomationId="StudioNavigationItem"
+                    Content="Studio"
+                    Tag="Studio">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE81E;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
                     AutomationProperties.AutomationId="TeleprompterNavigationItem"
                     Content="Teleprompter"
                     Icon="ShowResults"

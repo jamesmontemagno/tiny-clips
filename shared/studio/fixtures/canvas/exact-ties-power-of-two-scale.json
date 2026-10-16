@@ -1,0 +1,38 @@
+{
+  "description": "Exact power-of-two scales hit even() midpoint ties plus a no-tie landscape half-scale case.",
+  "cases": [
+    {
+      "natural": {
+        "width": 2004,
+        "height": 1002
+      },
+      "limit": 1002,
+      "expected": {
+        "width": 1002,
+        "height": 502
+      }
+    },
+    {
+      "natural": {
+        "width": 4008,
+        "height": 2004
+      },
+      "limit": 1002,
+      "expected": {
+        "width": 1002,
+        "height": 502
+      }
+    },
+    {
+      "natural": {
+        "width": 3840,
+        "height": 2160
+      },
+      "limit": 1920,
+      "expected": {
+        "width": 1920,
+        "height": 1080
+      }
+    }
+  ]
+}

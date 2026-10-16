@@ -18,6 +18,9 @@ public interface IClipsLibraryInteraction
 
     void OpenInEditor(RecentCapture capture);
 
+    /// <summary>Opens the Studio project with this id in the Studio editor.</summary>
+    void OpenInStudio(string projectId);
+
     void OpenSettings();
 
     /// <summary>Asks the view to select every visible item (selection lives in the list controls).</summary>

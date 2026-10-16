@@ -77,9 +77,15 @@ public sealed class MouseClickMonitor : IDisposable
             {
                 var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
                 double t = _clock.Elapsed.TotalSeconds;
+                var button = message switch
+                {
+                    WM_RBUTTONDOWN => MouseClickButton.Right,
+                    WM_MBUTTONDOWN => MouseClickButton.Middle,
+                    _ => MouseClickButton.Left,
+                };
                 lock (_gate)
                 {
-                    _clicks.Add(new MouseClickSample(t, data.pt.x, data.pt.y));
+                    _clicks.Add(new MouseClickSample(t, data.pt.x, data.pt.y, button, RecordingTimeline.SystemRelativeNow()));
                 }
             }
         }

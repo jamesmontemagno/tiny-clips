@@ -1,0 +1,91 @@
+{
+  "description": "Two entries for the same stretch: the first in the file counts.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 4,
+        "end": 8,
+        "rate": 4
+      },
+      {
+        "start": 4,
+        "end": 8,
+        "rate": 2
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 17.0,
+    "segments": [
+      {
+        "start": 0,
+        "end": 20
+      }
+    ],
+    "pieces": [
+      {
+        "start": 0,
+        "end": 4,
+        "rate": 1
+      },
+      {
+        "start": 4,
+        "end": 8,
+        "rate": 4
+      },
+      {
+        "start": 8,
+        "end": 20,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 4,
+        "output": 4.0
+      },
+      {
+        "source": 6,
+        "output": 4.5
+      },
+      {
+        "source": 8,
+        "output": 5.0
+      },
+      {
+        "source": 20,
+        "output": 17.0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": 0,
+        "source": 0
+      },
+      {
+        "output": 4,
+        "source": 4
+      },
+      {
+        "output": 4.5,
+        "source": 6.0
+      },
+      {
+        "output": 5,
+        "source": 8.0
+      },
+      {
+        "output": 17,
+        "source": 20
+      }
+    ]
+  }
+}

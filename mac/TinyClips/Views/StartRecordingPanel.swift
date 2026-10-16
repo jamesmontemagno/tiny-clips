@@ -16,11 +16,16 @@ class StartRecordingPanel: NSPanel {
         let size: String
     }
 
+    /// The arguments are: output audio, microphone, webcam, mouse click visuals, and the video
+    /// time limit in minutes.
     private var onStart: ((Bool, MicrophoneSelection, WebcamSelection, Bool, Int) -> Void)?
     private var onCancel: (() -> Void)?
 
+    /// `forStudio` says the recording was started with Studio Recording. The panel shows that
+    /// and does not change it.
     convenience init(
         captureType: CaptureType,
+        forStudio: Bool = false,
         onStart: @escaping (Bool, MicrophoneSelection, WebcamSelection, Bool, Int) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -82,6 +87,7 @@ class StartRecordingPanel: NSPanel {
             availableWebcams: availableWebcams,
             mouseClicksEnabled: defaultMouseClicksEnabled,
             allowsMouseClickToggle: allowsMouseClickToggle,
+            isStudioRecording: captureType == .video && forStudio,
             onStart: { [weak self] systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes in
                 guard let panel = self, let onStart = panel.onStart else { return }
                 panel.onStart = nil
@@ -132,6 +138,9 @@ private struct StartRecordingView: View {
     let availableWebcams: [WebcamDeviceOption]
     @State var mouseClicksEnabled: Bool
     let allowsMouseClickToggle: Bool
+    /// The recording was started with Studio Recording and opens in Tiny Clips Studio. Chosen
+    /// in the menu, not here: the panel only says so.
+    let isStudioRecording: Bool
     let onStart: (Bool, StartRecordingPanel.MicrophoneSelection, StartRecordingPanel.WebcamSelection, Bool, Int) -> Void
     let onCancel: () -> Void
 
@@ -323,6 +332,17 @@ private struct StartRecordingView: View {
                 .accessibilityHint("Toggles mouse click visuals for this recording.")
             }
 
+            if isStudioRecording {
+                // Not a control: it says which of the two menu commands this recording came from.
+                Label("Studio", systemImage: "square.stack.3d.up.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.primary.opacity(0.75))
+                    .padding(.horizontal, 6)
+                    .help("A Studio recording: the screen and camera are kept as separate layers, and Tiny Clips Studio opens when recording ends.")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Studio recording")
+            }
+
             Divider()
                 .frame(height: 20)
                 .overlay(.primary.opacity(0.2))
@@ -358,7 +378,11 @@ private struct StartRecordingView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.defaultAction)
-            .accessibilityHint("Starts recording with the selected audio options.")
+            .accessibilityHint(
+                isStudioRecording
+                    ? "Starts a Studio recording with the selected audio options. Tiny Clips Studio opens when it ends."
+                    : "Starts recording with the selected audio options."
+            )
 
             // Cancel button
             Button {

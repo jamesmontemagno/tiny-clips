@@ -55,6 +55,33 @@ public sealed class EditorEscapeTests
         Assert.Contains("General settings", message);
     }
 
+    [Fact]
+    public void StudioCloseWithoutChangesText_SaysTheEditsAreSaved_AndPointsToSettings()
+    {
+        const EditorEscapePrompt prompt = EditorEscapePrompt.CloseWithoutChanges;
+        const EditorEscapeSurface surface = EditorEscapeSurface.Studio;
+
+        Assert.Equal("Close Studio?", EditorEscape.Title(prompt, surface));
+        Assert.Equal(
+            "Your edits are saved with the project, and you can reopen it from the Clips Library. You can turn off this confirmation in General settings.",
+            EditorEscape.Message(prompt, surface));
+        Assert.Equal("Close Studio", EditorEscape.ConfirmButtonText(prompt, surface));
+
+        // Nothing is lost, so the button that closes is the one Enter presses.
+        Assert.False(EditorEscape.IsDestructive(prompt));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Studio_SavesAsItGoes_SoItIsOnlyEverAskedToCloseWithoutChanges(bool confirmOnEscape)
+    {
+        // How the Studio window asks: it never has anything unsaved to say.
+        EditorEscapePrompt? expected = confirmOnEscape ? EditorEscapePrompt.CloseWithoutChanges : null;
+
+        Assert.Equal(expected, EditorEscape.ResolvePrompt(confirmOnEscape, hasUnsavedChanges: false));
+    }
+
     [Theory]
     [InlineData(EditorEscapeSurface.VideoTrimmer, "original recording")]
     [InlineData(EditorEscapeSurface.GifTrimmer, "original GIF")]

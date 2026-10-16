@@ -1,0 +1,114 @@
+{
+  "description": "One range at twice the speed in the middle of the trim takes half its time.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 2,
+    "trimEnd": 18,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 6,
+        "end": 10,
+        "rate": 2
+      }
+    ]
+  },
+  "expected": {
+    "outputDuration": 14.0,
+    "segments": [
+      {
+        "start": 2,
+        "end": 18
+      }
+    ],
+    "pieces": [
+      {
+        "start": 2,
+        "end": 6,
+        "rate": 1
+      },
+      {
+        "start": 6,
+        "end": 10,
+        "rate": 2
+      },
+      {
+        "start": 10,
+        "end": 18,
+        "rate": 1
+      }
+    ],
+    "sourceToOutput": [
+      {
+        "source": 0,
+        "output": 0
+      },
+      {
+        "source": 2,
+        "output": 0
+      },
+      {
+        "source": 6,
+        "output": 4.0
+      },
+      {
+        "source": 8,
+        "output": 5.0
+      },
+      {
+        "source": 10,
+        "output": 6.0
+      },
+      {
+        "source": 14,
+        "output": 10.0
+      },
+      {
+        "source": 18,
+        "output": 14.0
+      },
+      {
+        "source": 20,
+        "output": 14.0
+      }
+    ],
+    "outputToSource": [
+      {
+        "output": -1,
+        "source": 2
+      },
+      {
+        "output": 0,
+        "source": 2
+      },
+      {
+        "output": 4,
+        "source": 6
+      },
+      {
+        "output": 5,
+        "source": 8
+      },
+      {
+        "output": 5.5,
+        "source": 9.0
+      },
+      {
+        "output": 6,
+        "source": 10.0
+      },
+      {
+        "output": 10,
+        "source": 14.0
+      },
+      {
+        "output": 14,
+        "source": 18
+      },
+      {
+        "output": 15,
+        "source": 18
+      }
+    ]
+  }
+}

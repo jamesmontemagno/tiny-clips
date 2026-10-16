@@ -46,10 +46,9 @@ public sealed partial class AnalyticsSettingsSection : UserControl, ISettingsSec
             PrimaryButtonText = "Reset",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await SettingsDialog.TryShowAsync(dialog, XamlRoot) == ContentDialogResult.Primary)
         {
             ViewModel.ResetAnalytics();
         }

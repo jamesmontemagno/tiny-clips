@@ -8,6 +8,7 @@ using TinyClips.Core.Models;
 using TinyClips.Core.Models.ClipsLibrary;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.App.ViewModels.ClipsLibrary;
 
@@ -34,6 +35,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     private readonly IClipArchiveService _archive;
     private readonly IClipLibraryWatcher _watcher;
     private readonly IThumbnailCache _thumbnails;
+    private readonly IStudioProjectStore _studioProjects;
     private readonly TimeProvider _time;
     private readonly DispatcherQueue _dispatcher;
     private readonly DispatcherQueueTimer _autoRefreshTimer;
@@ -46,6 +48,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     private bool _refreshQueued;
     private bool _refreshing;
     private bool _disposed;
+    private int _studioLinkLookup;
 
     public ClipsLibraryViewModel(
         IClipLibraryService library,
@@ -56,6 +59,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
         IClipArchiveService archive,
         IClipLibraryWatcher watcher,
         IThumbnailCache thumbnails,
+        IStudioProjectStore studioProjects,
         TimeProvider time,
         DispatcherQueue dispatcher)
     {
@@ -67,6 +71,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
         _archive = archive;
         _watcher = watcher;
         _thumbnails = thumbnails;
+        _studioProjects = studioProjects;
         _time = time;
         _dispatcher = dispatcher;
 
@@ -344,6 +349,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
 
             _ = _thumbnails.PruneAsync(entries);
             ApplyQuery(folderMissing: _library.GetLibraryDirectories().All(dir => !Directory.Exists(dir)));
+            _ = UpdateStudioLinksAsync();
         }
         catch (Exception ex)
         {
@@ -376,6 +382,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             foreach (var (oldPath, newPath) in moved)
             {
                 _metadata.RenamePath(oldPath, newPath);
+                MoveStudioExportLink(oldPath, newPath);
             }
 
             var archived = new HashSet<string>(moved.Select(m => m.OldPath), StringComparer.OrdinalIgnoreCase);
@@ -390,6 +397,91 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
         finally
         {
             _watcher.IsPaused = false;
+        }
+    }
+
+    /// <summary>
+    /// Marks the videos that were exported from a Studio project still in the store, so they
+    /// offer Open in Studio. While the Studio preview is switched off no video offers it.
+    /// </summary>
+    private async Task UpdateStudioLinksAsync()
+    {
+        // Each call replaces the one before it. A lookup that is still running when the next
+        // call starts, or when Studio is switched off, has been asked about a library that is
+        // no longer the one on screen, and must not mark anything when it comes back.
+        var lookup = ++_studioLinkLookup;
+        if (!_captureSettings.StudioPreviewEnabled)
+        {
+            // Also the ones that were marked while it was still on.
+            ClearStudioLinks();
+            return;
+        }
+
+        var videoPaths = _itemsByPath.Values.Where(item => item.IsVideo).Select(item => item.Path).ToList();
+        if (videoPaths.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<string, string?> projectIds;
+        try
+        {
+            // The first lookup reads every project file, so it stays off the UI thread.
+            projectIds = await Task.Run(() => videoPaths.ToDictionary(
+                path => path,
+                path => _studioProjects.FindProjectIdByExportPath(path),
+                StringComparer.OrdinalIgnoreCase));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"ClipsLibraryViewModel: Studio link lookup failed: {ex}");
+            return;
+        }
+
+        if (_disposed || lookup != _studioLinkLookup)
+        {
+            return;
+        }
+
+        if (!_captureSettings.StudioPreviewEnabled)
+        {
+            // Switched off while the projects were read, and nothing has refreshed since.
+            ClearStudioLinks();
+            return;
+        }
+
+        foreach (var (path, projectId) in projectIds)
+        {
+            if (_itemsByPath.TryGetValue(path, out var item))
+            {
+                item.StudioProjectId = projectId;
+            }
+        }
+    }
+
+    private void ClearStudioLinks()
+    {
+        foreach (var item in _itemsByPath.Values)
+        {
+            item.StudioProjectId = null;
+        }
+    }
+
+    /// <summary>
+    /// Keeps a Studio project's export link pointing at a video that was renamed or moved. Also
+    /// while the Studio preview is switched off: the project is still on disk, and one that has
+    /// lost track of its video counts as holding the only copy from then on. Where Studio was
+    /// never used there is no project folder and this reads nothing.
+    /// </summary>
+    private void MoveStudioExportLink(string oldPath, string newPath)
+    {
+        try
+        {
+            _studioProjects.UpdateExportPath(oldPath, newPath);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"ClipsLibraryViewModel: Studio link update failed for {oldPath}: {ex}");
         }
     }
 
@@ -870,6 +962,26 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     }
 
     [RelayCommand]
+    private void OpenInStudio(ClipItemViewModel? item)
+    {
+        if ((item ?? SelectedClip)?.StudioProjectId is not { } projectId)
+        {
+            return;
+        }
+
+        if (!_captureSettings.StudioPreviewEnabled)
+        {
+            // Switched off since this list was read. Nothing would open, so it is said why, and
+            // the videos stop offering it.
+            ClearStudioLinks();
+            ShowStatus("Tiny Clips Studio is switched off. Switch it on in Settings \u203A Studio to open this project.");
+            return;
+        }
+
+        _interaction?.OpenInStudio(projectId);
+    }
+
+    [RelayCommand]
     private void Reveal(ClipItemViewModel? item)
     {
         var target = item ?? SelectedClip;
@@ -987,6 +1099,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             var oldPath = target.Path;
             var newPath = _library.Rename(oldPath, newStem.Trim());
             _metadata.RenamePath(oldPath, newPath);
+            MoveStudioExportLink(oldPath, newPath);
             _itemsByPath.Remove(oldPath);
             var entry = target.Entry with { Path = newPath, FileName = System.IO.Path.GetFileName(newPath) };
             target.Update(new LibraryClip(entry, _metadata.Get(newPath)));
@@ -1146,6 +1259,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
                 {
                     var newPath = await Task.Run(() => _archive.Archive(target.Entry));
                     _metadata.RenamePath(target.Path, newPath);
+                    MoveStudioExportLink(target.Path, newPath);
                     _itemsByPath.Remove(target.Path);
                     Clips.Remove(target);
                     moved++;
