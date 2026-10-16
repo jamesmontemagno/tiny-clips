@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- macOS Screenshot settings now offer an opt-in **Advanced > Exclude ClickLight overlays** option to keep ClickLight rings and other overlays out of region, screen, and scrolling screenshots without adding a delay or configuring ClickLight shortcuts. Video and GIF recordings are unchanged.
+
 ## v1.8.4-mac - 2026-10-15
 
 ### Fixed

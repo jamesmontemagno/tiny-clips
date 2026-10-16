@@ -59,6 +59,43 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: CaptureSettings.screenshotEditorNativeSizeKey))
     }
 
+    func testClickLightScreenshotExclusionDefaultsOff() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+
+        XCTAssertFalse(settings.excludeClickLightFromScreenshots)
+        XCTAssertTrue(settings.screenshotExcludedApplicationBundleIdentifiers.isEmpty)
+    }
+
+    func testClickLightScreenshotExclusionPersistsAndMatchesOnlyClickLight() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.excludeClickLightFromScreenshots = true
+
+        let restored = CaptureSettings(defaults: defaults, performMigrations: false)
+        XCTAssertTrue(defaults.bool(forKey: "excludeClickLightFromScreenshots"))
+        XCTAssertTrue(restored.excludeClickLightFromScreenshots)
+        XCTAssertEqual(restored.screenshotExcludedApplicationBundleIdentifiers, ["com.aurorascharff.ClickLight"])
+    }
+
+    func testDisablingClickLightScreenshotExclusionRemovesApplicationExclusion() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.excludeClickLightFromScreenshots = true
+        settings.excludeClickLightFromScreenshots = false
+
+        XCTAssertFalse(defaults.bool(forKey: "excludeClickLightFromScreenshots"))
+        XCTAssertTrue(settings.screenshotExcludedApplicationBundleIdentifiers.isEmpty)
+    }
+
+    func testClickLightScreenshotExclusionIsResetWithStoredSettings() {
+        defaults.set(true, forKey: "excludeClickLightFromScreenshots")
+
+        CaptureSettings.resetStoredDefaults(defaults)
+
+        XCTAssertNil(defaults.object(forKey: "excludeClickLightFromScreenshots"))
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        XCTAssertFalse(settings.excludeClickLightFromScreenshots)
+        XCTAssertTrue(settings.screenshotExcludedApplicationBundleIdentifiers.isEmpty)
+    }
+
     func testRecordingVideoCodecResolverDefaultsToH264() {
         let resolved = RecordingVideoCodecResolver.resolved(requested: .h264, hevcAvailable: true)
 

@@ -195,7 +195,9 @@ struct ScreenshotCapture {
     }
 
     private static func captureResult(region: CaptureRegion) async throws -> CaptureResult {
-        let filter = try await region.makeFilter()
+        let filter = try await region.makeFilter(
+            excludingApplicationBundleIdentifiers: CaptureSettings.shared.screenshotExcludedApplicationBundleIdentifiers
+        )
         let region = region.resolvingPixelScale(from: filter)
         let scaleFactor = region.scaleFactor
         let contentRect = filter.contentRect

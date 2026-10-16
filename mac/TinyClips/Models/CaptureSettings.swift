@@ -64,17 +64,18 @@ struct CaptureRegion: Sendable {
         return config
     }
 
-    func makeFilter(alwaysExcluding windows: [SCWindow] = []) async throws -> SCContentFilter {
+    func makeFilter(
+        excludingApplicationBundleIdentifiers bundleIdentifiers: Set<String> = [],
+        alwaysExcluding windows: [SCWindow] = []
+    ) async throws -> SCContentFilter {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         guard let display = content.displays.first(where: { $0.displayID == self.displayID }) else {
             throw CaptureError.displayNotFound
         }
         let includeTinyClips = CaptureSettings.shared.includeTinyClipsInCapture
-        if includeTinyClips {
-            return SCContentFilter(display: display, excludingWindows: windows)
-        }
         let excludedApps: [SCRunningApplication] = content.applications.filter {
-            $0.bundleIdentifier == Bundle.main.bundleIdentifier
+            (!includeTinyClips && $0.bundleIdentifier == Bundle.main.bundleIdentifier)
+                || bundleIdentifiers.contains($0.bundleIdentifier)
         }
         if excludedApps.isEmpty {
             return SCContentFilter(display: display, excludingWindows: windows)
@@ -441,6 +442,10 @@ class CaptureSettings: ObservableObject {
     }
     @AppStorage("screenshotFormat") var screenshotFormat: String = ImageFormat.jpeg.rawValue
     @AppStorage("screenshotScale") var screenshotScale: Int = 100
+    @AppStorage("excludeClickLightFromScreenshots") var excludeClickLightFromScreenshots: Bool = false
+    var screenshotExcludedApplicationBundleIdentifiers: Set<String> {
+        excludeClickLightFromScreenshots ? ["com.aurorascharff.ClickLight"] : []
+    }
     @AppStorage("jpegQuality") var jpegQuality: Double = 0.85
     @AppStorage("videoCountdownEnabled") var videoCountdownEnabled: Bool = true
     @AppStorage("videoCountdownDuration") var videoCountdownDuration: Int = 3
@@ -807,7 +812,7 @@ class CaptureSettings: ObservableObject {
         "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
         "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
         "showGifCapturePicker", "showGifCapturePickerAfterCapture",
-        "screenshotFormat", "screenshotScale", "jpegQuality",
+        "screenshotFormat", "screenshotScale", "excludeClickLightFromScreenshots", "jpegQuality",
         "videoCountdownEnabled", "videoCountdownDuration",
         "videoRecordingTimeLimitMinutes",
         "gifCountdownEnabled", "gifCountdownDuration",
@@ -843,6 +848,11 @@ class CaptureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults
+        _excludeClickLightFromScreenshots = AppStorage(
+            wrappedValue: false,
+            "excludeClickLightFromScreenshots",
+            store: defaults
+        )
         audioOffsetMs = audioOffsetMs
         guard performMigrations else { return }
 

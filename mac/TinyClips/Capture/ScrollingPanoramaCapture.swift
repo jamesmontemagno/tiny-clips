@@ -474,7 +474,9 @@ final class ScrollingPanoramaCapture: NSObject, @unchecked Sendable {
     }
 
     func start(region: CaptureRegion) async throws {
-        let filter = try await region.makeFilter()
+        let filter = try await region.makeFilter(
+            excludingApplicationBundleIdentifiers: CaptureSettings.shared.screenshotExcludedApplicationBundleIdentifiers
+        )
         let configuration = region.makeStreamConfig()
         configuration.showsCursor = false
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 12)
