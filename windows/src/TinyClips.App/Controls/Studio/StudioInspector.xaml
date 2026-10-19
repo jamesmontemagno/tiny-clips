@@ -1488,15 +1488,21 @@
                             <Button
                                 AutomationProperties.AcceleratorKey="Ctrl+S"
                                 AutomationProperties.AutomationId="StudioSaveProjectButton"
-                                AutomationProperties.Name="Save project&#x2026;"
+                                AutomationProperties.Name="Save project"
                                 Click="{x:Bind ViewModel.RequestSaveProject}"
-                                ToolTipService.ToolTip="Save the recordings and a .tinyclips file to a folder you choose (Ctrl+S)">
-                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SaveProject}" Text="Save project&#x2026;" />
+                                ToolTipService.ToolTip="Save the project to its current folder (Ctrl+S)">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SaveProject}" Text="Save project" />
                             </Button>
+                            <Button
+                                AutomationProperties.AcceleratorKey="Ctrl+Shift+S"
+                                AutomationProperties.AutomationId="StudioSaveProjectAsButton"
+                                Content="Save project as&#x2026;"
+                                Click="{x:Bind ViewModel.RequestSaveProjectAs}"
+                                ToolTipService.ToolTip="Choose a new project name and folder (Ctrl+Shift+S)" />
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioSaveProjectNote"
                                 Style="{StaticResource StudioNoteStyle}"
-                                Text="Saves a copy of the recordings with a .tinyclips file that opens them in Studio again, on this PC or another." />
+                                Text="Save updates the current project folder. Save as chooses a new name and location, including the recordings and a .tinyclips file." />
                         </StackPanel>
                         <StackPanel
                             Padding="0,16,0,0"

@@ -38,8 +38,23 @@ enum StudioExporter {
         outputURL: URL,
         renderSize: CGSize,
         codec: VideoCodec,
-        onProgress: ((Double) -> Void)? = nil
+        onProgress: ((Double) -> Void)? = nil,
+        destination: StudioExportDestination? = nil
     ) async throws -> URL {
+        let replacementDirectory: URL?
+        if destination != nil {
+            replacementDirectory = try FileManager.default.url(
+                for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: outputURL, create: true)
+        } else {
+            replacementDirectory = nil
+        }
+        let renderURL = replacementDirectory?.appendingPathComponent("export.mp4") ?? outputURL
+        defer {
+            if let replacementDirectory {
+                do { try FileManager.default.removeItem(at: replacementDirectory) }
+                catch { NSLog("Studio could not remove export staging folder: %@", error.localizedDescription) }
+            }
+        }
         let build = try await StudioCompositionBuilder.build(
             project: project,
             events: events,
@@ -52,7 +67,7 @@ enum StudioExporter {
 
         // The name was free when it was made for this video, a moment ago. A file that has it
         // now is something else that was saved since, and not this export's to remove.
-        guard !FileManager.default.fileExists(atPath: outputURL.path) else {
+        guard !FileManager.default.fileExists(atPath: renderURL.path) else {
             throw Error.outputNameTaken(outputURL.lastPathComponent)
         }
 
@@ -62,7 +77,7 @@ enum StudioExporter {
         ) else {
             throw Error.exportSessionCreationFailed
         }
-        exportSession.outputURL = outputURL
+        exportSession.outputURL = renderURL
         exportSession.outputFileType = .mp4
         exportSession.videoComposition = build.videoComposition
         exportSession.audioMix = build.exportAudioMix(for: project)
@@ -85,7 +100,9 @@ enum StudioExporter {
         }
         do {
             try await withTaskCancellationHandler {
-                try await exportSession.export(to: outputURL, as: .mp4)
+                try await exportSession.export(to: renderURL, as: .mp4)
+                try Task.checkCancellation()
+                if let destination { try destination.commit(staged: renderURL) }
             } onCancel: {
                 cancellableSession.cancelExport()
             }
@@ -99,7 +116,7 @@ enum StudioExporter {
             // What this export wrote so far is removed. Not when it never began because a
             // file had taken the name in the last moment: that file is not this export's.
             if !isBecauseTheFileExists(error) {
-                try? FileManager.default.removeItem(at: outputURL)
+                try? FileManager.default.removeItem(at: renderURL)
             }
             if Task.isCancelled {
                 throw CancellationError()

@@ -1,5 +1,24 @@
 # Studio: save a project as a folder, open it again, delete it (Windows handoff)
 
+## Current save/export workflow
+
+The original handoff below describes the initial implementation. Studio now distinguishes
+**Save project** (Ctrl+S) from **Save project as...** (Ctrl+Shift+S): first Save asks for a
+folder; subsequent Save updates the remembered destination, including across restarts.
+Save As selects a new destination and becomes the current one only after a successful save.
+Opening a `.tinyclips` file still imports a new working copy, but links explicit Save back
+to the original file. Opening and internal autosave do not change the original.
+
+Linked saves update project-owned files with rollback, preserving exported videos and other
+content in the folder. Save As targeting a different existing folder retains the strict
+replacement rules. Every video export, including export-on-close, uses a native MP4 save
+picker, starting inside the linked project folder or the configured video-save folder.
+Picker cancellation starts no render; overwrite confirmation applies to the exact selected
+output, and failed/cancelled renders leave its previous contents intact.
+
+These rules supersede the older save-every-time and read-only-after-opening descriptions below.
+The authoritative contract is [section 14 of the format](../../docs/studio-project-format.md#14-a-project-saved-as-a-folder).
+
 **Status:** built on macOS on 7 October 2026. On Windows the store's half is built and tested
 (item 1 under "What to do on Windows", and the rule for drafts in recent captures), and the
 app's half is built: the commands in the editor, the file type, the drafts in the tray, and

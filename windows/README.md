@@ -244,8 +244,8 @@ With the switch on:
   at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
   selected zoom, cut, or speed change, `1`–`4` layout of the scene the playhead is in,
   `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
-  this project as a folder (not `Ctrl+Shift+S`, which is the global Stop recording hotkey and
-  does not reach the window), `Esc` stop an export or a save, and otherwise close
+  this project, `Ctrl+Shift+S` save the project as a new name/location (the global Stop recording
+  hotkey retains priority while recording), `Esc` stop an export or a save, and otherwise close
   the editor as its close button does: a recording that was never exported asks what to do with
   it, and a project that was exported asks first unless **Confirm before closing editors with
   Esc** is turned off in General settings. While a lane has the keyboard focus, `Left`/`Right`
@@ -265,14 +265,21 @@ With the switch on:
   **Save the screen recording** saves that as an ordinary video; **Delete project…** under it
   deletes what is left.
   **Project**, in the header, has **Open recent** (the other projects, the one opened last
-  first), **Open project…**, **Save project…**, and **Delete project…**; the last two are in the
-  Project panel as well. **Save project…** saves a copy of the project as a folder with a name
+  first),   **Open project…**, **Save project**, **Save project as…**, and **Delete project…**; the save/delete commands are in the
+  Project panel as well. The first **Save project** saves a copy of the project as a folder with a name
   and in a place you choose: the recordings, and a `.tinyclips` file that opens them in Studio
   again. A saved project that is in the way is replaced only after a question, and only when
   its folder holds nothing else; the save can be cancelled, and the editor takes no edits
-  while it runs. **Open project…**, or a `.tinyclips` file opened from File Explorer, copies
-  the project into Studio as a new draft and opens that; the folder is only read. **Delete
+  while it runs.   **Save project** (Ctrl+S) then updates that same folder without asking again, including after an app restart.
+  **Save project as…** (Ctrl+Shift+S) chooses a new name/location and makes it the current destination.
+  **Open project…**, or a `.tinyclips` file opened from File Explorer, copies
+  the project into Studio as a new draft and opens that; opening and internal autosave only read the original folder, while explicit Save updates it. **Delete
   project…** asks first, and leaves exported videos and saved folders alone.
+  **Export** (Ctrl+E), including Export when closing, always asks for an MP4 filename and folder.
+  The picker starts inside the saved project folder, or the configured video-save folder before a project is saved.
+  Existing videos require overwrite confirmation and stay intact if rendering fails or is cancelled.
+  Saving the project again preserves exported videos and unrelated content beside it.
+  While no recording is active, the default global Ctrl+Shift+S stop shortcut is routed to Save as when Studio is the foreground window.
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer. A
   recording kept as a draft is in **Recent captures** too, as "Name — Studio project" with its

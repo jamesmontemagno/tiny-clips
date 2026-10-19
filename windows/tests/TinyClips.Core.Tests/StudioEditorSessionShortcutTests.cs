@@ -36,7 +36,7 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.O, false, StudioShortcutAction.OpenProject)]
     [InlineData(StudioShortcutKey.O, true, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.S, false, StudioShortcutAction.SaveProject)]
-    [InlineData(StudioShortcutKey.S, true, StudioShortcutAction.SaveProject)]
+    [InlineData(StudioShortcutKey.S, true, StudioShortcutAction.SaveProjectAs)]
     [InlineData(StudioShortcutKey.Space, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Left, false, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Digit1, false, StudioShortcutAction.None)]
@@ -84,15 +84,13 @@ public sealed class StudioEditorSessionShortcutTests
     public void OpenAndSave_AreCtrlOAndCtrlS_AndAKeyThatIsHeldAsksOnce()
     {
         // Plain O sets the trim end and plain S splits the scene, so the two keys of the
-        // project as a whole have Ctrl. Saving is Ctrl+S: the Mac's key with Shift is the
-        // app's global hotkey for Stop recording on Windows, and does not come to a window.
-        // Should it come all the same, where that hotkey could not be registered, it saves.
+        // project as a whole have Ctrl; Shift distinguishes Save as.
         var open = Press(StudioShortcutKey.O) with { IsControlDown = true };
         var save = Press(StudioShortcutKey.S) with { IsControlDown = true };
 
         Assert.Equal(StudioShortcutAction.OpenProject, StudioShortcuts.Resolve(open));
         Assert.Equal(StudioShortcutAction.SaveProject, StudioShortcuts.Resolve(save));
-        Assert.Equal(StudioShortcutAction.SaveProject, StudioShortcuts.Resolve(save with { IsShiftDown = true }));
+        Assert.Equal(StudioShortcutAction.SaveProjectAs, StudioShortcuts.Resolve(save with { IsShiftDown = true }));
         Assert.Equal(StudioShortcutAction.SetTrimEndAtPlayhead, StudioShortcuts.Resolve(Press(StudioShortcutKey.O)));
         Assert.Equal(StudioShortcutAction.SplitScene, StudioShortcuts.Resolve(Press(StudioShortcutKey.S)));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(open with { IsShiftDown = true }));

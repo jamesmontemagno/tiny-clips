@@ -218,6 +218,7 @@ public sealed partial class StudioProjectStore
                 SaveProjectFile(directory, opened);
             }
 
+            StudioProjectDestination.Remember(this, projectId, file);
             return opened;
         }
         catch

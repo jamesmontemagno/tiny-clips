@@ -178,7 +178,8 @@ internal sealed partial class WindowChecks
             $"menu|Open recent|StudioOpenRecentItem||{StudioGlyphs.OpenRecentProject}",
             $"item|Open project\u2026|StudioOpenProjectItem|Ctrl+O|{StudioGlyphs.OpenProject}",
             "separator||||",
-            $"item|Save project\u2026|StudioSaveProjectItem|Ctrl+S|{StudioGlyphs.SaveProject}",
+            $"item|Save project|StudioSaveProjectItem|Ctrl+S|{StudioGlyphs.SaveProject}",
+            "item|Save project as\u2026|StudioSaveProjectAsItem|Ctrl+Shift+S|",
             "separator||||",
             $"item|Delete project\u2026|StudioDeleteProjectItem||{StudioGlyphs.DeleteProject}",
         ];
@@ -204,11 +205,12 @@ internal sealed partial class WindowChecks
         var insideButtons = (save?.Children().Count ?? -1) + (delete?.Children().Count ?? -1);
         _report.Check(
             "the Project panel has Save project\u2026 under a heading Project folder, and Delete project\u2026 after it, each a button called by its words alone, with a note under it; Save project\u2026 names its keys; they come after Save as default look for a screen reader and for the Tab key, and are the panel's last two stops",
-            save is { ControlType: ControlTypeNames.Button, Name: "Save project\u2026", IsEnabled: true, IsKeyboardFocusable: true, AcceleratorKey: "Ctrl+S" }
+            save is { ControlType: ControlTypeNames.Button, Name: "Save project", IsEnabled: true, IsKeyboardFocusable: true, AcceleratorKey: "Ctrl+S" }
                 && delete is { ControlType: ControlTypeNames.Button, Name: "Delete project\u2026", IsEnabled: true, IsKeyboardFocusable: true } && delete.HelpText == "Deletes the recording and every edit. Asks first."
                 && insideButtons == 0 && look >= 0 && look < heading && heading < saveAt && saveAt < deleteAt
-                && lookStop >= 0 && saveStop == lookStop + 1 && deleteStop == saveStop + 1
-                && NameOf(editor, "StudioSaveProjectNote") == "Saves a copy of the recordings with a .tinyclips file that opens them in Studio again, on this PC or another."
+                && lookStop >= 0 && saveStop == lookStop + 1 && deleteStop == saveStop + 2
+                && Find(editor, "StudioSaveProjectAsButton") is { Name: "Save project as\u2026", IsEnabled: true }
+                && NameOf(editor, "StudioSaveProjectNote") == "Save updates the current project folder. Save as chooses a new name and location, including the recordings and a .tinyclips file."
                 && NameOf(editor, "StudioDeleteProjectNote") == "Removes the recording and every edit from Studio. Exported videos and saved folders stay.",
             $"{save}, key \"{save?.AcceleratorKey}\"; {delete}, described as \"{delete?.HelpText}\"; elements inside the two for a screen reader: {insideButtons}; walked: Save as default look {look}, the heading {heading}, Save {saveAt}, Delete {deleteAt}; "
                 + $"Tab: Save as default look {lookStop}, Save {saveStop}, Delete {deleteStop}; notes \"{NameOf(editor, "StudioSaveProjectNote", 0)}\" and \"{NameOf(editor, "StudioDeleteProjectNote", 0)}\"");
@@ -370,6 +372,43 @@ internal sealed partial class WindowChecks
             _services.Store.Delete(reopenedId);
         }
 
+        _services.Store.HoldProjectSaves(null);
+        var savedExports = Path.Combine(target, "export.mp4");
+        var chooseExport = _services.Windows.ChooseExportFile;
+        string? exportDefaultFolder = null;
+        _services.Windows.ChooseExportFile = (_, folder, _) =>
+        {
+            exportDefaultFolder = folder;
+            return Task.FromResult<string?>(savedExports);
+        };
+        bool exportedToProject;
+        try
+        {
+            Invoke(editor, "StudioExportButton");
+            exportedToProject = Until(() => _services.Exports.Any(e => e.ProjectId == editor.Id && e.Path == savedExports), done => done, 120);
+        }
+        finally
+        {
+            _services.Windows.ChooseExportFile = chooseExport;
+        }
+        _report.Check(
+            "export after Save suggests the project folder and writes a real video at the chosen filename",
+            exportedToProject && exportDefaultFolder == target && File.Exists(savedExports),
+            $"default folder: {exportDefaultFolder}; exported to project: {exportedToProject}; error: {ErrorOf(editor)}");
+        var exportedBytes = File.Exists(savedExports) ? File.ReadAllBytes(savedExports) : [];
+        SetSlider(editor, "StudioPaddingSlider", 0.15);
+        var savedBefore = _services.Store.ProjectSavesBegun;
+        Invoke(editor, SaveProjectId);
+        var repeated = Until(() => _services.Store.ProjectSavesBegun, count => count > savedBefore, 3);
+        var repeatFinished = Until(() => !IsSavingProject(editor), done => done, 10);
+        _report.Check(
+            "Save again updates the remembered project without a destination dialog and preserves a video in its folder",
+            repeated == savedBefore + 1 && repeatFinished && !HasDialog(editor) && ErrorOf(editor).Length == 0
+                && Same(StudioProjectFolder.ReadProjectFile(projectFile).Canvas.Padding, 0.15)
+                && exportedBytes.Length > 0 && File.ReadAllBytes(savedExports).SequenceEqual(exportedBytes),
+            $"saves begun {repeated - savedBefore}; finished: {repeatFinished}; dialog open: {HasDialog(editor)}; error: {ErrorOf(editor)}");
+        File.Delete(savedExports);
+
         SavingOverWhatIsThere(editor, saveRoot, folderName, target, projectFile);
         ASaveThatIsStopped(editor, saveRoot, heard);
         OpeningASavedProject(editor, other, target, projectFile, saveRoot);
@@ -386,7 +425,7 @@ internal sealed partial class WindowChecks
         Expect(editor, p => p with { Canvas = p.Canvas with { Padding = 0.2 } });
 
         // A saved project with nothing else in it: asked about. No is no.
-        Invoke(editor, SaveProjectId);
+        Invoke(editor, "StudioSaveProjectAsButton");
         var first = SaveQuestion(editor);
         first?.Find("PrimaryButton")?.Invoke();
         var replace = QuestionTitled(editor, "Replace the saved project");
@@ -418,7 +457,9 @@ internal sealed partial class WindowChecks
         var replaced = PaddingOf(projectFile);
         _report.Check(
             "Replace replaces the saved project: the folder then holds the project as it is now",
-            agreed && done && Same(replaced, 0.2) && NamesIn(target).Length == 3 && ErrorOf(editor).Length == 0,
+            agreed && done && Same(replaced, 0.2)
+                && NamesIn(target).SequenceEqual(["events.json", "poster.jpg", folderName + ".tinyclips", "screen.mp4"], StringComparer.OrdinalIgnoreCase)
+                && ErrorOf(editor).Length == 0,
             $"the project file in the folder has the padding {F(replaced)}, and the editor {F(SliderValue(editor, "StudioPaddingSlider"))}; the folder holds {string.Join(", ", NamesIn(target))}{(ErrorOf(editor) is { Length: > 0 } error ? $"; the window says \"{error}\"" : string.Empty)}");
 
         // A saved project that holds something else: said, not asked, and left as it is.
@@ -426,7 +467,7 @@ internal sealed partial class WindowChecks
         File.WriteAllText(Path.Combine(target, "notes.txt"), "not part of the project");
         var withNotes = Fingerprint(target);
         savesBefore = _services.Store.ProjectSavesBegun;
-        Invoke(editor, SaveProjectId);
+        Invoke(editor, "StudioSaveProjectAsButton");
         var holding = SaveQuestion(editor);
         holding?.Find("PrimaryButton")?.Invoke();
         var holdsSentence = ProblemOf(holding);
@@ -475,7 +516,7 @@ internal sealed partial class WindowChecks
         bool Begin(ManualResetEventSlim gate)
         {
             _services.Store.HoldProjectSaves(gate);
-            Invoke(editor, SaveProjectId);
+            Invoke(editor, "StudioSaveProjectAsButton");
             var question = SaveQuestion(editor);
             var typed = question?.Find(SaveNameBoxId)?.SetValue("Stopped") ?? false;
             return typed && (question?.Find("PrimaryButton")?.Invoke() ?? false) && Find(editor, CancelSaveId, 5) is not null;

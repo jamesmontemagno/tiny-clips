@@ -204,7 +204,12 @@ public abstract class StudioViewModelTestBase : IDisposable
             string outputPath,
             VideoCodec codec,
             IProgress<double>? progress,
-            CancellationToken cancellationToken) => Task.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            File.WriteAllText(outputPath, "rendered");
+            return Task.CompletedTask;
+        }
 
         public Task WritePosterAsync(
             StudioProject project,

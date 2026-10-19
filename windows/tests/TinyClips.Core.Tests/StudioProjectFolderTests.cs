@@ -85,6 +85,7 @@ public abstract class StudioProjectFolderTestBase : IDisposable
     protected static string[] Names(string directory) =>
         Directory.EnumerateFileSystemEntries(directory)
             .Select(entry => Path.GetFileName(entry))
+            .Where(name => name != "saved-project.json")
             .Order(StringComparer.Ordinal)
             .ToArray();
 

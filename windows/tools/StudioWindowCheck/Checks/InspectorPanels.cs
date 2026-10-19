@@ -102,7 +102,7 @@ internal sealed partial class WindowChecks
             "StudioMuteCheckBox", "StudioVolumeSlider");
         Add(StudioInspectorPanel.Project, CropGroup.None,
             "StudioBrandingCheckBox", "StudioKeepProjectCheckBox", "StudioKeepProjectNote", "StudioSaveDefaultLookButton", "StudioDefaultLookNote",
-            "StudioDefaultLookStatus", "StudioSaveProjectButton", "StudioSaveProjectNote", "StudioDeleteProjectButton", "StudioDeleteProjectNote");
+            "StudioDefaultLookStatus", "StudioSaveProjectButton", "StudioSaveProjectAsButton", "StudioSaveProjectNote", "StudioDeleteProjectButton", "StudioDeleteProjectNote");
         return places;
     }
 

@@ -59,7 +59,7 @@ public sealed class StudioButtonIconTests
         // The project as a whole (#429): at the end of the Project panel, and under the message
         // of a project that cannot be shown. The menu of the Project button has the same four
         // glyphs, on menu items, which are held by the test below.
-        ("StudioInspector.xaml", "StudioSaveProjectButton", nameof(StudioGlyphs.SaveProject), "Save project\u2026", "Save project\u2026"),
+        ("StudioInspector.xaml", "StudioSaveProjectButton", nameof(StudioGlyphs.SaveProject), "Save project", "Save project"),
         ("StudioInspector.xaml", "StudioDeleteProjectButton", nameof(StudioGlyphs.DeleteProject), "Delete project\u2026", "Delete project\u2026"),
         ("StudioWindow.xaml", "StudioDeleteUnavailableProjectButton", nameof(StudioGlyphs.DeleteProject), "Delete project\u2026", "Delete project\u2026"),
     ];
@@ -131,7 +131,7 @@ public sealed class StudioButtonIconTests
     [Theory]
     [InlineData("MenuFlyoutSubItem", "StudioOpenRecentItem", nameof(StudioGlyphs.OpenRecentProject), "Open recent")]
     [InlineData("MenuFlyoutItem", "StudioOpenProjectItem", nameof(StudioGlyphs.OpenProject), "Open project\u2026")]
-    [InlineData("MenuFlyoutItem", "StudioSaveProjectItem", nameof(StudioGlyphs.SaveProject), "Save project\u2026")]
+    [InlineData("MenuFlyoutItem", "StudioSaveProjectItem", nameof(StudioGlyphs.SaveProject), "Save project")]
     [InlineData("MenuFlyoutItem", "StudioDeleteProjectItem", nameof(StudioGlyphs.DeleteProject), "Delete project\u2026")]
     public void AnItemOfTheProjectMenu_HasItsGlyphAsItsIcon_AndItsWordsAsItsText(string kind, string id, string glyph, string words)
     {

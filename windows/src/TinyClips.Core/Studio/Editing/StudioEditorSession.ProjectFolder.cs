@@ -37,7 +37,7 @@ public sealed partial class StudioEditorSession
     /// How the save ended. The task itself never fails: what the store or the system refused
     /// with is in the result, for whoever asked to put into words.
     /// </returns>
-    public Task<StudioProjectFolderSaveResult> SaveProjectFolderAsync(string folder, bool replaceSavedProject = false)
+    public Task<StudioProjectFolderSaveResult> SaveProjectFolderAsync(string folder, bool replaceSavedProject = false, string? projectFile = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         if (!IsEditable || Model is null)
@@ -54,7 +54,7 @@ public sealed partial class StudioEditorSession
         // What a close waits for. It is there before anything of the save is done.
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _projectFolderSave = finished.Task;
-        return SaveProjectFolderCoreAsync(folder, replaceSavedProject, finished);
+        return SaveProjectFolderCoreAsync(folder, replaceSavedProject, finished, projectFile);
     }
 
     /// <summary>Stops the save that is under way. Nothing is left of it, and nothing is reported.</summary>
@@ -63,7 +63,8 @@ public sealed partial class StudioEditorSession
     private async Task<StudioProjectFolderSaveResult> SaveProjectFolderCoreAsync(
         string folder,
         bool replaceSavedProject,
-        TaskCompletionSource finished)
+        TaskCompletionSource finished,
+        string? projectFile)
     {
         try
         {
@@ -80,7 +81,20 @@ public sealed partial class StudioEditorSession
                 var progress = new ProjectFolderProgressRelay(this, cancellation);
                 var token = cancellation.Token;
                 await Task.Run(
-                    () => _store.SaveProjectFolder(ProjectId, folder, replaceSavedProject, progress, token),
+                    () =>
+                    {
+                        if (projectFile is null)
+                        {
+                            _store.SaveProjectFolder(ProjectId, folder, replaceSavedProject, progress, token);
+                        }
+                        else
+                        {
+                            StudioProjectDestination.Update(_store, ProjectId, projectFile, progress, token);
+                        }
+
+                        var savedFile = projectFile ?? Path.Combine(folder, Path.GetFileName(folder) + StudioProjectFolder.ProjectFileExtension);
+                        StudioProjectDestination.Remember(_store, ProjectId, savedFile);
+                    },
                     CancellationToken.None).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -94,7 +108,9 @@ public sealed partial class StudioEditorSession
 
             var result = new StudioProjectFolderSaveResult(StudioProjectFolderSaveOutcome.Cancelled);
             await PostAsync(() => result = FinishProjectFolderSave(cancellation, folder, isCancelled, failure)).ConfigureAwait(false);
-            return result;
+            return result.Outcome == StudioProjectFolderSaveOutcome.Saved && projectFile is not null
+                ? result with { ProjectFilePath = projectFile }
+                : result;
         }
         finally
         {

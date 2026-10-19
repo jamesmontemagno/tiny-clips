@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Changed
+- Studio now remembers each project's saved location across restarts. **Save project** (Ctrl+S) updates it; **Save project as...** (Ctrl+Shift+S) chooses a new location. Opening a saved project links explicit Save back to its original folder, while internal autosave stays local.
+- Studio video export now asks for a filename and destination, starting in the saved project folder or the configured video folder. Confirmed overwrites preserve the previous video if rendering fails or is cancelled, and later project saves preserve exported videos in the project folder.
 - Set the Windows app version to **2.0.0** (package version **2.0.0.0**) for direct and Microsoft Store builds, including assembly version metadata.
 - Microsoft Store uploads now include crash-report symbols for x64 and ARM64. Packaging and
   submission fail if the upload is missing matching app or core symbols, and symbol-tool

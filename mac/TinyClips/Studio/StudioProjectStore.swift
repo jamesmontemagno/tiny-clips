@@ -678,6 +678,139 @@ final class StudioProjectStore {
     /// The largest `.tinyclips` file that is read. A project's own is a few kilobytes.
     private static let largestProjectFile = 16 << 20
 
+    struct SavedDestination: Codable {
+        var file: URL
+        var bookmark: Data?
+    }
+
+    func savedDestination(id: String) throws -> SavedDestination? {
+        guard !ownedFiles(try load(id: id)).contains("saved-project.json") else {
+            throw StudioProjectFolderError.destinationExists
+        }
+        let record = try paths(forID: id).projectDirectory.appendingPathComponent("saved-project.json")
+        guard fileManager.fileExists(atPath: record.path) else { return nil }
+        let destination = try JSONDecoder().decode(SavedDestination.self, from: Data(contentsOf: record))
+        guard destination.file.isFileURL,
+              destination.file.pathExtension.lowercased() == Self.projectFileExtension else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return destination
+    }
+
+    func rememberDestination(id: String, file: URL, bookmark: Data? = nil) throws {
+        guard file.isFileURL, file.pathExtension.lowercased() == Self.projectFileExtension else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        guard !ownedFiles(try load(id: id)).contains("saved-project.json") else {
+            throw StudioProjectFolderError.destinationExists
+        }
+        let record = try paths(forID: id).projectDirectory.appendingPathComponent("saved-project.json")
+        try JSONEncoder().encode(SavedDestination(file: file, bookmark: bookmark)).write(to: record, options: .atomic)
+    }
+
+    private static let linkedSaveLock = NSLock()
+
+    private func ownedFiles(_ project: StudioProject) -> Set<String> {
+        var names: Set<String> = [project.sources.screen.file, project.sources.events ?? "events.json", "poster.jpg"]
+        if let camera = project.sources.camera { names.insert(camera.file) }
+        if let image = validBackgroundImage(project.canvas.background.image) { names.insert(image) }
+        return names
+    }
+
+    func savedProjectAssets(at file: URL) throws -> [URL] {
+        let project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(contentsOf: file))
+        return ownedFiles(project).filter { StudioJSON.isPlainFileName($0) }
+            .map { file.deletingLastPathComponent().appendingPathComponent($0) }
+    }
+
+    private func isPlainFile(_ url: URL) throws -> Bool {
+        let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        return values.isRegularFile == true && values.isSymbolicLink != true
+    }
+
+    func updateSavedProject(id: String, projectFile: URL) throws {
+        Self.linkedSaveLock.lock()
+        defer { Self.linkedSaveLock.unlock() }
+        let folder = projectFile.deletingLastPathComponent()
+        guard try isPlainFile(projectFile),
+              try folder.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
+            throw StudioProjectFolderError.destinationExists
+        }
+        let originalData = try Data(contentsOf: projectFile)
+        let oldProject = try StudioJSON.makeDecoder().decode(StudioProject.self, from: originalData)
+        var owned = ownedFiles(oldProject)
+        owned.insert(projectFile.lastPathComponent)
+        let staging = folder.appendingPathComponent(".tinyclips-update-\(UUID().uuidString)", isDirectory: true)
+        let backups = staging.appendingPathComponent("backups", isDirectory: true)
+        var installed: [String] = []
+        var moved: [String] = []
+        var keepBackup = false
+        defer {
+            if !keepBackup {
+                do { try fileManager.removeItem(at: staging) }
+                catch { NSLog("Studio could not remove save staging folder %@: %@", staging.path, error.localizedDescription) }
+            }
+        }
+        do {
+            try exportProjectFolder(id: id, to: staging)
+            let stagedProject = staging.appendingPathComponent(staging.lastPathComponent).appendingPathExtension(Self.projectFileExtension)
+            try fileManager.moveItem(at: stagedProject, to: staging.appendingPathComponent(projectFile.lastPathComponent))
+            let names = try fileManager.contentsOfDirectory(atPath: staging.path)
+                .filter { $0 != projectFile.lastPathComponent } + [projectFile.lastPathComponent]
+            for name in names {
+                let destination = folder.appendingPathComponent(name)
+                if fileManager.fileExists(atPath: destination.path) {
+                    let plain = try isPlainFile(destination)
+                    if !owned.contains(name) || !plain { throw StudioProjectFolderError.destinationExists }
+                }
+            }
+
+            guard try Data(contentsOf: projectFile) == originalData else {
+                throw StudioProjectFolderError.destinationExists
+            }
+            try fileManager.createDirectory(at: backups, withIntermediateDirectories: false)
+            for name in names {
+                let destination = folder.appendingPathComponent(name)
+                if fileManager.fileExists(atPath: destination.path) {
+                    try fileManager.moveItem(at: destination, to: backups.appendingPathComponent(name))
+                    moved.append(name)
+                }
+                try fileManager.moveItem(at: staging.appendingPathComponent(name), to: destination)
+                installed.append(name)
+            }
+        } catch {
+            let failure = error
+            do {
+                for name in installed.reversed() { try fileManager.removeItem(at: folder.appendingPathComponent(name)) }
+                for name in moved.reversed() {
+                    try fileManager.moveItem(at: backups.appendingPathComponent(name), to: folder.appendingPathComponent(name))
+                }
+            } catch {
+                keepBackup = true
+                throw NSError(domain: "TinyClipsStudioSave", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Saving failed and the original files could not all be restored. Backups are in \(backups.path).",
+                    NSUnderlyingErrorKey: failure
+                ])
+            }
+            throw failure
+        }
+    }
+
+    private func canReplaceSavedFolder(_ folder: URL) -> Bool {
+        do {
+            let file = try projectFile(at: folder)
+            let project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(contentsOf: file))
+            var allowed = Set(ownedFiles(project).map { $0.lowercased() })
+            allowed.formUnion([file.lastPathComponent.lowercased(), ".ds_store", "thumbs.db", "desktop.ini"])
+            return try fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                .allSatisfy { url in
+                    try isPlainFile(url) && (allowed.contains(url.lastPathComponent.lowercased()) || url.lastPathComponent.hasPrefix("._"))
+                }
+        } catch {
+            return false
+        }
+    }
+
     /// Saves a copy of a project as a folder that can be taken to another computer: the files
     /// the project names, and beside them a `.tinyclips` file named after the folder. That file
     /// is the project as `project.json` has it, without its list of exported videos. The project
@@ -751,7 +884,7 @@ final class StudioProjectStore {
             return
         }
 
-        guard replacingSavedProject, isSavedProjectFolder(folder) else {
+        guard replacingSavedProject, canReplaceSavedFolder(folder) else {
             throw StudioProjectFolderError.destinationExists
         }
         let scratch = try fileManager.url(
@@ -850,9 +983,11 @@ final class StudioProjectStore {
             }
             project.id = paths.id
             project.exports = []
-            return try withLock {
+            let saved = try withLock {
                 try saveUnlocked(project, updatingModifiedAt: false)
             }
+            try rememberDestination(id: project.id, file: projectFile)
+            return saved
         } catch {
             try? fileManager.removeItem(at: paths.projectDirectory)
             throw error
@@ -1171,6 +1306,40 @@ final class StudioProjectStore {
     private func validBackgroundImage(_ image: String?) -> String? {
         guard let image else { return nil }
         return StudioJSON.isPlainFileName(image) ? image : nil
+    }
+}
+
+struct StudioExportDestination: Equatable {
+    let url: URL
+    let size: UInt64?
+    let modified: Date?
+
+    init(url: URL) throws {
+        self.url = url
+        if FileManager.default.fileExists(atPath: url.path) {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard attributes[.type] as? FileAttributeType == .typeRegular else {
+                throw CocoaError(.fileWriteInvalidFileName)
+            }
+            size = (attributes[.size] as? NSNumber)?.uint64Value
+            modified = attributes[.modificationDate] as? Date
+        } else {
+            size = nil
+            modified = nil
+        }
+    }
+
+    func commit(staged: URL) throws {
+        guard try StudioExportDestination(url: url) == self else {
+            throw NSError(domain: "TinyClipsStudioExport", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "The selected output file changed while exporting. Export again to confirm its replacement."
+            ])
+        }
+        if size != nil {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: staged)
+        } else {
+            try FileManager.default.moveItem(at: staged, to: url)
+        }
     }
 }
 

@@ -271,6 +271,55 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
         Assert.True(viewModel.IsEditable);
     }
 
+    [Fact]
+    public async Task SuccessfulSaveAsBecomesTheLinkedSaveAndExportDestination()
+    {
+        var viewModel = await OpenAsync(CreateProject());
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved,
+            await RunToEndAsync(viewModel.SaveProjectAsync(viewModel.CheckSaveTarget(_outside, "First"))));
+        var original = viewModel.SavedProjectFile!;
+        var originalBytes = File.ReadAllBytes(original);
+
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved,
+            await RunToEndAsync(viewModel.SaveProjectAsync(viewModel.CheckSaveTarget(_outside, "Second"))));
+        var current = Path.Combine(_outside, "Second", "Second.tinyclips");
+        Assert.Equal(current, viewModel.SavedProjectFile);
+
+        viewModel.CanvasPadding = 0.2;
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved,
+            await RunToEndAsync(viewModel.SaveLinkedProjectAsync(current)));
+        Assert.Equal(0.2, Projects.OpenProjectFolder(current,
+            cancellationToken: TestContext.Current.CancellationToken).Canvas.Padding, Precision);
+        Assert.Equal(originalBytes, File.ReadAllBytes(original));
+        viewModel.ChooseExportFile = (folder, _) =>
+        {
+            Assert.Equal(Path.GetDirectoryName(current), folder);
+            return Task.FromResult<string?>(null);
+        };
+        Assert.Equal(StudioExportOutcome.Cancelled, await viewModel.ExportAsync());
+        await CloseAsync(viewModel);
+        var reopened = await OpenAsync(viewModel.ProjectId);
+        Assert.Equal(current, reopened.SavedProjectFile);
+    }
+
+    [Fact]
+    public async Task FailedSaveAsRetainsThePreviousDestination()
+    {
+        var viewModel = await OpenAsync(CreateProject());
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved,
+            await RunToEndAsync(viewModel.SaveProjectAsync(viewModel.CheckSaveTarget(_outside, "First"))));
+        var original = viewModel.SavedProjectFile;
+        var target = viewModel.CheckSaveTarget(_outside, "Second");
+        Directory.CreateDirectory(target.Folder);
+        File.WriteAllText(Path.Combine(target.Folder, "keep.txt"), "unrelated");
+
+        Assert.Equal(StudioProjectFolderSaveOutcome.Failed,
+            await RunToEndAsync(viewModel.SaveProjectAsync(target)));
+        Assert.Equal(original, viewModel.SavedProjectFile);
+        Assert.Equal("unrelated", File.ReadAllText(Path.Combine(target.Folder, "keep.txt")));
+        Assert.True(viewModel.HasError);
+    }
+
     private static List<string> Listen(StudioViewModel viewModel)
     {
         var asked = new List<string>();

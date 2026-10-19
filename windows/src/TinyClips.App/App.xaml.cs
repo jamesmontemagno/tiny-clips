@@ -3594,7 +3594,19 @@ public partial class App : Application
                 $"Stop recording ({stopBinding.DisplayString})",
                 stopBinding.ModifiersValue,
                 stopBinding.VirtualKey,
-                () => _ = StopActiveRecordingAsync());
+                () =>
+                {
+                    var isSaveAs = stopBinding.VirtualKey == (uint)Windows.System.VirtualKey.S
+                        && stopBinding.ModifiersValue == (int)(HotKeyModifiers.Control | HotKeyModifiers.Shift);
+                    if (isSaveAs
+                        && !Services.GetRequiredService<IVideoRecordingService>().IsRecording
+                        && !Services.GetRequiredService<IGifRecordingService>().IsRecording
+                        && _studioWindows?.SaveAsForForegroundWindow() == true)
+                    {
+                        return;
+                    }
+                    _ = StopActiveRecordingAsync();
+                });
 
             var result = manager.Start();
             if (!result.IsSuccess)

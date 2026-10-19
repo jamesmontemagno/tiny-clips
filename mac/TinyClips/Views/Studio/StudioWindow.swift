@@ -136,6 +136,17 @@ final class StudioWindowRegistry {
             guard let self else { return }
             switch result {
             case .success(let projectID):
+                #if APPSTORE
+                do {
+                    let store = StudioProjectStore.shared
+                    let file = try store.projectFile(at: url)
+                    let bookmark = try file.deletingLastPathComponent().bookmarkData(
+                        options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+                    try store.rememberDestination(id: projectID, file: file, bookmark: bookmark)
+                } catch {
+                    SaveService.shared.showError("The project opened, but its folder access could not be remembered: \(error.localizedDescription)")
+                }
+                #endif
                 self.open(projectID: projectID)
             case .failure(let error):
                 #if APPSTORE
@@ -215,10 +226,14 @@ enum StudioMenuCommands {
         recentMenu.delegate = StudioRecentProjectsMenu.shared
         recentItem.submenu = recentMenu
         menu.addItem(recentItem)
-        let saveItem = menuItem("Save Project…", action: "studioSaveProject:")
+        let saveItem = menuItem("Save Project", action: "studioSaveProject:")
         saveItem.keyEquivalent = "s"
-        saveItem.keyEquivalentModifierMask = [.command, .shift]
+        saveItem.keyEquivalentModifierMask = [.command]
         menu.addItem(saveItem)
+        let saveAsItem = menuItem("Save Project As…", action: "studioSaveProjectAs:")
+        saveAsItem.keyEquivalent = "s"
+        saveAsItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(saveAsItem)
         let exportItem = menuItem("Export", action: "studioExport:")
         exportItem.keyEquivalent = "e"
         exportItem.keyEquivalentModifierMask = [.command]
@@ -377,6 +392,7 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         StudioWindowRegistry.shared.open(projectID: projectID)
     }
     @objc func studioSaveProject(_ sender: Any?) { viewModel.saveProjectFolder() }
+    @objc func studioSaveProjectAs(_ sender: Any?) { viewModel.saveProjectFolder(saveAs: true) }
     @objc func studioDeleteProject(_ sender: Any?) { viewModel.deleteProject() }
 
     @objc func studioExport(_ sender: Any?) { viewModel.export() }
@@ -423,7 +439,7 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         case #selector(studioOpenProject(_:)),
             #selector(studioOpenRecent(_:)):
             return !viewModel.isBusy
-        case #selector(studioSaveProject(_:)):
+        case #selector(studioSaveProject(_:)), #selector(studioSaveProjectAs(_:)):
             return viewModel.canSaveProjectFolder
         case #selector(studioDeleteProject(_:)):
             return viewModel.canDeleteProject
@@ -541,6 +557,13 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         }
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = event.charactersIgnoringModifiers?.lowercased()
+
+        if key == "s", modifiers == [.command] || modifiers == [.command, .shift] {
+            if !isMouseButtonHeld && !event.isARepeat {
+                viewModel.saveProjectFolder(saveAs: modifiers.contains(.shift))
+            }
+            return true
+        }
 
         // During a drag these keys are taken and do nothing, so that the menu does not act on
         // them either.

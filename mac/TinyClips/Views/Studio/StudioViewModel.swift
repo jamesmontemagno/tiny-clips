@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Studio View Model
 
@@ -89,6 +90,40 @@ final class StudioViewModel: ObservableObject {
     private var closesAfterExport = false
     private var deletesOnClose = false
     private var isTornDown = false
+    private var destinationScope: URL?
+    private var isChoosingDestination = false
+
+    private func savedProjectFile() throws -> URL? {
+        guard let record = try store.savedDestination(id: projectID) else { return nil }
+        #if APPSTORE
+        var destination = record
+        guard let bookmark = destination.bookmark else {
+            throw NSError(domain: "TinyClipsStudioSave", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Access to the project folder must be renewed. Use Save Project As to choose it again."
+            ])
+        }
+        var stale = false
+        let folder = try URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope],
+                             relativeTo: nil, bookmarkDataIsStale: &stale)
+        if destinationScope != folder {
+            guard folder.startAccessingSecurityScopedResource() else {
+                throw NSError(domain: "TinyClipsStudioSave", code: 3, userInfo: [
+                    NSLocalizedDescriptionKey: "The saved project folder cannot be accessed. Use Save Project As to choose it again."
+                ])
+            }
+            destinationScope?.stopAccessingSecurityScopedResource()
+            destinationScope = folder
+        }
+        destination.file = folder.appendingPathComponent(destination.file.lastPathComponent)
+        if stale {
+            try store.rememberDestination(id: projectID, file: destination.file,
+                bookmark: folder.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil))
+        }
+        return destination.file
+        #else
+        return record.file
+        #endif
+    }
 
     /// Where playback was last sent to get over a cut. Playback only goes forward, so it comes to
     /// the same cut again only after Play has been pressed, which forgets this.
@@ -1219,8 +1254,61 @@ final class StudioViewModel: ObservableObject {
     }
 
     private func startExport(closingAfterward: Bool) {
-        guard canExport, let paths else { return }
+        guard canExport, !isChoosingDestination, let paths else { return }
         pause()
+        let outputURL: URL
+        let target: StudioExportDestination
+        isChoosingDestination = true
+        do {
+            let savedFile = try savedProjectFile()
+            var folder = savedFile?.deletingLastPathComponent() ?? SaveService.shared.outputDirectoryURL(for: .video)
+            if savedFile != nil && !FileManager.default.fileExists(atPath: folder.path) {
+                SaveService.shared.showNotice("The project folder is unavailable. Choose another folder for this export.")
+                folder = SaveService.shared.outputDirectoryURL(for: .video)
+            }
+            let panel = NSSavePanel()
+            panel.title = "Export Video"
+            panel.prompt = "Export"
+            panel.allowedContentTypes = [.mpeg4Movie]
+            panel.canCreateDirectories = true
+            panel.directoryURL = folder
+            panel.nameFieldStringValue = StudioProjectStore.folderName(for: clipName) + ".mp4"
+            guard panel.runModal() == .OK, let chosen = panel.url else {
+                isChoosingDestination = false
+                return
+            }
+            outputURL = chosen
+            target = try StudioExportDestination(url: chosen)
+            var protected = [paths.projectDirectory]
+            if let project {
+                protected.append(paths.screenURL)
+                if project.sources.screen.external { protected.append(URL(fileURLWithPath: project.sources.screen.file)) }
+                if let savedFile {
+                    let savedFolder = savedFile.deletingLastPathComponent()
+                    protected.append(savedFile)
+                    if FileManager.default.fileExists(atPath: savedFile.path) {
+                        protected.append(contentsOf: try store.savedProjectAssets(at: savedFile))
+                    }
+                    protected.append(savedFolder.appendingPathComponent(project.sources.screen.file))
+                    if let camera = project.sources.camera { protected.append(savedFolder.appendingPathComponent(camera.file)) }
+                }
+            }
+            let path = chosen.standardizedFileURL.resolvingSymlinksInPath().path
+            guard !protected.contains(where: {
+                let protectedPath = $0.standardizedFileURL.resolvingSymlinksInPath().path
+                return path.caseInsensitiveCompare(protectedPath) == .orderedSame
+                    || path.lowercased().hasPrefix(protectedPath.lowercased() + "/")
+            }) else {
+                throw NSError(domain: "TinyClipsStudioExport", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Choose another filename: exporting here would overwrite project data or a source recording."
+                ])
+            }
+        } catch {
+            isChoosingDestination = false
+            SaveService.shared.showError("The export destination could not be chosen: \(error.localizedDescription)")
+            return
+        }
+        isChoosingDestination = false
         // The export link is written into the saved project, so the edits have to be on disk first.
         guard saveNow(), let editor else { return }
 
@@ -1232,7 +1320,6 @@ final class StudioViewModel: ObservableObject {
         let rendered = editor.editableState
         let projectEvents = events
         let projectStore = store
-        let outputURL = SaveService.shared.generateURL(for: .video)
         let renderSize = Self.renderSize(for: project, longSide: Self.exportLongSide)
         let posterSize = Self.renderSize(for: project, longSide: Self.posterLongSide)
         let codec = CaptureSettings.shared.videoCodec
@@ -1243,6 +1330,8 @@ final class StudioViewModel: ObservableObject {
         }
 
         exportTask = Task { [weak self] in
+            let hasAccess = outputURL.startAccessingSecurityScopedResource()
+            defer { if hasAccess { outputURL.stopAccessingSecurityScopedResource() } }
             do {
                 let url = try await StudioExporter.export(
                     project: project,
@@ -1251,7 +1340,8 @@ final class StudioViewModel: ObservableObject {
                     outputURL: outputURL,
                     renderSize: renderSize,
                     codec: codec,
-                    onProgress: reportProgress
+                    onProgress: reportProgress,
+                    destination: target
                 )
                 try? await StudioExporter.writePoster(
                     project: project,
@@ -1333,25 +1423,39 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
-    /// Saves a copy of the project as a folder the user chooses: the recordings, and a
-    /// `.tinyclips` file that opens them in Studio again, here or on another Mac. The project
-    /// stays in Studio's own storage and is edited there as before; the folder is a copy as of
-    /// now.
-    func saveProjectFolder() {
-        guard canSaveProjectFolder else { return }
+    /// Updates the linked project folder, or chooses one for the first save and Save As.
+    /// Editing and autosave continue to use Studio's internal working copy.
+    func saveProjectFolder(saveAs: Bool = false) {
+        guard canSaveProjectFolder, !isChoosingDestination else { return }
         pause()
         // The folder gets the project as it is saved, so the edits have to be on disk first.
         guard saveNow() else { return }
 
-        let panel = NSSavePanel()
-        panel.title = "Save Project"
-        panel.message = "Saves the recordings and a .tinyclips file in a folder of this name."
-        panel.prompt = "Save"
-        panel.nameFieldLabel = "Folder name:"
-        panel.nameFieldStringValue = StudioProjectStore.folderName(for: clipName)
-        panel.canCreateDirectories = true
-        panel.isExtensionHidden = false
-        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        let linkedFile: URL?
+        let folder: URL
+        isChoosingDestination = true
+        defer { isChoosingDestination = false }
+        do {
+            let savedFile = try (saveAs ? nil : savedProjectFile())
+            linkedFile = savedFile
+            if let savedFile {
+                folder = savedFile.deletingLastPathComponent()
+            } else {
+                let panel = NSSavePanel()
+                panel.title = saveAs ? "Save Project As" : "Save Project"
+                panel.message = "Saves the recordings and a .tinyclips file in a folder of this name."
+                panel.prompt = "Save"
+                panel.nameFieldLabel = "Folder name:"
+                panel.nameFieldStringValue = StudioProjectStore.folderName(for: clipName)
+                panel.canCreateDirectories = true
+                panel.isExtensionHidden = false
+                guard panel.runModal() == .OK, let chosen = panel.url else { return }
+                folder = chosen
+            }
+        } catch {
+            SaveService.shared.showError("Studio could not locate the saved project: \(error.localizedDescription)")
+            return
+        }
 
         let store = store
         let id = projectID
@@ -1360,7 +1464,19 @@ final class StudioViewModel: ObservableObject {
             let failure: String? = await Task.detached(priority: .userInitiated) {
                 do {
                     // The panel has asked before it hands back a name that is taken.
-                    try store.exportProjectFolder(id: id, to: folder, replacingSavedProject: true)
+                    if let linkedFile {
+                        try store.updateSavedProject(id: id, projectFile: linkedFile)
+                    } else {
+                        try store.exportProjectFolder(id: id, to: folder, replacingSavedProject: true)
+                    }
+                    let file = linkedFile ?? folder.appendingPathComponent(folder.lastPathComponent)
+                        .appendingPathExtension(StudioProjectStore.projectFileExtension)
+                    #if APPSTORE
+                    let bookmark = try folder.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+                    try store.rememberDestination(id: id, file: file, bookmark: bookmark)
+                    #else
+                    try store.rememberDestination(id: id, file: file)
+                    #endif
                     return nil
                 } catch {
                     return error.localizedDescription
@@ -1372,7 +1488,7 @@ final class StudioViewModel: ObservableObject {
                 SaveService.shared.showError("Studio could not save this project: \(failure)")
             } else {
                 SaveService.shared.showNotice("Project saved to the folder \(folder.lastPathComponent).")
-                let projectFile = folder
+                let projectFile = linkedFile ?? folder
                     .appendingPathComponent(folder.lastPathComponent)
                     .appendingPathExtension(StudioProjectStore.projectFileExtension)
                 NSWorkspace.shared.activateFileViewerSelecting([projectFile])
@@ -1404,6 +1520,7 @@ final class StudioViewModel: ObservableObject {
 
     /// Asked when the user closes the window. Returns false to keep it open.
     func shouldClose() -> Bool {
+        if isChoosingDestination { return false }
         if isBusy {
             // The copy runs to its end either way; the window stays to say how it went.
             NSSound.beep()
@@ -1449,6 +1566,8 @@ final class StudioViewModel: ObservableObject {
     func tearDown() {
         guard !isTornDown else { return }
         isTornDown = true
+        destinationScope?.stopAccessingSecurityScopedResource()
+        destinationScope = nil
         saveTask?.cancel()
         previewTask?.cancel()
         exportTask?.cancel()

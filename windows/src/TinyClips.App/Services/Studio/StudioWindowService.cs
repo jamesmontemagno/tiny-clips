@@ -36,6 +36,7 @@ public interface IStudioProjectHost
 
     /// <summary>Asks for the folder a project is to be saved in. Null when none was chosen.</summary>
     Task<string?> ChooseSaveFolderAsync(Window owner);
+    Task<string?> ChooseExportFileAsync(Window owner, string folder, string filename);
 
     /// <summary>Copies a saved project into the store as a new draft and opens the editor on the copy.</summary>
     Task<StudioProjectOpenResult> OpenProjectFileAsync(string path);
@@ -141,6 +142,35 @@ public sealed class StudioWindowService : IStudioProjectHost
     /// the window that asks. Returns the folder's path, or null when none was chosen.
     /// </summary>
     public Func<Window, Task<string?>> ChooseSaveFolder { get; set; } = PickFolderAsync;
+    public Func<Window, string, string, Task<string?>> ChooseExportFile { get; set; } = PickExportFileAsync;
+
+    public bool SaveAsForForegroundWindow()
+    {
+        var foreground = GetForegroundWindow();
+        var window = _windows.Values.FirstOrDefault(window => WindowNative.GetWindowHandle(window) == foreground);
+        if (window is null) return false;
+        window.ViewModel.RequestSaveProjectAs();
+        return true;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    Task<string?> IStudioProjectHost.ChooseExportFileAsync(Window owner, string folder, string filename) =>
+        ChooseExportFile(owner, folder, filename);
+
+    private static async Task<string?> PickExportFileAsync(Window owner, string folder, string filename)
+    {
+        var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(owner.AppWindow.Id)
+        {
+            SuggestedFolder = folder,
+            SuggestedFileName = filename,
+            DefaultFileExtension = ".mp4",
+            CommitButtonText = "Export",
+        };
+        picker.FileTypeChoices.Add("MP4 video", [".mp4"]);
+        return (await picker.PickSaveFileAsync())?.Path;
+    }
 
     /// <summary>How a file is shown in its folder: an Explorer window with the file selected.</summary>
     public Action<string> RevealFile { get; set; } = RevealInExplorer;

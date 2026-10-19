@@ -787,7 +787,13 @@ A project lives in the projects root (section 1), which no one is meant to look 
 
 **A saved project** is a folder with exactly one `.tinyclips` file in it. An entry whose name starts with a dot is not counted: a Mac writes `._My Demo.tinyclips` beside the file on a volume that is not its own, such as the stick a project is carried to a PC on.
 
-**Saving.** The folder is a copy as of the moment it is saved. The project stays in the projects root and is edited there; later edits do not reach the folder until it is saved again. Saving over a folder that is already there replaces it, with everything in it, only when all of this holds:
+**Save and Save As.** The folder is a snapshot as of the moment it is saved. The project stays in the projects root and is edited there; internal autosave never writes to the external folder. First Save asks where to put the folder. Subsequent explicit Save updates that same saved project without asking again. Save As asks for a new name/location and makes the successful result the destination for future Save commands.
+
+The association is stored locally as `saved-project.json` inside the internal project folder, keyed implicitly by the internal project id. It records the exact external `.tinyclips` filename and, on sandboxed macOS, a security-scoped folder bookmark. It survives restarting the app, is removed with the internal project, and is never included in a portable snapshot. No portable schema change is required.
+
+**Updating a linked saved project.** Save stages project files and commits metadata last, with rollback on failure. Only validated project-owned files may be updated: exported videos, unrelated files, and unrelated subfolders are preserved. New asset names may not overwrite unrelated entries, and links are not followed for writes. A missing or inaccessible target is reported; Save As can select another destination.
+
+**Save As replacement.** Saving to a different existing folder replaces it, with everything in it, only after confirmation and only when all of this holds:
 
 - The folder is a saved project, and its `.tinyclips` file reads as a project (section 2).
 - Every other entry in it is a file, not a folder and not a link, and is either something a save writes or something a system leaves in a folder by itself:
@@ -795,7 +801,7 @@ A project lives in the projects root (section 1), which no one is meant to look 
   - what a system leaves: `.DS_Store`, `Thumbs.db`, `desktop.ini`, and any name that starts with `._`.
 - Names are compared without regard to case.
 
-Anything else is left exactly as it is and the save is refused, naming the first entry that does not belong. So a project file that was copied into a folder of other things does not make that folder replaceable. Decided by the owner on 7 October 2026; before that, any folder with exactly one `.tinyclips` file was replaced. **macOS still has the earlier rule until its store is changed to match: it replaces any folder with exactly one `.tinyclips` file that is not hidden.**
+Anything else is left exactly as it is and the Save As replacement is refused. Windows names the entry that does not belong; macOS asks the user to choose another name. So a project file copied into a folder of other things does not make that folder replaceable. Both platforms enforce this rule.
 
 **Opening.** Opening a `.tinyclips` file, or a saved project's folder, makes a new project in the projects root and opens that:
 
@@ -804,7 +810,9 @@ Anything else is left exactly as it is and the save is refused, naming the first
 - A file name is followed only when it is a plain name (section 1). A screen, camera, or events name with a path separator makes the project invalid, as in section 1; a `background.image` with one is treated as missing. So a `.tinyclips` file cannot make the app copy a file from outside its folder.
 - The new project gets an id of its own. Opening the same file twice makes two projects.
 - Its `exports` are empty whatever the file says, so it is a draft on this computer (section 12) and cleanup does not remove it until it has been exported here.
-- The folder it was opened from is only read, and is not changed.
+- Opening itself only reads the original folder. The new internal draft remembers its exact source `.tinyclips` file as its saved destination, so a later explicit Save updates that original; internal autosave does not.
+
+**Video export destinations.** Every Studio export command, including Export from the close prompt, asks for an MP4 filename and folder. The default is the folder containing the linked `.tinyclips` file, or the configured video-save folder for an unsaved project. Cancelling the picker starts no render and keeps the editor open. An existing output requires native overwrite confirmation; staged rendering preserves the previous file on failure/cancellation. A late filename collision is reported rather than silently renaming or overwriting without consent. Project data and source recordings cannot be export targets. Export bookkeeping records the actual selected final path only after commit.
 
 A `.tinyclips` file larger than 16 MB is refused unread; one a writer wrote is a few kilobytes.
 

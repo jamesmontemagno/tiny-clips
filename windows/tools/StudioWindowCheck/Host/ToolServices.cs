@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.UI.Xaml;
 using TinyClips.App.Services.Studio;
+using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
@@ -72,6 +73,7 @@ internal sealed class ToolServices
             // check says what a picker answers, and what was shown and said is written down.
             ChooseProjectFile = _ => Task.FromResult(Answer(ref _projectFileAnswer, _projectFilesAsked)),
             ChooseSaveFolder = _ => Task.FromResult(Answer(ref _saveFolderAnswer, _saveFoldersAsked)),
+            ChooseExportFile = (_, _, _) => Task.FromResult<string?>(Storage.GenerateFilePath(CaptureType.Video)),
             RevealFile = path => Revealed.Enqueue(path),
             Notify = message => Notices.Enqueue(message),
         };

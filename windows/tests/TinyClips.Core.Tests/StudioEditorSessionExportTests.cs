@@ -7,6 +7,85 @@ namespace TinyClips.Core.Tests;
 /// <summary>Exporting a project.</summary>
 public sealed class StudioEditorSessionExportTests : StudioEditorSessionTestBase
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SelectedExportUsesTheExactFilenameAndRegistersIt(bool existing)
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        Directory.CreateDirectory(Path.GetDirectoryName(ExportPath)!);
+        if (existing) File.WriteAllText(ExportPath, "previous export");
+        var target = StudioExportTarget.Capture(ExportPath);
+        var export = session.ExportAsync(() => target.Path, default, target);
+        Exporter.Complete();
+
+        Assert.Equal(StudioExportOutcome.Exported, await FinishAsync(export));
+        Assert.Equal(FakeExporter.VideoBytes, File.ReadAllBytes(ExportPath));
+        Assert.Equal(ExportPath, Assert.Single(ExportedPaths));
+        Assert.Equal(ExportPath, Assert.Single(Projects.Load(id).Exports).Path);
+        Assert.Empty(Errors);
+    }
+
+    [Fact]
+    public async Task SelectedExportConflictFailsWithoutChoosingAnotherName()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var target = StudioExportTarget.Capture(ExportPath);
+        var asks = 0;
+        var export = session.ExportAsync(() => { asks++; return target.Path; }, default, target);
+        Directory.CreateDirectory(Path.GetDirectoryName(ExportPath)!);
+        File.WriteAllText(ExportPath, "another file");
+        Exporter.Complete();
+
+        Assert.Equal(StudioExportOutcome.Failed, await FinishAsync(export));
+        Assert.Equal(1, asks);
+        Assert.Equal("another file", File.ReadAllText(ExportPath));
+        Assert.Empty(ExportedPaths);
+        Assert.Empty(Projects.Load(id).Exports);
+        Assert.Contains("changed while exporting", Assert.Single(Errors), StringComparison.Ordinal);
+        Assert.False(File.Exists(Assert.Single(Exporter.Exports).OutputPath));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellingSelectedExportPreservesTheApprovedExistingFile(bool rendered)
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        Directory.CreateDirectory(Path.GetDirectoryName(ExportPath)!);
+        File.WriteAllText(ExportPath, "previous export");
+        var target = StudioExportTarget.Capture(ExportPath);
+        var export = session.ExportAsync(() => target.Path, default, target);
+        if (rendered) Exporter.Complete();
+        session.CancelExport();
+
+        Assert.Equal(StudioExportOutcome.Cancelled, await FinishAsync(export));
+        Assert.Equal("previous export", File.ReadAllText(ExportPath));
+        Assert.Empty(Projects.Load(id).Exports);
+        Assert.Empty(ExportedPaths);
+        Assert.Empty(Errors);
+        Assert.False(File.Exists(Assert.Single(Exporter.Exports).OutputPath));
+    }
+
+    [Fact]
+    public async Task SelectedExportCannotReplaceASourceRecording()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var screen = Projects.GetPaths(id).ScreenPath;
+        var before = File.ReadAllBytes(screen);
+        var target = StudioExportTarget.Capture(screen);
+
+        Assert.Equal(StudioExportOutcome.Failed,
+            await FinishAsync(session.ExportAsync(() => screen, default, target)));
+        Assert.Equal(before, File.ReadAllBytes(screen));
+        Assert.Empty(Exporter.Exports);
+        Assert.Contains("source recording", Assert.Single(Errors), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Export_RendersWritesThePosterRecordsTheLink_ThenRaisesExported()
     {

@@ -979,10 +979,9 @@ the project with a sentence of the check's.
 ### An export whose name is taken
 
 In `Checks\ExportName.cs`, in the `export` group, with the real exporter. The export is
-promised a name that no file has; once its progress has reached 3 % the tool writes another
-file under that name. The video then has to be whole under the next name (read with ffprobe:
-its codec, size, rate and number of frames), the other file has to be as it was, the project
-has to link to the name the video got, and the app has to be told once, of that name.
+given an explicit filename by the export-picker stand-in. While the export runs, the tool
+writes another file under that name. The export must report that the selected file changed,
+leave the other file intact, register no export, and never silently choose another filename.
 
 ## Written on 6 October 2026 and not run
 
@@ -2095,8 +2094,8 @@ time the tool kept nothing but the sentence. It did not happen again in 24 runs 
 
 ## The project as a whole (#429)
 
-The group `project` checks the editor's four commands for the project as a whole: the
-**Project** button of the header and its menu, **Save project…** and **Delete project…** in
+The group `project` checks the editor's commands for the project as a whole: the
+**Project** button of the header and its menu, **Save project**, **Save project as…**, and **Delete project…** in
 the inspector's Project panel, what saving asks and does, a saved project opened again, and
 deleting. It was written and first run on the night of 7 October 2026. The group has 20
 checks; run alone (`--only project`) the tool reports 25, with the five that end every run,
@@ -2116,6 +2115,12 @@ shows none of them and stands in for each (`Host\ToolServices.cs`):
   path the window asks to have shown is written down (`Revealed`).
 - **The notification** the app shows where no window is left to say something: the sentence
   is written down (`Notices`).
+
+The native export picker is also replaced by a delegate that selects a test output path.
+The project checks export a real video into the saved project folder, then verify that
+repeat Save skips the destination dialog and preserves that video byte-for-byte.
+Save As exercises the destination and replacement dialogs.
+The tests do not open the real OS pickers or verify their visual presentation.
 
 The Project menu is not opened either, as no drop-down is: an open menu is a window in
 front. The window brings its menu up to date as opening does (`PrepareProjectMenu`), and the

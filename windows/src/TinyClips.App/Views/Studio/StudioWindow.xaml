@@ -255,11 +255,18 @@
                                         AutomationProperties.AutomationId="StudioSaveProjectItem"
                                         Click="{x:Bind ViewModel.RequestSaveProject}"
                                         KeyboardAcceleratorTextOverride="Ctrl+S"
-                                        Text="Save project&#x2026;">
+                                        Text="Save project">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="{x:Bind editing:StudioGlyphs.SaveProject}" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        x:Name="SaveProjectAsItem"
+                                        AutomationProperties.AcceleratorKey="Ctrl+Shift+S"
+                                        AutomationProperties.AutomationId="StudioSaveProjectAsItem"
+                                        Click="{x:Bind ViewModel.RequestSaveProjectAs}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+S"
+                                        Text="Save project as&#x2026;" />
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
                                         x:Name="DeleteProjectItem"

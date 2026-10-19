@@ -297,7 +297,7 @@ internal sealed partial class WindowChecks
             endShot.Save(endPath);
             saved.Add(endPath);
             var endBox = InShot(editor, endShot, endView);
-            string[] endIds = ["StudioSaveProjectButton", "StudioDeleteProjectButton", "StudioDeleteProjectNote"];
+            string[] endIds = ["StudioSaveProjectButton", "StudioSaveProjectAsButton", "StudioDeleteProjectButton", "StudioDeleteProjectNote"];
             var endPlaces = endIds.Select(id => Until(() => editor.Root.Find(id), found => found is { IsOffscreen: false, Bounds: { Width: > 0, Height: > 0 } }, 2) is { IsOffscreen: false } found ? found.Bounds : default).ToArray();
             var endOutside = endIds.Where((_, index) => endPlaces[index] is not { Width: > 0, Height: > 0 } at
                 || at.X - endShot.ScreenX < endBox.X - 1 || at.Y - endShot.ScreenY < endBox.Y - 1

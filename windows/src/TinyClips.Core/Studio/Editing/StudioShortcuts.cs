@@ -60,6 +60,7 @@ public enum StudioShortcutAction
 
     /// <summary>Asks where to save the project as a folder, and saves it there. Ctrl+S.</summary>
     SaveProject,
+    SaveProjectAs,
 
     /// <summary>Stops the save of the project as a folder that is under way.</summary>
     CancelProjectSave,
@@ -253,7 +254,7 @@ public static class StudioShortcuts
         // not to the window that has the keyboard, so in the app it never arrives here.
         // Where it does arrive, because the hotkey could not be registered, it saves too.
         StudioShortcutKey.O when !input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.OpenProject,
-        StudioShortcutKey.S when !input.IsRepeat => StudioShortcutAction.SaveProject,
+        StudioShortcutKey.S when !input.IsRepeat => input.IsShiftDown ? StudioShortcutAction.SaveProjectAs : StudioShortcutAction.SaveProject,
         _ => StudioShortcutAction.None,
     };
 

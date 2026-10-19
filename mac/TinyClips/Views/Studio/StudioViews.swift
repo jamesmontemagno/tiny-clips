@@ -192,7 +192,11 @@ private struct StudioHeaderView: View {
             Button {
                 viewModel.saveProjectFolder()
             } label: {
-                Label("Save Project…", systemImage: "square.and.arrow.down")
+                Label("Save Project", systemImage: "square.and.arrow.down")
+            }
+            .disabled(!viewModel.canSaveProjectFolder)
+            Button("Save Project As…") {
+                viewModel.saveProjectFolder(saveAs: true)
             }
             .disabled(!viewModel.canSaveProjectFolder)
             Divider()
@@ -732,11 +736,16 @@ private struct StudioInspectorView: View {
             Button {
                 viewModel.saveProjectFolder()
             } label: {
-                Label("Save Project…", systemImage: "square.and.arrow.down")
+                Label("Save Project", systemImage: "square.and.arrow.down")
             }
             .disabled(!viewModel.canSaveProjectFolder)
-            .help("Save the recordings and a .tinyclips file to a folder you choose (Shift-Command-S)")
-            noteText("Saves a copy of the recordings with a .tinyclips file that opens them in Studio again, on this Mac or another.")
+            .help("Save the project to its current folder (Command-S)")
+            Button("Save Project As…") {
+                viewModel.saveProjectFolder(saveAs: true)
+            }
+            .disabled(!viewModel.canSaveProjectFolder)
+            .help("Choose a new project name and folder (Shift-Command-S)")
+            noteText("Save updates the current project folder. Save As chooses a new name and location, including the recordings and a .tinyclips file.")
         }
         StudioInspectorSection(title: "New Recordings") {
             Button("Save as Default Look", systemImage: StudioSymbol.saveDefaultLook) {

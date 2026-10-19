@@ -493,6 +493,9 @@ public sealed partial class StudioViewModel : ObservableObject
             case StudioShortcutAction.SaveProject:
                 RequestSaveProject();
                 break;
+            case StudioShortcutAction.SaveProjectAs:
+                RequestSaveProjectAs();
+                break;
             case StudioShortcutAction.CancelProjectSave:
                 CancelProjectSave();
                 break;
@@ -501,14 +504,50 @@ public sealed partial class StudioViewModel : ObservableObject
 
     // Export
 
+    public Func<string, string, Task<string?>>? ChooseExportFile { get; set; }
+    private bool _isChoosingExport;
+
     /// <summary>
-    /// Renders the video into the folder, and with the file name, the app gives any saved video,
-    /// using the codec chosen in settings.
+    /// Asks for the video filename and folder, then renders using the codec chosen in settings.
     /// </summary>
     public async Task<StudioExportOutcome> ExportAsync()
     {
+        if (_isChoosingExport || !_session.CanExport) return StudioExportOutcome.NotStarted;
+        StudioExportTarget target;
+        _isChoosingExport = true;
+        try
+        {
+            Pause();
+            var saved = SavedProjectFile;
+            var folder = saved is not null ? Path.GetDirectoryName(saved)! : _storage.OutputDirectory(CaptureType.Video);
+            if (saved is not null && !Directory.Exists(folder))
+            {
+                ShowError("The project folder is unavailable. Choose another folder for this export.");
+                folder = _storage.OutputDirectory(CaptureType.Video);
+            }
+
+            if (ChooseExportFile is null)
+            {
+                throw new InvalidOperationException("The Studio export file picker is not available.");
+            }
+
+            var path = await ChooseExportFile(folder, StudioProjectFolder.FolderName(ClipName) + ".mp4");
+            if (path is null) return StudioExportOutcome.Cancelled;
+            if (!_session.CanExport) return StudioExportOutcome.NotStarted;
+            target = StudioExportTarget.Capture(path);
+        }
+        catch (Exception ex)
+        {
+            ShowError($"The export destination could not be chosen: {ex.Message}");
+            return StudioExportOutcome.Failed;
+        }
+        finally
+        {
+            _isChoosingExport = false;
+        }
+
         var wasExporting = _session.IsExporting;
-        var export = _session.ExportAsync(() => _storage.GenerateFilePath(CaptureType.Video), _settings.VideoCodec);
+        var export = _session.ExportAsync(() => target.Path, _settings.VideoCodec, target);
         if (!wasExporting && _session.IsExporting)
         {
             Announce("Export started.", "StudioExportStarted", StudioAnnouncementKind.Information);

@@ -1233,7 +1233,7 @@ public sealed partial class StudioEditorSession
     /// </param>
     /// <param name="codec">The video codec chosen in settings.</param>
     /// <returns>How the export ended. The task itself never fails.</returns>
-    public Task<StudioExportOutcome> ExportAsync(Func<string> createOutputPath, VideoCodec codec)
+    public Task<StudioExportOutcome> ExportAsync(Func<string> createOutputPath, VideoCodec codec, StudioExportTarget? selectedTarget = null)
     {
         ArgumentNullException.ThrowIfNull(createOutputPath);
         if (!CanExport || Model is not { } model || _paths is not { } paths)
@@ -1247,7 +1247,7 @@ public sealed partial class StudioEditorSession
             return Task.FromResult(StudioExportOutcome.NotStarted);
         }
 
-        var task = ExportCoreAsync(model, paths, createOutputPath, codec);
+        var task = ExportCoreAsync(model, paths, createOutputPath, codec, selectedTarget);
         _exportTask = task;
         return task;
     }
@@ -1259,7 +1259,8 @@ public sealed partial class StudioEditorSession
         StudioEditorModel model,
         StudioProjectPaths paths,
         Func<string> createOutputPath,
-        VideoCodec codec)
+        VideoCodec codec,
+        StudioExportTarget? selectedTarget)
     {
         var generation = ++_exportGeneration;
         var cancellation = new CancellationTokenSource();
@@ -1278,6 +1279,7 @@ public sealed partial class StudioEditorSession
         try
         {
             outputPath = createOutputPath();
+            selectedTarget?.Validate(project, paths, StudioProjectDestination.Read(_store, ProjectId));
 
             // The video is written under a name of its own, and gets the one that was made for
             // it only once it is complete, in FinishExport. Making it takes minutes. Whatever
@@ -1311,7 +1313,12 @@ public sealed partial class StudioEditorSession
         var outcome = StudioExportOutcome.Cancelled;
         await PostAsync(() =>
         {
-            outcome = FinishExport(cancellation, isWritten ? stagedPath : null, outputPath, createOutputPath, rendered, failure);
+            if (cancellation.IsCancellationRequested && stagedPath is not null)
+            {
+                DeleteQuietly(stagedPath);
+                isWritten = false;
+            }
+            outcome = FinishExport(cancellation, isWritten ? stagedPath : null, outputPath, createOutputPath, rendered, failure, selectedTarget);
         }).ConfigureAwait(false);
         return outcome;
     }
@@ -1322,7 +1329,8 @@ public sealed partial class StudioEditorSession
         string? outputPath,
         Func<string> createOutputPath,
         StudioEditableState rendered,
-        string? failure)
+        string? failure,
+        StudioExportTarget? selectedTarget)
     {
         if (ReferenceEquals(_exportCancellation, cancellation))
         {
@@ -1338,7 +1346,16 @@ public sealed partial class StudioEditorSession
             {
                 // The video gets its name and the project its link to it in one step on this
                 // thread, so that whatever notices the new file finds the link as well.
-                var placedPath = StudioFilePlacement.Place(stagedPath, outputPath, createOutputPath, "the video was being made");
+                string placedPath;
+                if (selectedTarget is not null)
+                {
+                    selectedTarget.Commit(stagedPath);
+                    placedPath = selectedTarget.Path;
+                }
+                else
+                {
+                    placedPath = StudioFilePlacement.Place(stagedPath, outputPath, createOutputPath, "the video was being made");
+                }
                 var saved = _store.RecordExport(ProjectId, placedPath);
                 Model?.RefreshBookkeeping(saved);
                 Model?.MarkExported(rendered);

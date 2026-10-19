@@ -122,6 +122,8 @@ public sealed partial class StudioWindow : Window
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         ViewModel.OpenProjectRequested += OnOpenProjectRequested;
         ViewModel.SaveProjectRequested += OnSaveProjectRequested;
+        ViewModel.SaveProjectAsRequested += OnSaveProjectAsRequested;
+        ViewModel.ChooseExportFile = ChooseExportFileAsync;
         ViewModel.DeleteProjectRequested += OnDeleteProjectRequested;
         ViewModel.ProjectSaved += OnProjectSaved;
         Activated += OnActivated;
@@ -817,6 +819,8 @@ public sealed partial class StudioWindow : Window
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         ViewModel.OpenProjectRequested -= OnOpenProjectRequested;
         ViewModel.SaveProjectRequested -= OnSaveProjectRequested;
+        ViewModel.SaveProjectAsRequested -= OnSaveProjectAsRequested;
+        ViewModel.ChooseExportFile = null;
         ViewModel.DeleteProjectRequested -= OnDeleteProjectRequested;
         ViewModel.ProjectSaved -= OnProjectSaved;
 

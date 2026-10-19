@@ -36,6 +36,9 @@ public sealed partial class StudioViewModel
 
     /// <summary>Raised when Save project was asked for, by its buttons or by Ctrl+S, while the project can be saved.</summary>
     public event EventHandler? SaveProjectRequested;
+    public event EventHandler? SaveProjectAsRequested;
+
+    public string? SavedProjectFile => StudioProjectDestination.Read(_store, ProjectId);
 
     /// <summary>Raised when Delete project was asked for, while the project can be deleted.</summary>
     public event EventHandler? DeleteProjectRequested;
@@ -152,6 +155,18 @@ public sealed partial class StudioViewModel
         }
     }
 
+    public void RequestSaveProjectAs()
+    {
+        if (CanSaveProject)
+        {
+            Pause();
+            SaveProjectAsRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public Task<StudioProjectFolderSaveOutcome> SaveLinkedProjectAsync(string projectFile) =>
+        SaveProjectAsync(new StudioSaveTarget(StudioSaveTargetKind.SavedProject, Path.GetDirectoryName(projectFile)!, string.Empty), projectFile);
+
     /// <summary>Asks for this project to be deleted. The window asks first.</summary>
     public void RequestDeleteProject()
     {
@@ -173,7 +188,7 @@ public sealed partial class StudioViewModel
     /// read out, and a failure is shown in the message bar in the store's own sentence.
     /// Never fails.
     /// </summary>
-    public async Task<StudioProjectFolderSaveOutcome> SaveProjectAsync(StudioSaveTarget target)
+    public async Task<StudioProjectFolderSaveOutcome> SaveProjectAsync(StudioSaveTarget target, string? linkedFile = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         if (!target.CanSave)
@@ -181,7 +196,7 @@ public sealed partial class StudioViewModel
             return StudioProjectFolderSaveOutcome.NotStarted;
         }
 
-        var save = _session.SaveProjectFolderAsync(target.Folder, target.Replaces);
+        var save = _session.SaveProjectFolderAsync(target.Folder, target.Replaces, linkedFile);
         if (_session.IsSavingProjectFolder)
         {
             Announce(StudioProjectFolderText.SavingMessage, ProjectSaveActivityId, StudioAnnouncementKind.Information);

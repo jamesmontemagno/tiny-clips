@@ -28,6 +28,7 @@ public sealed partial class StudioWindow
     internal void PrepareProjectMenu()
     {
         SaveProjectItem.IsEnabled = ViewModel.CanSaveProject;
+        SaveProjectAsItem.IsEnabled = ViewModel.CanSaveProject;
         DeleteProjectItem.IsEnabled = ViewModel.CanDeleteProject;
         FillOpenRecent();
         _ = ViewModel.RefreshRecentProjectsAsync();
@@ -122,6 +123,12 @@ public sealed partial class StudioWindow
     // Saving
 
     private async void OnSaveProjectRequested(object? sender, EventArgs e)
+        => await SaveProjectAsync(saveAs: false);
+
+    private async void OnSaveProjectAsRequested(object? sender, EventArgs e)
+        => await SaveProjectAsync(saveAs: true);
+
+    private async Task SaveProjectAsync(bool saveAs)
     {
         if (_isClosed || _isPromptOpen)
         {
@@ -131,7 +138,11 @@ public sealed partial class StudioWindow
         _saveAskedFrom = RootGrid.XamlRoot is { } root ? FocusManager.GetFocusedElement(root) as Control : null;
         try
         {
-            if (await AskWhereToSaveAsync() is { } target && !_isClosed)
+            if (!saveAs && ViewModel.SavedProjectFile is { } projectFile)
+            {
+                await ViewModel.SaveLinkedProjectAsync(projectFile);
+            }
+            else if (await AskWhereToSaveAsync() is { } target && !_isClosed)
             {
                 await ViewModel.SaveProjectAsync(target);
             }
@@ -170,6 +181,22 @@ public sealed partial class StudioWindow
         }
 
         return null;
+    }
+
+    private async Task<string?> ChooseExportFileAsync(string folder, string filename)
+    {
+        if (_isClosed || _isPromptOpen) return null;
+        _isPromptOpen = true;
+        var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as Control;
+        try
+        {
+            return await _projects.ChooseExportFileAsync(this, folder, filename);
+        }
+        finally
+        {
+            _isPromptOpen = false;
+            if (!_isClosed && _isActive) focused?.Focus(FocusState.Programmatic);
+        }
     }
 
     private async Task<bool> AskWhetherToReplaceAsync(StudioSaveTarget target)
