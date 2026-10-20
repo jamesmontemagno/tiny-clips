@@ -1,0 +1,10 @@
+{
+  "format": "tinyclips-project-pulse-config",
+  "version": 1,
+  "repository": "jamesmontemagno/tiny-clips",
+  "repositories": ["jamesmontemagno/tiny-clips", "jamesmontemagno/tiny-clips-website", "jamesmontemagno/tiny-clips-marketing"],
+  "team": ["jamesmontemagno", "katiesavage", "jukasper", "pierceboggan", "burkeholland"],
+  "launchLabel": "2.0 Launch",
+  "platformLabels": { "mac": "macOS", "windows": "windows" },
+  "refreshSeconds": 300
+}

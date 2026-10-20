@@ -207,6 +207,10 @@ Contributions are welcome! Please feel free to submit a [Pull Request](https://g
 
 Found a bug or have a feature request? [Open an issue](https://github.com/jamesmontemagno/tiny-clips/issues/new).
 
+## Project Canvas
+
+The [TinyClips Project Pulse canvas](.github/extensions/tinyclips-project-pulse/README.md) brings together compact team GitHub avatars, recent commits, PRs, assignments, and 2.0 launch progress across the app, website, and marketing repositories. It includes new-work notifications and a dedicated Momentum tab with an on-demand animated 7/30/90-day chart. Open `tinyclips-project-pulse` in a Copilot host with project canvas support. Choose automatic refresh every 5, 10, 15, 20, or 30 minutes, or Never, beside Refresh now; the default is five minutes. Shared configuration lives in the repository and personal filters and refresh preferences stay private.
+
 ## Release Tagging Helpers
 
 Create one or both release tags by selecting platforms (`--mac`, `--windows`):

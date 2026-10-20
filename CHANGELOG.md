@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- Project Pulse now has a saved personal automatic-refresh dropdown beside Refresh now: every 5, 10, 15, 20, or 30 minutes, or Never.
+- Project Pulse celebrates newly observed PR and issue lifecycle milestones with a brief, silent confetti burst and a descriptive notification, respecting reduced motion and avoiding first-load/cached-refresh repeats.
+- Added the TinyClips Project Pulse Copilot canvas for app, website, and marketing team activity, compact GitHub avatar cards with per-person open PR counts for authors or requested reviewers, repository filtering, issue/PR ownership, unassigned work, and cross-platform 2.0 launch progress. Includes five-minute/manual refresh, new/updated-work notifications, a dedicated Momentum tab with an on-demand animated 7/30/90-day chart tracking commits, PRs, and issues opened/completed, and confirmed assignment/issue-state edits.
+
 ### Changed
 - Studio now remembers each project's saved location across restarts. **Save Project** (Command-S) updates it; **Save Project As...** (Shift-Command-S) chooses a new location. Opening a saved project links explicit Save back to its original folder, while internal autosave stays local.
 - Studio video export now asks for a filename and destination, starting in the saved project folder or the configured video folder. Confirmed overwrites preserve the previous video if rendering fails or is cancelled, and later project saves preserve exported videos in the project folder.
