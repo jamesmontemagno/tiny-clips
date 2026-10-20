@@ -10,6 +10,7 @@ let refreshing;
 let timer;
 let nextRefreshAt;
 let currentItem;
+let detailGeneration = 0;
 let dirty = false;
 let saving = false;
 let viewRevision = 0;
@@ -297,21 +298,26 @@ function detailNotice(message) {
     $("#detail-notice").textContent = message || "";
 }
 async function openDetail(item) {
-    currentItem = null;
-    dirty = false;
-    detailNotice("");
-    $("#detail-status").textContent = "";
     $("#detail-heading").textContent = `${item.repository}#${item.number}`;
-    $("#detail-content").replaceChildren(h("p", {}, "Reading current details from GitHub..."));
     $("#detail").showModal();
     await loadDetail(item);
 }
 async function loadDetail(item) {
+    const generation = ++detailGeneration;
+    currentItem = null;
+    dirty = false;
+    detailNotice("");
+    $("#detail-status").textContent = "";
+    $("#detail-content").replaceChildren(h("p", {}, "Reading current details from GitHub..."));
     try {
-        currentItem = await action("get_item_detail", { number: item.number, kind: item.kind, repository: item.repository });
+        const result = await action("get_item_detail", { number: item.number, kind: item.kind, repository: item.repository });
+        if (generation !== detailGeneration || !$("#detail").open) return;
+        currentItem = result;
         dirty = false;
         renderDetail();
-    } catch (error) { detailNotice(error.message); }
+    } catch (error) {
+        if (generation === detailGeneration && $("#detail").open) detailNotice(error.message);
+    }
 }
 function renderDetail() {
     const item = currentItem;
@@ -351,7 +357,7 @@ function renderDetail() {
         h("p", { class: "body-copy" }, item.bodyText || "No description provided."), editor);
 }
 async function saveEdit(type) {
-    if (saving) return;
+    if (saving || !currentItem || !$("#detail").open) return;
     if (snapshot.repositories.find(source => source.repository === currentItem.repository)?.errors.length) {
         detailNotice("This repository is stale. Refresh successfully and reload details before applying changes.");
         return;
@@ -368,12 +374,13 @@ async function saveEdit(type) {
         ...(selection === "OPEN" ? {} : { reason: selection }), expectedState: item.expectedState, confirmed: true,
     };
     saving = true;
+    let confirmed = false;
     $("#detail-status").textContent = "Applying and verifying with GitHub...";
-    for (const button of $("#detail-content").querySelectorAll("button")) button.disabled = true;
+    for (const control of $("#detail-content").querySelectorAll("input, select, button")) control.disabled = true;
     try {
         currentItem = await action(type === "assign" ? "update_assignees" : "set_issue_state", input);
         dirty = false;
-        renderDetail();
+        confirmed = true;
         $("#detail-status").textContent = "GitHub confirmed the change.";
         await refresh(true);
     } catch (error) {
@@ -381,11 +388,16 @@ async function saveEdit(type) {
         $("#detail-status").textContent = "Change not confirmed.";
         const reload = h("button", { class: "button", onclick: () => loadDetail(item) }, "Reload and reconcile");
         $("#detail-notice").append(" ", reload);
-    } finally { saving = false; }
+    } finally {
+        saving = false;
+        if (confirmed) renderDetail();
+    }
 }
 function closeDetail() {
     if (saving) { detailNotice("Wait for GitHub verification before closing."); return; }
     if (dirty && !window.confirm("Discard your unapplied changes?")) return;
+    detailGeneration++;
+    currentItem = null;
     $("#detail").close();
 }
 $("#refresh").addEventListener("click", () => refresh(true));

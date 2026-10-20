@@ -428,6 +428,28 @@ test("item versions include state and ownership, independent of assignee orderin
     assert.notEqual(itemVersion(first), itemVersion({ ...first, state: "CLOSED" }));
 });
 
+test("detail queries select only the requested GraphQL type and reject missing projections", async () => {
+    for (const kind of ["issue", "pr"]) {
+        const type = kind === "issue" ? "Issue" : "PullRequest";
+        const otherType = kind === "issue" ? "PullRequest" : "Issue";
+        let missing = false;
+        const fake = mock({ run: async args => {
+            const query = args.find(arg => arg.startsWith("query="));
+            if (!query?.includes("issueOrPullRequest")) return;
+            assert.match(query, new RegExp(`\\.\\.\\. on ${type}\\s*\\{`));
+            assert.doesNotMatch(query, new RegExp(`\\.\\.\\. on ${otherType}\\s*\\{`));
+            return { data: { repository: { issueOrPullRequest: missing ? {} : kind === "issue" ? rawIssue(1) : rawPr(2) } } };
+        } });
+        const data = createProjectData(config, { run: fake.run });
+        const input = { kind, number: kind === "issue" ? 1 : 2 };
+        const item = await data.detail(input);
+        assert.equal(item.kind, kind);
+        assert.equal(item.expectedState, itemVersion(item));
+        missing = true;
+        await assert.rejects(() => data.detail(input), error => error.code === "invalid_input" && /not found/.test(error.message));
+    }
+});
+
 test("loopback routes enforce origin, host, nonce, body shapes and static allowlists", async t => {
     const fake = mock();
     const context = { data: createProjectData(config, { run: fake.run, now: () => time }), preferences: { read: async () => defaults, write: async value => value } };
@@ -468,7 +490,7 @@ test("the set-view action preserves preferences omitted by a partial update", as
     assert.equal(updated.launchOnly, true);
 });
 
-test("immutable commit histories are reused when the branch tip has not changed", async () => {
+test("commit histories are reused within the enriched metadata cache lifetime", async () => {
     const fake = mock({ run: async args => {
         const query = args.find(arg => arg.startsWith("query="));
         if (query?.includes("viewerPermission")) return { data: { repository: {
@@ -482,6 +504,45 @@ test("immutable commit histories are reused when the branch tip has not changed"
     await data.snapshot();
     await data.snapshot(true);
     assert.equal(fake.calls.filter(args => args.some(arg => arg.includes("object(expression"))).length, 1);
+});
+
+test("unchanged commit SHAs refresh mutable launch associations at the five-minute boundary", async () => {
+    let clock = time;
+    let linked = { number: 2, labels: connection([]), closingIssuesReferences: connection([]) };
+    const fake = mock({ run: async args => {
+        const query = args.find(arg => arg.startsWith("query="));
+        if (query?.includes("viewerPermission")) return { data: { repository: {
+            nameWithOwner: config.repository, url: "https://github.com", viewerPermission: "WRITE",
+            issues: { totalCount: 1 }, pullRequests: { totalCount: 0 }, label: { name: config.launchLabel },
+            defaultBranchRef: { name: "main", target: { oid: "a".repeat(40), statusCheckRollup: null } },
+        } } };
+        if (query?.includes("pullRequests(first")) return { data: { repository: { pullRequests: connection([]) } } };
+        if (query?.includes("object(expression")) {
+            return { data: { repository: { object: { history: connection([{
+                ...commit("b".repeat(40)), associatedPullRequests: connection([structuredClone(linked)]),
+            }]) } } } };
+        }
+    } });
+    const data = createProjectData(config, { run: fake.run, now: () => clock });
+    const count = () => fake.calls.filter(args => args.some(arg => arg.includes("object(expression"))).length;
+    assert.equal((await data.snapshot()).commits[0].launch, false);
+    linked.labels = connection([{ name: config.launchLabel }]);
+    clock += config.refreshSeconds * 1000 - 1;
+    assert.equal((await data.snapshot(true)).commits[0].launch, false);
+    assert.equal(count(), 1);
+    clock++;
+    assert.equal((await data.snapshot(true)).commits[0].launch, true);
+    assert.equal(count(), 2);
+    linked.labels = connection([]);
+    clock += config.refreshSeconds * 1000;
+    assert.equal((await data.snapshot(true)).commits[0].launch, false);
+    assert.equal(count(), 3);
+    linked.closingIssuesReferences = connection([{ labels: connection([{ name: config.launchLabel }]) }]);
+    clock += config.refreshSeconds * 1000;
+    const history = await data.history(30);
+    assert.equal(history.commits[0].launch, true);
+    assert.equal(history.commits[0].sha, "b".repeat(40));
+    assert.equal(count(), 4);
 });
 
 test("transient reads retry once but persistent errors remain visible", async () => {
@@ -900,6 +961,28 @@ test("momentum exposes partial repository failures instead of attributing them z
     assert.equal(result.errors[0].repository, config.repositories[1]);
     assert.equal(result.series.at(-1).commits, 2);
     assert.equal(result.series.at(-1).issuesOpened, 2);
+});
+
+test("momentum canonicalizes repository casing before filtering, caching and coalescing", async () => {
+    const fake = mock();
+    const hub = createProjectHub(config, { run: fake.run, now: () => time });
+    const repository = config.repositories[1];
+    const [canonical, uppercase] = await Promise.all([
+        hub.momentum({ repository, days: 7 }),
+        hub.momentum({ repository: repository.toUpperCase(), days: 7 }),
+    ]);
+    assert.deepEqual(uppercase, canonical);
+    assert.deepEqual(uppercase.repositories, [repository]);
+    assert.equal(uppercase.selection.repository, repository);
+    assert.equal(uppercase.series.at(-1).commits, 1);
+    assert.equal(uppercase.series.at(-1).issuesOpened, 1);
+    assert.equal(uppercase.errors.length, 0);
+    assert.equal(fake.calls.filter(args => args.some(value => value.includes("viewerPermission"))).length, 1);
+    const calls = fake.calls.length;
+    assert.deepEqual(await hub.momentum({ repository: "JamesMontemagno/Tiny-Clips-Website", days: 7 }), canonical);
+    assert.equal(fake.calls.length, calls);
+    await assert.rejects(() => hub.momentum({ repository: "outside/repo", days: 7 }), /configured/);
+    assert.equal(fake.calls.length, calls);
 });
 
 test("repository preference selection is allowlisted and normalizes configured identity casing", async t => {

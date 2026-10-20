@@ -183,7 +183,8 @@ export function createProjectData(config, { run = runGh, now = () => Date.now(),
         for (const ref of refs) {
             let after = null;
             const historyKey = `${ref}:${days}`;
-            let nodes = histories.get(historyKey);
+            const previous = histories.get(historyKey);
+            let nodes = previous && now() - previous.time < config.refreshSeconds * 1000 ? previous.nodes : null;
             if (!nodes) {
                 nodes = [];
                 for (let page = 0; page < 100; page++) {
@@ -196,7 +197,7 @@ export function createProjectData(config, { run = runGh, now = () => Date.now(),
                     after = history.pageInfo.endCursor;
                 }
                 if (/^[a-f\d]{40}$/i.test(ref)) {
-                    histories.set(historyKey, nodes);
+                    histories.set(historyKey, { nodes, time: now() });
                     if (histories.size > 20) histories.delete(histories.keys().next().value);
                 }
             }
@@ -274,12 +275,13 @@ export function createProjectData(config, { run = runGh, now = () => Date.now(),
         if (input.repository && input.repository.toLowerCase() !== config.repository.toLowerCase()) {
             throw new PulseError("invalid_input", "The requested repository does not match this data source.");
         }
+        const type = input.kind === "issue" ? "Issue" : "PullRequest";
+        const fields = input.kind === "issue" ? issueFields : prFields;
         const data = (await gql(`query($owner:String!,$name:String!,$number:Int!){
             repository(owner:$owner,name:$name){issueOrPullRequest(number:$number){
-                ... on Issue{${issueFields} bodyText}
-                ... on PullRequest{${prFields} bodyText}
+                ... on ${type}{${fields} bodyText}
             }}}`, { number: input.number })).repository.issueOrPullRequest;
-        if (!data || (input.kind === "pr") !== Object.hasOwn(data, "headRefOid")) throw new PulseError("invalid_input", "The requested issue or pull request was not found.");
+        if (!data?.id || (input.kind === "pr") !== Object.hasOwn(data, "headRefOid")) throw new PulseError("invalid_input", "The requested issue or pull request was not found.");
         const item = await normalize(data, input.kind);
         return { ...item, expectedState: itemVersion(item) };
     }

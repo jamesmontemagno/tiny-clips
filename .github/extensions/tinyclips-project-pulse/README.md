@@ -43,7 +43,7 @@ Reading requires access to the configured repositories. Assignment and issue-sta
 
 Select an issue/PR title to open current details. Review the comma-separated assignee list and check the confirmation before **Apply assignees**; an omitted existing assignee will be removed. Issues also support explicitly closing as completed/not planned or reopening. PR lifecycle is read-only.
 
-Edits are disabled when the item's repository is stale or the account cannot update the item. Every item carries its repository identity through details, confirmations, and writes, so identical issue numbers in different repositories cannot collide. Before writing, the extension checks current item state against the detail record; after writing, it verifies the result. This is best-effort conflict detection, not an atomic transaction across clients. A failed or ambiguous write requires reloading and reconciling, never a blind automatic retry.
+Edits are disabled when the item's repository is stale or the account cannot update the item. Only the latest detail request for an open editor may populate it; late responses/errors from a closed or replaced editor are ignored. All editor inputs, selects, and buttons stay disabled during a write and its follow-up refresh. Every item carries its repository identity through details, confirmations, and writes, so identical issue numbers in different repositories cannot collide. Before writing, the extension checks current item state against the detail record; after writing, it verifies the result. This is best-effort conflict detection, not an atomic transaction across clients. A failed or ambiguous write requires reloading and reconciling, never a blind automatic retry.
 
 GitHub credentials stay in `gh`. The loopback server uses an ephemeral port, same-origin routes, Host/Origin validation, and a header-only mutation nonce. GitHub/avatar links are host-restricted. Diagnostics use the Copilot session logger.
 
@@ -52,7 +52,7 @@ GitHub credentials stay in `gh`. The loopback server uses an ephemeral port, sam
 - Repository totals are GitHub totals; scoped issue totals come from paginated results, not visible cards. Repository-qualified issue numbers and commit identities remain distinct across all three sources.
 - All open issues/PRs and all launch-labeled issues are loaded. Recent issue/PR history covers 30 days; lists provide Show more controls.
 - Pending PR review requests are paginated, shown in work lists/details, and included in person filters and refresh notifications. Completed reviews without a pending request do not count as assigned review work. Team review requests are displayed but not attributed to individual teammates without verified membership; no membership or co-authorship is guessed.
-- Commits cover the default branch and open PR heads for 30 days, deduplicated by SHA. Commit time is GitHub's committed date, not proof of when a push happened.
+- Commits cover the default branch and open PR heads for 30 days, deduplicated by SHA. Enriched history at unchanged commit SHAs is cached for at most five minutes so mutable PR associations and launch/linked-issue labels are re-read even when no new commits arrive. Commit time is GitHub's committed date, not proof of when a push happened.
 - Activity uses created/closed/merged/updated timestamps. An updated record does not identify the actor who edited it; only opening and commit records attribute a supplied author.
 - Issues use platform labels. PRs use labels and changed-file paths when the first 100 paths are complete. Commits inherit known associated-PR platforms; otherwise they remain Unclassified.
 - Launch PRs have the launch label or a GitHub closing relationship to a labeled issue; commits use their associated PRs. Association metadata is bounded to five PRs per commit, 20 closing issues per PR, and 20 labels per linked item. Unknown associations are not guessed from titles or body text.
@@ -84,7 +84,7 @@ Writes use unique same-directory temporary files and atomic rename. Every read v
 | `update_assignees` | Apply `repository`, `kind`, `number`, exact desired `assignees`, current `expectedState`, and `confirmed: true` |
 | `set_issue_state` | Apply `repository`, `number`, `state: "OPEN" \| "CLOSED"`, current `expectedState`, and `confirmed: true`; closing requires `reason: "COMPLETED" \| "NOT_PLANNED"` |
 
-Repository inputs must match the configured allowlist. Omitting the repository on an item action retains the primary-repository default for compatibility; use the explicit identity from the snapshot. Agent mutations require the user's intent/confirmation just like browser edits. Read a fresh detail record first. Actions return structured results; expected failures are `CanvasError`s.
+Repository inputs must match the configured allowlist, case-insensitively. Momentum normalizes them to the configured identity before filtering, coalescing requests, and caching history. Omitting the repository on an item action retains the primary-repository default for compatibility; use the explicit identity from the snapshot. Agent mutations require the user's intent/confirmation just like browser edits. Read a fresh detail record first. Actions return structured results; expected failures are `CanvasError`s.
 
 ## Validation
 

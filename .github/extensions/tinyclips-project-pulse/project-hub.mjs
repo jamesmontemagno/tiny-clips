@@ -19,11 +19,12 @@ export function createProjectHub(config, { run = runGh, now = () => Date.now(), 
     const sources = new Map(repositories.map(repository => [repository, createProjectData(
         { ...config, repository }, { run: sharedRun, now, log, profiles, requireLaunchLabel: repository === config.repository },
     )]));
-    function source(repository = config.repository) {
+    function repositoryName(repository = config.repository) {
         const name = repositories.find(value => value.toLowerCase() === repository.toLowerCase());
         if (!name) throw new PulseError("invalid_input", "Choose one of the configured TinyClips repositories.");
-        return sources.get(name);
+        return name;
     }
+    const source = repository => sources.get(repositoryName(repository));
     let pending;
     const momentumPending = new Map();
     const momentumCache = new Map();
@@ -69,8 +70,8 @@ export function createProjectHub(config, { run = runGh, now = () => Date.now(), 
     async function momentum(input) {
         validate(momentumSchema, input);
         const selection = { ...defaults, ...input };
+        if (selection.repository !== "all") selection.repository = repositoryName(selection.repository);
         const selected = selection.repository === "all" ? repositories : [selection.repository];
-        for (const repository of selected) source(repository);
         const key = JSON.stringify(selected) + ":" + selection.days;
         let records = momentumCache.get(key);
         if (!records || now() - records.time >= config.refreshSeconds * 1000) {
