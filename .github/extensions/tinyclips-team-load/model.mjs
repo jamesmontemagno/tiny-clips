@@ -63,17 +63,90 @@ export function normalizeTracking(value, { maxPeople = MAX_PEOPLE, maxRepos = MA
     return { people, repos };
 }
 
-export function validateItemRef(input, { title = false, login = false } = {}) {
+export function validateItemRef(input, { title = false, login = false, additional = false, from = false } = {}) {
     const fail = message => { throw new TeamLoadError("invalid_input", message); };
     if (!input || typeof input !== "object" || Array.isArray(input)) fail("Provide an item.");
-    const allowed = ["repository", "number", ...(title ? ["title"] : []), ...(login ? ["login"] : [])];
+    const logins = [...(login ? ["login"] : []), ...(from ? ["from"] : [])];
+    const allowed = ["repository", "number", ...(title ? ["title"] : []), ...logins, ...(additional ? ["additional"] : [])];
     const extra = Object.keys(input).filter(key => !allowed.includes(key));
     if (extra.length) fail(`Unknown field: ${extra[0]}.`);
     if (typeof input.repository !== "string" || !repoPattern.test(input.repository)) fail("repository must look like owner/name.");
     if (!Number.isInteger(input.number) || input.number < 1) fail("number must be a positive integer.");
     if (title && input.title !== undefined && (typeof input.title !== "string" || input.title.length > 300)) fail("title must be a short string.");
-    if (login && (typeof input.login !== "string" || !loginPattern.test(input.login.replace(/^@/, "")))) fail("login must be a valid GitHub login.");
-    return { ...input, ...(login ? { login: canonLogin(input.login.replace(/^@/, "")) } : {}) };
+    const normalized = {};
+    for (const name of logins) {
+        if (typeof input[name] !== "string" || !loginPattern.test(input[name].replace(/^@/, ""))) fail(`${name} must be a valid GitHub login.`);
+        normalized[name] = canonLogin(input[name].replace(/^@/, ""));
+    }
+    if (from && normalized.from === normalized.login) fail("Choose a different assignee to move the issue to.");
+    if (additional && input.additional !== undefined && typeof input.additional !== "boolean") fail("additional must be true or false.");
+    return { ...input, ...normalized };
+}
+
+export const MOMENTUM_DAYS = Object.freeze([7, 30, 90]);
+export const MOMENTUM_DEFAULT_DAYS = 7;
+export const MOMENTUM_METRICS = Object.freeze([
+    { key: "commits", label: "Commits" },
+    { key: "prsOpened", label: "PRs opened" },
+    { key: "prsMerged", label: "PRs merged" },
+    { key: "issuesOpened", label: "Issues opened" },
+    { key: "issuesCompleted", label: "Issues completed" },
+]);
+const MOMENTUM_EVENT_METRIC = { commit: "commits", prOpened: "prsOpened", prMerged: "prsMerged", issueOpened: "issuesOpened", issueCompleted: "issuesCompleted" };
+const DAY_MS = 86_400_000;
+const dayKey = time => new Date(time).toISOString().slice(0, 10);
+// Start (UTC midnight, ms) of a window that ends today and spans `days` calendar days.
+export const momentumStart = (days, now = Date.now()) => Math.floor(now / DAY_MS) * DAY_MS - (days - 1) * DAY_MS;
+
+// `person` and `everyone` are separate fields so that a GitHub login can never collide with a scope keyword.
+export function validateMomentumInput(input = {}) {
+    const fail = message => { throw new TeamLoadError("invalid_input", message); };
+    if (!input || typeof input !== "object" || Array.isArray(input)) fail("Provide momentum options.");
+    const extra = Object.keys(input).filter(key => !["days", "person", "everyone", "repository", "force"].includes(key));
+    if (extra.length) fail(`Unknown field: ${extra[0]}.`);
+    const days = input.days ?? MOMENTUM_DEFAULT_DAYS;
+    if (!MOMENTUM_DAYS.includes(days)) fail(`days must be one of ${MOMENTUM_DAYS.join(", ")}.`);
+    if (input.person !== undefined && input.person !== null && (typeof input.person !== "string" || !loginPattern.test(input.person.replace(/^@/, "")))) fail("person must be a valid GitHub login.");
+    if (input.everyone !== undefined && typeof input.everyone !== "boolean") fail("everyone must be true or false.");
+    if (input.person && input.everyone) fail("Choose a person or everyone, not both.");
+    if (input.repository !== undefined && input.repository !== null && (typeof input.repository !== "string" || !repoPattern.test(input.repository))) fail("repository must look like owner/name.");
+    if (input.force !== undefined && typeof input.force !== "boolean") fail("force must be true or false.");
+    return {
+        days,
+        person: input.person ? canonLogin(input.person.replace(/^@/, "")) : null,
+        everyone: input.everyone === true,
+        repository: input.repository ?? null,
+        force: input.force === true,
+    };
+}
+
+// Bucket activity events into UTC days. Events are { type, at, key, actors }, with actors as GitHub logins.
+// Scope: a person (any event they are an actor on), everyone (every event), or the team (any tracked actor).
+export function dailyMomentum(events, { days, person = null, everyone = false, team = [] }, now = Date.now()) {
+    const start = momentumStart(days, now);
+    const series = Array.from({ length: days }, (_, index) => ({ date: dayKey(start + index * DAY_MS), ...Object.fromEntries(MOMENTUM_METRICS.map(metric => [metric.key, 0])) }));
+    const byDate = new Map(series.map(day => [day.date, day]));
+    const totals = Object.fromEntries(MOMENTUM_METRICS.map(metric => [metric.key, 0]));
+    const teamLogins = new Set(team.map(canonLogin));
+    const wanted = person ? canonLogin(person) : null;
+    const seen = new Set();
+    let unattributed = 0;
+    for (const event of events) {
+        const metric = MOMENTUM_EVENT_METRIC[event.type];
+        const time = Date.parse(event.at);
+        if (!metric || !Number.isFinite(time) || time > now) continue;
+        const day = byDate.get(dayKey(time));
+        if (!day) continue;
+        const id = `${event.type}:${event.key}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const actors = (event.actors ?? []).map(canonLogin).filter(Boolean);
+        if (!actors.length) unattributed++;
+        if (wanted ? !actors.includes(wanted) : !everyone && !actors.some(login => teamLogins.has(login))) continue;
+        day[metric]++;
+        totals[metric]++;
+    }
+    return { series, totals, unattributed };
 }
 
 // Build each tracked person's current load from the open items in the tracked repositories.

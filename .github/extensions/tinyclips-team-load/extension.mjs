@@ -51,7 +51,7 @@ session = await joinSession({
     canvases: [createCanvas({
         id: "tinyclips-team-load",
         displayName: "TinyClips Team Load",
-        description: "See what each TinyClips teammate and Copilot is working on right now, and assign unowned issues to whoever has capacity.",
+        description: "See what each TinyClips teammate and Copilot is working on right now, how active the team has been over time, and assign or reassign issues to whoever has capacity.",
         actions: [
             action("get_state", "Read tracked people/repos and the open issues and PRs that make up each person's current load."),
             action("refresh", "Refresh live data from GitHub.", { type: "object", properties: { force: { type: "boolean" } }, additionalProperties: false }),
@@ -59,10 +59,15 @@ session = await joinSession({
                 type: "object", required: ["people", "repos"], additionalProperties: false,
                 properties: { people: { type: "array", items: { type: "string" } }, repos: { type: "array", items: { type: "string" } } },
             }),
-            action("assign", "Assign an unowned issue to a tracked person, or to Copilot with login 'copilot'.", { type: "object", required: ["repository", "number", "login"], additionalProperties: false, properties: { ...repoRef, login: { type: "string" } } }),
-            action("unassign", "Remove an assignee from an issue (undo).", { type: "object", required: ["repository", "number", "login"], additionalProperties: false, properties: { ...repoRef, login: { type: "string" } } }),
-            action("start_session", "Assign an issue to the current user and start a focused work session for it in this conversation.", { type: "object", required: ["repository", "number"], additionalProperties: false, properties: { ...repoRef, title: { type: "string" } } }),
+            action("assign", "Assign an issue to a tracked person, or to Copilot with login 'copilot'. Without `additional` the issue must be unowned; with `additional: true` the person is added alongside existing assignees.", { type: "object", required: ["repository", "number", "login"], additionalProperties: false, properties: { ...repoRef, login: { type: "string" }, additional: { type: "boolean" } } }),
+            action("unassign", "Remove an assignee from an issue (also used to undo an assign).", { type: "object", required: ["repository", "number", "login"], additionalProperties: false, properties: { ...repoRef, login: { type: "string" } } }),
+            action("reassign", "Move an open issue from one assignee to another, preserving other assignees. The new owner is verified before the old one is removed. Copilot uses login 'copilot'.", { type: "object", required: ["repository", "number", "from", "login"], additionalProperties: false, properties: { ...repoRef, from: { type: "string" }, login: { type: "string" } } }),
+            action("start_session", "Assign an issue to the current user and start a focused work session for it in this conversation. Use `additional: true` for an issue that already has other assignees.", { type: "object", required: ["repository", "number"], additionalProperties: false, properties: { ...repoRef, title: { type: "string" }, additional: { type: "boolean" } } }),
             action("get_item", "Read an issue or pull request with its rendered body and recent comments.", { type: "object", required: ["repository", "number"], additionalProperties: false, properties: repoRef }),
+            action("get_momentum", "Read daily activity (commits, PRs opened/merged, issues opened/completed) across the tracked repositories for the whole team, one person, or everyone. `days` defaults to 7. History is cached for an hour; pass `force: true` to refetch it now.", {
+                type: "object", additionalProperties: false,
+                properties: { days: { type: "integer", enum: [7, 30, 90] }, person: { type: "string" }, everyone: { type: "boolean" }, repository: { type: "string", pattern: "^[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$" }, force: { type: "boolean" } },
+            }),
         ],
         open: handled(async ctx => {
             await configure();

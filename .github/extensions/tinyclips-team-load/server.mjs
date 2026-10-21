@@ -22,8 +22,10 @@ export async function perform(context, name, input = {}) {
         case "set_tracking": return hub.setTracking(input);
         case "assign": return hub.assign(input);
         case "unassign": return hub.unassign(input);
+        case "reassign": return hub.reassign(input);
         case "start_session": return hub.startSession(input);
         case "get_item": return hub.detail(input);
+        case "get_momentum": return hub.momentum(input);
         default: throw new TeamLoadError("invalid_input", "Unknown Team Load action.");
     }
 }
@@ -32,6 +34,7 @@ const assets = new Map([
     ["/app.mjs", ["assets/app.mjs", "text/javascript"]],
     ["/markdown.mjs", ["assets/markdown.mjs", "text/javascript"]],
     ["/icons.mjs", ["assets/icons.mjs", "text/javascript"]],
+    ["/momentum.mjs", ["assets/momentum.mjs", "text/javascript"]],
     ["/styles.css", ["assets/styles.css", "text/css"]],
     ["/model.mjs", ["model.mjs", "text/javascript"]],
 ]);

@@ -20,6 +20,7 @@ export function renderHtml(nonce, theme = null) {
       <p class="meta"><button class="scope-btn" type="button" id="scope-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="scope">Tracking…</button><span class="dim" id="updated"></span></p>
     </div>
     <div class="toolbar">
+      <button class="btn-icon" type="button" id="theme-toggle" aria-label="Switch theme"></button>
       <button class="btn-icon" type="button" id="refresh" aria-label="Refresh" data-icon="sync"></button>
     </div>
     <div class="scope-backdrop" id="scope-backdrop" hidden></div>
@@ -42,16 +43,22 @@ export function renderHtml(nonce, theme = null) {
         <p class="insight" id="insight"></p>
       </div>
       <ul class="roster" id="roster" aria-busy="true"></ul>
+      <p class="move-help" id="move-help">Expand a person, then drag an issue onto another teammate. <span class="sr-only">Or focus an issue and press Space to pick it up, Tab to a teammate and press Enter to move it. Escape cancels.</span></p>
+      <p class="sr-only" id="move-status" role="status" aria-live="polite"></p>
     </section>
-    <section class="box triage-box" aria-labelledby="triage-h">
-      <div class="box-head">
-        <h2 id="triage-h">Needs an owner <span class="Counter" id="triage-count"></span></h2>
-      </div>
-      <ul class="tickets" id="tickets" aria-busy="true"></ul>
-    </section>
+    <div class="side-col">
+      <section class="box triage-box" aria-labelledby="triage-h">
+        <div class="box-head">
+          <h2 id="triage-h">Needs an owner <span class="Counter" id="triage-count"></span></h2>
+        </div>
+        <ul class="tickets" id="tickets" aria-busy="true"></ul>
+      </section>
+      <section class="box momentum-box" id="momentum"></section>
+    </div>
   </div>
 </div>
 <div class="app detail-view" id="detail" hidden></div>
+<div class="app detail-view person-view" id="person" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>`;

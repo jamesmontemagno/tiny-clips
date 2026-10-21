@@ -209,7 +209,7 @@ Found a bug or have a feature request? [Open an issue](https://github.com/jamesm
 
 ## Project Canvas
 
-The [TinyClips Project Pulse canvas](.github/extensions/tinyclips-project-pulse/README.md) brings together compact team GitHub avatars, recent commits, PRs, assignments, and 2.0 launch progress across the app, website, and marketing repositories. It includes new-work notifications and a dedicated Momentum tab with an on-demand animated 7/30/90-day chart. Open `tinyclips-project-pulse` in a Copilot host with project canvas support. Choose automatic refresh every 5, 10, 15, 20, or 30 minutes, or Never, beside Refresh now; the default is five minutes. Shared configuration lives in the repository and personal filters and refresh preferences stay private.
+The [TinyClips Team Load canvas](.github/extensions/tinyclips-team-load/README.md) shows what each teammate and the Copilot coding agent is working on across the app, website, and marketing repositories, so new work goes to whoever has room. Every person has a load meter and a profile with their momentum and assigned work. A Momentum chart tracks daily commits, PRs, and issues over 7 (default), 30, or 90 days and is cached for an hour. Unowned issues can be assigned to a person or Copilot, and an issue that already has an owner can have assignees added or removed. Open `tinyclips-team-load` in a Copilot host with project canvas support. The people and repositories you track are chosen in the canvas and saved in your Copilot home, not the repository.
 
 ## Release Tagging Helpers
 

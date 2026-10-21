@@ -5,12 +5,14 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
-- Project Pulse now has a saved personal automatic-refresh dropdown beside Refresh now: every 5, 10, 15, 20, or 30 minutes, or Never.
-- Project Pulse celebrates newly observed PR and issue lifecycle milestones with a brief, silent confetti burst and a descriptive notification, respecting reduced motion and avoiding first-load/cached-refresh repeats.
-- Added the TinyClips Project Pulse Copilot canvas for app, website, and marketing team activity, compact GitHub avatar cards with per-person open PR counts for authors or requested reviewers, repository filtering, issue/PR ownership, unassigned work, and cross-platform 2.0 launch progress. Includes five-minute/manual refresh, new/updated-work notifications, a dedicated Momentum tab with an on-demand animated 7/30/90-day chart tracking commits, PRs, and issues opened/completed, and confirmed assignment/issue-state edits.
+- Team Load now lets you drag assigned issues between teammates on the home screen, including Copilot, with highlighted drop targets, keyboard movement, and Undo. Moves preserve other assignees and verify the new owner before removing the old one.
+- Team Load now has a light/dark theme toggle beside Refresh, updating the canvas and label colors without reloading.
+- Added the TinyClips Team Load Copilot canvas, showing what each teammate and the Copilot coding agent is working on across the app, website, and marketing repositories. It includes per-person load meters, a Needs an owner triage list, and issue detail with assignee editing: assign to a person or Copilot, and add or remove assignees (including Copilot) on issues that already have an owner, with Undo.
+- Team Load now has a Momentum chart under Needs an owner, tracking daily commits, PRs, and issues opened/completed over 7 (default), 30, or 90 days for the whole team, one person, or everyone. It uses the load-meter colors and caches history for an hour.
+- Team Load people now have a profile, opened from the arrow beside their name, showing their momentum over time alongside everything assigned to them.
 
 ### Changed
-- Project Pulse now ignores superseded detail requests, locks all editor controls while saving, uses type-specific GitHub detail selections, refreshes cached commit association metadata within five minutes, and normalizes momentum repository names before filtering and caching.
+- Team Load issue details now separate the assignee list from the Add and Copilot buttons with extra vertical spacing.
 - Studio now remembers each project's saved location across restarts. **Save Project** (Command-S) updates it; **Save Project As...** (Shift-Command-S) chooses a new location. Opening a saved project links explicit Save back to its original folder, while internal autosave stays local.
 - Studio video export now asks for a filename and destination, starting in the saved project folder or the configured video folder. Confirmed overwrites preserve the previous video if rendering fails or is cancelled, and later project saves preserve exported videos in the project folder.
 - Studio save/export safety checks now protect case variants of local metadata filenames, preserve late unrelated asset collisions, and verify the identity and change version of an approved output before replacing it.
