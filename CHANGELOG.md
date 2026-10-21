@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- Team Load Momentum now invalidates in-flight history when tracking changes and clears previous totals when switching selections. Failed loads only fall back to earlier data for the same selection.
+
 ### Added
 - Team Load now lets you drag assigned issues between teammates on the home screen, including Copilot, with highlighted drop targets, keyboard movement, and Undo. Moves preserve other assignees and verify the new owner before removing the old one.
 - Team Load now has a light/dark theme toggle beside Refresh, updating the canvas and label colors without reloading.

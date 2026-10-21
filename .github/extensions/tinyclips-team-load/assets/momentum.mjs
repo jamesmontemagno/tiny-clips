@@ -44,6 +44,7 @@ export function createMomentumPanel({ host, post, context, person = null }) {
         repo: "",
         data: null,       // last good response
         dataKey: "",      // request that produced it
+        selectionKey: "", // controls and tracking the panel currently represents
         signature: "",    // what is drawn, so an identical refresh doesn't redraw or replay
         pending: "",      // request key in flight
         busy: false,      // a user-visible load (as opposed to a silent revalidation)
@@ -126,7 +127,14 @@ export function createMomentumPanel({ host, post, context, person = null }) {
         if (state.days !== sharedDays) state.days = sharedDays;
         const ctx = context();
         syncOptions(ctx);
-        if (!ctx.settled) { renderControls(); return; }
+        const key = JSON.stringify([state.days, state.scope, state.repo, ctx.people.map(p => p.login).sort(), [...ctx.repos].sort()]);
+        if (key !== state.selectionKey) {
+            state.selectionKey = key;
+            state.token++;
+            cancelAnimationFrame(state.raf);
+            Object.assign(state, { pending: "", busy: false, data: null, dataKey: "", signature: "", error: "", empty: null });
+        }
+        if (!ctx.settled) { render({ redraw: false }); return; }
         const missing = !ctx.repos.length ? { title: "No repositories tracked", text: "Track a repository to chart its activity." }
             : !fixed && state.scope === "team" && !ctx.people.length ? { title: "No one tracked", text: "Track people to chart team momentum." }
             : null;
@@ -136,12 +144,11 @@ export function createMomentumPanel({ host, post, context, person = null }) {
             render();
             return;
         }
-        load(force);
+        load(force, key);
     }
 
-    async function load(force) {
+    async function load(force, key) {
         const request = buildRequest(force);
-        const key = `${state.days}|${state.scope}|${state.repo}`;
         if (!force && state.pending === key) return;
         // Same question as what is on screen: refresh quietly so the chart doesn't dim or replay.
         const silent = !!state.data && state.dataKey === key && !force;

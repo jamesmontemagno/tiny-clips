@@ -33,7 +33,7 @@ Moving also verifies that the source still owns the issue. If the target cannot 
 
 Everything is fetched live with the GitHub CLI (`gh`, must be signed in). Repos are fetched through GraphQL with pagination, at most 3 concurrent requests, and one retry for transient read errors. Profiles are cached and coalesced. A failing repo shows a warning without breaking the rest of the view. Auto-refresh runs every `refreshSeconds` (minimum 60) while the canvas is visible.
 
-Momentum is history, so it is cached separately: each repo's activity is fetched once and reused for up to an hour, and a 30 or 90 day fetch also serves the shorter ranges. It is refetched only when the canvas needs it and the cache has aged out, never on its own timer. Only the Momentum card's refresh button forces a refetch; the app-wide refresh, auto-refresh, switching ranges and opening a profile all reuse the cache. If a refetch fails, the last good data is shown and marked stale. The cache lives in memory, so reloading the extension starts it fresh.
+Momentum is history, so it is cached separately: each repo's activity is fetched once and reused for up to an hour, and a 30 or 90 day fetch also serves the shorter ranges. It is refetched only when the canvas needs it and the cache has aged out, never on its own timer. Only the Momentum card's refresh button forces a refetch; the app-wide refresh, auto-refresh, switching ranges and opening a profile all reuse the cache. If a refetch fails, the last good data for the same selection is shown and marked stale. Changing the person, repository, range, or tracked people/repos clears the previous selection's chart and supersedes its in-flight requests, so a failed load cannot show another selection's totals. The cache lives in memory, so reloading the extension starts it fresh.
 
 Agents can read the same data with the `get_momentum` action (`days` 7/30/90, defaulting to 7; optional `person`, `everyone`, `repository` and `force`).
 
@@ -54,7 +54,7 @@ The canvas is served from a loopback server with a per-launch nonce, a host/orig
 ## Development
 
 ```bash
-node --test .github/extensions/tinyclips-team-load/tests/team-load.test.mjs
+node --test .github/extensions/tinyclips-team-load/tests/team-load.test.mjs .github/extensions/tinyclips-team-load/tests/momentum.test.mjs
 ```
 
-Tests mock `gh`; they never touch GitHub.
+Tests mock `gh`; they never touch GitHub. Momentum request-state tests use a minimal DOM fixture and deferred responses to cover selection changes, tracking races, and same-selection stale-data fallback without browser dependencies.
