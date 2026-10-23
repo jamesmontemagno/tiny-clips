@@ -127,7 +127,7 @@ private struct GuideWindowView: View {
         case .shortcuts:
             sectionCard(title: "Keyboard Shortcuts", icon: "command") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Screenshot, Record Video, and Record GIF show your current bindings. Change them anytime in Settings > Shortcuts.")
+                    Text("Screenshot, Record Video, and Record GIF show your current bindings. Change them anytime in Settings → Shortcuts.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -150,7 +150,7 @@ private struct GuideWindowView: View {
             sectionCard(title: "Quick Tips", icon: "lightbulb") {
                 VStack(alignment: .leading, spacing: 10) {
                     bullet(text: "Use Settings to enable countdowns, screenshot editor, and trimmer windows.")
-                    bullet(text: "Your current capture shortcuts are \(screenshotShortcut) for Screenshot, \(videoShortcut) for Record Video, and \(gifShortcut) for Record GIF. You can change them in Settings > Shortcuts.")
+                    bullet(text: "Your current capture shortcuts are \(screenshotShortcut) for Screenshot, \(videoShortcut) for Record Video, and \(gifShortcut) for Record GIF. You can change them in Settings → Shortcuts.")
                     bullet(text: "If Screen Recording permission changes, restart TinyClips.")
                     bullet(text: "For video/GIF, pick Region, Screen, or Window directly from the recording picker.")
                 }

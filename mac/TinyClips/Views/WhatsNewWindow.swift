@@ -92,7 +92,7 @@ private struct WhatsNewView: View {
                         Text("Once enabled, choose Studio Recording in the menu bar menu. Record Video and its shortcut still make ordinary recordings.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
-                        Text("Studio is an early preview and is off by default. You can turn it off in Settings > Studio at any time; your projects are kept.")
+                        Text("Studio is an early preview and is off by default. You can turn it off in Settings → Studio at any time; your projects are kept.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }

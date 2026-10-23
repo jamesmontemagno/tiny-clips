@@ -106,7 +106,7 @@
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Studio is an early preview and is off by default. You can turn it off in Settings &gt; Studio at any time; your projects are kept."
+                            Text="Studio is an early preview and is off by default. You can turn it off in Settings → Studio at any time; your projects are kept."
                             TextWrapping="Wrap" />
                         <HyperlinkButton
                             HorizontalAlignment="Left"

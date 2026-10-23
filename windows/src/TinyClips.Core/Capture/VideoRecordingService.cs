@@ -1424,7 +1424,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         // 0x80070005 (E_ACCESSDENIED) surfaces when camera access is blocked in Privacy settings.
         if (ex is UnauthorizedAccessException || (uint)ex.HResult == 0x80070005)
         {
-            return "Camera access is blocked. Enable it in Settings > Privacy & security > Camera, then record again. The screen recording continued without the webcam.";
+            return "Camera access is blocked. Enable it in Settings → Privacy & security → Camera, then record again. The screen recording continued without the webcam.";
         }
 
         return $"The webcam couldn't start ({ex.Message}). The screen recording continued without it.";
