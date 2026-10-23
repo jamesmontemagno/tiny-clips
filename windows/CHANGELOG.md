@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Polished UI text: proper ellipses on editor color buttons, device loading labels, and "Load text file…", plus tidier region selection hint spacing.
 - Windows CI no longer builds for README/changelog-only or unrelated configuration changes, and skips whole Windows jobs when no build inputs changed.
 
 ### Changed
