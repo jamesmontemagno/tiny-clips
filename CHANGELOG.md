@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- TinyClips and TinyClipsMAS now share the Lilac Cutout app icon, with size-tuned artwork. The macOS menu-bar symbol is unchanged.
+
 ## v1.9.0-mac - 2026-10-16
 
 ### Added

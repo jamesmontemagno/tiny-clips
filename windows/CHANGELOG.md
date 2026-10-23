@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- Adopted the shared Lilac Cutout app icon across the executable, windows, tray, and packaged tiles, logos, and splash screens, with surface-specific padding and higher-contrast small sizes. Regenerate from the shared master with `python windows/tools/generate-icons.py` (requires Pillow).
+
 ## [v1.9.0-windows] - 2026-10-16
 
 ### Added
