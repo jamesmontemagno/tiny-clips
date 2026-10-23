@@ -87,13 +87,13 @@
 
                 <TextBlock
                     x:Name="StatusText"
-                    Width="260"
+                    MaxWidth="260"
                     VerticalAlignment="Center"
                     AutomationProperties.LiveSetting="Assertive"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="Scroll the page, then press Enter"
-                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="Wrap"
                     TextWrapping="NoWrap" />
 
                 <Rectangle

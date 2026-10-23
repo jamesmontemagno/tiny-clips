@@ -30,6 +30,8 @@
                                 Width="200"
                                 Height="130"
                                 Margin="4"
+                                AutomationProperties.Name="{x:Bind Title}"
+                                ToolTipService.ToolTip="{x:Bind Title}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
@@ -37,6 +39,7 @@
                                 <StackPanel
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
+                                    MaxWidth="184"
                                     Spacing="8">
                                     <FontIcon
                                         HorizontalAlignment="Center"
@@ -46,7 +49,8 @@
                                     <TextBlock
                                         HorizontalAlignment="Center"
                                         Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="{x:Bind Title}" />
+                                        Text="{x:Bind Title}"
+                                        TextTrimming="CharacterEllipsis" />
                                     <TextBlock
                                         HorizontalAlignment="Center"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"

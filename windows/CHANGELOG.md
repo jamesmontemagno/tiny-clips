@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Screen picker trims long monitor names with a tooltip, and screen readers now announce each screen's name.
+- Scrolling capture status text now wraps instead of getting cut off.
 - Windows CI no longer builds for README/changelog-only or unrelated configuration changes, and skips whole Windows jobs when no build inputs changed.
 
 ### Changed

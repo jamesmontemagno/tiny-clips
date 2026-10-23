@@ -8,7 +8,11 @@ using Windows.System;
 
 namespace TinyClips.App;
 
-public sealed record ScreenPickerItem(MonitorInfo Monitor, string Title, string Subtitle);
+public sealed record ScreenPickerItem(MonitorInfo Monitor, string Title, string Subtitle)
+{
+    // GridViewItem uses ToString() as its default automation name.
+    public override string ToString() => Title;
+}
 
 /// <summary>
 /// A centered overlay that lets the user pick which physical display to capture when
