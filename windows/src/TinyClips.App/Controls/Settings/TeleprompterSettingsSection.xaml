@@ -55,7 +55,7 @@
                         AutomationProperties.AutomationId="LoadTeleprompterTranscriptButton"
                         AutomationProperties.Name="Load teleprompter transcript from text file"
                         Click="OnLoadTranscriptClicked"
-                        Content="Load Text File..."
+                        Content="Load text file…"
                         IsEnabled="{x:Bind ViewModel.TeleprompterEnabled, Mode=OneWay}" />
                 </Grid>
                 <TextBox

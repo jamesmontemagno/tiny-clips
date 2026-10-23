@@ -39,7 +39,7 @@
             CornerRadius="{StaticResource ControlCornerRadius}">
             <TextBlock
                 Style="{StaticResource BodyTextBlockStyle}"
-                Text="Drag to select a region  ·  Esc to cancel" />
+                Text="Drag to select a region · Esc to cancel" />
         </Border>
     </Grid>
 </Window>
