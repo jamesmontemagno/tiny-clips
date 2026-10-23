@@ -6,7 +6,7 @@ pipelines, and the **benchmark harness** used to compare them. It complements
 [`audio-video-sync.md`](audio-video-sync.md), which covers timeline/sync; nothing here changes the
 timeline model — both pipelines stamp frames with the same `RecordingTimeline`.
 
-- Settings (all under **Settings → Video → Recording & output**):
+- Settings (**GPU recording pipeline** and **Video encoder** under **Settings → Video → Advanced**, collapsed by default; **Video codec** under **Video quality**):
   - **GPU recording pipeline** (`UseGpuRecordingPipeline`, **default on**) — frames stay in video memory.
   - **Video encoder** (`VideoEncoderBackend`: *Standard* = `MediaTranscoder`, *Low latency* = `IMFSinkWriter`; **default Low latency**).
   - **Video codec** (`VideoCodec`: H.264 default, or HEVC).

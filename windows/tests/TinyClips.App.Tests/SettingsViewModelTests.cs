@@ -585,6 +585,79 @@ public sealed class SettingsViewModelTests
         Assert.Equal(640, fixture.Settings.GifMaxWidth);
     }
 
+    [Fact]
+    public void VideoSettingsSection_GroupsRecordingAndAdvancedControlsInOrder()
+    {
+        const string HeadingLevel = "AutomationProperties.HeadingLevel";
+        var elements = SettingsMarkup.Elements("VideoSettingsSection.xaml");
+        var headings = elements
+            .Where(element => element.Attr(HeadingLevel) is not null)
+            .Select(element => (
+                Text: element.Attr("Text") ?? element.Attr("Header"),
+                Level: element.Attr(HeadingLevel)))
+            .ToList();
+
+        Assert.Equal(
+            [
+                ("Video", "Level1"),
+                ("Video quality", "Level2"),
+                ("Audio", "Level2"),
+                ("Webcam overlay", "Level2"),
+                ("Before recording", "Level2"),
+                ("During recording", "Level2"),
+                ("After recording", "Level2"),
+                ("Advanced", "Level2"),
+            ],
+            headings);
+
+        Assert.Equal(
+            ["VideoFrameRateNumberBox", "VideoCodecCombo"],
+            AutomationIdsInGroup(elements, "Video quality"));
+        Assert.Equal(
+            ["ShowVideoCapturePickerToggle", "VideoCountdownDurationNumberBox", "VideoCountdownToggle"],
+            AutomationIdsInGroup(elements, "Before recording"));
+        Assert.Equal(
+            ["KeepDisplayAwakeToggle", "VideoTimeLimitNumberBox"],
+            AutomationIdsInGroup(elements, "During recording"));
+        Assert.Equal(
+            ["ShowVideoCapturePickerAfterCaptureToggle", "ShowVideoTrimmerToggle", "CopyVideoToggle"],
+            AutomationIdsInGroup(elements, "After recording"));
+
+        var advanced = Assert.Single(elements, element =>
+            element.Name.LocalName == "SettingsExpander"
+            && element.Attr("AutomationProperties.AutomationId") == "AdvancedVideoSettingsExpander");
+        Assert.Equal("Advanced video settings", advanced.Attr("AutomationProperties.Name"));
+        Assert.Equal("False", advanced.Attr("IsExpanded"));
+        Assert.Equal(
+            ["UseGpuRecordingPipelineToggle", "VideoEncoderBackendCombo", "AudioOffsetNumberBox", "AudioOffsetResetButton"],
+            advanced.Descendants()
+                .Select(element => element.Attr("AutomationProperties.AutomationId"))
+                .OfType<string>()
+                .ToList());
+
+        var automationIds = SettingsMarkup.AutomationIds("VideoSettingsSection.xaml");
+        Assert.Equal(25, automationIds.Count);
+        Assert.Equal(automationIds.Count, automationIds.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    private static IReadOnlyList<string> AutomationIdsInGroup(
+        IReadOnlyList<System.Xml.Linq.XElement> elements,
+        string headingText)
+    {
+        const string HeadingLevel = "AutomationProperties.HeadingLevel";
+        var heading = elements.Single(element =>
+            element.Name.LocalName == "TextBlock"
+            && element.Attr("Text") == headingText);
+        return
+        [
+            .. heading.ElementsAfterSelf()
+                .TakeWhile(element => element.Attr(HeadingLevel) is null)
+                .SelectMany(element => element.DescendantsAndSelf())
+                .Select(element => element.Attr("AutomationProperties.AutomationId"))
+                .OfType<string>(),
+        ];
+    }
+
     private static void Realize(SettingsViewModel vm, SettingsSectionKind kind)
         => vm.CompleteSectionRealization(vm.BeginSectionRealization(kind));
 

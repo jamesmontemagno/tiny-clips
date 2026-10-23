@@ -19,6 +19,8 @@ own `CHANGELOG.md` at the repository root.
 - Microsoft Store uploads now include crash-report symbols for x64 and ARM64. Packaging and
   submission fail if the upload is missing matching app or core symbols, and symbol-tool
   prerequisites are resolved explicitly instead of silently skipping symbol generation.
+- Video recording options are now grouped by timing, with GPU pipeline, encoder, and audio timing
+  controls in collapsed Advanced settings.
 
 ### Added
 - Added manual GitHub Copilot app run buttons for Windows x64 and ARM64, using `dotnet run` to build and launch with package identity.

@@ -18,30 +18,49 @@
             Spacing="4">
             <TextBlock
                 Margin="4,8,0,4"
+                AutomationProperties.HeadingLevel="Level1"
                 Style="{StaticResource SubtitleTextBlockStyle}"
                 Text="Video" />
 
             <TextBlock
                 Margin="4,4,0,0"
+                AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="Video quality" />
 
-            <controls:SettingsCard
-                Description="Frames per second for recorded video."
-                Header="Frame rate"
-                HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
-                <NumberBox
-                    Width="120"
-                    AutomationProperties.AutomationId="VideoFrameRateNumberBox"
-                    AutomationProperties.Name="Video frame rate"
-                    Maximum="60"
-                    Minimum="10"
-                    SpinButtonPlacementMode="Inline"
-                    Value="{x:Bind ViewModel.VideoFrameRate, Mode=TwoWay}" />
-            </controls:SettingsCard>
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Frames per second for recorded video."
+                    Header="Frame rate"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
+                    <NumberBox
+                        Width="120"
+                        AutomationProperties.AutomationId="VideoFrameRateNumberBox"
+                        AutomationProperties.Name="Video frame rate"
+                        Maximum="60"
+                        Minimum="10"
+                        SpinButtonPlacementMode="Inline"
+                        Value="{x:Bind ViewModel.VideoFrameRate, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="HEVC (H.265) files are roughly 40% smaller at the same quality but need an HEVC-capable player. H.264 plays everywhere."
+                    Header="Video codec"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B2;}">
+                    <ComboBox
+                        MinWidth="220"
+                        AutomationProperties.AutomationId="VideoCodecCombo"
+                        AutomationProperties.Name="Video codec"
+                        SelectedIndex="{x:Bind ViewModel.VideoCodecIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="H.264 (compatible)" />
+                        <ComboBoxItem Content="HEVC / H.265 (smaller files)" />
+                    </ComboBox>
+                </controls:SettingsCard>
+            </StackPanel>
 
             <TextBlock
                 Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="Audio" />
 
@@ -105,32 +124,6 @@
                     </controls:SettingsExpander.Items>
                 </controls:SettingsExpander>
 
-                <controls:SettingsCard
-                    Description="Fine-tune audio timing if recorded sound lands early or late. Positive delays audio; negative plays it earlier (try negative for Bluetooth headsets). 0 is right for most setups."
-                    Header="Audio offset"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xEC4A;}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <NumberBox
-                            Width="140"
-                            AutomationProperties.AutomationId="AudioOffsetNumberBox"
-                            AutomationProperties.Name="Audio offset in milliseconds"
-                            LargeChange="50"
-                            Maximum="500"
-                            Minimum="-500"
-                            SmallChange="10"
-                            SpinButtonPlacementMode="Inline"
-                            ToolTipService.ToolTip="Milliseconds, -500 to +500"
-                            Value="{x:Bind ViewModel.AudioOffsetMilliseconds, Mode=TwoWay}" />
-                        <Button
-                            AutomationProperties.AutomationId="AudioOffsetResetButton"
-                            AutomationProperties.Name="Reset audio offset to zero"
-                            Command="{x:Bind ViewModel.ResetAudioOffsetCommand}"
-                            IsEnabled="{x:Bind ViewModel.AudioOffsetIsNonZero, Mode=OneWay}"
-                            ToolTipService.ToolTip="Reset to 0 ms">
-                            <FontIcon FontSize="14" Glyph="&#xE72C;" />
-                        </Button>
-                    </StackPanel>
-                </controls:SettingsCard>
             </StackPanel>
 
             <InfoBar
@@ -141,6 +134,7 @@
 
             <TextBlock
                 Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="Webcam overlay" />
 
@@ -235,58 +229,11 @@
 
             <TextBlock
                 Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
-                Text="Recording &amp; output" />
+                Text="Before recording" />
 
             <StackPanel Spacing="2">
-                <controls:SettingsCard
-                    Description="Prevent the display from dimming or sleeping during video and GIF recordings."
-                    Header="Keep display awake while recording"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE7F4;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="KeepDisplayAwakeToggle"
-                        AutomationProperties.Name="Keep display awake while recording"
-                        IsOn="{x:Bind ViewModel.KeepDisplayAwakeWhileRecording, Mode=TwoWay}" />
-                </controls:SettingsCard>
-
-                <controls:SettingsCard
-                    Description="Keep frames on the graphics card from capture through encoding. Lower CPU use and no dropped frames at high resolutions. Turn off to use the previous pipeline if recordings misbehave on your PC."
-                    Header="GPU recording pipeline"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE950;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="UseGpuRecordingPipelineToggle"
-                        AutomationProperties.Name="GPU recording pipeline"
-                        IsOn="{x:Bind ViewModel.UseGpuRecordingPipeline, Mode=TwoWay}" />
-                </controls:SettingsCard>
-
-                <controls:SettingsCard
-                    Description="Low latency tunes the hardware encoder for real-time capture (no look-ahead, no B-frames) so high frame rates don't drop frames. Choose Standard to use the previous encoder."
-                    Header="Video encoder"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE9D9;}">
-                    <ComboBox
-                        MinWidth="220"
-                        AutomationProperties.AutomationId="VideoEncoderBackendCombo"
-                        AutomationProperties.Name="Video encoder"
-                        SelectedIndex="{x:Bind ViewModel.VideoEncoderBackendIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="Standard" />
-                        <ComboBoxItem Content="Low latency" />
-                    </ComboBox>
-                </controls:SettingsCard>
-
-                <controls:SettingsCard
-                    Description="HEVC (H.265) files are roughly 40% smaller at the same quality but need an HEVC-capable player. H.264 plays everywhere."
-                    Header="Video codec"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B2;}">
-                    <ComboBox
-                        MinWidth="220"
-                        AutomationProperties.AutomationId="VideoCodecCombo"
-                        AutomationProperties.Name="Video codec"
-                        SelectedIndex="{x:Bind ViewModel.VideoCodecIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="H.264 (compatible)" />
-                        <ComboBoxItem Content="HEVC / H.265 (smaller files)" />
-                    </ComboBox>
-                </controls:SettingsCard>
-
                 <controls:SettingsCard
                     Description="Choose Region, Screen, or Window before recording."
                     Header="Show capture picker before recording"
@@ -295,18 +242,6 @@
                         AutomationProperties.AutomationId="ShowVideoCapturePickerToggle"
                         AutomationProperties.Name="Show capture picker before recording"
                         IsOn="{x:Bind ViewModel.ShowVideoCapturePicker, Mode=TwoWay}" />
-                </controls:SettingsCard>
-
-
-                <controls:SettingsCard
-                    Description="Start another recording with the same picker after saving."
-                    Header="Show capture picker after recording"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="ShowVideoCapturePickerAfterCaptureToggle"
-                        AutomationProperties.Name="Show capture picker after recording"
-                        IsEnabled="{x:Bind ViewModel.VideoCapturePickerAfterCaptureEnabled, Mode=OneWay}"
-                        IsOn="{x:Bind ViewModel.ShowVideoCapturePickerAfterCapture, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
@@ -330,6 +265,24 @@
                             IsOn="{x:Bind ViewModel.VideoCountdownEnabled, Mode=TwoWay}" />
                     </StackPanel>
                 </controls:SettingsCard>
+            </StackPanel>
+
+            <TextBlock
+                Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="During recording" />
+
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Prevent the display from dimming or sleeping during video and GIF recordings."
+                    Header="Keep display awake while recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7F4;}">
+                    <ToggleSwitch
+                            AutomationProperties.AutomationId="KeepDisplayAwakeToggle"
+                            AutomationProperties.Name="Keep display awake while recording"
+                            IsOn="{x:Bind ViewModel.KeepDisplayAwakeWhileRecording, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
                 <controls:SettingsCard
                     Description="Stop recording automatically after this many minutes (0 = no limit)."
@@ -343,6 +296,25 @@
                         Minimum="0"
                         SpinButtonPlacementMode="Inline"
                         Value="{x:Bind ViewModel.VideoRecordingTimeLimitMinutes, Mode=TwoWay}" />
+                </controls:SettingsCard>
+            </StackPanel>
+
+            <TextBlock
+                Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="After recording" />
+
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Start another recording with the same picker after saving."
+                    Header="Show capture picker after recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowVideoCapturePickerAfterCaptureToggle"
+                        AutomationProperties.Name="Show capture picker after recording"
+                        IsEnabled="{x:Bind ViewModel.VideoCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.ShowVideoCapturePickerAfterCapture, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
@@ -364,8 +336,70 @@
                         AutomationProperties.Name="Copy video to the clipboard"
                         IsOn="{x:Bind ViewModel.CopyVideoToClipboard, Mode=TwoWay}" />
                 </controls:SettingsCard>
-
             </StackPanel>
+
+            <controls:SettingsExpander
+                Margin="0,12,0,0"
+                AutomationProperties.AutomationId="AdvancedVideoSettingsExpander"
+                AutomationProperties.HeadingLevel="Level2"
+                AutomationProperties.Name="Advanced video settings"
+                Description="Adjust recording performance and audio timing. Change these only if recordings misbehave on your PC."
+                Header="Advanced"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE713;}"
+                IsExpanded="False">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard
+                        Description="Keep frames on the graphics card from capture through encoding. Lower CPU use and no dropped frames at high resolutions. Turn off to use the previous pipeline if recordings misbehave on your PC."
+                        Header="GPU recording pipeline"
+                        HeaderIcon="{ui:FontIcon Glyph=&#xE950;}">
+                        <ToggleSwitch
+                            AutomationProperties.AutomationId="UseGpuRecordingPipelineToggle"
+                            AutomationProperties.Name="GPU recording pipeline"
+                            IsOn="{x:Bind ViewModel.UseGpuRecordingPipeline, Mode=TwoWay}" />
+                    </controls:SettingsCard>
+
+                    <controls:SettingsCard
+                        Description="Low latency tunes the hardware encoder for real-time capture (no look-ahead, no B-frames) so high frame rates don't drop frames. Choose Standard to use the previous encoder."
+                        Header="Video encoder"
+                        HeaderIcon="{ui:FontIcon Glyph=&#xE9D9;}">
+                        <ComboBox
+                            MinWidth="220"
+                            AutomationProperties.AutomationId="VideoEncoderBackendCombo"
+                            AutomationProperties.Name="Video encoder"
+                            SelectedIndex="{x:Bind ViewModel.VideoEncoderBackendIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="Standard" />
+                            <ComboBoxItem Content="Low latency" />
+                        </ComboBox>
+                    </controls:SettingsCard>
+
+                    <controls:SettingsCard
+                        Description="Fine-tune audio timing if recorded sound lands early or late. Positive delays audio; negative plays it earlier (try negative for Bluetooth headsets). 0 is right for most setups."
+                        Header="Audio offset"
+                        HeaderIcon="{ui:FontIcon Glyph=&#xEC4A;}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <NumberBox
+                                Width="140"
+                                AutomationProperties.AutomationId="AudioOffsetNumberBox"
+                                AutomationProperties.Name="Audio offset in milliseconds"
+                                LargeChange="50"
+                                Maximum="500"
+                                Minimum="-500"
+                                SmallChange="10"
+                                SpinButtonPlacementMode="Inline"
+                                ToolTipService.ToolTip="Milliseconds, -500 to +500"
+                                Value="{x:Bind ViewModel.AudioOffsetMilliseconds, Mode=TwoWay}" />
+                            <Button
+                                AutomationProperties.AutomationId="AudioOffsetResetButton"
+                                AutomationProperties.Name="Reset audio offset to zero"
+                                Command="{x:Bind ViewModel.ResetAudioOffsetCommand}"
+                                IsEnabled="{x:Bind ViewModel.AudioOffsetIsNonZero, Mode=OneWay}"
+                                ToolTipService.ToolTip="Reset to 0 ms">
+                                <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                            </Button>
+                        </StackPanel>
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
         </StackPanel>
     </Border>
 </UserControl>
