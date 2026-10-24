@@ -52,22 +52,6 @@ struct VideoSettingsSection: View {
             }
             .help("Choose which microphone to use for recordings.")
 
-            HStack {
-                Stepper(
-                    "Audio offset: \(settings.audioOffsetMs > 0 ? "+" : "")\(settings.audioOffsetMs) ms",
-                    value: $settings.audioOffsetMs,
-                    in: CaptureSettings.audioOffsetRangeMs,
-                    step: 10
-                )
-                .help("Delay all recording audio with a positive value or play it earlier with a negative value.")
-
-                Button("Reset") {
-                    settings.audioOffsetMs = 0
-                }
-                .disabled(settings.audioOffsetMs == 0)
-                .accessibilityLabel("Reset audio offset")
-                .help("Reset the audio offset to 0 ms.")
-            }
         }
 
         Section("Webcam Overlay") {
@@ -110,24 +94,7 @@ struct VideoSettingsSection: View {
             .help("Choose the webcam overlay size preset.")
         }
 
-        Section("Effects") {
-            Toggle("Show capture region during recording", isOn: $settings.showRegionIndicator)
-                .help("Show a visible border around the selected capture area while recording.")
-
-            Toggle("Prevent display sleep while recording", isOn: $settings.preventDisplaySleepWhileRecording)
-                .help("Keep the display awake and prevent the screen saver while recording video or GIFs.")
-                .accessibilityHint("When enabled, TinyClips keeps the display awake while recording video or GIFs.")
-
-            Toggle("Show mouse clicks in recording", isOn: $settings.showMouseClickVisualsInVideo)
-                .help("Adds a subtle pulse at click positions in saved video recordings.")
-                .accessibilityHint("When enabled, mouse clicks are shown as a pulse effect in saved video recordings.")
-            Button("Customize mouse click effect…") {
-                selectedTab.wrappedValue = .mouseClicks
-            }
-            .buttonStyle(.link)
-        }
-        
-        Section("Before Capture") {
+        Section("Before Recording") {
             Toggle("Show capture picker before recording", isOn: $settings.showVideoCapturePicker)
                 .help("When disabled, video recording goes straight to region selection.")
                 .onChange(of: settings.showVideoCapturePicker) { _, isEnabled in
@@ -135,28 +102,7 @@ struct VideoSettingsSection: View {
                         settings.showVideoCapturePickerAfterCapture = false
                     }
                 }
-            Toggle("Show capture picker after recording", isOn: $settings.showVideoCapturePickerAfterCapture)
-                .help("Reopen the capture picker after each recording so you can quickly start another.")
-                .disabled(!settings.showVideoCapturePicker)
-        }
 
-        Section("After Capture") {
-            Toggle("Open trimmer after recording", isOn: $settings.showTrimmer)
-                .help("Open the trimmer when recording ends so you can trim before saving.")
-                .onChange(of: settings.showTrimmer) { _, isEnabled in
-                    if !isEnabled {
-                        settings.saveImmediatelyVideo = true
-                    }
-                }
-
-            Toggle("Save immediately", isOn: $settings.saveImmediatelyVideo)
-                .help("Save immediately instead of waiting for actions in the trimmer.")
-                .disabled(!settings.showTrimmer)
-            Toggle("Copy to clipboard", isOn: $settings.copyVideoToClipboard)
-                .help("Copy saved videos to the clipboard as a file URL.")
-        }
-
-        Section("Countdown") {
             Toggle("Countdown before recording", isOn: $settings.videoCountdownEnabled)
                 .help("Wait before recording starts so you can prepare the screen.")
             if settings.videoCountdownEnabled {
@@ -172,6 +118,62 @@ struct VideoSettingsSection: View {
                         .frame(width: 30, alignment: .trailing)
                 }
                 .help("Set the countdown duration in seconds.")
+            }
+        }
+
+        Section("During Recording") {
+            Toggle("Show capture region during recording", isOn: $settings.showRegionIndicator)
+                .help("Show a visible border around the selected capture area while recording.")
+
+            Toggle("Prevent display sleep while recording", isOn: $settings.preventDisplaySleepWhileRecording)
+                .help("Keep the display awake and prevent the screen saver while recording video or GIFs.")
+                .accessibilityHint("When enabled, TinyClips keeps the display awake while recording video or GIFs.")
+
+            Toggle("Show mouse clicks in recording", isOn: $settings.showMouseClickVisualsInVideo)
+                .help("Adds a subtle pulse at click positions in saved video recordings.")
+                .accessibilityHint("When enabled, mouse clicks are shown as a pulse effect in saved video recordings.")
+            Button("Customize mouse click effect…") {
+                selectedTab.wrappedValue = .mouseClicks
+            }
+            .buttonStyle(.link)
+        }
+
+        Section("After Recording") {
+            Toggle("Show capture picker after recording", isOn: $settings.showVideoCapturePickerAfterCapture)
+                .help("Reopen the capture picker after each recording so you can quickly start another.")
+                .disabled(!settings.showVideoCapturePicker)
+
+            Toggle("Open trimmer after recording", isOn: $settings.showTrimmer)
+                .help("Open the trimmer when recording ends so you can trim before saving.")
+                .onChange(of: settings.showTrimmer) { _, isEnabled in
+                    if !isEnabled {
+                        settings.saveImmediatelyVideo = true
+                    }
+                }
+
+            Toggle("Save immediately", isOn: $settings.saveImmediatelyVideo)
+                .help("Save immediately instead of waiting for actions in the trimmer.")
+                .disabled(!settings.showTrimmer)
+            Toggle("Copy to clipboard", isOn: $settings.copyVideoToClipboard)
+                .help("Copy saved videos to the clipboard as a file URL.")
+        }
+
+        DisclosureGroup("Advanced") {
+            HStack {
+                Stepper(
+                    "Audio offset: \(settings.audioOffsetMs > 0 ? "+" : "")\(settings.audioOffsetMs) ms",
+                    value: $settings.audioOffsetMs,
+                    in: CaptureSettings.audioOffsetRangeMs,
+                    step: 10
+                )
+                .help("Delay all recording audio with a positive value or play it earlier with a negative value.")
+
+                Button("Reset") {
+                    settings.audioOffsetMs = 0
+                }
+                .disabled(settings.audioOffsetMs == 0)
+                .accessibilityLabel("Reset audio offset")
+                .help("Reset the audio offset to 0 ms.")
             }
         }
     }
