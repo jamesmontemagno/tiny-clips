@@ -158,7 +158,15 @@ public sealed class StudioProjectDestinationTests : StudioProjectFolderTestBase
         File.WriteAllText(file, "first!");
         File.SetLastWriteTimeUtc(file, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         var target = StudioExportTarget.Capture(file);
-        if (!inPlace) File.Move(file, Path.Combine(Outside, "Previous.mp4"));
+        if (!inPlace)
+        {
+            File.Move(file, Path.Combine(Outside, "Previous.mp4"));
+        }
+        else
+        {
+            // Some filesystems expose change time at one-second precision.
+            Thread.Sleep(TimeSpan.FromSeconds(1.1));
+        }
         File.WriteAllText(file, "other!");
         File.SetLastWriteTimeUtc(file, target.LastWrite!.Value);
         var changed = StudioExportTarget.Capture(file);
