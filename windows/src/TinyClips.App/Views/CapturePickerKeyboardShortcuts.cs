@@ -11,6 +11,11 @@ public enum CapturePickerMode
     RecognizeText,
     /// <summary>Screenshot only: select a region, scroll, and stitch the frames into one tall image.</summary>
     Scrolling,
+    /// <summary>
+    /// Screenshot only: select a region of another app's scrollable pane; Tiny Clips scrolls it in
+    /// the background and stitches the frames into one tall image.
+    /// </summary>
+    AutoScroll,
 }
 
 internal static class CapturePickerKeyboardShortcuts
@@ -21,6 +26,7 @@ internal static class CapturePickerKeyboardShortcuts
         VirtualKey.S => CapturePickerMode.Screen,
         VirtualKey.W => CapturePickerMode.Window,
         VirtualKey.P when isScrollingAvailable => CapturePickerMode.Scrolling,
+        VirtualKey.A when isScrollingAvailable => CapturePickerMode.AutoScroll,
         _ => null,
     };
 }

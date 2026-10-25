@@ -23,6 +23,7 @@ public sealed partial class ScrollingCaptureWindow : Window
     private static PointInt32? _lastPosition;
 
     private readonly FloatingWindowDragger _dragger;
+    private string _defaultStatus = DefaultStatus;
     private bool _completed;
     private bool _closed;
 
@@ -45,6 +46,24 @@ public sealed partial class ScrollingCaptureWindow : Window
     public Action? StopRequested { get; set; }
 
     public Action? CancelRequested { get; set; }
+
+    /// <summary>
+    /// Switches the labels for auto-scroll capture, where Tiny Clips does the scrolling: Done
+    /// stops early and keeps what was captured, Cancel discards it.
+    /// </summary>
+    public void ConfigureForAutoScroll()
+    {
+        _defaultStatus = "Scrolling… Enter to stop, Esc to cancel";
+        StatusText.Text = _defaultStatus;
+        ModeText.Text = "Auto-scroll";
+        ModeIcon.Glyph = "\uE74B";
+        AutomationProperties.SetName(RootGrid, "Auto-scroll capture in progress");
+        AutomationProperties.SetName(ModePanel, "Auto-scroll capture mode");
+        AutomationProperties.SetName(DoneButton, "Stop auto-scroll and keep the capture");
+        AutomationProperties.SetHelpText(DoneButton, "Stops scrolling and stitches what has been captured so far.");
+        Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(DoneButton, "Stop and keep what's captured (Enter)");
+        AutomationProperties.SetName(CancelButton, "Cancel auto-scroll capture");
+    }
 
     /// <summary>Shows the panel just outside the captured region (or at the bottom of the monitor's work area).</summary>
     public void ShowNear(MonitorInfo? monitor, PixelRect? regionInVirtualDesktop)
@@ -78,7 +97,7 @@ public sealed partial class ScrollingCaptureWindow : Window
         DoneButton.IsEnabled = false;
         CancelButton.IsEnabled = false;
         PulseStoryboard.Stop();
-        if (StatusText.Text == DefaultStatus)
+        if (StatusText.Text == _defaultStatus)
         {
             StatusText.Text = "Saving…";
         }

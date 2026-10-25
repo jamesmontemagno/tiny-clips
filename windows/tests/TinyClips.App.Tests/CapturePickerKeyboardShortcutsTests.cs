@@ -24,6 +24,15 @@ public sealed class CapturePickerKeyboardShortcutsTests
     }
 
     [Fact]
+    public void ModeForKey_MapsAutoScrollKeyOnlyWhenAvailable()
+    {
+        Assert.Null(CapturePickerKeyboardShortcuts.ModeForKey(VirtualKey.A, isScrollingAvailable: false));
+        Assert.Equal(
+            CapturePickerMode.AutoScroll,
+            CapturePickerKeyboardShortcuts.ModeForKey(VirtualKey.A, isScrollingAvailable: true));
+    }
+
+    [Fact]
     public void ModeForKey_DoesNotMapTextRecognitionShortcut()
     {
         Assert.Null(CapturePickerKeyboardShortcuts.ModeForKey(VirtualKey.T, isScrollingAvailable: true));

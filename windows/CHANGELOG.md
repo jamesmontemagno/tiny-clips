@@ -28,6 +28,7 @@ own `CHANGELOG.md` at the repository root.
   controls in collapsed Advanced settings.
 
 ### Added
+- Added **Auto-scroll capture** (Screenshot picker → **Auto**, or A): select part of an app's scrollable pane and Tiny Clips scrolls it by itself, without moving the mouse or taking focus, then stitches one tall image. It keeps fixed headers and footers once, fills static sidebars with the background, waits for each step to settle, and, when the app reports its scroll position, backs up steps that overshoot and restores the original position. Manual **Scroll** capture is unchanged and remains the choice for browsers. Stitching logic is adapted from [ScrollShot](https://github.com/crutkas/ScrollShot) (MIT).
 - Added **Include Tiny Clips in captures** in General settings for demos. Off by default, it controls app windows, capture controls and window selection starting with the next capture after any active recording ends. The teleprompter and live webcam preview remain excluded; the recorded camera is unchanged.
 - Added manual GitHub Copilot app run buttons for Windows x64 and ARM64, using `dotnet run` to build and launch with package identity.
 - **What's New introduces Studio.** A new illustrated screen-and-camera composition and editing highlights explain the early preview, with a switch to enable it right there. It appears once per content revision for existing users, not on every app update; new installs keep the onboarding tour. The switch is saved, and ordinary video recording stays unchanged.

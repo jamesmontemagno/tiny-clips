@@ -92,6 +92,7 @@ public sealed partial class CapturePickerWindow : Window
         LimitButton.Visibility = captureType == CaptureType.Video ? Visibility.Visible : Visibility.Collapsed;
         var isScreenshot = captureType == CaptureType.Screenshot;
         ScrollButton.Visibility = isScreenshot ? Visibility.Visible : Visibility.Collapsed;
+        AutoScrollButton.Visibility = isScreenshot ? Visibility.Visible : Visibility.Collapsed;
         UpdateLimitLabel();
     }
 
@@ -230,6 +231,8 @@ public sealed partial class CapturePickerWindow : Window
     private void OnWindow(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.Window);
 
     private void OnScrolling(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.Scrolling);
+
+    private void OnAutoScrolling(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.AutoScroll);
 
     private void OnCancel(object sender, RoutedEventArgs e) => Complete(null);
 

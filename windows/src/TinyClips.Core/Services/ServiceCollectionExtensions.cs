@@ -40,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVideoRecordingService, VideoRecordingService>();
         services.AddSingleton<IGifRecordingService, GifRecordingService>();
         services.AddSingleton<IScrollingCaptureService, ScrollingCaptureService>();
+        services.AddSingleton<IAutoScrollCaptureService, AutoScrollCaptureService>();
         services.AddSingleton<IDisplaySleepAssertion, NoOpDisplaySleepAssertion>();
         return services;
     }

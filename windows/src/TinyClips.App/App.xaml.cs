@@ -77,6 +77,7 @@ public partial class App : Application
     private Action<int>? _scrollingProgressHandler;
     private Action<PanoramaCaptureLimitReason>? _scrollingLimitHandler;
     private Action<Exception>? _scrollingFailedHandler;
+    private CancellationTokenSource? _autoScrollStop;
     private CancellationTokenSource? _captureFlowCts;
     private DispatcherTimer? _recordingTimer;
     private DateTime _recordingStartedUtc;
@@ -1251,11 +1252,12 @@ public partial class App : Application
 
             var isTextRecognition = pick.Mode == CapturePickerMode.RecognizeText;
             var isScrolling = type == CaptureType.Screenshot && pick.Mode == CapturePickerMode.Scrolling;
+            var isAutoScroll = type == CaptureType.Screenshot && pick.Mode == CapturePickerMode.AutoScroll;
             var earlyBackdrop = earlyBackdrops is null
                 ? null
                 : new EarlyBackdrop(earlyBackdropMonitors!, earlyBackdrops, earlyBackdropStarted);
             var resolved = await ResolveTargetAsync(
-                isTextRecognition || isScrolling ? CapturePickerMode.Region : pick.Mode,
+                isTextRecognition || isScrolling || isAutoScroll ? CapturePickerMode.Region : pick.Mode,
                 earlyBackdrop,
                 captureFlowCts.Token);
             CaptureFlowTrace.Mark($"target: {(resolved is null ? "cancelled" : "resolved")}");
@@ -1299,8 +1301,8 @@ public partial class App : Application
             }
 
             RegionIndicatorWindow? regionIndicator = null;
-            // Scrolling capture has no countdown: the user controls timing by scrolling.
-            var countdownRan = pick.CountdownEnabled && pick.CountdownDuration > 0 && !isScrolling;
+            // Scrolling captures have no countdown: the user (or auto-scroll) controls timing.
+            var countdownRan = pick.CountdownEnabled && pick.CountdownDuration > 0 && !isScrolling && !isAutoScroll;
             if (countdownRan)
             {
                 try
@@ -1350,6 +1352,11 @@ public partial class App : Application
                 case CaptureType.Screenshot when isScrolling:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
                     await StartScrollingCaptureAsync(selection, settings, wasPickerInitiated, captureFlowCts.Token);
+                    break;
+
+                case CaptureType.Screenshot when isAutoScroll:
+                    captureFlowCts.Token.ThrowIfCancellationRequested();
+                    StartAutoScrollCapture(selection, settings, wasPickerInitiated);
                     break;
 
                 case CaptureType.Screenshot:
@@ -1777,7 +1784,12 @@ public partial class App : Application
 
         var wasPickerInitiated = _scrollingWasPickerInitiated;
         FinishScrollingCapture(null);
+        await PresentScrollingCaptureAsync(frame, wasPickerInitiated);
+    }
 
+    /// <summary>Brands (if enabled) and presents a stitched scrolling capture through the screenshot pipeline.</summary>
+    private async Task PresentScrollingCaptureAsync(CapturedFrame frame, bool wasPickerInitiated)
+    {
         var settings = Services.GetRequiredService<ICaptureSettings>();
         try
         {
@@ -1800,6 +1812,144 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Starts an auto-scroll capture of the app under the middle of the selected region: Tiny Clips
+    /// scrolls that pane in the background (posted wheel messages, PrintWindow capture) and
+    /// stitches one tall image. Reuses the scrolling panel: Done stops early and keeps what was
+    /// captured, Cancel discards it. Returns as soon as the capture is running.
+    /// </summary>
+    private void StartAutoScrollCapture(TargetSelection selection, ICaptureSettings settings, bool wasPickerInitiated)
+    {
+        var service = Services.GetRequiredService<IAutoScrollCaptureService>();
+        if (service.IsActive || _scrollingPanel is not null || selection.Region is not { } region)
+        {
+            return;
+        }
+
+        var screenRegion = ToVirtualDesktopRegion(selection.Target, region);
+        var pointX = screenRegion.X + (screenRegion.Width / 2);
+        var pointY = screenRegion.Y + (screenRegion.Height / 2);
+        var window = service.FindTargetWindow(pointX, pointY);
+        if (window == 0)
+        {
+            ShowScrollingCaptureFailureNotification("Select an area inside another app's window.");
+            ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
+            return;
+        }
+
+        // Same adaptive height cap as manual scrolling capture (the editor's texture limit).
+        var limits = settings.ShowScreenshotEditor
+            ? PanoramaCaptureLimits.ForEditor
+            : PanoramaCaptureLimits.Default;
+
+        var panel = new ScrollingCaptureWindow();
+        panel.ConfigureForAutoScroll();
+        var stop = new CancellationTokenSource();
+        var stopRequested = false;
+        var cancelled = false;
+        _scrollingPanel = panel;
+        _scrollingWasPickerInitiated = wasPickerInitiated;
+        _scrollingStopping = false;
+        _autoScrollStop = stop;
+        panel.StopRequested = () =>
+        {
+            stopRequested = true;
+            stop.Cancel();
+        };
+        panel.CancelRequested = () =>
+        {
+            cancelled = true;
+            stop.Cancel();
+        };
+
+        var monitor = selection.Monitor ?? ResolveMonitorForTarget(selection.Target);
+        panel.ShowNear(monitor, screenRegion);
+        Announce(
+            AutomationNotificationKind.Other,
+            AutomationNotificationProcessing.MostRecent,
+            "Auto-scroll capture started. Press Enter to stop early or Escape to cancel.",
+            "AutoScrollCaptureStarted");
+
+        Action<int> progress = count => _dispatcher?.TryEnqueue(() =>
+        {
+            if (ReferenceEquals(_scrollingPanel, panel))
+            {
+                panel.UpdateFrameCount(count);
+            }
+        });
+
+        Task<AutoScrollResult> capture;
+        try
+        {
+            capture = service.CaptureAsync(new AutoScrollRequest(window, pointX, pointY, screenRegion), limits, progress, stop.Token);
+        }
+        catch (Exception ex)
+        {
+            _autoScrollStop = null;
+            FinishScrollingCapture(ex);
+            stop.Dispose();
+            return;
+        }
+
+        _ = CompleteAutoScrollCaptureAsync();
+
+        async Task CompleteAutoScrollCaptureAsync()
+        {
+            AutoScrollResult? result = null;
+            Exception? error = null;
+            try
+            {
+                result = await capture;
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
+
+            if (ReferenceEquals(_autoScrollStop, stop))
+            {
+                _autoScrollStop = null;
+            }
+
+            try
+            {
+                // Torn down elsewhere (app exit or a failed capture flow): nothing to present.
+                if (!ReferenceEquals(_scrollingPanel, panel))
+                {
+                    return;
+                }
+
+                var pickerInitiated = _scrollingWasPickerInitiated;
+                if (cancelled)
+                {
+                    FinishScrollingCapture(new PanoramaCaptureException(PanoramaCaptureError.Cancelled));
+                    return;
+                }
+
+                if (error is not null)
+                {
+                    FinishScrollingCapture(error);
+                    return;
+                }
+
+                if (result is null || (!result.Scrolled && !stopRequested))
+                {
+                    FinishScrollingCapture(new InvalidOperationException(
+                        "This app didn't scroll in the background. Use Scroll (P) and scroll it yourself."));
+                    return;
+                }
+
+                panel.MarkFinishing();
+                FinishScrollingCapture(null);
+                await PresentScrollingCaptureAsync(result.Panorama.Image, pickerInitiated);
+            }
+            finally
+            {
+                stop.Dispose();
+            }
+        }
+    }
+
     private void CancelScrollingCapture()
     {
         if (_scrollingPanel is null)
@@ -1818,6 +1968,11 @@ public partial class App : Application
     /// </summary>
     private void FinishScrollingCapture(Exception? error)
     {
+        // Stops a running auto-scroll capture; its completion sees the panel is gone and discards it.
+        var autoScrollStop = _autoScrollStop;
+        _autoScrollStop = null;
+        autoScrollStop?.Cancel();
+
         var service = Services.GetRequiredService<IScrollingCaptureService>();
         if (_scrollingProgressHandler is { } progress)
         {
@@ -3947,6 +4102,8 @@ public partial class App : Application
         try
         {
             Services.GetRequiredService<IScrollingCaptureService>().Cancel();
+            _autoScrollStop?.Cancel();
+            _autoScrollStop = null;
             _scrollingPanel?.ClosePanel();
             _scrollingPanel = null;
             _scrollingRegionIndicator?.ClosePanel();

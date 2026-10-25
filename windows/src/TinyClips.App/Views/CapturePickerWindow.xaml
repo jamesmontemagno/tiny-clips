@@ -92,6 +92,19 @@
                     </StackPanel>
                 </Button>
 
+                <Button
+                    x:Name="AutoScrollButton"
+                    AutomationProperties.AutomationId="CaptureAutoScrollButton"
+                    AutomationProperties.Name="Auto-scroll capture"
+                    AutomationProperties.HelpText="Select part of an app's scrollable pane. Tiny Clips scrolls it for you and stitches one tall image."
+                    Click="OnAutoScrolling"
+                    ToolTipService.ToolTip="Auto-scroll: select an app's pane and Tiny Clips scrolls it for you, without moving your mouse or taking focus (A)">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE74B;" />
+                        <TextBlock Text="Auto" />
+                    </StackPanel>
+                </Button>
+
                 <Rectangle
                     Width="1"
                     Height="22"

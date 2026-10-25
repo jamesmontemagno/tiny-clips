@@ -45,16 +45,19 @@
 
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <StackPanel
+                    x:Name="ModePanel"
                     VerticalAlignment="Center"
                     AutomationProperties.Name="Scrolling capture mode"
                     Orientation="Horizontal"
                     Spacing="6">
                     <FontIcon
+                        x:Name="ModeIcon"
                         FontFamily="Segoe Fluent Icons"
                         FontSize="13"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Glyph="&#xE8A1;" />
                     <TextBlock
+                        x:Name="ModeText"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Style="{StaticResource BodyStrongTextBlockStyle}"
                         Text="Scrolling" />

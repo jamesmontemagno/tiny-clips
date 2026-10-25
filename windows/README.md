@@ -23,6 +23,15 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   one tall image and **Cancel** (Esc) to discard. Sticky headers/footers are suppressed and memory
   use is bounded (the capture stops and saves automatically when a limit is reached). Enter/Esc
   apply while the panel has focus; use its buttons after clicking into the page.
+- **Auto-scroll capture** — pick **Auto** (A) in the Screenshot picker and select part of an app's
+  scrollable pane. Tiny Clips scrolls it from the top by itself (posted wheel messages and
+  `PrintWindow`; your mouse, keyboard and focus are never touched), stitches one tall image, keeps
+  fixed headers/footers once, and fills static sidebars. When the app reports its scroll position
+  through UI Automation, steps that overshoot are backed up and the original position is restored.
+  **Done** (Enter) stops early and keeps what was captured; **Cancel** (Esc) discards it. Best for
+  desktop apps (documents, settings pages, lists) that stay visible during the capture; covered or
+  hidden windows often stop repainting (browsers always do), so use **Scroll** for web pages. Uses
+  the same size and memory limits as **Scroll**.
 - **Video recording** → hardware-accelerated **H.264 MP4** (configurable frame rate, audio sources,
   microphone device, mouse-click visuals, and time limit before each recording).
 - **GIF recording** → animated GIF (frame rate, max-width downscale, infinite loop).

@@ -149,3 +149,37 @@ Manual: long web page at normal speed (seamless); page with sticky header + foot
 6. **Review follow-ups (PR #293)**: per-capture session state so Stop drains every queued frame; memory guard accounts for actual buffer capacity (growth capped at 1.5x, first stitch reserved exactly); sticky-footer detection is independent of the scroll step (bounded to height/4, growth per frame bounded by the step) so tall footers survive slow scrolls; results taller than the texture cap bypass the editor even if the setting changed mid-capture; Alt+F4 on the panel cancels.
 4. **Hotkey**: none (mac parity; avoids ZoomIt chords).
 5. **Scope**: single PR.
+
+## Auto-scroll mode (follow-up)
+
+An opt-in **Auto** picker button (A, Screenshot only) next to **Scroll**. Manual mode is unchanged.
+The engine is adapted from [ScrollShot](https://github.com/crutkas/ScrollShot) (MIT).
+
+| | Manual (**Scroll**) | **Auto** |
+|---|---|---|
+| Who scrolls | User | Tiny Clips (posted wheel messages; no focus or mouse change) |
+| Capture | WGC of the region, ~12 fps | `PrintWindow(PW_RENDERFULLCONTENT)` of the window, cropped to the region, after each step settles (~350 ms unchanged) |
+| Works for | Anything on screen, including browsers | Desktop apps that accept posted `WM_MOUSEWHEEL` and keep painting; covered/hidden windows often stop repainting (browsers always) |
+| Overlap | Best-effort (fast scrolls can skip frames) | Steps aim for 60 % of the viewport (growth ≤ 2x per step); with a UIA scroll position, overshoots are backed up |
+| Shift choice | Smallest credible shift + pixel verify | Predicted from the UIA scroll percent (or the last step's pixels per notch), refined by binned row signatures near the prediction |
+| Fixed chrome | Sticky footer held back | Header/footer kept once (changed-rows bounds), static columns filled with background |
+
+Flow: the region is selected with the normal overlay; the window under its center is the target
+(`WindowFromPoint` → root, rejecting Tiny Clips' own windows) and the UI Automation scroll pane at
+that point (read-only `IUIAutomationScrollPattern`, source-generated COM like `WgcInterop`; only
+trusted when the element at the point belongs to the target's process) supplies the scroll
+position. Wheel messages go to the deepest child at the point (WinUI 3's `InputSiteWindowClass`
+when present). The capture scrolls to the top, steps down until the end/limit/Done, restores the
+original position when it is known, and presents through the shared `PresentScrollingCaptureAsync`
+path. It reuses the scrolling panel and `PanoramaCaptureLimits` (including the 16 384 px editor cap).
+
+Smoke-tested without focus changes: Notepad (`long.txt`, 400 lines) visible at the selected point
+stitched every line in repeated runs (OCR-verified). Fully covered windows are best-effort: a
+covered WinUI 3 app stopped repainting for `PrintWindow`, and covered Notepad (no UIA scroll
+position) occasionally mis-stitched repeating lines, so the docs recommend keeping the app visible.
+
+Core pieces (`TinyClips.Core/Capture`): `AutoScrollFrameAnalysis` (same-frame test, changed bounds,
+`FindShift`, column votes), `AutoScrollStitcher`, `AutoScrollStepController`, `AutoScrollEngine`
+(loop over an `IAutoScrollSurface`), `AutoScrollInterop` (Win32 surface), `UiaScrollPane`, and
+`AutoScrollCaptureService` (dedicated MTA thread). `AutoScrollCaptureTests` drives the engine with
+a fake document (header/footer/sidebar, wheel acceleration, unknown position, limits).
