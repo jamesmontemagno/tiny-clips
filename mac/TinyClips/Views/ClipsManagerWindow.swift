@@ -3022,7 +3022,7 @@ private struct ClipManagerUploadcareSettingsView: View {
                         Stepper(value: $settings.clipsManagerArchiveAfterDays, in: 1...365) {
                             Text("Archive clips older than \(settings.clipsManagerArchiveAfterDays) day(s)")
                         }
-                        Button("Archive now") {
+                        Button("Archive Now") {
                             onRunArchiveNow()
                         }
                         .buttonStyle(.bordered)
