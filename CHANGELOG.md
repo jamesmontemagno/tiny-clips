@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- macOS text polish: "Load Text File…" uses a proper ellipsis, "Archive Now" is title-cased, and Settings paths use →.
 - The Copilot macOS run button now reports an existing TinyClips instance before building or launching instead of silently leaving an older app running. Quit it after saving work and finishing recordings, then run again.
 - App CI now ignores documentation-only and unrelated Copilot configuration changes while retaining platform source, test, shared fixture, and build-workflow coverage. Windows build/test jobs skip before allocating Windows runners.
 - Team Load now keeps bulk session controls in sync when every issue has an owner, rolls back partially verified session claims, and loads repository labels beyond the first page. Label Undo and closing with a comment now work reliably across detail-view navigation.
