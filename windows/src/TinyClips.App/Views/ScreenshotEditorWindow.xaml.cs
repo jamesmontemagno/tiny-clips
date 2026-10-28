@@ -59,6 +59,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     private bool _isClosed;
     private int _outputScalePercent = 100;
     private bool _isOutputBusy;
+    private bool _isChoosingBackground;
     private long _loadRequest;
     private bool _initialLoadQueued;
     private bool _initialLoadStarted;
@@ -102,6 +103,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             _controller = new EditorController(DispatcherQueue);
             Toolbar.Attach(_controller);
             Inspector.Attach(_controller);
+            Inspector.BackgroundImageRequested += OnChooseBackgroundImage;
             Canvas.Attach(_controller, settings);
 
             _controller.ImageChanged += OnControllerImageChanged;
@@ -305,6 +307,40 @@ public sealed partial class ScreenshotEditorWindow : Window
     }
 
     // -- Load -------------------------------------------------------------------------------
+
+    private async void OnChooseBackgroundImage(object? sender, EventArgs e)
+    {
+        if (_isClosed || _isChoosingBackground || _isDeletingSource || _isClosePromptOpen || !_controller.CanExport) return;
+        _isChoosingBackground = true;
+        var token = _controller.BeginBackgroundSelection();
+        Inspector.SetBackgroundSelectionBusy(true);
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary };
+            foreach (var extension in new[] { ".png", ".jpg", ".jpeg", ".webp" })
+                picker.FileTypeFilter.Add(extension);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            var file = await picker.PickSingleFileAsync();
+            token.ThrowIfCancellationRequested();
+            if (file is not null) await _controller.ImportBackgroundAsync(file.Path, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // Reset, another style, or closure superseded the staged selection.
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Background image selection failed: {ex}");
+            if (!_isClosed && !token.IsCancellationRequested)
+                App.ShowMessageNotification($"Couldn't load background image. {ex.Message}");
+        }
+        finally
+        {
+            _controller.CancelBackgroundSelection();
+            _isChoosingBackground = false;
+            if (!_isClosed) Inspector.SetBackgroundSelectionBusy(false);
+        }
+    }
 
     private async Task LoadAsync()
     {
