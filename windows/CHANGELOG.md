@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Teleprompter's text-file button now uses sentence case and a typographic ellipsis.
 - Microphone and webcam loading labels now use a typographic ellipsis.
 - Replaced three consecutive periods with an ellipsis in screenshot editor color buttons.
 - Region selection hint no longer has extra spaces around the separator.
