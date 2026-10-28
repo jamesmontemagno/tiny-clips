@@ -7,6 +7,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Fixed
 - Replaced three consecutive periods with an ellipsis in screenshot editor color buttons.
+- Region selection hint no longer has extra spaces around the separator.
 - Long monitor names in the screen picker now truncate with an ellipsis and show the full name on hover.
 - Scrolling-capture status messages now wrap instead of being clipped.
 - Screen picker cards now expose each display's name to screen readers.
