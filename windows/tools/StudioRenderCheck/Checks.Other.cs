@@ -13,8 +13,6 @@ internal static class OtherChecks
     /// <summary>The same for the poster, which is scaled down and JPEG-compressed.</summary>
     private const double PosterColorTolerance = 10;
 
-    private const int Hidden = FrameCode.Unreadable;
-
     public static async Task Run(Harness harness)
     {
         await Encoders(harness).ConfigureAwait(false);

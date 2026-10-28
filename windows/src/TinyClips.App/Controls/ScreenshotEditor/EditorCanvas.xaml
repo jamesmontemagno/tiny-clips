@@ -34,6 +34,9 @@
                     <Border
                         x:Name="CanvasBackground"
                         Visibility="Collapsed" />
+                    <Canvas x:Name="BackgroundImageLayer" Visibility="Collapsed">
+                        <Image x:Name="BackgroundImage" Stretch="Fill" />
+                    </Canvas>
                     <Border x:Name="ImageCard">
                         <Border.Shadow>
                             <ThemeShadow />

@@ -476,7 +476,7 @@ public sealed partial class EditorCanvas : UserControl
         var frameOffX = imageOffX - frame.ImageBounds.X * scale;
         var frameOffY = imageOffY - frame.ImageBounds.Y * scale;
 
-        var showBackground = _controller.BgStyle != ExportBackgroundStyle.Transparent;
+        var showBackground = _controller.BgStyle is ExportBackgroundStyle.Solid or ExportBackgroundStyle.Gradient;
         CanvasBackground.Visibility = showBackground ? Visibility.Visible : Visibility.Collapsed;
         if (showBackground)
         {
@@ -485,6 +485,27 @@ public sealed partial class EditorCanvas : UserControl
             CanvasBackground.Width = frame.FrameSize.Width * scale;
             CanvasBackground.Height = frame.FrameSize.Height * scale;
             CanvasBackground.Background = MakeBackgroundBrush(frame.FrameSize);
+        }
+
+        var showImage = _controller.BgStyle == ExportBackgroundStyle.Image;
+        BackgroundImageLayer.Visibility = showImage ? Visibility.Visible : Visibility.Collapsed;
+        BackgroundImage.Source = showImage ? _controller.BackgroundPreviewSource : null;
+        if (showImage)
+        {
+            var bounds = ScreenshotBackgroundLayout.Create(_controller.BackgroundImageSize.Width,
+                _controller.BackgroundImageSize.Height, frame.FrameSize, _controller.ImagePlacement);
+            Canvas.SetLeft(BackgroundImageLayer, frameOffX);
+            Canvas.SetTop(BackgroundImageLayer, frameOffY);
+            BackgroundImageLayer.Width = frame.FrameSize.Width * scale;
+            BackgroundImageLayer.Height = frame.FrameSize.Height * scale;
+            BackgroundImageLayer.Clip = new RectangleGeometry
+            {
+                Rect = new Rect(0, 0, BackgroundImageLayer.Width, BackgroundImageLayer.Height),
+            };
+            Canvas.SetLeft(BackgroundImage, bounds.X * scale);
+            Canvas.SetTop(BackgroundImage, bounds.Y * scale);
+            BackgroundImage.Width = bounds.Width * scale;
+            BackgroundImage.Height = bounds.Height * scale;
         }
 
         Canvas.SetLeft(ImageCard, imageOffX);
