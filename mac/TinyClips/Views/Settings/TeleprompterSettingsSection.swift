@@ -41,7 +41,7 @@ struct TeleprompterSettingsSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("Load Text File...") {
+                Button("Load Text File…") {
                     loadTranscript()
                 }
                 .disabled(!settings.teleprompterEnabled)
