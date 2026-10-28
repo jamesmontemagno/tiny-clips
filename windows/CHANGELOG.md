@@ -12,6 +12,7 @@ own `CHANGELOG.md` at the repository root.
 - Windows CI no longer builds for README/changelog-only or unrelated configuration changes, and skips whole Windows jobs when no build inputs changed.
 
 ### Changed
+- Refreshed Analytics with full-width, resize-aware daily, weekday, and hourly charts. Select bars with the mouse, touch, or keyboard for persistent capture details; hover for tooltips. Sparse date/hour labels keep the 30-day and 24-hour views readable, with the existing range, type filters, totals, and local history preserved.
 - GitHub-hosted Windows .NET CI, release packaging, and build-mode launch smoke place NuGet packages and HTTP cache under the runner's actual temporary directory. The test-only remote cache follows the new package path with a fresh key; build jobs still do not use remote package caching. Explicit ARM64 local-NVMe storage and publishing approvals are preserved. A small cold-cache x64 pilot supports faster restore; no ARM64 or warm-cache speedup is claimed.
 - Ordinary Windows CI cancels superseded pull-request runs; non-PR runs use unique concurrency groups so documentation-only pushes cannot cancel source validation. NuGet packages are cached only for tests, keyed by architecture, SDK, and dependency inputs. Build-job caches were excluded because transfer overhead outweighed restore savings. All package inspections and test suites remain enabled; release, Store publishing, and launch smoke are unchanged.
 - Added an opt-in local-NVMe ReFS Dev Drive pilot to ARM64 build-mode Windows Launch Smoke

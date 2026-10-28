@@ -11,13 +11,42 @@
     xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <Style x:Key="AnalyticsBarStyle" TargetType="ListViewItem">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style x:Key="AnalyticsChartStyle" TargetType="ListView">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="SelectionMode" Value="Single" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="ScrollViewer.HorizontalScrollMode" Value="Disabled" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollMode" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource AnalyticsBarStyle}" />
+            <Setter Property="ItemsPanel">
+                <Setter.Value>
+                    <ItemsPanelTemplate>
+                        <sections:AnalyticsChartPanel />
+                    </ItemsPanelTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Border HorizontalAlignment="Stretch">
         <StackPanel
-            MaxWidth="1064"
             HorizontalAlignment="Stretch"
             Spacing="8">
         <TextBlock
             Margin="4,8,0,4"
+            AutomationProperties.HeadingLevel="Level1"
             Style="{StaticResource SubtitleTextBlockStyle}"
             Text="Analytics" />
 
@@ -35,25 +64,28 @@
         <Border Style="{StaticResource SettingCardStyle}">
             <StackPanel Spacing="16">
                 <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Daily captures" />
                         <TextBlock
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="Screenshots, videos, and GIFs taken on this device during the selected range." />
-
-                        <ComboBox
-                            Grid.Column="1"
-                            Width="150"
-                            Margin="0,8,0,0"
-                            HorizontalAlignment="Right"
-                            AutomationProperties.AutomationId="AnalyticsRangeComboBox"
-                            AutomationProperties.Name="Analytics range"
-                            SelectedIndex="{x:Bind ViewModel.AnalyticsRangeIndex, Mode=TwoWay}">
-                            <ComboBoxItem Content="Last 7 days" />
-                            <ComboBoxItem Content="Last 30 days" />
-                        </ComboBox>
+                            Text="Screenshots, videos, and GIFs taken on this device."
+                            TextWrapping="Wrap" />
                     </StackPanel>
+                    <ComboBox
+                        Grid.Column="1"
+                        Width="150"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="AnalyticsRangeComboBox"
+                        AutomationProperties.Name="Analytics range"
+                        SelectedIndex="{x:Bind ViewModel.AnalyticsRangeIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="Last 7 days" />
+                        <ComboBoxItem Content="Last 30 days" />
+                    </ComboBox>
                 </Grid>
 
                 <StackPanel Orientation="Horizontal" Spacing="16">
@@ -92,64 +124,81 @@
                     </StackPanel>
                 </StackPanel>
 
-                <ScrollViewer
-                    HorizontalScrollMode="Auto"
-                    HorizontalScrollBarVisibility="Hidden"
-                    VerticalScrollMode="Disabled"
-                    VerticalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.AnalyticsDays, Mode=OneWay}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="8" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="local:CaptureAnalyticsDayViewModel">
-                                <StackPanel
-                                    Width="24"
-                                    Spacing="8"
-                                    VerticalAlignment="Bottom"
-                                    AutomationProperties.Name="{x:Bind AccessibilitySummary}"
-                                    ToolTipService.ToolTip="{x:Bind AccessibilitySummary}">
-                                    <Grid
-                                        Height="160"
-                                        VerticalAlignment="Bottom">
-                                        <StackPanel
-                                            VerticalAlignment="Bottom"
-                                            Spacing="0">
-                                            <Border
-                                                Height="{x:Bind GifHeight}"
-                                                Background="{ThemeResource SystemFillColorSuccessBrush}"
-                                                CornerRadius="2,2,0,0" />
-                                            <Border
-                                                Height="{x:Bind VideoHeight}"
-                                                Background="{ThemeResource SystemFillColorCriticalBrush}"
-                                                CornerRadius="2,2,0,0" />
-                                            <Border
-                                                Height="{x:Bind ScreenshotHeight}"
-                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                                CornerRadius="2,2,0,0" />
-                                        </StackPanel>
-                                    </Grid>
-                                    <TextBlock
-                                        HorizontalAlignment="Center"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind DateLabel}" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <TextBlock
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.AnalyticsChartScaleLabel, Mode=OneWay}" />
+
+                <sections:AnalyticsChart
+                    Style="{StaticResource AnalyticsChartStyle}"
+                    AutomationProperties.AutomationId="DailyCapturesChart"
+                    AutomationProperties.Name="Daily captures"
+                    AutomationProperties.HelpText="Select a bar for details. Use Left and Right arrows, Home, or End to explore days."
+                    ItemsSource="{x:Bind ViewModel.AnalyticsDays, Mode=OneWay}"
+                    SelectedItem="{x:Bind ViewModel.SelectedAnalyticsDay, Mode=TwoWay}">
+                    <sections:AnalyticsChart.ItemTemplate>
+                        <DataTemplate x:DataType="local:CaptureAnalyticsDayViewModel">
+                            <StackPanel
+                                Margin="3,4"
+                                Spacing="8"
+                                ToolTipService.ToolTip="{x:Bind AccessibilitySummary}">
+                                <Grid Height="200">
+                                    <Border
+                                        Height="1"
+                                        VerticalAlignment="Bottom"
+                                        Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                    <StackPanel VerticalAlignment="Bottom" Spacing="0">
+                                        <Border
+                                            Height="{x:Bind GifHeight}"
+                                            Background="{ThemeResource SystemFillColorSuccessBrush}"
+                                            CornerRadius="2,2,0,0" />
+                                        <Border
+                                            Height="{x:Bind VideoHeight}"
+                                            Background="{ThemeResource SystemFillColorCriticalBrush}"
+                                            CornerRadius="2,2,0,0" />
+                                        <Border
+                                            Height="{x:Bind ScreenshotHeight}"
+                                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                            CornerRadius="2,2,0,0" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    Height="16"
+                                    HorizontalAlignment="Center"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind DateLabel}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </sections:AnalyticsChart.ItemTemplate>
+                </sections:AnalyticsChart>
+
+                <Border
+                    Padding="12"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    CornerRadius="6">
+                    <TextBlock
+                        AutomationProperties.AutomationId="DailyCaptureDetails"
+                        Text="{x:Bind ViewModel.SelectedAnalyticsDaySummary, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                </Border>
 
                 <TextBlock
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Counts are stored locally and automatically roll over after 30 days." />
+                    Text="Select a bar for details, or use the arrow keys while the chart is focused. Type filters change the chart only; totals and details include all types."
+                    TextWrapping="Wrap" />
+
+                <TextBlock
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Daily history stays on this device for 30 days. Lifetime and hourly totals are kept until reset."
+                    TextWrapping="Wrap" />
 
                 <TextBlock
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="No captures yet for this range. Take a screenshot, video, or GIF to start the chart."
+                    TextWrapping="Wrap"
                     Visibility="{x:Bind ViewModel.AnalyticsEmptyStateVisibility, Mode=OneWay}" />
             </StackPanel>
         </Border>
@@ -296,21 +345,24 @@
                     <TextBlock
                         Style="{StaticResource BodyStrongTextBlockStyle}"
                         Text="{x:Bind ViewModel.BusiestWeekdayLabel, Mode=OneWay}" />
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.WeekdayBreakdown, Mode=OneWay}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="8" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
+                    <sections:AnalyticsChart
+                        Style="{StaticResource AnalyticsChartStyle}"
+                        AutomationProperties.AutomationId="WeekdayCapturesChart"
+                        AutomationProperties.Name="Captures by weekday for the selected range"
+                        AutomationProperties.HelpText="Select a bar for details. Use Left and Right arrows, Home, or End to explore weekdays."
+                        ItemsSource="{x:Bind ViewModel.WeekdayBreakdown, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.SelectedWeekday, Mode=TwoWay}">
+                        <sections:AnalyticsChart.ItemTemplate>
                             <DataTemplate x:DataType="local:WeekdayBreakdownViewModel">
                                 <StackPanel
-                                    Width="32"
-                                    Spacing="4"
-                                    VerticalAlignment="Bottom"
-                                    AutomationProperties.Name="{x:Bind AccessibilitySummary}"
+                                    Margin="3,4"
+                                    Spacing="8"
                                     ToolTipService.ToolTip="{x:Bind AccessibilitySummary}">
-                                    <Grid Height="60" VerticalAlignment="Bottom">
+                                    <Grid Height="100">
+                                        <Border
+                                            Height="1"
+                                            VerticalAlignment="Bottom"
+                                            Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                                         <Border
                                             Height="{x:Bind Height}"
                                             VerticalAlignment="Bottom"
@@ -321,13 +373,19 @@
                                         </Border>
                                     </Grid>
                                     <TextBlock
+                                        Height="16"
                                         HorizontalAlignment="Center"
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="{x:Bind DayLabel}" />
                                 </StackPanel>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </sections:AnalyticsChart.ItemTemplate>
+                    </sections:AnalyticsChart>
+                    <TextBlock
+                        Margin="4,8,4,0"
+                        AutomationProperties.AutomationId="WeekdayCaptureDetails"
+                        Text="{x:Bind ViewModel.SelectedWeekdaySummary, Mode=OneWay}"
+                        TextWrapping="Wrap" />
                 </StackPanel>
 
                 <StackPanel Spacing="4">
@@ -338,40 +396,53 @@
                     <TextBlock
                         Style="{StaticResource BodyStrongTextBlockStyle}"
                         Text="{x:Bind ViewModel.MostActiveHourLabel, Mode=OneWay}" />
-                    <ScrollViewer
-                        HorizontalScrollMode="Auto"
-                        HorizontalScrollBarVisibility="Hidden"
-                        VerticalScrollMode="Disabled"
-                        VerticalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyBreakdown, Mode=OneWay}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="4" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="local:HourBreakdownViewModel">
-                                    <StackPanel
-                                        Width="16"
-                                        Spacing="4"
-                                        VerticalAlignment="Bottom"
-                                        AutomationProperties.Name="{x:Bind AccessibilitySummary}"
-                                        ToolTipService.ToolTip="{x:Bind AccessibilitySummary}">
-                                        <Grid Height="60" VerticalAlignment="Bottom">
-                                            <Border
-                                                Height="{x:Bind Height}"
-                                                VerticalAlignment="Bottom"
-                                                CornerRadius="1,1,0,0">
-                                                <Border.Background>
-                                                    <SolidColorBrush Color="{ThemeResource SystemAccentColor}" Opacity="{x:Bind BarOpacity}" />
-                                                </Border.Background>
-                                            </Border>
-                                        </Grid>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                    <sections:AnalyticsChart
+                        Style="{StaticResource AnalyticsChartStyle}"
+                        AutomationProperties.AutomationId="HourlyCapturesChart"
+                        AutomationProperties.Name="All-time captures by local hour"
+                        AutomationProperties.HelpText="Select a bar for details. Use Left and Right arrows, Home, or End to explore hours."
+                        ItemsSource="{x:Bind ViewModel.HourlyBreakdown, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.SelectedHour, Mode=TwoWay}">
+                        <sections:AnalyticsChart.ItemTemplate>
+                            <DataTemplate x:DataType="local:HourBreakdownViewModel">
+                                <StackPanel
+                                    Margin="3,4"
+                                    Spacing="8"
+                                    ToolTipService.ToolTip="{x:Bind AccessibilitySummary}">
+                                    <Grid Height="100">
+                                        <Border
+                                            Height="1"
+                                            VerticalAlignment="Bottom"
+                                            Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                        <Border
+                                            Height="{x:Bind Height}"
+                                            VerticalAlignment="Bottom"
+                                            CornerRadius="1,1,0,0">
+                                            <Border.Background>
+                                                <SolidColorBrush Color="{ThemeResource SystemAccentColor}" Opacity="{x:Bind BarOpacity}" />
+                                            </Border.Background>
+                                        </Border>
+                                    </Grid>
+                                    <TextBlock
+                                        Height="16"
+                                        HorizontalAlignment="Center"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind AxisLabel}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </sections:AnalyticsChart.ItemTemplate>
+                    </sections:AnalyticsChart>
+                    <TextBlock
+                        Margin="4,8,4,0"
+                        AutomationProperties.AutomationId="HourlyCaptureDetails"
+                        Text="{x:Bind ViewModel.SelectedHourSummary, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Margin="4,4,4,0"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Hours in local time (00-23). Includes all capture types, all-time."
+                        TextWrapping="Wrap" />
                 </StackPanel>
             </StackPanel>
         </Border>
