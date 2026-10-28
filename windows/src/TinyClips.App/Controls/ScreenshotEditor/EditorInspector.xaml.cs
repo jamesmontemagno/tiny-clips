@@ -25,12 +25,21 @@ public sealed partial class EditorInspector : UserControl
     private EditorController _controller = null!;
     private bool _inspectorInitializing = true;
     private bool _bgInitializing;
+    private bool _backgroundSelectionBusy;
     private ContentDialog? _backgroundColorDialog;
     private IAsyncOperation<ContentDialogResult>? _backgroundColorDialogOperation;
 
     public EditorInspector()
     {
         InitializeComponent();
+    }
+
+    internal event EventHandler? BackgroundImageRequested;
+
+    internal void SetBackgroundSelectionBusy(bool busy)
+    {
+        _backgroundSelectionBusy = busy;
+        SyncBackgroundControls();
     }
 
     internal bool HasOpenBackgroundColorDialog => _backgroundColorDialog is not null;
@@ -76,7 +85,11 @@ public sealed partial class EditorInspector : UserControl
                 _inspectorInitializing = false;
             }
         };
-        controller.BackgroundChanged += (_, _) => UpdateExportFrameControls();
+        controller.BackgroundChanged += (_, _) =>
+        {
+            SyncBackgroundControls();
+            UpdateExportFrameControls();
+        };
         controller.TextDefaultsChanged += (_, _) =>
         {
             if (_controller.Tool == EditTool.Text && _controller.SelectedAnnotation is null)
@@ -749,16 +762,58 @@ public sealed partial class EditorInspector : UserControl
         {
             1 => ExportBackgroundStyle.Solid,
             2 => ExportBackgroundStyle.Gradient,
+            3 => ExportBackgroundStyle.Image,
             _ => ExportBackgroundStyle.Transparent,
         };
+        if (style == ExportBackgroundStyle.Image && !_controller.HasBackgroundImage)
+        {
+            SyncBackgroundControls();
+            BackgroundImageRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
         _controller.SetBackgroundStyle(style);
         UpdateBackgroundStyleUi();
+    }
+
+    private void SyncBackgroundControls()
+    {
+        var wasInitializing = _bgInitializing;
+        _bgInitializing = true;
+        try
+        {
+            BgStyleCombo.SelectedIndex = (int)_controller.BgStyle;
+            BgStyleCombo.IsEnabled = !_backgroundSelectionBusy;
+            BackgroundImagePlacementCombo.SelectedIndex = (int)_controller.ImagePlacement;
+            BackgroundImagePlacementCombo.IsEnabled = !_backgroundSelectionBusy && _controller.HasBackgroundImage;
+            ChooseBackgroundImageButton.IsEnabled = !_backgroundSelectionBusy;
+            ChooseBackgroundImageButton.Content = _controller.HasBackgroundImage ? "Replace image..." : "Choose image...";
+            RemoveBackgroundImageButton.IsEnabled = !_backgroundSelectionBusy && _controller.HasBackgroundImage;
+            BackgroundImageName.Text = _backgroundSelectionBusy ? "Choosing image..." : _controller.BackgroundFileName ?? "No image selected";
+            UpdateBackgroundStyleUi();
+        }
+        finally
+        {
+            _bgInitializing = wasInitializing;
+        }
+    }
+
+    private void OnChooseBackgroundImage(object sender, RoutedEventArgs e) =>
+        BackgroundImageRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnRemoveBackgroundImage(object sender, RoutedEventArgs e) => _controller.RemoveBackgroundImage();
+
+    private void OnBackgroundImagePlacementChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_bgInitializing || _inspectorInitializing || BackgroundImagePlacementCombo.SelectedIndex < 0) return;
+        _controller.SetBackgroundImagePlacement((BackgroundImagePlacement)BackgroundImagePlacementCombo.SelectedIndex);
     }
 
     private void UpdateBackgroundStyleUi()
     {
         var showSolid = _controller.BgStyle == ExportBackgroundStyle.Solid;
         var showGradient = _controller.BgStyle == ExportBackgroundStyle.Gradient;
+        BackgroundImagePanel.Visibility = _controller.BgStyle == ExportBackgroundStyle.Image || _backgroundSelectionBusy
+            ? Visibility.Visible : Visibility.Collapsed;
 
         SolidPresetHeader.Visibility = showSolid ? Visibility.Visible : Visibility.Collapsed;
         SolidPresetGrid.Visibility = showSolid ? Visibility.Visible : Visibility.Collapsed;

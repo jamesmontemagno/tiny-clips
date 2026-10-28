@@ -30,6 +30,7 @@
                                 Width="200"
                                 Height="130"
                                 Margin="4"
+                                AutomationProperties.Name="{x:Bind Title}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"

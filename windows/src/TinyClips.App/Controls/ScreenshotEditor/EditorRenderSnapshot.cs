@@ -4,19 +4,31 @@ using Windows.Graphics.Imaging;
 
 namespace TinyClips.App.ScreenshotEditor;
 
-/// <summary>Owns one image lease, never the controller's original bitmap or any XAML object.</summary>
+/// <summary>Owns immutable pixel leases, never the controller's ownership or any XAML object.</summary>
 internal sealed class EditorRenderSnapshot(
     SharedResource<EditorImage>.Lease image,
     ScreenshotRenderState state,
     DocumentRevision revision,
-    CancellationToken documentCancellation) : IDisposable
+    CancellationToken documentCancellation,
+    SharedResource<EditorImage>.Lease? background = null) : IDisposable
 {
     public EditorImage Image => image.Value;
+    public EditorImage? Background => background?.Value;
     public ScreenshotRenderState State { get; } = state;
     public DocumentRevision Revision { get; } = revision;
     public CancellationToken DocumentCancellation { get; } = documentCancellation;
 
-    public void Dispose() => image.Dispose();
+    public void Dispose()
+    {
+        try
+        {
+            background?.Dispose();
+        }
+        finally
+        {
+            image.Dispose();
+        }
+    }
 }
 
 /// <summary>
