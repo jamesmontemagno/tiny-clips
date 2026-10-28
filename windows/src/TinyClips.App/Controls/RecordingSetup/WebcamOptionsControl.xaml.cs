@@ -414,7 +414,7 @@ public sealed partial class WebcamOptionsControl : UserControl
         _cameraMenu.Items.Clear();
         if (_webcamsLoading)
         {
-            _loadingCameraItem ??= new MenuFlyoutItem { Text = "Loading webcams...", IsEnabled = false };
+            _loadingCameraItem ??= new MenuFlyoutItem { Text = "Loading webcams…", IsEnabled = false };
             _cameraMenu.Items.Add(_loadingCameraItem);
             return;
         }
@@ -488,7 +488,7 @@ public sealed partial class WebcamOptionsControl : UserControl
     private void UpdateWebcamSettingsSummary()
     {
         var selected = _webcams.FirstOrDefault(w => w.Id == _selectedWebcamId);
-        var deviceName = selected?.Name ?? (_webcamsLoading ? "Loading webcams..." : "System default");
+        var deviceName = selected?.Name ?? (_webcamsLoading ? "Loading webcams…" : "System default");
         var state = _webcamEnabled ? "On" : "Off";
         var summary = $"Webcam settings: {state}, {deviceName}, {_webcamShape}, {_webcamSizePreset}, {FormatCorner(_webcamCornerPosition)}";
         ToolTipService.SetToolTip(WebcamSettingsButton, summary);
