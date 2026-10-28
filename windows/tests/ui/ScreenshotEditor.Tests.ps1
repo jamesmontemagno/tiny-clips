@@ -25,7 +25,25 @@
     With a redaction preview pending, close before its queued invalidation runs; verify its
     temporary SoftwareBitmap is disposed and AnnotationVisualInvalidated is not raised.
     Controls: repeat each load / Reset without closing; dimensions and preview must populate,
-    annotations must reset, and output scale/padding must remain unchanged.
+    annotations and background style/image must reset, and output scale/padding must remain unchanged.
+
+    Custom image background native regression matrix:
+    - Choose static PNG/JPEG/WebP files with wide/tall dimensions and transparent pixels.
+      Fill centers and crops; Fit centers the full image with transparent gaps. Compare the
+      preview to Copy and saved PNG/JPEG/WebP at full and reduced output scale.
+    - Use padding, square/portrait frames, screenshot alignment, corners and shadows. Move
+      the editor between different-DPI displays and zoom; output dimensions must not change.
+    - Switch to Solid/Gradient/Transparent and back to Image; the image is retained. Remove
+      selects Transparent. Reset clears the background but retains padding/scale/frame settings.
+    - Cancel selection or choose corrupt, animated, inaccessible, or >32-megapixel images:
+      the prior background survives, errors are visible, and cancellation is not an edit.
+    - Delete the original background file after selection: preview and export still work.
+    - Pause background decoding or preview SetBitmapAsync, then Reset/close/change style.
+      Resume: no late state publication or leaked bitmap/preview, and no cancellation toast.
+    - Pause rendering after snapshot capture, then replace/remove the image or close.
+      The snapshot retains its original pixels until completion; it never clears newer edits.
+    - Crop must not bake the background into screenshot pixels; multiple editors stay isolated.
+    - All new controls are reachable by keyboard and named for screen readers in light/dark themes.
 
 .EXAMPLE
     .\ScreenshotEditor.Tests.ps1 -AppPid 12345 -ShotDir .\screenshots
@@ -268,8 +286,11 @@ foreach ($editor in @(Get-EditorWindows)) {
     winapp ui invoke "EditorResetButton" @target 2>$null | Out-Null
     Start-Sleep -Milliseconds 500
     if ($editor.hwnd -eq $first.hwnd) {
-        Test-UI "Reset preserves output-resolution metadata" {
+        Test-UI "Reset clears the background and preserves output-resolution metadata" {
             Assert-OutputResolution $scaledOutputResolution | Out-Null
+            Invoke-UI wait-for "EditorCustomSolidBgColorButton" @target --gone -t 5000 | Out-Null
+            Invoke-UI wait-for "EditorGradientDirectionSlider" @target --gone -t 3000 | Out-Null
+            Invoke-UI wait-for "EditorChooseBackgroundImageButton" @target --gone -t 3000 | Out-Null
         }
     }
     winapp ui invoke "EditorCloseButton" @target 2>$null | Out-Null

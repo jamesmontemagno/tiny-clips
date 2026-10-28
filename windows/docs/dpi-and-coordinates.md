@@ -76,6 +76,23 @@ scale rounding with a one-pixel minimum. Padding, aspect-ratio frames, and image
 part of that frame; monitor rasterization scale is not. Crop pre-baking always uses native image
 dimensions and excludes export backgrounds, padding, corners, and shadows.
 
+The screenshot editor also accepts a still PNG, JPEG, or WebP background of up to
+32 million decoded pixels. It keeps the decoded image in memory for that editor rather
+than rereading the original path for preview or export. Fill (the default) centers and
+crops the image to cover the entire export frame; Fit centers the whole image and leaves
+unused space transparent. Source alpha is preserved. Both paths use
+`ScreenshotBackgroundLayout` in frame pixels; the preview alone scales those bounds into
+its layout coordinates. JPEG output keeps the existing alpha-conversion behavior and
+cannot preserve transparent gaps.
+
+Switching to another background style retains the selected image until the editor closes.
+Remove selects Transparent and releases it; Reset also clears the background while retaining
+output scale, padding, frame, alignment, corners, and shadow settings. Cancelled or failed
+imports leave the previous background untouched. Background imports are staged and canceled
+on source replacement or closure. Render snapshots lease background pixels as well as
+screenshot pixels, so replacement/removal cannot dispose an image still used by an export.
+Image backgrounds are not persisted across editor sessions.
+
 The UI thread captures immutable annotation/style data and a lease on the immutable source
 image. Workers record list-order Win2D composition at 96 DPI and replay it directly into one
 final-size render target. At 100% there is no subsequent resample; other scales do not create an

@@ -46,6 +46,13 @@ public enum ExportBackgroundStyle
     Transparent,
     Solid,
     Gradient,
+    Image,
+}
+
+public enum BackgroundImagePlacement
+{
+    Fill,
+    Fit,
 }
 
 public enum ExportFramePreset
@@ -356,4 +363,5 @@ public sealed record ScreenshotRenderState(
     double CornerRadius,
     double Shadow,
     bool IncludeBackground,
-    ScreenshotExportSize OutputSize);
+    ScreenshotExportSize OutputSize,
+    BackgroundImagePlacement ImagePlacement = BackgroundImagePlacement.Fill);
