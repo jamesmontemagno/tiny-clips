@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Microphone and webcam loading labels now use a typographic ellipsis.
 - Replaced three consecutive periods with an ellipsis in screenshot editor color buttons.
 - Region selection hint no longer has extra spaces around the separator.
 - Long monitor names in the screen picker now truncate with an ellipsis and show the full name on hover.
