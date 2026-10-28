@@ -163,7 +163,8 @@
                                     </StackPanel>
                                 </Grid>
                                 <TextBlock
-                                    Height="16"
+                                    MinHeight="16"
+                                    Margin="-8,0"
                                     HorizontalAlignment="Center"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind DateLabel}" />
@@ -373,7 +374,8 @@
                                         </Border>
                                     </Grid>
                                     <TextBlock
-                                        Height="16"
+                                        MinHeight="16"
+                                        Margin="-8,0"
                                         HorizontalAlignment="Center"
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="{x:Bind DayLabel}" />
@@ -424,7 +426,8 @@
                                         </Border>
                                     </Grid>
                                     <TextBlock
-                                        Height="16"
+                                        MinHeight="16"
+                                        Margin="-8,0"
                                         HorizontalAlignment="Center"
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="{x:Bind AxisLabel}" />
