@@ -93,8 +93,7 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="Scroll the page, then press Enter"
-                    TextTrimming="CharacterEllipsis"
-                    TextWrapping="NoWrap" />
+                    TextWrapping="Wrap" />
 
                 <Rectangle
                     Width="1"
