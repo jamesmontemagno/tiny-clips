@@ -76,10 +76,10 @@ TinyClips requires **Screen Recording** permission. On first launch, macOS will 
 | Screenshot | ⌃⌥⌘5 |
 | Record Video | ⌃⌥⌘6 |
 | Record GIF | ⌃⌥⌘7 |
-| Screenshot Region (no picker) | Not set by default; configure in Settings > Shortcuts |
-| Screenshot Window (no picker) | Not set by default; configure in Settings > Shortcuts |
-| Screenshot Screen (no picker) | Not set by default; configure in Settings > Shortcuts |
-| Copy Text from Region | Not set by default; configure in Settings > Shortcuts |
+| Screenshot Region (no picker) | Not set by default; configure in Settings → Shortcuts |
+| Screenshot Window (no picker) | Not set by default; configure in Settings → Shortcuts |
+| Screenshot Screen (no picker) | Not set by default; configure in Settings → Shortcuts |
+| Copy Text from Region | Not set by default; configure in Settings → Shortcuts |
 | Picker: Region / Screen / Window | R / S / W |
 | Picker: Cancel | Esc |
 | Screenshot editor: Close | Esc / ⌘W |
@@ -127,9 +127,9 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 | Action | Shortcut |
 |--------|----------|
 | Screenshot | Ctrl+Shift+5 |
-| Screenshot Region (no picker) | Not set by default; configure in Settings > Keyboard shortcuts |
-| Screenshot Window (no picker) | Not set by default; configure in Settings > Keyboard shortcuts |
-| Screenshot Screen (no picker) | Not set by default; configure in Settings > Keyboard shortcuts |
+| Screenshot Region (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
+| Screenshot Window (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
+| Screenshot Screen (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
 | Record Video | Ctrl+Shift+6 |
 | Record GIF | Ctrl+Shift+7 |
 | Picker: Region / Screen / Window | R / S / W |

@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Settings paths in Windows update notifications now consistently use arrows.
 - Failed or cancelled scrolling-capture setup now closes its panel and removes service subscriptions so subsequent captures are not blocked.
 - StudioWindowCheck builds with the capture inclusion setting and keeps its test window capturable.
 - Recording still stops and finalizes if Windows cannot safely show the processing indicator. Multi-monitor region selection closes already-created overlays if a later overlay cannot be created or activated.

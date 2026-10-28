@@ -2247,7 +2247,7 @@ public partial class App : Application
         {
             ShowUpdateCheckNotification(
                 "Update available",
-                $"Tiny Clips {result.LatestVersion} is available. Open Settings > About to update.");
+                $"Tiny Clips {result.LatestVersion} is available. Open Settings → About to update.");
         }
     }
 
@@ -2260,7 +2260,7 @@ public partial class App : Application
                 ShowUpdateCheckNotification("You're up to date", $"Tiny Clips {result.CurrentVersion} is current.");
                 break;
             case AppUpdateStatus.UpdateAvailable:
-                ShowUpdateCheckNotification("Update available", $"Tiny Clips {result.LatestVersion} is available. Open Settings > About to update.");
+                ShowUpdateCheckNotification("Update available", $"Tiny Clips {result.LatestVersion} is available. Open Settings → About to update.");
                 break;
             default:
                 ShowUpdateCheckNotification("Couldn't check for updates", result.Message ?? "Please try again later.");
