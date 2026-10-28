@@ -43,6 +43,27 @@ public sealed class ScreenshotBackgroundTests
     }
 
     [Theory]
+    [InlineData(16384, 1000, true)]
+    [InlineData(20000, 1000, false)]
+    [InlineData(1000, 20000, false)]
+    public void Decoder_ValidatesBothDeviceAxesWithinPixelBudget(int width, int height, bool valid)
+    {
+        if (valid) ScreenshotBackgroundDecoder.ValidateDimensions(width, height, 16384);
+        else Assert.Throws<InvalidDataException>(() => ScreenshotBackgroundDecoder.ValidateDimensions(width, height, 16384));
+    }
+
+    [Fact]
+    public void Decoder_RejectsEncodedImageBeyondDeviceLimit()
+    {
+        using var folder = new ImageFolder();
+        var path = folder.Write(Encode(SKEncodedImageFormat.Png));
+        Assert.Throws<InvalidDataException>(() =>
+            ScreenshotBackgroundDecoder.Decode(path, TestContext.Current.CancellationToken, maximumDimension: 2));
+        Assert.Equal(3, ScreenshotBackgroundDecoder.Decode(
+            path, TestContext.Current.CancellationToken, maximumDimension: 3).Width);
+    }
+
+    [Theory]
     [InlineData(SKEncodedImageFormat.Png)]
     [InlineData(SKEncodedImageFormat.Jpeg)]
     [InlineData(SKEncodedImageFormat.Webp)]

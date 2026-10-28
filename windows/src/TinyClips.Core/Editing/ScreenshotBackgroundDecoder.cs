@@ -10,15 +10,19 @@ public static class ScreenshotBackgroundDecoder
 {
     public const long MaximumPixels = 32_000_000;
 
-    public static void ValidateDimensions(int width, int height)
+    public static void ValidateDimensions(int width, int height, int maximumDimension = int.MaxValue)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumDimension);
         if (width <= 0 || height <= 0)
             throw new InvalidDataException("The background image has invalid dimensions.");
         if ((long)width * height > MaximumPixels)
             throw new InvalidDataException("Choose a background image of 32 megapixels or less.");
+        if (width > maximumDimension || height > maximumDimension)
+            throw new InvalidDataException($"Choose a background image no wider or taller than {maximumDimension:N0} pixels for this graphics device.");
     }
 
-    public static ScreenshotBackgroundPixels Decode(string path, CancellationToken cancellationToken = default)
+    public static ScreenshotBackgroundPixels Decode(string path, CancellationToken cancellationToken = default,
+        int maximumDimension = int.MaxValue)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var stream = File.OpenRead(path);
@@ -27,7 +31,7 @@ public static class ScreenshotBackgroundDecoder
             ?? throw new InvalidDataException("The background image could not be read. Choose a PNG, JPEG, or WebP image.");
         if (codec.EncodedFormat is not (SKEncodedImageFormat.Png or SKEncodedImageFormat.Jpeg or SKEncodedImageFormat.Webp))
             throw new InvalidDataException("Choose a PNG, JPEG, or WebP background image.");
-        ValidateDimensions(codec.Info.Width, codec.Info.Height);
+        ValidateDimensions(codec.Info.Width, codec.Info.Height, maximumDimension);
         if (codec.FrameCount > 1)
             throw new InvalidDataException("Animated backgrounds are not supported. Choose a still image.");
         cancellationToken.ThrowIfCancellationRequested();

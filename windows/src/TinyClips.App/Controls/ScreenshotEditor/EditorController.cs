@@ -856,7 +856,8 @@ internal sealed class EditorController : IDisposable
         {
             bitmap = await Task.Run(() =>
             {
-                var pixels = ScreenshotBackgroundDecoder.Decode(path, cancellationToken);
+                var maximumDimension = CanvasDevice.GetSharedDevice().MaximumBitmapSizeInPixels;
+                var pixels = ScreenshotBackgroundDecoder.Decode(path, cancellationToken, maximumDimension);
                 cancellationToken.ThrowIfCancellationRequested();
                 return SoftwareBitmap.CreateCopyFromBuffer(pixels.BgraPixels.AsBuffer(),
                     BitmapPixelFormat.Bgra8, pixels.Width, pixels.Height, BitmapAlphaMode.Premultiplied);

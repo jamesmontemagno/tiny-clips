@@ -77,7 +77,9 @@ part of that frame; monitor rasterization scale is not. Crop pre-baking always u
 dimensions and excludes export backgrounds, padding, corners, and shadows.
 
 The screenshot editor also accepts a still PNG, JPEG, or WebP background of up to
-32 million decoded pixels. It keeps the decoded image in memory for that editor rather
+32 million decoded pixels, also limited on each axis by the graphics device's maximum
+bitmap size. Unsupported dimensions are rejected before decoding or changing the background.
+It keeps the decoded image in memory for that editor rather
 than rereading the original path for preview or export. Fill (the default) centers and
 crops the image to cover the entire export frame; Fit centers the whole image and leaves
 unused space transparent. Source alpha is preserved. Both paths use
