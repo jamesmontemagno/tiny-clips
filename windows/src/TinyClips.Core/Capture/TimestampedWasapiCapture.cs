@@ -12,7 +12,6 @@ namespace TinyClips.Core.Capture;
 /// </summary>
 internal sealed class TimestampedWasapiCapture : IDisposable
 {
-    private const long ReferenceTimesPerSecond = TimeSpan.TicksPerSecond;
     private const long ReferenceTimesPerMillisecond = TimeSpan.TicksPerMillisecond;
 
     // Request a generous capture buffer so a busy CPU (e.g. software H.264 encoding) can stall

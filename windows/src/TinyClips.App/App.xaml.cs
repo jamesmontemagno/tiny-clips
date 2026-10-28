@@ -1053,21 +1053,6 @@ public partial class App : Application
         }
     }
 
-    private Button CreateQuickAccessButton(string text, string glyph, ICommand command, Action dismiss)
-    {
-        var button = new Button
-        {
-            Content = QuickAccessContent(glyph, text),
-            Command = command,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Center,
-            Padding = new Thickness(8, 6, 8, 6),
-        };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, text);
-        button.Click += (_, _) => dismiss();
-        return button;
-    }
-
     private static StackPanel QuickAccessContent(string glyph, string text)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
