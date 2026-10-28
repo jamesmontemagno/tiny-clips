@@ -7,6 +7,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Fixed
 - Settings paths in Windows update notifications now consistently use arrows.
+- Screen picker cards now expose each display's name to screen readers.
 - Failed or cancelled scrolling-capture setup now closes its panel and removes service subscriptions so subsequent captures are not blocked.
 - StudioWindowCheck builds with the capture inclusion setting and keeps its test window capturable.
 - Recording still stops and finalizes if Windows cannot safely show the processing indicator. Multi-monitor region selection closes already-created overlays if a later overlay cannot be created or activated.
@@ -29,6 +30,7 @@ own `CHANGELOG.md` at the repository root.
   controls in collapsed Advanced settings.
 
 ### Added
+- Screenshot backgrounds can use a local PNG, JPEG, or WebP image, with centered Fill or Fit placement in the preview, saved image, and clipboard copy. Images stay in the current editor only; Remove or Reset clears the background. Animated images, images above 32 megapixels, and dimensions exceeding the graphics device's bitmap limit are rejected.
 - Added **Include Tiny Clips in captures** in General settings for demos. Off by default, it controls app windows, capture controls and window selection starting with the next capture after any active recording ends. The teleprompter and live webcam preview remain excluded; the recorded camera is unchanged.
 - Added manual GitHub Copilot app run buttons for Windows x64 and ARM64, using `dotnet run` to build and launch with package identity.
 - **What's New introduces Studio.** A new illustrated screen-and-camera composition and editing highlights explain the early preview, with a switch to enable it right there. It appears once per content revision for existing users, not on every app update; new installs keep the onboarding tour. The switch is saved, and ordinary video recording stays unchanged.
