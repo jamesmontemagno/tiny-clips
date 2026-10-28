@@ -95,7 +95,7 @@
                                         VerticalAlignment="Center"
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="Loading microphones..." />
+                                        Text="Loading microphones…" />
                                 </StackPanel>
                                 <ComboBox
                                     AutomationProperties.AutomationId="MicrophoneDeviceCombo"
@@ -152,7 +152,7 @@
                             VerticalAlignment="Center"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="Loading webcams..." />
+                            Text="Loading webcams…" />
                     </StackPanel>
                     <ComboBox
                         MinWidth="220"
