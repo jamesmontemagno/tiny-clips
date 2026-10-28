@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - Team Load people now have a profile, opened from the arrow beside their name, showing their momentum over time alongside everything assigned to them.
 
 ### Changed
+- New TinyClips app icon: a winking paperclip mascot holding a photo frame on an orange-to-yellow background, shared by the macOS and Windows apps. All icon sizes are generated from `shared/branding/app-icon-1024.png` by `scripts/generate-app-icons.py`.
 - Ordinary macOS and Windows CI cancel superseded pull-request runs per workflow; non-PR runs use unique concurrency groups so documentation-only pushes cannot cancel source validation. The Windows test job reuses an architecture-, SDK-, and dependency-scoped NuGet package cache; build-job caches were excluded because transfer overhead outweighed restore savings. Build and test coverage, release, Store publishing, and launch-smoke workflows are unchanged.
 - macOS video settings now group controls into Before Recording, During Recording, and After Recording, with audio offset tucked into collapsed Advanced settings.
 - Team Load issue details now separate the assignee list from the Add and Copilot buttons with extra vertical spacing.
