@@ -38,6 +38,8 @@ internal sealed class EditorController : IDisposable
 
     private SoftwareBitmap? _bitmap;
     private SharedResource<EditorImage>? _imageOwner;
+    private SharedResource<EditorImage>? _backgroundOwner;
+    private CancellationTokenSource? _backgroundCancellation;
     private readonly ScreenshotDocumentRevision _revision = new();
     private CancellationTokenSource _documentCancellation = new();
     private readonly SemaphoreSlim _renderGate = new(1, 1);
@@ -178,6 +180,12 @@ internal sealed class EditorController : IDisposable
 
     public ExportBackgroundStyle BgStyle { get; private set; } = ExportBackgroundStyle.Transparent;
 
+    public SoftwareBitmapSource? BackgroundPreviewSource { get; private set; }
+    public string? BackgroundFileName { get; private set; }
+    public Size BackgroundImageSize { get; private set; }
+    public bool HasBackgroundImage => _backgroundOwner is not null;
+    public BackgroundImagePlacement ImagePlacement { get; private set; } = BackgroundImagePlacement.Fill;
+
     public Color BgColor { get; private set; } = Color.FromArgb(255, 245, 245, 250);
 
     public Color BgColor2 { get; private set; } = Color.FromArgb(255, 214, 230, 252);
@@ -287,6 +295,7 @@ internal sealed class EditorController : IDisposable
 
     private void CancelDocumentWork()
     {
+        CancelBackgroundSelection();
         _documentCancellation.Cancel();
         _documentCancellation.Dispose();
         _documentCancellation = new CancellationTokenSource();
@@ -321,9 +330,16 @@ internal sealed class EditorController : IDisposable
             _annotations.Clear();
             _counterValue = 1;
             SelectedAnnotation = null;
-            if (resetAnnotations) _revision.MarkSaved(_revision.Current);
+            if (resetAnnotations)
+            {
+                ReleaseBackgroundImage();
+                BgStyle = ExportBackgroundStyle.Transparent;
+                ImagePlacement = BackgroundImagePlacement.Fill;
+                _revision.MarkSaved(_revision.Current);
+            }
             else MarkDirty();
             ImageChanged?.Invoke(this, EventArgs.Empty);
+            if (resetAnnotations) BackgroundChanged?.Invoke(this, EventArgs.Empty);
             AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
             return true;
         }
@@ -812,8 +828,108 @@ internal sealed class EditorController : IDisposable
 
     // -- Background / export ---------------------------------------------------------------
 
+    public CancellationToken BeginBackgroundSelection()
+    {
+        VerifyAccess();
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        CancelBackgroundSelection();
+        _backgroundCancellation = CancellationTokenSource.CreateLinkedTokenSource(_documentCancellation.Token);
+        return _backgroundCancellation.Token;
+    }
+
+    public void CancelBackgroundSelection()
+    {
+        _backgroundCancellation?.Cancel();
+        _backgroundCancellation?.Dispose();
+        _backgroundCancellation = null;
+    }
+
+    public async Task ImportBackgroundAsync(string path, CancellationToken cancellationToken)
+    {
+        VerifyAccess();
+        cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        SoftwareBitmap? bitmap = null;
+        SoftwareBitmapSource? preview = null;
+        SharedResource<EditorImage>? owner = null;
+        try
+        {
+            bitmap = await Task.Run(() =>
+            {
+                var maximumDimension = CanvasDevice.GetSharedDevice().MaximumBitmapSizeInPixels;
+                var pixels = ScreenshotBackgroundDecoder.Decode(path, cancellationToken, maximumDimension);
+                cancellationToken.ThrowIfCancellationRequested();
+                return SoftwareBitmap.CreateCopyFromBuffer(pixels.BgraPixels.AsBuffer(),
+                    BitmapPixelFormat.Bgra8, pixels.Width, pixels.Height, BitmapAlphaMode.Premultiplied);
+            }, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            preview = new SoftwareBitmapSource();
+            // Keep the XAML preview's lifetime separate from pixels leased by render snapshots.
+            using (var previewBitmap = await Task.Run(() => SoftwareBitmap.Copy(bitmap), cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await preview.SetBitmapAsync(previewBitmap);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+            var fileName = System.IO.Path.GetFileName(path);
+            var size = new Size(bitmap.PixelWidth, bitmap.PixelHeight);
+            owner = new SharedResource<EditorImage>(new EditorImage(bitmap));
+            bitmap = null;
+            ReleaseBackgroundImage();
+            _backgroundOwner = owner;
+            owner = null;
+            BackgroundImageSize = size;
+            BackgroundPreviewSource = preview;
+            preview = null;
+            BackgroundFileName = fileName;
+            BgStyle = ExportBackgroundStyle.Image;
+            MarkDirty();
+            BackgroundChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            preview?.Dispose();
+            bitmap?.Dispose();
+            owner?.Dispose();
+        }
+    }
+
+    private void ReleaseBackgroundImage()
+    {
+        BackgroundPreviewSource?.Dispose();
+        BackgroundPreviewSource = null;
+        _backgroundOwner?.Dispose();
+        _backgroundOwner = null;
+        BackgroundFileName = null;
+        BackgroundImageSize = default;
+    }
+
+    public void RemoveBackgroundImage()
+    {
+        VerifyAccess();
+        CancelBackgroundSelection();
+        if (!HasBackgroundImage && BgStyle == ExportBackgroundStyle.Transparent) return;
+        ReleaseBackgroundImage();
+        BgStyle = ExportBackgroundStyle.Transparent;
+        MarkDirty();
+        BackgroundChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetBackgroundImagePlacement(BackgroundImagePlacement placement)
+    {
+        if (!Enum.IsDefined(placement)) throw new ArgumentOutOfRangeException(nameof(placement));
+        if (ImagePlacement == placement) return;
+        ImagePlacement = placement;
+        if (BgStyle != ExportBackgroundStyle.Image) return;
+        MarkDirty();
+        BackgroundChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void ApplyPreset(BackgroundPreset preset)
     {
+        CancelBackgroundSelection();
         if (BgStyle == preset.Style && BgColor == preset.Primary && BgColor2 == (preset.Secondary ?? preset.Primary)) return;
         BgStyle = preset.Style;
         BgColor = preset.Primary;
@@ -824,6 +940,9 @@ internal sealed class EditorController : IDisposable
 
     public void SetBackgroundStyle(ExportBackgroundStyle style)
     {
+        if (style == ExportBackgroundStyle.Image && !HasBackgroundImage)
+            throw new InvalidOperationException("Choose a background image before selecting Image.");
+        CancelBackgroundSelection();
         if (BgStyle == style) return;
         BgStyle = style;
         MarkDirty();
@@ -867,6 +986,7 @@ internal sealed class EditorController : IDisposable
 
     public void ApplyCustomSolidBackground(Color color)
     {
+        CancelBackgroundSelection();
         if (BgStyle == ExportBackgroundStyle.Solid && BgColor == color) return;
         BgStyle = ExportBackgroundStyle.Solid;
         BgColor = color;
@@ -1624,8 +1744,21 @@ internal sealed class EditorController : IDisposable
             CanvasCornerRadius,
             CanvasShadow,
             includeBackground,
-            ScreenshotExportSize.Create(frame.FrameSize, scalePercent));
-        return new EditorRenderSnapshot(_imageOwner.Acquire(), state, _revision.Current, _documentCancellation.Token);
+            ScreenshotExportSize.Create(frame.FrameSize, scalePercent),
+            ImagePlacement);
+        var image = _imageOwner.Acquire();
+        try
+        {
+            var background = includeBackground && BgStyle == ExportBackgroundStyle.Image
+                ? (_backgroundOwner ?? throw new InvalidOperationException("No background image ready for export.")).Acquire()
+                : null;
+            return new EditorRenderSnapshot(image, state, _revision.Current, _documentCancellation.Token, background);
+        }
+        catch
+        {
+            image.Dispose();
+            throw;
+        }
     }
 
     public async Task<SoftwareBitmap> RenderToBitmapAsync(EditorRenderSnapshot snapshot, CancellationToken cancellationToken)
@@ -1676,6 +1809,19 @@ internal sealed class EditorController : IDisposable
                     EndPoint = new Vector2((float)(endpoints.End.X * outW), (float)(endpoints.End.Y * outH)),
                 };
                 ds.FillRectangle(fullRect, brush);
+            }
+            else if (state.IncludeBackground && state.BackgroundStyle == ExportBackgroundStyle.Image)
+            {
+                var background = snapshot.Background
+                    ?? throw new InvalidOperationException("The render snapshot has no background image.");
+                var bounds = ScreenshotBackgroundLayout.Create(background.Bitmap.PixelWidth,
+                    background.Bitmap.PixelHeight, frame.FrameSize, state.ImagePlacement);
+                using var clip = CanvasGeometry.CreateRectangle(device, fullRect);
+                using (ds.CreateLayer(1f, clip))
+                {
+                    ds.DrawImage(background.GetCanvasSource(device), bounds,
+                        new Rect(0, 0, background.Bitmap.PixelWidth, background.Bitmap.PixelHeight));
+                }
             }
 
             if (!state.IncludeBackground)
@@ -2425,5 +2571,6 @@ internal sealed class EditorController : IDisposable
         _imageOwner = null;
         _bitmap = null;
         PreviewSource = null;
+        ReleaseBackgroundImage();
     }
 }
