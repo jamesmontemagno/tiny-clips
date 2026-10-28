@@ -7,6 +7,9 @@ own `CHANGELOG.md` at the repository root.
 
 ### Fixed
 - Settings paths in Windows update notifications now consistently use arrows.
+- Teleprompter's text-file button now uses sentence case and a typographic ellipsis.
+- Microphone and webcam loading labels now use a typographic ellipsis.
+- Replaced three consecutive periods with an ellipsis in screenshot editor color buttons.
 - Region selection hint no longer has extra spaces around the separator.
 - Long monitor names in the screen picker now truncate with an ellipsis and show the full name on hover.
 - Scrolling-capture status messages now wrap instead of being clipped.

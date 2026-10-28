@@ -456,7 +456,7 @@
                                         BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                         BorderThickness="1"
                                         CornerRadius="4" />
-                                    <TextBlock VerticalAlignment="Center" Text="Choose color..." />
+                                    <TextBlock VerticalAlignment="Center" Text="Choose color…" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -480,7 +480,7 @@
                                         BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                         BorderThickness="1"
                                         CornerRadius="4" />
-                                    <TextBlock VerticalAlignment="Center" Text="First color..." />
+                                    <TextBlock VerticalAlignment="Center" Text="First color…" />
                                 </StackPanel>
                             </Button>
                             <Button
@@ -497,7 +497,7 @@
                                         BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                         BorderThickness="1"
                                         CornerRadius="4" />
-                                    <TextBlock VerticalAlignment="Center" Text="Second color..." />
+                                    <TextBlock VerticalAlignment="Center" Text="Second color…" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
