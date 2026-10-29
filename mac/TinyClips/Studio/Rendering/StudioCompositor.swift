@@ -381,7 +381,10 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         case .solid:
             return CIImage(color: ciColor(background.primary, fallback: .black)).cropped(to: extent)
         case .gradient:
-            let endpoints = StudioRenderGeometry.gradientEndpoints(renderSize: instruction.renderSize)
+            let endpoints = StudioRenderGeometry.gradientEndpoints(
+                renderSize: instruction.renderSize,
+                directionDegrees: background.gradientDirectionDegrees
+            )
             let gradient = CIFilter(name: "CILinearGradient", parameters: [
                 "inputPoint0": CIVector(cgPoint: endpoints.start),
                 "inputPoint1": CIVector(cgPoint: endpoints.end),

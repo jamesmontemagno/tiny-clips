@@ -12,6 +12,7 @@ using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using Windows.Foundation;
+using Windows.UI;
 
 namespace TinyClips.App.Controls.Studio;
 
@@ -779,6 +780,12 @@ public sealed partial class StudioInspector : UserControl
         // The two lists share one choice, and taking the selection off a swatch chooses nothing.
         SyncSwatches();
     }
+
+    private void OnBackgroundPrimaryColorChanged(object? sender, Color color) =>
+        ViewModel.SetBackgroundPrimaryColor(color);
+
+    private void OnBackgroundSecondaryColorChanged(object? sender, Color color) =>
+        ViewModel.SetBackgroundSecondaryColor(color);
 
     private void SyncSwatches()
     {

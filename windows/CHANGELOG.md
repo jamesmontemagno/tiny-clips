@@ -37,6 +37,7 @@ own `CHANGELOG.md` at the repository root.
   controls in collapsed Advanced settings.
 
 ### Added
+- Studio backgrounds now support custom solid and gradient colors, plus adjustable gradient direction. The preview and exported video use the same direction.
 - Screenshot backgrounds can use a local PNG, JPEG, or WebP image, with centered Fill or Fit placement in the preview, saved image, and clipboard copy. Images stay in the current editor only; Remove or Reset clears the background. Animated images, images above 32 megapixels, and dimensions exceeding the graphics device's bitmap limit are rejected.
 - Added **Include Tiny Clips in captures** in General settings for demos. Off by default, it controls app windows, capture controls and window selection starting with the next capture after any active recording ends. The teleprompter and live webcam preview remain excluded; the recorded camera is unchanged.
 - Added manual GitHub Copilot app run buttons for Windows x64 and ARM64, using `dotnet run` to build and launch with package identity.

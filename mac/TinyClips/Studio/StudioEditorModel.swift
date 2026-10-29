@@ -539,17 +539,20 @@ struct StudioEditorModel: Equatable, Sendable {
         preset: String?,
         primary: String,
         secondary: String? = nil,
-        image: String? = nil
+        image: String? = nil,
+        gradientDirectionDegrees: Double? = nil
     ) {
         let current = project.canvas.background
         let newPrimary = Self.normalizedHex(primary) ?? current.primary
         let newSecondary = secondary.map { Self.normalizedHex($0) ?? current.secondary ?? newPrimary }
+        let newGradientDirectionDegrees = gradientDirectionDegrees.flatMap { $0.isFinite ? min(360, max(0, $0)) : nil } ?? current.gradientDirectionDegrees
         let newImage = image.flatMap { StudioJSON.isPlainFileName($0) ? $0 : nil }
         mutate {
             $0.canvas.background.style = style
             $0.canvas.background.preset = preset
             $0.canvas.background.primary = newPrimary
             $0.canvas.background.secondary = newSecondary
+            $0.canvas.background.gradientDirectionDegrees = newGradientDirectionDegrees
             $0.canvas.background.image = newImage
         }
     }

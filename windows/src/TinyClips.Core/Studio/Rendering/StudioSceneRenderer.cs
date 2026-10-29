@@ -547,7 +547,7 @@ public sealed partial class StudioSceneRenderer : IDisposable
             imageStamp = BackgroundImageStamp(imagePath);
         }
 
-        var key = new UnderlayKey(width, height, background.Style, background.Primary, background.Secondary, imagePath, imageStamp, card);
+        var key = new UnderlayKey(width, height, background.Style, background.Primary, background.Secondary, background.GradientDirectionDegrees, imagePath, imageStamp, card);
         if (_underlay is not null && _underlayKey == key)
         {
             return;
@@ -595,13 +595,13 @@ public sealed partial class StudioSceneRenderer : IDisposable
                 return;
 
             case StudioBackgroundStyle.Gradient:
-                // From the top-left corner to the bottom-right one, interpolated on the encoded values.
+                var endpoints = StudioRenderingMath.GradientEndpoints(width, height, background.GradientDirectionDegrees);
                 using (var stops = _context.CreateGradientStopCollection(new[]
                 {
                     new GradientStop(0, OverBlack(ParseColor(background.Primary, Black))),
                     new GradientStop(1, OverBlack(ParseColor(background.Secondary ?? background.Primary, Black))),
                 }))
-                using (var gradient = _context.CreateLinearGradientBrush(new LinearGradientBrushProperties(new Vector2(0, 0), new Vector2(width, height)), stops))
+                using (var gradient = _context.CreateLinearGradientBrush(new LinearGradientBrushProperties(new Vector2((float)endpoints.StartX, (float)endpoints.StartY), new Vector2((float)endpoints.EndX, (float)endpoints.EndY)), stops))
                 {
                     _context.FillRectangle(new RawRectF(0, 0, width, height), gradient);
                 }
@@ -1172,7 +1172,7 @@ public sealed partial class StudioSceneRenderer : IDisposable
 
     private readonly record struct Card(StudioFrameRect Rect, double Radius, StudioResolvedShadow Shadow);
 
-    private readonly record struct UnderlayKey(int Width, int Height, StudioBackgroundStyle Style, string? Primary, string? Secondary, string? ImagePath, long ImageStamp, Card? Card);
+    private readonly record struct UnderlayKey(int Width, int Height, StudioBackgroundStyle Style, string? Primary, string? Secondary, double GradientDirectionDegrees, string? ImagePath, long ImageStamp, Card? Card);
 
     private readonly record struct ShadowKey(double Width, double Height, double Radius, StudioCameraShape Shape, StudioResolvedShadow Shadow);
 

@@ -1,6 +1,8 @@
+using System.Globalization;
 using TinyClips.App.Models.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
+using Windows.UI;
 
 namespace TinyClips.App.ViewModels.Studio;
 
@@ -82,11 +84,86 @@ public sealed partial class StudioViewModel
     /// <summary>The id of the preset the canvas is filled with, or null when there is none.</summary>
     public string? BackgroundPresetId => IsBackgroundShown ? Background.Preset : null;
 
+    public int BackgroundStyleIndex
+    {
+        get => Background.Style == StudioBackgroundStyle.Gradient ? 1 : 0;
+        set
+        {
+            if (value is 0 or 1)
+            {
+                var style = value == 1 ? StudioBackgroundStyle.Gradient : StudioBackgroundStyle.Solid;
+                if (style != Background.Style)
+                {
+                    var secondary = style == StudioBackgroundStyle.Gradient
+                        ? Background.Secondary ?? "#2EE0BF"
+                        : Background.Secondary;
+                    _session.SetBackground(style, null, Background.Primary, secondary, Background.GradientDirectionDegrees);
+                }
+            }
+
+            ResyncIfDifferent(value, BackgroundStyleIndex);
+        }
+    }
+
+    public bool IsGradientBackground => Background.Style == StudioBackgroundStyle.Gradient;
+
+    public Color BackgroundPrimaryColor => ParseBackgroundColor(Background.Primary);
+
+    public Color BackgroundSecondaryColor => ParseBackgroundColor(Background.Secondary ?? "#2EE0BF");
+
+    public double GradientDirectionDegrees
+    {
+        get => Background.GradientDirectionDegrees;
+        set
+        {
+            if (IsRequest(value, GradientDirectionDegrees))
+            {
+                _session.SetBackground(
+                    StudioBackgroundStyle.Gradient,
+                    null,
+                    Background.Primary,
+                    Background.Secondary ?? "#2EE0BF",
+                    value);
+            }
+        }
+    }
+
+    public string GradientDirectionText => $"{(int)GradientDirectionDegrees}°";
+
+    public void SetBackgroundPrimaryColor(Color color)
+    {
+        var style = IsGradientBackground ? StudioBackgroundStyle.Gradient : StudioBackgroundStyle.Solid;
+        _session.SetBackground(style, null, ToHex(color), Background.Secondary, Background.GradientDirectionDegrees);
+    }
+
+    public void SetBackgroundSecondaryColor(Color color) =>
+        _session.SetBackground(
+            StudioBackgroundStyle.Gradient,
+            null,
+            Background.Primary,
+            ToHex(color),
+            Background.GradientDirectionDegrees);
+
     public void SelectSwatch(StudioSwatch swatch)
     {
         ArgumentNullException.ThrowIfNull(swatch);
         _session.SetBackgroundPreset(swatch.Style, swatch.Id, swatch.PrimaryHex, swatch.SecondaryHex);
     }
+
+    private static Color ParseBackgroundColor(string value)
+    {
+        if (value.Length == 7
+            && value[0] == '#'
+            && uint.TryParse(value.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
+        {
+            return Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+        }
+
+        return Color.FromArgb(255, 38, 135, 232);
+    }
+
+    private static string ToHex(Color color) =>
+        string.Create(CultureInfo.InvariantCulture, $"#{color.R:X2}{color.G:X2}{color.B:X2}");
 
     public double CanvasPadding
     {

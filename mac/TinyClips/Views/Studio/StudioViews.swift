@@ -449,8 +449,28 @@ private struct StudioInspectorView: View {
                 .toggleStyle(.checkbox)
                 .help("Off leaves the canvas black")
             if background.style != StudioBackgroundStyle.none {
+                Picker("Background style", selection: backgroundStyleBinding) {
+                    Text("Solid").tag(StudioBackgroundStyle.solid)
+                    Text("Gradient").tag(StudioBackgroundStyle.gradient)
+                }
+                .pickerStyle(.segmented)
                 swatchGrid(title: "Solid", presets: solidBackgroundPresets.filter { $0.style == .solid })
                 swatchGrid(title: "Gradient", presets: gradientBackgroundPresets.filter { $0.style == .gradient })
+                ColorPicker("Color", selection: backgroundPrimaryColorBinding, supportsOpacity: false)
+                if background.style == .gradient {
+                    ColorPicker("Color 2", selection: backgroundSecondaryColorBinding, supportsOpacity: false)
+                    StudioSliderRow(
+                        title: "Direction",
+                        value: background.gradientDirectionDegrees,
+                        range: 0...360,
+                        step: 1,
+                        valueText: "\(Int(background.gradientDirectionDegrees))°",
+                        onChange: { viewModel.setGradientDirectionDegrees($0) },
+                        onEditingChanged: { gestureChanged($0) }
+                    )
+                    .accessibilityLabel("Gradient direction")
+                    .help("0° is left to right; 90° is top to bottom")
+                }
             }
         }
         StudioSliderRow(
@@ -919,6 +939,39 @@ private struct StudioInspectorView: View {
                     viewModel.applyBackgroundPreset(preset)
                 }
             }
+        )
+    }
+
+    private var backgroundStyleBinding: Binding<StudioBackgroundStyle> {
+        Binding(
+            get: { background.style == .gradient ? .gradient : .solid },
+            set: { viewModel.setBackgroundStyle($0) }
+        )
+    }
+
+    private var backgroundPrimaryColorBinding: Binding<Color> {
+        Binding(
+            get: { color(fromHex: background.primary) },
+            set: { viewModel.setBackgroundPrimaryColor($0) }
+        )
+    }
+
+    private var backgroundSecondaryColorBinding: Binding<Color> {
+        Binding(
+            get: { color(fromHex: background.secondary ?? "#2EE0BF") },
+            set: { viewModel.setBackgroundSecondaryColor($0) }
+        )
+    }
+
+    private func color(fromHex hex: String) -> Color {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard digits.count == 6, let rgb = UInt32(digits, radix: 16) else { return .black }
+        return Color(
+            .sRGB,
+            red: Double((rgb >> 16) & 0xFF) / 255,
+            green: Double((rgb >> 8) & 0xFF) / 255,
+            blue: Double(rgb & 0xFF) / 255,
+            opacity: 1
         )
     }
 

@@ -189,6 +189,7 @@ public sealed record StudioBackground
     public string? Preset { get; init; } = "ocean";
     public string Primary { get; init; } = "#2687E8";
     public string? Secondary { get; init; } = "#2EE0BF";
+    public double GradientDirectionDegrees { get; init; } = 45;
     public string? Image { get; init; }
 
     [JsonExtensionData]

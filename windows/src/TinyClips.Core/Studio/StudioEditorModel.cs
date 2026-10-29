@@ -481,12 +481,21 @@ public sealed partial class StudioEditorModel
     }
 
     /// <summary>Colors are <c>#RRGGBB</c>; anything else keeps the color that was there.</summary>
-    public void SetBackground(StudioBackgroundStyle style, string? preset, string primary, string? secondary = null, string? image = null)
+    public void SetBackground(
+        StudioBackgroundStyle style,
+        string? preset,
+        string primary,
+        string? secondary = null,
+        string? image = null,
+        double? gradientDirectionDegrees = null)
     {
         var current = Project.Canvas.Background;
         var newPrimary = NormalizeHex(primary) ?? current.Primary;
         var newSecondary = secondary is null ? null : NormalizeHex(secondary) ?? current.Secondary ?? newPrimary;
         var newImage = image is not null && IsPlainFileName(image) ? image : null;
+        var newGradientDirectionDegrees = gradientDirectionDegrees is { } degrees && double.IsFinite(degrees)
+            ? Math.Clamp(degrees, 0, 360)
+            : current.GradientDirectionDegrees;
         Mutate(project => project with
         {
             Canvas = project.Canvas with
@@ -497,6 +506,7 @@ public sealed partial class StudioEditorModel
                     Preset = preset,
                     Primary = newPrimary,
                     Secondary = newSecondary,
+                    GradientDirectionDegrees = newGradientDirectionDegrees,
                     Image = newImage,
                 },
             },

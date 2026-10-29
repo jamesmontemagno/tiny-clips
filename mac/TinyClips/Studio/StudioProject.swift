@@ -444,6 +444,7 @@ struct StudioBackground: Codable, Equatable, Sendable {
     var preset: String?
     var primary: String
     var secondary: String?
+    var gradientDirectionDegrees: Double
     var image: String?
     var extra: [String: StudioJSONValue]
 
@@ -452,6 +453,7 @@ struct StudioBackground: Codable, Equatable, Sendable {
         preset: String? = "ocean",
         primary: String = "#2687E8",
         secondary: String? = "#2EE0BF",
+        gradientDirectionDegrees: Double = 45,
         image: String? = nil,
         extra: [String: StudioJSONValue] = [:]
     ) {
@@ -459,6 +461,7 @@ struct StudioBackground: Codable, Equatable, Sendable {
         self.preset = preset
         self.primary = primary
         self.secondary = secondary
+        self.gradientDirectionDegrees = gradientDirectionDegrees
         self.image = image
         self.extra = extra
     }
@@ -469,8 +472,9 @@ struct StudioBackground: Codable, Equatable, Sendable {
         preset = try container.decodeNullableString("preset", default: "ocean")
         primary = try container.decodeString("primary", default: "#2687E8")
         secondary = try container.decodeNullableString("secondary", default: "#2EE0BF")
+        gradientDirectionDegrees = try container.decodeDouble("gradientDirectionDegrees", default: 45)
         image = try container.decodeNullableString("image", default: nil)
-        extra = try StudioJSON.decodeExtra(from: container, excluding: ["style", "preset", "primary", "secondary", "image"])
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["style", "preset", "primary", "secondary", "gradientDirectionDegrees", "image"])
     }
 
     func encode(to encoder: Encoder) throws {
@@ -480,6 +484,7 @@ struct StudioBackground: Codable, Equatable, Sendable {
         if let preset = preset { try container.encode(preset, forKey: StudioJSONKey("preset")) } else { try container.encodeNil(forKey: "preset") }
         try container.encode(primary, forKey: StudioJSONKey("primary"))
         if let secondary = secondary { try container.encode(secondary, forKey: StudioJSONKey("secondary")) } else { try container.encodeNil(forKey: "secondary") }
+        try container.encode(gradientDirectionDegrees, forKey: StudioJSONKey("gradientDirectionDegrees"))
         if let image = image { try container.encode(image, forKey: StudioJSONKey("image")) } else { try container.encodeNil(forKey: "image") }
     }
 }

@@ -22,9 +22,26 @@ public sealed class StudioProjectJsonTests
         Assert.Equal(0.06, project.Canvas.Padding);
         Assert.Equal(StudioBackgroundStyle.Gradient, project.Canvas.Background.Style);
         Assert.Equal("#2687E8", project.Canvas.Background.Primary);
+        Assert.Equal(45, project.Canvas.Background.GradientDirectionDegrees);
         Assert.Equal(StudioLayout.Bubble, project.Scenes.Single().Layout);
         Assert.True(project.Overlays.Clicks.Enabled);
         Assert.Null(project.Sources.Camera);
+    }
+
+    [Fact]
+    public void BackgroundGradientDirection_RoundTrips()
+    {
+        var project = StudioProjectJson.ReadProject("""
+            {
+              "id": "p",
+              "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } },
+              "canvas": { "background": { "gradientDirectionDegrees": 123 } }
+            }
+            """);
+
+        var restored = StudioProjectJson.ReadProject(StudioProjectJson.WriteProject(project));
+
+        Assert.Equal(123, restored.Canvas.Background.GradientDirectionDegrees);
     }
 
     [Fact]
@@ -91,7 +108,7 @@ public sealed class StudioProjectJsonTests
               "sources": {
                 "screen": { "file": null, "width": 1920, "height": 1080, "frameRate": null, "duration": 5, "external": null }
               },
-              "canvas": { "aspect": null, "padding": null, "background": { "style": null, "primary": null } },
+              "canvas": { "aspect": null, "padding": null, "background": { "style": null, "primary": null, "gradientDirectionDegrees": null } },
               "screen": { "cornerRadius": null, "shadow": null },
               "camera": null,
               "scenes": [
@@ -121,6 +138,7 @@ public sealed class StudioProjectJsonTests
         Assert.Equal(0.06, project.Canvas.Padding);
         Assert.Equal(StudioBackgroundStyle.Gradient, project.Canvas.Background.Style);
         Assert.Equal("#2687E8", project.Canvas.Background.Primary);
+        Assert.Equal(45, project.Canvas.Background.GradientDirectionDegrees);
         Assert.Equal(0.02, project.Screen.CornerRadius);
         Assert.Equal(0.5, project.Screen.Shadow);
         Assert.Equal(StudioCameraShape.Circle, project.Camera.Shape);

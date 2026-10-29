@@ -179,10 +179,23 @@ enum StudioRenderGeometry {
         )
     }
 
-    static func gradientEndpoints(renderSize: CGSize) -> (start: CGPoint, end: CGPoint) {
-        (
-            start: CGPoint(x: 0, y: renderSize.height),
-            end: CGPoint(x: renderSize.width, y: 0)
+    static func gradientEndpoints(
+        renderSize: CGSize,
+        directionDegrees: Double = 45
+    ) -> (start: CGPoint, end: CGPoint) {
+        let width = Double(max(1, renderSize.width))
+        let height = Double(max(1, renderSize.height))
+        let degrees = directionDegrees.isFinite ? min(360, max(0, directionDegrees)) : 45
+        let radians = degrees * .pi / 180
+        let directionX = cos(radians)
+        let directionY = sin(radians)
+        let halfLength = (abs(directionX) * width + abs(directionY) * height) / 2
+        let offsetX = directionX * halfLength
+        let offsetY = directionY * halfLength
+        // The stored angle follows the screenshot editor's top-left pixel space; Core Image's y-axis is reversed.
+        return (
+            start: CGPoint(x: CGFloat(width / 2 - offsetX), y: CGFloat(height / 2 + offsetY)),
+            end: CGPoint(x: CGFloat(width / 2 + offsetX), y: CGFloat(height / 2 - offsetY))
         )
     }
 

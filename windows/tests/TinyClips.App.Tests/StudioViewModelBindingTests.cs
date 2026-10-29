@@ -1,6 +1,7 @@
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
+using Windows.UI;
 
 namespace TinyClips.App.Tests;
 
@@ -144,6 +145,27 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.Equal(0.06, stored.Canvas.Padding, Precision);
         Assert.Equal(2, stored.Zooms[0].Scale, Precision);
         Assert.False(stored.KeepSources);
+    }
+
+    [Fact]
+    public async Task CustomBackgroundControls_SaveColorsStyleAndGradientDirection()
+    {
+        var id = CreateProject();
+        var viewModel = await OpenAsync(id, _controls);
+
+        viewModel.SetBackgroundPrimaryColor(Color.FromArgb(255, 18, 52, 86));
+        viewModel.SetBackgroundSecondaryColor(Color.FromArgb(255, 101, 67, 33));
+        viewModel.BackgroundStyleIndex = 0;
+        viewModel.BackgroundStyleIndex = 1;
+        _controls.Move(nameof(StudioViewModel.GradientDirectionDegrees), 123d);
+        await CloseAsync(viewModel);
+
+        var stored = Projects.Load(id);
+        Assert.Equal(StudioBackgroundStyle.Gradient, stored.Canvas.Background.Style);
+        Assert.Null(stored.Canvas.Background.Preset);
+        Assert.Equal("#123456", stored.Canvas.Background.Primary);
+        Assert.Equal("#654321", stored.Canvas.Background.Secondary);
+        Assert.Equal(123, stored.Canvas.Background.GradientDirectionDegrees);
     }
 
     [Fact]

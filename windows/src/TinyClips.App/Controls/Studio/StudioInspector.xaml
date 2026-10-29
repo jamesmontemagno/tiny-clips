@@ -3,6 +3,7 @@
     x:Class="TinyClips.App.Controls.Studio.StudioInspector"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:color="using:TinyClips.App"
     xmlns:editing="using:TinyClips.Core.Studio.Editing"
     xmlns:local="using:TinyClips.App.Controls.Studio"
     IsTabStop="False">
@@ -356,6 +357,41 @@
                             IsChecked="{x:Bind ViewModel.IsBackgroundShown, Mode=TwoWay}"
                             ToolTipService.ToolTip="Off leaves the canvas black" />
                         <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsBackgroundShown, Mode=OneWay}">
+                            <ComboBox
+                                AutomationProperties.AutomationId="StudioBackgroundStyleChoice"
+                                AutomationProperties.Name="Background style"
+                                SelectedIndex="{x:Bind ViewModel.BackgroundStyleIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Solid color" />
+                                <ComboBoxItem Content="Gradient" />
+                            </ComboBox>
+                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Color" />
+                            <color:SwatchColorPicker
+                                x:Name="BackgroundPrimaryColorPicker"
+                                AutomationProperties.AutomationId="StudioBackgroundPrimaryColorPicker"
+                                AutomationProperties.Name="Background color"
+                                Color="{x:Bind ViewModel.BackgroundPrimaryColor, Mode=OneWay}"
+                                ColorChanged="OnBackgroundPrimaryColorChanged" />
+                            <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsGradientBackground, Mode=OneWay}">
+                                <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Color 2" />
+                                <color:SwatchColorPicker
+                                    x:Name="BackgroundSecondaryColorPicker"
+                                    AutomationProperties.AutomationId="StudioBackgroundSecondaryColorPicker"
+                                    AutomationProperties.Name="Second gradient color"
+                                    Color="{x:Bind ViewModel.BackgroundSecondaryColor, Mode=OneWay}"
+                                    ColorChanged="OnBackgroundSecondaryColorChanged" />
+                                <local:StudioSliderRow
+                                    Title="Direction"
+                                    AccessibleName="Gradient direction"
+                                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                    Maximum="360"
+                                    Minimum="0"
+                                    SliderAutomationId="StudioGradientDirectionSlider"
+                                    Step="1"
+                                    ToolTipService.ToolTip="0° is left to right; 90° is top to bottom"
+                                    ValueText="{x:Bind ViewModel.GradientDirectionText, Mode=OneWay}"
+                                    Value="{x:Bind ViewModel.GradientDirectionDegrees, Mode=TwoWay}" />
+                            </StackPanel>
                             <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Solid" />
                             <GridView
                                 x:Name="SolidSwatches"
@@ -363,7 +399,7 @@
                                 AutomationProperties.Name="Solid backgrounds"
                                 SelectionChanged="OnSwatchSelectionChanged"
                                 Style="{StaticResource StudioSwatchGridStyle}" />
-                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Gradient" />
+                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Gradient presets" />
                             <GridView
                                 x:Name="GradientSwatches"
                                 AutomationProperties.AutomationId="StudioGradientSwatches"
