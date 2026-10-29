@@ -89,7 +89,7 @@ public sealed partial class StudioViewModel
         get => Background.Style == StudioBackgroundStyle.Gradient ? 1 : 0;
         set
         {
-            if (value is 0 or 1)
+            if (value is 0 or 1 && value != BackgroundStyleIndex)
             {
                 var style = value == 1 ? StudioBackgroundStyle.Gradient : StudioBackgroundStyle.Solid;
                 if (style != Background.Style)
@@ -109,7 +109,7 @@ public sealed partial class StudioViewModel
 
     public Color BackgroundPrimaryColor => ParseBackgroundColor(Background.Primary);
 
-    public Color BackgroundSecondaryColor => ParseBackgroundColor(Background.Secondary ?? "#2EE0BF");
+    public Color BackgroundSecondaryColor => ParseBackgroundColor(Background.Secondary ?? Background.Primary);
 
     public double GradientDirectionDegrees
     {
@@ -122,7 +122,7 @@ public sealed partial class StudioViewModel
                     StudioBackgroundStyle.Gradient,
                     null,
                     Background.Primary,
-                    Background.Secondary ?? "#2EE0BF",
+                    Background.Secondary,
                     value);
             }
         }

@@ -54,6 +54,12 @@ final class StudioRenderGeometryTests: XCTestCase {
         XCTAssertEqual(mirrored.applying(to: CGPoint(x: cropRect.maxX, y: cropRect.minY)).x, 100, accuracy: 1e-6)
     }
 
+    func testGradientDirectionDisplayClampsBeforeIntegerConversion() {
+        for (stored, expected) in [(1e20, 360), (-1e20, 0), (Double.infinity, 45), (Double.nan, 45), (123, 123)] {
+            XCTAssertEqual(Int(StudioRenderGeometry.clampedGradientDirectionDegrees(stored)), expected)
+        }
+    }
+
     func testGradientEndpointsMatchScreenshotEditorDirection() {
         let leftToRight = StudioRenderGeometry.gradientEndpoints(
             renderSize: CGSize(width: 200, height: 100),

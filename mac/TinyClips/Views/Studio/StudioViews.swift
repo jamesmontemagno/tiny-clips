@@ -458,13 +458,14 @@ private struct StudioInspectorView: View {
                 swatchGrid(title: "Gradient", presets: gradientBackgroundPresets.filter { $0.style == .gradient })
                 ColorPicker("Color", selection: backgroundPrimaryColorBinding, supportsOpacity: false)
                 if background.style == .gradient {
+                    let direction = StudioRenderGeometry.clampedGradientDirectionDegrees(background.gradientDirectionDegrees)
                     ColorPicker("Color 2", selection: backgroundSecondaryColorBinding, supportsOpacity: false)
                     StudioSliderRow(
                         title: "Direction",
                         value: background.gradientDirectionDegrees,
                         range: 0...360,
                         step: 1,
-                        valueText: "\(Int(background.gradientDirectionDegrees))°",
+                        valueText: "\(Int(direction))°",
                         onChange: { viewModel.setGradientDirectionDegrees($0) },
                         onEditingChanged: { gestureChanged($0) }
                     )
@@ -958,7 +959,7 @@ private struct StudioInspectorView: View {
 
     private var backgroundSecondaryColorBinding: Binding<Color> {
         Binding(
-            get: { color(fromHex: background.secondary ?? "#2EE0BF") },
+            get: { color(fromHex: background.secondary ?? background.primary) },
             set: { viewModel.setBackgroundSecondaryColor($0) }
         )
     }

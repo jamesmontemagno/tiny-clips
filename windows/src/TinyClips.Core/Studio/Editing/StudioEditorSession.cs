@@ -411,7 +411,7 @@ public sealed partial class StudioEditorSession
     /// </summary>
     public void SetBackgroundPreset(StudioBackgroundStyle style, string presetId, string primary, string? secondary = null)
     {
-        SetBackground(style, presetId, primary, secondary);
+        SetBackground(style, presetId, primary, style == StudioBackgroundStyle.Solid ? null : secondary);
     }
 
     public void SetBackground(

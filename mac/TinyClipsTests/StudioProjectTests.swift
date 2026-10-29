@@ -166,6 +166,24 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertEqual(restored.canvas.background.gradientDirectionDegrees, 123)
     }
 
+    func testImportedGradientDirectionIsSafeToDisplayWithoutChangingStoredValue() throws {
+        for degrees in [1e20, -1e20] {
+            let project = try decodeProject("""
+            {
+              "schemaVersion": 1,
+              "id": "\(validID)",
+              "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } },
+              "canvas": { "background": { "gradientDirectionDegrees": \(degrees) } }
+            }
+            """)
+            let displayed = StudioRenderGeometry.clampedGradientDirectionDegrees(project.canvas.background.gradientDirectionDegrees)
+            XCTAssertEqual(Int(displayed), degrees > 0 ? 360 : 0)
+            let encoded = try StudioJSON.makeEncoder().encode(project)
+            let restored = try StudioJSON.makeDecoder().decode(StudioProject.self, from: encoded)
+            XCTAssertEqual(restored.canvas.background.gradientDirectionDegrees, degrees)
+        }
+    }
+
     func testTheSoundTrackListIsReadAndWritten_AndLeftOutWhenTheProjectDoesNotSay() throws {
         let project = try decodeProject("""
         {

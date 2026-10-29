@@ -238,6 +238,26 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertNil(model.project.canvas.background.image)
     }
 
+    func testChangingGradientDirectionPreservesANullSecondaryColor() {
+        var project = makeProject()
+        project.canvas.background.secondary = nil
+        var model = StudioEditorModel(project: project)
+        let current = model.project.canvas.background
+
+        model.setBackground(
+            style: .gradient,
+            preset: nil,
+            primary: current.primary,
+            secondary: current.secondary,
+            gradientDirectionDegrees: 123
+        )
+
+        XCTAssertNil(model.project.canvas.background.secondary)
+        XCTAssertEqual(model.project.canvas.background.gradientDirectionDegrees, 123)
+        model.undo()
+        XCTAssertEqual(model.project.canvas.background, current)
+    }
+
     func testTheCameraBackgroundIsKeptBlurredOrRemoved() {
         var model = StudioEditorModel(project: makeProject())
         XCTAssertEqual(model.project.camera.cutout, .none)

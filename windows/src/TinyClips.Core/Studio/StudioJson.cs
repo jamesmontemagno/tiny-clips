@@ -243,6 +243,9 @@ public static class StudioProjectJson
                 Preset = Has(root, "canvas", "background", "preset") ? background.Preset : defaultProject.Canvas.Background.Preset,
                 Primary = HasNonNull(root, "canvas", "background", "primary") ? background.Primary : defaultProject.Canvas.Background.Primary,
                 Secondary = Has(root, "canvas", "background", "secondary") ? background.Secondary : defaultProject.Canvas.Background.Secondary,
+                GradientDirectionDegrees = HasNonNull(root, "canvas", "background", "gradientDirectionDegrees")
+                    ? background.GradientDirectionDegrees
+                    : defaultProject.Canvas.Background.GradientDirectionDegrees,
                 Image = Has(root, "canvas", "background", "image") ? PlainFileNameOrNull(background.Image) : defaultProject.Canvas.Background.Image,
             },
         };

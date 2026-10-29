@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- Studio safely displays imported out-of-range gradient directions and preserves single-color gradients when changing direction.
 - Settings paths in macOS help and update guidance now consistently use arrows.
 - The Copilot macOS run button now reports an existing TinyClips instance before building or launching instead of silently leaving an older app running. Quit it after saving work and finishing recordings, then run again.
 - App CI now ignores documentation-only and unrelated Copilot configuration changes while retaining platform source, test, shared fixture, and build-workflow coverage. Windows build/test jobs skip before allocating Windows runners.

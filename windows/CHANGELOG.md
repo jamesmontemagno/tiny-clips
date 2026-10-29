@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Studio keeps disabled and image backgrounds unchanged during binding refreshes, preserves single-color gradients when changing direction, restores the 45-degree default for null project values, and keeps solid presets single-color.
 - Tray flyout, capture picker, and hidden capture-status windows now expose meaningful names to assistive technology.
 - Settings paths in Windows update notifications now consistently use arrows.
 - Teleprompter's text-file button now uses sentence case and a typographic ellipsis.

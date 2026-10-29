@@ -411,7 +411,7 @@ final class StudioViewModel: ObservableObject {
                 style: .gradient,
                 preset: nil,
                 primary: current.primary,
-                secondary: current.secondary ?? "#2EE0BF",
+                secondary: current.secondary,
                 gradientDirectionDegrees: degrees
             )
         }

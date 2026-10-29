@@ -410,7 +410,12 @@ public sealed class StudioRenderingMathTests
     [Fact]
     public void GradientEndpoints_DefaultsToTheScreenshotEditorDirection()
     {
-        Assert.Equal((210d, -210d, 1710d, 1290d), StudioRenderingMath.GradientEndpoints(1920, 1080));
+        var endpoints = StudioRenderingMath.GradientEndpoints(1920, 1080);
+
+        Assert.Equal(210, endpoints.StartX, 6);
+        Assert.Equal(-210, endpoints.StartY, 6);
+        Assert.Equal(1710, endpoints.EndX, 6);
+        Assert.Equal(1290, endpoints.EndY, 6);
     }
 
     [Fact]

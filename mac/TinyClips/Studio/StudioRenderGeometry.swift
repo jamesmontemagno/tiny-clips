@@ -179,13 +179,17 @@ enum StudioRenderGeometry {
         )
     }
 
+    static func clampedGradientDirectionDegrees(_ degrees: Double) -> Double {
+        degrees.isFinite ? min(360, max(0, degrees)) : 45
+    }
+
     static func gradientEndpoints(
         renderSize: CGSize,
         directionDegrees: Double = 45
     ) -> (start: CGPoint, end: CGPoint) {
         let width = Double(max(1, renderSize.width))
         let height = Double(max(1, renderSize.height))
-        let degrees = directionDegrees.isFinite ? min(360, max(0, directionDegrees)) : 45
+        let degrees = clampedGradientDirectionDegrees(directionDegrees)
         let radians = degrees * .pi / 180
         let directionX = cos(radians)
         let directionY = sin(radians)
