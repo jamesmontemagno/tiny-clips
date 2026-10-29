@@ -6,6 +6,25 @@ namespace TinyClips.Core.Tests;
 
 public sealed class StudioRenderingMathTests
 {
+    [Theory]
+    [InlineData(0, 0, 50, 200, 50)]
+    [InlineData(90, 100, 0, 100, 100)]
+    [InlineData(45, 25, -25, 175, 125)]
+    public void GradientEndpoints_MatchScreenshotEditorDirection(
+        double degrees,
+        double startX,
+        double startY,
+        double endX,
+        double endY)
+    {
+        var endpoints = StudioRenderingMath.GradientEndpoints(200, 100, degrees);
+
+        Assert.Equal(startX, endpoints.StartX, 6);
+        Assert.Equal(startY, endpoints.StartY, 6);
+        Assert.Equal(endX, endpoints.EndX, 6);
+        Assert.Equal(endY, endpoints.EndY, 6);
+    }
+
     // Frame rates
 
     [Theory]
@@ -389,9 +408,14 @@ public sealed class StudioRenderingMathTests
     // Small things
 
     [Fact]
-    public void GradientEndpoints_AreTopLeftToBottomRight()
+    public void GradientEndpoints_DefaultsToTheScreenshotEditorDirection()
     {
-        Assert.Equal((0, 0, 1920, 1080), StudioRenderingMath.GradientEndpoints(1920, 1080));
+        var endpoints = StudioRenderingMath.GradientEndpoints(1920, 1080);
+
+        Assert.Equal(210, endpoints.StartX, 6);
+        Assert.Equal(-210, endpoints.StartY, 6);
+        Assert.Equal(1710, endpoints.EndX, 6);
+        Assert.Equal(1290, endpoints.EndY, 6);
     }
 
     [Fact]

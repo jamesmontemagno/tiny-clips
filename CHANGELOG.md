@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- Studio safely displays imported out-of-range gradient directions and preserves single-color gradients when changing direction.
 - Settings paths in macOS help and update guidance now consistently use arrows.
 - The Copilot macOS run button now reports an existing TinyClips instance before building or launching instead of silently leaving an older app running. Quit it after saving work and finishing recordings, then run again.
 - App CI now ignores documentation-only and unrelated Copilot configuration changes while retaining platform source, test, shared fixture, and build-workflow coverage. Windows build/test jobs skip before allocating Windows runners.
@@ -12,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - Team Load Momentum now invalidates in-flight history when tracking changes and clears previous totals when switching selections. Failed loads only fall back to earlier data for the same selection.
 
 ### Added
+- Studio backgrounds now support custom solid and gradient colors, plus adjustable gradient direction on macOS and Windows. The preview and exported video use the same direction.
 - Added GitHub Copilot app run buttons for the macOS app and Windows x64/ARM64 apps, building and launching the current session's checkout on its matching host.
 - Team Load now lets you drag assigned issues between teammates on the home screen, including Copilot, with highlighted drop targets, keyboard movement, and Undo. Moves preserve other assignees and verify the new owner before removing the old one.
 - Team Load now has a light/dark theme toggle beside Refresh, updating the canvas and label colors without reloading.

@@ -216,18 +216,46 @@ final class StudioEditorModelTests: XCTestCase {
         model.setCameraBorderColor("teal")
         XCTAssertEqual(model.project.camera.borderColor, "#AABBCC")
 
-        model.setBackground(style: .gradient, preset: "candy", primary: "ff6bad", secondary: "#8cc7ff")
+        model.setBackground(
+            style: .gradient,
+            preset: "candy",
+            primary: "ff6bad",
+            secondary: "#8cc7ff",
+            gradientDirectionDegrees: 123
+        )
         XCTAssertEqual(model.project.canvas.background.style, .gradient)
         XCTAssertEqual(model.project.canvas.background.preset, "candy")
         XCTAssertEqual(model.project.canvas.background.primary, "#FF6BAD")
         XCTAssertEqual(model.project.canvas.background.secondary, "#8CC7FF")
+        XCTAssertEqual(model.project.canvas.background.gradientDirectionDegrees, 123)
 
         model.setBackground(style: .solid, preset: nil, primary: "nope", secondary: nil, image: "../secret.png")
         XCTAssertEqual(model.project.canvas.background.style, .solid)
         XCTAssertNil(model.project.canvas.background.preset)
         XCTAssertEqual(model.project.canvas.background.primary, "#FF6BAD")
         XCTAssertNil(model.project.canvas.background.secondary)
+        XCTAssertEqual(model.project.canvas.background.gradientDirectionDegrees, 123)
         XCTAssertNil(model.project.canvas.background.image)
+    }
+
+    func testChangingGradientDirectionPreservesANullSecondaryColor() {
+        var project = makeProject()
+        project.canvas.background.secondary = nil
+        var model = StudioEditorModel(project: project)
+        let current = model.project.canvas.background
+
+        model.setBackground(
+            style: .gradient,
+            preset: nil,
+            primary: current.primary,
+            secondary: current.secondary,
+            gradientDirectionDegrees: 123
+        )
+
+        XCTAssertNil(model.project.canvas.background.secondary)
+        XCTAssertEqual(model.project.canvas.background.gradientDirectionDegrees, 123)
+        model.undo()
+        XCTAssertEqual(model.project.canvas.background, current)
     }
 
     func testTheCameraBackgroundIsKeptBlurredOrRemoved() {

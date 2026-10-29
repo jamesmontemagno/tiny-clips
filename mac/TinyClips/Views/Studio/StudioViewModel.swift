@@ -362,6 +362,61 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
+    func setBackgroundStyle(_ style: StudioBackgroundStyle) {
+        guard style == .solid || style == .gradient,
+              let current = project?.canvas.background else { return }
+        let secondary = style == .gradient ? current.secondary ?? "#2EE0BF" : current.secondary
+        edit {
+            $0.setBackground(
+                style: style,
+                preset: nil,
+                primary: current.primary,
+                secondary: secondary,
+                gradientDirectionDegrees: current.gradientDirectionDegrees
+            )
+        }
+    }
+
+    func setBackgroundPrimaryColor(_ color: Color) {
+        guard let current = project?.canvas.background else { return }
+        let style = current.style == .gradient ? StudioBackgroundStyle.gradient : .solid
+        edit {
+            $0.setBackground(
+                style: style,
+                preset: nil,
+                primary: Self.hexString(for: color),
+                secondary: current.secondary,
+                gradientDirectionDegrees: current.gradientDirectionDegrees
+            )
+        }
+    }
+
+    func setBackgroundSecondaryColor(_ color: Color) {
+        guard let current = project?.canvas.background else { return }
+        edit {
+            $0.setBackground(
+                style: .gradient,
+                preset: nil,
+                primary: current.primary,
+                secondary: Self.hexString(for: color),
+                gradientDirectionDegrees: current.gradientDirectionDegrees
+            )
+        }
+    }
+
+    func setGradientDirectionDegrees(_ degrees: Double) {
+        guard let current = project?.canvas.background, degrees.isFinite else { return }
+        edit {
+            $0.setBackground(
+                style: .gradient,
+                preset: nil,
+                primary: current.primary,
+                secondary: current.secondary,
+                gradientDirectionDegrees: degrees
+            )
+        }
+    }
+
     /// No background: the canvas is black, as in a recording made without Studio.
     func removeBackground() {
         edit {

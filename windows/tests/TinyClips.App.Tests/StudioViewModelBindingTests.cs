@@ -1,6 +1,7 @@
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
+using Windows.UI;
 
 namespace TinyClips.App.Tests;
 
@@ -144,6 +145,101 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.Equal(0.06, stored.Canvas.Padding, Precision);
         Assert.Equal(2, stored.Zooms[0].Scale, Precision);
         Assert.False(stored.KeepSources);
+    }
+
+    [Fact]
+    public async Task TurningOffAGradient_StaysOffWhenTheStyleBindingWritesBack()
+    {
+        var id = CreateProject();
+        var viewModel = await OpenAsync(id, _controls);
+
+        _controls.Move(nameof(StudioViewModel.IsBackgroundShown), false);
+        _controls.HandBackEverything();
+        Pump();
+
+        Assert.False(viewModel.IsBackgroundShown);
+        Assert.Equal(StudioBackgroundStyle.None, LastProject().Canvas.Background.Style);
+        Assert.Single(Preview.Updates);
+        viewModel.Undo();
+        Pump();
+        Assert.True(viewModel.IsGradientBackground);
+        Assert.False(viewModel.CanUndo);
+        await CloseAsync(viewModel);
+    }
+
+    [Theory]
+    [InlineData(StudioBackgroundStyle.None)]
+    [InlineData(StudioBackgroundStyle.Image)]
+    public async Task OpeningABackgroundOutsideTheStyleChoices_IsNoEdit(StudioBackgroundStyle style)
+    {
+        var id = CreateProject(project => project with
+        {
+            Canvas = project.Canvas with
+            {
+                Background = project.Canvas.Background with { Style = style, Image = "background.png" },
+            },
+        });
+        var viewModel = await OpenAsync(id, _controls);
+
+        _controls.HandBackEverything();
+        Pump();
+
+        AssertNothingWasEdited(viewModel, "showing a background outside the style choices");
+        Assert.Equal(style, LastProject().Canvas.Background.Style);
+        Assert.Equal("background.png", LastProject().Canvas.Background.Image);
+        await CloseAsync(viewModel);
+        Assert.Equal(0, Saves);
+    }
+
+    [Fact]
+    public async Task ChangingDirection_PreservesANullSecondaryColor_InPreviewAndOnDisk()
+    {
+        var id = CreateProject(project => project with
+        {
+            Canvas = project.Canvas with
+            {
+                Background = project.Canvas.Background with { Secondary = null },
+            },
+        });
+        var viewModel = await OpenAsync(id, _controls);
+        Assert.Equal(viewModel.BackgroundPrimaryColor, viewModel.BackgroundSecondaryColor);
+
+        _controls.Move(nameof(StudioViewModel.GradientDirectionDegrees), 123d);
+        Pump();
+
+        Assert.Null(LastProject().Canvas.Background.Secondary);
+        Assert.Equal(123, LastProject().Canvas.Background.GradientDirectionDegrees);
+        viewModel.Undo();
+        Pump();
+        Assert.Equal(45, viewModel.GradientDirectionDegrees);
+        Assert.False(viewModel.CanUndo);
+        viewModel.Redo();
+        Pump();
+        await CloseAsync(viewModel);
+        var stored = Projects.Load(id).Canvas.Background;
+        Assert.Null(stored.Secondary);
+        Assert.Equal(123, stored.GradientDirectionDegrees);
+    }
+
+    [Fact]
+    public async Task CustomBackgroundControls_SaveColorsStyleAndGradientDirection()
+    {
+        var id = CreateProject();
+        var viewModel = await OpenAsync(id, _controls);
+
+        viewModel.SetBackgroundPrimaryColor(Color.FromArgb(255, 18, 52, 86));
+        viewModel.SetBackgroundSecondaryColor(Color.FromArgb(255, 101, 67, 33));
+        viewModel.BackgroundStyleIndex = 0;
+        viewModel.BackgroundStyleIndex = 1;
+        _controls.Move(nameof(StudioViewModel.GradientDirectionDegrees), 123d);
+        await CloseAsync(viewModel);
+
+        var stored = Projects.Load(id);
+        Assert.Equal(StudioBackgroundStyle.Gradient, stored.Canvas.Background.Style);
+        Assert.Null(stored.Canvas.Background.Preset);
+        Assert.Equal("#123456", stored.Canvas.Background.Primary);
+        Assert.Equal("#654321", stored.Canvas.Background.Secondary);
+        Assert.Equal(123, stored.Canvas.Background.GradientDirectionDegrees);
     }
 
     [Fact]

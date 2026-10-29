@@ -411,13 +411,23 @@ public sealed partial class StudioEditorSession
     /// </summary>
     public void SetBackgroundPreset(StudioBackgroundStyle style, string presetId, string primary, string? secondary = null)
     {
+        SetBackground(style, presetId, primary, style == StudioBackgroundStyle.Solid ? null : secondary);
+    }
+
+    public void SetBackground(
+        StudioBackgroundStyle style,
+        string? preset,
+        string primary,
+        string? secondary = null,
+        double? gradientDirectionDegrees = null)
+    {
         switch (style)
         {
             case StudioBackgroundStyle.Solid:
-                Edit(model => model.SetBackground(StudioBackgroundStyle.Solid, presetId, primary));
+                Edit(model => model.SetBackground(StudioBackgroundStyle.Solid, preset, primary, secondary, gradientDirectionDegrees: gradientDirectionDegrees));
                 break;
             case StudioBackgroundStyle.Gradient:
-                Edit(model => model.SetBackground(StudioBackgroundStyle.Gradient, presetId, primary, secondary));
+                Edit(model => model.SetBackground(StudioBackgroundStyle.Gradient, preset, primary, secondary, gradientDirectionDegrees: gradientDirectionDegrees));
                 break;
         }
     }

@@ -84,7 +84,7 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
     }
 
     [Fact]
-    public void WhatWindowsWritesOfAMacsProject_SaysWhatTheMacsFileSays_ButForTheId_AndTheVolumeItAdds()
+    public void WhatWindowsWritesOfAMacsProject_PreservesItsValues_AndAddsNewDefaults()
     {
         var folder = MakeFolderAroundTheMacsFile("From A Mac");
         var opened = Open(folder);
@@ -95,11 +95,12 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
         var comparison = ProjectFileComparison.Of(File.ReadAllBytes(MacsProjectFile), File.ReadAllBytes(Path.Combine(again, "And Back.tinyclips")));
 
         // Nothing the Mac wrote is dropped or changed. One value differs, the id the project
-        // got when it was opened, and one is added: the volume, which macOS 1.9.0 does not
-        // write, at what a project without it has.
+        // got when it was opened. New fields absent from this older file are written at
+        // their defaults: volume and gradient direction.
         Assert.Equal(
             [
                 VolumeWindowsAdds,
+                "canvas.background.gradientDirectionDegrees: only the Windows file has it: 45",
                 $"id: the Mac's file has \"{IdInTheMacsFile}\", the Windows file has \"{opened.Id}\"",
             ],
             comparison.Values);

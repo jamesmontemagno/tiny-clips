@@ -63,6 +63,49 @@ internal static class ExportChecks
     {
         var clips = harness.Clips;
 
+        await harness.Check("exports", "export: saved gradient direction and null secondary color", async context =>
+        {
+            foreach (var (degrees, secondary) in new[] { (90, (string?)"#80C0E0"), (123, (string?)null) })
+            {
+                var project = Projects.Create(clips.Screen, null) with
+                {
+                    Canvas = new StudioCanvas
+                    {
+                        Padding = 0.15,
+                        Background = new StudioBackground
+                        {
+                            Style = StudioBackgroundStyle.Gradient,
+                            Primary = "#203060",
+                            Secondary = secondary,
+                            GradientDirectionDegrees = degrees,
+                        },
+                    },
+                    Screen = new StudioScreenStyle { Shadow = 0 },
+                    Edits = new StudioEdits { TrimEnd = 0.2 },
+                };
+                project = StudioProjectJson.ReadProject(StudioProjectJson.WriteProject(project));
+                var folder = context.Folder();
+                var output = Path.Combine(folder, "gradient.mp4");
+                var result = await new StudioExporter().ExportAsync(
+                    project, Projects.Events(clips.Screen), Projects.Paths(folder, clips.Screen, null),
+                    output, new StudioExportOptions(LongSideLimit: 640)).ConfigureAwait(false);
+                context.Expect(result.Width == 640 && result.Height == 360 && result.FrameCount == 6, "the gradient export has the requested size and duration");
+                var frames = Media.ReadFrames(output, chroma: true, frame =>
+                {
+                    foreach (var y in new[] { 10, 180, 349 })
+                    {
+                        var first = new Rgb(0x20, 0x30, 0x60);
+                        var want = secondary is null ? first : first.Mix(new Rgb(0x80, 0xC0, 0xE0), (y + 0.5) / 360);
+                        var got = frame.Picture.Average(10, y, 2);
+                        context.Expect(got.Distance(want) <= ExportVerifier.ColorTolerance, $"{degrees} degrees, frame {frame.Index} at (10,{y}): {got}, want {want}");
+                    }
+
+                    return true;
+                });
+                context.Expect(frames == 6, $"decoded {frames} gradient frames, want 6");
+            }
+        });
+
         await harness.Check("exports", "export (a): untrimmed, camera in the bubble", async context =>
         {
             // Size, rate and duration as a real project carries them: read from the file, as the app does.

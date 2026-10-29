@@ -47,36 +47,47 @@ internal static partial class RendererChecks
         ExpectFlat(context, BackgroundOnly(bench, new StudioBackground { Style = StudioBackgroundStyle.Solid, Primary = "orange" }), new Rgb(0, 0, 0), 0, "a colour that is not a colour");
         ExpectFlat(context, BackgroundOnly(bench, new StudioBackground { Style = StudioBackgroundStyle.Gradient, Primary = Orange, Secondary = null }), OrangeRgb, 0, "a gradient with no second colour");
 
-        // A gradient runs from the top-left corner to the bottom-right one. A pixel's place along
-        // it is the projection of its centre on that diagonal, and the colour is the straight
-        // mix of the two encoded colours: halfway between #203060 and #80C0E0 is (80,120,160).
-        // Mixed in linear light instead, the middle would be (95,137,172).
+        // The default is 45 degrees in pixel space, not the corner-to-corner angle of a
+        // non-square canvas. Check explicit directions too, reusing the renderer's underlay.
         var first = new Rgb(0x20, 0x30, 0x60);
         var second = new Rgb(0x80, 0xC0, 0xE0);
         var worst = 0.0;
         foreach (var (width, height) in new[] { (1920, 1080), (1080, 1920), (642, 362) })
         {
-            var gradient = BackgroundOnly(bench, new StudioBackground { Style = StudioBackgroundStyle.Gradient, Primary = "#203060", Secondary = "#80C0E0" }, width, height);
-            for (var row = 0; row <= 8; row++)
+            foreach (var degrees in new[] { 45, 0, 90, 180, 270 })
             {
-                for (var column = 0; column <= 8; column++)
+                var gradient = BackgroundOnly(bench, new StudioBackground { Style = StudioBackgroundStyle.Gradient, Primary = "#203060", Secondary = "#80C0E0", GradientDirectionDegrees = degrees }, width, height);
+                for (var row = 0; row <= 8; row++)
                 {
-                    var x = Math.Min(width - 1, column * width / 8);
-                    var y = Math.Min(height - 1, row * height / 8);
-                    var along = (((x + 0.5) * width) + ((y + 0.5) * height)) / (((double)width * width) + ((double)height * height));
-                    var want = first.Mix(second, along);
-                    var got = gradient.Pixel(x, y);
-                    worst = Math.Max(worst, got.Distance(want));
-                    context.Expect(got.Distance(want) <= 1.5, $"{width}×{height} gradient at ({x},{y}), {along:0.000} of the way: {got}, want {want}");
+                    for (var column = 0; column <= 8; column++)
+                    {
+                        var x = Math.Min(width - 1, column * width / 8);
+                        var y = Math.Min(height - 1, row * height / 8);
+                        var along = degrees switch
+                        {
+                            0 => (x + 0.5) / width,
+                            90 => (y + 0.5) / height,
+                            180 => 1 - (x + 0.5) / width,
+                            270 => 1 - (y + 0.5) / height,
+                            _ => (x + y + 1.0) / (width + height),
+                        };
+                        var want = first.Mix(second, along);
+                        var got = gradient.Pixel(x, y);
+                        worst = Math.Max(worst, got.Distance(want));
+                        context.Expect(got.Distance(want) <= 1.5, $"{width}×{height} gradient at {degrees} degrees ({x},{y}), {along:0.000} of the way: {got}, want {want}");
+                    }
                 }
-            }
 
-            ExpectPixel(context, gradient, 0, 0, first, 1.5, $"{width}×{height} gradient, top-left corner");
-            ExpectPixel(context, gradient, width - 1, height - 1, second, 1.5, $"{width}×{height} gradient, bottom-right corner");
-            ExpectPixel(context, gradient, width / 2, height / 2, new Rgb(80, 120, 160), 1.5, $"{width}×{height} gradient, the middle");
+                if (degrees == 45)
+                {
+                    ExpectPixel(context, gradient, 0, 0, first, 1.5, $"{width}×{height} gradient, top-left corner");
+                    ExpectPixel(context, gradient, width - 1, height - 1, second, 1.5, $"{width}×{height} gradient, bottom-right corner");
+                }
+                ExpectPixel(context, gradient, width / 2, height / 2, new Rgb(80, 120, 160), 1.5, $"{width}×{height} gradient, the middle");
+            }
         }
 
-        context.Measure(string.Create(CultureInfo.InvariantCulture, $"gradients within {worst:0.0} of 255 of the straight mix of the encoded colours, at 243 points on three canvases"));
+        context.Measure(string.Create(CultureInfo.InvariantCulture, $"gradients within {worst:0.0} of 255 of the straight mix of the encoded colours, at 1215 points across five directions and three canvases"));
     }
 
     /// <summary>

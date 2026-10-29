@@ -94,9 +94,10 @@ A recording's frames are not always evenly spaced. The macOS recorder writes a f
 | `background.preset` | string or null | `"ocean"` | | Informational; the colors below are what is drawn |
 | `background.primary` | color | `#2687E8` | | |
 | `background.secondary` | color or null | `#2EE0BF` | | |
+| `background.gradientDirectionDegrees` | number | 45 | 0 to 360 | Direction from primary to secondary in frame pixel space; 0 is left to right and 90 is top to bottom |
 | `background.image` | string or null | null | | File name relative to the project folder |
 
-Background drawing: `none` is black. `solid` fills with `primary`. `gradient` is linear from the top-left corner (`primary`) to the bottom-right corner (`secondary`), matching the screenshot editors. `image` is aspect-filled and falls back to `primary` if the file is missing.
+Background drawing: `none` is black. `solid` fills with `primary`. `gradient` uses `gradientDirectionDegrees` from `primary` to `secondary`, matching the screenshot editors. `image` is aspect-filled and falls back to `primary` if the file is missing.
 
 ### ScreenStyle
 

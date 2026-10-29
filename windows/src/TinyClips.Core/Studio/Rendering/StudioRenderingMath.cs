@@ -234,8 +234,21 @@ public static class StudioRenderingMath
         return codec == VideoCodec.Hevc ? (uint)(bitrate * 0.6) : (uint)bitrate;
     }
 
-    public static (double StartX, double StartY, double EndX, double EndY) GradientEndpoints(double width, double height) =>
-        (0, 0, width, height);
+    public static (double StartX, double StartY, double EndX, double EndY) GradientEndpoints(double width, double height, double degrees = 45)
+    {
+        var normalizedDegrees = double.IsFinite(degrees) ? Math.Clamp(degrees, 0, 360) : 45;
+        var radians = normalizedDegrees * Math.PI / 180;
+        var directionX = Math.Cos(radians);
+        var directionY = Math.Sin(radians);
+        var halfLength = (Math.Abs(directionX) * width + Math.Abs(directionY) * height) / 2;
+        var offsetX = directionX * halfLength;
+        var offsetY = directionY * halfLength;
+        return (
+            width / 2 - offsetX,
+            height / 2 - offsetY,
+            width / 2 + offsetX,
+            height / 2 + offsetY);
+    }
 
     /// <summary>
     /// The name an export or poster is written under until it is complete: next to the final file,

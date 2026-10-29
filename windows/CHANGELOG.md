@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Studio keeps disabled and image backgrounds unchanged during binding refreshes, preserves single-color gradients when changing direction, restores the 45-degree default for null project values, and keeps solid presets single-color.
 - Tray flyout, capture picker, and hidden capture-status windows now expose meaningful names to assistive technology.
 - Settings paths in Windows update notifications now consistently use arrows.
 - Teleprompter's text-file button now uses sentence case and a typographic ellipsis.
@@ -39,6 +40,7 @@ own `CHANGELOG.md` at the repository root.
   controls in collapsed Advanced settings.
 
 ### Added
+- Studio backgrounds now support custom solid and gradient colors, plus adjustable gradient direction. The preview and exported video use the same direction.
 - Screenshot settings now let you choose the default editor tool, starting with Move / select for new editor sessions.
 - Screenshot backgrounds can use a local PNG, JPEG, or WebP image, with centered Fill or Fit placement in the preview, saved image, and clipboard copy. Images stay in the current editor only; Remove or Reset clears the background. Animated images, images above 32 megapixels, and dimensions exceeding the graphics device's bitmap limit are rejected.
 - Added **Include Tiny Clips in captures** in General settings for demos. Off by default, it controls app windows, capture controls and window selection starting with the next capture after any active recording ends. The teleprompter and live webcam preview remain excluded; the recorded camera is unchanged.

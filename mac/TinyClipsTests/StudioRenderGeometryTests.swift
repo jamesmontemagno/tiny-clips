@@ -54,6 +54,40 @@ final class StudioRenderGeometryTests: XCTestCase {
         XCTAssertEqual(mirrored.applying(to: CGPoint(x: cropRect.maxX, y: cropRect.minY)).x, 100, accuracy: 1e-6)
     }
 
+    func testGradientDirectionDisplayClampsBeforeIntegerConversion() {
+        for (stored, expected) in [(1e20, 360), (-1e20, 0), (Double.infinity, 45), (Double.nan, 45), (123, 123)] {
+            XCTAssertEqual(Int(StudioRenderGeometry.clampedGradientDirectionDegrees(stored)), expected)
+        }
+    }
+
+    func testGradientEndpointsMatchScreenshotEditorDirection() {
+        let leftToRight = StudioRenderGeometry.gradientEndpoints(
+            renderSize: CGSize(width: 200, height: 100),
+            directionDegrees: 0
+        )
+        let topToBottom = StudioRenderGeometry.gradientEndpoints(
+            renderSize: CGSize(width: 200, height: 100),
+            directionDegrees: 90
+        )
+        let diagonal = StudioRenderGeometry.gradientEndpoints(
+            renderSize: CGSize(width: 200, height: 100),
+            directionDegrees: 45
+        )
+
+        XCTAssertEqual(leftToRight.start.x, 0, accuracy: 1e-6)
+        XCTAssertEqual(leftToRight.start.y, 50, accuracy: 1e-6)
+        XCTAssertEqual(leftToRight.end.x, 200, accuracy: 1e-6)
+        XCTAssertEqual(leftToRight.end.y, 50, accuracy: 1e-6)
+        XCTAssertEqual(topToBottom.start.x, 100, accuracy: 1e-6)
+        XCTAssertEqual(topToBottom.start.y, 100, accuracy: 1e-6)
+        XCTAssertEqual(topToBottom.end.x, 100, accuracy: 1e-6)
+        XCTAssertEqual(topToBottom.end.y, 0, accuracy: 1e-6)
+        XCTAssertEqual(diagonal.start.x, 25, accuracy: 1e-6)
+        XCTAssertEqual(diagonal.start.y, 125, accuracy: 1e-6)
+        XCTAssertEqual(diagonal.end.x, 175, accuracy: 1e-6)
+        XCTAssertEqual(diagonal.end.y, -25, accuracy: 1e-6)
+    }
+
     func testSquirclePointsStayOnSuperellipse() {
         let rect = StudioRect(x: 10, y: 20, width: 120, height: 80)
         let points = StudioRenderGeometry.squirclePoints(in: rect, pointCount: 32)
@@ -119,8 +153,10 @@ final class StudioRenderGeometryTests: XCTestCase {
 
         XCTAssertEqual(StudioRenderGeometry.activeClickRings(at: 1, events: events, frame: frame, overlay: StudioClickOverlay()).count, 1)
         let gradient = StudioRenderGeometry.gradientEndpoints(renderSize: CGSize(width: 200, height: 100))
-        XCTAssertEqual(gradient.start, CGPoint(x: 0, y: 100))
-        XCTAssertEqual(gradient.end, CGPoint(x: 200, y: 0))
+        XCTAssertEqual(gradient.start.x, 25, accuracy: 1e-6)
+        XCTAssertEqual(gradient.start.y, 125, accuracy: 1e-6)
+        XCTAssertEqual(gradient.end.x, 175, accuracy: 1e-6)
+        XCTAssertEqual(gradient.end.y, -25, accuracy: 1e-6)
     }
 
     // MARK: - Dividing a Piece at the Edges of a Track

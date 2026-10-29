@@ -274,12 +274,13 @@ public sealed class StudioEditorModelTests
         model.SetCameraBorderColor("teal");
         Assert.Equal("#AABBCC", model.Project.Camera.BorderColor);
 
-        model.SetBackground(StudioBackgroundStyle.Gradient, "candy", "ff6bad", "#8cc7ff");
+        model.SetBackground(StudioBackgroundStyle.Gradient, "candy", "ff6bad", "#8cc7ff", gradientDirectionDegrees: 123);
         var gradient = model.Project.Canvas.Background;
         Assert.Equal(StudioBackgroundStyle.Gradient, gradient.Style);
         Assert.Equal("candy", gradient.Preset);
         Assert.Equal("#FF6BAD", gradient.Primary);
         Assert.Equal("#8CC7FF", gradient.Secondary);
+        Assert.Equal(123, gradient.GradientDirectionDegrees);
 
         model.SetBackground(StudioBackgroundStyle.Solid, null, "nope", null, @"..\secret.png");
         var solid = model.Project.Canvas.Background;
@@ -287,7 +288,20 @@ public sealed class StudioEditorModelTests
         Assert.Null(solid.Preset);
         Assert.Equal("#FF6BAD", solid.Primary);
         Assert.Null(solid.Secondary);
+        Assert.Equal(123, solid.GradientDirectionDegrees);
         Assert.Null(solid.Image);
+    }
+
+    [Theory]
+    [InlineData(-30, 0)]
+    [InlineData(450, 360)]
+    public void BackgroundDirection_IsClamped(double requested, double expected)
+    {
+        var model = new StudioEditorModel(MakeProject());
+
+        model.SetBackground(StudioBackgroundStyle.Gradient, null, "#123456", "#654321", gradientDirectionDegrees: requested);
+
+        Assert.Equal(expected, model.Project.Canvas.Background.GradientDirectionDegrees);
     }
 
     [Fact]
