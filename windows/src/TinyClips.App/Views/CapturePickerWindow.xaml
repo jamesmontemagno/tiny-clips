@@ -2,7 +2,8 @@
 <Window
     x:Class="TinyClips.App.CapturePickerWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Tiny Clips capture picker">
 
     <Window.SystemBackdrop>
         <DesktopAcrylicBackdrop />

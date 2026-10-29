@@ -17,6 +17,7 @@ internal sealed class TrayPopupWindow : Window
 
     public TrayPopupWindow(UIElement content)
     {
+        Title = "Tiny Clips";
         _hwnd = WindowNative.GetWindowHandle(this);
         var id = Win32Interop.GetWindowIdFromWindow(_hwnd);
         _appWindow = AppWindow.GetFromWindowId(id);
