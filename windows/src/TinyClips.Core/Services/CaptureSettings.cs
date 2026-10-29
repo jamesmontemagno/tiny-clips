@@ -1,3 +1,4 @@
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Studio;
 
@@ -421,6 +422,20 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         get => _settings.Get("screenshotEditorNativeSize", false);
         set => _settings.Set("screenshotEditorNativeSize", value);
+    }
+
+    public EditTool ScreenshotEditorDefaultTool
+    {
+        get
+        {
+            var persisted = _settings.Get("screenshotEditorDefaultTool", EditTool.Select.ToString());
+            return Enum.TryParse<EditTool>(persisted, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+                ? parsed
+                : EditTool.Select;
+        }
+        set => _settings.Set(
+            "screenshotEditorDefaultTool",
+            Enum.IsDefined(value) ? value.ToString() : EditTool.Select.ToString());
     }
 
     public bool ConfirmEditorEscape
@@ -904,6 +919,7 @@ public sealed class CaptureSettings : ICaptureSettings
         WebcamCornerRadius = null;
         ShowScreenshotEditor = true;
         ScreenshotEditorNativeSize = false;
+        ScreenshotEditorDefaultTool = EditTool.Select;
         ConfirmEditorEscape = true;
         ScreenshotUsesLiveCapture = false;
         ShowGifTrimmer = true;

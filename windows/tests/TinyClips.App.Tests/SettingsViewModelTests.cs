@@ -1,5 +1,6 @@
 using TinyClips.App;
 using TinyClips.App.Settings;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Tests;
@@ -39,6 +40,40 @@ public sealed class SettingsViewModelTests
         Assert.Equal("ToggleSwitch", toggle.Name.LocalName);
         Assert.Equal("Include Tiny Clips in captures", toggle.Attr("AutomationProperties.Name"));
         Assert.Equal("{x:Bind ViewModel.IncludeTinyClipsInCapture, Mode=TwoWay}", toggle.Attr("IsOn"));
+    }
+
+    [Fact]
+    public void ScreenshotEditorDefaultTool_LoadsMoveSelect_PersistsAndRoundTrips()
+    {
+        var fixture = new Fixture();
+        var vm = fixture.CreateViewModel();
+        Realize(vm, SettingsSectionKind.Screenshot);
+
+        Assert.Equal(0, vm.ScreenshotEditorDefaultToolIndex);
+        Assert.Equal(EditTool.Select, fixture.Settings.ScreenshotEditorDefaultTool);
+
+        vm.ScreenshotEditorDefaultToolIndex = 4;
+        Assert.Equal(EditTool.Arrow, fixture.Settings.ScreenshotEditorDefaultTool);
+
+        var reopened = fixture.CreateViewModel();
+        Realize(reopened, SettingsSectionKind.Screenshot);
+        Assert.Equal(4, reopened.ScreenshotEditorDefaultToolIndex);
+    }
+
+    [Fact]
+    public void ScreenshotEditorDefaultToolCombo_HasAccessibleNameAndFriendlyToolChoices()
+    {
+        var combo = Assert.Single(SettingsMarkup.Elements("ScreenshotSettingsSection.xaml"),
+            element => element.Attr("AutomationProperties.AutomationId") == "ScreenshotEditorDefaultToolComboBox");
+
+        Assert.Equal("ComboBox", combo.Name.LocalName);
+        Assert.Equal("Default screenshot editor tool", combo.Attr("AutomationProperties.Name"));
+        Assert.Equal(
+            "{x:Bind ViewModel.ScreenshotEditorDefaultToolIndex, Mode=TwoWay}",
+            combo.Attr("SelectedIndex"));
+        Assert.Equal(
+            ["Move / select", "Crop", "Rectangle", "Ellipse", "Arrow", "Line", "Pen", "Text", "Counter", "Emoji", "Redact"],
+            combo.Elements().Select(item => item.Attr("Content")));
     }
 
     [Fact]
