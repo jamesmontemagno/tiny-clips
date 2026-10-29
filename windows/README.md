@@ -58,7 +58,7 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   and window shortcuts can be set in Settings → Keyboard shortcuts; they are unbound by default.
 - **Launch at login** — optionally start TinyClips when you sign in to Windows.
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
-- **Include Tiny Clips in captures** (Settings > General > Capture behavior) lets app windows
+- **Include Tiny Clips in captures** (Settings → General → Capture behavior) lets app windows
   and capture controls appear in screenshots and recordings for demos, and makes eligible
   app windows available in window selection. Off by default. Changes apply on the next capture
   after any active recording ends; captures taken during that recording share its setting.
@@ -66,6 +66,11 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   camera is unchanged. This is independent of the branding watermark. Windows window-level
   exclusion also affects capture by other apps.
 - **System-tray** Fluent menu (rounded/acrylic), light/dark/system theming, full **Settings** window.
+- **Local capture analytics** in Settings: full-width daily, weekday, and hourly charts that resize
+  with the window. Choose 7 or 30 days and toggle capture types in the daily chart. Select a bar
+  to keep its details visible, hover for a tooltip, or focus a chart and use Left/Right, Home/End
+  to explore. Type filters affect the daily chart only, not totals or details; hourly insights
+  are all-time. Daily history is retained for 30 days; lifetime and hourly totals stay until reset.
 
 ## Requirements
 

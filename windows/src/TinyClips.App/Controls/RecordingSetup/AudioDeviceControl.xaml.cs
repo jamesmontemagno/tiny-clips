@@ -253,7 +253,7 @@ public sealed partial class AudioDeviceControl : UserControl
     {
         MicrophoneDeviceLabel.Text = "Loading...";
         MicrophoneFlyout.Items.Clear();
-        _loadingMicrophoneItem ??= new MenuFlyoutItem { Text = "Loading microphones...", IsEnabled = false };
+        _loadingMicrophoneItem ??= new MenuFlyoutItem { Text = "Loading microphones…", IsEnabled = false };
         MicrophoneFlyout.Items.Add(_loadingMicrophoneItem);
     }
 

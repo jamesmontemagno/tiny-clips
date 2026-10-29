@@ -6,6 +6,14 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Settings paths in Windows update notifications now consistently use arrows.
+- Teleprompter's text-file button now uses sentence case and a typographic ellipsis.
+- Microphone and webcam loading labels now use a typographic ellipsis.
+- Replaced three consecutive periods with an ellipsis in screenshot editor color buttons.
+- Region selection hint no longer has extra spaces around the separator.
+- Long monitor names in the screen picker now truncate with an ellipsis and show the full name on hover.
+- Scrolling-capture status messages now wrap instead of being clipped.
+- Screen picker cards now expose each display's name to screen readers.
 - Failed or cancelled scrolling-capture setup now closes its panel and removes service subscriptions so subsequent captures are not blocked.
 - StudioWindowCheck builds with the capture inclusion setting and keeps its test window capturable.
 - Recording still stops and finalizes if Windows cannot safely show the processing indicator. Multi-monitor region selection closes already-created overlays if a later overlay cannot be created or activated.
@@ -13,6 +21,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Changed
 - New TinyClips app, tray, tile, Store, and splash icons using the shared paperclip mascot artwork, matching the macOS app. Regenerate them with `python3 scripts/generate-app-icons.py` (replaces `windows/tools/generate-icons.py`).
+- Refreshed Analytics with full-width, resize-aware daily, weekday, and hourly charts. Select bars with the mouse, touch, or keyboard for persistent capture details; hover for tooltips. Sparse date/hour labels keep the 30-day and 24-hour views readable, with the existing range, type filters, totals, and local history preserved.
 - GitHub-hosted Windows .NET CI, release packaging, and build-mode launch smoke place NuGet packages and HTTP cache under the runner's actual temporary directory. The test-only remote cache follows the new package path with a fresh key; build jobs still do not use remote package caching. Explicit ARM64 local-NVMe storage and publishing approvals are preserved. A small cold-cache x64 pilot supports faster restore; no ARM64 or warm-cache speedup is claimed.
 - Ordinary Windows CI cancels superseded pull-request runs; non-PR runs use unique concurrency groups so documentation-only pushes cannot cancel source validation. NuGet packages are cached only for tests, keyed by architecture, SDK, and dependency inputs. Build-job caches were excluded because transfer overhead outweighed restore savings. All package inspections and test suites remain enabled; release, Store publishing, and launch smoke are unchanged.
 - Added an opt-in local-NVMe ReFS Dev Drive pilot to ARM64 build-mode Windows Launch Smoke
@@ -29,6 +38,7 @@ own `CHANGELOG.md` at the repository root.
   controls in collapsed Advanced settings.
 
 ### Added
+- Screenshot backgrounds can use a local PNG, JPEG, or WebP image, with centered Fill or Fit placement in the preview, saved image, and clipboard copy. Images stay in the current editor only; Remove or Reset clears the background. Animated images, images above 32 megapixels, and dimensions exceeding the graphics device's bitmap limit are rejected.
 - Added **Include Tiny Clips in captures** in General settings for demos. Off by default, it controls app windows, capture controls and window selection starting with the next capture after any active recording ends. The teleprompter and live webcam preview remain excluded; the recorded camera is unchanged.
 - Added manual GitHub Copilot app run buttons for Windows x64 and ARM64, using `dotnet run` to build and launch with package identity.
 - **What's New introduces Studio.** A new illustrated screen-and-camera composition and editing highlights explain the early preview, with a switch to enable it right there. It appears once per content revision for existing users, not on every app update; new installs keep the onboarding tour. The switch is saved, and ordinary video recording stays unchanged.

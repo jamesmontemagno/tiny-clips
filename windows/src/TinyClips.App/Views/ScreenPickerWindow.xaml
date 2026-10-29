@@ -30,6 +30,7 @@
                                 Width="200"
                                 Height="130"
                                 Margin="4"
+                                AutomationProperties.Name="{x:Bind Title}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
@@ -46,7 +47,9 @@
                                     <TextBlock
                                         HorizontalAlignment="Center"
                                         Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="{x:Bind Title}" />
+                                        Text="{x:Bind Title}"
+                                        TextTrimming="CharacterEllipsis"
+                                        ToolTipService.ToolTip="{x:Bind Title}" />
                                     <TextBlock
                                         HorizontalAlignment="Center"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"

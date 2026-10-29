@@ -2,6 +2,7 @@ using TinyClips.App;
 using TinyClips.App.Settings;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Tests;
 
 namespace TinyClips.App.Tests;
 
@@ -601,6 +602,191 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public async Task AnalyticsChart_FiltersRescaleBarsWithoutChangingTotalsOrSelectedDayDetails()
+    {
+        var fixture = new Fixture();
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 7, 13, 9, 0, 0, TimeSpan.Zero));
+        var analytics = new ClipAnalyticsService(fixture.Store, clock);
+        analytics.RecordCapture(CaptureType.Screenshot);
+        analytics.RecordCapture(CaptureType.Screenshot);
+        analytics.RecordCapture(CaptureType.Video);
+        analytics.RecordCapture(CaptureType.Gif);
+        clock.Advance(TimeSpan.FromDays(1));
+        analytics.RecordCapture(CaptureType.Video);
+        var vm = fixture.CreateViewModel(analytics: analytics);
+        await vm.EnsureAnalyticsInitializedAsync();
+        vm.SelectedAnalyticsDay = vm.AnalyticsDays[^2];
+        var details = vm.SelectedAnalyticsDaySummary;
+        var selectedLabel = vm.SelectedAnalyticsDay.FullDateLabel;
+        var weekday = vm.SelectedWeekday;
+        var hour = vm.SelectedHour;
+
+        Assert.Equal(7, vm.AnalyticsDays.Count);
+        Assert.Equal(4, vm.AnalyticsChartMaximum);
+        var peak = vm.AnalyticsDays[^2];
+        Assert.Equal(200, peak.ScreenshotHeight + peak.VideoHeight + peak.GifHeight);
+        Assert.Equal(4, peak.TotalCount);
+        Assert.Equal(5, vm.AnalyticsCaptureTotal);
+
+        vm.ShowScreenshotsInChart = false;
+
+        Assert.Equal(2, vm.AnalyticsChartMaximum);
+        Assert.Equal(0, vm.SelectedAnalyticsDay!.ScreenshotHeight);
+        Assert.Equal(200, vm.SelectedAnalyticsDay.VideoHeight + vm.SelectedAnalyticsDay.GifHeight);
+        Assert.Equal(selectedLabel, vm.SelectedAnalyticsDay.FullDateLabel);
+        Assert.Equal(details, vm.SelectedAnalyticsDaySummary);
+        Assert.Equal((2, 2, 1, 5), (vm.AnalyticsScreenshotTotal, vm.AnalyticsVideoTotal, vm.AnalyticsGifTotal, vm.AnalyticsCaptureTotal));
+        Assert.Same(weekday, vm.SelectedWeekday);
+        Assert.Same(hour, vm.SelectedHour);
+
+        vm.ShowVideosInChart = false;
+        vm.ShowGifsInChart = false;
+
+        Assert.True(vm.ShowGifsInChart);
+        Assert.Equal(1, vm.AnalyticsChartMaximum);
+        Assert.Equal(200, vm.SelectedAnalyticsDay!.GifHeight);
+        Assert.Equal(details, vm.SelectedAnalyticsDaySummary);
+    }
+
+    [Fact]
+    public async Task AnalyticsChart_RangeChangesPreserveSelectionOrFallBackToToday_AndUseSparseLabels()
+    {
+        var fixture = new Fixture();
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 6, 20, 9, 0, 0, TimeSpan.Zero));
+        var analytics = new ClipAnalyticsService(fixture.Store, clock);
+        analytics.RecordCapture(CaptureType.Gif);
+        clock.Advance(TimeSpan.FromDays(24));
+        analytics.RecordCapture(CaptureType.Screenshot);
+        var vm = fixture.CreateViewModel(analytics: analytics);
+        await vm.EnsureAnalyticsInitializedAsync();
+        var todayLabel = vm.SelectedAnalyticsDay!.FullDateLabel;
+        vm.SelectedAnalyticsDay = vm.AnalyticsDays[1];
+        var selectedLabel = vm.SelectedAnalyticsDay.FullDateLabel;
+
+        vm.AnalyticsRangeIndex = 1;
+
+        Assert.Equal(30, vm.AnalyticsDays.Count);
+        Assert.Equal(2, vm.AnalyticsCaptureTotal);
+        Assert.Equal(selectedLabel, vm.SelectedAnalyticsDay!.FullDateLabel);
+        Assert.Equal([0, 5, 10, 15, 20, 25, 29], vm.AnalyticsDays
+            .Select((day, index) => (day, index))
+            .Where(item => !string.IsNullOrEmpty(item.day.DateLabel))
+            .Select(item => item.index));
+        Assert.All(vm.AnalyticsDays, day => Assert.Contains(day.FullDateLabel, day.AccessibilitySummary));
+
+        vm.SelectedAnalyticsDay = vm.AnalyticsDays[0];
+        vm.AnalyticsRangeIndex = 0;
+
+        Assert.Equal(7, vm.AnalyticsDays.Count);
+        Assert.Equal(1, vm.AnalyticsCaptureTotal);
+        Assert.Equal(todayLabel, vm.SelectedAnalyticsDay!.FullDateLabel);
+        Assert.All(vm.AnalyticsDays, day => Assert.Equal(3, day.DateLabel.Length));
+    }
+
+    [Fact]
+    public async Task AnalyticsChart_InsightSelectionsSurviveRangeChangeAndReset_WithoutStaleDetails()
+    {
+        var fixture = new Fixture();
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 7, 13, 9, 0, 0, TimeSpan.Zero));
+        var analytics = new ClipAnalyticsService(fixture.Store, clock);
+        analytics.RecordCapture(CaptureType.Screenshot);
+        clock.Advance(TimeSpan.FromHours(5));
+        analytics.RecordCapture(CaptureType.Video);
+        var vm = fixture.CreateViewModel(analytics: analytics);
+        await vm.EnsureAnalyticsInitializedAsync();
+        vm.SelectedWeekday = vm.WeekdayBreakdown.Single(day => day.FullDayLabel == "Monday");
+        vm.SelectedHour = vm.HourlyBreakdown[14];
+        var dayLabel = vm.SelectedWeekday.FullDayLabel;
+        var hourLabel = vm.SelectedHour.HourLabel;
+
+        Assert.Equal(7, vm.WeekdayBreakdown.Count);
+        Assert.Equal(24, vm.HourlyBreakdown.Count);
+        Assert.Equal(["00", "06", "12", "18", "23"], vm.HourlyBreakdown
+            .Select(hour => hour.AxisLabel).Where(label => label.Length > 0));
+        Assert.Equal(100, vm.SelectedWeekday.Height);
+        Assert.Equal(100, vm.SelectedHour.Height);
+        Assert.Contains("1 capture all-time", vm.SelectedHourSummary);
+
+        vm.AnalyticsRangeIndex = 1;
+        Assert.Equal(dayLabel, vm.SelectedWeekday!.FullDayLabel);
+        Assert.Equal(hourLabel, vm.SelectedHour!.HourLabel);
+        Assert.Contains("1 capture all-time", vm.SelectedHourSummary);
+
+        vm.ResetAnalytics();
+
+        Assert.Equal(0, vm.AnalyticsCaptureTotal);
+        Assert.Equal(0, vm.LifetimeCaptureTotal);
+        Assert.Equal(0, vm.AnalyticsChartMaximum);
+        Assert.Equal(dayLabel, vm.SelectedWeekday!.FullDayLabel);
+        Assert.Equal(hourLabel, vm.SelectedHour!.HourLabel);
+        Assert.Contains("0 captures", vm.SelectedAnalyticsDaySummary);
+        Assert.Contains("0 captures", vm.SelectedWeekdaySummary);
+        Assert.Contains("0 captures all-time", vm.SelectedHourSummary);
+        Assert.All(vm.AnalyticsDays, day => Assert.Equal(0, day.ScreenshotHeight + day.VideoHeight + day.GifHeight));
+        Assert.All(vm.WeekdayBreakdown, day => Assert.Equal(0, day.Height));
+        Assert.All(vm.HourlyBreakdown, hour => Assert.Equal(0, hour.Height));
+    }
+
+    [Fact]
+    public async Task AnalyticsChart_SelectionChangesNotifyDetailBindings_AndEmptyDataHasFiniteHeights()
+    {
+        var fixture = new Fixture();
+        var analytics = new ClipAnalyticsService(fixture.Store,
+            new ManualTimeProvider(new DateTimeOffset(2026, 7, 13, 9, 0, 0, TimeSpan.Zero)));
+        var vm = fixture.CreateViewModel(analytics: analytics);
+        await vm.EnsureAnalyticsInitializedAsync();
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        vm.SelectedAnalyticsDay = vm.AnalyticsDays[0];
+        vm.SelectedWeekday = vm.WeekdayBreakdown[1];
+        vm.SelectedHour = vm.HourlyBreakdown[1];
+
+        Assert.Contains(nameof(SettingsViewModel.SelectedAnalyticsDaySummary), changed);
+        Assert.Contains(nameof(SettingsViewModel.SelectedWeekdaySummary), changed);
+        Assert.Contains(nameof(SettingsViewModel.SelectedHourSummary), changed);
+        Assert.Equal("No captures for the shown types.", vm.AnalyticsChartScaleLabel);
+        Assert.All(vm.AnalyticsDays, day => Assert.Equal(0, day.ScreenshotHeight + day.VideoHeight + day.GifHeight));
+        Assert.All(vm.WeekdayBreakdown, day => Assert.Equal(0, day.Height));
+        Assert.All(vm.HourlyBreakdown, hour => Assert.Equal(0, hour.Height));
+        Assert.Contains("0 captures", vm.SelectedAnalyticsDaySummary);
+    }
+
+    [Fact]
+    public void AnalyticsCharts_StretchWithoutHorizontalScrolling_AndExposeSelectableDetails()
+    {
+        var elements = SettingsMarkup.Elements("AnalyticsSettingsSection.xaml");
+        var charts = elements.Where(element => element.Name.LocalName == "AnalyticsChart").ToList();
+        Assert.Equal(3, charts.Count);
+        Assert.Equal(
+            ["DailyCapturesChart", "WeekdayCapturesChart", "HourlyCapturesChart"],
+            charts.Select(chart => chart.Attr("AutomationProperties.AutomationId")));
+        Assert.All(charts, chart =>
+        {
+            Assert.Equal("{StaticResource AnalyticsChartStyle}", chart.Attr("Style"));
+            Assert.NotNull(chart.Attr("AutomationProperties.Name"));
+            Assert.Contains("arrow", chart.Attr("AutomationProperties.HelpText")!, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Mode=TwoWay", chart.Attr("SelectedItem")!);
+            Assert.DoesNotContain(chart.Descendants(), element => element.Attr("Width") is not null);
+            Assert.DoesNotContain(chart.Ancestors(), element => element.Attr("MaxWidth") is not null);
+        });
+        Assert.Single(elements, element => element.Name.LocalName == "AnalyticsChartPanel");
+        Assert.DoesNotContain(elements, element => element.Name.LocalName == "ScrollViewer");
+        Assert.Contains(elements, element =>
+            element.Attr("Property") == "ScrollViewer.HorizontalScrollMode" && element.Attr("Value") == "Disabled");
+        Assert.Contains(elements, element =>
+            element.Attr("Property") == "HorizontalContentAlignment" && element.Attr("Value") == "Stretch");
+        Assert.All(
+            new[] { "DailyCaptureDetails", "WeekdayCaptureDetails", "HourlyCaptureDetails" },
+            id =>
+            {
+                var details = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == id);
+                Assert.Contains("Summary, Mode=OneWay", details.Attr("Text")!);
+                Assert.Equal("Wrap", details.Attr("TextWrapping"));
+            });
+    }
+
+    [Fact]
     public void ForeignAndInvalidScopes_AreRejectedWithoutReleasingTheOwnersGuard()
     {
         var fixture = new Fixture();
@@ -706,9 +892,11 @@ public sealed class SettingsViewModelTests
 
         public Fixture() => Settings = new CaptureSettings(Store);
 
-        public SettingsViewModel CreateViewModel(ITeleprompterTranscriptSaveScheduler? scheduler = null) => new(
+        public SettingsViewModel CreateViewModel(
+            ITeleprompterTranscriptSaveScheduler? scheduler = null,
+            IClipAnalyticsService? analytics = null) => new(
             Settings, new FakeHotKeys(), LaunchAtLogin, Audio, Webcams, new FakeStorage(),
-            Analytics, Credentials, dispatcherQueue: null, transcriptSaveScheduler: scheduler);
+            analytics ?? Analytics, Credentials, dispatcherQueue: null, transcriptSaveScheduler: scheduler);
     }
 
     private sealed class CountingSettingsStore : ISettingsService, ILargeTextSettingsService
