@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Studio recording now labels its capture picker as Studio, including its accessible mode name and pickers reopened after recording, while ordinary video remains Video.
 - Studio keeps disabled and image backgrounds unchanged during binding refreshes, preserves single-color gradients when changing direction, restores the 45-degree default for null project values, and keeps solid presets single-color.
 - Tray flyout, capture picker, and hidden capture-status windows now expose meaningful names to assistive technology.
 - Settings paths in Windows update notifications now consistently use arrows.

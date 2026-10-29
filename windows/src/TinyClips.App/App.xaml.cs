@@ -1222,7 +1222,7 @@ public partial class App : Application
             }
 
             var pick = wasPickerInitiated
-                ? await CapturePickerWindow.RunAsync(type, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
+                ? await CapturePickerWindow.RunAsync(StudioRecording.GetPickerIntent(type), cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
                 : new CapturePickerResult(
                     forcedMode ?? CapturePickerMode.Region,
                     cdEnabled,

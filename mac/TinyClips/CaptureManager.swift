@@ -469,7 +469,7 @@ class CaptureManager: ObservableObject {
         dismissRecordingPicker()
         let settings = CaptureSettings.shared
         let panel = CapturePickerPanel(
-            captureType: .screenshot,
+            intent: .screenshot,
             countdownEnabled: settings.screenshotCountdownEnabled,
             countdownDuration: settings.screenshotCountdownDuration,
             onCapture: { [weak self] mode, countdownEnabled, countdownDuration, _ in
@@ -2535,20 +2535,24 @@ class CaptureManager: ObservableObject {
             countdownDuration = settings.screenshotCountdownDuration
         }
 
-        let panel = CapturePickerPanel(
+        let intent = CapturePickerIntent(
             captureType: type,
+            forStudio: pendingVideoIsForStudio && settings.studioPreviewEnabled
+        )
+        let panel = CapturePickerPanel(
+            intent: intent,
             countdownEnabled: countdownEnabled,
             countdownDuration: countdownDuration,
             videoTimeLimitMinutes: settings.videoRecordingTimeLimitMinutes,
             onCapture: { [weak self] mode, enabled, duration, videoTimeLimitMinutes in
                 guard let self else { return }
                 self.dismissRecordingPicker()
-                if type == .video {
+                if intent.captureType == .video {
                     settings.videoRecordingTimeLimitMinutes = videoTimeLimitMinutes
                 }
                 Task {
                     await self.performRecordingSetup(
-                        type: type,
+                        type: intent.captureType,
                         mode: mode,
                         countdownEnabled: enabled,
                         countdownDuration: duration,

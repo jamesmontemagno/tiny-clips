@@ -138,6 +138,36 @@ enum CaptureType: String {
     }
 }
 
+// MARK: - Capture Picker Intent
+
+/// The picker experience, not a stored capture type or output format.
+enum CapturePickerIntent: Equatable {
+    case screenshot, video, gif, studio
+
+    init(captureType: CaptureType, forStudio: Bool = false) {
+        switch captureType {
+        case .screenshot: self = .screenshot
+        case .video: self = forStudio ? .studio : .video
+        case .gif: self = .gif
+        }
+    }
+
+    var captureType: CaptureType {
+        switch self {
+        case .screenshot: return .screenshot
+        case .video, .studio: return .video
+        case .gif: return .gif
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .studio: return "Studio"
+        case .screenshot, .video, .gif: return captureType.label
+        }
+    }
+}
+
 // MARK: - Capture Error
 
 enum CaptureError: LocalizedError {

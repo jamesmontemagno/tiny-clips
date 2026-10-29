@@ -26,6 +26,39 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
     }
 
+    func testStudioPickerIsDistinctFromVideoButRetainsVideoCaptureRouting() {
+        let studio = CapturePickerIntent(captureType: .video, forStudio: true)
+        XCTAssertEqual(studio, .studio)
+        XCTAssertEqual(studio.label, "Studio")
+        XCTAssertEqual(studio.captureType, .video)
+
+        let video = CapturePickerIntent(captureType: .video)
+        XCTAssertEqual(video, .video)
+        XCTAssertEqual(video.label, "Video")
+        XCTAssertEqual(video.captureType, .video)
+    }
+
+    func testOtherPickerModesCannotInheritStudioIntent() {
+        for type in [CaptureType.screenshot, .gif] {
+            let intent = CapturePickerIntent(captureType: type, forStudio: true)
+            XCTAssertNotEqual(intent, .studio)
+            XCTAssertEqual(intent.label, type.label)
+            XCTAssertEqual(intent.captureType, type)
+        }
+    }
+
+    func testReopenedPickerResolvesCurrentStudioIntentWithoutChangingCaptureTypes() {
+        let studio = CapturePickerIntent(captureType: .video, forStudio: true)
+        let reopened = CapturePickerIntent(captureType: studio.captureType, forStudio: true)
+        XCTAssertEqual(reopened, .studio)
+
+        // Cancel Studio and request ordinary Video, or switch Studio off before reopening.
+        let ordinary = CapturePickerIntent(captureType: studio.captureType, forStudio: false)
+        XCTAssertEqual(ordinary, .video)
+        XCTAssertEqual(ordinary.label, "Video")
+        XCTAssertEqual(CaptureType.video.rawValue, "video")
+    }
+
     func testWhatsNewAppearsForExistingUsersUntilDismissed() {
         defaults.set(true, forKey: "hasCompletedOnboarding")
         XCTAssertTrue(CaptureSettings.shouldShowWhatsNew(in: defaults))
