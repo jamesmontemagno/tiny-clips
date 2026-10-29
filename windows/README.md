@@ -66,6 +66,11 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   camera is unchanged. This is independent of the branding watermark. Windows window-level
   exclusion also affects capture by other apps.
 - **System-tray** Fluent menu (rounded/acrylic), light/dark/system theming, full **Settings** window.
+- **Local capture analytics** in Settings: full-width daily, weekday, and hourly charts that resize
+  with the window. Choose 7 or 30 days and toggle capture types in the daily chart. Select a bar
+  to keep its details visible, hover for a tooltip, or focus a chart and use Left/Right, Home/End
+  to explore. Type filters affect the daily chart only, not totals or details; hourly insights
+  are all-time. Daily history is retained for 30 days; lifetime and hourly totals stay until reset.
 
 ## Requirements
 

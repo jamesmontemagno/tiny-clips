@@ -814,6 +814,21 @@ public sealed partial class SettingsViewModel : ObservableObject
     // Analytics
     public System.Collections.ObjectModel.ObservableCollection<CaptureAnalyticsDayViewModel> AnalyticsDays { get; } = new();
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedAnalyticsDaySummary))]
+    private CaptureAnalyticsDayViewModel? _selectedAnalyticsDay;
+
+    public string SelectedAnalyticsDaySummary => SelectedAnalyticsDay?.AccessibilitySummary
+        ?? "Select a day to see its capture breakdown.";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AnalyticsChartScaleLabel))]
+    private int _analyticsChartMaximum;
+
+    public string AnalyticsChartScaleLabel => AnalyticsChartMaximum == 0
+        ? "No captures for the shown types."
+        : $"Daily peak: {FormatCount(AnalyticsChartMaximum, "capture")} (shown types)";
+
     /// <summary>Set when loading capture history fails on first Analytics activation; null when there's no error.</summary>
     [ObservableProperty]
     private string? _analyticsLoadError;
@@ -865,6 +880,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     public System.Collections.ObjectModel.ObservableCollection<WeekdayBreakdownViewModel> WeekdayBreakdown { get; } = new();
 
     public System.Collections.ObjectModel.ObservableCollection<HourBreakdownViewModel> HourlyBreakdown { get; } = new();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedWeekdaySummary))]
+    private WeekdayBreakdownViewModel? _selectedWeekday;
+
+    public string SelectedWeekdaySummary => SelectedWeekday?.AccessibilitySummary
+        ?? "Select a weekday to see its total for the selected range.";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedHourSummary))]
+    private HourBreakdownViewModel? _selectedHour;
+
+    public string SelectedHourSummary => SelectedHour?.AccessibilitySummary
+        ?? "Select an hour to see its all-time total.";
 
     [ObservableProperty]
     private string _busiestWeekdayLabel = "No captures yet for this range.";
@@ -2249,22 +2278,27 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private void ApplyChartDays(IReadOnlyList<DailyCaptureAnalytics> dailyCounts, int rangeDays)
     {
-        const double chartHeight = 160.0;
+        const double chartHeight = 200.0;
+        var selectedDateLabel = SelectedAnalyticsDay?.FullDateLabel;
 
         int VisibleCount(DailyCaptureAnalytics day) =>
             (ShowScreenshotsInChart ? day.ScreenshotCount : 0) +
             (ShowVideosInChart ? day.VideoCount : 0) +
             (ShowGifsInChart ? day.GifCount : 0);
 
-        var maxTotal = Math.Max(1, dailyCounts.Count == 0 ? 0 : dailyCounts.Max(VisibleCount));
+        AnalyticsChartMaximum = dailyCounts.Count == 0 ? 0 : dailyCounts.Max(VisibleCount);
+        var maxTotal = Math.Max(1, AnalyticsChartMaximum);
 
         AnalyticsDays.Clear();
-        foreach (var day in dailyCounts)
+        for (var index = 0; index < dailyCounts.Count; index++)
         {
+            var day = dailyCounts[index];
             AnalyticsDays.Add(new CaptureAnalyticsDayViewModel(
                 dateLabel: rangeDays == 7
-                    ? day.Date.ToString("ddd", CultureInfo.InvariantCulture)[..2]
-                    : day.Date.ToString("%d", CultureInfo.InvariantCulture),
+                    ? day.Date.ToString("ddd", CultureInfo.InvariantCulture)
+                    : index % 5 == 0 || index == dailyCounts.Count - 1
+                        ? day.Date.ToString("%d", CultureInfo.InvariantCulture)
+                        : string.Empty,
                 fullDateLabel: day.Date.ToString("ddd, MMM d", CultureInfo.InvariantCulture),
                 screenshotCount: day.ScreenshotCount,
                 videoCount: day.VideoCount,
@@ -2273,11 +2307,16 @@ public sealed partial class SettingsViewModel : ObservableObject
                 videoHeight: ShowVideosInChart ? chartHeight * day.VideoCount / maxTotal : 0,
                 gifHeight: ShowGifsInChart ? chartHeight * day.GifCount / maxTotal : 0));
         }
+
+        SelectedAnalyticsDay = AnalyticsDays.FirstOrDefault(day => day.FullDateLabel == selectedDateLabel)
+            ?? AnalyticsDays.LastOrDefault();
     }
 
     private void RefreshInsights(int rangeDays)
     {
-        const double breakdownHeight = 60.0;
+        const double breakdownHeight = 100.0;
+        var selectedWeekdayLabel = SelectedWeekday?.FullDayLabel;
+        var selectedHourLabel = SelectedHour?.HourLabel;
 
         var weekdayTotals = _analytics.GetWeekdayTotals(rangeDays);
         var maxWeekdayCount = Math.Max(1, weekdayTotals.Count == 0 ? 0 : weekdayTotals.Max(w => w.Count));
@@ -2297,6 +2336,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         BusiestWeekdayLabel = busiestWeekday is null
             ? "No captures yet for this range."
             : $"{busiestWeekday.Weekday} · {busiestWeekday.Count} capture{(busiestWeekday.Count == 1 ? string.Empty : "s")}";
+        SelectedWeekday = WeekdayBreakdown.FirstOrDefault(day => day.FullDayLabel == selectedWeekdayLabel)
+            ?? WeekdayBreakdown.FirstOrDefault(day => day.IsBusiest)
+            ?? WeekdayBreakdown.FirstOrDefault();
 
         var hourlyTotals = _analytics.GetHourlyTotals();
         var maxHourCount = Math.Max(1, hourlyTotals.Count == 0 ? 0 : hourlyTotals.Max(h => h.Count));
@@ -2307,6 +2349,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             HourlyBreakdown.Add(new HourBreakdownViewModel(
                 hourLabel: FormatHourLabel(hour.Hour),
+                axisLabel: hour.Hour % 6 == 0 || hour.Hour == 23
+                    ? hour.Hour.ToString("00", CultureInfo.InvariantCulture)
+                    : string.Empty,
                 count: hour.Count,
                 height: breakdownHeight * hour.Count / maxHourCount,
                 isBusiest: mostActiveHour is not null && hour.Hour == mostActiveHour.Hour));
@@ -2315,6 +2360,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         MostActiveHourLabel = mostActiveHour is null
             ? "No captures yet."
             : $"{FormatHourLabel(mostActiveHour.Hour)} · {mostActiveHour.Count} capture{(mostActiveHour.Count == 1 ? string.Empty : "s")}";
+        SelectedHour = HourlyBreakdown.FirstOrDefault(hour => hour.HourLabel == selectedHourLabel)
+            ?? HourlyBreakdown.FirstOrDefault(hour => hour.IsBusiest)
+            ?? HourlyBreakdown.FirstOrDefault();
     }
 
     private static string FormatHourLabel(int hour)
@@ -2357,9 +2405,10 @@ public sealed class CaptureAnalyticsDayViewModel
     public double ScreenshotHeight { get; }
     public double VideoHeight { get; }
     public double GifHeight { get; }
+    public int TotalCount => ScreenshotCount + VideoCount + GifCount;
 
     public string AccessibilitySummary =>
-        $"{FullDateLabel}: {FormatCount(ScreenshotCount, "screenshot")}, {FormatCount(VideoCount, "video")}, {FormatCount(GifCount, "GIF", "GIFs")}.";
+        $"{FullDateLabel}: {FormatCount(TotalCount, "capture")} total. {FormatCount(ScreenshotCount, "screenshot")}, {FormatCount(VideoCount, "video")}, {FormatCount(GifCount, "GIF", "GIFs")}.";
 
     private static string FormatCount(int count, string singular, string? plural = null) =>
         $"{count} {(count == 1 ? singular : plural ?? $"{singular}s")}";
@@ -2384,7 +2433,7 @@ public sealed class WeekdayBreakdownViewModel
     public bool IsBusiest { get; }
 
     /// <summary>Full opacity for the busiest bar, dimmed for all others.</summary>
-    public double BarOpacity => IsBusiest ? 1.0 : 0.35;
+    public double BarOpacity => IsBusiest ? 1.0 : 0.65;
 
     public string AccessibilitySummary => $"{FullDayLabel}: {Count} capture{(Count == 1 ? string.Empty : "s")}.";
 }
@@ -2392,21 +2441,23 @@ public sealed class WeekdayBreakdownViewModel
 /// <summary>A single hour-of-day bar in the "most active hour" insights breakdown (all-time).</summary>
 public sealed class HourBreakdownViewModel
 {
-    public HourBreakdownViewModel(string hourLabel, int count, double height, bool isBusiest)
+    public HourBreakdownViewModel(string hourLabel, string axisLabel, int count, double height, bool isBusiest)
     {
         HourLabel = hourLabel;
+        AxisLabel = axisLabel;
         Count = count;
         Height = height;
         IsBusiest = isBusiest;
     }
 
     public string HourLabel { get; }
+    public string AxisLabel { get; }
     public int Count { get; }
     public double Height { get; }
     public bool IsBusiest { get; }
 
     /// <summary>Full opacity for the busiest bar, dimmed for all others.</summary>
-    public double BarOpacity => IsBusiest ? 1.0 : 0.35;
+    public double BarOpacity => IsBusiest ? 1.0 : 0.65;
 
     public string AccessibilitySummary => $"{HourLabel}: {Count} capture{(Count == 1 ? string.Empty : "s")} all-time.";
 }
