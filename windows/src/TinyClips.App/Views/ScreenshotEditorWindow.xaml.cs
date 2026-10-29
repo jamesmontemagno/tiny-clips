@@ -100,7 +100,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         using (_openTrace?.Measure(WindowOpenPhase.ControllerAndBindings))
         {
             settings = App.Services.GetRequiredService<ICaptureSettings>();
-            _controller = new EditorController(DispatcherQueue);
+            _controller = new EditorController(DispatcherQueue, settings.ScreenshotEditorDefaultTool);
             Toolbar.Attach(_controller);
             Inspector.Attach(_controller);
             Inspector.BackgroundImageRequested += OnChooseBackgroundImage;

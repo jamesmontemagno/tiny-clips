@@ -1,3 +1,4 @@
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Studio;
 
@@ -114,6 +115,8 @@ public interface ICaptureSettings
     bool ShowScreenshotEditor { get; set; }
     /// <summary>Open the screenshot editor at native pixel size instead of fitting it to the viewport. Default false.</summary>
     bool ScreenshotEditorNativeSize { get; set; }
+    /// <summary>The tool selected when a new screenshot editor opens. Default Select (Move / select).</summary>
+    EditTool ScreenshotEditorDefaultTool { get; set; }
 
     /// <summary>
     /// Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. When false, Esc
