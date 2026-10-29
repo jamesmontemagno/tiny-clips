@@ -67,7 +67,7 @@ public sealed partial class CapturePickerWindow : Window
         };
     }
 
-    private void Configure(CaptureType captureType, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes)
+    private void Configure(CapturePickerIntent intent, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes)
     {
         _countdownEnabled = countdownEnabled;
         _countdownDuration = countdownDuration <= 0 ? 3 : countdownDuration;
@@ -75,18 +75,15 @@ public sealed partial class CapturePickerWindow : Window
         _completed = false;
         _result = new TaskCompletionSource<CapturePickerResult?>();
 
-        ModeIcon.Glyph = captureType switch
+        var captureType = intent.GetCaptureType();
+        ModeIcon.Glyph = intent switch
         {
-            CaptureType.Video => "\uE714",
-            CaptureType.Gif => "\uE8B9",
+            CapturePickerIntent.Video or CapturePickerIntent.Studio => "\uE714",
+            CapturePickerIntent.Gif => "\uE8B9",
             _ => "\uE722",
         };
-        ModeLabel.Text = captureType switch
-        {
-            CaptureType.Video => "Video",
-            CaptureType.Gif => "GIF",
-            _ => "Screenshot",
-        };
+        ModeLabel.Text = intent.GetLabel();
+        AutomationProperties.SetName(ModeLabel, $"{intent.GetLabel()} mode");
 
         UpdateTimerLabel();
         LimitButton.Visibility = captureType == CaptureType.Video ? Visibility.Visible : Visibility.Collapsed;
@@ -97,7 +94,7 @@ public sealed partial class CapturePickerWindow : Window
 
     private bool IsScrollingAvailable => ScrollButton.Visibility == Visibility.Visible;
 
-    public static Task<CapturePickerResult?> RunAsync(CaptureType captureType, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes = 0)
+    public static Task<CapturePickerResult?> RunAsync(CapturePickerIntent intent, bool countdownEnabled, int countdownDuration, double videoTimeLimitMinutes = 0)
     {
         var window = _pooled;
         if (window is null || window._isShowing)
@@ -106,7 +103,7 @@ public sealed partial class CapturePickerWindow : Window
             _pooled ??= window;
         }
 
-        window.Configure(captureType, countdownEnabled, countdownDuration, videoTimeLimitMinutes);
+        window.Configure(intent, countdownEnabled, countdownDuration, videoTimeLimitMinutes);
         window.PositionNearTopOfPrimaryDisplay();
         window._isShowing = true;
         window._pendingRegionApply = true;

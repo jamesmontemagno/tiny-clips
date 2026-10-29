@@ -1,3 +1,4 @@
+using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 
 namespace TinyClips.Core.Capture;
@@ -61,6 +62,14 @@ public sealed class StudioRecordingIntent
 
     /// <summary>Whether the recording being set up is a Studio recording, as Settings are now.</summary>
     public bool IsForStudio => _askedForStudio && _settings.StudioPreviewEnabled;
+
+    public CapturePickerIntent GetPickerIntent(CaptureType type) => type switch
+    {
+        CaptureType.Screenshot => CapturePickerIntent.Screenshot,
+        CaptureType.Video => IsForStudio ? CapturePickerIntent.Studio : CapturePickerIntent.Video,
+        CaptureType.Gif => CapturePickerIntent.Gif,
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null),
+    };
 
     /// <summary>
     /// The options the recording is set up with. Anything other than a Studio recording gets

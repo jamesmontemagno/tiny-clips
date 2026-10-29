@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- Studio recording now labels its capture picker as Studio, including its accessible mode name and pickers reopened after recording, while ordinary video remains Video.
 - Studio safely displays imported out-of-range gradient directions and preserves single-color gradients when changing direction.
 - Settings paths in macOS help and update guidance now consistently use arrows.
 - The Copilot macOS run button now reports an existing TinyClips instance before building or launching instead of silently leaving an older app running. Quit it after saving work and finishing recordings, then run again.

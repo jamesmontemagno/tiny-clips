@@ -34,7 +34,7 @@ class CapturePickerPanel: NSPanel {
     private var onCapture: ((CapturePickerMode, Bool, Int, Int) -> Void)?
     private var onCancel: (() -> Void)?
     private let state: CapturePickerState
-    private var captureType: CaptureType = .screenshot
+    private var intent: CapturePickerIntent = .screenshot
 
     override var canBecomeKey: Bool { true }
 
@@ -49,7 +49,7 @@ class CapturePickerPanel: NSPanel {
     }
 
     convenience init(
-        captureType: CaptureType = .screenshot,
+        intent: CapturePickerIntent = .screenshot,
         countdownEnabled: Bool,
         countdownDuration: Int,
         videoTimeLimitMinutes: Int = 0,
@@ -65,7 +65,7 @@ class CapturePickerPanel: NSPanel {
         self.state.countdownEnabled = countdownEnabled
         self.state.countdownDuration = countdownDuration
         self.state.videoTimeLimitMinutes = videoTimeLimitMinutes
-        self.captureType = captureType
+        self.intent = intent
         self.onCapture = onCapture
         self.onCancel = onCancel
         self.isReleasedWhenClosed = false
@@ -77,7 +77,7 @@ class CapturePickerPanel: NSPanel {
         self.isMovableByWindowBackground = true
 
         let hostingView = NSHostingView(rootView: CapturePickerView(
-            captureType: captureType,
+            intent: intent,
             state: state,
             onCapture: { [weak self] mode, enabled, duration, timeLimitMinutes in
                 self?.finishCapture(
@@ -187,7 +187,7 @@ class CapturePickerPanel: NSPanel {
             )
             return true
         case "p":
-            if captureType == .screenshot {
+            if intent.captureType == .screenshot {
                 finishCapture(
                     mode: .scrolling,
                     countdownEnabled: false,
@@ -212,9 +212,10 @@ class CapturePickerPanel: NSPanel {
         didComplete = true
         removeKeyboardMonitors()
         orderOut(nil)
-        onCapture?(mode, countdownEnabled, countdownDuration, videoTimeLimitMinutes)
+        let callback = onCapture
         onCapture = nil
         onCancel = nil
+        callback?(mode, countdownEnabled, countdownDuration, videoTimeLimitMinutes)
     }
 
     private func finishCancel() {
@@ -222,9 +223,10 @@ class CapturePickerPanel: NSPanel {
         didComplete = true
         removeKeyboardMonitors()
         orderOut(nil)
-        onCancel?()
+        let callback = onCancel
         onCapture = nil
         onCancel = nil
+        callback?()
     }
 }
 
@@ -232,19 +234,19 @@ class CapturePickerPanel: NSPanel {
 
 private struct CapturePickerView: View {
     @Environment(\.colorScheme) private var colorScheme
-    let captureType: CaptureType
+    let intent: CapturePickerIntent
     @ObservedObject var state: CapturePickerState
 
     let onCapture: (CapturePickerMode, Bool, Int, Int) -> Void
     let onCancel: () -> Void
 
     init(
-        captureType: CaptureType,
+        intent: CapturePickerIntent,
         state: CapturePickerState,
         onCapture: @escaping (CapturePickerMode, Bool, Int, Int) -> Void,
         onCancel: @escaping () -> Void
     ) {
-        self.captureType = captureType
+        self.intent = intent
         self.state = state
         self.onCapture = onCapture
         self.onCancel = onCancel
@@ -259,19 +261,15 @@ private struct CapturePickerView: View {
     }
 
     private var modeIcon: String {
-        switch captureType {
+        switch intent {
         case .screenshot: return "camera.fill"
-        case .video: return "video.fill"
+        case .video, .studio: return "video.fill"
         case .gif: return "photo.stack"
         }
     }
 
     private var modeLabel: String {
-        switch captureType {
-        case .screenshot: return "Screenshot"
-        case .video: return "Video"
-        case .gif: return "GIF"
-        }
+        intent.label
     }
 
     var body: some View {
@@ -343,7 +341,7 @@ private struct CapturePickerView: View {
             .keyboardShortcut("w", modifiers: [])
             .accessibilityHint("Starts window capture.")
 
-            if captureType == .screenshot {
+            if intent.captureType == .screenshot {
                 Button { onCapture(.scrolling, false, 0, 0) } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.down.doc")
@@ -401,7 +399,7 @@ private struct CapturePickerView: View {
             .accessibilityValue(state.countdownEnabled ? "\(state.countdownDuration) seconds" : "Off")
             .accessibilityHint("Choose a delay before capture starts.")
 
-            if captureType == .video {
+            if intent.captureType == .video {
                 Menu {
                     Button("Unlimited") {
                         state.videoTimeLimitMinutes = 0

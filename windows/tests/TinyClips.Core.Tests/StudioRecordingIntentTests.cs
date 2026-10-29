@@ -14,6 +14,77 @@ public sealed class StudioRecordingIntentTests
 {
     private const string Version = "1.9.0";
 
+    [Theory]
+    [InlineData(VideoRecordingCommand.StudioRecording, CapturePickerIntent.Studio, "Studio", true)]
+    [InlineData(VideoRecordingCommand.RecordVideo, CapturePickerIntent.Video, "Video", false)]
+    [InlineData(VideoRecordingCommand.RecordVideoHotKey, CapturePickerIntent.Video, "Video", false)]
+    public void PickerPresentation_AgreesWithRecordingRouting(
+        VideoRecordingCommand command, CapturePickerIntent expected, string label, bool recordsForStudio)
+    {
+        var intent = Create(out _, studioOn: true);
+        intent.Begin(command);
+
+        var picker = intent.GetPickerIntent(CaptureType.Video);
+
+        Assert.Equal(expected, picker);
+        Assert.Equal(label, picker.GetLabel());
+        Assert.Equal(CaptureType.Video, picker.GetCaptureType());
+        Assert.Equal(recordsForStudio, intent.OptionsAtStart(intent.CreateOptions(Version)).RecordForStudio);
+
+        // Returning from target selection or automatically reopening must retain the experience.
+        intent.Begin(VideoRecordingCommand.PickerReturned);
+        Assert.Equal(picker, intent.GetPickerIntent(CaptureType.Video));
+        Assert.Equal(recordsForStudio, intent.CreateOptions(Version).RecordForStudio);
+    }
+
+    [Theory]
+    [InlineData(CaptureType.Screenshot, CapturePickerIntent.Screenshot, "Screenshot")]
+    [InlineData(CaptureType.Gif, CapturePickerIntent.Gif, "GIF")]
+    public void OtherCaptureModes_DoNotInheritTheStudioPicker(
+        CaptureType type, CapturePickerIntent expected, string label)
+    {
+        var intent = Create(out _, studioOn: true);
+        intent.Begin(VideoRecordingCommand.StudioRecording);
+
+        var picker = intent.GetPickerIntent(type);
+
+        Assert.Equal(expected, picker);
+        Assert.Equal(label, picker.GetLabel());
+        Assert.Equal(type, picker.GetCaptureType());
+        Assert.Equal(CapturePickerIntent.Studio, intent.GetPickerIntent(CaptureType.Video));
+    }
+
+    [Theory]
+    [InlineData(VideoRecordingCommand.RecordVideo)]
+    [InlineData(VideoRecordingCommand.RecordVideoHotKey)]
+    public void CancellingStudioThenAskingForVideo_ResetsPickerAndRecordingIntent(VideoRecordingCommand nextCommand)
+    {
+        var intent = Create(out _, studioOn: true);
+        intent.Begin(VideoRecordingCommand.StudioRecording);
+        Assert.Equal("Studio", intent.GetPickerIntent(CaptureType.Video).GetLabel());
+
+        // Cancel before creating recording options; the next explicit command owns the intent.
+        intent.Begin(nextCommand);
+
+        Assert.Equal("Video", intent.GetPickerIntent(CaptureType.Video).GetLabel());
+        Assert.False(intent.CreateOptions(Version).RecordForStudio);
+    }
+
+    [Fact]
+    public void StudioDisabledWhilePickerIsOpen_ReopenedPickerAndRecordingBothBecomeVideo()
+    {
+        var intent = Create(out var settings, studioOn: true);
+        intent.Begin(VideoRecordingCommand.StudioRecording);
+        Assert.Equal(CapturePickerIntent.Studio, intent.GetPickerIntent(CaptureType.Video));
+
+        settings.StudioPreviewEnabled = false;
+        intent.Begin(VideoRecordingCommand.PickerReturned);
+
+        Assert.Equal(CapturePickerIntent.Video, intent.GetPickerIntent(CaptureType.Video));
+        Assert.Equal("Video", intent.GetPickerIntent(CaptureType.Video).GetLabel());
+        Assert.False(intent.CreateOptions(Version).RecordForStudio);
+    }
+
     // ---- Asked for with Studio recording
 
     [Fact]
