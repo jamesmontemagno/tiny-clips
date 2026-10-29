@@ -73,6 +73,10 @@
     <Content Include="..\..\src\TinyClips.App\Views\CapturePickerWindow.xaml"
              Link="Fixtures\CapturePickerWindow.xaml"
              CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Infrastructure\TrayPopupWindow.cs"
+                      LogicalName="WindowTitles.TrayPopupWindow.cs" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Infrastructure\AutomationNotificationAnnouncer.cs"
+                      LogicalName="WindowTitles.AutomationNotificationAnnouncer.cs" />
   </ItemGroup>
 
   <ItemGroup>

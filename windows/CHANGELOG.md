@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Tray flyout, capture picker, and hidden capture-status windows now expose meaningful names to assistive technology.
 - Settings paths in Windows update notifications now consistently use arrows.
 - Teleprompter's text-file button now uses sentence case and a typographic ellipsis.
 - Microphone and webcam loading labels now use a typographic ellipsis.

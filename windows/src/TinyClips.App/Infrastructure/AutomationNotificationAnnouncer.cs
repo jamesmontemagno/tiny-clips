@@ -18,6 +18,7 @@ internal sealed class AutomationNotificationAnnouncer : Window
 
     public AutomationNotificationAnnouncer()
     {
+        Title = "Tiny Clips capture status";
         _anchor = new TextBlock
         {
             Width = 1,
