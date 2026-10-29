@@ -1,3 +1,4 @@
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 
@@ -63,6 +64,29 @@ public sealed class CaptureSettingsTests
         Assert.Equal(string.Empty, settings.UploadcarePublicKey);
         Assert.False(settings.UploadcareAutoUpload);
         Assert.False(settings.UploadcareCopyUrl);
+        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+    }
+
+    [Fact]
+    public void ScreenshotEditorDefaultTool_DefaultsToSelect_RoundTrips_AndFallsBackForInvalidValues()
+    {
+        var store = new TestSettingsService();
+        var settings = new CaptureSettings(store);
+
+        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+
+        settings.ScreenshotEditorDefaultTool = EditTool.Arrow;
+        Assert.Equal("Arrow", store.Get("screenshotEditorDefaultTool", string.Empty));
+        Assert.Equal(EditTool.Arrow, new CaptureSettings(store).ScreenshotEditorDefaultTool);
+
+        store.Set("screenshotEditorDefaultTool", "NotATool");
+        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+        store.Set("screenshotEditorDefaultTool", "999");
+        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+
+        settings.ScreenshotEditorDefaultTool = EditTool.Arrow;
+        settings.ResetToDefaults();
+        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
     }
 
     [Fact]

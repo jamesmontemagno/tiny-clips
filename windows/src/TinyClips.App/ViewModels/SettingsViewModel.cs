@@ -10,6 +10,7 @@ using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Capture;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
@@ -43,6 +44,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly StudioProjectTracker? _studioTracker;
     private readonly DispatcherQueue? _dispatcherQueue;
     private readonly ITeleprompterTranscriptSaveScheduler? _teleprompterTranscriptSaveScheduler;
+    private static readonly EditTool[] _screenshotEditorToolChoices =
+    [
+        EditTool.Select,
+        EditTool.Crop,
+        EditTool.Rectangle,
+        EditTool.Ellipse,
+        EditTool.Arrow,
+        EditTool.Line,
+        EditTool.Pen,
+        EditTool.Text,
+        EditTool.Counter,
+        EditTool.Emoji,
+        EditTool.Redact,
+    ];
     private bool _loading;
     private string? _pendingTeleprompterTranscript;
     private string _savedMicrophoneId = string.Empty;
@@ -494,6 +509,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showScreenshotEditor;
+
+    [ObservableProperty]
+    private int _screenshotEditorDefaultToolIndex;
 
     [ObservableProperty]
     private bool _screenshotUsesLiveCapture;
@@ -1343,6 +1361,8 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ScreenshotCountdownEnabled = _settings.ScreenshotCountdownEnabled;
                 ScreenshotCountdownDuration = _settings.ScreenshotCountdownDuration;
                 ShowScreenshotEditor = _settings.ShowScreenshotEditor;
+                var defaultToolIndex = Array.IndexOf(_screenshotEditorToolChoices, _settings.ScreenshotEditorDefaultTool);
+                ScreenshotEditorDefaultToolIndex = defaultToolIndex >= 0 ? defaultToolIndex : 0;
                 ScreenshotUsesLiveCapture = _settings.ScreenshotUsesLiveCapture;
                 ShowScreenshotCapturePicker = _settings.ShowScreenshotCapturePicker;
                 ShowScreenshotCapturePickerAfterCapture = _settings.ShowScreenshotCapturePickerAfterCapture;
@@ -1835,6 +1855,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotCountdownDuration = (int)Math.Round(value));
 
     partial void OnShowScreenshotEditorChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.ShowScreenshotEditor = value);
+
+    partial void OnScreenshotEditorDefaultToolIndexChanged(int value) =>
+        Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotEditorDefaultTool =
+            value >= 0 && value < _screenshotEditorToolChoices.Length
+                ? _screenshotEditorToolChoices[value]
+                : EditTool.Select);
 
     partial void OnScreenshotUsesLiveCaptureChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotUsesLiveCapture = value);
 

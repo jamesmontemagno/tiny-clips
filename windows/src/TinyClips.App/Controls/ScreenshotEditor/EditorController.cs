@@ -88,9 +88,10 @@ internal sealed class EditorController : IDisposable
         new("prism", "Prism", ExportBackgroundStyle.Gradient, Color.FromArgb(255, 250, 41, 97), Color.FromArgb(255, 46, 219, 237)),
     };
 
-    public EditorController(DispatcherQueue dispatcherQueue)
+    public EditorController(DispatcherQueue dispatcherQueue, EditTool initialTool = EditTool.Select)
     {
         _dispatcherQueue = dispatcherQueue;
+        Tool = Enum.IsDefined(initialTool) ? initialTool : EditTool.Select;
     }
 
     // -- State ------------------------------------------------------------------------------
@@ -136,7 +137,7 @@ internal sealed class EditorController : IDisposable
 
     public Annotation? ActiveAnnotation { get; private set; }
 
-    public EditTool Tool { get; private set; } = EditTool.Select;
+    public EditTool Tool { get; private set; }
 
     public Color StrokeColor { get; private set; } = Colors.Red;
 

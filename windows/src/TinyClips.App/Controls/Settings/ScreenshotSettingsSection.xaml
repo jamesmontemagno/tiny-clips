@@ -127,6 +127,28 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Description="Choose the tool selected when a new screenshot editor opens."
+                    Header="Default editor tool"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE76E;}">
+                    <ComboBox
+                        AutomationProperties.AutomationId="ScreenshotEditorDefaultToolComboBox"
+                        AutomationProperties.Name="Default screenshot editor tool"
+                        SelectedIndex="{x:Bind ViewModel.ScreenshotEditorDefaultToolIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="Move / select" />
+                        <ComboBoxItem Content="Crop" />
+                        <ComboBoxItem Content="Rectangle" />
+                        <ComboBoxItem Content="Ellipse" />
+                        <ComboBoxItem Content="Arrow" />
+                        <ComboBoxItem Content="Line" />
+                        <ComboBoxItem Content="Pen" />
+                        <ComboBoxItem Content="Text" />
+                        <ComboBoxItem Content="Counter" />
+                        <ComboBoxItem Content="Emoji" />
+                        <ComboBoxItem Content="Redact" />
+                    </ComboBox>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
                     Description="Off (recommended): the frozen frame shown while you select is saved instantly. On: re-capture the live screen after selecting, which reflects changes made during selection but is slower."
                     Header="Re-capture screen after region selection"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE72C;}">
